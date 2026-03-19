@@ -596,13 +596,35 @@ describe('ipc module', () => {
         codeTheme: { light: 'solarized-light', dark: 'one-dark-pro' },
         daemon: { port: 17233, path: '/tmp/daemon', autoStart: false },
         terminal: {
-          emulator: 'default',
+          emulator: 'windows_terminal',
           customCommand: '',
           tmuxLayout: 'new_window',
           cliCommands: {
             claude: { continueCmd: 'claude --continue', fresh: 'claude', resume: 'claude --resume' },
             codex: { continueCmd: 'codex resume --last --yolo', fresh: 'codex --yolo', resume: 'codex resume --yolo' },
             gemini: { continueCmd: 'gemini --resume', fresh: 'gemini', resume: 'gemini --resume' },
+          },
+        },
+        terminalContract: {
+          platform: 'windows',
+          defaultEmulator: 'windows_terminal',
+          supportedEmulators: ['windows_terminal', 'custom'],
+          cliCommandDefaults: {
+            claude: {
+              continueCmd: 'claude --dangerously-skip-permissions --continue',
+              fresh: 'claude --dangerously-skip-permissions',
+              resume: 'claude --dangerously-skip-permissions --resume',
+            },
+            codex: {
+              continueCmd: 'codex --yolo',
+              fresh: 'codex --yolo',
+              resume: 'codex resume --last --yolo',
+            },
+            gemini: {
+              continueCmd: 'gemini --yolo --resume',
+              fresh: 'gemini --yolo',
+              resume: 'gemini --yolo --resume',
+            },
           },
         },
       })
@@ -616,9 +638,53 @@ describe('ipc module', () => {
       expect(result.project_dialog_last_path).toBe('/projects/remembered')
       expect(result.code_theme).toEqual({ light: 'solarized-light', dark: 'one-dark-pro' })
       expect(result.daemon.auto_start).toBe(false)
+      expect(result.terminal.emulator).toBe('windows_terminal')
       expect(result.terminal.custom_command).toBe('')
       expect(result.terminal.tmux_layout).toBe('new_window')
       expect(result.terminal.cli_commands.claude.continue_cmd).toBe('claude --continue')
+      expect(result.terminal_contract.default_emulator).toBe('windows_terminal')
+      expect(result.terminal_contract.supported_emulators).toEqual(['windows_terminal', 'custom'])
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('falls back to the backend contract default when the saved emulator is invalid for the platform', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        terminal: {
+          emulator: 'windows_terminal',
+          customCommand: '',
+          tmuxLayout: 'new_window',
+          cliCommands: {},
+        },
+        terminalContract: {
+          platform: 'linux',
+          defaultEmulator: 'manual',
+          supportedEmulators: ['manual'],
+          cliCommandDefaults: {
+            claude: {
+              continueCmd: 'claude --dangerously-skip-permissions --continue',
+              fresh: 'claude --dangerously-skip-permissions',
+              resume: 'claude --dangerously-skip-permissions --resume',
+            },
+            codex: {
+              continueCmd: 'codex --yolo',
+              fresh: 'codex --yolo',
+              resume: 'codex resume --last --yolo',
+            },
+            gemini: {
+              continueCmd: 'gemini --yolo --resume',
+              fresh: 'gemini --yolo',
+              resume: 'gemini --yolo --resume',
+            },
+          },
+        },
+      })
+
+      const result = await ipc.getSettings()
+
+      expect(result.terminal.emulator).toBe('manual')
+      expect(result.terminal.cli_commands.claude.continue_cmd)
+        .toBe('claude --dangerously-skip-permissions --continue')
       delete window.__TAURI_INTERNALS__
     })
 

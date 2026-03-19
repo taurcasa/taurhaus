@@ -23,14 +23,74 @@ const { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform }
 
 import Settings from './Settings.svelte'
 
+function mockCliCommandDefaults() {
+  return {
+    claude: {
+      continue_cmd: 'claude --dangerously-skip-permissions --continue',
+      fresh: 'claude --dangerously-skip-permissions',
+      resume: 'claude --dangerously-skip-permissions --resume',
+    },
+    codex: {
+      continue_cmd: 'codex --yolo',
+      fresh: 'codex --yolo',
+      resume: 'codex resume --last --yolo',
+    },
+    gemini: {
+      continue_cmd: 'gemini --yolo --resume',
+      fresh: 'gemini --yolo',
+      resume: 'gemini --yolo --resume',
+    },
+  }
+}
+
+function mockTerminalContract(platform = 'windows') {
+  switch (platform) {
+    case 'macos':
+      return {
+        platform: 'macos',
+        default_emulator: 'iterm2',
+        supported_emulators: ['iterm2', 'ghostty', 'terminal_app', 'custom'],
+        cli_command_defaults: mockCliCommandDefaults(),
+      }
+    case 'linux':
+      return {
+        platform: 'linux',
+        default_emulator: 'manual',
+        supported_emulators: ['manual'],
+        cli_command_defaults: mockCliCommandDefaults(),
+      }
+    default:
+      return {
+        platform: 'windows',
+        default_emulator: 'windows_terminal',
+        supported_emulators: ['windows_terminal', 'custom'],
+        cli_command_defaults: mockCliCommandDefaults(),
+      }
+  }
+}
+
 /** Default mock settings matching the full schema. */
 function mockSettings(overrides = {}) {
+  const platform = overrides.terminal_contract?.platform ?? 'windows'
+  const terminalContract = {
+    ...mockTerminalContract(platform),
+    ...(overrides.terminal_contract ?? {}),
+  }
+  const terminal = {
+    emulator: terminalContract.default_emulator,
+    custom_command: '',
+    tmux_layout: 'new_window',
+    cli_commands: mockCliCommandDefaults(),
+    ...(overrides.terminal ?? {}),
+  }
+
   return {
     scan_directories: ['~/projects'],
     thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
     ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
     code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
-    terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window' },
+    terminal,
+    terminal_contract: terminalContract,
     ...overrides,
   }
 }
@@ -52,7 +112,6 @@ describe('Settings component', () => {
     getSettings.mockResolvedValue(mockSettings())
     getIndexStatus.mockResolvedValue({ doc_count: 42, is_empty: false })
     updateSettings.mockImplementation(async (s) => s)
-    getPlatform.mockResolvedValue('windows')
   })
 
   // --- IPC loading ---
@@ -230,8 +289,51 @@ describe('Settings component', () => {
       const select = screen.getByTestId('terminal-emulator')
       const options = select.querySelectorAll('option')
       const values = Array.from(options).map(o => o.value)
-      expect(values).toContain('windows_terminal')
-      expect(values).toContain('custom')
+      expect(values).toEqual(['windows_terminal', 'custom'])
+    })
+  })
+
+  it('renders macOS terminal options from the backend contract', async () => {
+    getSettings.mockResolvedValue(mockSettings({
+      terminal_contract: mockTerminalContract('macos'),
+      terminal: { emulator: 'iterm2', custom_command: '', tmux_layout: 'new_window', cli_commands: mockCliCommandDefaults() },
+    }))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      const select = screen.getByTestId('terminal-emulator')
+      const values = Array.from(select.querySelectorAll('option')).map(o => o.value)
+      expect(values).toEqual(['iterm2', 'ghostty', 'terminal_app', 'custom'])
+      expect(select.value).toBe('iterm2')
+    })
+  })
+
+  it('renders Linux terminal options from the backend contract and hides unsupported controls', async () => {
+    getSettings.mockResolvedValue(mockSettings({
+      terminal_contract: mockTerminalContract('linux'),
+      terminal: { emulator: 'manual', custom_command: '', tmux_layout: 'new_window', cli_commands: mockCliCommandDefaults() },
+    }))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      const select = screen.getByTestId('terminal-emulator')
+      const values = Array.from(select.querySelectorAll('option')).map(o => o.value)
+      expect(values).toEqual(['manual'])
+      expect(select.value).toBe('manual')
+      expect(screen.getByTestId('terminal-linux-note')).toBeTruthy()
+      expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
+    })
+  })
+
+  it('falls back to the contract default when a payload carries an invalid emulator for the platform', async () => {
+    getSettings.mockResolvedValue(mockSettings({
+      terminal_contract: mockTerminalContract('linux'),
+      terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: mockCliCommandDefaults() },
+    }))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('terminal-emulator')).toHaveValue('manual')
     })
   })
 
@@ -293,6 +395,17 @@ describe('Settings component', () => {
 
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalled()
+    })
+  })
+
+  it('uses backend contract defaults as CLI command placeholders', async () => {
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cli-claude-continue').placeholder)
+        .toBe('claude --dangerously-skip-permissions --continue')
+      expect(screen.getByTestId('cli-codex-resume').placeholder)
+        .toBe('codex resume --last --yolo')
     })
   })
 

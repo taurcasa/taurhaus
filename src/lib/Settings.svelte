@@ -1,5 +1,5 @@
 <script>
-  import { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform } from './ipc.js'
+  import { getSettings, updateSettings, getIndexStatus, rebuildIndex } from './ipc.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
@@ -33,18 +33,91 @@
   let scanDirsText = $state('')
   let ignoreText = $state('')
 
-  // Platform detection for conditional UI
-  let platform = $state('linux')
+  function createEmptyToolCommands() {
+    return {
+      continue_cmd: '',
+      fresh: '',
+      resume: '',
+    }
+  }
+
+  function cloneCliCommands(source) {
+    return {
+      claude: { ...(source?.claude ?? createEmptyToolCommands()) },
+      codex: { ...(source?.codex ?? createEmptyToolCommands()) },
+      gemini: { ...(source?.gemini ?? createEmptyToolCommands()) },
+    }
+  }
+
+  function createFallbackTerminalContract() {
+    return {
+      platform: 'linux',
+      default_emulator: 'manual',
+      supported_emulators: ['manual'],
+      cli_command_defaults: cloneCliCommands(),
+    }
+  }
+
+  function createFallbackSettings() {
+    const terminalContract = createFallbackTerminalContract()
+    return {
+      scan_directories: ['~/projects'],
+      thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
+      ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
+      code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
+      daemon: { port: 17233, path: '', auto_start: true },
+      terminal: {
+        emulator: terminalContract.default_emulator,
+        custom_command: '',
+        tmux_layout: 'new_window',
+        cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
+      },
+      terminal_contract: terminalContract,
+      dark_mode: dark,
+      project_dialog_last_path: '',
+    }
+  }
+
+  function getTerminalContract() {
+    return settings?.terminal_contract ?? createFallbackTerminalContract()
+  }
+
+  function getTerminalDefaultEmulator() {
+    return getTerminalContract().default_emulator
+  }
+
+  function getSelectedTerminalEmulator() {
+    const contract = getTerminalContract()
+    const emulator = settings?.terminal?.emulator
+    return contract.supported_emulators.includes(emulator)
+      ? emulator
+      : contract.default_emulator
+  }
+
+  function getTerminalCliDefaults() {
+    return cloneCliCommands(getTerminalContract().cli_command_defaults)
+  }
+
+  function getTerminalPlatform() {
+    return getTerminalContract().platform
+  }
+
+  function getEmulatorLabel(emulator) {
+    switch (emulator) {
+      case 'manual': return 'Use your existing terminal'
+      case 'iterm2': return 'iTerm2'
+      case 'ghostty': return 'Ghostty'
+      case 'terminal_app': return 'Terminal.app'
+      case 'windows_terminal': return 'Windows Terminal'
+      case 'custom': return 'Custom command'
+      default: return emulator
+    }
+  }
 
   // Load settings on mount
   $effect(() => {
     loadSettings()
     loadIndexStatus()
-    getPlatform()
-      .then(p => { platform = p })
-      .catch((error) => {
-        console.warn('[settings] failed to detect platform, using fallback:', error)
-      })
   })
 
   async function loadSettings() {
@@ -55,13 +128,7 @@
     } catch (e) {
       loadError = formatUserFacingError(e, 'Failed to load settings')
       // Provide defaults so the UI is still usable
-      settings = {
-        scan_directories: ['~/projects'],
-        thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
-        ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
-        code_theme: { light: DEFAULT_LIGHT_THEME, dark: DEFAULT_DARK_THEME },
-        terminal: { emulator: platform === 'macos' ? 'iterm2' : 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: structuredClone(CLI_DEFAULTS) },
-      }
+      settings = createFallbackSettings()
     } finally {
       loading = false
     }
@@ -131,32 +198,22 @@
     saveSettings()
   }
 
-  // Default CLI tool launch commands (must match Rust CliCommandSettings::default())
-  const CLI_DEFAULTS = {
-    claude: {
-      continue_cmd: 'claude --dangerously-skip-permissions --continue',
-      fresh: 'claude --dangerously-skip-permissions',
-      resume: 'claude --dangerously-skip-permissions --resume',
-    },
-    codex: {
-      continue_cmd: 'codex --yolo',
-      fresh: 'codex --yolo',
-      resume: 'codex resume --last --yolo',
-    },
-    gemini: {
-      continue_cmd: 'gemini --yolo --resume',
-      fresh: 'gemini --yolo',
-      resume: 'gemini --yolo --resume',
-    },
-  }
-
   function ensureCliCommands() {
-    if (!settings.terminal) settings.terminal = { emulator: platform === 'macos' ? 'iterm2' : 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: structuredClone(CLI_DEFAULTS) }
-    if (!settings.terminal.cli_commands) settings.terminal.cli_commands = structuredClone(CLI_DEFAULTS)
+    const defaultEmulator = getTerminalDefaultEmulator()
+    const cliDefaults = getTerminalCliDefaults()
+    if (!settings.terminal) {
+      settings.terminal = {
+        emulator: defaultEmulator,
+        custom_command: '',
+        tmux_layout: 'new_window',
+        cli_commands: cliDefaults,
+      }
+    }
+    if (!settings.terminal.cli_commands) settings.terminal.cli_commands = cliDefaults
   }
 
   function getCliCmd(tool, mode) {
-    return settings?.terminal?.cli_commands?.[tool]?.[mode] ?? CLI_DEFAULTS[tool][mode]
+    return settings?.terminal?.cli_commands?.[tool]?.[mode] ?? getTerminalCliDefaults()[tool][mode]
   }
 
   function setCliCmd(tool, mode, value) {
@@ -167,7 +224,7 @@
 
   function resetToolDefaults(tool) {
     ensureCliCommands()
-    settings.terminal.cli_commands[tool] = structuredClone(CLI_DEFAULTS[tool])
+    settings.terminal.cli_commands[tool] = { ...getTerminalCliDefaults()[tool] }
     saveSettings()
   }
 
@@ -430,25 +487,29 @@
               <select
                 id="terminal-emulator"
                 class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
-                value={settings.terminal?.emulator || (platform === 'macos' ? 'iterm2' : 'windows_terminal')}
+                value={getSelectedTerminalEmulator()}
                 onchange={(e) => {
-                  const defaultEmulator = platform === 'macos' ? 'iterm2' : 'windows_terminal'
-                  if (!settings.terminal) settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window' }
+                  const defaultEmulator = getTerminalDefaultEmulator()
+                  const cliDefaults = getTerminalCliDefaults()
+                  if (!settings.terminal) {
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults }
+                  }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
                 }}
                 data-testid="terminal-emulator"
               >
-                {#if platform === 'macos'}
-                  <option value="iterm2">iTerm2</option>
-                  <option value="ghostty">Ghostty</option>
-                  <option value="terminal_app">Terminal.app</option>
-                {:else if platform === 'windows'}
-                  <option value="windows_terminal">Windows Terminal</option>
-                {/if}
-                <option value="custom">Custom command</option>
+                {#each getTerminalContract().supported_emulators as emulator}
+                  <option value={emulator}>{getEmulatorLabel(emulator)}</option>
+                {/each}
               </select>
             </div>
+
+            {#if getTerminalPlatform() === 'linux'}
+              <p class="text-[12px] {textTertiary}" data-testid="terminal-linux-note">
+                taurhaus does not open or focus terminals on Linux. Keep working in your existing terminal alongside the app.
+              </p>
+            {/if}
 
             <div class="flex items-center gap-3">
               <label for="tmux-layout" class="text-[13px] {t.textSecondary} w-24">Pane layout</label>
@@ -457,8 +518,11 @@
                 class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500"
                 value={settings.terminal?.tmux_layout || 'new_window'}
                 onchange={(e) => {
-                  const defaultEmulator = platform === 'macos' ? 'iterm2' : 'windows_terminal'
-                  if (!settings.terminal) settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window' }
+                  const defaultEmulator = getTerminalDefaultEmulator()
+                  const cliDefaults = getTerminalCliDefaults()
+                  if (!settings.terminal) {
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults }
+                  }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
                 }}
@@ -478,18 +542,19 @@
                   type="text"
                   class="w-full px-3 py-1.5 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                   value={settings.terminal?.custom_command || ''}
-                  placeholder={platform === 'macos'
+                  placeholder={getTerminalPlatform() === 'macos'
                     ? "e.g. /usr/local/bin/alacritty -e tmux attach -t {'{tmux_session}'}"
                     : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window' };
+                    const cliDefaults = getTerminalCliDefaults()
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
                   data-testid="terminal-custom-cmd"
                 />
                 <p class="mt-1.5 text-[11px] {textTertiary}">
-                  {#if platform === 'windows'}
+                  {#if getTerminalPlatform() === 'windows'}
                     Placeholders: <code class="font-mono">{'{distro}'}</code> (WSL distro name), <code class="font-mono">{'{tmux_session}'}</code> (tmux session name)
                   {:else}
                     Placeholder: <code class="font-mono">{'{tmux_session}'}</code> (tmux session name)
@@ -523,7 +588,7 @@
                     type="text"
                     class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                     value={getCliCmd(tool, 'continue_cmd')}
-                    placeholder={CLI_DEFAULTS[tool].continue_cmd}
+                    placeholder={getTerminalCliDefaults()[tool].continue_cmd}
                     onblur={(e) => setCliCmd(tool, 'continue_cmd', e.target.value)}
                     data-testid="cli-{tool}-continue"
                   />
@@ -535,7 +600,7 @@
                     type="text"
                     class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                     value={getCliCmd(tool, 'fresh')}
-                    placeholder={CLI_DEFAULTS[tool].fresh}
+                    placeholder={getTerminalCliDefaults()[tool].fresh}
                     onblur={(e) => setCliCmd(tool, 'fresh', e.target.value)}
                     data-testid="cli-{tool}-fresh"
                   />
@@ -547,7 +612,7 @@
                     type="text"
                     class="flex-1 px-2 py-1 text-[12px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
                     value={getCliCmd(tool, 'resume')}
-                    placeholder={CLI_DEFAULTS[tool].resume}
+                    placeholder={getTerminalCliDefaults()[tool].resume}
                     onblur={(e) => setCliCmd(tool, 'resume', e.target.value)}
                     data-testid="cli-{tool}-resume"
                   />

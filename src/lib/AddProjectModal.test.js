@@ -81,7 +81,8 @@ describe('AddProjectModal', () => {
       ignore_patterns: [],
       daemon: { port: 17233, path: '', auto_start: true },
       code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
-      terminal: { emulator: 'default', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+      terminal: { emulator: 'manual', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+      terminal_contract: { platform: 'linux', default_emulator: 'manual', supported_emulators: ['manual'], cli_command_defaults: {} },
       dark_mode: false,
       project_dialog_last_path: '',
     })
@@ -305,7 +306,8 @@ describe('AddProjectModal', () => {
       ignore_patterns: [],
       daemon: { port: 17233, path: '', auto_start: true },
       code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
-      terminal: { emulator: 'default', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+      terminal: { emulator: 'manual', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+      terminal_contract: { platform: 'linux', default_emulator: 'manual', supported_emulators: ['manual'], cli_command_defaults: {} },
       dark_mode: false,
       project_dialog_last_path: '/remembered/path',
     })

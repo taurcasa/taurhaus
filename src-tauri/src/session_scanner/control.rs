@@ -499,23 +499,7 @@ pub fn build_team_launch_command(cmds: &CliCommandSettings, tool: CliTool, model
 
 /// Build the launch command string for a given tool and launch mode.
 pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
-    match tool {
-        CliTool::Claude => match mode {
-            LaunchMode::Continue => "claude --dangerously-skip-permissions --continue".to_string(),
-            LaunchMode::Fresh => "claude --dangerously-skip-permissions".to_string(),
-            LaunchMode::Resume => "claude --dangerously-skip-permissions --resume".to_string(),
-        },
-        CliTool::Codex => match mode {
-            LaunchMode::Continue => "codex --yolo".to_string(),
-            LaunchMode::Fresh => "codex --yolo".to_string(),
-            LaunchMode::Resume => "codex resume --last --yolo".to_string(),
-        },
-        CliTool::Gemini => match mode {
-            LaunchMode::Continue => "gemini --yolo --resume".to_string(),
-            LaunchMode::Fresh => "gemini --yolo".to_string(),
-            LaunchMode::Resume => "gemini --yolo --resume".to_string(),
-        },
-    }
+    resolve_configured_tool_command(&CliCommandSettings::default(), tool, mode)
 }
 
 /// The tmux session name used by taurhaus for all CLI tool windows.

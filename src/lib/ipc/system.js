@@ -8,12 +8,93 @@ import { invokeOrMock } from './client.js'
 
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'mailto:'])
 
-function normalizeToolCommands(raw) {
+const DEFAULT_CLI_COMMANDS = {
+  claude: {
+    continue_cmd: 'claude --dangerously-skip-permissions --continue',
+    fresh: 'claude --dangerously-skip-permissions',
+    resume: 'claude --dangerously-skip-permissions --resume',
+  },
+  codex: {
+    continue_cmd: 'codex --yolo',
+    fresh: 'codex --yolo',
+    resume: 'codex resume --last --yolo',
+  },
+  gemini: {
+    continue_cmd: 'gemini --yolo --resume',
+    fresh: 'gemini --yolo',
+    resume: 'gemini --yolo --resume',
+  },
+}
+
+const DEFAULT_TERMINAL_CONTRACTS = {
+  linux: {
+    platform: 'linux',
+    default_emulator: 'manual',
+    supported_emulators: ['manual'],
+    cli_command_defaults: DEFAULT_CLI_COMMANDS,
+  },
+  macos: {
+    platform: 'macos',
+    default_emulator: 'iterm2',
+    supported_emulators: ['iterm2', 'ghostty', 'terminal_app', 'custom'],
+    cli_command_defaults: DEFAULT_CLI_COMMANDS,
+  },
+  windows: {
+    platform: 'windows',
+    default_emulator: 'windows_terminal',
+    supported_emulators: ['windows_terminal', 'custom'],
+    cli_command_defaults: DEFAULT_CLI_COMMANDS,
+  },
+}
+
+function normalizeToolCommands(raw, defaults = {}) {
   const commands = raw && typeof raw === 'object' ? raw : {}
   return {
-    continue_cmd: commands.continue_cmd ?? commands.continueCmd ?? '',
-    fresh: commands.fresh ?? '',
-    resume: commands.resume ?? '',
+    continue_cmd: commands.continue_cmd ?? commands.continueCmd ?? defaults.continue_cmd ?? '',
+    fresh: commands.fresh ?? defaults.fresh ?? '',
+    resume: commands.resume ?? defaults.resume ?? '',
+  }
+}
+
+function getDefaultTerminalContract(platform = 'linux') {
+  const fallback = DEFAULT_TERMINAL_CONTRACTS[platform] ?? DEFAULT_TERMINAL_CONTRACTS.linux
+  return {
+    platform: fallback.platform,
+    default_emulator: fallback.default_emulator,
+    supported_emulators: [...fallback.supported_emulators],
+    cli_command_defaults: {
+      claude: { ...fallback.cli_command_defaults.claude },
+      codex: { ...fallback.cli_command_defaults.codex },
+      gemini: { ...fallback.cli_command_defaults.gemini },
+    },
+  }
+}
+
+function normalizeTerminalContract(raw) {
+  const contract = raw && typeof raw === 'object' ? raw : {}
+  const platform = contract.platform ?? 'linux'
+  const defaults = getDefaultTerminalContract(platform)
+  const supportedEmulators = Array.isArray(contract.supported_emulators)
+    ? contract.supported_emulators
+    : Array.isArray(contract.supportedEmulators)
+      ? contract.supportedEmulators
+      : defaults.supported_emulators
+  const cliCommandDefaults =
+    contract.cli_command_defaults && typeof contract.cli_command_defaults === 'object'
+      ? contract.cli_command_defaults
+      : contract.cliCommandDefaults && typeof contract.cliCommandDefaults === 'object'
+        ? contract.cliCommandDefaults
+        : defaults.cli_command_defaults
+
+  return {
+    platform: defaults.platform,
+    default_emulator: contract.default_emulator ?? contract.defaultEmulator ?? defaults.default_emulator,
+    supported_emulators: [...supportedEmulators],
+    cli_command_defaults: {
+      claude: normalizeToolCommands(cliCommandDefaults.claude, defaults.cli_command_defaults.claude),
+      codex: normalizeToolCommands(cliCommandDefaults.codex, defaults.cli_command_defaults.codex),
+      gemini: normalizeToolCommands(cliCommandDefaults.gemini, defaults.cli_command_defaults.gemini),
+    },
   }
 }
 
@@ -28,12 +109,21 @@ function normalizeSettings(raw) {
       : terminal.cliCommands && typeof terminal.cliCommands === 'object'
         ? terminal.cliCommands
         : {}
+  const terminalContract = normalizeTerminalContract(
+    settings.terminal_contract && typeof settings.terminal_contract === 'object'
+      ? settings.terminal_contract
+      : settings.terminalContract
+  )
   const codeTheme =
     settings.code_theme && typeof settings.code_theme === 'object'
       ? settings.code_theme
       : settings.codeTheme && typeof settings.codeTheme === 'object'
         ? settings.codeTheme
         : {}
+  const requestedEmulator = terminal.emulator ?? terminalContract.default_emulator
+  const emulator = terminalContract.supported_emulators.includes(requestedEmulator)
+    ? requestedEmulator
+    : terminalContract.default_emulator
 
   return {
     scan_directories: settings.scan_directories ?? settings.scanDirectories ?? [],
@@ -56,15 +146,16 @@ function normalizeSettings(raw) {
       auto_start: daemon.auto_start ?? daemon.autoStart ?? true,
     },
     terminal: {
-      emulator: terminal.emulator ?? 'default',
+      emulator,
       custom_command: terminal.custom_command ?? terminal.customCommand ?? '',
       tmux_layout: terminal.tmux_layout ?? terminal.tmuxLayout ?? 'new_window',
       cli_commands: {
-        claude: normalizeToolCommands(cliCommands.claude),
-        codex: normalizeToolCommands(cliCommands.codex),
-        gemini: normalizeToolCommands(cliCommands.gemini),
+        claude: normalizeToolCommands(cliCommands.claude, terminalContract.cli_command_defaults.claude),
+        codex: normalizeToolCommands(cliCommands.codex, terminalContract.cli_command_defaults.codex),
+        gemini: normalizeToolCommands(cliCommands.gemini, terminalContract.cli_command_defaults.gemini),
       },
     },
+    terminal_contract: terminalContract,
   }
 }
 

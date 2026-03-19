@@ -54,7 +54,9 @@ fn get_settings_with_span(db: &DbState) -> Result<Settings, String> {
 
 fn get_settings_impl(db: &DbState) -> Result<Settings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    settings_queries::get_all_settings(&conn).sanitize_err()
+    settings_queries::get_all_settings(&conn)
+        .map(Settings::with_runtime_terminal_contract)
+        .sanitize_err()
 }
 
 #[tauri::command]
@@ -83,8 +85,11 @@ fn update_settings_with_span(
 
 fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = settings.with_runtime_terminal_contract();
     settings_queries::save_settings(&conn, &settings).sanitize_err()?;
-    settings_queries::get_all_settings(&conn).sanitize_err()
+    settings_queries::get_all_settings(&conn)
+        .map(Settings::with_runtime_terminal_contract)
+        .sanitize_err()
 }
 
 #[cfg(test)]
@@ -123,6 +128,24 @@ mod tests {
 
         let fetched = get_settings_impl(&db).expect("get updated settings");
         assert_eq!(fetched, saved);
+    }
+
+    #[test]
+    fn settings_commands_attach_runtime_terminal_contract_and_migrate_legacy_emulator() {
+        let (db, _tmp) = test_db_state();
+        let mut settings = get_settings_impl(&db).expect("get defaults");
+        settings.terminal.emulator = "default".to_string();
+
+        let saved = update_settings_impl(&db, settings).expect("update settings");
+
+        assert_eq!(
+            saved.terminal.emulator,
+            saved.terminal_contract.default_emulator
+        );
+        assert!(saved
+            .terminal_contract
+            .supported_emulators
+            .contains(&saved.terminal.emulator));
     }
 
     #[test]

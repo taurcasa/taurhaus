@@ -208,7 +208,7 @@ impl Default for CodeThemeSettings {
 }
 
 /// Per-mode launch commands for a single CLI tool.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolCommands {
     /// Command for "Continue" mode (resume latest session).
@@ -221,7 +221,7 @@ pub struct ToolCommands {
 }
 
 /// Per-tool launch command configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CliCommandSettings {
     pub claude: ToolCommands,
@@ -251,12 +251,85 @@ impl Default for CliCommandSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AppPlatform {
+    Linux,
+    Macos,
+    Windows,
+}
+
+impl AppPlatform {
+    pub fn current() -> Self {
+        #[cfg(target_os = "macos")]
+        {
+            Self::Macos
+        }
+        #[cfg(target_os = "windows")]
+        {
+            Self::Windows
+        }
+        #[cfg(target_os = "linux")]
+        {
+            Self::Linux
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalPlatformContract {
+    pub platform: AppPlatform,
+    #[serde(alias = "default_emulator")]
+    pub default_emulator: String,
+    #[serde(alias = "supported_emulators")]
+    pub supported_emulators: Vec<String>,
+    #[serde(alias = "cli_command_defaults")]
+    pub cli_command_defaults: CliCommandSettings,
+}
+
+impl Default for TerminalPlatformContract {
+    fn default() -> Self {
+        Self::for_platform(AppPlatform::current())
+    }
+}
+
+impl TerminalPlatformContract {
+    pub fn for_platform(platform: AppPlatform) -> Self {
+        let (default_emulator, supported_emulators) = match platform {
+            AppPlatform::Linux => ("manual", vec!["manual"]),
+            AppPlatform::Macos => (
+                "iterm2",
+                vec!["iterm2", "ghostty", "terminal_app", "custom"],
+            ),
+            AppPlatform::Windows => ("windows_terminal", vec!["windows_terminal", "custom"]),
+        };
+
+        Self {
+            platform,
+            default_emulator: default_emulator.to_string(),
+            supported_emulators: supported_emulators
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            cli_command_defaults: CliCommandSettings::default(),
+        }
+    }
+
+    pub fn supports_emulator(&self, emulator: &str) -> bool {
+        self.supported_emulators
+            .iter()
+            .any(|value| value == emulator)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSettings {
     /// Terminal emulator to use:
     /// - Windows: "windows_terminal" (default), "custom"
     /// - macOS: "iterm2" (default), "terminal_app", "ghostty", "custom"
+    /// - Linux: "manual" (default)
     pub emulator: String,
     /// Command template when emulator is "custom".
     /// Placeholders: {distro}, {tmux_session}
@@ -274,7 +347,7 @@ pub struct TerminalSettings {
 impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
-            emulator: default_emulator().into(),
+            emulator: TerminalPlatformContract::default().default_emulator,
             custom_command: String::new(),
             tmux_layout: "new_window".into(),
             cli_commands: CliCommandSettings::default(),
@@ -282,23 +355,7 @@ impl Default for TerminalSettings {
     }
 }
 
-/// Platform-appropriate default terminal emulator.
-fn default_emulator() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        "iterm2"
-    }
-    #[cfg(target_os = "windows")]
-    {
-        "windows_terminal"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "default"
-    }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
     #[serde(alias = "scan_directories")]
@@ -318,6 +375,39 @@ pub struct Settings {
     #[serde(default)]
     #[serde(alias = "project_dialog_last_path")]
     pub project_dialog_last_path: String,
+    #[serde(default)]
+    #[serde(alias = "terminal_contract")]
+    pub terminal_contract: TerminalPlatformContract,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            scan_directories: Vec::new(),
+            thresholds: ActivityThresholds::default(),
+            ignore_patterns: Vec::new(),
+            daemon: DaemonSettings::default(),
+            code_theme: CodeThemeSettings::default(),
+            terminal: TerminalSettings::default(),
+            dark_mode: false,
+            project_dialog_last_path: String::new(),
+            terminal_contract: TerminalPlatformContract::default(),
+        }
+    }
+}
+
+impl Settings {
+    pub fn with_runtime_terminal_contract(mut self) -> Self {
+        let contract = TerminalPlatformContract::default();
+
+        if self.terminal.emulator == "default"
+            || !contract.supports_emulator(&self.terminal.emulator)
+        {
+            self.terminal.emulator = contract.default_emulator.clone();
+        }
+        self.terminal_contract = contract;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -563,6 +653,7 @@ mod tests {
         assert!(value.get("scanDirectories").is_some());
         assert!(value.get("darkMode").is_some());
         assert!(value.get("projectDialogLastPath").is_some());
+        assert!(value.get("terminalContract").is_some());
         assert!(value.get("scan_directories").is_none());
     }
 
@@ -794,10 +885,59 @@ mod tests {
     }
 
     #[test]
+    fn terminal_platform_contract_linux_defaults_are_manual_only() {
+        let contract = TerminalPlatformContract::for_platform(AppPlatform::Linux);
+        assert_eq!(contract.default_emulator, "manual");
+        assert_eq!(contract.supported_emulators, vec!["manual"]);
+        assert_eq!(contract.cli_command_defaults, CliCommandSettings::default());
+    }
+
+    #[test]
+    fn terminal_platform_contract_macos_defaults_include_supported_apps() {
+        let contract = TerminalPlatformContract::for_platform(AppPlatform::Macos);
+        assert_eq!(contract.default_emulator, "iterm2");
+        assert_eq!(
+            contract.supported_emulators,
+            vec!["iterm2", "ghostty", "terminal_app", "custom"]
+        );
+    }
+
+    #[test]
+    fn terminal_platform_contract_windows_defaults_include_custom() {
+        let contract = TerminalPlatformContract::for_platform(AppPlatform::Windows);
+        assert_eq!(contract.default_emulator, "windows_terminal");
+        assert_eq!(
+            contract.supported_emulators,
+            vec!["windows_terminal", "custom"]
+        );
+    }
+
+    #[test]
     fn terminal_settings_deserializes_without_cli_commands() {
         // Backward compat: old settings JSON without cli_commands field
         let json = r#"{"emulator":"iterm2","customCommand":"","tmuxLayout":"new_window"}"#;
         let ts: TerminalSettings = serde_json::from_str(json).unwrap();
         assert_eq!(ts.cli_commands, CliCommandSettings::default());
+    }
+
+    #[test]
+    fn settings_runtime_contract_migrates_legacy_linux_default_emulator() {
+        let settings = Settings {
+            terminal: TerminalSettings {
+                emulator: "default".into(),
+                custom_command: String::new(),
+                tmux_layout: "new_window".into(),
+                cli_commands: CliCommandSettings::default(),
+            },
+            ..Settings::default()
+        }
+        .with_runtime_terminal_contract();
+
+        let expected_default = TerminalPlatformContract::default().default_emulator;
+        assert_eq!(settings.terminal.emulator, expected_default);
+        assert_eq!(
+            settings.terminal_contract,
+            TerminalPlatformContract::default()
+        );
     }
 }

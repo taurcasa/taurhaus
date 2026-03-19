@@ -101,7 +101,50 @@ export const MOCK_SETTINGS = {
   thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
   ignore_patterns: ['node_modules', '.git', 'target', 'dist'],
   code_theme: { light: 'github-light', dark: 'github-dark-dimmed' },
-  terminal: { emulator: 'windows_terminal', custom_command: '', tmux_layout: 'new_window', cli_commands: {} },
+  terminal: {
+    emulator: 'manual',
+    custom_command: '',
+    tmux_layout: 'new_window',
+    cli_commands: {
+      claude: {
+        continue_cmd: 'claude --dangerously-skip-permissions --continue',
+        fresh: 'claude --dangerously-skip-permissions',
+        resume: 'claude --dangerously-skip-permissions --resume',
+      },
+      codex: {
+        continue_cmd: 'codex --yolo',
+        fresh: 'codex --yolo',
+        resume: 'codex resume --last --yolo',
+      },
+      gemini: {
+        continue_cmd: 'gemini --yolo --resume',
+        fresh: 'gemini --yolo',
+        resume: 'gemini --yolo --resume',
+      },
+    },
+  },
+  terminal_contract: {
+    platform: 'linux',
+    default_emulator: 'manual',
+    supported_emulators: ['manual'],
+    cli_command_defaults: {
+      claude: {
+        continue_cmd: 'claude --dangerously-skip-permissions --continue',
+        fresh: 'claude --dangerously-skip-permissions',
+        resume: 'claude --dangerously-skip-permissions --resume',
+      },
+      codex: {
+        continue_cmd: 'codex --yolo',
+        fresh: 'codex --yolo',
+        resume: 'codex resume --last --yolo',
+      },
+      gemini: {
+        continue_cmd: 'gemini --yolo --resume',
+        fresh: 'gemini --yolo',
+        resume: 'gemini --yolo --resume',
+      },
+    },
+  },
   daemon: { port: 17233, path: '~/.local/bin/taurhaus-daemon', auto_start: true },
   dark_mode: false,
   project_dialog_last_path: '',
