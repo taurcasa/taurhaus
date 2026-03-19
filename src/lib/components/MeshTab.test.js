@@ -23,6 +23,7 @@ vi.mock('../ipc.js', () => ({
   listTeamPresets: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
   upsertRoleTemplate: vi.fn(),
+  upsertTeamPreset: vi.fn(),
 }))
 
 const {
@@ -44,6 +45,7 @@ const {
   listTeamPresets,
   onCoordinationStepProgress,
   upsertRoleTemplate,
+  upsertTeamPreset,
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'

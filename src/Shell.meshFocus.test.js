@@ -67,6 +67,7 @@ vi.mock('./lib/ipc.js', () => ({
   openExternalUrl: vi.fn(),
   getPlatform: vi.fn(),
   listClaudeSessions: vi.fn(),
+  startDaemon: vi.fn(),
 }))
 
 vi.mock('@tauri-apps/api/event', () => ({

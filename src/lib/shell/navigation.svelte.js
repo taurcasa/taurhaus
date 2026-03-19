@@ -191,3 +191,121 @@ export function classifyMarkdownNavigateAction({
 
   return null
 }
+
+export function createShellNavigationController({
+  state,
+  ipc,
+  selectProject,
+  switchTab,
+  logger = console,
+}) {
+  function navigateToCommit(hash) {
+    state.gitNavTarget = { type: 'commit', hash }
+    switchTab('git', { tab: 'git', commit: hash })
+  }
+
+  function navigateToCommitRange(after, before) {
+    state.gitNavTarget = { type: 'range', after, before }
+    switchTab('git', { tab: 'git', rangeFilter: { after, before } })
+  }
+
+  function navigateToFile(path, lineNumber) {
+    state.filesNavTarget = { file: path, lineNumber }
+    switchTab('files', { tab: 'files', file: path, lineNumber })
+  }
+
+  async function handleMarkdownNavigate(relativePath) {
+    if (!state.selectedProject) return
+    if (!relativePath || relativePath.startsWith('#')) return
+
+    const contextFile = state.activeTab === 'overview'
+      ? state.readmeContent?.path
+      : (state.filesPosition?.selectedFile || state.readmeContent?.path)
+
+    const normalized = normalizeMarkdownTarget(relativePath, contextFile)
+    if (!normalized) return
+
+    if (normalized.escapedAboveRoot) {
+      let remoteUrl = null
+      try {
+        remoteUrl = await ipc.getRemoteUrl(state.selectedProject.id)
+      } catch (error) {
+        logger.warn('[markdown] failed to resolve remote URL for platform route', error)
+        return
+      }
+
+      if (!remoteUrl) {
+        logger.warn(`[markdown] platform route detected but no remote available: "${relativePath}"`)
+        return
+      }
+
+      const action = classifyMarkdownNavigateAction({
+        relativePath,
+        contextFile,
+        remoteUrl,
+        pathType: 'not_found',
+      })
+      if (!action?.url) return
+      logger.log(`[markdown] navigate platform route: "${relativePath}" → "${action.url}"`)
+      ipc.openExternalUrl(action.url).catch((error) => {
+        logger.error(`[markdown] failed to open platform route URL: ${action.url}`, error)
+      })
+      return
+    }
+
+    let pathType = 'not_found'
+    try {
+      pathType = await ipc.checkPathType(state.selectedProject.id, normalized.resolvedPath)
+    } catch (error) {
+      logger.warn(`[markdown] failed to classify path: "${normalized.resolvedPath}"`, error)
+      return
+    }
+
+    const action = classifyMarkdownNavigateAction({
+      relativePath,
+      contextFile,
+      remoteUrl: null,
+      pathType,
+    })
+
+    if (action?.type === 'directory') {
+      logger.log(`[markdown] navigate directory: "${relativePath}" → "${action.directory}"`)
+      state.filesNavTarget = { directory: action.directory }
+      switchTab('files', { tab: 'files' })
+      return
+    }
+
+    if (action?.type === 'file') {
+      logger.log(`[markdown] navigate: "${relativePath}" → "${action.file}"${action.anchor ? ` #${action.anchor}` : ''}`)
+      state.filesNavTarget = { file: action.file, anchor: action.anchor }
+      switchTab('files', { tab: 'files', file: action.file })
+      return
+    }
+
+    logger.warn(`[markdown] unresolved markdown path (not_found): "${relativePath}" → "${normalized.resolvedPath}"`)
+  }
+
+  async function handleSearchNavigate(action) {
+    if (action.projectId && action.projectId !== state.selectedProject?.id) {
+      const targetProject = state.projects.find((project) => project.id === action.projectId)
+      if (targetProject) {
+        await selectProject(targetProject)
+      }
+    }
+
+    if (action.tab === 'files' && action.filePath) {
+      state.filesNavTarget = { file: action.filePath }
+      switchTab('files', { tab: 'files', file: action.filePath })
+    } else if (action.tab === 'overview') {
+      switchTab('overview')
+    }
+  }
+
+  return {
+    navigateToCommit,
+    navigateToCommitRange,
+    navigateToFile,
+    handleMarkdownNavigate,
+    handleSearchNavigate,
+  }
+}

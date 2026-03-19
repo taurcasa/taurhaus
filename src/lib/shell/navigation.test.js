@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   applyNavEntryState,
   buildPlatformRouteUrl,
   buildProjectSelectionState,
   classifyMarkdownNavigateAction,
+  createShellNavigationController,
   createProjectPosition,
   normalizeMarkdownTarget,
   switchTabState,
@@ -164,5 +165,73 @@ describe('tab navigation helpers', () => {
       filesNavTarget: null,
       gitNavTarget: { type: 'range', after: '2025-01-01', before: '2025-02-01' },
     })
+  })
+})
+
+describe('createShellNavigationController', () => {
+  it('routes commit navigation through the git tab contract', () => {
+    const state = {
+      selectedProject: { id: 'proj-1' },
+      projects: [],
+      activeTab: 'overview',
+      readmeContent: null,
+      filesPosition: null,
+      filesNavTarget: null,
+      gitNavTarget: null,
+    }
+    const switchSpy = vi.fn()
+
+    const controller = createShellNavigationController({
+      state,
+      ipc: {
+        getRemoteUrl: async () => null,
+        checkPathType: async () => 'not_found',
+        openExternalUrl: async () => {},
+      },
+      selectProject: async () => {},
+      switchTab: switchSpy,
+      logger: console,
+    })
+
+    controller.navigateToCommit('abc123')
+
+    expect(state.gitNavTarget).toEqual({ type: 'commit', hash: 'abc123' })
+    expect(switchSpy).toHaveBeenCalledWith('git', { tab: 'git', commit: 'abc123' })
+  })
+
+  it('switches project before routing a file search result', async () => {
+    const state = {
+      selectedProject: { id: 'proj-1' },
+      projects: [{ id: 'proj-2' }],
+      activeTab: 'overview',
+      readmeContent: null,
+      filesPosition: null,
+      filesNavTarget: null,
+      gitNavTarget: null,
+    }
+    const selectProject = vi.fn().mockResolvedValue(undefined)
+    const switchTab = vi.fn()
+
+    const controller = createShellNavigationController({
+      state,
+      ipc: {
+        getRemoteUrl: async () => null,
+        checkPathType: async () => 'not_found',
+        openExternalUrl: async () => {},
+      },
+      selectProject,
+      switchTab,
+      logger: console,
+    })
+
+    await controller.handleSearchNavigate({
+      projectId: 'proj-2',
+      tab: 'files',
+      filePath: 'src/main.rs',
+    })
+
+    expect(selectProject).toHaveBeenCalledWith({ id: 'proj-2' })
+    expect(state.filesNavTarget).toEqual({ file: 'src/main.rs' })
+    expect(switchTab).toHaveBeenCalledWith('files', { tab: 'files', file: 'src/main.rs' })
   })
 })

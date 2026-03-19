@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 
-use super::{
+use super::types::{
     MemberKey, MemberStallState, MeshMemberStatus, NudgeCountWindow, SignalSnapshot,
     StageTransition, StallDetectorConfig, StallSignalSnapshot, StallStage,
     StallSuppressionSnapshot, StallTriggerStage, TransitionDecision,
@@ -15,7 +15,7 @@ pub(super) fn set_if_newer(target: &mut Option<DateTime<Utc>>, observed_at: Date
     }
 }
 
-pub(super) fn elapsed_secs(now: DateTime<Utc>, then: DateTime<Utc>) -> u64 {
+fn elapsed_secs(now: DateTime<Utc>, then: DateTime<Utc>) -> u64 {
     let elapsed = now.signed_duration_since(then).num_seconds();
     if elapsed <= 0 {
         0
@@ -44,7 +44,7 @@ pub(super) fn is_long_running_command(command: &str) -> bool {
     })
 }
 
-pub(super) fn can_issue_nudge(
+fn can_issue_nudge(
     nudge_window_secs: u64,
     window: &NudgeCountWindow,
     now: DateTime<Utc>,
@@ -229,4 +229,225 @@ pub(super) fn evaluate_transitions(
     }
 
     transitions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session_scanner::{ActivityConfidence, SessionState};
+
+    fn ts(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .expect("valid timestamp")
+            .with_timezone(&Utc)
+    }
+
+    fn member_key() -> MemberKey {
+        MemberKey {
+            team_name: "team-a".to_string(),
+            member_name: "agent-a".to_string(),
+        }
+    }
+
+    fn state_with_last_signal(now: DateTime<Utc>, seconds_ago: i64) -> MemberStallState {
+        let mut state = MemberStallState::new(now);
+        state.last_any_signal_at = Some(now - chrono::Duration::seconds(seconds_ago));
+        state
+    }
+
+    fn snapshot(now: DateTime<Utc>) -> SignalSnapshot {
+        SignalSnapshot {
+            team_name: "team-a".to_string(),
+            member_name: "agent-a".to_string(),
+            observed_at: now,
+            session_state: None,
+            session_confidence: None,
+            pane_exists: None,
+            pane_is_dead: None,
+            pane_is_shell: None,
+            pane_current_command: None,
+            mesh_last_activity_at: None,
+            mesh_status: None,
+            coordination_event_at: None,
+            project_file_write_at: None,
+            runtime_last_seen_at: None,
+            strongest_signal: None,
+        }
+    }
+
+    #[test]
+    fn healthy_members_transition_to_stage_a_at_soft_threshold() {
+        let now = ts("2026-03-05T12:10:00Z");
+        let mut member_states = HashMap::from([(member_key(), state_with_last_signal(now, 300))]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now,
+        );
+
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].transition.from, StallStage::Healthy);
+        assert_eq!(transitions[0].transition.to, StallStage::SoftNudged);
+        assert_eq!(
+            member_states.get(&member_key()).expect("state").stage,
+            StallStage::SoftNudged
+        );
+    }
+
+    #[test]
+    fn soft_nudged_members_escalate_after_second_uncertain_check() {
+        let now = ts("2026-03-05T12:20:00Z");
+        let mut state = state_with_last_signal(now, 540);
+        state.stage = StallStage::SoftNudged;
+        let mut member_states = HashMap::from([(member_key(), state)]);
+
+        let first = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now,
+        );
+        assert!(first.is_empty());
+
+        let second = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now + chrono::Duration::seconds(30),
+        );
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].transition.to, StallStage::Escalated);
+    }
+
+    #[test]
+    fn members_do_not_transition_before_soft_threshold() {
+        let now = ts("2026-03-05T12:05:00Z");
+        let mut member_states = HashMap::from([(member_key(), state_with_last_signal(now, 299))]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now,
+        );
+
+        assert!(transitions.is_empty());
+        assert_eq!(
+            member_states.get(&member_key()).expect("state").stage,
+            StallStage::Healthy
+        );
+    }
+
+    #[test]
+    fn blocked_mesh_status_suppresses_stage_a() {
+        let now = ts("2026-03-05T14:00:00Z");
+        let mut member_states = HashMap::from([(member_key(), state_with_last_signal(now, 400))]);
+        let mut runtime_snapshot = snapshot(now);
+        runtime_snapshot.mesh_status = Some(MeshMemberStatus::Blocked);
+        let snapshots = HashMap::from([(member_key(), runtime_snapshot)]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &snapshots,
+            now,
+        );
+
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn non_allowlisted_short_command_does_not_suppress_stage_a() {
+        let now = ts("2026-03-05T14:10:00Z");
+        let mut member_states = HashMap::from([(member_key(), state_with_last_signal(now, 301))]);
+        let mut runtime_snapshot = snapshot(now);
+        runtime_snapshot.pane_current_command = Some("ls -la".to_string());
+        runtime_snapshot.pane_is_shell = Some(false);
+        let snapshots = HashMap::from([(member_key(), runtime_snapshot)]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &snapshots,
+            now,
+        );
+
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].transition.to, StallStage::SoftNudged);
+    }
+
+    #[test]
+    fn pending_nudge_blocks_second_stage_a() {
+        let now = ts("2026-03-05T14:20:00Z");
+        let mut state = state_with_last_signal(now, 500);
+        state.pending_nudge_id = Some("nudge-1".to_string());
+        let mut member_states = HashMap::from([(member_key(), state)]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now,
+        );
+
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn evidence_must_advance_before_re_nudge() {
+        let now = ts("2026-03-05T14:30:00Z");
+        let last_signal = now - chrono::Duration::seconds(600);
+        let mut state = MemberStallState::new(now);
+        state.last_any_signal_at = Some(last_signal);
+        state.last_nudge_at = Some(last_signal + chrono::Duration::seconds(60));
+        let mut member_states = HashMap::from([(member_key(), state)]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now,
+        );
+
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn max_nudges_per_hour_is_enforced() {
+        let now = ts("2026-03-05T14:40:00Z");
+        let mut state = state_with_last_signal(now, 600);
+        state.nudge_count_window.window_started_at = Some(now - chrono::Duration::minutes(10));
+        state.nudge_count_window.count = 3;
+        let mut member_states = HashMap::from([(member_key(), state)]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &HashMap::new(),
+            now,
+        );
+
+        assert!(transitions.is_empty());
+    }
+
+    #[test]
+    fn strong_session_suppresses_transitions() {
+        let now = ts("2026-03-05T14:50:00Z");
+        let mut member_states = HashMap::from([(member_key(), state_with_last_signal(now, 600))]);
+        let mut runtime_snapshot = snapshot(now);
+        runtime_snapshot.session_state = Some(SessionState::Active);
+        runtime_snapshot.session_confidence = Some(ActivityConfidence::High);
+        let snapshots = HashMap::from([(member_key(), runtime_snapshot)]);
+
+        let transitions = evaluate_transitions(
+            &StallDetectorConfig::default(),
+            &mut member_states,
+            &snapshots,
+            now,
+        );
+
+        assert!(transitions.is_empty());
+    }
 }

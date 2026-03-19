@@ -2,11 +2,14 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use chrono::Utc;
 use tempfile::TempDir;
 
 use super::*;
 use crate::coordination::backend::fake::FakeBackend;
-use crate::coordination::domain::{HealthState, MemberRole};
+use crate::coordination::backend::{BackendKind, CoordinationBackend};
+use crate::coordination::domain::{HealthState, Member, MemberRole};
+use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryMethod, DeliveryRequest, DeliveryResult,
     InitializeTeamRequest, LaunchRequest, LaunchResult, LeadMode, OperatorNoticeDelivery,
@@ -18,6 +21,7 @@ use crate::coordination::runtime::{
 };
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::models::CliCommandSettings;
+use crate::session_scanner::cli_tool::CliTool;
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {

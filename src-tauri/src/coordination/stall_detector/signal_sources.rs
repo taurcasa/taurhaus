@@ -10,9 +10,10 @@ use crate::coordination::mesh_cli;
 use crate::coordination::runtime::apply_background_command_settings;
 use crate::session_scanner::scan_sessions_for_display;
 
-use super::{
-    decisions::set_if_newer, MemberKey, MemberStallState, MeshMemberSignal, MeshMemberStatus,
-    SessionSignal, SignalSnapshot, SignalStrength,
+use super::transitions::set_if_newer;
+use super::types::{
+    MemberKey, MemberStallState, MeshMemberSignal, MeshMemberStatus, SessionSignal, SignalSnapshot,
+    SignalStrength,
 };
 
 pub(super) fn apply_signal_snapshots_to_member_states(
@@ -219,4 +220,69 @@ pub(super) fn host_supports_tmux_signals() -> bool {
 
 pub(super) fn host_supports_mesh_signals() -> bool {
     !cfg!(target_os = "windows")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ts(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .expect("valid timestamp")
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn parse_mesh_who_json_parses_optional_activity_and_status_fields() {
+        let raw = r#"[
+          {
+            "name": "agent-a",
+            "lastActivityAt": 1772711785867,
+            "status": "working"
+          },
+          {
+            "name": "agent-b",
+            "last_activity_at": "2026-03-05T12:00:00Z",
+            "status": "investigating"
+          }
+        ]"#;
+
+        let parsed = parse_mesh_who_json(raw);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(
+            parsed.get("agent-a").and_then(|entry| entry.status),
+            Some(MeshMemberStatus::Working)
+        );
+        assert_eq!(
+            parsed
+                .get("agent-b")
+                .and_then(|entry| entry.last_activity_at),
+            Some(ts("2026-03-05T12:00:00Z"))
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn run_command_with_timeout_returns_output_before_deadline() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "printf '{\"ok\":true}'"]);
+        let output =
+            run_command_with_timeout(&mut cmd, Duration::from_millis(500)).expect("command output");
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "{\"ok\":true}");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn run_command_with_timeout_terminates_hanging_process() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "sleep 2"]);
+        let started_at = Instant::now();
+        let output = run_command_with_timeout(&mut cmd, Duration::from_millis(100));
+        assert!(output.is_none());
+        assert!(
+            started_at.elapsed() < Duration::from_secs(2),
+            "timeout helper should return before command naturally exits"
+        );
+    }
 }

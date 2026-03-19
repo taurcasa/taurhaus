@@ -1456,11 +1456,15 @@ describe('Git position restore on project switch', () => {
   describe('error surfacing', () => {
     it('logs targeted Shell catch paths and exposes a non-blocking notice banner', () => {
       const shellSource = readFileSync(`${process.cwd()}/src/Shell.svelte`, 'utf8')
+      const projectSelectionControllerSource = readFileSync(
+        `${process.cwd()}/src/lib/shell/projectSelection.svelte.js`,
+        'utf8'
+      )
       const mainPanelSource = readFileSync(`${process.cwd()}/src/lib/components/shell/ShellMainPanel.svelte`, 'utf8')
 
       expect(shellSource).toContain('[settings] failed to load code theme preferences:')
       expect(shellSource).toContain('[settings] failed to persist dark mode preference:')
-      expect(shellSource).toContain('[overview] failed to dismiss relationship')
+      expect(projectSelectionControllerSource).toContain('[overview] failed to dismiss relationship')
       expect(mainPanelSource).toContain('data-testid="shell-notice-banner"')
       expect(mainPanelSource).toContain('data-testid="shell-notice-message"')
     })
