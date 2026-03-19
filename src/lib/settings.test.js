@@ -199,12 +199,32 @@ describe('Settings component', () => {
     })
   })
 
+  it('shows scan directories as active and honest about runtime enforcement', async () => {
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => {
+      expect(screen.getByTestId('scan-directories-status').textContent).toContain('Active')
+      expect(screen.getByTestId('scan-directories-status').textContent)
+        .toContain('Background scanning uses this list')
+      expect(screen.getByTestId('settings-scanning').textContent).not.toContain('not yet active')
+    })
+  })
+
   it('shows ignore patterns as pills', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => {
       expect(screen.getByText('node_modules')).toBeTruthy()
       expect(screen.getByText('.git')).toBeTruthy()
       expect(screen.getByText('target')).toBeTruthy()
+    })
+  })
+
+  it('shows ignore patterns as active and applied to scanning and indexing', async () => {
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => {
+      expect(screen.getByTestId('ignore-patterns-status').textContent).toContain('Active')
+      expect(screen.getByTestId('ignore-patterns-status').textContent)
+        .toContain('skipped during scanning and search indexing')
+      expect(screen.getByTestId('settings-scanning').textContent).not.toContain('not yet wired')
     })
   })
 

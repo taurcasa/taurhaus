@@ -311,6 +311,14 @@
                 >Edit</button>
               {/if}
             </div>
+            <div class="flex items-center gap-2 mb-2" data-testid="scan-directories-status">
+              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium {dark ? 'bg-success-500/10 text-success-300 border border-success-500/20' : 'bg-success-50 text-success-700 border border-success-200'}">
+                Active
+              </span>
+              <p class="text-[12px] {textTertiary}">
+                Background scanning uses this list, and search rebuilds follow the same directories.
+              </p>
+            </div>
             {#if editingScanDirs}
               <textarea
                 class="w-full h-24 px-3 py-2 text-[13px] rounded-md border {inputBg} focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none font-mono"
@@ -350,6 +358,14 @@
                   onclick={startEditIgnore}
                 >Edit</button>
               {/if}
+            </div>
+            <div class="flex items-center gap-2 mb-2" data-testid="ignore-patterns-status">
+              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium {dark ? 'bg-success-500/10 text-success-300 border border-success-500/20' : 'bg-success-50 text-success-700 border border-success-200'}">
+                Active
+              </span>
+              <p class="text-[12px] {textTertiary}">
+                Matching paths are skipped during scanning and search indexing.
+              </p>
             </div>
             {#if editingIgnore}
               <textarea
