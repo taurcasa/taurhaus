@@ -23,6 +23,37 @@ fn tmux_command() -> Command {
     cmd
 }
 
+fn project_path_exists_for_tmux(project_path: &str) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = crate::daemon::launcher::wsl_command()
+            .args(["--", "test", "-d", project_path])
+            .output()
+            .map_err(|e| format!("Failed to validate WSL project path: {e}"))?;
+
+        if output.status.success() {
+            return Ok(true);
+        }
+
+        if output.status.code() == Some(1) {
+            return Ok(false);
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            "unknown error".to_string()
+        } else {
+            stderr
+        };
+        return Err(format!("Failed to validate WSL project path: {detail}"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(Path::new(project_path).is_dir())
+    }
+}
+
 /// Launch a CLI tool session in tmux using the configured layout strategy.
 ///
 /// Layout strategies:
@@ -66,7 +97,7 @@ pub fn launch_command_in_tmux_with_layout(
     layout: &str,
     command: &str,
 ) -> Result<(String, String, String), String> {
-    if !Path::new(project_path).is_dir() {
+    if !project_path_exists_for_tmux(project_path)? {
         return Err(format!("Project path does not exist: {project_path}"));
     }
 
@@ -859,6 +890,17 @@ mod tests {
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
+    }
+
+    #[test]
+    fn project_path_exists_for_tmux_accepts_real_directory() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        assert!(project_path_exists_for_tmux(tempdir.path().to_string_lossy().as_ref()).unwrap());
+    }
+
+    #[test]
+    fn project_path_exists_for_tmux_rejects_missing_directory() {
+        assert!(!project_path_exists_for_tmux("/nonexistent/path/12345").unwrap());
     }
 
     #[test]
