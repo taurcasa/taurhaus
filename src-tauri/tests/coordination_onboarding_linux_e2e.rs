@@ -141,7 +141,7 @@ fn make_request(
 }
 
 #[test]
-fn onboarding_flow_launches_lead_and_injects_commands_with_enter() {
+fn onboarding_flow_launches_lead_and_agents_via_direct_tmux_commands() {
     // Keep this public re-export referenced so test-only module imports remain warning-free.
     let _ = std::any::TypeId::of::<coordination::backend::FakeBackend>();
 
@@ -339,29 +339,33 @@ int main(int argc, char **argv) {{
     let log = fs::read_to_string(&log_path).expect("read call log");
     assert!(log.contains("tmux:has-session -t taurhaus"));
     assert!(log.contains("tmux:new-session -d -s taurhaus"));
-    assert!(log.contains(&format!(
-        "tmux:new-window -n proj-core -t taurhaus: -P -F #{{pane_id}} -c {}",
-        project_core.display()
-    )));
-    assert!(log.contains(&format!(
-        "tmux:new-window -n proj-web -t taurhaus: -P -F #{{pane_id}} -c {}",
-        project_web.display()
-    )));
-    assert!(log.contains(&format!(
-        "tmux:new-window -n proj-api -t taurhaus: -P -F #{{pane_id}} -c {}",
-        project_api.display()
-    )));
+    assert!(log.contains(
+        "tmux:new-window -n proj-core -t taurhaus: -P -F #{pane_id} exec \"$SHELL\" -ic 'cd "
+    ));
+    assert!(log.contains(
+        "tmux:new-window -n proj-web -t taurhaus: -P -F #{pane_id} exec \"$SHELL\" -ic 'cd "
+    ));
+    assert!(log.contains(
+        "tmux:new-window -n proj-api -t taurhaus: -P -F #{pane_id} exec \"$SHELL\" -ic 'cd "
+    ));
+    assert!(log.contains(&project_core.display().to_string()));
+    assert!(log.contains(&project_web.display().to_string()));
+    assert!(log.contains(&project_api.display().to_string()));
 
-    assert!(log.contains("tmux:send-keys -t %1 -l CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions"));
+    assert!(log.contains(
+        "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions"
+    ));
     assert!(log.contains("--team-name linux-onboarding-e2e"));
     assert!(log.contains("--agent-name team-lead"));
     assert!(log.contains("--agent-id team-lead@linux-onboarding-e2e"));
     assert!(log.contains("--agent-type orchestrator"));
-    assert!(log.contains("tmux:send-keys -t %2 -l codex --yolo -m 'gpt-5.3-codex'"));
-    assert!(log.contains("tmux:send-keys -t %3 -l gemini --yolo"));
-    assert!(log.contains("tmux:send-keys -t %1 Enter"));
-    assert!(log.contains("tmux:send-keys -t %2 Enter"));
-    assert!(log.contains("tmux:send-keys -t %3 Enter"));
+    assert!(log.contains("codex --yolo -m "));
+    assert!(log.contains("gpt-5.3-codex"));
+    assert!(log.contains("gemini --yolo"));
+    assert!(
+        !log.contains("tmux:send-keys"),
+        "fresh launches should be attached to pane creation, not injected later"
+    );
 
     assert!(log.contains("mesh:join --team linux-onboarding-e2e --name frontend-dev"));
     assert!(log.contains("mesh:join --team linux-onboarding-e2e --name reviewer"));

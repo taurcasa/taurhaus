@@ -47,21 +47,6 @@ pub fn launch_in_tmux_with_layout(
     layout: &str,
     command_override: Option<&str>,
 ) -> Result<(String, String, String), String> {
-    // Validate project path
-    if !Path::new(project_path).is_dir() {
-        return Err(format!("Project path does not exist: {project_path}"));
-    }
-
-    // Ensure our dedicated tmux session exists
-    let tmux_session = ensure_taurhaus_session()?;
-
-    // Window name: last component of project path
-    let window_name = Path::new(project_path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "claude".to_string());
-
-    // Build the full command: use override if provided, otherwise fall back to defaults.
     let tool_cmd = match command_override {
         Some(cmd) if !cmd.is_empty() => {
             validate_command_override(cmd)?;
@@ -69,8 +54,30 @@ pub fn launch_in_tmux_with_layout(
         }
         _ => build_launch_command(tool, mode),
     };
+    launch_command_in_tmux_with_layout(project_path, layout, &tool_cmd)
+}
+
+/// Launch an explicit command in tmux using the configured layout strategy.
+///
+/// The command is run as part of pane creation rather than injected later with
+/// `send-keys`, which avoids the shell-readiness race for fresh launches.
+pub fn launch_command_in_tmux_with_layout(
+    project_path: &str,
+    layout: &str,
+    command: &str,
+) -> Result<(String, String, String), String> {
+    if !Path::new(project_path).is_dir() {
+        return Err(format!("Project path does not exist: {project_path}"));
+    }
+
+    let tmux_session = ensure_taurhaus_session()?;
+    let window_name = Path::new(project_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "claude".to_string());
+
     let escaped_path = shell_escape(project_path);
-    let inner_cmd = format!("cd {escaped_path} && {tool_cmd}; exec \"$SHELL\"");
+    let inner_cmd = format!("cd {escaped_path} && {command}; exec \"$SHELL\"");
     let shell_cmd = format!("exec \"$SHELL\" -ic {}", shell_escape(&inner_cmd));
 
     match layout {

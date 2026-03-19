@@ -125,7 +125,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded("add_lead", "lead added", &mut succeeded_steps, &mut steps);
 
-        if let Err(err) = self.create_panes(request, tmux_layout) {
+        if let Err(err) = self.create_panes(request, cli_commands, tmux_layout) {
             self.cleanup_initialize_failure(&request.team_name);
             return Ok(failed_initialize_report(
                 &request.team_name,
@@ -137,7 +137,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded(
             "create_panes",
-            "agent panes created",
+            "panes opened and sessions started",
             &mut succeeded_steps,
             &mut steps,
         );
@@ -164,7 +164,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded(
             "launch_sessions",
-            "cli sessions launched",
+            "launched sessions verified",
             &mut succeeded_steps,
             &mut steps,
         );
@@ -262,18 +262,26 @@ impl CoordinationOrchestrator {
     fn create_panes(
         &mut self,
         request: &InitializeTeamRequest,
+        cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<(), CoordinationError> {
         if request.lead_mode == LeadMode::LaunchNew {
-            let pane_id = self
-                .runtime
-                .create_aitx_pane(&request.lead.project_id, tmux_layout)?;
+            let lead_member = member_from_agent_setup(&request.lead, MemberRole::Lead)?;
+            let launch_cmd = build_cli_launch_command(
+                &request.lead,
+                &request.team_name,
+                MemberRole::Lead,
+                cli_commands,
+            )?;
+            let pane_id = self.runtime.create_aitx_pane_and_launch(
+                &request.lead.project_id,
+                tmux_layout,
+                &launch_cmd,
+            )?;
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
-            runtime.cli_tool =
-                Some(member_from_agent_setup(&request.lead, MemberRole::Lead)?.cli_tool);
-            runtime.project_path =
-                Some(member_from_agent_setup(&request.lead, MemberRole::Lead)?.project_path);
+            runtime.cli_tool = Some(lead_member.cli_tool);
+            runtime.project_path = Some(lead_member.project_path);
             runtime.pane_id = Some(pane_id);
             runtime.session_id = None;
             runtime.daemon_pid = None;
@@ -289,9 +297,17 @@ impl CoordinationOrchestrator {
 
         for agent in &request.agents {
             let member = member_from_agent_setup(agent, MemberRole::Agent)?;
-            let pane_id = self
-                .runtime
-                .create_aitx_pane(&agent.project_id, tmux_layout)?;
+            let launch_cmd = build_cli_launch_command(
+                agent,
+                &request.team_name,
+                MemberRole::Agent,
+                cli_commands,
+            )?;
+            let pane_id = self.runtime.create_aitx_pane_and_launch(
+                &agent.project_id,
+                tmux_layout,
+                &launch_cmd,
+            )?;
 
             let mut runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
@@ -368,7 +384,7 @@ impl CoordinationOrchestrator {
     fn launch_sessions(
         &self,
         request: &InitializeTeamRequest,
-        cli_commands: &CliCommandSettings,
+        _cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
         if request.lead_mode == LeadMode::LaunchNew {
             let runtime =
@@ -379,13 +395,6 @@ impl CoordinationOrchestrator {
                     request.lead.name, request.team_name
                 ))
             })?;
-            self.launch_agent_in_pane(
-                &pane_id,
-                &request.team_name,
-                &request.lead,
-                MemberRole::Lead,
-                cli_commands,
-            )?;
             self.capture_session_id_for_member(
                 &request.team_name,
                 &request.lead.name,
@@ -403,13 +412,6 @@ impl CoordinationOrchestrator {
                     agent.name, request.team_name
                 ))
             })?;
-            self.launch_agent_in_pane(
-                &pane_id,
-                &request.team_name,
-                agent,
-                MemberRole::Agent,
-                cli_commands,
-            )?;
             self.capture_session_id_for_member(&request.team_name, &agent.name, &pane_id, agent)?;
         }
         Ok(())

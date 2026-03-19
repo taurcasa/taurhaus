@@ -31,8 +31,8 @@
   const stepLabels = {
     validate_configuration: 'Validating configuration',
     create_team: 'Creating team',
-    create_panes: 'Opening terminal panes',
-    launch_sessions: 'Launching agent sessions',
+    create_panes: 'Opening panes and starting sessions',
+    launch_sessions: 'Verifying launched sessions',
     join_mesh: 'Connecting agents to mesh',
     start_daemons: 'Starting coordination daemons',
     send_onboarding: 'Sending agent instructions',
@@ -40,8 +40,8 @@
   const stepDescriptions = {
     validate_configuration: 'Checking team name, agent tools, and project assignments',
     create_team: 'Writing team config to ~/.claude/teams/',
-    create_panes: 'Creating tmux panes for each agent',
-    launch_sessions: 'Starting CLI tools in each pane',
+    create_panes: 'Creating tmux panes and starting each CLI tool in one launch command',
+    launch_sessions: 'Capturing launched session attachments and verifying startup',
     join_mesh: 'Registering agents with mesh protocol',
     start_daemons: 'Launching file watchers for each agent inbox',
     send_onboarding: 'Delivering initial instructions to each agent',

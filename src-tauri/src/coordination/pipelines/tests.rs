@@ -366,6 +366,91 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
 }
 
 #[test]
+fn initialize_pipeline_retries_transient_send_keys_failure_for_codex_agent() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_send_keys_failures(
+        "test-pane-2",
+        1,
+        "tmux command failed (wsl -e tmux send-keys -t %141 -l codex --yolo -m 'gpt-5.4'): ",
+    );
+    runtime.set_detected_runtime_session(
+        "test-pane-2",
+        CliTool::Codex,
+        Some("session-test-pane-2"),
+        Some("/tmp/builder-session.jsonl"),
+    );
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+
+    let send_attempts = runtime
+        .calls()
+        .iter()
+        .filter(|call| {
+            matches!(
+                call,
+                RuntimeCall::SendKeys { pane_id, .. } if pane_id == "test-pane-2"
+            )
+        })
+        .count();
+    assert_eq!(send_attempts, 2, "codex launch should retry once");
+}
+
+#[test]
+fn initialize_pipeline_reports_pane_diagnostics_after_send_keys_retries_exhaust() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    runtime.set_send_keys_failures(
+        "test-pane-2",
+        3,
+        "tmux command failed (wsl -e tmux send-keys -t %141 -l codex --yolo -m 'gpt-5.4'): ",
+    );
+    runtime.set_pane_exists("test-pane-2", true);
+    runtime.set_pane_dead("test-pane-2", false);
+    runtime.set_pane_shell("test-pane-2", true);
+    runtime.set_pane_current_command("test-pane-2", Some("zsh"));
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step.as_deref(), Some("create_panes"));
+    assert!(report
+        .message
+        .contains("pane=test-pane-2 exists=true dead=false shell=false command=zsh"));
+}
+
+#[test]
 fn initialize_pipeline_persists_claude_agent_session_id() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

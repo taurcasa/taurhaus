@@ -65,7 +65,9 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.create_pane_for_agent(request, &mut runtime_state, tmux_layout) {
+        if let Err(err) =
+            self.create_pane_for_agent(request, &mut runtime_state, cli_commands, tmux_layout)
+        {
             self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
@@ -78,7 +80,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded(
             "create_pane",
-            "agent pane created",
+            "pane opened and session started",
             &mut succeeded_steps,
             &mut steps,
         );
@@ -96,7 +98,7 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded(
             "launch_session",
-            "cli session launched",
+            "launched session verified",
             &mut succeeded_steps,
             &mut steps,
         );
@@ -589,8 +591,7 @@ impl CoordinationOrchestrator {
         };
         let launch_cmd =
             build_resume_cli_launch_command(&agent, &request.team_name, member.role, cli_commands)?;
-        self.runtime
-            .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())?;
+        send_launch_command_with_retry(self.runtime.as_ref(), pane_id, launch_cmd.as_str())?;
 
         if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
             let detected = self
@@ -610,15 +611,24 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
+        cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<(), CoordinationError> {
         let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
         self.add_member(&request.team_name, member)?;
         runtime_state.member_added = true;
 
-        let pane_id = self
-            .runtime
-            .create_aitx_pane(&request.agent.project_id, tmux_layout)?;
+        let launch_cmd = build_cli_launch_command(
+            &request.agent,
+            &request.team_name,
+            MemberRole::Agent,
+            cli_commands,
+        )?;
+        let pane_id = self.runtime.create_aitx_pane_and_launch(
+            &request.agent.project_id,
+            tmux_layout,
+            &launch_cmd,
+        )?;
         runtime_state.pane_id = Some(pane_id);
         runtime_state.session_id = None;
         runtime_state.jsonl_path = None;
@@ -631,7 +641,7 @@ impl CoordinationOrchestrator {
         &self,
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
-        cli_commands: &CliCommandSettings,
+        _cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
         let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
             CoordinationError::Backend(format!(
@@ -639,13 +649,6 @@ impl CoordinationOrchestrator {
                 request.agent.name, request.team_name
             ))
         })?;
-        self.launch_agent_in_pane(
-            pane_id,
-            &request.team_name,
-            &request.agent,
-            MemberRole::Agent,
-            cli_commands,
-        )?;
         let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
         if matches!(cli_tool, CliTool::Claude | CliTool::Codex) {
             let detected = self.runtime.detect_runtime_session(pane_id, cli_tool)?;
@@ -653,19 +656,6 @@ impl CoordinationOrchestrator {
             runtime_state.jsonl_path = detected.jsonl_path;
         }
         Ok(())
-    }
-
-    pub(super) fn launch_agent_in_pane(
-        &self,
-        pane_id: &str,
-        team_name: &str,
-        agent: &AgentSetupConfig,
-        role: MemberRole,
-        cli_commands: &CliCommandSettings,
-    ) -> Result<(), CoordinationError> {
-        let launch_cmd = build_cli_launch_command(agent, team_name, role, cli_commands)?;
-        self.runtime
-            .send_tmux_keys_with_enter(pane_id, launch_cmd.as_str())
     }
 
     pub(super) fn capture_session_id_for_member(

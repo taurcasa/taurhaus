@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::thread;
+use std::time::Duration;
 
 use chrono::Utc;
 
@@ -7,11 +9,15 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
     AddAgentReport, AgentSetupConfig, InitializeReport, ResumeAgentReport, StepProgress, StepStatus,
 };
+use crate::coordination::runtime::CoordinationRuntime;
 use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::{build_team_launch_command, validate_command_override};
+
+const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_millis(150), Duration::from_millis(350)];
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct PendingRuntimeState {
@@ -196,6 +202,46 @@ pub(super) fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, 
     Ok(parse_cli_tool(&agent.cli_tool)? != CliTool::Claude)
 }
 
+pub(super) fn send_launch_command_with_retry(
+    runtime: &dyn CoordinationRuntime,
+    pane_id: &str,
+    launch_cmd: &str,
+) -> Result<(), CoordinationError> {
+    let mut last_err = None;
+
+    for (attempt, retry_delay) in TMUX_SEND_RETRY_DELAYS
+        .iter()
+        .copied()
+        .map(Some)
+        .chain(std::iter::once(None))
+        .enumerate()
+    {
+        match runtime.send_tmux_keys_with_enter(pane_id, launch_cmd) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                last_err = Some(err);
+                if let Some(delay) = retry_delay {
+                    tracing::warn!(
+                        pane_id = %pane_id,
+                        attempt = attempt + 1,
+                        retry_ms = delay.as_millis() as u64,
+                        "tmux send-keys failed during launch; retrying"
+                    );
+                    thread::sleep(delay);
+                }
+            }
+        }
+    }
+
+    let err = last_err.unwrap_or_else(|| {
+        CoordinationError::Backend("tmux send-keys failed without error detail".to_string())
+    });
+    Err(CoordinationError::Backend(format!(
+        "{err}; pane diagnostics: {}",
+        pane_launch_diagnostics(runtime, pane_id)
+    )))
+}
+
 pub(super) fn with_claude_team_context(
     mut command: String,
     team_name: &str,
@@ -259,6 +305,29 @@ pub(super) fn has_non_empty_capabilities(capabilities: Option<&[String]>) -> boo
     capabilities
         .map(|items| items.iter().any(|item| !item.trim().is_empty()))
         .unwrap_or(false)
+}
+
+fn pane_launch_diagnostics(runtime: &dyn CoordinationRuntime, pane_id: &str) -> String {
+    let exists = bool_diagnostic(runtime.pane_exists(pane_id));
+    let dead = bool_diagnostic(runtime.pane_is_dead(pane_id));
+    let shell = bool_diagnostic(runtime.pane_is_shell(pane_id));
+    let command = option_diagnostic(runtime.pane_current_command(pane_id));
+    format!("pane={pane_id} exists={exists} dead={dead} shell={shell} command={command}")
+}
+
+fn bool_diagnostic(result: Result<bool, CoordinationError>) -> String {
+    match result {
+        Ok(value) => value.to_string(),
+        Err(err) => format!("error({err})"),
+    }
+}
+
+fn option_diagnostic(result: Result<Option<String>, CoordinationError>) -> String {
+    match result {
+        Ok(Some(value)) => value,
+        Ok(None) => "none".to_string(),
+        Err(err) => format!("error({err})"),
+    }
 }
 
 pub(super) fn agent_instructions(agent: &AgentSetupConfig) -> Option<&str> {

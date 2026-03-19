@@ -22,6 +22,8 @@ use crate::session_scanner::cli_tool::CliTool;
 
 const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);
 const TMUX_POST_ENTER_DELAY: Duration = Duration::from_secs(1);
+const FRESH_LAUNCH_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_millis(150), Duration::from_millis(350)];
 const SESSION_DETECT_ATTEMPTS: usize = 6;
 const SESSION_DETECT_INTERVAL: Duration = Duration::from_millis(200);
 const DAEMON_START_ATTEMPTS: usize = 30;
@@ -48,6 +50,39 @@ pub trait CoordinationRuntime: Send + Sync {
         project_id: &str,
         tmux_layout: &str,
     ) -> Result<String, CoordinationError>;
+    fn create_aitx_pane_and_launch(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        let pane_id = self.create_aitx_pane(project_id, tmux_layout)?;
+        let mut last_err = None;
+        for retry_delay in FRESH_LAUNCH_RETRY_DELAYS
+            .iter()
+            .copied()
+            .map(Some)
+            .chain(std::iter::once(None))
+        {
+            match self.send_tmux_keys_with_enter(&pane_id, launch_cmd) {
+                Ok(()) => return Ok(pane_id),
+                Err(err) => {
+                    last_err = Some(err);
+                    if let Some(delay) = retry_delay {
+                        thread::sleep(delay);
+                    }
+                }
+            }
+        }
+
+        let err = last_err.unwrap_or_else(|| {
+            CoordinationError::Backend("tmux send-keys failed without error detail".to_string())
+        });
+        Err(CoordinationError::Backend(format!(
+            "{err}; pane diagnostics: {}",
+            pane_diagnostics_for_launch_failure(self, &pane_id)
+        )))
+    }
     fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str)
         -> Result<(), CoordinationError>;
     fn detect_session_id(
@@ -136,6 +171,30 @@ pub struct PaneResolution {
     pub pane_id: String,
     pub reused_pane: bool,
     pub created_new_pane: bool,
+}
+
+fn pane_diagnostics_for_launch_failure<T: CoordinationRuntime + ?Sized>(
+    runtime: &T,
+    pane_id: &str,
+) -> String {
+    let exists = match runtime.pane_exists(pane_id) {
+        Ok(value) => value.to_string(),
+        Err(err) => format!("error({err})"),
+    };
+    let dead = match runtime.pane_is_dead(pane_id) {
+        Ok(value) => value.to_string(),
+        Err(err) => format!("error({err})"),
+    };
+    let shell = match runtime.pane_is_shell(pane_id) {
+        Ok(value) => value.to_string(),
+        Err(err) => format!("error({err})"),
+    };
+    let command = match runtime.pane_current_command(pane_id) {
+        Ok(Some(value)) => value,
+        Ok(None) => "none".to_string(),
+        Err(err) => format!("error({err})"),
+    };
+    format!("pane={pane_id} exists={exists} dead={dead} shell={shell} command={command}")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -252,6 +311,21 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         tmux_layout: &str,
     ) -> Result<String, CoordinationError> {
         create_tmux_pane_with_layout(project_id, tmux_layout)
+    }
+
+    fn create_aitx_pane_and_launch(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        let (_, _, pane_id) = crate::session_scanner::control::launch_command_in_tmux_with_layout(
+            project_id,
+            tmux_layout,
+            launch_cmd,
+        )
+        .map_err(CoordinationError::Backend)?;
+        Ok(pane_id)
     }
 
     fn send_tmux_keys_with_enter(
@@ -708,6 +782,8 @@ pub struct RecordingCoordinationRuntime {
     pane_shell: Mutex<HashMap<String, bool>>,
     pane_command: Mutex<HashMap<String, Option<String>>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
+    send_keys_failures_remaining: Mutex<HashMap<String, usize>>,
+    send_keys_failure_message: Mutex<HashMap<String, String>>,
     pid_running: Mutex<HashMap<u32, bool>>,
     pid_current_mesh_binary: Mutex<HashMap<u32, bool>>,
     team_daemon_current_mesh_binary: Mutex<HashMap<String, bool>>,
@@ -759,6 +835,15 @@ impl RecordingCoordinationRuntime {
     pub fn set_pane_ownership(&self, pane_id: &str, matches_project: bool) {
         if let Ok(mut map) = self.pane_ownership.lock() {
             map.insert(pane_id.to_string(), matches_project);
+        }
+    }
+
+    pub fn set_send_keys_failures(&self, pane_id: &str, failures: usize, message: &str) {
+        if let Ok(mut map) = self.send_keys_failures_remaining.lock() {
+            map.insert(pane_id.to_string(), failures);
+        }
+        if let Ok(mut map) = self.send_keys_failure_message.lock() {
+            map.insert(pane_id.to_string(), message.to_string());
         }
     }
 
@@ -856,6 +941,21 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             pane_id: pane_id.to_string(),
             keys: keys.to_string(),
         });
+        if let Ok(mut map) = self.send_keys_failures_remaining.lock() {
+            let remaining = map.get_mut(pane_id);
+            if let Some(remaining) = remaining {
+                if *remaining > 0 {
+                    *remaining -= 1;
+                    let message = self
+                        .send_keys_failure_message
+                        .lock()
+                        .ok()
+                        .and_then(|messages| messages.get(pane_id).cloned())
+                        .unwrap_or_else(|| "forced send-keys failure".to_string());
+                    return Err(CoordinationError::Backend(message));
+                }
+            }
+        }
         Ok(())
     }
 
