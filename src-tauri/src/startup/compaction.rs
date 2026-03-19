@@ -9,11 +9,14 @@ use crate::coordination::compaction_processor::{
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::TeamConfigStore;
 use crate::session_scanner::compaction_extractor;
-use crate::session_scanner::compaction_watcher::CompactionSignalWatcher;
+use crate::session_scanner::compaction_watcher::CompactionSignalWatcherService;
 use crate::session_scanner::scan_sessions_for_runtime;
 
+#[cfg(test)]
+use crate::session_scanner::compaction_watcher::CompactionSignalWatcher;
+
 pub struct CompactionWatcherState {
-    _watchers: Vec<CompactionSignalWatcher>,
+    _watcher_service: CompactionSignalWatcherService,
 }
 
 pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> {
@@ -28,16 +31,16 @@ pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> 
         initial_sessions,
     )?;
 
-    let watchers = start_team_watchers(&teams_dir)?;
+    let watcher_service = start_team_watcher_service(&teams_dir)?;
     app.manage(CompactionWatcherState {
-        _watchers: watchers,
+        _watcher_service: watcher_service,
     });
     Ok(())
 }
 
-fn start_team_watchers(
+fn start_team_watcher_service(
     teams_dir: &Path,
-) -> Result<Vec<CompactionSignalWatcher>, CoordinationError> {
+) -> Result<CompactionSignalWatcherService, CoordinationError> {
     let processor = Arc::new(
         |signal: &crate::coordination::stores::CompactionSignalRecord| {
             match CompactionSignalProcessor::process_signal(signal) {
@@ -47,7 +50,7 @@ fn start_team_watchers(
         },
     );
 
-    let mut watchers = Vec::new();
+    let mut team_names = Vec::new();
     for team_name in TeamConfigStore::list(teams_dir)? {
         match TeamConfigStore::load(teams_dir, &team_name) {
             Ok(_) => {}
@@ -60,15 +63,9 @@ fn start_team_watchers(
                 continue;
             }
         }
-        let watcher = CompactionSignalWatcher::start_at(
-            teams_dir,
-            team_name,
-            processor.clone(),
-            Default::default(),
-        )?;
-        watchers.push(watcher);
+        team_names.push(team_name);
     }
-    Ok(watchers)
+    CompactionSignalWatcherService::start_at(teams_dir, team_names, processor, Default::default())
 }
 
 #[cfg(test)]
@@ -334,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn start_team_watchers_skips_orphaned_team_dirs_without_failing() {
+    fn start_team_watcher_service_skips_orphaned_team_dirs_without_failing() {
         let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -344,7 +341,7 @@ mod tests {
         let member = sample_member("developer2", "/home/mstie/projects/taurhaus");
         save_team_fixture(&teams_dir, "taurhaus-team", &member);
 
-        let watchers = start_team_watchers(&teams_dir).expect("start watchers");
-        assert_eq!(watchers.len(), 1);
+        let _watcher_service =
+            start_team_watcher_service(&teams_dir).expect("start watcher service");
     }
 }

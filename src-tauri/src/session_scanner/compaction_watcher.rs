@@ -1,6 +1,6 @@
 //! Event-driven watcher for the canonical Codex compaction signal log.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -111,18 +111,18 @@ impl RuntimeCompactionSignalWatcherState {
     }
 }
 
-struct CompactionSignalWatcherCore<P: ?Sized> {
+struct CompactionSignalWatcherCore {
     teams_dir: PathBuf,
     team_name: String,
-    processor: Arc<P>,
+    processor: Arc<dyn CompactionSignalProcessor>,
     state: Mutex<RuntimeCompactionSignalWatcherState>,
 }
 
-impl<P: CompactionSignalProcessor + ?Sized> CompactionSignalWatcherCore<P> {
+impl CompactionSignalWatcherCore {
     fn new_at(
         teams_dir: impl Into<PathBuf>,
         team_name: impl Into<String>,
-        processor: Arc<P>,
+        processor: Arc<dyn CompactionSignalProcessor>,
     ) -> Result<Self, CoordinationError> {
         let teams_dir = teams_dir.into();
         let team_name = team_name.into();
@@ -304,26 +304,68 @@ impl<P: CompactionSignalProcessor + ?Sized> CompactionSignalWatcherCore<P> {
 }
 
 pub struct CompactionSignalWatcher {
-    shutdown: Arc<AtomicBool>,
-    join_handle: Option<JoinHandle<()>>,
+    _service: CompactionSignalWatcherService,
 }
 
 impl CompactionSignalWatcher {
-    pub fn start_at<P: CompactionSignalProcessor + ?Sized>(
+    pub fn start_at(
         teams_dir: impl Into<PathBuf>,
         team_name: impl Into<String>,
-        processor: Arc<P>,
+        processor: Arc<dyn CompactionSignalProcessor>,
         config: CompactionSignalWatcherConfig,
     ) -> Result<Self, CoordinationError> {
-        let core = Arc::new(CompactionSignalWatcherCore::new_at(
-            teams_dir, team_name, processor,
-        )?);
+        let service = CompactionSignalWatcherService::start_at(
+            teams_dir,
+            [team_name.into()],
+            processor,
+            config,
+        )?;
+        Ok(Self { _service: service })
+    }
+}
+
+pub struct CompactionSignalWatcherService {
+    shutdown: Arc<AtomicBool>,
+    command_tx: mpsc::Sender<SignalWatcherServiceMessage>,
+    join_handle: Option<JoinHandle<()>>,
+}
+
+impl CompactionSignalWatcherService {
+    pub fn start_at<I, S>(
+        teams_dir: impl Into<PathBuf>,
+        team_names: I,
+        processor: Arc<dyn CompactionSignalProcessor>,
+        config: CompactionSignalWatcherConfig,
+    ) -> Result<Self, CoordinationError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let teams_dir = teams_dir.into();
+        let initial_team_names = team_names
+            .into_iter()
+            .map(Into::into)
+            .collect::<BTreeSet<_>>();
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
+        let (command_tx, command_rx) = mpsc::channel();
+        let loop_command_tx = command_tx.clone();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let join_handle = thread::spawn(move || {
-            if let Err(error) = run_watcher_loop(core, thread_shutdown, config, ready_tx) {
-                tracing::warn!(error = %error, "compaction signal watcher loop exited with error");
+            if let Err(error) = run_watcher_service_loop(
+                teams_dir,
+                initial_team_names,
+                processor,
+                thread_shutdown,
+                config,
+                loop_command_tx,
+                command_rx,
+                ready_tx,
+            ) {
+                tracing::warn!(
+                    error = %error,
+                    "compaction signal watcher service loop exited with error"
+                );
             }
         });
 
@@ -332,84 +374,260 @@ impl CompactionSignalWatcher {
             Ok(Err(error)) => return Err(CoordinationError::StoreError(error)),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 return Err(CoordinationError::StoreError(
-                    "compaction signal watcher did not become ready before timeout".to_string(),
+                    "compaction signal watcher service did not become ready before timeout"
+                        .to_string(),
                 ));
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(CoordinationError::StoreError(
-                    "compaction signal watcher exited before signaling readiness".to_string(),
+                    "compaction signal watcher service exited before signaling readiness"
+                        .to_string(),
                 ));
             }
         }
 
         Ok(Self {
             shutdown,
+            command_tx,
             join_handle: Some(join_handle),
         })
     }
+
+    pub fn update_teams<I, S>(&self, team_names: I) -> Result<(), CoordinationError>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let desired_team_names = team_names
+            .into_iter()
+            .map(Into::into)
+            .collect::<BTreeSet<_>>();
+        let (ack_tx, ack_rx) = mpsc::sync_channel(1);
+        self.command_tx
+            .send(SignalWatcherServiceMessage::SetTeams {
+                team_names: desired_team_names,
+                ack_tx,
+            })
+            .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+
+        match ack_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(CoordinationError::StoreError(error)),
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(CoordinationError::StoreError(
+                "compaction signal watcher service did not acknowledge team update before timeout"
+                    .to_string(),
+            )),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(CoordinationError::StoreError(
+                "compaction signal watcher service exited before acknowledging team update"
+                    .to_string(),
+            )),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn watched_team_names_for_test(&self) -> Result<BTreeSet<String>, CoordinationError> {
+        let (ack_tx, ack_rx) = mpsc::sync_channel(1);
+        self.command_tx
+            .send(SignalWatcherServiceMessage::SnapshotTeams { ack_tx })
+            .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+        ack_rx
+            .recv_timeout(Duration::from_secs(2))
+            .map_err(|error| CoordinationError::StoreError(error.to_string()))
+    }
 }
 
-impl Drop for CompactionSignalWatcher {
+impl Drop for CompactionSignalWatcherService {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::Relaxed);
+        let _ = self.command_tx.send(SignalWatcherServiceMessage::Stop);
         if let Some(handle) = self.join_handle.take() {
             let _ = handle.join();
         }
     }
 }
 
-fn run_watcher_loop<P: CompactionSignalProcessor + ?Sized>(
-    core: Arc<CompactionSignalWatcherCore<P>>,
+struct ManagedTeamSignalWatcher {
+    core: Arc<CompactionSignalWatcherCore>,
+    signal_dir: PathBuf,
+    signal_path: PathBuf,
+    file_watch_active: bool,
+}
+
+impl ManagedTeamSignalWatcher {
+    fn new_at(
+        teams_dir: &Path,
+        team_name: String,
+        processor: Arc<dyn CompactionSignalProcessor>,
+    ) -> Result<Self, CoordinationError> {
+        let core = Arc::new(CompactionSignalWatcherCore::new_at(
+            teams_dir.to_path_buf(),
+            team_name,
+            processor,
+        )?);
+        let signal_dir = core.signal_dir();
+        let signal_path = core.signal_path();
+        Ok(Self {
+            core,
+            signal_dir,
+            signal_path,
+            file_watch_active: false,
+        })
+    }
+}
+
+enum SignalWatcherServiceMessage {
+    Notify(Result<Event, notify::Error>),
+    SetTeams {
+        team_names: BTreeSet<String>,
+        ack_tx: mpsc::SyncSender<Result<(), String>>,
+    },
+    #[cfg(test)]
+    SnapshotTeams {
+        ack_tx: mpsc::SyncSender<BTreeSet<String>>,
+    },
+    Stop,
+}
+
+fn run_watcher_service_loop(
+    teams_dir: PathBuf,
+    mut desired_team_names: BTreeSet<String>,
+    processor: Arc<dyn CompactionSignalProcessor>,
     shutdown: Arc<AtomicBool>,
     config: CompactionSignalWatcherConfig,
+    command_tx: mpsc::Sender<SignalWatcherServiceMessage>,
+    command_rx: mpsc::Receiver<SignalWatcherServiceMessage>,
     ready_tx: mpsc::SyncSender<Result<(), String>>,
 ) -> Result<(), CoordinationError> {
-    let signal_path = core.signal_path();
-    let signal_dir = core.signal_dir();
-    fs::create_dir_all(&signal_dir)?;
-
-    let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<Event, notify::Error>| {
-            let _ = tx.send(res);
+            let _ = command_tx.send(SignalWatcherServiceMessage::Notify(res));
         },
         Config::default(),
     )
     .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
-
-    watcher
-        .watch(&signal_dir, RecursiveMode::NonRecursive)
-        .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
-    let mut file_watch_active = try_watch_signal_file(&mut watcher, &signal_path);
-    core.process_available_signals(true)?;
-    let _ = ready_tx.send(Ok(()));
+    let mut team_watchers = HashMap::<String, ManagedTeamSignalWatcher>::new();
+    match reconcile_team_watchers(
+        &mut watcher,
+        &mut team_watchers,
+        &desired_team_names,
+        &teams_dir,
+        &processor,
+    ) {
+        Ok(()) => {
+            let _ = ready_tx.send(Ok(()));
+        }
+        Err(error) => {
+            let _ = ready_tx.send(Err(error.to_string()));
+            return Err(error);
+        }
+    }
     let mut last_reconcile = Instant::now();
 
     while !shutdown.load(Ordering::Relaxed) {
-        match rx.recv_timeout(config.loop_tick) {
-            Ok(Ok(event)) => {
-                if !file_watch_active && signal_path.exists() {
-                    file_watch_active = try_watch_signal_file(&mut watcher, &signal_path);
-                }
-                if should_process_signal_event(&event, &signal_path) {
-                    core.note_notify_event()?;
-                    core.process_available_signals(false)?;
-                }
+        match command_rx.recv_timeout(config.loop_tick) {
+            Ok(SignalWatcherServiceMessage::Notify(Ok(event))) => {
+                process_signal_event(&mut watcher, &mut team_watchers, &event)?;
             }
-            Ok(Err(error)) => {
-                tracing::warn!(error = %error, "compaction signal watcher received notify error");
+            Ok(SignalWatcherServiceMessage::Notify(Err(error))) => {
+                tracing::warn!(
+                    error = %error,
+                    "compaction signal watcher service received notify error"
+                );
             }
+            Ok(SignalWatcherServiceMessage::SetTeams { team_names, ack_tx }) => {
+                desired_team_names = team_names;
+                let result = reconcile_team_watchers(
+                    &mut watcher,
+                    &mut team_watchers,
+                    &desired_team_names,
+                    &teams_dir,
+                    &processor,
+                )
+                .map_err(|error| error.to_string());
+                let _ = ack_tx.send(result);
+            }
+            #[cfg(test)]
+            Ok(SignalWatcherServiceMessage::SnapshotTeams { ack_tx }) => {
+                let team_names = team_watchers.keys().cloned().collect::<BTreeSet<_>>();
+                let _ = ack_tx.send(team_names);
+            }
+            Ok(SignalWatcherServiceMessage::Stop) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
 
         if last_reconcile.elapsed() >= config.reconciliation_interval {
-            if !file_watch_active && signal_path.exists() {
-                file_watch_active = try_watch_signal_file(&mut watcher, &signal_path);
+            for team_watcher in team_watchers.values_mut() {
+                if !team_watcher.file_watch_active && team_watcher.signal_path.exists() {
+                    team_watcher.file_watch_active =
+                        try_watch_signal_file(&mut watcher, &team_watcher.signal_path);
+                }
+                team_watcher.core.note_reconciliation_poll()?;
+                team_watcher.core.process_available_signals(true)?;
             }
-            core.note_reconciliation_poll()?;
-            core.process_available_signals(true)?;
             last_reconcile = Instant::now();
+        }
+    }
+
+    Ok(())
+}
+
+fn reconcile_team_watchers(
+    watcher: &mut RecommendedWatcher,
+    team_watchers: &mut HashMap<String, ManagedTeamSignalWatcher>,
+    desired_team_names: &BTreeSet<String>,
+    teams_dir: &Path,
+    processor: &Arc<dyn CompactionSignalProcessor>,
+) -> Result<(), CoordinationError> {
+    let stale_team_names = team_watchers
+        .keys()
+        .filter(|team_name| !desired_team_names.contains(*team_name))
+        .cloned()
+        .collect::<Vec<_>>();
+    for team_name in stale_team_names {
+        if let Some(team_watcher) = team_watchers.remove(&team_name) {
+            if team_watcher.file_watch_active {
+                let _ = watcher.unwatch(&team_watcher.signal_path);
+            }
+            let _ = watcher.unwatch(&team_watcher.signal_dir);
+        }
+    }
+
+    for team_name in desired_team_names {
+        if team_watchers.contains_key(team_name) {
+            continue;
+        }
+        let mut team_watcher =
+            ManagedTeamSignalWatcher::new_at(teams_dir, team_name.clone(), processor.clone())?;
+        fs::create_dir_all(&team_watcher.signal_dir)?;
+        watcher
+            .watch(&team_watcher.signal_dir, RecursiveMode::NonRecursive)
+            .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+        team_watcher.file_watch_active = try_watch_signal_file(watcher, &team_watcher.signal_path);
+        team_watcher.core.process_available_signals(true)?;
+        team_watchers.insert(team_name.clone(), team_watcher);
+    }
+
+    Ok(())
+}
+
+fn process_signal_event(
+    watcher: &mut RecommendedWatcher,
+    team_watchers: &mut HashMap<String, ManagedTeamSignalWatcher>,
+    event: &Event,
+) -> Result<(), CoordinationError> {
+    if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+        return Ok(());
+    }
+
+    for team_watcher in team_watchers.values_mut() {
+        if !team_watcher.file_watch_active && team_watcher.signal_path.exists() {
+            team_watcher.file_watch_active =
+                try_watch_signal_file(watcher, &team_watcher.signal_path);
+        }
+        if should_process_signal_event(event, &team_watcher.signal_path) {
+            team_watcher.core.note_notify_event()?;
+            team_watcher.core.process_available_signals(false)?;
         }
     }
 
@@ -636,6 +854,63 @@ mod tests {
 
         CompactionSignalLog::append(tmp.path(), "taurhaus-team", &sample_signal())
             .expect("append signal");
+
+        wait_until(Duration::from_secs(3), || processor.delivered().len() == 1);
+    }
+
+    #[test]
+    fn watcher_service_processes_multiple_teams_with_one_runtime() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let processor = Arc::new(RecordingProcessor::default());
+        for team_name in ["alpha", "beta"] {
+            let signal_path = signal_log_path_for_team(tmp.path(), team_name);
+            std::fs::create_dir_all(signal_path.parent().expect("signal dir"))
+                .expect("create signal dir");
+            std::fs::write(&signal_path, b"").expect("precreate signal file");
+        }
+
+        let _service = CompactionSignalWatcherService::start_at(
+            tmp.path(),
+            ["alpha", "beta"],
+            processor.clone(),
+            CompactionSignalWatcherConfig {
+                reconciliation_interval: Duration::from_secs(60),
+                loop_tick: Duration::from_millis(25),
+            },
+        )
+        .expect("start watcher service");
+
+        CompactionSignalLog::append(tmp.path(), "alpha", &sample_signal())
+            .expect("append alpha signal");
+        CompactionSignalLog::append(tmp.path(), "beta", &sample_signal())
+            .expect("append beta signal");
+
+        wait_until(Duration::from_secs(3), || processor.delivered().len() == 2);
+    }
+
+    #[test]
+    fn watcher_service_can_add_team_after_start() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let processor = Arc::new(RecordingProcessor::default());
+        let signal_path = signal_log_path_for_team(tmp.path(), "gamma");
+        std::fs::create_dir_all(signal_path.parent().expect("signal dir"))
+            .expect("create signal dir");
+        std::fs::write(&signal_path, b"").expect("precreate signal file");
+
+        let service = CompactionSignalWatcherService::start_at(
+            tmp.path(),
+            std::iter::empty::<String>(),
+            processor.clone(),
+            CompactionSignalWatcherConfig {
+                reconciliation_interval: Duration::from_secs(60),
+                loop_tick: Duration::from_millis(25),
+            },
+        )
+        .expect("start watcher service");
+
+        service.update_teams(["gamma"]).expect("register gamma");
+        CompactionSignalLog::append(tmp.path(), "gamma", &sample_signal())
+            .expect("append gamma signal");
 
         wait_until(Duration::from_secs(3), || processor.delivered().len() == 1);
     }

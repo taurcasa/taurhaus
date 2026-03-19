@@ -1,9 +1,9 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -16,20 +16,18 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::{TeamConfig, TeamConfigStore};
 use crate::session_scanner::compaction_extractor;
 use crate::session_scanner::compaction_watcher::{
-    CompactionSignalWatcher, CompactionSignalWatcherConfig,
+    CompactionSignalProcessor as WatchSignalProcessor, CompactionSignalWatcherConfig,
+    CompactionSignalWatcherService,
 };
 const TEAM_CONFIG_FILENAME: &str = "config.json";
 const TEAM_CONFIG_TMP_FILENAME: &str = "config.json.tmp";
 
-type SignalProcessor = dyn Fn(&crate::coordination::stores::CompactionSignalRecord) -> Result<(), String>
-    + Send
-    + Sync
-    + 'static;
+type SignalProcessor = dyn WatchSignalProcessor;
 
 pub struct DaemonCompactionRuntime {
     shutdown: Arc<AtomicBool>,
     join_handle: Option<JoinHandle<()>>,
-    watchers: Arc<Mutex<HashMap<String, CompactionSignalWatcher>>>,
+    _watcher_service: Arc<CompactionSignalWatcherService>,
 }
 
 impl DaemonCompactionRuntime {
@@ -69,16 +67,19 @@ impl DaemonCompactionRuntime {
             initial_sessions,
         )?;
 
-        let watchers = Arc::new(Mutex::new(HashMap::new()));
-        reconcile_team_watchers(&teams_dir, &watchers, watcher_config, processor.clone())?;
+        let watcher_service = Arc::new(CompactionSignalWatcherService::start_at(
+            teams_dir.clone(),
+            desired_watcher_teams(&teams_dir)?,
+            processor.clone(),
+            watcher_config,
+        )?);
         let (topology_tx, topology_rx) = mpsc::channel();
         let topology_watcher = start_team_topology_watcher(&teams_dir, topology_tx)?;
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
         let thread_teams_dir = teams_dir.clone();
-        let thread_watchers = watchers.clone();
-        let thread_processor = processor.clone();
+        let thread_watcher_service = watcher_service.clone();
         let join_handle = thread::spawn(move || {
             let _topology_watcher = topology_watcher;
             let mut next_watcher_reconcile =
@@ -105,12 +106,9 @@ impl DaemonCompactionRuntime {
 
                 let now = Instant::now();
                 if topology_changed || now >= next_watcher_reconcile {
-                    if let Err(error) = reconcile_team_watchers(
-                        &thread_teams_dir,
-                        &thread_watchers,
-                        watcher_config,
-                        thread_processor.clone(),
-                    ) {
+                    if let Err(error) =
+                        update_team_watchers(&thread_teams_dir, thread_watcher_service.as_ref())
+                    {
                         tracing::warn!(error = %error, "daemon compaction watcher reconcile failed");
                     }
                     next_watcher_reconcile = now + watcher_config.reconciliation_interval;
@@ -121,7 +119,7 @@ impl DaemonCompactionRuntime {
         Ok(Self {
             shutdown,
             join_handle: Some(join_handle),
-            watchers,
+            _watcher_service: watcher_service,
         })
     }
 }
@@ -132,10 +130,6 @@ impl Drop for DaemonCompactionRuntime {
         if let Some(handle) = self.join_handle.take() {
             let _ = handle.join();
         }
-        self.watchers
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clear();
         compaction_extractor::stop_compaction_extractor_service();
     }
 }
@@ -144,38 +138,11 @@ fn running_under_wsl() -> bool {
     cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
 }
 
-fn reconcile_team_watchers(
+fn update_team_watchers(
     teams_dir: &Path,
-    watchers: &Arc<Mutex<HashMap<String, CompactionSignalWatcher>>>,
-    watcher_config: CompactionSignalWatcherConfig,
-    processor: Arc<SignalProcessor>,
+    watcher_service: &CompactionSignalWatcherService,
 ) -> Result<(), CoordinationError> {
-    let mut guard = watchers.lock().unwrap_or_else(|error| error.into_inner());
-    let desired = desired_watcher_teams(teams_dir)?;
-
-    guard.retain(|team_name, _| desired.contains(team_name));
-    for team_name in desired {
-        if guard.contains_key(&team_name) {
-            continue;
-        }
-        let watcher_processor = {
-            let processor = processor.clone();
-            Arc::new(
-                move |signal: &crate::coordination::stores::CompactionSignalRecord| {
-                    processor(signal)
-                },
-            )
-        };
-        let watcher = CompactionSignalWatcher::start_at(
-            teams_dir.to_path_buf(),
-            team_name.clone(),
-            watcher_processor,
-            watcher_config,
-        )?;
-        guard.insert(team_name, watcher);
-    }
-
-    Ok(())
+    watcher_service.update_teams(desired_watcher_teams(teams_dir)?)
 }
 
 fn start_team_topology_watcher(
@@ -301,6 +268,12 @@ mod tests {
     };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn accept_signal(
+        _: &crate::coordination::stores::CompactionSignalRecord,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 
     fn timestamp(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -521,17 +494,16 @@ mod tests {
                 reconciliation_interval: Duration::from_millis(100),
                 loop_tick: Duration::from_millis(25),
             },
-            Arc::new(|_| Ok(())),
+            Arc::new(accept_signal),
         )
         .expect("start daemon compaction runtime");
 
-        let guard = runtime
-            .watchers
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        assert!(guard.contains_key("taurhaus-team"));
-        assert!(!guard.contains_key("default"));
-        drop(guard);
+        let watched = runtime
+            ._watcher_service
+            .watched_team_names_for_test()
+            .expect("read watched teams");
+        assert!(watched.contains("taurhaus-team"));
+        assert!(!watched.contains("default"));
         drop(runtime);
 
         let listed = TeamConfigStore::list(&teams_dir).expect("list teams");
@@ -581,16 +553,16 @@ mod tests {
                 reconciliation_interval: Duration::from_secs(5),
                 loop_tick: Duration::from_millis(25),
             },
-            Arc::new(|_| Ok(())),
+            Arc::new(accept_signal),
         )
         .expect("start daemon compaction runtime");
 
         wait_until(Duration::from_secs(1), || {
-            let guard = runtime
-                .watchers
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            guard.contains_key("alpha")
+            runtime
+                ._watcher_service
+                .watched_team_names_for_test()
+                .map(|teams| teams.contains("alpha"))
+                .unwrap_or(false)
         });
 
         save_team_fixture(
@@ -599,20 +571,20 @@ mod tests {
             &sample_member("developer3", "/home/mstie/projects/taurhaus"),
         );
         wait_until(Duration::from_secs(1), || {
-            let guard = runtime
-                .watchers
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            guard.contains_key("beta")
+            runtime
+                ._watcher_service
+                .watched_team_names_for_test()
+                .map(|teams| teams.contains("beta"))
+                .unwrap_or(false)
         });
 
         TeamConfigStore::delete(&teams_dir, "beta").expect("delete beta");
         wait_until(Duration::from_secs(1), || {
-            let guard = runtime
-                .watchers
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            !guard.contains_key("beta")
+            runtime
+                ._watcher_service
+                .watched_team_names_for_test()
+                .map(|teams| !teams.contains("beta"))
+                .unwrap_or(false)
         });
     }
 }
