@@ -6,27 +6,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.5.10] - 2026-03-10
+## [0.5.10] - 2026-03-20
 
-Inotify resource management overhaul and Windows task tracking fix. This release eliminates the architectural causes of inotify instance exhaustion on WSL2/Linux and restores task visibility on Windows.
+Quality phase release. Every user-facing surface was audited for functional honesty, error messaging, accessibility, and documentation accuracy. Major resource usage improvements for Linux/WSL users.
 
-### Added
+### Quality & Reliability
 
-- **Inotify instance telemetry** — the daemon and app backend now emit structured `inotify.telemetry`, `inotify.capacity.warning` (>=75%), and `inotify.capacity.error` (>=90%) diagnostics to the JSONL log, covering per-process instance/watch counts and system-wide usage.
-- **Enhanced resource monitoring** — `scripts/resource-monitor.py` now tracks per-process inotify instance counts alongside watch counts, plus system-wide instance/watch limits and usage percentages.
-- **Compaction testing harnesses** — added `scripts/test-compaction-claude.py` and `scripts/test-compaction-codex.py` for operator-driven end-to-end compaction verification, plus `scripts/compaction_test_lib.py` shared utilities.
+- **Settings now control real behavior** — scan directories and ignore patterns were previously saved but silently ignored by the scanner and search indexer. They now drive both project discovery and index rebuilds, with "Active" badges in Settings confirming enforcement.
+- **Accurate session duration tracking** — session activity durations were undercounted by 10x due to a polling-interval mismatch. Fixed to use the correct interval for both Tauri and mock modes.
+- **Consistent terminal settings** — terminal emulator defaults are now sourced from a shared backend contract so the frontend, backend, and tests all agree on what's available per platform.
+- **Event-driven updates restored** — tmux focus changes, file modifications, task updates, and session state changes now propagate in real-time through the daemon event bridge.
+- **Honest UI labels** — mesh node "Stop" button renamed to "Remove" (it removes from team, not just stops), dead Edit/Remove buttons removed from Overview tab, "Open in Terminal" now shows a notice instead of silently failing when no session exists.
 
-### Fixed
+### Accessibility
 
-- **Windows task tracking** — Claude task scanning and watcher registration used `dirs::home_dir()` instead of the canonical `PlatformPaths` API, causing Windows builds to watch the wrong Claude root and never ingest task updates. All call sites now use the platform-aware path authority.
-- **Member daemon lifecycle** — re-adding a team member no longer inherits stale daemon PIDs from a previous session. PID validation now checks process identity (pane, team, member) before accepting a pidfile. Member removal now discovers daemon PIDs from the pidfile as a fallback when the runtime record has degraded.
-- **Clippy and test gate stability** — removed dead code, fixed a no-op `drop` on a reference in the shared watch registry, resolved test hangs in watcher refcount cleanup, and hardened the E2E onboarding harness with proper mesh binary identity.
+- **WCAG Level A compliance** — all dialogs and overlays now have proper `role="dialog"`, focus traps, Escape-to-close, and focus restoration. Background content is marked `inert` when modals are open.
+- **Keyboard navigation** — tab bar supports Arrow Left/Right/Home/End, context menus open via Shift+F10, visible focus rings on all interactive elements.
+- **Screen reader support** — icon-only buttons have `aria-label`, daemon status changes use `aria-live` regions, tab bar uses `role="tablist"` with `aria-selected`.
+
+### Error Handling
+
+- **Visible error feedback** — session launch, stop, and navigation failures now show sidebar notices instead of silently logging to the console.
+- **Human-readable error messages** — technical backend errors are translated to plain language via a centralized error copy module. Daemon install failures, scan errors, and mesh init issues all show actionable guidance.
+- **Daemon reconnect escalation** — a calm "connecting" banner appears initially; after 30 seconds without reconnection, the message escalates and offers a "Restart helper" button.
+- **Batch registration feedback** — when some projects fail to register, the failure count and individual errors are now shown instead of only the success count.
 
 ### Performance
 
-- **Global shared daemon watch registry** — replaced per-connection `WatchRuntime` with a daemon-global shared registry. One physical `RecommendedWatcher` serves all subscriber connections with reference-counted path subscriptions. Eliminates the primary source of inotify instance multiplication (observed: 66 instances reduced to ~21 expected).
-- **Single-owner daemon watch listener** — startup bootstrap and reconcile paths no longer race to create duplicate daemon listener connections. One owned watch-lifecycle thread applies plan diffs in place instead of tearing down and recreating listeners.
-- **Shared local watcher pools** — `ProjectWatcher` now uses two shared `RecommendedWatcher` pools (one for project trees, one for singleton files) instead of one watcher per project/file, reducing app-side inotify instance usage on Linux/macOS.
+- **Inotify watcher consolidation** — the daemon now uses ~4 inotify instances instead of ~25, through a global shared watch registry with reference-counted subscriptions. App-side watchers use shared pools instead of one watcher per project.
+- **Windows task tracking fixed** — Claude task scanning on Windows was watching the wrong directory. All path resolution now uses the platform-aware authority.
+- **Member daemon lifecycle** — re-adding a team member no longer inherits stale daemon PIDs from a previous session.
+
+### Code Quality
+
+- **5 major file decompositions** — Shell.svelte, stall_detector, orchestrator, session_scanner, and meshTabController all split into focused modules under 600 LOC.
+- **Shared contracts** — tmux layout allocation, scan/index policy, path normalization, and terminal platform contract extracted from duplicated inline logic.
+- **Structured logging** — coordination lifecycle, project mutations, and startup events now emit machine-readable JSONL events with correlation IDs.
+- **Inotify telemetry** — daemon emits structured diagnostics for instance/watch counts and capacity warnings.
+
+### Documentation
+
+- **Full docs refresh** — all user-facing docs reviewed for accuracy after quality phase changes. 24 specific clarity rewrites applied across 8 documents.
+- **"Helper service" language** — README and getting-started now consistently use "helper service" instead of "daemon" in user-facing text.
+- **Keyboard shortcuts reference** — added to getting-started.md with all supported shortcuts.
+- **inotify resource note** — Linux/WSL users can now find guidance on watcher limits and how to raise them.
+- **Session management rewrite** — feature doc restructured to lead with user behavior instead of implementation architecture.
+
+### Testing
+
+- **4 new E2E specs** — first-run wizard, command center real actions, session management runtime truth, and mesh recovery now have end-to-end coverage with real tmux integration.
+- **2,000+ new E2E test lines** — proving that launch modes execute correct commands, stop actually kills sessions, activity detection reflects real I/O, and mesh lifecycle works end-to-end.
+- **Security and code quality re-audits** — both passed clean after all quality phase changes.
 
 ## [0.5.9] - 2026-03-10
 
