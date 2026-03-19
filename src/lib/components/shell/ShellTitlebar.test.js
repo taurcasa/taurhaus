@@ -37,4 +37,18 @@ describe('ShellTitlebar', () => {
     expect(onSwitchTab).toHaveBeenCalledWith('files')
     expect(screen.getByRole('tab', { name: 'Files' })).toHaveFocus()
   })
+
+  it('keeps aria-labels on icon-only window controls', () => {
+    render(ShellTitlebar, {
+      props: {
+        dark: true,
+        activeTab: 'overview',
+      },
+    })
+
+    expect(screen.getByRole('button', { name: 'Open search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Minimize window' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Maximize window' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close window' })).toBeInTheDocument()
+  })
 })

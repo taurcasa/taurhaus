@@ -69,6 +69,7 @@
   {#if (daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected' || daemonStatus === 'failed') && !settingsOpen}
     <div
       class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-brand-500/10 border-b border-brand-500/20' : 'bg-brand-50 border-b border-brand-200'}"
+      role="status"
       aria-live="polite"
       data-testid="daemon-connecting-banner"
     >
@@ -98,7 +99,7 @@
   {/if}
 
   {#if daemonUpdateAvailable && !daemonUpdateDismissed && !settingsOpen}
-    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" aria-live="polite" data-testid="daemon-update-banner">
+    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" role="status" aria-live="polite" data-testid="daemon-update-banner">
       <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1">
         Helper service update available: v{daemonUpdateAvailable.version} → v{daemonUpdateAvailable.bundled_version}
@@ -118,7 +119,7 @@
   {/if}
 
   {#if projectLoadIssues.length > 0 && !settingsOpen}
-    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" aria-live="polite" data-testid="project-load-degraded-banner">
+    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" role="status" aria-live="polite" data-testid="project-load-degraded-banner">
       <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1" data-testid="project-load-degraded-message">
         {projectLoadBannerMessage}
@@ -137,7 +138,7 @@
   {/if}
 
   {#if shellNotice && !settingsOpen}
-    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" aria-live="polite" data-testid="shell-notice-banner">
+    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" role="status" aria-live="polite" data-testid="shell-notice-banner">
       <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1" data-testid="shell-notice-message">{shellNotice}</span>
       <button

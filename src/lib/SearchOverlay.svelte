@@ -265,7 +265,7 @@
           value={query}
           oninput={handleInput}
           placeholder="Search across all projects..."
-          class="flex-1 bg-transparent text-[15px] {t.textPrimary} outline-none placeholder:{t.textMuted}"
+          class="flex-1 rounded-sm bg-transparent text-[15px] {t.textPrimary} outline-none placeholder:{t.textMuted} focus:ring-1 focus:ring-brand-500"
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -326,6 +326,7 @@
                 {@const isSelected = entry.flatIndex === selectedIndex}
                 <button
                   class="w-full flex items-start gap-3 px-3 py-2 text-left transition-colors rounded-md mx-0
+                    focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500 focus-visible:ring-inset
                     {isSelected ? selectedBg : hoverBg}"
                   onclick={() => navigateTo(result)}
                   data-testid="search-result"

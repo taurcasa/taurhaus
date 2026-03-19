@@ -35,6 +35,22 @@
 
   const visible = $derived(open || rendered)
 
+  function captureRestoreFocusElement() {
+    if (
+      document.activeElement instanceof HTMLElement
+      && !rootElement?.contains(document.activeElement)
+    ) {
+      restoreFocusElement = document.activeElement
+    }
+  }
+
+  function restoreFocusToTrigger() {
+    if (restoreFocusElement?.isConnected) {
+      restoreFocusElement.focus()
+    }
+    restoreFocusElement = null
+  }
+
   function handleBackdropClick(event) {
     if (event.target === event.currentTarget) {
       event.stopPropagation()
@@ -44,6 +60,7 @@
 
   $effect(() => {
     if (open) {
+      captureRestoreFocusElement()
       prevOpen = true
       if (exitTimer) {
         clearTimeout(exitTimer)
@@ -81,14 +98,6 @@
     if (!panel || !root) return
     let cancelled = false
 
-    if (
-      !restoreFocusElement
-      && document.activeElement instanceof HTMLElement
-      && !root.contains(document.activeElement)
-    ) {
-      restoreFocusElement = document.activeElement
-    }
-
     const unregisterModal = registerModalLayer(root)
 
     async function focusOnOpen() {
@@ -110,10 +119,7 @@
       cancelled = true
       unregisterModal()
       window.removeEventListener('keydown', handleKeydown)
-      if (restoreFocusElement?.isConnected) {
-        restoreFocusElement.focus()
-      }
-      restoreFocusElement = null
+      restoreFocusToTrigger()
     }
   })
 </script>

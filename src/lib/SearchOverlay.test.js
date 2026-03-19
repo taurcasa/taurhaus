@@ -213,6 +213,37 @@ describe('SearchOverlay', () => {
     expect(screen.getByText('Type to search across all projects')).toBeInTheDocument()
   })
 
+  it('adds visible keyboard focus styles to the search input and result rows', async () => {
+    search.mockResolvedValue([
+      {
+        entity_type: 'document',
+        project_id: 'project-1',
+        file_path: 'docs/readme.md',
+        title: 'Readme',
+        snippet: 'intro',
+      },
+    ])
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    const input = screen.getByTestId('search-input')
+    expect(input.className).toContain('focus:ring-1')
+    expect(input.className).toContain('focus:ring-brand-500')
+
+    await fireEvent.input(input, { target: { value: 'read' } })
+    await vi.advanceTimersByTimeAsync(150)
+
+    await waitFor(() => {
+      expect(screen.getByText('Readme')).toBeInTheDocument()
+    })
+
+    const result = screen.getByTestId('search-result')
+    expect(result.className).toContain('focus-visible:ring-1')
+    expect(result.className).toContain('focus-visible:ring-brand-500')
+  })
+
   it('supports keyboard navigation and enter-to-open for document results', async () => {
     search.mockResolvedValue([
       {

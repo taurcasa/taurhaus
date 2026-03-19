@@ -57,4 +57,27 @@ describe('ShellMainPanel', () => {
       'Helper service update available: v0.2.8 → v0.3.0'
     )
   })
+
+  it('announces dynamic status banners to assistive technology', () => {
+    render(ShellMainPanel, {
+      props: {
+        dark: false,
+        daemonStatus: 'failed',
+        daemonUpdateAvailable: {
+          version: '0.2.8',
+          bundled_version: '0.3.0',
+        },
+        projectLoadIssues: [
+          { section: 'Recent commits', message: 'boom' },
+        ],
+        shellNotice: 'Saved, but some details need attention.',
+      },
+    })
+
+    expect(screen.getByTestId('daemon-connecting-banner')).toHaveAttribute('role', 'status')
+    expect(screen.getByTestId('daemon-connecting-banner')).toHaveAttribute('aria-live', 'polite')
+    expect(screen.getByTestId('daemon-update-banner')).toHaveAttribute('role', 'status')
+    expect(screen.getByTestId('project-load-degraded-banner')).toHaveAttribute('role', 'status')
+    expect(screen.getByTestId('shell-notice-banner')).toHaveAttribute('role', 'status')
+  })
 })

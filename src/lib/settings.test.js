@@ -299,6 +299,19 @@ describe('Settings component', () => {
     })
   })
 
+  it('keeps visible focus styling on threshold inputs', async () => {
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => {
+      const active = screen.getByTestId('threshold-active')
+      const recent = screen.getByTestId('threshold-recent')
+      const stale = screen.getByTestId('threshold-stale')
+      expect(active.className).toContain('focus:ring-1')
+      expect(active.className).toContain('focus:ring-brand-500')
+      expect(recent.className).toContain('focus:ring-1')
+      expect(stale.className).toContain('focus:ring-brand-500')
+    })
+  })
+
   it('threshold blur calls updateSettings', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => expect(screen.getByTestId('threshold-active')).toBeTruthy())

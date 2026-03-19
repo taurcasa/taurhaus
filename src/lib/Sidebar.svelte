@@ -487,13 +487,13 @@
 
   <!-- Filter -->
   <div class="px-3 pt-3 pb-1">
-    <div class="flex items-center gap-2 px-3 h-[32px] rounded-md bg-white/[0.05] border border-white/[0.07] text-[13px] text-white/25 transition-colors focus-within:border-brand-500/40 focus-within:bg-white/[0.07]">
+    <div class="flex items-center gap-2 px-3 h-[32px] rounded-md bg-white/[0.05] border border-white/[0.07] text-[13px] text-white/25 transition-colors focus-within:border-brand-500/40 focus-within:bg-white/[0.07] focus-within:ring-1 focus-within:ring-brand-500/70">
       <svg class="w-[13px] h-[13px] shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
       <input
         type="text"
         bind:value={filterQuery}
         placeholder="Filter..."
-        class="flex-1 bg-transparent text-[13px] text-white/75 outline-none placeholder:text-white/25"
+        class="flex-1 rounded-sm bg-transparent text-[13px] text-white/75 outline-none placeholder:text-white/25 focus-visible:ring-1 focus-visible:ring-brand-500/70"
         spellcheck="false"
         autocomplete="off"
         data-testid="sidebar-filter"
@@ -512,7 +512,7 @@
   </div>
 
   {#if sidebarNotice}
-    <div class="mx-3 mb-1 rounded-md border border-warning-400/30 bg-warning-500/10 px-3 py-2 text-[11px] text-warning-100" data-testid="sidebar-notice">
+    <div class="mx-3 mb-1 rounded-md border border-warning-400/30 bg-warning-500/10 px-3 py-2 text-[11px] text-warning-100" role="status" aria-live="polite" data-testid="sidebar-notice">
       <div class="flex items-start gap-2">
         <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-300" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
         <span class="flex-1" data-testid="sidebar-notice-message">{sidebarNotice}</span>

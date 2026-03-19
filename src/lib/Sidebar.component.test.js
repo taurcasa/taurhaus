@@ -118,6 +118,25 @@ describe('Sidebar component branches', () => {
     expect(onToggleSettings).toHaveBeenCalled()
   })
 
+  it('keeps visible focus styling on the filter and project rows', async () => {
+    const projects = makeProjects(2)
+
+    render(Sidebar, {
+      props: {
+        projects,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('project-item').length).toBe(2)
+    })
+
+    expect(screen.getByTestId('sidebar-filter').className).toContain('focus-visible:ring-1')
+    expect(screen.getByTestId('sidebar-filter').className).toContain('focus-visible:ring-brand-500/70')
+    expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-1')
+    expect(screen.getAllByTestId('project-item')[0].className).toContain('focus-visible:ring-brand-500')
+  })
+
   it('renders a right-side foreground indicator when the project matches the foreground project id', async () => {
     const projects = makeProjects(2)
 
@@ -357,6 +376,9 @@ describe('Sidebar component branches', () => {
         'Could not open that terminal. The session may have already closed.'
       )
     })
+
+    expect(screen.getByTestId('sidebar-notice')).toHaveAttribute('role', 'status')
+    expect(screen.getByTestId('sidebar-notice')).toHaveAttribute('aria-live', 'polite')
   })
 
   it('ignores rapid repeated standalone session clicks while navigation is in flight', async () => {

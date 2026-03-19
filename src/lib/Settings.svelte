@@ -413,7 +413,7 @@
                     min="1"
                     value={settings.thresholds.active_days}
                     onblur={(e) => handleThresholdBlur('active_days', e.target.value)}
-                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none focus:ring-1 focus:ring-brand-500 text-center border-none"
                     data-testid="threshold-active"
                   />
                   <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
@@ -429,7 +429,7 @@
                     min="1"
                     value={settings.thresholds.recent_days}
                     onblur={(e) => handleThresholdBlur('recent_days', e.target.value)}
-                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none focus:ring-1 focus:ring-brand-500 text-center border-none"
                     data-testid="threshold-recent"
                   />
                   <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
@@ -445,7 +445,7 @@
                     min="1"
                     value={settings.thresholds.stale_days}
                     onblur={(e) => handleThresholdBlur('stale_days', e.target.value)}
-                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none text-center border-none"
+                    class="w-14 px-2 py-1 text-[13px] {dark ? 'bg-zinc-800 text-zinc-200' : 'bg-white text-zinc-900'} focus:outline-none focus:ring-1 focus:ring-brand-500 text-center border-none"
                     data-testid="threshold-stale"
                   />
                   <span class="px-2 py-1 text-[12px] {addonBg} flex items-center border-l {dark ? 'border-zinc-700' : 'border-zinc-300'}">days</span>
