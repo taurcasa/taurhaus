@@ -3,7 +3,7 @@ import {
   RUNTIME_STATUS_POLL_MS,
 } from './meshTabGate.svelte.js'
 
-export function buildResumeTargetNames(config) {
+function buildResumeTargetNames(config) {
   const members = [config?.lead, ...(config?.agents ?? [])].filter(Boolean)
   const offlineMembers = members
     .filter((member) => String(member?.status ?? '').trim().toLowerCase() === 'offline')
@@ -13,7 +13,7 @@ export function buildResumeTargetNames(config) {
   return members.map((member) => String(member?.name ?? '').trim()).filter(Boolean)
 }
 
-export function buildResumeProgressItems(targetNames, normalizeResumeTeamReport, report = null, fallbackError = '') {
+function buildResumeProgressItems(targetNames, normalizeResumeTeamReport, report = null, fallbackError = '') {
   const normalizedReport = normalizeResumeTeamReport(report)
   const names = Array.isArray(targetNames) ? [...targetNames] : []
   const resumedMembers = new Set(normalizedReport?.resumedMembers ?? [])
@@ -56,7 +56,7 @@ export function buildResumeProgressItems(targetNames, normalizeResumeTeamReport,
   })
 }
 
-export function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
+function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
   const normalizedReport = normalizeResumeTeamReport(report)
   if (!normalizedReport) return 'Team resume finished.'
   const resumedSummary = normalizedReport.resumedMembers.length
