@@ -400,6 +400,40 @@ describe('Shell mesh focus integration', () => {
     })
   })
 
+  it('keeps shell event listeners mounted once across startup and project selection churn', async () => {
+    ipc.isTauri.mockReturnValue(true)
+    eventApi.listen.mockResolvedValue(() => {})
+
+    render(Shell)
+
+    await waitFor(() => {
+      expect(eventApi.listen).toHaveBeenCalledTimes(7)
+    })
+
+    const projectContext = setProjectContext.mock.calls.at(-1)?.[0]
+    await projectContext.selectProject({
+      id: 'proj-2',
+      name: 'mesh',
+      path: '/projects/mesh',
+      activityState: 'active',
+      branch: 'main',
+      isDirty: false,
+    })
+
+    await waitFor(() => {
+      expect(loadDeferredProjectSelectionData).toHaveBeenCalledTimes(2)
+      expect(loadDeferredProjectSelectionData).toHaveBeenLastCalledWith(
+        'proj-2',
+        expect.any(Object),
+        expect.any(Object)
+      )
+    })
+
+    // Regression: after the Shell controller split, real-time updates stopped because
+    // Tauri listeners were being managed from a reactive effect instead of a mount lifecycle.
+    expect(eventApi.listen).toHaveBeenCalledTimes(7)
+  })
+
   it('falls back to getForegroundProject once when a tmux focus event cannot be resolved locally', async () => {
     ipc.isTauri.mockReturnValue(true)
     ipc.getForegroundProject.mockResolvedValueOnce(null).mockResolvedValueOnce('proj-2')

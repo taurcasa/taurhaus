@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte'
   import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions, startDaemon } from './lib/ipc.js'
   import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, markSessionPresenceStale, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
@@ -347,7 +348,7 @@
     })
   })
 
-  $effect(() => {
+  onMount(() => {
     return setupShellEventListeners({
       enabled: isTauri(),
       loadEventApi: () => import('@tauri-apps/api/event'),
