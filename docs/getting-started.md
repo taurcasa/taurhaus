@@ -39,7 +39,7 @@ After restart, open Ubuntu from the Start menu to complete the Linux user setup 
 
 #### Enable mirrored networking
 
-taurhaus communicates with a daemon running inside WSL. For this to work, WSL must use mirrored networking mode.
+taurhaus communicates with its helper service running inside WSL. For this to work, WSL must use mirrored networking mode.
 
 Open Notepad and create (or edit) the file at `%USERPROFILE%\.wslconfig` with this content:
 
@@ -54,7 +54,7 @@ Then restart WSL:
 wsl --shutdown
 ```
 
-**Why this matters**: Without mirrored networking, the Windows app can't connect to the WSL daemon on `localhost:17233`. This is the most common setup issue.
+**Why this matters**: Without mirrored networking, the Windows app can't connect to the WSL helper service (the `taurhaus-daemon` process) on `localhost:17233`. This is the most common setup issue.
 
 ### Step 2: Install tmux
 
@@ -134,7 +134,7 @@ This prevents oh-my-zsh from blocking headless terminal sessions with update pro
 3. Launch taurhaus from the Start menu
 
 On first launch, taurhaus will:
-- Start the WSL daemon automatically in the background
+- Start the WSL helper service automatically in the background
 - Create a tmux session named "taurhaus" in WSL
 - Show the First Run Wizard
 
@@ -145,7 +145,7 @@ On first launch, taurhaus will:
 3. Launch taurhaus from Applications (or Spotlight)
 
 On first launch, taurhaus will:
-- Install and start the daemon automatically at `~/.local/bin/taurhaus-daemon`
+- Install and start the helper service automatically at `~/.local/bin/taurhaus-daemon`
 - Create a tmux session named "taurhaus"
 - Show the First Run Wizard
 
@@ -156,7 +156,7 @@ On first launch, taurhaus will:
 The wizard helps you discover your projects:
 
 1. **Welcome** — Overview of what taurhaus does
-2. **Daemon setup** — Check daemon install status, offer install/update if needed
+2. **Helper service setup** — Check helper-service install status, offer install/update if needed
 3. **Browse** — Navigate to your project directories (e.g., `~/projects/`)
 4. **Select** — Choose which projects to register
 5. **Progress** — Projects are scanned and indexed
@@ -195,11 +195,11 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 - **Green glow** = actively working (streaming output)
 - **Amber outline** = idle (waiting for input)
 
-**Launch a session**: Right-click a project and choose from per-tool options — Continue (resume last), New (fresh session), or Resume (pick session). Available for Claude, Codex, and Gemini.
+**Launch a session**: Right-click a project and choose the tool-specific menu items. Taurhaus shows `Continue Claude`, `New Claude Session`, `New Codex Session`, `New Gemini Session`, plus `Resume Claude`, `Resume Codex`, and `Resume Gemini`.
 
-**Navigate to a session**: Click the tool icon to jump to that session in your terminal
+**Navigate to a session**: Click the tool icon to jump to that session in your terminal. `Open in Terminal` appears when a live session has tmux coordinates; if navigation is attempted without a valid terminal target, taurhaus shows a sidebar notice instead of failing silently.
 
-**Stop a session**: Right-click the tool icon and select "Stop"
+**Stop a session**: Right-click a project and use the per-tool `Stop <Tool>` or `Restart <Tool>` actions for running sessions.
 
 ### Mesh View
 
@@ -215,15 +215,15 @@ Click the gear icon in the bottom-left corner to configure:
 - Scan directories and ignore patterns
 - Activity thresholds (Active / Recent / Stale / Dormant)
 - Code viewer theme (separate for light and dark mode)
-- Preferred terminal emulator (macOS: iTerm2, Ghostty, or Terminal.app)
+- Preferred terminal app (`Windows Terminal` or `Custom` on Windows, `iTerm2`/`Ghostty`/`Terminal.app`/`Custom` on macOS, manual on Linux)
 
 ## Troubleshooting
 
 ### Windows
 
-#### "Daemon not connected" or sessions not appearing
+#### "Helper service not connected" or sessions not appearing
 
-The daemon runs inside WSL and communicates over TCP port 17233. If sessions don't appear:
+The helper service runs inside WSL and communicates over TCP port 17233. If sessions don't appear:
 
 1. **Check WSL networking mode**:
    ```powershell
@@ -232,12 +232,12 @@ The daemon runs inside WSL and communicates over TCP port 17233. If sessions don
    ```
    Must contain `networkingMode=mirrored`. If you just changed it, run `wsl --shutdown` and relaunch taurhaus.
 
-2. **Check if the daemon is running**:
+2. **Check if the helper service is running**:
    ```bash
    # In WSL
    ss -tlnp | grep 17233
    ```
-   If nothing shows, restart taurhaus — it auto-starts the daemon.
+   If nothing shows, restart taurhaus — it auto-starts the helper service.
 
 3. **Check for port conflicts**:
    ```bash
@@ -246,7 +246,7 @@ The daemon runs inside WSL and communicates over TCP port 17233. If sessions don
    ```
    If another process is using port 17233, stop it or change the conflicting service's port.
 
-4. **Manual daemon start** (for debugging):
+4. **Manual helper-service start** (for debugging):
    ```bash
    # In WSL
    ~/.local/bin/taurhaus-daemon --verbose
@@ -266,15 +266,15 @@ Then try launching a session from taurhaus again.
 
 ### macOS
 
-#### "Daemon not connected" or sessions not appearing
+#### "Helper service not connected" or sessions not appearing
 
-The daemon runs natively and communicates over TCP port 17233. If sessions don't appear:
+The helper service runs natively and communicates over TCP port 17233. If sessions don't appear:
 
-1. **Check if the daemon is running**:
+1. **Check if the helper service is running**:
    ```bash
    lsof -i :17233
    ```
-   If nothing shows, restart taurhaus — it auto-starts the daemon.
+   If nothing shows, restart taurhaus — it auto-starts the helper service.
 
 2. **Check for port conflicts**:
    ```bash
@@ -282,14 +282,14 @@ The daemon runs natively and communicates over TCP port 17233. If sessions don't
    ```
    If another process is using port 17233, stop it or change the conflicting service's port.
 
-3. **Manual daemon start** (for debugging):
+3. **Manual helper-service start** (for debugging):
    ```bash
    ~/.local/bin/taurhaus-daemon --verbose
    ```
 
-#### Daemon crashes immediately after update
+#### Helper service crashes immediately after update
 
-On macOS Sequoia and later, copied binaries can fail code signature validation. If the daemon won't start after an update:
+On macOS Sequoia and later, copied binaries can fail code signature validation. If the helper service won't start after an update:
 
 ```bash
 codesign --force --sign - ~/.local/bin/taurhaus-daemon
@@ -319,14 +319,14 @@ The initial project scan indexes all files for search. This is a one-time operat
 
 Download and run the latest installer (Windows) or DMG (macOS). It overwrites the previous version. Your projects, settings, and search index are preserved — they're stored in your user data directory, not the install directory.
 
-The installer ships an updated daemon binary with each release. If a local daemon update is needed, taurhaus can install the bundled daemon from the app's daemon update flow.
+The installer ships an updated helper-service binary with each release. If a local update is needed, taurhaus can install the bundled helper service from the app's update flow.
 
 ## Uninstalling
 
 ### Windows
 
 1. Uninstall taurhaus via Windows Settings > Apps
-2. Optionally remove the daemon binary:
+2. Optionally remove the helper-service binary:
    ```bash
    # In WSL
    rm ~/.local/bin/taurhaus-daemon
@@ -340,7 +340,7 @@ The installer ships an updated daemon binary with each release. If a local daemo
 ### macOS
 
 1. Drag taurhaus from Applications to Trash
-2. Optionally remove the daemon binary:
+2. Optionally remove the helper-service binary:
    ```bash
    rm ~/.local/bin/taurhaus-daemon
    ```

@@ -9,6 +9,14 @@
 
 Taurhaus gains the ability to create, monitor, and manage multi-agent teams that collaborate via the filesystem. The integration leverages mesh (a Rust CLI for non-Claude agents) and Claude Code's native team system, with the filesystem (`~/.claude/`) as the shared API surface.
 
+This document is the active coordination design reference for:
+
+- subsystem decisions and invariants
+- runtime/recovery semantics
+- delivery and orchestration behavior
+
+For the authoritative inventory of coordination files, ownership boundaries, and source-of-truth rules, use [`architecture/data-architecture.md`](architecture/data-architecture.md). [`../ARCHITECTURE.md`](../ARCHITECTURE.md) remains the top-level system overview.
+
 **Core principles:**
 - Filesystem IS the API — no code coupling between taurhaus and mesh
 - Taurhaus owns orchestration + GUI, mesh owns protocol + CLI
@@ -45,16 +53,9 @@ Status labels use current implementation state:
 
 **Status**: Implemented
 
-**Decision**: Team configuration and runtime coordination state live in separate files.
+**Decision**: Team configuration and runtime coordination state live in separate files. Durable roster/config state, runtime attachment state, inboxes, and compaction/operational state remain distinct stores rather than collapsing into one mutable blob.
 
-| Layer | Path | Owner | Contents |
-|-------|------|-------|----------|
-| Durable config | `teams/<team>/config.json` | Shared (mesh + taurhaus) | Members, roles, instructions, projectPath |
-| Protocol data | `teams/<team>/inboxes/` | Shared | Messages |
-| Runtime state | `teams/<team>/runtime/<member>.json` | Taurhaus (mesh read-only) | Pane binding, session/jsonl attachment, daemon pid, delivery lease, health snapshot |
-| Operational context | `teams/<team>/state/operational/<member>.json` | Taurhaus | Bounded post-compaction work context |
-| Compaction signal log | `teams/<team>/state/compaction/signals/*.jsonl` | Taurhaus | Canonical Codex compaction signal records |
-| Compaction delivery state | `teams/<team>/state/compaction/members/<member>.json` | Taurhaus | Last handled session/timestamp/result for idempotent compaction delivery |
+Current file-level inventory, writers/readers, and authority levels are maintained in [`architecture/data-architecture.md`](architecture/data-architecture.md).
 
 **Rationale**: Eliminates config.json write contention. Config is mostly write-once. Runtime files are hot and disposable — delete them and taurhaus rebuilds from live session scanning.
 
@@ -62,16 +63,16 @@ Status labels use current implementation state:
 
 ### D3: JSON is live truth, SQLite is projection/history
 
-**Status**: Planned
+**Status**: Partial
 
-**Decision**: JSON files in `~/.claude/` are the source of truth for live coordination state. SQLite stores projections for history, querying, and UI ergonomics.
+**Decision**: JSON files in `~/.claude/` are the source of truth for live coordination state. SQLite stores projections for history, querying, and UI ergonomics where those projections exist.
 
 **Invariant**: SQLite must never be a competing writable source of truth for live coordination. Edits flow through coordination stores first, then get projected to SQLite.
 
 **Flow**:
 1. User action or daemon event
 2. Orchestrator mutates coordination source of truth (JSON stores)
-3. Orchestrator records resulting event/snapshot in SQLite
+3. Taurhaus may record resulting events/snapshots in SQLite or other derived stores when the product surface needs history/query support
 4. UI reads a mix of live view + derived persisted data
 
 ### D4: Logical team membership separated from session attachment
@@ -362,32 +363,9 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 **Rationale**: This preserves one runtime lifecycle for team launch/resume/remove while enabling reusable template authoring and auditability through git-backed history.
 
-## Milestone Plan
+## Historical Planning
 
-### M0: Usable MeshBridged vertical slice
-- Coordination scaffolding (types, trait, errors, audit event types)
-- File stores (TeamConfigStore + MemberRuntimeStore, schema v1, atomic writes)
-- MeshBridged backend (OperatorNotice delivery only)
-- Orchestrator (create/disband/add/remove/list/status/deliver, idempotent)
-- Daemon event channel wiring
-- IPC commands + runtime UI baseline (team setup, init progress, runtime canvas/status, hot-add/reonboard/disband actions)
-
-### M1: Backend parity + health/recovery
-- ClaudeNative backend (Planned; current backend exists as placeholder and launch is not implemented)
-- BackendSelector auto-detect + override
-- Full delivery variants (Bootstrap, RecoveryNudge, OperatorNotice)
-- Health state machine v1 (transitions, cooldown, escalation)
-
-### M2: Product UI + task integration
-- Team dashboard/visualization
-- TaskBoard integration (owner routing + unassigned bucket)
-- Extended IPC for UI needs
-
-### M3: Hardening/polish
-- Audit trail (SQLite projections + query surfaces)
-- Bootstrap/settings integration (wizard, preferences)
-- Schema migration tooling
-- Perf/reliability tuning
+The older milestone-plan snapshot that used to live in this file is now archived in [`archive/architecture/architecture-doc-reconciliation-notes-2026-03-19.md`](archive/architecture/architecture-doc-reconciliation-notes-2026-03-19.md). Active implementation state should be read from the decision log above, the codebase, and the current changelog/task history rather than from historical milestone buckets.
 
 ## Research Sources
 

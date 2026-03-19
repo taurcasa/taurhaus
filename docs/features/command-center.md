@@ -24,6 +24,7 @@ Mode handling:
 - Frontend uses compatibility helpers such as `launchClaudeSession(...)`, which call backend `launch_cli_session`.
 - Backend resolves project path, then resolves command from settings per `(tool, mode)`.
 - Session launches in tmux using selected layout strategy.
+- In the current UI, `Continue` is distinct for Claude, `New <Tool> Session` is available for Claude/Codex/Gemini, and `Resume <Tool>` is available for Claude/Codex/Gemini.
 
 ## Per-tool launch commands
 
@@ -52,9 +53,11 @@ After exit signal:
 - backend polls pane command until shell is detected (or timeout)
 - pane is killed to clean up (window closes automatically if last pane)
 
+This launch/resume/stop behavior is covered by the command-center E2E lane and mirrored in the project context menu.
+
 ## tmux integration
 
-tmux is the execution substrate for all command-center launches.
+All sessions run inside tmux, which taurhaus manages automatically.
 
 Launch workflow:
 - ensure dedicated tmux session exists (`taurhaus`)
@@ -91,7 +94,7 @@ Foreground detection is also part of command-center state now:
 |----------|------------------|---------|----------|
 | Windows | `windows_terminal`, `custom` | `windows_terminal` | 3-state WT detection (`Focused`/`Running`/`NotRunning`), launch via `wt.exe` + `wsl.exe ... tmux attach` |
 | macOS | `iterm2`, `ghostty`, `terminal_app`, `custom` | `iterm2` | Resolve preferred app, activate existing or launch with tmux attach |
-| Linux | `custom` | `custom` | no built-in terminal activator; tmux still backs session control and custom commands remain available |
+| Linux | `manual` | `manual` | no built-in terminal activator; tmux still backs session control and taurhaus keeps terminal navigation/manual attach explicit |
 
 Windows-specific detail:
 - Windows Terminal detection handles WinUI window-handle quirks with process + window-enumeration fallback.
@@ -99,14 +102,17 @@ Windows-specific detail:
 ## Context-menu integration
 
 Right-click project menu exposes command-center actions:
-- Continue/New/Resume for Claude, Codex, Gemini
-- Open in Terminal (when tmux metadata exists)
+- `Continue Claude`
+- `New Claude Session`, `New Codex Session`, `New Gemini Session`
+- `Resume Claude`, `Resume Codex`, `Resume Gemini`
+- `Open in Terminal` when a live session has tmux metadata
 - Per-running-session Restart/Stop actions
 
 Interaction model:
 - Stop action includes confirmation timeout
 - Restart does stop then continue launch for that tool
 - Session badges in sidebar support click-to-navigate to tmux pane
+- If terminal navigation is attempted without a valid live tmux target, taurhaus shows a sidebar notice instead of failing silently
 
 ## Settings integration
 

@@ -1,6 +1,6 @@
 # Mesh view
 
-The mesh view is taurhaus's project-scoped multi-agent coordination surface. It now centers on template-driven team composition, a live runtime canvas, resumable lifecycle management, and compaction visibility.
+The Mesh tab lets you set up, monitor, and manage multi-agent teams for a project. It centers on template-driven team composition, a live runtime canvas, resumable lifecycle management, and context-recovery visibility.
 
 ![Mesh View Lifecycle](../images/mesh-view-lifecycle.jpg)
 
@@ -11,7 +11,7 @@ Mesh view responsibilities:
 - compose teams from built-in or custom role/preset templates
 - launch teams with lead/agent project bindings and role metadata
 - show a live canvas of members, status, and cross-project placement
-- hot-add, resume, stop, focus, or remove members from running teams
+- hot-add, resume, focus, or remove members from running teams
 - capture runtime members back into reusable role templates
 - surface compaction reinjection audit data in the runtime header
 - disband or recover previously created teams for the current project
@@ -25,7 +25,7 @@ Mesh requires two external tools:
 | mesh CLI | Agent coordination protocol | `~/.local/bin/mesh` |
 | tmux | Terminal multiplexer for agent sessions | System package manager |
 
-`MeshAvailabilityGate.svelte` blocks setup until:
+The availability check blocks setup until:
 
 1. `check_mesh_install_status` verifies the bundled mesh binary is installed and current.
 2. `coordination_preflight_check` validates required CLI tools for the selected roster.
@@ -54,7 +54,7 @@ When no team exists for the current project, Mesh opens in the empty/setup path 
 
 ### Primary setup surface
 
-`MeshTeamBuilder.svelte` is now the primary setup surface inside `MeshSetupView.svelte`. It offers:
+The setup view offers:
 
 - quick presets such as Standard Dev Team, Full Stack Dev Team, Research + Development Team, and Review Team
 - searchable role filters by tool and kind
@@ -101,7 +101,7 @@ Users can still save the current draft back into the preset catalog from the adv
 
 ## Initialization
 
-`MeshInitProgress.svelte` still presents a 7-step streamed progress view:
+Initialization shows a 7-step progress view:
 
 | Step | Label | Description |
 |------|-------|-------------|
@@ -123,7 +123,7 @@ Conflict and failure handling still includes:
 
 ## Runtime view
 
-`MeshRuntimeView.svelte` is no longer just a polling roster. It is a live canvas plus runtime header and node detail panels.
+The runtime view is a live canvas plus runtime header and node detail panels.
 
 ### Runtime bar
 
@@ -131,10 +131,11 @@ Conflict and failure handling still includes:
 
 - team name and member counts
 - runtime state summary (`active`, `degraded`, or `coldResume`)
-- primary action that flips between `Add Agent` and `Resume Team`
+- honest runtime copy such as `Team running normally`, `1 member stopped`, or `All members stopped`
+- primary action that flips between `Add Agent`, `Resume Team`, and `Resume Stopped (n)` based on runtime state
 - overflow actions such as disband
-- compaction reinjection audit rows for members with recent compaction events
-- optional extractor/signal diagnostics when available
+- context-recovery status for members whose sessions were interrupted and automatically restored
+- optional diagnostic details when available
 
 The compaction audit surface shows the last known member, tool, session id, compaction timestamp, and delivery result (`injected`, `skipped`, `stale`, or `failed`).
 
@@ -144,14 +145,14 @@ The compaction audit surface shows the last known member, tool, session id, comp
 
 - tool/model and project placement
 - cross-project placement details
-- role metadata (`roleName`, `focusArea`, `contextSummary`, `behaviorSummary`)
-- runtime diagnostics such as `paneId`, `sessionId`, and session state
+- role details (name, focus area, context, and behavior guidance)
+- runtime details like terminal pane, session ID, and current state
 
 Runtime node actions include:
 
 - focus pane
 - resume member
-- stop member
+- remove member
 - capture member as a reusable role template
 - close detail
 
@@ -164,6 +165,11 @@ Resume is now a first-class runtime action:
 - runtime UI shows live resume progress and the latest per-member resume result
 
 This is the main recovery path for `coldResume` and `degraded` teams after sessions stop or the app reopens against persisted team state.
+
+Recovery caveats:
+- cold-resume and pane-loss reconciliation are still being hardened
+- known gaps in recovery edge cases are tracked internally and being addressed
+- until that work lands, the runtime header is intentionally conservative and surfaces degraded/stopped states honestly instead of implying the team is fully healthy
 
 ### Hot-add and removal
 

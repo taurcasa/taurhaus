@@ -2,12 +2,16 @@
 
 Documentation index for the taurhaus project — a desktop tool for AI project management built with Tauri 2 + Svelte 5 + Rust.
 
+These references match the current shipped behavior. Start here for the docs that are most up to date.
+
 ## Quick Links
 
 | I want to... | Go to |
 |--------------|-------|
 | Install and set up taurhaus | [Getting Started](getting-started.md) |
 | Understand the system architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) |
+| Understand Mesh runtime and recovery | [Mesh feature guide](features/mesh.md) |
+| Understand current testing lanes | [Testing guide](operations/testing-guide.md) |
 | Learn the code standards and build recipes | [CLAUDE.md](../CLAUDE.md) |
 | Contribute code | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Report a security issue | [SECURITY.md](../SECURITY.md) |
@@ -19,10 +23,11 @@ Deep dives into system design and technical decisions.
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE.md](../ARCHITECTURE.md) | System overview — storage, IPC, platform abstraction, data flow |
+| [ARCHITECTURE.md](../ARCHITECTURE.md) | System overview — storage, watcher ownership, IPC surface, platform abstraction, logging, and data flow |
 | [Data model](architecture/data-model.md) | SQLite schema, tantivy index, filesystem layout |
 | [IPC reference](architecture/ipc-reference.md) | All Tauri IPC commands — parameters, return types, usage |
 | [Daemon protocol](architecture/daemon-protocol.md) | TCP JSON-line protocol between app and WSL/macOS daemon |
+| [Logging guidelines](architecture/log-level-guidelines.md) | Structured logging policy and event-level guidance |
 | [Platform abstraction](platform-abstraction.md) | Linux/macOS/Windows dispatch layer |
 | [File rendering pipeline](file-rendering-pipeline.md) | File classification, IPC, caching, and rendering |
 
@@ -39,8 +44,8 @@ Per-feature documentation describing capabilities and behavior.
 | [Session management](features/session-management.md) | CLI session detection, handoffs, activity tracking |
 | [Task board](features/task-board.md) | Cross-tool task aggregation and kanban display |
 | [Command center](features/command-center.md) | CLI tool launch, stop, resume, and terminal integration |
-| [Mesh view](features/mesh.md) | Multi-agent team setup, live roster, and coordination |
-| [First run and settings](features/first-run-and-settings.md) | Onboarding wizard and application preferences |
+| [Mesh view](features/mesh.md) | Multi-agent team setup, live roster, coordination, and recovery |
+| [First run and settings](features/first-run-and-settings.md) | Onboarding wizard, scan/ignore settings, and application preferences |
 
 ## UI
 

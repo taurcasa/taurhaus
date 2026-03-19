@@ -2,9 +2,14 @@
 
 A condensed overview for contributors. For detailed references, see the [docs/ index](docs/README.md).
 
+This document is the system-level overview.
+
+- Use [`docs/architecture/data-architecture.md`](docs/architecture/data-architecture.md) for the authoritative data-store inventory, ownership boundaries, and authority rules.
+- Use [`docs/coordination-architecture.md`](docs/coordination-architecture.md) for coordination subsystem decisions, invariants, recovery semantics, and runtime behavior.
+
 ## System Overview
 
-taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles WSL-side process scanning, tmux session management, and WSL file watching when the app is bridging into Linux workspaces, communicating with the app over TCP (JSON-line protocol on localhost:17233).
+taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles WSL-side process scanning, tmux session management, and WSL file watching only when the app is bridging into Linux workspaces, communicating with the app over TCP (JSON-line protocol on localhost:17233).
 
 The daemon can run on all supported platforms, but it is only responsible for watch/process work that the app cannot do directly:
 
@@ -13,7 +18,7 @@ The daemon can run on all supported platforms, but it is only responsible for wa
 
 ![System Architecture](docs/images/system-architecture.jpg)
 
-_Note: this infographic is stale and needs regeneration. The current codebase uses 89 IPC commands, and native/local file watching is app-owned rather than daemon-owned on all platforms._
+_Note: this infographic is stale and needs regeneration. The current codebase uses 85 IPC commands, and native/local file watching is app-owned rather than daemon-owned on all platforms._
 
 ## Platform Abstraction
 
@@ -42,7 +47,12 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | Component | Purpose |
 |-----------|---------|
 | `App.svelte` | Entry point, splash screen gate |
-| `Shell.svelte` | Main layout: titlebar, tab routing, theme, position memory |
+| `Shell.svelte` | Shell coordinator: project loading, navigation state, daemon/session wiring, and tab composition |
+| `src/lib/components/shell/ShellTitlebar.svelte` | Titlebar tabs, search, theme toggle, and window controls |
+| `src/lib/components/shell/ShellMainPanel.svelte` | Main panel shell, banners, and tab-panel host |
+| `src/lib/shell/shortcuts.svelte.js` | Keyboard shortcut wiring for search and history navigation |
+| `src/lib/shell/tmuxFocus.js` | Foreground tmux focus normalization and project resolution helpers |
+| `src/lib/shell/window.js` | Tauri window controls and startup viewport sync |
 | `Sidebar.svelte` | Project list, session indicators, context menu, hover cards |
 | `src/lib/OverviewTab.svelte` | Project summary, README, recent commits, sessions |
 | `src/lib/FilesTab.svelte` | File tree with syntax-highlighted code preview |
@@ -68,6 +78,8 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 - **Derived theme tokens** — all color switching via `$derived` variables, never inline ternaries
 - **`$bindable` position memory** — each tab exposes view state, Shell saves/restores per project
 - **IPC layer** — `src/lib/ipc.js` is a thin compatibility re-export; the real Tauri `invoke()` wrappers and mock fallbacks live under `src/lib/ipc/`
+- **Accessibility primitives** — modal isolation, focus traps, keyboard navigation, and ARIA semantics are centralized instead of per-component one-offs
+- **Shared error copy** — error and empty-state wording is funneled through `errorCopy.js` helpers instead of ad hoc string assembly
 - **Visual testing lane** — Browser Mode screenshots live under `src/test/visual/`; a plain Vite fixture host lives at `visual-host.html`
 
 ## Backend (Rust)
@@ -92,15 +104,20 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `provider/` | Concrete provider implementations plus path translation and `PlatformPaths` root authority |
 | `project_provider.rs` | Shared `ProjectProvider` trait and provider selection boundary |
 | `services/` | Cross-cutting services: relationships, scanner, project utilities, session import |
+| `services/scan_policy.rs` | Shared settings-backed scan/index policy for discovery and indexing |
 | `models/` | Shared data structures (Project, Session, ActivityState, etc.) |
 | `config/` | Application configuration |
 | `coordination/` | Multi-CLI team orchestration (behind `mesh-bridged-backend` feature flag) |
+| `coordination/runtime/` | Split runtime surface for system, tmux, process, and recording concerns |
+| `coordination/stall_detector/` | Extracted diagnostics, decisions, and signal-source helpers for stall detection |
 | `startup/` | Startup sequence orchestration (DB init, daemon connect, watcher/index bootstrap, task/session hydration) |
+| `startup/setup.rs`, `startup/telemetry.rs`, `startup/orchestration.rs` | Split startup path resolution, startup logging, and orchestration phases |
 | `templates/adapters.rs` | Role import/export adapters, provenance, and field-mapping rules for external agent formats |
 | `sentinels.rs` | Shared sentinel/fallback utilities used by startup and command flows |
 | `event_processor.rs` | File/git event batching (300ms quiet window, 2s ceiling) |
 | `daemon_lifecycle.rs` | Daemon auto-launch, reconnection, shutdown |
 | `watch_targets.rs` | Activity-based planning for local and daemon watch reconciliation |
+| `tmux_layout.rs` | Shared tmux pane/window layout policy used by command-center and coordination runtime code |
 
 The crate enforces `#![deny(unsafe_code)]` — the single exception (libgit2 init) uses a scoped `#[allow]`.
 
@@ -122,7 +139,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (89)
+### IPC Commands (85)
 
 Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
 
@@ -133,13 +150,13 @@ Grouped by command module:
 - **Search** (3): search, rebuild, index status
 - **Sessions** (3): list/latest/detail
 - **Relationships** (4): list/create/dismiss/remove
-- **Command Center** (6): launch/stop/navigate/list/record activity
+- **Command Center** (7): launch/stop/navigate/list/record activity/get project activity/get foreground project
 - **Tasks** (6): board data + detail + archive + commit context helpers
 - **Daemon** (5): platform/status/start/install checks
 - **Mesh install** (2): check/install mesh binary
 - **Settings** (2): get/update
 - **Coordination** (15): team lifecycle + member lifecycle + live status + snapshot + preflight/availability
-- **Templates** (14): role/preset CRUD, composition, storage status, history/diff/revert/flush
+- **Templates** (16): role/preset CRUD, import/export, composition, storage status, history/diff/revert/flush
 - **Logging** (1): frontend `console.*` is bridged to `frontend_log` IPC with structured payloads. Backend emits structured events into a JSONL sink at `taurhaus.log.jsonl`.
 
 ### Logging and Observability
@@ -155,6 +172,10 @@ Logging is structured and machine-first:
   - startup phases: `startup.phase.started/completed/failed`
   - IPC lifecycle: `ipc.command.received/completed/failed`, `ipc.lock.wait`
   - daemon RPC lifecycle: `daemon.rpc.sent/response/timeout`
+  - coordination step lifecycle: `coordination.step.started/completed/failed`
+  - coordination audit stream: `coordination.audit.*`
+  - project mutation and reseed outcomes: `projects.*`, `projects.reseed.degraded`
+  - watch/index activity: `watch.batch.flushed`, `watch.git_status.*`, `search.file_index.*`
 
 Correlation model used across events:
 
@@ -180,9 +201,10 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Mesh daemon hot-swap**: mesh installs are version-aware. Member daemon reconciliation checks executable identity and automatically replaces drifted daemons; bounded background self-heal does the same for drifted team-daemons, so normal upgrades do not require a manual `team-daemon stop/start/restart-all` cycle.
 - **Runtime responsiveness**: Mesh steady-state polling stays on the fast snapshot path, and the frontend suspends hidden-tab refresh work, which avoids switch-away stalls and reduces Windows popup latency during runtime navigation.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude. Codex/Gemini leads currently validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
-- **Compaction reinjection**: Codex compaction now runs through an event-driven path: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox only when the operational snapshot still has resumable task context. Claude uses a `SessionStart(source=compact)` hook bridge that installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, returns `hookSpecificOutput.additionalContext`, and logs standalone hook execution into the canonical JSONL sink.
+- **Compaction reinjection**: When a managed agent loses context (compaction), taurhaus detects this, resolves which team member was affected, and re-delivers their working context to the team inbox. The pipeline has three stages: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox only when the operational snapshot still has resumable task context. Claude uses a `SessionStart(source=compact)` hook bridge that installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, returns `hookSpecificOutput.additionalContext`, and logs standalone hook execution into the canonical JSONL sink.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model. `MeshRuntimeBar` is also the shipped cold-restart/degraded recovery surface for team resume.
+- **Current recovery status**: shipped resume/recovery flows are live and covered by dedicated E2E specs. Broader degraded-path polish noted in tasks `#1344-#1346` is still in flight.
 
 See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
 
@@ -237,6 +259,9 @@ The terminal module manages launching and focusing terminal emulators with the c
 |----------|-----------|---------|
 | Windows | Windows Terminal | `wt.exe -w taurhaus` |
 | macOS | iTerm2, Ghostty, Terminal.app | iTerm2 (auto-detect fallback) |
+| Linux | manual attach / custom CLI contract | manual |
+
+Terminal defaults and supported emulators are now carried through a shared runtime terminal contract in settings, so the frontend, backend, and tests resolve from the same platform authority.
 
 macOS uses event-driven AppleScript to handle click-to-activate focus transitions reliably.
 
@@ -248,6 +273,12 @@ File system events from `notify` arrive in rapid bursts (5–8 events per file e
 - **Max-wait ceiling** (2s): batch flushes regardless after 2s, preventing starvation
 
 Result: one `project-files-changed` Tauri event per edit instead of 5–8. The frontend listener in Shell.svelte dispatches to the active tab via reactive props.
+
+The watch ownership model is now:
+
+- **Native/local projects**: app-owned `notify` watcher with pre-pruned directory registration and `.gitignore` rebuild support
+- **WSL projects on Windows**: daemon watch bridge for file/git/session-file events
+- **Auxiliary watches**: app-owned task-directory and tmux-focus watches bootstrapped from `startup/watchers.rs`
 
 ### Recent Performance Improvements
 
@@ -288,7 +319,7 @@ The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`)
 6. **Search index** — build tantivy index from filesystem if empty
 7. **Task scan** — seed task database from live CLI tool sources
 
-Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. The watch bootstrap also ensures the dedicated Claude task-directory watch. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
+Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. The watch bootstrap also ensures the dedicated Claude task-directory watch and tmux-focus watch. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
 
 Claude task-directory watching follows the same override rules: default `~/.claude/tasks`, or `<TAURHAUS_CLAUDE_DIR>/tasks` when `TAURHAUS_CLAUDE_DIR` is set.
 
@@ -307,6 +338,7 @@ User clicks project
 File changes detected
   → Native/local projects: app-owned `notify` watcher detects change
   → WSL projects: daemon watch bridge emits `file_changed` / `git_changed`
+  → Shared scan/index policy applies saved ignore patterns during discovery and reindex
   → App updates tantivy index + refreshes affected views
 
 CLI session state changes
@@ -324,6 +356,7 @@ All builds use `just` recipes. Both Windows and macOS builds happen natively on 
 
 ```bash
 just dev              # Tauri dev mode (hot-reload)
+just dev-frontend     # Frontend-only dev server
 just build-windows    # Sync to D:\, then run the native Windows NSIS build via PowerShell
 just build-windows-sccache # Same as build-windows, but with Windows-side sccache auto-detection
 just install-windows  # Silent-install the latest Windows NSIS build and verify installed exe hash
@@ -334,6 +367,8 @@ just check            # Full gate: fmt + lint + typecheck + just test
 just test             # All non-E2E tests (Rust + frontend)
 just test-fast        # Fast lane: cargo check --tests + frontend tests
 just test-visual      # Browser-mode visual screenshot lane for mocked component states
+just test-e2e         # Linux Tier 1 E2E suite
+just test-e2e-full    # Linux Tier 1 + Tier 2 E2E suite
 just metrics          # Quality KPI report snapshot
 just test-macos       # Run Rust tests on Mac Mini via SSH
 ```

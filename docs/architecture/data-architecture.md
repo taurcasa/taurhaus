@@ -1,8 +1,20 @@
 # Data Architecture
 
-This document is the authoritative data architecture reference for Taurhaus as of `v0.5.8+`.
+This document is the authoritative data architecture reference for Taurhaus as of `v0.5.10+`.
 
 It complements [data-model.md](./data-model.md), which still covers the SQLite schema and search index in detail, but does not fully describe the live coordination/runtime filesystem model that Taurhaus now depends on.
+
+This document is the authoritative active reference for:
+
+- current persistent-store inventory
+- ownership boundaries and authority levels
+- coordination filesystem truth vs derived state
+
+Neighboring docs have narrower jobs:
+
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): top-level system overview and module map
+- [`../coordination-architecture.md`](../coordination-architecture.md): coordination design decisions, invariants, and runtime behavior
+- [`data-model.md`](./data-model.md): SQLite schema and search-index structure
 
 ## Scope
 
@@ -243,79 +255,20 @@ Key point:
 - content truth remains the filesystem and git
 - SQLite/search are optimized projections
 
-## Current Documentation Audit
+## Documentation Boundaries
 
-### Accurate But Incomplete
-
-#### `docs/architecture/data-model.md`
-
-Accurate on:
-
-- SQLite tables
-- tantivy index
-- high-level filesystem truth model
-
-Incomplete on:
-
-- `runtime/*.json` now includes `session_id`, `jsonl_path`, `daemon_pid`, delivery lease, and health semantics
-- `state/operational/` is not documented
-- `state/compaction/` is significantly under-documented
-- the authoritative/derived split across config/runtime/scanner/signal state is not explicit enough
-
-#### `ARCHITECTURE.md`
-
-Accurate on:
-
-- overall module map
-- dual-process app/daemon overview
-- high-level coordination direction
-
-Incomplete on:
-
-- precise ownership matrix for live data stores
-- distinction between app DB/search state and coordination filesystem state
-- transcript/signal/operational snapshot roles
-
-#### `docs/coordination-architecture.md`
-
-Accurate on:
-
-- major decisions and invariants
-- config vs runtime split
-- filesystem-first coordination stance
-
-Incomplete on:
-
-- concrete inventory of all currently shipped coordination store files
-- operational snapshot and compaction signal stores as first-class entries
-- relationship to SQLite/search/app-data stores
-
-### Stale or Risky Simplifications
-
-1. The older “three storage layers” framing is too narrow for current Taurhaus.
-   - it captures app metadata/content/search
-   - it does not capture live coordination/master-data state
-
-2. “SQLite is source of truth for structured data” is only locally true for app metadata.
-   - it is false for live coordination/team runtime data
-
-3. “Coordination storage” described as only `config.json` plus `runtime/` is no longer sufficient.
-   - current implementation also depends on inboxes, operational snapshots, compaction state, signal logs, and watcher/extractor checkpoints
-
-## Recommended Documentation Shape
-
-Going forward, docs should keep this split:
+Active documentation now follows this split:
 
 1. `docs/architecture/data-architecture.md`
    - authoritative inventory and ownership model
 2. `docs/architecture/data-model.md`
    - detailed SQLite + search schema reference
 3. `docs/coordination-architecture.md`
-   - decisions, invariants, and subsystem rationale
-4. topic-specific docs
-   - compaction pipeline, path handling, daemon protocol, etc.
+   - coordination decisions, invariants, and runtime semantics
+4. `ARCHITECTURE.md`
+   - system overview and module map
 
-That keeps one place for “what data exists and who owns it” without forcing every subsystem doc to repeat the whole store model.
+The point-in-time reconciliation audit that led to this split is archived in [`../archive/architecture/architecture-doc-reconciliation-notes-2026-03-19.md`](../archive/architecture/architecture-doc-reconciliation-notes-2026-03-19.md).
 
 ## Contributor Rules
 

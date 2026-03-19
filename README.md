@@ -19,6 +19,7 @@ taurhaus is built for exactly that situation:
 - **See what's running** — live session status for every project, grouped by activity, with hover previews and quick actions.
 - **Get back up to speed** — README previews, recent commits, task history, session handoffs, and full-text search across everything.
 - **Run Mesh teams** — set up multi-agent teams, watch them work, add or remove members on the fly, and recover when things go sideways.
+- **Tune discovery and launch behavior** — configure which directories to scan, what to ignore, and how terminals launch — your settings actually control how the app behaves, not just what it displays.
 
 ## Core workflows
 
@@ -74,13 +75,13 @@ The setup flow lets you define a lead plus agents across different tools and pro
 
 Once running, taurhaus shows each team member as a node on a canvas — their status, their tool, what they're focused on — with actions available on each one.
 
-The runtime also surfaces recent compaction reinjection outcomes, so you can see when Taurhaus restored operational context after an agent compacted.
+The runtime view also shows when agents lost context and had it restored, and tracks how team actions are progressing.
 
 ![Mesh runtime canvas](docs/screenshots/readme-mesh-runtime-canvas.png)
 
 ### Recover when things break
 
-Restarts happen. Agents crash. Taurhaus detects these situations and gives you clear options to resume individual members or restart the whole team, instead of leaving you to sort it out manually.
+Restarts happen. Agents crash. taurhaus detects these situations and gives you clear options to resume individual members or restart the whole team, instead of leaving you to sort it out manually. Some edge cases in recovery are still being polished, but the core resume and recovery features are shipped and tested.
 
 ![Mesh recovery and resume](docs/screenshots/readme-mesh-recovery-resume.png)
 
@@ -133,7 +134,7 @@ On Windows, taurhaus expects the CLI tools to run inside **WSL2**.
    wsl --shutdown
    ```
 
-Mirrored networking is needed because the Windows app talks to a daemon running inside WSL over localhost.
+Mirrored networking is needed because the Windows app talks to a helper service running inside WSL over localhost.
 
 ### macOS prerequisites
 
@@ -154,7 +155,7 @@ On macOS:
 - **Windows**: download `taurhaus_x.x.x_x64-setup.exe` from [Releases](../../releases) and run the installer.
 - **macOS**: download the DMG from [Releases](../../releases), move taurhaus to Applications, and launch it.
 
-On first launch, taurhaus checks whether the bundled daemon needs to be installed or updated, walks you through project discovery, and transitions you into the main app once registration finishes.
+On first launch, taurhaus checks whether its helper service needs to be installed or updated, walks you through project discovery, and transitions you into the main app once registration finishes.
 
 > macOS note: if Gatekeeper blocks the app on first launch, right-click it in Applications, choose **Open**, and confirm once.
 
@@ -168,11 +169,13 @@ If your shell startup scripts prompt for input, they can block automated session
 
 The first-run wizard walks through:
 
-1. daemon install/update check
+1. helper service install/update check
 2. project discovery
 3. project selection
 4. registration progress
 5. transition into the main app
+
+Your scan and ignore settings from the Settings panel apply to the wizard too — the same directories and exclusions are used everywhere.
 
 ### Quick start
 
@@ -207,6 +210,8 @@ just check-quick      # fast implementation gate
 just test-fast        # quick Rust compile + frontend unit lane
 just test             # full non-E2E test lane
 just test-visual      # browser-mode visual screenshot lane
+just test-e2e         # Linux Tier 1 E2E lane
+just test-e2e-full    # Linux Tier 1 + Tier 2 E2E lane
 just build-daemon     # build the daemon binary only
 just install-daemon   # install or update the daemon in ~/.local/bin
 just build-mesh       # build the mesh CLI from the local mesh workspace
@@ -224,6 +229,7 @@ Contributor notes:
 - treat `just check` as the full gate for releases
 - run Vitest from the project root, not `src-tauri/`
 - use `just` recipes for daemon and mesh installs instead of ad hoc copy steps
+- high-traffic E2E coverage now includes first-run wizard, command center real actions, session management, and mesh recovery
 
 Further reading:
 
@@ -239,9 +245,11 @@ Further reading:
 Taurhaus is a native desktop app with two parts:
 
 - a **Tauri application** that handles the UI, storage, git, and search
-- a **lightweight daemon** that scans for running processes, watches files, manages tmux sessions, and maintains foreground/session activity state
+- a **lightweight daemon** that scans for running processes, manages tmux sessions, bridges WSL-side watch/process work when needed, and maintains foreground/session activity state
 
 On Windows, the daemon runs inside WSL2. On macOS, it runs as a native subprocess.
+
+Native/local project file watching is app-owned. The daemon only takes the watch bridge role when taurhaus is supervising WSL-backed workspaces from Windows.
 
 This keeps taurhaus plugged into your actual local dev environment instead of wrapping everything in a cloud layer.
 

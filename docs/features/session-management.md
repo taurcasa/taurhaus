@@ -4,26 +4,14 @@ Session management detects live AI CLI tool sessions, maps them to projects, and
 
 ## Overview
 
-taurhaus session management has three layers:
-- Runtime detection of active/idle CLI sessions (Claude, Codex, Gemini)
+taurhaus automatically detects running AI sessions (Claude Code, Codex, Gemini CLI), shows their status in the sidebar, and preserves session history for later context.
+
+When a session is actively working, you see a green indicator. When it's waiting for input, it turns amber. Hover over a project to see session details; click a tool icon to jump to that terminal.
+
+Session management has three layers:
+- Runtime detection of active/idle CLI sessions
 - UI surfacing in sidebar indicators, hover cards, and overview/session history views
 - Handoff and activity persistence for historical context
-
-The runtime scanner is process-based and tool-aware, with explicit hysteresis to avoid flickering state changes. The code now separates UI-safe session delivery from transcript-aware runtime correlation.
-
-## Runtime delivery model
-
-Session state delivery is event-driven above the daemon:
-- The daemon maintains UI-safe `DisplaySession` snapshots for sidebar and session surfaces.
-- The daemon exposes those snapshots through `list_display_sessions` and versioned `wait_session_updates` long-poll responses.
-- App backend bridge (`start_session_updates_bridge`) long-polls daemon updates and emits frontend `sessions-updated` events.
-- Frontend session store applies those events and drives sidebar/hover indicators reactively.
-- On startup, frontend runs a one-shot `listClaudeSessions()` hydrate to avoid waiting for the first delta event.
-
-Transcript-aware consumers do not use `DisplaySession`:
-- task sync, compaction extraction, and coordination runtime matching use `RuntimeSession`
-- `RuntimeSession` keeps transcript metadata such as `session_id` and `jsonl_path`
-- `DisplaySession` intentionally strips that metadata before UI delivery
 
 ## Supported tools
 
@@ -39,39 +27,13 @@ Each tool has:
 
 ## Session identity persistence for task history
 
-Task history groups archived work by `session_id`. For Codex and Gemini, taurhaus now persists stable session identity directly from transcript metadata instead of relying only on file names:
+Task history groups archived work by session. Each tool's sessions are tracked using stable identifiers so that history grouping stays consistent even when sessions are resumed or renamed.
 
-- Codex (`task_scanner/codex.rs`):
-  - source/session key is extracted from JSONL metadata (`payload.id`, `sessionId`, or `payload.sessionId`)
-  - filename stem is used only as fallback
-  - persisted task records store `session_id = source_key`
-- Gemini (`task_scanner/gemini.rs`):
-  - source/session key is derived from Gemini chat JSON session metadata when available
-  - fallback remains chat filename stem or default gemini source key
-  - persisted task records store `session_id = source_key`
+## Session detection
 
-This makes cross-scan grouping stable for non-Claude tools and improves commit-window enrichment consistency.
-
-## Session detection pipeline
+taurhaus scans for running tool processes and matches them to your registered projects. Detection is automatic — you don't need to configure anything.
 
 ![Session Detection Pipeline](../images/session-detection.jpg)
-
-Detection sequence:
-1. Scan processes (`ps -eo pid,args`) and detect known tool command signatures.
-2. Enrich each process with CWD and TTY via platform APIs.
-3. Resolve tool-specific idle/activity signals.
-4. Merge with process-level activity signals (tool-dependent).
-5. Apply bidirectional hysteresis before reporting state.
-6. Deduplicate duplicate shim/native process pairs per `(tty, cli_tool)`.
-
-CWD matching and project association:
-- Scanner records each process `project_path` from process CWD.
-- Frontend session state is keyed by normalized `project_path`.
-- Sidebar rows query sessions by each registered project path, effectively associating sessions to registered projects by path match.
-
-Process dedup behavior:
-- Sessions are sorted by PID descending.
-- For duplicate `(tty, cli_tool)` entries, taurhaus keeps the highest PID (typically the native child process, not launcher shim).
 
 ## Diagrams
 
@@ -181,8 +143,14 @@ Session History timeline view:
 Activity statistics:
 - Frontend tracks per-session active/total ticks per session-store update tick.
 - In Tauri, update ticks are event-driven daemon snapshots; in mock mode, ticks come from frontend polling.
+- Persisted activity durations use the active update interval in force for that tracker, so active/total time stays accurate across both mock-mode polling and slower Tauri fallback polling.
 - On session disappearance, it persists session activity metrics.
 - HoverCard reads aggregated project activity stats for historical context.
+
+Indicator visibility is conditional:
+- sidebar tool indicators render only when a tool has a live session for that project
+- indicator click-to-navigate is enabled only when tmux metadata is available
+- stale-presence sessions use a distinct stale treatment instead of pretending the session is currently live
 
 ## Key files
 
@@ -210,6 +178,10 @@ Activity statistics:
 | `src-tauri/src/session/parser.rs` | Handoff markdown/frontmatter + sidecar parser |
 | `src-tauri/src/services/session_import.rs` | Handoff import and dedup into sessions table |
 | `src-tauri/src/commands/sessions.rs` | Session summary/list/detail IPC for overview |
+
+## Technical details
+
+For implementation-level detail on the session detection pipeline, runtime delivery model (DisplaySession vs RuntimeSession), daemon long-poll bridge, process dedup, and session identity extraction from JSONL metadata, see the [Session Scanner section in ARCHITECTURE.md](../../ARCHITECTURE.md#session-scanner).
 
 ## Related documents
 
