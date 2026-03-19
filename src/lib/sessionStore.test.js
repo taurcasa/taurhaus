@@ -361,6 +361,30 @@ describe('sessionStore', () => {
     expect(s._activePercent).toBe(100) // all ticks were active
   })
 
+  it('uses the configured mock polling interval for exact active duration math', async () => {
+    const session = { pid: 910, project_path: '/proj-mock-interval', state: 'active', tty: '/dev/pts/14', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling({ intervalMs: 500 })
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(500)
+
+    const tracked = store.getSessionForProject('/proj-mock-interval')
+    expect(tracked._activeMs).toBe(1000)
+  })
+
+  it('uses the configured tauri polling interval for exact active duration math', async () => {
+    const session = { pid: 920, project_path: '/proj-tauri-interval', state: 'active', tty: '/dev/pts/15', args: 'claude', cli_tool: 'claude' }
+    ipc.listClaudeSessions.mockResolvedValue([session])
+    store.startPolling({ intervalMs: 5000 })
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(5000)
+
+    const tracked = store.getSessionForProject('/proj-tauri-interval')
+    expect(tracked._activeMs).toBe(10000)
+  })
+
   it('computes _activePercent as ratio of active to total ticks', async () => {
     const session = { pid: 1000, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
@@ -474,6 +498,31 @@ describe('sessionStore', () => {
       expect.any(String),
       1000,
       1000,
+    )
+  })
+
+  it('persists exact active duration using the configured tauri polling interval when a session disappears', async () => {
+    const session = { pid: 1330, project_path: '/proj-tauri-persist', state: 'active', tty: '/dev/pts/16', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-tauri-persist-id', path: '/proj-tauri-persist' }])
+    ipc.listClaudeSessions
+      .mockResolvedValueOnce([session])
+      .mockResolvedValueOnce([session])
+      .mockResolvedValue([])
+
+    store.startPolling({ intervalMs: 5000 })
+
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(5000)
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledTimes(1)
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-tauri-persist-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
+      10000,
+      10000,
     )
   })
 

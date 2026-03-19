@@ -141,8 +141,8 @@ function flushTrackedActivity(trackersToFlush) {
     if (!tracker || tracker.totalTicks <= 0) continue
 
     const startedAt = new Date(tracker.firstSeen).toISOString()
-    const activeDurationMs = tracker.activeTicks * POLL_INTERVAL_MS
-    const totalDurationMs = tracker.totalTicks * POLL_INTERVAL_MS
+    const activeDurationMs = tracker.activeTicks * activePollIntervalMs
+    const totalDurationMs = tracker.totalTicks * activePollIntervalMs
 
     flushes.push(persistSessionActivity(
       tracker,
@@ -225,7 +225,7 @@ function applySessions(result) {
 
     // Enrich session object with computed fields
     session._duration = now - tracker.firstSeen
-    session._activeMs = tracker.activeTicks * POLL_INTERVAL_MS
+    session._activeMs = tracker.activeTicks * activePollIntervalMs
     session._activePercent = tracker.totalTicks > 0
       ? Math.round((tracker.activeTicks / tracker.totalTicks) * 100)
       : 0
