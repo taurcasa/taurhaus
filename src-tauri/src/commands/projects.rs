@@ -670,6 +670,12 @@ pub fn register_projects_batch(
         Ok(results) => {
             let success_count = results.iter().filter(|result| result.success).count() as u64;
             let failure_count = results.len() as u64 - success_count;
+            if success_count > 0 {
+                crate::startup::watchers::reconcile_activity_watches(
+                    &app,
+                    "project_batch_register",
+                );
+            }
             for item in results.iter().filter(|item| !item.success) {
                 let mut fields = Map::new();
                 fields.insert("path".to_string(), Value::String(item.path.clone()));

@@ -5,7 +5,55 @@
  * discovered.
  */
 
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
+import { selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
+import { TAURHAUS_CLAUDE_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
+import { POLL, WAIT_MEDIUM } from '../helpers/timing.js'
+
+const REGRESSION_STAMP = Date.now()
+const REGRESSION_TEAM = `event-pipeline-team-${REGRESSION_STAMP}`
+const TASK_SUBJECT = `Regression task ${REGRESSION_STAMP}`
+const README_MARKER = `event-pipeline-readme-${REGRESSION_STAMP}`
+
+function writeRegressionTask(teamName, projectPath, subject) {
+  const teamDir = join(TAURHAUS_CLAUDE_DIR, 'teams', teamName)
+  const tasksDir = join(TAURHAUS_CLAUDE_DIR, 'tasks', teamName)
+  mkdirSync(teamDir, { recursive: true })
+  mkdirSync(tasksDir, { recursive: true })
+  writeFileSync(
+    join(teamDir, 'config.json'),
+    JSON.stringify(
+      {
+        name: teamName,
+        members: [{ projectPath }],
+      },
+      null,
+      2
+    ),
+    'utf8'
+  )
+  writeFileSync(
+    join(tasksDir, '1.json'),
+    JSON.stringify(
+      {
+        id: '1',
+        subject,
+        status: 'pending',
+      },
+      null,
+      2
+    ),
+    'utf8'
+  )
+}
+
+function cleanupRegressionTask(teamName) {
+  rmSync(join(TAURHAUS_CLAUDE_DIR, 'teams', teamName), { recursive: true, force: true })
+  rmSync(join(TAURHAUS_CLAUDE_DIR, 'tasks', teamName), { recursive: true, force: true })
+}
 
 describe('Regressions', () => {
   let mainApp = false
@@ -104,6 +152,87 @@ describe('Regressions', () => {
         return this.skip()
       }
       expect(hasRule).toBe(true)
+    })
+  })
+
+  describe('event pipeline live coverage (commit a53ad31 regression)', () => {
+    // Regression: commit a53ad31 removed tmux focus hook installation during
+    // the session-control cleanup, so tmux window switches no longer updated
+    // tmux-focus.json or the sidebar foreground indicator. The earlier #1364
+    // follow-up misdiagnosed the issue as a frontend listener problem because
+    // it never verified the running app end to end.
+    //
+    // The tmux producer path is now covered in Rust plus attached-client
+    // manual verification. This E2E block keeps the live file and task update
+    // paths honest in the packaged app without a page reload.
+
+    const readmePath = join(TAURHAUS_PROJECT_PATH, 'README.md')
+    let originalReadme = null
+
+    before(async () => {
+      if (!mainApp) return
+
+      await waitForProjectsLoaded()
+      originalReadme = readFileSync(readmePath, 'utf8')
+    })
+
+    after(async () => {
+      cleanupRegressionTask(REGRESSION_TEAM)
+      if (originalReadme !== null) {
+        writeFileSync(readmePath, originalReadme, 'utf8')
+      }
+    })
+
+    it('refreshes README content after a live file edit without reloading the app', async function () {
+      if (!mainApp) return this.skip()
+
+      await selectProjectByName('taurhaus')
+      await switchToTab('overview')
+      await browser.waitUntil(
+        async () => (await $('[data-testid="overview-readme"]')).isExisting(),
+        { ...WAIT_MEDIUM, timeoutMsg: 'Overview README section did not render' }
+      )
+
+      if (!originalReadme.includes(README_MARKER)) {
+        writeFileSync(readmePath, `${originalReadme}\n\n${README_MARKER}\n`, 'utf8')
+      }
+
+      await browser.waitUntil(
+        async () => {
+          return await browser.execute((marker) => {
+            const text = document.querySelector('[data-testid="overview-readme"]')?.textContent || ''
+            return text.includes(marker)
+          }, README_MARKER)
+        },
+        { timeout: 20_000, interval: POLL, timeoutMsg: 'Overview README did not refresh after file edit' }
+      )
+    })
+
+    it('refreshes the active task board after a live Claude task file appears', async function () {
+      if (!mainApp) return this.skip()
+
+      await selectProjectByName('taurhaus')
+      await switchToTab('tasks')
+
+      writeRegressionTask(REGRESSION_TEAM, TAURHAUS_PROJECT_PATH, TASK_SUBJECT)
+
+      await browser.waitUntil(
+        async () => {
+          return await browser.execute((expectedSubject) => {
+            return Array.from(document.querySelectorAll('[data-testid="task-row"]')).some(
+              (row) => row.textContent?.includes(expectedSubject)
+            )
+          }, TASK_SUBJECT)
+        },
+        { timeout: 20_000, interval: POLL, timeoutMsg: 'Task board did not refresh after Claude task file change' }
+      )
+
+      const taskText = await browser.execute(() => {
+        return Array.from(document.querySelectorAll('[data-testid="task-row"]'))
+          .map((row) => row.textContent?.trim() ?? '')
+          .join('\n')
+      })
+      expect(taskText).toContain(TASK_SUBJECT)
     })
   })
 })

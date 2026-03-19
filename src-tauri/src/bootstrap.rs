@@ -100,6 +100,7 @@ pub(crate) fn startup_reseed_activity(app: &AppHandle) {
 
     if updated > 0 {
         tracing::info!(updated, "Re-seeded activity timestamps from git");
+        crate::startup::watchers::reconcile_activity_watches(app, "startup_reseed");
     }
 
     // Notify frontend that cached git data is now fresh — it may have loaded

@@ -498,6 +498,7 @@ fn ensure_taurhaus_session() -> Result<String, String> {
     // even if the tmux server started before these were set in the shell.
     propagate_env_to_tmux();
     remove_legacy_tmux_focus_hooks();
+    install_tmux_focus_hooks();
 
     Ok(TMUX_SESSION_NAME.to_string())
 }
@@ -528,7 +529,65 @@ fn propagate_env_to_tmux() {
     }
 }
 
+fn install_tmux_focus_hooks() {
+    let Some(focus_path) = default_tmux_focus_path() else {
+        tracing::debug!(
+            "Skipping tmux focus hook installation; tmux focus path could not be resolved"
+        );
+        return;
+    };
+
+    ensure_tmux_focus_hooks_for_path(&focus_path);
+}
+
+pub(crate) fn ensure_tmux_focus_hooks_for_path(focus_path: &Path) {
+    ensure_tmux_focus_file_exists(focus_path);
+    tracing::info!(
+        path = %focus_path.display(),
+        "Ensuring tmux focus hooks for focus file"
+    );
+
+    let attached_hook = build_tmux_focus_hook_command(focus_path);
+    let detached_hook = build_tmux_focus_detached_hook_command(focus_path);
+    for (hook_name, hook_command) in [
+        ("after-select-window", attached_hook.as_str()),
+        ("session-window-changed", attached_hook.as_str()),
+        ("client-session-changed", attached_hook.as_str()),
+        ("client-detached", detached_hook.as_str()),
+    ] {
+        match tmux_command()
+            .args(["set-hook", "-g", hook_name, hook_command])
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                tracing::debug!(
+                    hook = hook_name,
+                    path = %focus_path.display(),
+                    "Installed tmux focus hook"
+                );
+            }
+            Ok(output) => {
+                tracing::warn!(
+                    hook = hook_name,
+                    path = %focus_path.display(),
+                    stderr = %String::from_utf8_lossy(&output.stderr),
+                    "Failed to install tmux focus hook"
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    hook = hook_name,
+                    path = %focus_path.display(),
+                    error = %error,
+                    "Failed to execute tmux focus hook installation"
+                );
+            }
+        }
+    }
+}
+
 pub(crate) fn remove_legacy_tmux_focus_hooks() {
+    let focus_path = default_tmux_focus_path();
     let output = match tmux_command().args(["show-hooks", "-g"]).output() {
         Ok(output) => output,
         Err(error) => {
@@ -549,7 +608,7 @@ pub(crate) fn remove_legacy_tmux_focus_hooks() {
     }
 
     let hooks = String::from_utf8_lossy(&output.stdout);
-    for hook_name in legacy_tmux_focus_hook_names(&hooks) {
+    for hook_name in legacy_tmux_focus_hook_names(&hooks, focus_path.as_deref()) {
         match tmux_command()
             .args(["set-hook", "-gu", &hook_name])
             .output()
@@ -578,7 +637,6 @@ pub(crate) fn remove_legacy_tmux_focus_hooks() {
     }
 }
 
-#[cfg(test)]
 fn ensure_tmux_focus_file_exists(focus_path: &Path) {
     if !focus_path.exists() {
         let _ = crate::session_scanner::tmux::write_focus_state(
@@ -588,14 +646,13 @@ fn ensure_tmux_focus_file_exists(focus_path: &Path) {
     }
 }
 
-#[cfg(test)]
 fn default_tmux_focus_path() -> Option<std::path::PathBuf> {
     std::env::var_os("TAURHAUS_DATA_DIR")
         .map(std::path::PathBuf::from)
         .map(|data_dir| crate::session_scanner::tmux::focus_file_path(&data_dir))
 }
 
-fn legacy_tmux_focus_hook_names(show_hooks_output: &str) -> Vec<String> {
+fn legacy_tmux_focus_hook_names(show_hooks_output: &str, focus_path: Option<&Path>) -> Vec<String> {
     show_hooks_output
         .lines()
         .filter_map(|line| {
@@ -603,9 +660,68 @@ fn legacy_tmux_focus_hook_names(show_hooks_output: &str) -> Vec<String> {
                 return None;
             }
 
-            line.split_whitespace().next().map(str::to_string)
+            let mut parts = line.splitn(2, char::is_whitespace);
+            let hook_name = parts.next()?.to_string();
+            let hook_command = parts.next().map(str::trim).unwrap_or_default();
+
+            if is_current_tmux_focus_hook(hook_name.as_str(), hook_command, focus_path) {
+                return None;
+            }
+
+            Some(hook_name)
         })
         .collect()
+}
+
+fn is_current_tmux_focus_hook(
+    hook_name: &str,
+    hook_command: &str,
+    focus_path: Option<&Path>,
+) -> bool {
+    let Some(focus_path) = focus_path else {
+        return false;
+    };
+
+    let expected = if hook_name.starts_with("client-detached") {
+        build_tmux_focus_detached_hook_command(focus_path)
+    } else if hook_name.starts_with("after-select-window")
+        || hook_name.starts_with("session-window-changed")
+        || hook_name.starts_with("client-session-changed")
+    {
+        build_tmux_focus_hook_command(focus_path)
+    } else {
+        return false;
+    };
+
+    hook_command == expected
+}
+
+fn build_tmux_focus_hook_command(focus_path: &Path) -> String {
+    let file = shell_escape(&tmux_shell_path(focus_path));
+    let dir = shell_escape(&tmux_shell_parent_path(focus_path));
+    format!(
+        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}\""
+    )
+}
+
+fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
+    let file = shell_escape(&tmux_shell_path(focus_path));
+    let dir = shell_escape(&tmux_shell_parent_path(focus_path));
+    format!(
+        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file}\""
+    )
+}
+
+fn tmux_shell_parent_path(focus_path: &Path) -> String {
+    focus_path
+        .parent()
+        .map(tmux_shell_path)
+        .unwrap_or_else(|| ".".to_string())
+}
+
+fn tmux_shell_path(path: &Path) -> String {
+    let raw = path.display().to_string();
+    crate::provider::path::to_linux(&raw).unwrap_or(raw)
 }
 
 fn build_tmux_shell_command(project_path: &str, command: &str) -> String {
@@ -907,10 +1023,10 @@ after-select-window[0] run-shell -b "mkdir -p '/mnt/c/Users/me/AppData/Roaming/c
 after-new-window[0] run-shell -b "echo keep-me"
 client-detached[0] run-shell -b "printf '%s\n' '{"session":null}' > '/tmp/tmux-focus.json'"
 client-session-changed[0] run-shell -b "printf '%s\n' '{"session":"#{session_name}"}' > '/mnt/c/Users/me/AppData/Roaming/com.taurhaus.dev/tmux-focus.json'"
-"##;
+        "##;
 
         assert_eq!(
-            legacy_tmux_focus_hook_names(hooks),
+            legacy_tmux_focus_hook_names(hooks, None),
             vec![
                 "after-select-window[0]".to_string(),
                 "client-detached[0]".to_string(),
@@ -927,7 +1043,7 @@ after-select-window[0] run-shell -b "echo hello"
 after-new-window[0] display-message "hi"
 "#;
 
-        assert!(legacy_tmux_focus_hook_names(hooks).is_empty());
+        assert!(legacy_tmux_focus_hook_names(hooks, None).is_empty());
     }
 
     #[test]
@@ -972,6 +1088,58 @@ after-new-window[0] display-message "hi"
         assert_eq!(
             focus,
             crate::session_scanner::tmux::TmuxFocusState::detached()
+        );
+    }
+
+    #[test]
+    fn build_tmux_focus_hook_command_targets_focus_file() {
+        let focus_path = Path::new("/tmp/taurhaus data/tmux-focus.json");
+        let command = build_tmux_focus_hook_command(focus_path);
+
+        assert!(command.contains("after") || command.contains("run-shell -b"));
+        assert!(command.contains("/tmp/taurhaus data/tmux-focus.json"));
+        assert!(command.contains("#{session_name}"));
+        assert!(command.contains("#{window_index}"));
+        assert!(command.contains("#{window_activity}"));
+    }
+
+    #[test]
+    fn build_tmux_focus_detached_hook_command_writes_null_focus_state() {
+        let focus_path = Path::new("/tmp/taurhaus-data/tmux-focus.json");
+        let command = build_tmux_focus_detached_hook_command(focus_path);
+
+        assert!(command.contains("/tmp/taurhaus-data/tmux-focus.json"));
+        assert!(command.contains("\\\"session\\\":null"));
+        assert!(command.contains("\\\"window\\\":null"));
+        assert!(command.contains("\\\"timestamp\\\":null"));
+    }
+
+    #[test]
+    fn legacy_tmux_focus_hook_names_preserve_current_hooks() {
+        let focus_path = Path::new("/tmp/taurhaus-data/tmux-focus.json");
+        let attached = build_tmux_focus_hook_command(focus_path);
+        let detached = build_tmux_focus_detached_hook_command(focus_path);
+        let hooks = format!(
+            "after-select-window[0] {attached}\n\
+session-window-changed[0] {attached}\n\
+client-session-changed[0] {attached}\n\
+client-detached[0] {detached}\n"
+        );
+
+        assert!(
+            legacy_tmux_focus_hook_names(&hooks, Some(focus_path)).is_empty(),
+            "current focus hooks should not be treated as legacy"
+        );
+    }
+
+    #[test]
+    fn legacy_tmux_focus_hook_names_remove_mismatched_focus_hooks() {
+        let focus_path = Path::new("/tmp/taurhaus-data/tmux-focus.json");
+        let hooks = "after-select-window[0] run-shell -b \"printf '%s\\n' '{\\\"session\\\":\\\"legacy\\\"}' > '/tmp/taurhaus-data/tmux-focus.json'\"\n";
+
+        assert_eq!(
+            legacy_tmux_focus_hook_names(hooks, Some(focus_path)),
+            vec!["after-select-window[0]".to_string()]
         );
     }
 

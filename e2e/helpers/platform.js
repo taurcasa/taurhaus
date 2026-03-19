@@ -7,7 +7,7 @@
  */
 
 import { homedir } from 'node:os'
-import { resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const isMac = process.platform === 'darwin'
 
@@ -26,6 +26,13 @@ const defaultTaurhausProjectPath = isMac
  * Used as a stable onboarding target and duplicate-path validation input.
  */
 export const TAURHAUS_PROJECT_PATH = process.env.E2E_TAURHAUS_PROJECT_PATH || defaultTaurhausProjectPath
+
+/**
+ * Claude root used by the running E2E app session.
+ * Packaged E2E runs override this to an isolated temp directory.
+ */
+export const TAURHAUS_CLAUDE_DIR = process.env.TAURHAUS_CLAUDE_DIR
+  || join(dirname(TAURHAUS_PROJECT_PATH), 'claude')
 
 /**
  * Directory to scan for projects in the first-run wizard.

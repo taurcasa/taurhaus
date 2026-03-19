@@ -19,14 +19,7 @@ use crate::{
 use super::SetupContext;
 
 static RECONCILE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-
-struct ReconcileInProgressGuard;
-
-impl Drop for ReconcileInProgressGuard {
-    fn drop(&mut self) {
-        RECONCILE_IN_PROGRESS.store(false, Ordering::Release);
-    }
-}
+static RECONCILE_PENDING: AtomicBool = AtomicBool::new(false);
 
 fn should_watch_locally(project_path: &str, has_daemon: bool, defer_wsl_to_daemon: bool) -> bool {
     if provider::path::is_wsl_path(project_path) {
@@ -45,6 +38,15 @@ fn should_watch_claude_tasks_locally(
     native_daemon
         || prefer_local_when_daemon_connected
         || (!has_daemon && allow_disconnected_windows_fallback)
+}
+
+fn ensure_directory_exists(path: &std::path::Path) -> Result<bool, std::io::Error> {
+    if path.is_dir() {
+        return Ok(false);
+    }
+
+    std::fs::create_dir_all(path)?;
+    Ok(true)
 }
 
 pub(crate) fn initialize(
@@ -145,14 +147,32 @@ pub(crate) fn reconcile_activity_watches(app: &tauri::AppHandle, reason: &str) {
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
     {
+        RECONCILE_PENDING.store(true, Ordering::Release);
         tracing::debug!(
             reason,
-            "Skipping activity watch reconcile because another run is in progress"
+            "Queued activity watch reconcile because another run is in progress"
         );
         return;
     }
-    let _in_progress_guard = ReconcileInProgressGuard;
 
+    loop {
+        RECONCILE_PENDING.store(false, Ordering::Release);
+        reconcile_activity_watches_inner(app, reason);
+
+        if !RECONCILE_PENDING.swap(false, Ordering::AcqRel) {
+            break;
+        }
+
+        tracing::debug!(
+            reason,
+            "Running queued activity watch reconcile after an overlapping request"
+        );
+    }
+
+    RECONCILE_IN_PROGRESS.store(false, Ordering::Release);
+}
+
+fn reconcile_activity_watches_inner(app: &tauri::AppHandle, reason: &str) {
     let (projects, thresholds, has_daemon, defer_wsl_to_daemon) = {
         let db_state = app.state::<DbState>();
         let db_guard = match db_state.0.lock() {
@@ -330,14 +350,30 @@ fn ensure_task_directory_watch<T, R>(
     });
     if let Some(tasks_dir) = super::resolve_claude_tasks_dir() {
         let prefer_local_when_daemon_connected = cfg!(target_os = "windows") && tasks_dir.is_dir();
-        if tasks_dir.is_dir()
-            && should_watch_claude_tasks_locally(
-                has_daemon,
-                crate::daemon::launcher::is_native_daemon(),
-                prefer_local_when_daemon_connected,
-                allow_disconnected_windows_fallback,
-            )
-        {
+        if should_watch_claude_tasks_locally(
+            has_daemon,
+            crate::daemon::launcher::is_native_daemon(),
+            prefer_local_when_daemon_connected,
+            allow_disconnected_windows_fallback,
+        ) {
+            match ensure_directory_exists(&tasks_dir) {
+                Ok(true) => {
+                    tracing::info!(
+                        path = %tasks_dir.display(),
+                        "Created Claude tasks directory before watch registration"
+                    );
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        path = %tasks_dir.display(),
+                        "Failed to create Claude tasks directory before watch registration"
+                    );
+                    watcher_guard.unwatch_project(CLAUDE_TASKS_PROJECT_ID);
+                    return;
+                }
+            }
             if let Err(error) =
                 watcher_guard.watch_project(CLAUDE_TASKS_PROJECT_ID.to_string(), tasks_dir.clone())
             {
@@ -384,6 +420,7 @@ where
         return;
     }
     crate::session_scanner::control::remove_legacy_tmux_focus_hooks();
+    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(&focus_path);
     if let Err(error) =
         watcher_guard.watch_file(TMUX_FOCUS_PROJECT_ID.to_string(), focus_path.clone())
     {
@@ -417,6 +454,7 @@ fn emit_watch_bootstrap_event(
 
 #[cfg(test)]
 mod tests {
+    use super::ensure_directory_exists;
     use super::should_watch_claude_tasks_locally;
     use super::should_watch_locally;
     use super::spawn_auxiliary_watch_bootstrap_task;
@@ -482,6 +520,29 @@ mod tests {
     #[test]
     fn claude_tasks_local_watch_allows_explicit_windows_fallback_after_daemon_failure() {
         assert!(should_watch_claude_tasks_locally(false, false, false, true));
+    }
+
+    #[test]
+    fn ensure_directory_exists_creates_missing_directory() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let missing = temp_dir.path().join("claude").join("tasks");
+
+        assert!(!missing.exists(), "fixture should start missing");
+        assert_eq!(
+            ensure_directory_exists(&missing).expect("create missing directory"),
+            true
+        );
+        assert!(missing.is_dir(), "helper should create the directory");
+    }
+
+    #[test]
+    fn ensure_directory_exists_is_noop_for_existing_directory() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+
+        assert_eq!(
+            ensure_directory_exists(temp_dir.path()).expect("existing dir should succeed"),
+            false
+        );
     }
 
     #[test]

@@ -523,6 +523,8 @@ export const config = {
 
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
+    process.env.TAURHAUS_DATA_DIR = tauriDataDir
+    process.env.TAURHAUS_CLAUDE_DIR = tauriClaudeDir
 
     tauriDriver = spawn(
       localTauriDriverPath,
