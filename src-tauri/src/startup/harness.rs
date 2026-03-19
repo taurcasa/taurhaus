@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use std::time::Instant;
 
 use super::orchestration::daemon_watch_bootstrap_enabled;

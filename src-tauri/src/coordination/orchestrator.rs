@@ -175,7 +175,7 @@ fn audit_event_log_fields(event: &AuditEvent) -> Map<String, Value> {
             );
             fields.insert(
                 "method".to_string(),
-                serde_json::to_value(&payload.method).unwrap_or(Value::Null),
+                serde_json::to_value(payload.method).unwrap_or_default(),
             );
         }
         AuditEvent::DeliverySucceeded(payload) => {
@@ -193,7 +193,7 @@ fn audit_event_log_fields(event: &AuditEvent) -> Map<String, Value> {
             );
             fields.insert(
                 "method".to_string(),
-                serde_json::to_value(&payload.method).unwrap_or(Value::Null),
+                serde_json::to_value(payload.method).unwrap_or_default(),
             );
         }
         AuditEvent::DeliveryFailed(payload) => {

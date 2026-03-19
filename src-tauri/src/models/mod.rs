@@ -357,6 +357,7 @@ impl Default for TerminalSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct Settings {
     #[serde(alias = "scan_directories")]
     pub scan_directories: Vec<String>,
@@ -378,22 +379,6 @@ pub struct Settings {
     #[serde(default)]
     #[serde(alias = "terminal_contract")]
     pub terminal_contract: TerminalPlatformContract,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            scan_directories: Vec::new(),
-            thresholds: ActivityThresholds::default(),
-            ignore_patterns: Vec::new(),
-            daemon: DaemonSettings::default(),
-            code_theme: CodeThemeSettings::default(),
-            terminal: TerminalSettings::default(),
-            dark_mode: false,
-            project_dialog_last_path: String::new(),
-            terminal_contract: TerminalPlatformContract::default(),
-        }
-    }
 }
 
 impl Settings {

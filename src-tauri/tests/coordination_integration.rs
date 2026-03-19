@@ -23,6 +23,8 @@ mod commands {
     pub use crate::commands_coordination_types as coordination_types;
 
     pub mod runtime_snapshot {
+        use taurhaus_lib::daemon_api::protocol;
+
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum RuntimeSnapshotFreshness {
             Fresh,
@@ -37,12 +39,58 @@ mod commands {
         }
 
         pub fn daemon_runtime_session_snapshot(
-            _provider: &taurhaus_lib::ProviderState,
+            provider: &taurhaus_lib::ProviderState,
         ) -> Result<RuntimeSnapshotOutcome, String> {
-            Ok(RuntimeSnapshotOutcome {
-                snapshot: None,
-                freshness: RuntimeSnapshotFreshness::Unavailable,
-            })
+            let Some(ref daemon) = provider.daemon else {
+                return Ok(RuntimeSnapshotOutcome {
+                    snapshot: None,
+                    freshness: RuntimeSnapshotFreshness::Unavailable,
+                });
+            };
+
+            if !daemon.is_connected() && !daemon.try_reconnect() {
+                return Ok(RuntimeSnapshotOutcome {
+                    snapshot: None,
+                    freshness: RuntimeSnapshotFreshness::Unavailable,
+                });
+            }
+
+            match request_daemon_runtime_session_snapshot(daemon) {
+                Ok(Some(snapshot)) => Ok(RuntimeSnapshotOutcome {
+                    snapshot: Some(snapshot),
+                    freshness: RuntimeSnapshotFreshness::Fresh,
+                }),
+                Ok(None) => Ok(RuntimeSnapshotOutcome {
+                    snapshot: None,
+                    freshness: RuntimeSnapshotFreshness::Unavailable,
+                }),
+                Err(error) => {
+                    if taurhaus_lib::daemon_api::is_busy_transport_error(&error) {
+                        return Ok(RuntimeSnapshotOutcome {
+                            snapshot: None,
+                            freshness: RuntimeSnapshotFreshness::Unavailable,
+                        });
+                    }
+
+                    if daemon.try_reconnect() {
+                        match request_daemon_runtime_session_snapshot(daemon) {
+                            Ok(Some(snapshot)) => Ok(RuntimeSnapshotOutcome {
+                                snapshot: Some(snapshot),
+                                freshness: RuntimeSnapshotFreshness::Fresh,
+                            }),
+                            Ok(None) | Err(_) => Ok(RuntimeSnapshotOutcome {
+                                snapshot: None,
+                                freshness: RuntimeSnapshotFreshness::Unavailable,
+                            }),
+                        }
+                    } else {
+                        Ok(RuntimeSnapshotOutcome {
+                            snapshot: None,
+                            freshness: RuntimeSnapshotFreshness::Unavailable,
+                        })
+                    }
+                }
+            }
         }
 
         pub fn decode_daemon_runtime_session_snapshot(
@@ -61,6 +109,23 @@ mod commands {
                         foreground_project_path: None,
                     },
                 ),
+            }
+        }
+
+        fn request_daemon_runtime_session_snapshot(
+            daemon: &taurhaus_lib::provider::daemon_client::DaemonProvider,
+        ) -> Result<Option<protocol::RuntimeSessionSnapshotResult>, String> {
+            let request = protocol::DaemonRequest::new(
+                "runtime-session-snapshot",
+                protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
+                serde_json::Value::Null,
+            );
+            match daemon.send_status_request(&request) {
+                Ok(response) if response.is_ok() => {
+                    decode_daemon_runtime_session_snapshot(response.result).map(Some)
+                }
+                Ok(_) => Ok(None),
+                Err(error) => Err(error.to_string()),
             }
         }
     }
