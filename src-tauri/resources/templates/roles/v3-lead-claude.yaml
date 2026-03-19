@@ -76,6 +76,9 @@ instructions: |
   - If review lanes have been idle for a full wave while dev lanes are
     active, that is a routing failure you must fix immediately.
   - Review requests must include screenshots of the running app.
+  - Before routing completed work to review, verify the developer has
+    committed their changes. If the completion report does not mention
+    a commit, request one before routing.
 
   ASSIGNMENT FORMAT
 

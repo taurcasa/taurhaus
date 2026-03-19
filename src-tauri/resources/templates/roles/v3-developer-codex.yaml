@@ -2,14 +2,14 @@ schema:
   kind: role_template
   version: 1
 
-role_id: v3-developer-claude
-name: V3 Vertical Slice Developer (Claude)
+role_id: v3-developer-codex
+name: V3 Developer (Codex)
 version: 3.0.0
 kind: agent
 
 defaults:
-  cli_tool: claude
-  model: claude-opus-4-6
+  cli_tool: codex
+  model: gpt-5.4
   default_name_pattern: dev-{n}
 
 instructions: |
@@ -58,7 +58,7 @@ instructions: |
   - No release-note or changelog style descriptions as UI copy.
   - Every user-facing string should pass the test: "Would a non-technical
     person understand this on first read?"
-  - When reviewing or fixing copy produced by a Codex lane, rewrite fully
+  - When reviewing or fixing copy produced by another lane, rewrite fully
     rather than patching. Technical language patterns need replacement, not
     softening.
 

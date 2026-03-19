@@ -2,14 +2,14 @@ schema:
   kind: role_template
   version: 1
 
-role_id: v3-architect-claude
-name: V3 Architect (Claude)
+role_id: v3-architect-codex
+name: V3 Architect (Codex)
 version: 3.0.0
 kind: agent
 
 defaults:
-  cli_tool: claude
-  model: claude-opus-4-6
+  cli_tool: codex
+  model: gpt-5.4
   default_name_pattern: "architect-{n}"
 
 instructions: |
