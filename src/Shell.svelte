@@ -9,16 +9,11 @@
     consumeInitialShellDaemonStatus,
     isShellDaemonRecoveryPending,
   } from './lib/daemonStatus.js'
-  import { normalizeProjectPath } from './lib/pathUtils.js'
-  import TaskBoard from './lib/TaskBoard.svelte'
-  import GitTab from './lib/GitTab.svelte'
-  import MeshTab from './lib/components/MeshTab.svelte'
+  import ShellMainPanel from './lib/components/shell/ShellMainPanel.svelte'
+  import ShellTitlebar from './lib/components/shell/ShellTitlebar.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
-  import Settings from './lib/Settings.svelte'
   import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
-  import OverviewTab from './lib/OverviewTab.svelte'
-  import FilesTab from './lib/FilesTab.svelte'
   import Sidebar from './lib/Sidebar.svelte'
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
@@ -35,7 +30,19 @@
     setupSessionPollingLifecycle,
     setupShellEventListeners,
   } from './lib/shell/events.svelte.js'
+  import { setupHistoryNavigation, setupSearchShortcut } from './lib/shell/shortcuts.svelte.js'
+  import {
+    hasAttachedTmuxFocus,
+    resolveProjectIdFromSession,
+    resolveProjectIdFromTmuxFocusPayload,
+  } from './lib/shell/tmuxFocus.js'
   import { loadThemePreferences, persistDarkModePreference } from './lib/shell/themePreferences.js'
+  import {
+    closeShellWindow,
+    minimizeShellWindow,
+    syncWindowsStartupViewport as syncStartupViewportWindow,
+    toggleShellMaximize,
+  } from './lib/shell/window.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
   import {
@@ -45,7 +52,6 @@
   } from './lib/projectSelection.js'
 
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
-  import { themeTokens } from './lib/themeTokens.js'
 
   let { initialDaemonStatus = undefined } = $props()
 
@@ -96,14 +102,6 @@
    * - Gap:      6px (gap-1.5) between sidebar and main panel
    * - Frame:    6px (p-1.5) padding around panels inside the dark frame
    */
-
-
-  // Shared theme tokens
-  const t = $derived(themeTokens(dark))
-
-  // Component-specific tokens
-  const tabSeparator   = $derived(dark ? 'bg-zinc-700' : 'bg-zinc-200')
-
   // --- Data state ---
   let projects = $state([])
   let selectedProject = $state(null)
@@ -322,36 +320,14 @@
   }
 
   async function syncWindowsStartupViewport() {
-    if (startupViewportSyncAttempted || !isTauri()) return
+    const attempted = startupViewportSyncAttempted
     startupViewportSyncAttempted = true
-    try {
-      const platform = await getPlatform()
-      if (platform !== 'windows') return
-
-      const { getCurrentWindow, PhysicalSize } = await import('@tauri-apps/api/window')
-      const appWindow = getCurrentWindow()
-      const [maximized, fullscreen] = await Promise.all([
-        appWindow.isMaximized(),
-        appWindow.isFullscreen(),
-      ])
-
-      // Keep maximized/fullscreen startup untouched.
-      if (maximized || fullscreen) {
-        window.dispatchEvent(new Event('resize'))
-        return
-      }
-
-      await new Promise((resolve) => requestAnimationFrame(resolve))
-      const size = await appWindow.innerSize()
-      if (!size?.width || !size?.height) return
-
-      // Force one native resize cycle: this mirrors the manual resize workaround.
-      await appWindow.setSize(new PhysicalSize(size.width + 1, size.height))
-      await appWindow.setSize(new PhysicalSize(size.width, size.height))
-      window.dispatchEvent(new Event('resize'))
-    } catch (error) {
-      console.warn('[window] startup viewport sync failed:', error)
-    }
+    await syncStartupViewportWindow({
+      attempted,
+      isTauriRuntime: isTauri(),
+      getPlatform,
+      logger: console,
+    })
   }
 
   async function loadDaemonStatus({ allowInitial = true } = {}) {
@@ -491,58 +467,6 @@
     })
   }
 
-  function resolveProjectIdFromSession(session) {
-    const directProjectId = session?.project_id ?? session?.projectId ?? null
-    if (typeof directProjectId === 'string' && directProjectId.trim()) {
-      return directProjectId
-    }
-
-    const projectPath = session?.project_path ?? session?.projectPath ?? null
-    if (typeof projectPath === 'string' && projectPath.trim()) {
-      const normalizedSessionPath = normalizeProjectPath(projectPath)
-      const matchingProject = projects.find((project) =>
-        normalizeProjectPath(project?.path) === normalizedSessionPath
-      )
-      if (matchingProject?.id) {
-        return matchingProject.id
-      }
-    }
-
-    return null
-  }
-
-  function focusPayloadField(payload, snakeName, camelName) {
-    const value = payload?.[snakeName] ?? payload?.[camelName] ?? null
-    return typeof value === 'string' && value.trim() ? value.trim() : null
-  }
-
-  function resolveProjectIdFromTmuxFocusPayload(payload) {
-    const directProjectId = payload?.project_id ?? payload?.projectId ?? null
-    if (typeof directProjectId === 'string' && directProjectId.trim()) {
-      return directProjectId
-    }
-
-    const focusSession = focusPayloadField(payload, 'session', 'tmuxSession')
-    const focusWindow = focusPayloadField(payload, 'window', 'tmuxWindow')
-    if (!focusSession || !focusWindow) {
-      return null
-    }
-
-    const liveSessions = Array.from(getSessions().values()).flat()
-    const matchingSession = liveSessions.find((session) => {
-      const sessionName = focusPayloadField(session, 'tmux_session', 'tmuxSession')
-      if (sessionName !== focusSession) {
-        return false
-      }
-
-      const windowIndex = focusPayloadField(session, 'tmux_window', 'tmuxWindow')
-      const windowName = focusPayloadField(session, 'tmux_window_name', 'tmuxWindowName')
-      return windowIndex === focusWindow || windowName === focusWindow
-    })
-
-    return resolveProjectIdFromSession(matchingSession)
-  }
-
   function scheduleForegroundProjectRefresh() {
     clearTmuxFocusRefreshTimer()
     tmuxFocusRefreshTimer = setTimeout(() => {
@@ -653,7 +577,10 @@
         applyDaemonSessionUpdate(payload)
       },
       onTmuxFocusChanged: (payload) => {
-        const projectId = resolveProjectIdFromTmuxFocusPayload(payload)
+        const projectId = resolveProjectIdFromTmuxFocusPayload(payload, {
+          projects,
+          liveSessions: Array.from(getSessions().values()).flat(),
+        })
         if (projectId) {
           logTmuxFocus('event-resolved-from-session-store', { payload, projectId })
           clearTmuxFocusRefreshTimer()
@@ -661,12 +588,7 @@
           return
         }
 
-        const hasAttachedFocus = Boolean(
-          focusPayloadField(payload, 'session', 'tmuxSession')
-          && focusPayloadField(payload, 'window', 'tmuxWindow')
-        )
-
-        if (hasAttachedFocus) {
+        if (hasAttachedTmuxFocus(payload)) {
           logTmuxFocus('event-scheduling-ipc-refresh', { payload })
           scheduleForegroundProjectRefresh()
           return
@@ -989,7 +911,7 @@
         return
       }
 
-      setForegroundProject(resolveProjectIdFromSession(matchingSession))
+      setForegroundProject(resolveProjectIdFromSession(matchingSession, projects))
       await navigateToSession(tmuxSession, tmuxWindow, tmuxPane, true)
     } catch (error) {
       console.error('[mesh] focus pane failed:', {
@@ -1018,71 +940,34 @@
   }
 
   // Window controls (Tauri custom titlebar — decorations: false)
-  async function minimizeWindow() {
-    try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      await getCurrentWindow().minimize()
-    } catch { /* dev mode — no Tauri runtime */ }
+  function minimizeWindow() {
+    return minimizeShellWindow()
   }
 
-  async function toggleMaximize() {
-    try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      await getCurrentWindow().toggleMaximize()
-    } catch { /* dev mode — no Tauri runtime */ }
+  function toggleMaximize() {
+    return toggleShellMaximize()
   }
 
-  async function closeWindow() {
-    try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window')
-      await getCurrentWindow().close()
-    } catch { /* dev mode — no Tauri runtime */ }
+  function closeWindow() {
+    return closeShellWindow()
   }
 
-  // Cmd+K / Ctrl+K global search shortcut
-  $effect(() => {
-    const handler = (e) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        searchOpen = !searchOpen
-      }
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  })
+  $effect(() => setupSearchShortcut({
+    onToggleSearch: () => {
+      searchOpen = !searchOpen
+    },
+  }))
 
-  // Back/Forward navigation — mouse buttons + Alt+Arrow keys
-  // Use mousedown (not mouseup) to intercept before WebView2 handles back/forward.
-  $effect(() => {
-    function onMouseDown(e) {
-      if (e.button === 3) {
-        e.preventDefault()
-        const entry = navGoBack()
-        if (entry) applyNavEntry(entry)
-      } else if (e.button === 4) {
-        e.preventDefault()
-        const entry = navGoForward()
-        if (entry) applyNavEntry(entry)
-      }
-    }
-    function onKeyDown(e) {
-      if (e.altKey && e.key === 'ArrowLeft') {
-        e.preventDefault()
-        const entry = navGoBack()
-        if (entry) applyNavEntry(entry)
-      } else if (e.altKey && e.key === 'ArrowRight') {
-        e.preventDefault()
-        const entry = navGoForward()
-        if (entry) applyNavEntry(entry)
-      }
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  })
+  $effect(() => setupHistoryNavigation({
+    onGoBack: () => {
+      const entry = navGoBack()
+      if (entry) applyNavEntry(entry)
+    },
+    onGoForward: () => {
+      const entry = navGoForward()
+      if (entry) applyNavEntry(entry)
+    },
+  }))
 
   async function handleMarkdownNavigate(relativePath) {
     if (!selectedProject) return
@@ -1180,123 +1065,19 @@
   </div>
 {:else}
 <div class="shell-frame h-full flex flex-col font-sans antialiased">
-
-  <!-- ═══ TITLEBAR ═══ -->
-  <div class="h-[46px] flex items-end shrink-0 pl-1.5" data-tauri-drag-region>
-
-    <!-- Logo area (width matches sidebar panel below) -->
-    <div class="w-[252px] flex items-center px-4 pb-2 shrink-0" data-tauri-drag-region>
-      <div class="flex items-center gap-2.5">
-        <img src="/logo-22.png" alt="taurhaus" width="22" height="22" class="block" />
-        <span class="text-[13px] font-semibold text-white/90 tracking-[-0.01em]">taurhaus</span>
-      </div>
-    </div>
-
-    <!-- Tab pill + drag space + controls -->
-    <div class="flex-1 flex items-end min-w-0" data-tauri-drag-region>
-
-      <!-- Tab pill — shares bg with main panel (Manila Folder pattern) -->
-      <div class="shell-main-surface flex items-center px-4 h-[36px] rounded-t-lg ml-1.5">
-        {#if settingsOpen}
-          <span class="px-3 py-1 text-[13px] font-medium {t.textPrimary}">Settings</span>
-        {:else}
-          <button
-            data-testid="tab-overview"
-            class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'overview' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
-            onclick={() => switchTab('overview')}
-          >Overview</button>
-          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
-          <button
-            data-testid="tab-files"
-            class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'files' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
-            onclick={() => switchTab('files')}
-          >Files</button>
-          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
-          <button
-            data-testid="tab-tasks"
-            class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'tasks' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
-            onclick={() => switchTab('tasks')}
-          >Tasks</button>
-          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
-          <button
-            data-testid="tab-mesh"
-            class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'mesh' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
-            onclick={() => switchTab('mesh')}
-          >Mesh</button>
-          <span class="w-px h-3.5 {tabSeparator} mx-1"></span>
-          <button
-            data-testid="tab-git"
-            class="px-3 py-1 text-[13px] transition-colors border-b-2
-              {activeTab === 'git' ? `font-medium ${t.textPrimary} border-brand-500` : `${t.textTertiary} hover:text-zinc-500 border-transparent`}"
-            onclick={() => switchTab('git')}
-          >Git</button>
-        {/if}
-      </div>
-
-      <!-- Right scoop: inverse radius where tab pill meets dark frame -->
-      <div class="shell-main-surface w-2.5 h-2.5 self-end overflow-hidden shrink-0">
-        <div class="shell-frame-fill w-full h-full rounded-bl-full"></div>
-      </div>
-
-      <!-- Drag region (data-tauri-drag-region in production) -->
-      <div class="flex-1 h-full" data-tauri-drag-region></div>
-
-      <!-- Titlebar controls -->
-      <div class="flex items-center gap-0.5 pb-2 pr-1 shrink-0">
-        <button
-          data-testid="search-btn"
-          class="w-7 h-7 flex items-center justify-center rounded text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors mr-1"
-          onclick={() => searchOpen = !searchOpen}
-          title={navigator.platform?.includes('Mac') ? 'Search (⌘K)' : 'Search (Ctrl+K)'}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-          </svg>
-        </button>
-        <button
-          data-testid="theme-light"
-          class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
-            {!dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
-          onclick={() => setDarkMode(false)}
-        >Light</button>
-        <button
-          data-testid="theme-dark"
-          class="px-2 py-0.5 rounded text-[11px] font-medium transition-colors
-            {dark ? 'bg-white/10 text-white/90' : 'text-white/30 hover:text-white/60'}"
-          onclick={() => setDarkMode(true)}
-        >Dark</button>
-
-        <!-- Window controls -->
-        <div class="flex items-center ml-2">
-          <button
-            class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
-            onclick={minimizeWindow}
-            title="Minimize"
-          >
-            <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
-          </button>
-          <button
-            class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
-            onclick={toggleMaximize}
-            title="Maximize"
-          >
-            <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="0.5" y="0.5" width="8" height="8" rx="1" stroke="currentColor"/></svg>
-          </button>
-          <button
-            class="w-7 h-7 flex items-center justify-center rounded text-white/40 hover:text-white/80 hover:bg-red-500/80 transition-colors"
-            onclick={closeWindow}
-            title="Close"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <ShellTitlebar
+    {dark}
+    {activeTab}
+    {settingsOpen}
+    onSwitchTab={(tab) => switchTab(tab)}
+    onToggleSearch={() => {
+      searchOpen = !searchOpen
+    }}
+    onSetDarkMode={setDarkMode}
+    onMinimizeWindow={minimizeWindow}
+    onToggleMaximize={toggleMaximize}
+    onCloseWindow={closeWindow}
+  />
 
   <!-- ═══ BODY — panels floating inside the dark frame ═══ -->
   <div class="flex-1 flex gap-1.5 p-1.5 pt-0 min-h-0">
@@ -1317,175 +1098,71 @@
         }}
     />
 
-    <!-- ═══ MAIN PANEL ═══ -->
-    <main class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
-
-      <!-- Non-blocking daemon reconnect notice -->
-      {#if (daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected') && !settingsOpen}
-        <div
-          class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-brand-500/10 border-b border-brand-500/20' : 'bg-brand-50 border-b border-brand-200'}"
-          data-testid="daemon-connecting-banner"
-        >
-          <svg class="h-4 w-4 shrink-0 text-brand-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 1 0-5.657-2.343l1.414-1.414A6 6 0 1 1 10 16v2Zm1-11V4H9v5h5V7h-3Z" clip-rule="evenodd" />
-          </svg>
-          <span class="flex-1 text-[12px] {t.textSecondary}">
-            {daemonStatus === 'busy'
-              ? 'Daemon is busy with another request. The shell is available; status and session updates may be delayed.'
-              : 'Connecting to daemon. The shell is available; session updates may be delayed.'}
-          </span>
-        </div>
-      {/if}
-
-      <!-- Daemon update banner -->
-      {#if daemonUpdateAvailable && !daemonUpdateDismissed && !settingsOpen}
-        <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" data-testid="daemon-update-banner">
-          <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
-          <span class="text-[12px] {t.textSecondary} flex-1">
-            Daemon update available: v{daemonUpdateAvailable.version} → v{daemonUpdateAvailable.bundled_version}
-          </span>
-          <button
-            class="text-[12px] font-medium text-brand-500 hover:text-brand-400 transition-colors disabled:opacity-50"
-            onclick={handleDaemonUpdate}
-            disabled={daemonUpdating}
-            data-testid="daemon-update-button"
-          >{daemonUpdating ? 'Updating...' : 'Update now'}</button>
-          <button
-            class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
-            onclick={() => daemonUpdateDismissed = true}
-            data-testid="daemon-update-dismiss"
-          >Dismiss</button>
-        </div>
-      {/if}
-
-      {#if projectLoadIssues.length > 0 && !settingsOpen}
-        <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" data-testid="project-load-degraded-banner">
-          <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
-          <span class="text-[12px] {t.textSecondary} flex-1" data-testid="project-load-degraded-message">
-            Partial project load: {projectLoadIssues.map(i => i.section).join(', ')} failed.
-          </span>
-          <button
-            class="text-[12px] font-medium text-brand-500 hover:text-brand-400 transition-colors"
-            onclick={retryProjectLoad}
-            data-testid="project-load-retry"
-          >Retry</button>
-          <button
-            class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
-            onclick={() => projectLoadIssues = []}
-            data-testid="project-load-dismiss"
-          >Dismiss</button>
-        </div>
-      {/if}
-
-      {#if shellNotice && !settingsOpen}
-        <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" data-testid="shell-notice-banner">
-          <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
-          <span class="text-[12px] {t.textSecondary} flex-1" data-testid="shell-notice-message">{shellNotice}</span>
-          <button
-            class="text-[12px] {t.textTertiary} hover:text-white/60 transition-colors"
-            onclick={() => shellNotice = null}
-            data-testid="shell-notice-dismiss"
-          >Dismiss</button>
-        </div>
-      {/if}
-
-      {#if settingsOpen}
-        <Settings {dark} onClose={() => settingsOpen = false} onSettingsChanged={loadProjects} {codeThemeLight} {codeThemeDark} onCodeThemeChanged={handleCodeThemeChanged} />
-      {:else if !selectedProject}
-        <!-- No project selected -->
-        <div class="flex-1 flex items-center justify-center">
-          <p class="text-[13px] {t.textTertiary}">Select a project</p>
-        </div>
-      {:else}
-      {#key selectedProject.id}
-      <div class="flex-1 flex flex-col min-w-0 overflow-hidden content-enter" data-testid="content-wrapper">
-      <!-- ═══ OVERVIEW TAB ═══ -->
-      <div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:hidden={activeTab !== 'overview'}>
-        <OverviewTab
-          {dark}
-          {codeTheme}
-          data={{
-            selectedProject,
-            projects,
-            recentCommits,
-            commitsLoading,
-            latestSession,
-            sessionHistory,
-            sessionLoading,
-            readmeContent,
-            relationships,
-            relationshipsLoading,
-          }}
-          onViewAllCommits={viewAllCommits}
-          onDismissRelationship={handleDismissRelationship}
-          onMarkdownNavigate={handleMarkdownNavigate}
-        />
-      </div>
-
-      <!-- ═══ TASKS TAB ═══ -->
-      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'tasks'}>
-        {#if visitedTabs.has('tasks')}
-          <TaskBoard
-            projectId={selectedProject.id}
-            projectPath={selectedProject.path}
-            isActive={activeTab === 'tasks'}
-            {dark}
-            {codeTheme}
-            bind:position={taskPosition}
-            navTarget={taskNavTarget}
-            onClearNavTarget={() => { taskNavTarget = null }}
-          />
-        {/if}
-      </div>
-
-      <!-- ═══ MESH TAB ═══ -->
-      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'mesh'}>
-        {#if visitedTabs.has('mesh')}
-          <MeshTab
-            {dark}
-            projectPath={selectedProject.path}
-            availableProjects={projects}
-            onFocusPane={handleMeshFocusPane}
-          />
-        {/if}
-      </div>
-
-      <!-- ═══ GIT TAB ═══ -->
-      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'git'}>
-        {#if visitedTabs.has('git')}
-          <GitTab
-            projectPath={selectedProject.path}
-            projectId={selectedProject.id}
-            {dark}
-            navTarget={gitNavTarget}
-            bind:position={gitPosition}
-            onNavigateToFile={navigateToFile}
-            onClearNavTarget={() => { gitNavTarget = null }}
-          />
-        {/if}
-      </div>
-
-      <!-- ═══ FILES TAB ═══ -->
-      <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'files'}>
-        {#if visitedTabs.has('files')}
-          <FilesTab
-            {dark}
-            {codeTheme}
-            {selectedProject}
-            isActive={activeTab === 'files'}
-            navTarget={filesNavTarget}
-            onClearNavTarget={() => { filesNavTarget = null }}
-            bind:position={filesPosition}
-            onMarkdownNavigate={handleMarkdownNavigate}
-            changedPaths={fileChangePaths}
-            onChangedPathsConsumed={() => { fileChangePaths = null }}
-          />
-        {/if}
-      </div>
-      </div>
-      {/key}
-      {/if}
-    </main>
+    <ShellMainPanel
+      {dark}
+      {codeTheme}
+      {codeThemeLight}
+      {codeThemeDark}
+      {settingsOpen}
+      {daemonStatus}
+      {daemonUpdateAvailable}
+      {daemonUpdateDismissed}
+      {daemonUpdating}
+      {shellNotice}
+      {projectLoadIssues}
+      {selectedProject}
+      {projects}
+      {activeTab}
+      {visitedTabs}
+      {recentCommits}
+      {commitsLoading}
+      {latestSession}
+      {sessionHistory}
+      {sessionLoading}
+      {readmeContent}
+      {relationships}
+      {relationshipsLoading}
+      {gitNavTarget}
+      {filesNavTarget}
+      {taskNavTarget}
+      {fileChangePaths}
+      bind:filesPosition
+      bind:gitPosition
+      bind:taskPosition
+      onCloseSettings={() => {
+        settingsOpen = false
+      }}
+      onSettingsChanged={loadProjects}
+      onCodeThemeChanged={handleCodeThemeChanged}
+      onViewAllCommits={viewAllCommits}
+      onDismissRelationship={handleDismissRelationship}
+      onMarkdownNavigate={handleMarkdownNavigate}
+      onRetryProjectLoad={retryProjectLoad}
+      onHandleDaemonUpdate={handleDaemonUpdate}
+      onDismissDaemonUpdate={() => {
+        daemonUpdateDismissed = true
+      }}
+      onDismissProjectLoadIssues={() => {
+        projectLoadIssues = []
+      }}
+      onDismissShellNotice={() => {
+        shellNotice = null
+      }}
+      onNavigateToFile={navigateToFile}
+      onMeshFocusPane={handleMeshFocusPane}
+      onClearTaskNavTarget={() => {
+        taskNavTarget = null
+      }}
+      onClearGitNavTarget={() => {
+        gitNavTarget = null
+      }}
+      onClearFilesNavTarget={() => {
+        filesNavTarget = null
+      }}
+      onChangedPathsConsumed={() => {
+        fileChangePaths = null
+      }}
+    />
   </div>
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />

@@ -148,6 +148,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         },
         dark_mode,
         project_dialog_last_path,
+        terminal_contract: defaults.terminal_contract,
     })
 }
 
@@ -313,6 +314,7 @@ mod tests {
             terminal: TerminalSettings::default(),
             dark_mode: true,
             project_dialog_last_path: "/projects/taurhaus".to_string(),
+            terminal_contract: Default::default(),
         };
 
         save_settings(&conn, &settings).unwrap();
@@ -363,6 +365,7 @@ mod tests {
             terminal: TerminalSettings::default(),
             dark_mode: false,
             project_dialog_last_path: "/old/path".to_string(),
+            terminal_contract: Default::default(),
         };
         save_settings(&conn, &settings1).unwrap();
 
@@ -379,6 +382,7 @@ mod tests {
             terminal: TerminalSettings::default(),
             dark_mode: true,
             project_dialog_last_path: "/new/path".to_string(),
+            terminal_contract: Default::default(),
         };
         save_settings(&conn, &settings2).unwrap();
 
