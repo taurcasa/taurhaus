@@ -315,6 +315,28 @@ taurhaus detects CLI tools by scanning running processes. If a tool doesn't appe
 
 The initial project scan indexes all files for search. This is a one-time operation. Subsequent launches are fast because the index is persisted.
 
+#### File watcher limits on Linux/WSL
+
+taurhaus uses Linux file watchers (inotify) to detect changes in your projects. The helper service uses roughly 4-6 watcher instances, and each Mesh team member adds 2 more. The AI tools themselves (Claude Code, Codex, Gemini) also create their own watchers independently.
+
+The default Linux limit is 128 instances per user. If you run large Mesh teams or many projects, you may hit this limit — taurhaus will log a warning if it happens.
+
+Check your current limit:
+
+```bash
+sysctl fs.inotify.max_user_instances
+```
+
+Raise it if needed:
+
+```bash
+sudo sysctl -w fs.inotify.max_user_instances=512
+```
+
+To make the change permanent, add `fs.inotify.max_user_instances=512` to `/etc/sysctl.conf`.
+
+This only applies to Linux and WSL2. macOS uses a different file-watching mechanism and doesn't have this limit.
+
 ## Updating
 
 Download and run the latest installer (Windows) or DMG (macOS). It overwrites the previous version. Your projects, settings, and search index are preserved — they're stored in your user data directory, not the install directory.

@@ -163,6 +163,10 @@ On first launch, taurhaus checks whether its helper service needs to be installe
 
 If your shell startup scripts prompt for input, they can block automated session launches. The most common case is `oh-my-zsh` update prompts. If you use interactive shell plugins, configure them to run non-interactively for headless session starts.
 
+### Linux/WSL file watcher note
+
+taurhaus and its helper service use Linux file watchers (inotify) to detect project changes. Large Mesh teams may need a higher watcher limit than the default 128. Check with `sysctl fs.inotify.max_user_instances` and raise to 512 if needed. See the [Getting Started troubleshooting section](docs/getting-started.md#file-watcher-limits-on-linuxwsl) for details.
+
 ## First launch and quick start
 
 ### First launch
