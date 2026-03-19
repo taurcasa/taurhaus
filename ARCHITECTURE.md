@@ -72,6 +72,9 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `src/lib/components/meshLayout.js` | Pure mesh layout engine for node boxes and explicit connection routes |
 | `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer for explicit control-point geometry |
 | `src/lib/components/MeshRuntimeBar.svelte` | Runtime status controls (add-agent/disband/summary pills) |
+| `src/lib/a11y.js` | Accessibility primitives: modal isolation stack, focus traps, keyboard helpers |
+| `src/lib/errorCopy.js` | User-facing error and empty-state copy helpers for all surfaces |
+| `src/lib/shell/events.svelte.js` | Shell-level Tauri event subscriptions and lifecycle wiring |
 
 **Key patterns:**
 - **Svelte 5 runes** (`$state`, `$derived`, `$effect`, `$props`) — no legacy stores

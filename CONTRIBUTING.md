@@ -170,6 +170,9 @@ Each regression test must document what broke and why (commit reference if avail
 ```
 src/                    # Svelte frontend
   lib/                  # Shared components and utilities
+    components/         # Reusable UI components (mesh, templates, shell panels)
+    shell/              # Shell-level controllers (shortcuts, events, window, tmux)
+    ipc/                # IPC domain modules (client, projects, sessions, templates, etc.)
   Shell.svelte          # Main app layout
   App.svelte            # Entry point with splash screen
   app.css               # Design tokens and global styles
@@ -179,6 +182,7 @@ src-tauri/              # Rust backend
     coordination/       # Multi-agent team orchestration (mesh CLI, pipelines)
     daemon/             # WSL daemon (launcher, protocol, server)
     session_scanner/    # Multi-CLI session detection
+    services/           # Shared backend services (task queries, task sync)
     db/                 # SQLite queries and migrations
     git/                # libgit2 wrapper
     search/             # tantivy full-text search

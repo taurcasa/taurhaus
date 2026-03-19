@@ -89,7 +89,6 @@ For more on Mesh:
 
 - [Mesh view](docs/features/mesh.md)
 - [Team templates](docs/team-templates.md)
-- [Coordination architecture](docs/coordination-architecture.md)
 
 ## Install and prerequisites
 

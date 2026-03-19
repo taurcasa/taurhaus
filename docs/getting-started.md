@@ -164,6 +164,21 @@ The wizard helps you discover your projects:
 
 The app scans `~/projects/` by default. You can add more directories later in Settings.
 
+## How taurhaus works
+
+taurhaus is a desktop app that watches your project directories and detects when AI CLI tools (Claude Code, Codex, Gemini CLI) are running in tmux sessions. It gives you a single view into every project — files, commits, tasks, and active sessions — so you can switch between projects without losing context. A background helper service (the "daemon") handles file watching and session detection, while the app itself stores project metadata in SQLite, indexes content for full-text search, and communicates with the helper service over a local TCP connection.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+K` / `Cmd+K` | Open search overlay |
+| `Tab` / `Shift+Tab` | Navigate between tabs |
+| `Arrow keys` | Navigate within lists and menus |
+| `Escape` | Close overlay, dialog, or context menu |
+| `Shift+F10` | Open context menu (keyboard equivalent of right-click) |
+| `Enter` / `Space` | Activate focused item |
+
 ## Using taurhaus
 
 ### Sidebar

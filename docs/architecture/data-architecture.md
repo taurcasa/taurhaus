@@ -1,6 +1,6 @@
 # Data Architecture
 
-This document is the authoritative data architecture reference for Taurhaus as of `v0.5.10+`.
+This document is the authoritative data architecture reference for Taurhaus as of `v0.5.9+`.
 
 It complements [data-model.md](./data-model.md), which still covers the SQLite schema and search index in detail, but does not fully describe the live coordination/runtime filesystem model that Taurhaus now depends on.
 

@@ -238,6 +238,5 @@ Mesh view uses these backend commands:
 
 ## Related documents
 
-- [Coordination architecture](../coordination-architecture.md) — backend design and lifecycle decisions
 - [Team templates guide](../team-templates.md) — role, preset, provenance, and composition model
 - [Session management](session-management.md) — runtime session data that feeds mesh status

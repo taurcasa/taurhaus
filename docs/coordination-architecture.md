@@ -23,7 +23,7 @@ For the authoritative inventory of coordination files, ownership boundaries, and
 - Either works standalone
 - Cleanest solution wins — effort is not a constraint
 
-## Current orchestration direction (2026-03-06)
+## Current orchestration direction
 
 This document captures the shipped/active coordination subsystem architecture in taurhaus.
 
