@@ -35,16 +35,16 @@
     create_panes: 'Opening panes and starting sessions',
     launch_sessions: 'Verifying launched sessions',
     join_mesh: 'Connecting agents to mesh',
-    start_daemons: 'Starting coordination daemons',
+    start_daemons: 'Starting background services',
     send_onboarding: 'Sending agent instructions',
   }
   const stepDescriptions = {
     validate_configuration: 'Checking team name, agent tools, and project assignments',
     create_team: 'Writing team config to ~/.claude/teams/',
     create_panes: 'Creating tmux panes and starting each CLI tool in one launch command',
-    launch_sessions: 'Capturing launched session attachments and verifying startup',
-    join_mesh: 'Registering agents with mesh protocol',
-    start_daemons: 'Launching file watchers for each agent inbox',
+    launch_sessions: 'Confirming each tool started successfully',
+    join_mesh: 'Connecting team members',
+    start_daemons: 'Setting up monitoring for each team member',
     send_onboarding: 'Delivering initial instructions to each agent',
   }
 
@@ -386,7 +386,7 @@
         onclick={() => onSuccess({ teamName: activeTeamName })}
         data-testid="mesh-init-runtime-button"
       >
-        Switch to Runtime
+        Go to Team
       </button>
     {/if}
   </div>

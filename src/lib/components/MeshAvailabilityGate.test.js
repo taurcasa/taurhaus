@@ -80,7 +80,7 @@ describe('MeshAvailabilityGate', () => {
     })
     expect(screen.getByText('Install Mesh to set up a team in this project.')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-availability-mesh-help')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-install-button')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-install-button')).toHaveTextContent('Install Mesh')
     expect(screen.queryByTestId('mesh-gate-child')).not.toBeInTheDocument()
   })
 
@@ -220,7 +220,7 @@ describe('MeshAvailabilityGate', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-availability-blocking')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('mesh-install-button')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-install-button')).toHaveTextContent('Update Mesh')
     expect(screen.getAllByText('The installed Mesh version does not match taurhaus. Install the bundled Mesh version to continue.').length).toBeGreaterThan(0)
 
     await fireEvent.click(screen.getByTestId('mesh-install-button'))

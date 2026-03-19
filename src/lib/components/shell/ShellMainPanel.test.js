@@ -41,4 +41,20 @@ describe('ShellMainPanel', () => {
       'Some project details could not be loaded: Recent commits, README.'
     )
   })
+
+  it('uses helper service wording in the update banner', () => {
+    render(ShellMainPanel, {
+      props: {
+        dark: false,
+        daemonUpdateAvailable: {
+          version: '0.2.8',
+          bundled_version: '0.3.0',
+        },
+      },
+    })
+
+    expect(screen.getByTestId('daemon-update-banner')).toHaveTextContent(
+      'Helper service update available: v0.2.8 → v0.3.0'
+    )
+  })
 })

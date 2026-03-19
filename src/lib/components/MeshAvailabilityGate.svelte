@@ -103,6 +103,7 @@
   }
 
   const showMeshInstallActions = $derived(meshInstallRequired && meshEnvironmentAvailable(meshStatus))
+  const meshInstallActionLabel = $derived(meshMissing ? 'Install Mesh' : 'Update Mesh')
 
   async function installBundledMesh() {
     installingMesh = true
@@ -209,7 +210,7 @@
           disabled={installingMesh}
           data-testid="mesh-install-button"
         >
-          {installingMesh ? 'Installing Mesh...' : 'Install Bundled Mesh'}
+          {installingMesh ? 'Installing Mesh...' : meshInstallActionLabel}
         </button>
         {#if installMessage}
           <p class="text-xs text-success-600" data-testid="mesh-install-success">{installMessage}</p>

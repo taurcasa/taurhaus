@@ -266,7 +266,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span class="text-[13px] {t.textSecondary}">Checking daemon status...</span>
+            <span class="text-[13px] {t.textSecondary}">Checking...</span>
           </div>
 
         {:else if daemonStatus && !daemonStatus.wslAvailable}
@@ -295,7 +295,7 @@
           <div class="flex items-center gap-3 py-4 px-4 rounded-lg {dark ? 'bg-success-500/5' : 'bg-success-50'} border border-success-500/30 mb-5" data-testid="daemon-installed">
             <svg class="w-5 h-5 text-success-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
             <span class="text-[13px] {t.textPrimary}">
-              Daemon v{daemonStatus.version} installed
+              Helper service ready
             </span>
           </div>
 
@@ -306,7 +306,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span class="text-[13px] {t.textSecondary}">Installing daemon...</span>
+            <span class="text-[13px] {t.textSecondary}">Installing...</span>
           </div>
 
         {:else if daemonError}
@@ -349,7 +349,7 @@
           <!-- Not installed -->
           <div class="flex items-center gap-3 py-4 px-4 rounded-lg border {dark ? 'border-zinc-700 bg-zinc-800/50' : 'border-zinc-200 bg-zinc-50'} mb-5" data-testid="daemon-not-installed">
             <svg class="w-5 h-5 {t.textSecondary}" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>
-            <span class="text-[13px] {t.textPrimary}">Daemon not installed</span>
+            <span class="text-[13px] {t.textPrimary}">Helper service not installed</span>
           </div>
           <button
             class="w-full py-2.5 rounded-lg bg-brand-600 text-white text-[14px] font-medium hover:bg-brand-700 transition-colors mb-5"

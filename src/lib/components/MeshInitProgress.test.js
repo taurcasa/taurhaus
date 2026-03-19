@@ -56,6 +56,9 @@ describe('MeshInitProgress', () => {
     expect(screen.getByTestId('mesh-init-step-validate_configuration')).toHaveTextContent(
       'Validating configuration'
     )
+    expect(screen.getByTestId('mesh-init-step-start_daemons')).toHaveTextContent(
+      'Starting background services'
+    )
   })
 
   it('updates step status on progress event', async () => {
@@ -144,7 +147,82 @@ describe('MeshInitProgress', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-init-success')).toHaveTextContent('Team initialized!')
     })
-    expect(screen.getByTestId('mesh-init-runtime-button')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-init-runtime-button')).toHaveTextContent('Go to Team')
+  })
+
+  it('shows plain-language descriptions for launch and monitoring steps', async () => {
+    const pending = deferred()
+    coordinationInitializeTeam.mockReturnValueOnce(pending.promise)
+    let progressHandler = null
+    onCoordinationStepProgress.mockImplementationOnce(async (callback) => {
+      progressHandler = callback
+      return () => {}
+    })
+
+    render(MeshInitProgress, {
+      props: {
+        dark: false,
+        request: { teamName: 'arch-team' },
+      },
+    })
+
+    await waitFor(() => {
+      expect(progressHandler).toBeTypeOf('function')
+    })
+
+    progressHandler({
+      payload: {
+        teamName: 'arch-team',
+        operation: 'initialize_team',
+        progress: {
+          step: 'launch_sessions',
+          status: 'running',
+          message: null,
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-desc-launch_sessions')).toHaveTextContent(
+        'Confirming each tool started successfully'
+      )
+    })
+
+    progressHandler({
+      payload: {
+        teamName: 'arch-team',
+        operation: 'initialize_team',
+        progress: {
+          step: 'join_mesh',
+          status: 'running',
+          message: null,
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-desc-join_mesh')).toHaveTextContent(
+        'Connecting team members'
+      )
+    })
+
+    progressHandler({
+      payload: {
+        teamName: 'arch-team',
+        operation: 'initialize_team',
+        progress: {
+          step: 'start_daemons',
+          status: 'running',
+          message: null,
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-init-desc-start_daemons')).toHaveTextContent(
+        'Setting up monitoring for each team member'
+      )
+    })
   })
 
   it('shows failure with retry button when a step fails', async () => {

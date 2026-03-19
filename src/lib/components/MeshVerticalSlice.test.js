@@ -83,6 +83,7 @@ describe('Mesh vertical slice smoke', () => {
   function buildRuntimeSnapshot(teamName = 'taurhaus-team') {
     return buildProjectMeshSnapshot({
       teamName,
+      teamRuntimeState: 'active',
       teamStatus: {
         leadName: 'team-lead',
         members: rosterMembers.map(({ model, ...member }) => member),
@@ -289,7 +290,8 @@ describe('Mesh vertical slice smoke', () => {
       expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-runtime-add-agent'))
+    expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Add Agent')
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-role-card-agent-default')).toBeInTheDocument()
     })
