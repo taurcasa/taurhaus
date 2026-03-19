@@ -265,6 +265,8 @@ impl CoordinationOrchestrator {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<(), CoordinationError> {
+        let mut per_project_anchor_panes = std::collections::HashMap::<String, String>::new();
+
         if request.lead_mode == LeadMode::LaunchNew {
             let lead_member = member_from_agent_setup(&request.lead, MemberRole::Lead)?;
             let launch_cmd = build_cli_launch_command(
@@ -273,9 +275,11 @@ impl CoordinationOrchestrator {
                 MemberRole::Lead,
                 cli_commands,
             )?;
-            let pane_id = self.runtime.create_aitx_pane_and_launch(
-                &request.lead.project_id,
+            let pane_id = launch_member_pane(
+                self.runtime.as_ref(),
+                &mut per_project_anchor_panes,
                 tmux_layout,
+                &lead_member.project_path.to_string_lossy(),
                 &launch_cmd,
             )?;
             let mut runtime =
@@ -303,9 +307,11 @@ impl CoordinationOrchestrator {
                 MemberRole::Agent,
                 cli_commands,
             )?;
-            let pane_id = self.runtime.create_aitx_pane_and_launch(
-                &agent.project_id,
+            let pane_id = launch_member_pane(
+                self.runtime.as_ref(),
+                &mut per_project_anchor_panes,
                 tmux_layout,
+                &member.project_path.to_string_lossy(),
                 &launch_cmd,
             )?;
 
@@ -533,6 +539,32 @@ impl CoordinationOrchestrator {
         }
         Ok(())
     }
+}
+
+fn launch_member_pane(
+    runtime: &dyn crate::coordination::runtime::CoordinationRuntime,
+    per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
+    tmux_layout: &str,
+    project_path: &str,
+    launch_cmd: &str,
+) -> Result<String, CoordinationError> {
+    if tmux_layout == "per_project" {
+        if let Some(anchor_pane) = per_project_anchor_panes.get(project_path) {
+            return runtime.create_aitx_pane_and_launch_in_target(
+                project_path,
+                anchor_pane,
+                launch_cmd,
+            );
+        }
+    }
+
+    let pane_id = runtime.create_aitx_pane_and_launch(project_path, tmux_layout, launch_cmd)?;
+    if tmux_layout == "per_project" {
+        per_project_anchor_panes
+            .entry(project_path.to_string())
+            .or_insert_with(|| pane_id.clone());
+    }
+    Ok(pane_id)
 }
 
 fn backend_kind_for_member_tool(tool: CliTool) -> BackendKind {

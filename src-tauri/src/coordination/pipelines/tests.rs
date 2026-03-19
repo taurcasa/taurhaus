@@ -366,6 +366,66 @@ fn initialize_pipeline_persists_codex_agent_session_id() {
 }
 
 #[test]
+fn initialize_pipeline_per_project_layout_reuses_anchor_pane() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/project"),
+        agents: vec![
+            setup_config("dev-1", "codex", "gpt-5.4", "/tmp/project"),
+            setup_config("dev-2", "codex", "gpt-5.4", "/tmp/project"),
+            setup_config("architect-1", "codex", "gpt-5.4", "/tmp/project"),
+        ],
+    };
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &request,
+            &CliCommandSettings::default(),
+            "per_project",
+        )
+        .expect("initialize report");
+    assert_eq!(report.failed_step, None);
+
+    let pane_calls: Vec<_> = runtime
+        .calls()
+        .into_iter()
+        .filter(|call| {
+            matches!(
+                call,
+                RuntimeCall::CreatePane { .. } | RuntimeCall::CreatePaneInTarget { .. }
+            )
+        })
+        .collect();
+    assert_eq!(
+        pane_calls,
+        vec![
+            RuntimeCall::CreatePane {
+                project_id: "/tmp/project".to_string(),
+            },
+            RuntimeCall::CreatePaneInTarget {
+                project_id: "/tmp/project".to_string(),
+                target_pane: "test-pane-1".to_string(),
+            },
+            RuntimeCall::CreatePaneInTarget {
+                project_id: "/tmp/project".to_string(),
+                target_pane: "test-pane-1".to_string(),
+            },
+            RuntimeCall::CreatePaneInTarget {
+                project_id: "/tmp/project".to_string(),
+                target_pane: "test-pane-1".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
 fn initialize_pipeline_retries_transient_send_keys_failure_for_codex_agent() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

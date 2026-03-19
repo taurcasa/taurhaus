@@ -83,6 +83,15 @@ pub trait CoordinationRuntime: Send + Sync {
             pane_diagnostics_for_launch_failure(self, &pane_id)
         )))
     }
+    fn create_aitx_pane_and_launch_in_target(
+        &self,
+        project_id: &str,
+        target_pane: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        let _ = target_pane;
+        self.create_aitx_pane_and_launch(project_id, "per_project", launch_cmd)
+    }
     fn send_tmux_keys_with_enter(&self, pane_id: &str, keys: &str)
         -> Result<(), CoordinationError>;
     fn detect_session_id(
@@ -326,6 +335,20 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         )
         .map_err(CoordinationError::Backend)?;
         Ok(pane_id)
+    }
+
+    fn create_aitx_pane_and_launch_in_target(
+        &self,
+        project_id: &str,
+        target_pane: &str,
+        launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        crate::session_scanner::control::split_command_in_tmux_target_pane(
+            project_id,
+            target_pane,
+            launch_cmd,
+        )
+        .map_err(CoordinationError::Backend)
     }
 
     fn send_tmux_keys_with_enter(
@@ -703,6 +726,10 @@ pub enum RuntimeCall {
     CreatePane {
         project_id: String,
     },
+    CreatePaneInTarget {
+        project_id: String,
+        target_pane: String,
+    },
     SendKeys {
         pane_id: String,
         keys: String,
@@ -957,6 +984,25 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             }
         }
         Ok(())
+    }
+
+    fn create_aitx_pane_and_launch_in_target(
+        &self,
+        project_id: &str,
+        target_pane: &str,
+        _launch_cmd: &str,
+    ) -> Result<String, CoordinationError> {
+        self.push_call(RuntimeCall::CreatePaneInTarget {
+            project_id: project_id.to_string(),
+            target_pane: target_pane.to_string(),
+        });
+        let idx = self.pane_counter.fetch_add(1, Ordering::SeqCst) + 1;
+        let pane_id = format!("test-pane-{idx}");
+        self.set_pane_exists(&pane_id, true);
+        self.set_pane_dead(&pane_id, false);
+        self.set_pane_shell(&pane_id, false);
+        self.set_pane_ownership(&pane_id, true);
+        Ok(pane_id)
     }
 
     fn detect_session_id(

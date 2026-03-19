@@ -53,7 +53,9 @@ pub mod session_scanner {
         use crate::models::CliCommandSettings;
 
         use super::cli_tool::CliTool;
-        pub use taurhaus_lib::session_scanner::control::launch_command_in_tmux_with_layout;
+        pub use taurhaus_lib::session_scanner::control::{
+            launch_command_in_tmux_with_layout, split_command_in_tmux_target_pane,
+        };
 
         pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
             let first_token = cmd.split_whitespace().next().unwrap_or("");

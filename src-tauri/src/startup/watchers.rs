@@ -372,20 +372,18 @@ where
         error.into_inner()
     });
     let focus_path = crate::session_scanner::tmux::focus_file_path(data_dir);
-    if !focus_path.exists() {
-        if let Err(error) = crate::session_scanner::tmux::write_focus_state(
-            &focus_path,
-            &crate::session_scanner::tmux::TmuxFocusState::detached(),
-        ) {
-            tracing::warn!(
-                error = %error,
-                path = %focus_path.display(),
-                "Failed to initialize tmux focus file before watch registration"
-            );
-            return;
-        }
+    if let Err(error) = crate::session_scanner::tmux::write_focus_state(
+        &focus_path,
+        &crate::session_scanner::tmux::TmuxFocusState::detached(),
+    ) {
+        tracing::warn!(
+            error = %error,
+            path = %focus_path.display(),
+            "Failed to initialize tmux focus file before watch registration"
+        );
+        return;
     }
-    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(&focus_path);
+    crate::session_scanner::control::remove_legacy_tmux_focus_hooks();
     if let Err(error) =
         watcher_guard.watch_file(TMUX_FOCUS_PROJECT_ID.to_string(), focus_path.clone())
     {
