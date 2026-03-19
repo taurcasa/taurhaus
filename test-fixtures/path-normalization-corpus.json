@@ -50,6 +50,16 @@
       "id": "mixed-slashes",
       "input": "C:\\foo/bar\\baz",
       "expected": "/mnt/c/foo/bar/baz"
+    },
+    {
+      "id": "wsl-forward-slash-unc",
+      "input": "//wsl$/Ubuntu/home/user/project/",
+      "expected": "/home/user/project"
+    },
+    {
+      "id": "relative-mixed-separators",
+      "input": "foo\\bar///baz/",
+      "expected": "foo/bar/baz"
     }
   ]
 }

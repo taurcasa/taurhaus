@@ -137,7 +137,7 @@ pub(crate) fn startup_search_index(app: &AppHandle) {
     }
 
     // Snapshot project list from DB — brief lock, no filesystem I/O.
-    let projects = {
+    let (projects, policy) = {
         let db_state = app.state::<DbState>();
         let conn = match db_state.0.lock() {
             Ok(c) => c,
@@ -146,13 +146,21 @@ pub(crate) fn startup_search_index(app: &AppHandle) {
                 return;
             }
         };
-        match db::queries::list_projects(&conn) {
+        let projects = match db::queries::list_projects(&conn) {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to list projects for search index rebuild");
                 return;
             }
-        }
+        };
+        let policy = match services::scan_policy::ScanIndexPolicy::load(&conn) {
+            Ok(policy) => policy,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to load scan/index policy for startup rebuild");
+                return;
+            }
+        };
+        (projects, policy)
         // DB lock released here
     };
 
@@ -187,8 +195,13 @@ pub(crate) fn startup_search_index(app: &AppHandle) {
             if !project_root.exists() {
                 continue;
             }
-            let f = search::indexer::index_project_files(&mut index, &project.id, project_root)
-                .unwrap_or(0);
+            let f = search::indexer::index_project_files_with_policy(
+                &mut index,
+                &project.id,
+                project_root,
+                &policy,
+            )
+            .unwrap_or(0);
             let c =
                 search::indexer::index_project_commits(&mut index, &project.id, project_root, 100)
                     .unwrap_or(0);

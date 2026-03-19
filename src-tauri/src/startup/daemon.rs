@@ -6,6 +6,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::{daemon_lifecycle, ProviderState};
 use serde_json::{Map, Value};
 
+use super::telemetry::emit_startup_event;
 use super::SetupContext;
 
 const STARTUP_DAEMON_RUNTIME_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -416,16 +417,6 @@ pub(crate) fn start_runtime_monitors(
 
         daemon_lifecycle::start_session_updates_bridge(app);
     }
-}
-
-fn emit_startup_event(level: &str, event: &str, message: &'static str, fields: Map<String, Value>) {
-    crate::commands::logging::emit_global(
-        level,
-        "backend",
-        event,
-        Some(message.to_string()),
-        fields,
-    );
 }
 
 fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde_json::Value) {
