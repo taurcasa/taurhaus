@@ -5,6 +5,7 @@ use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
 
+use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 #[path = "coordination/live_status.rs"]
@@ -114,6 +115,7 @@ pub async fn coordination_initialize_team(
         }
         _ => result,
     };
+    emit_initialize_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result
 }
@@ -149,6 +151,7 @@ pub fn coordination_add_agent(
         }
         _ => result,
     };
+    emit_add_agent_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result
 }
@@ -162,6 +165,7 @@ pub fn coordination_resume_member(
 ) -> IpcResult<ResumeAgentReport> {
     let span = IpcCommandSpan::start("coordination_resume_member");
     let requested_team_name = request.team_name.clone();
+    let requested_member_name = request.member_name.clone();
     let result = {
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         let mut emit = |event: &StepProgressEvent| {
@@ -178,6 +182,7 @@ pub fn coordination_resume_member(
         .ipc()
     };
     let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
+    emit_resume_member_pipeline_result(&requested_team_name, &requested_member_name, &result);
     span.finish_result(&result);
     result
 }
@@ -196,6 +201,7 @@ pub fn coordination_resume_team(
         coordination_resume_team_internal(state.inner(), request, &cli_commands, &tmux_layout).ipc()
     };
     let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
+    emit_resume_team_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result
 }
@@ -556,6 +562,214 @@ fn maybe_ensure_claude_compact_hook_for_team<T>(
     let _ = ensure_compact_hook_installed(teams_dir, &current_exe)
         .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
     result
+}
+
+fn emit_initialize_pipeline_result(team_name: &str, result: &IpcResult<InitializeReport>) {
+    match result {
+        Ok(report) => {
+            let mut fields = base_pipeline_fields("initialize_team", &report.team_name, None);
+            fields.insert(
+                "succeeded_step_count".to_string(),
+                Value::Number(serde_json::Number::from(report.succeeded_steps.len() as u64)),
+            );
+            fields.insert("retryable".to_string(), Value::Bool(report.retryable));
+            if let Some(failed_step) = report.failed_step.as_ref() {
+                fields.insert(
+                    "failed_step".to_string(),
+                    Value::String(failed_step.clone()),
+                );
+                fields.insert("message".to_string(), Value::String(report.message.clone()));
+                emit_coordination_pipeline_event("warn", "coordination.pipeline.failed", fields);
+            } else {
+                fields.insert("message".to_string(), Value::String(report.message.clone()));
+                emit_coordination_pipeline_event("info", "coordination.pipeline.completed", fields);
+            }
+        }
+        Err(error) => emit_coordination_pipeline_failure("initialize_team", team_name, None, error),
+    }
+}
+
+fn emit_add_agent_pipeline_result(team_name: &str, result: &IpcResult<AddAgentReport>) {
+    match result {
+        Ok(report) => {
+            let mut fields = base_pipeline_fields(
+                "add_agent",
+                &report.team_name,
+                Some(report.member_name.as_str()),
+            );
+            fields.insert(
+                "succeeded_step_count".to_string(),
+                Value::Number(serde_json::Number::from(report.succeeded_steps.len() as u64)),
+            );
+            fields.insert("retryable".to_string(), Value::Bool(report.retryable));
+            fields.insert("message".to_string(), Value::String(report.message.clone()));
+            if let Some(failed_step) = report.failed_step.as_ref() {
+                fields.insert(
+                    "failed_step".to_string(),
+                    Value::String(failed_step.clone()),
+                );
+                emit_coordination_pipeline_event("warn", "coordination.pipeline.failed", fields);
+            } else {
+                emit_coordination_pipeline_event("info", "coordination.pipeline.completed", fields);
+            }
+        }
+        Err(error) => emit_coordination_pipeline_failure("add_agent", team_name, None, error),
+    }
+}
+
+fn emit_resume_member_pipeline_result(
+    team_name: &str,
+    member_name: &str,
+    result: &IpcResult<ResumeAgentReport>,
+) {
+    match result {
+        Ok(report) => {
+            let mut fields = base_pipeline_fields(
+                "resume_member",
+                &report.team_name,
+                Some(report.member_name.as_str()),
+            );
+            fields.insert("resumed".to_string(), Value::Bool(report.resumed));
+            fields.insert(
+                "succeeded_step_count".to_string(),
+                Value::Number(serde_json::Number::from(report.succeeded_steps.len() as u64)),
+            );
+            fields.insert(
+                "warning_count".to_string(),
+                Value::Number(serde_json::Number::from(report.warnings.len() as u64)),
+            );
+            fields.insert("retryable".to_string(), Value::Bool(report.retryable));
+            fields.insert("reused_pane".to_string(), Value::Bool(report.reused_pane));
+            if let Some(pane_id) = report.pane_id.as_ref() {
+                fields.insert("pane_id".to_string(), Value::String(pane_id.clone()));
+            }
+            fields.insert("message".to_string(), Value::String(report.message.clone()));
+            if let Some(failed_step) = report.failed_step.as_ref() {
+                fields.insert(
+                    "failed_step".to_string(),
+                    Value::String(failed_step.clone()),
+                );
+                emit_coordination_pipeline_event("warn", "coordination.pipeline.failed", fields);
+            } else {
+                emit_coordination_pipeline_event("info", "coordination.pipeline.completed", fields);
+            }
+        }
+        Err(error) => {
+            emit_coordination_pipeline_failure("resume_member", team_name, Some(member_name), error)
+        }
+    }
+}
+
+fn emit_resume_team_pipeline_result(team_name: &str, result: &IpcResult<ResumeTeamReport>) {
+    match result {
+        Ok(report) => {
+            let mut fields = base_pipeline_fields("resume_team", &report.team_name, None);
+            fields.insert("resumed".to_string(), Value::Bool(report.resumed));
+            fields.insert(
+                "total_members".to_string(),
+                Value::Number(serde_json::Number::from(report.total_members as u64)),
+            );
+            fields.insert(
+                "resumed_member_count".to_string(),
+                Value::Number(serde_json::Number::from(report.resumed_members.len() as u64)),
+            );
+            fields.insert(
+                "failed_member_count".to_string(),
+                Value::Number(serde_json::Number::from(report.failed_members.len() as u64)),
+            );
+            fields.insert(
+                "warning_count".to_string(),
+                Value::Number(serde_json::Number::from(report.warnings.len() as u64)),
+            );
+            fields.insert(
+                "started_team_daemon".to_string(),
+                Value::Bool(report.started_team_daemon),
+            );
+            if let Some(warning) = report.team_daemon_warning.as_ref() {
+                fields.insert(
+                    "team_daemon_warning".to_string(),
+                    Value::String(warning.clone()),
+                );
+            }
+            let event_name = if report.failed_members.is_empty() {
+                "coordination.pipeline.completed"
+            } else {
+                "coordination.pipeline.failed"
+            };
+            let level = if report.failed_members.is_empty() {
+                "info"
+            } else {
+                "warn"
+            };
+            emit_coordination_pipeline_event(level, event_name, fields);
+        }
+        Err(error) => emit_coordination_pipeline_failure("resume_team", team_name, None, error),
+    }
+}
+
+fn base_pipeline_fields(
+    operation: &str,
+    team_name: &str,
+    member_name: Option<&str>,
+) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert(
+        "operation".to_string(),
+        Value::String(operation.to_string()),
+    );
+    fields.insert(
+        "team_name".to_string(),
+        Value::String(team_name.to_string()),
+    );
+    if let Some(member_name) = member_name {
+        fields.insert(
+            "member_name".to_string(),
+            Value::String(member_name.to_string()),
+        );
+    }
+    fields
+}
+
+fn emit_coordination_pipeline_failure(
+    operation: &str,
+    team_name: &str,
+    member_name: Option<&str>,
+    error: &IpcError,
+) {
+    let mut fields = base_pipeline_fields(operation, team_name, member_name);
+    fields.insert(
+        "error.code".to_string(),
+        Value::String(ipc_error_code_name(error).to_string()),
+    );
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error.message.clone()),
+    );
+    fields.insert("retryable".to_string(), Value::Bool(error.retryable));
+    if let Some(command) = error.command.as_ref() {
+        fields.insert("command".to_string(), Value::String(command.clone()));
+    }
+    emit_coordination_pipeline_event("warn", "coordination.pipeline.failed", fields);
+}
+
+fn emit_coordination_pipeline_event(level: &str, event: &str, fields: Map<String, Value>) {
+    taurhaus_lib::logging::emit_global(
+        level,
+        "backend",
+        event,
+        Some("Coordination pipeline lifecycle event".to_string()),
+        fields,
+    );
+}
+
+fn ipc_error_code_name(error: &IpcError) -> &'static str {
+    match error.code {
+        crate::errors::IpcErrorCode::ValidationError => "VALIDATION_ERROR",
+        crate::errors::IpcErrorCode::NotFound => "NOT_FOUND",
+        crate::errors::IpcErrorCode::Conflict => "CONFLICT",
+        crate::errors::IpcErrorCode::Unavailable => "UNAVAILABLE",
+        crate::errors::IpcErrorCode::InternalError => "INTERNAL_ERROR",
+    }
 }
 
 fn coordination_create_team_impl(

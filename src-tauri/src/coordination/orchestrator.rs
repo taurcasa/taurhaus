@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Utc;
+use serde_json::{Map, Value};
 
 use crate::coordination::audit::{
     AuditEvent, DeliveryAttemptedEvent, DeliveryFailedEvent, DeliverySucceededEvent,
@@ -81,6 +82,173 @@ pub struct RemoveMemberStepResult {
     pub step: String,
     pub success: bool,
     pub message: Option<String>,
+}
+
+fn emit_audit_event_to_structured_log(event: &AuditEvent) {
+    let event_name = format!("coordination.audit.{}", event.event_type());
+    let mut fields = audit_event_log_fields(event);
+    let audit_record = serde_json::to_value(event)
+        .unwrap_or_else(|error| Value::String(format!("audit serialize failed: {error}")));
+    fields.insert("audit_record".to_string(), audit_record);
+    let level = match event {
+        AuditEvent::DeliveryFailed(_) => "warn",
+        _ => "info",
+    };
+    taurhaus_lib::logging::emit_global(
+        level,
+        "backend",
+        &event_name,
+        Some("Coordination audit event".to_string()),
+        fields,
+    );
+}
+
+fn audit_event_log_fields(event: &AuditEvent) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert(
+        "audit_event_type".to_string(),
+        Value::String(event.event_type().to_string()),
+    );
+    match event {
+        AuditEvent::TeamCreated(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_count".to_string(),
+                Value::Number(serde_json::Number::from(payload.member_count as u64)),
+            );
+        }
+        AuditEvent::TeamDisbanded(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            if let Some(reason) = payload.reason.as_ref() {
+                fields.insert("reason".to_string(), Value::String(reason.clone()));
+            }
+        }
+        AuditEvent::MemberAdded(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            fields.insert(
+                "role".to_string(),
+                serde_json::to_value(payload.role).unwrap_or(Value::Null),
+            );
+            fields.insert(
+                "backend".to_string(),
+                serde_json::to_value(payload.backend).unwrap_or(Value::Null),
+            );
+        }
+        AuditEvent::MemberRemoved(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            if let Some(reason) = payload.reason.as_ref() {
+                fields.insert("reason".to_string(), Value::String(reason.clone()));
+            }
+        }
+        AuditEvent::DeliveryAttempted(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            fields.insert(
+                "delivery_type".to_string(),
+                Value::String(payload.delivery_type.clone()),
+            );
+            fields.insert(
+                "method".to_string(),
+                serde_json::to_value(&payload.method).unwrap_or(Value::Null),
+            );
+        }
+        AuditEvent::DeliverySucceeded(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            fields.insert(
+                "delivery_type".to_string(),
+                Value::String(payload.delivery_type.clone()),
+            );
+            fields.insert(
+                "method".to_string(),
+                serde_json::to_value(&payload.method).unwrap_or(Value::Null),
+            );
+        }
+        AuditEvent::DeliveryFailed(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            fields.insert(
+                "delivery_type".to_string(),
+                Value::String(payload.delivery_type.clone()),
+            );
+            fields.insert("error".to_string(), Value::String(payload.error.clone()));
+        }
+        AuditEvent::LeaseClaimed(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            fields.insert(
+                "owner_pid".to_string(),
+                Value::Number(serde_json::Number::from(payload.owner_pid)),
+            );
+            fields.insert(
+                "instance_uuid".to_string(),
+                Value::String(payload.instance_uuid.clone()),
+            );
+        }
+        AuditEvent::LeaseReclaimed(payload) => {
+            fields.insert(
+                "team_name".to_string(),
+                Value::String(payload.team_name.clone()),
+            );
+            fields.insert(
+                "member_name".to_string(),
+                Value::String(payload.member_name.clone()),
+            );
+            fields.insert(
+                "previous_pid".to_string(),
+                Value::Number(serde_json::Number::from(payload.previous_pid)),
+            );
+            fields.insert(
+                "new_pid".to_string(),
+                Value::Number(serde_json::Number::from(payload.new_pid)),
+            );
+        }
+    }
+    fields
 }
 
 /// Top-level coordination service entrypoint.
@@ -1387,6 +1555,7 @@ impl CoordinationOrchestrator {
             let json = serde_json::to_string(&event)
                 .unwrap_or_else(|err| format!("{{\"error\":\"{err}\"}}"));
             tracing::info!(target: "coordination_audit", event_type, "{json}");
+            emit_audit_event_to_structured_log(&event);
         }
     }
 

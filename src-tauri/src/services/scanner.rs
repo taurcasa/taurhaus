@@ -1,21 +1,6 @@
 use std::path::Path;
 
-use crate::sentinels::PYTHON_CACHE_DIR;
-
-/// Directories to skip during scanning — large or internal directories.
-const SKIP_DIRS: &[&str] = &[
-    "node_modules",
-    ".git",
-    "target",
-    "dist",
-    ".cache",
-    ".next",
-    PYTHON_CACHE_DIR,
-    ".venv",
-    "venv",
-    ".tox",
-    "build",
-];
+use crate::services::scan_policy::{ScanIndexMatcher, ScanIndexPolicy};
 
 /// A project discovered during directory scanning.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,12 +16,21 @@ pub struct DiscoveredProject {
 /// Skips hidden directories (starting with `.`) at the top level, and
 /// common non-project directories (node_modules, target, etc.) at all levels.
 pub fn scan_directory(root: &Path, max_depth: u32) -> Result<Vec<DiscoveredProject>, String> {
+    scan_directory_with_policy(root, max_depth, &ScanIndexPolicy::default())
+}
+
+pub fn scan_directory_with_policy(
+    root: &Path,
+    max_depth: u32,
+    policy: &ScanIndexPolicy,
+) -> Result<Vec<DiscoveredProject>, String> {
     if !root.is_dir() {
         return Err(format!("Not a directory: {}", root.display()));
     }
 
     let mut discovered = Vec::new();
-    scan_recursive(root, 1, max_depth, &mut discovered)?;
+    let matcher = policy.matcher_for_root(root);
+    scan_recursive(root, 1, max_depth, &matcher, &mut discovered)?;
     discovered.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(discovered)
 }
@@ -45,6 +39,7 @@ fn scan_recursive(
     current: &Path,
     depth: u32,
     max_depth: u32,
+    matcher: &ScanIndexMatcher,
     results: &mut Vec<DiscoveredProject>,
 ) -> Result<(), String> {
     if depth > max_depth {
@@ -72,8 +67,7 @@ fn scan_recursive(
             continue;
         }
 
-        // Skip known non-project directories
-        if SKIP_DIRS.contains(&name.as_str()) {
+        if matcher.ignores_path(&entry_path, true) {
             continue;
         }
 
@@ -96,7 +90,7 @@ fn scan_recursive(
                     has_git: false,
                 });
             }
-            scan_recursive(&entry_path, depth + 1, max_depth, results)?;
+            scan_recursive(&entry_path, depth + 1, max_depth, matcher, results)?;
         }
     }
 
@@ -106,6 +100,8 @@ fn scan_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Settings;
+    use crate::services::scan_policy::ScanIndexPolicy;
     use tempfile::TempDir;
 
     fn setup_project_tree() -> TempDir {
@@ -245,5 +241,28 @@ mod tests {
         let p2 = results.iter().find(|d| d.name == "project-b");
         assert!(p2.is_some());
         assert!(!p2.unwrap().has_git);
+    }
+
+    #[test]
+    fn saved_ignore_patterns_skip_matching_directories() {
+        let root = TempDir::new().unwrap();
+        let kept = root.path().join("project-a");
+        std::fs::create_dir_all(kept.join(".git")).unwrap();
+
+        let ignored_container = root.path().join("vendor");
+        let ignored = ignored_container.join("project-b");
+        std::fs::create_dir_all(ignored.join(".git")).unwrap();
+
+        let policy = ScanIndexPolicy::from_settings(&Settings {
+            ignore_patterns: vec!["vendor".into()],
+            ..Settings::default()
+        });
+
+        let results = scan_directory_with_policy(root.path(), 2, &policy).unwrap();
+        let names: Vec<&str> = results.iter().map(|d| d.name.as_str()).collect();
+
+        assert!(names.contains(&"project-a"));
+        assert!(!names.contains(&"vendor"));
+        assert!(!names.contains(&"project-b"));
     }
 }

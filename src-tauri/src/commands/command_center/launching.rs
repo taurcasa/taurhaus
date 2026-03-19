@@ -19,6 +19,10 @@ pub(super) fn launch_cli_session_impl(
     launch_fields.insert("project_id".to_string(), Value::String(project_id.clone()));
     launch_fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
     launch_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+    launch_fields.insert(
+        "caller".to_string(),
+        Value::String("command_center.launch".to_string()),
+    );
     log_file.emit(
         "info",
         "command_center",
@@ -34,6 +38,7 @@ pub(super) fn launch_cli_session_impl(
     let mut path_fields = Map::new();
     path_fields.insert("db_path".to_string(), Value::String(project_path.clone()));
     path_fields.insert("linux_path".to_string(), Value::String(linux_path.clone()));
+    path_fields.insert("project_id".to_string(), Value::String(project_id.clone()));
     log_file.emit(
         "debug",
         "command_center",
@@ -90,6 +95,7 @@ pub(super) fn launch_cli_session_impl(
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "launch-session";
+            let daemon_method = protocol::method::LAUNCH_SESSION;
             let ts = load_terminal_settings(db);
             let tool_cmd = crate::session_scanner::control::resolve_configured_tool_command(
                 &ts.cli_commands,
@@ -98,7 +104,7 @@ pub(super) fn launch_cli_session_impl(
             );
             let request = protocol::DaemonRequest::new(
                 id,
-                protocol::method::LAUNCH_SESSION,
+                daemon_method,
                 protocol::LaunchSessionParams {
                     project_path: linux_path.clone(),
                     mode,
@@ -107,11 +113,63 @@ pub(super) fn launch_cli_session_impl(
                     command_override: Some(tool_cmd),
                 },
             );
+            let mut daemon_request_fields = Map::new();
+            daemon_request_fields.insert(
+                "caller".to_string(),
+                Value::String("command_center.launch".to_string()),
+            );
+            daemon_request_fields.insert(
+                "daemon_request_id".to_string(),
+                Value::String(id.to_string()),
+            );
+            daemon_request_fields.insert(
+                "daemon_method".to_string(),
+                Value::String(daemon_method.to_string()),
+            );
+            daemon_request_fields
+                .insert("project_id".to_string(), Value::String(project_id.clone()));
+            daemon_request_fields.insert(
+                "project_path".to_string(),
+                Value::String(linux_path.clone()),
+            );
+            daemon_request_fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
+            daemon_request_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+            log_file.emit(
+                "info",
+                "command_center",
+                "command_center.launch.daemon_request",
+                Some("Submitting launch request to daemon".to_string()),
+                daemon_request_fields,
+            );
             match daemon.send_status_request(&request) {
                 Ok(response) if response.is_ok() => {
                     let result = decode_daemon_launch_result(response.result)?;
 
                     let mut success_fields = Map::new();
+                    success_fields.insert(
+                        "caller".to_string(),
+                        Value::String("command_center.launch".to_string()),
+                    );
+                    success_fields.insert(
+                        "daemon_request_id".to_string(),
+                        Value::String(id.to_string()),
+                    );
+                    success_fields.insert(
+                        "daemon_method".to_string(),
+                        Value::String(daemon_method.to_string()),
+                    );
+                    success_fields
+                        .insert("project_id".to_string(), Value::String(project_id.clone()));
+                    success_fields.insert(
+                        "project_path".to_string(),
+                        Value::String(linux_path.clone()),
+                    );
+                    success_fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
+                    success_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+                    if let Some(session) = result.tmux_session.as_ref() {
+                        success_fields
+                            .insert("tmux_session".to_string(), Value::String(session.clone()));
+                    }
                     success_fields.insert(
                         "tmux_window".to_string(),
                         Value::String(result.tmux_window.clone()),
@@ -146,6 +204,25 @@ pub(super) fn launch_cli_session_impl(
                         .map(|e| e.message)
                         .unwrap_or_else(|| "Unknown error".to_string());
                     let mut fail_fields = Map::new();
+                    fail_fields.insert(
+                        "caller".to_string(),
+                        Value::String("command_center.launch".to_string()),
+                    );
+                    fail_fields.insert(
+                        "daemon_request_id".to_string(),
+                        Value::String(id.to_string()),
+                    );
+                    fail_fields.insert(
+                        "daemon_method".to_string(),
+                        Value::String(daemon_method.to_string()),
+                    );
+                    fail_fields.insert("project_id".to_string(), Value::String(project_id.clone()));
+                    fail_fields.insert(
+                        "project_path".to_string(),
+                        Value::String(linux_path.clone()),
+                    );
+                    fail_fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
+                    fail_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
                     fail_fields.insert("error".to_string(), Value::String(msg.clone()));
                     log_file.emit(
                         "warn",
@@ -158,6 +235,28 @@ pub(super) fn launch_cli_session_impl(
                 }
                 Err(e) => {
                     let mut unreachable_fields = Map::new();
+                    unreachable_fields.insert(
+                        "caller".to_string(),
+                        Value::String("command_center.launch".to_string()),
+                    );
+                    unreachable_fields.insert(
+                        "daemon_request_id".to_string(),
+                        Value::String(id.to_string()),
+                    );
+                    unreachable_fields.insert(
+                        "daemon_method".to_string(),
+                        Value::String(daemon_method.to_string()),
+                    );
+                    unreachable_fields
+                        .insert("project_id".to_string(), Value::String(project_id.clone()));
+                    unreachable_fields.insert(
+                        "project_path".to_string(),
+                        Value::String(linux_path.clone()),
+                    );
+                    unreachable_fields
+                        .insert("mode".to_string(), Value::String(format!("{mode:?}")));
+                    unreachable_fields
+                        .insert("tool".to_string(), Value::String(format!("{tool:?}")));
                     unreachable_fields.insert("error".to_string(), Value::String(e.to_string()));
                     log_file.emit(
                         "warn",
@@ -177,7 +276,21 @@ pub(super) fn launch_cli_session_impl(
         "command_center",
         "command_center.launch.local_fallback",
         Some("Falling back to local tmux launch".to_string()),
-        Map::new(),
+        {
+            let mut fields = Map::new();
+            fields.insert(
+                "caller".to_string(),
+                Value::String("command_center.launch".to_string()),
+            );
+            fields.insert("project_id".to_string(), Value::String(project_id.clone()));
+            fields.insert(
+                "project_path".to_string(),
+                Value::String(linux_path.clone()),
+            );
+            fields.insert("mode".to_string(), Value::String(format!("{mode:?}")));
+            fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
+            fields
+        },
     );
     let ts = load_terminal_settings(db);
     let tool_cmd = crate::session_scanner::control::resolve_configured_tool_command(

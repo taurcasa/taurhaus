@@ -103,8 +103,10 @@ fn rebuild_index_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::settings_queries;
     use std::sync::Mutex;
     use tempfile::NamedTempFile;
+    use tempfile::TempDir;
 
     fn test_db_state() -> (DbState, NamedTempFile) {
         let tmp = NamedTempFile::new().expect("temp db");
@@ -161,5 +163,50 @@ mod tests {
         let search_state = test_search_state();
         let err = rebuild_index_impl(&search_state, &poisoned_db, None).expect_err("poisoned db");
         assert!(err.to_lowercase().contains("poison"));
+    }
+
+    #[test]
+    fn rebuild_index_honors_saved_ignore_patterns() {
+        let (db, _tmp) = test_db_state();
+        let project_dir = TempDir::new().expect("temp project dir");
+        std::fs::write(project_dir.path().join("README.md"), "keep indexed").expect("write readme");
+        std::fs::create_dir_all(project_dir.path().join("generated")).expect("mkdir generated");
+        std::fs::write(
+            project_dir.path().join("generated/skip.md"),
+            "skip indexed content",
+        )
+        .expect("write ignored file");
+
+        {
+            let conn = db.0.lock().expect("lock db");
+            conn.execute(
+                "INSERT INTO projects (id, name, path, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    "p1",
+                    "Policy Project",
+                    project_dir.path().to_string_lossy().to_string(),
+                    "2026-03-19T00:00:00Z",
+                    "2026-03-19T00:00:00Z",
+                ],
+            )
+            .expect("insert project");
+
+            let mut settings = settings_queries::get_all_settings(&conn).expect("get settings");
+            settings.ignore_patterns = vec!["generated".into()];
+            settings.scan_directories = vec![project_dir.path().to_string_lossy().to_string()];
+            settings_queries::save_settings(&conn, &settings).expect("save settings");
+        }
+
+        let search_state = test_search_state();
+        let rebuilt = rebuild_index_impl(&search_state, &db, None).expect("rebuild index");
+        assert_eq!(rebuilt, 1);
+
+        let kept = search_impl(&search_state, "keep".to_string(), Some(10), None)
+            .expect("search kept content");
+        assert_eq!(kept.len(), 1);
+
+        let ignored = search_impl(&search_state, "skip".to_string(), Some(10), None)
+            .expect("search ignored content");
+        assert!(ignored.is_empty());
     }
 }

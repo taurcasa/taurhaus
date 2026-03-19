@@ -730,6 +730,43 @@ pub(crate) fn process_watch_events(
                 continue;
             };
             let project_root = std::path::Path::new(&project_path);
+            let policy = {
+                let db_state = app.state::<DbState>();
+                let conn = match db_state.0.lock() {
+                    Ok(conn) => conn,
+                    Err(error) => {
+                        tracing::warn!(
+                            project_id = project_id.as_str(),
+                            error = %error,
+                            "Skipping file watcher indexing: db lock poisoned while loading scan/index policy"
+                        );
+                        emit_search_file_index_failed_event(
+                            project_id,
+                            changed_path_count,
+                            file_index_started.elapsed().as_millis() as u64,
+                            &error.to_string(),
+                        );
+                        continue;
+                    }
+                };
+                match crate::services::scan_policy::ScanIndexPolicy::load(&conn) {
+                    Ok(policy) => policy,
+                    Err(error) => {
+                        tracing::warn!(
+                            project_id = project_id.as_str(),
+                            error = %error,
+                            "Skipping file watcher indexing: failed to load scan/index policy"
+                        );
+                        emit_search_file_index_failed_event(
+                            project_id,
+                            changed_path_count,
+                            file_index_started.elapsed().as_millis() as u64,
+                            &error.to_string(),
+                        );
+                        continue;
+                    }
+                }
+            };
 
             let ss = app.state::<SearchState>();
             let mut index = match ss.0.lock() {
@@ -752,11 +789,12 @@ pub(crate) fn process_watch_events(
             let mut updated = 0;
             let mut first_error: Option<String> = None;
             for path in &unique {
-                match search::indexer::update_file_batched(
+                match search::indexer::update_file_batched_with_scan_policy(
                     &mut index,
                     project_id,
                     project_root,
                     path,
+                    &policy,
                 ) {
                     Ok(true) => updated += 1,
                     Err(e) => {

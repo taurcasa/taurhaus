@@ -44,6 +44,25 @@ mod commands {
                 freshness: RuntimeSnapshotFreshness::Unavailable,
             })
         }
+
+        pub fn decode_daemon_runtime_session_snapshot(
+            payload: Option<serde_json::Value>,
+        ) -> Result<taurhaus_lib::daemon_api::protocol::RuntimeSessionSnapshotResult, String>
+        {
+            match payload {
+                Some(value) => serde_json::from_value(value)
+                    .map_err(|error| format!("Runtime session snapshot decode error: {error}")),
+                None => Ok(
+                    taurhaus_lib::daemon_api::protocol::RuntimeSessionSnapshotResult {
+                        version: 0,
+                        display_sessions: Vec::new(),
+                        runtime_sessions: Vec::new(),
+                        focus: None,
+                        foreground_project_path: None,
+                    },
+                ),
+            }
+        }
     }
 
     pub mod projects {

@@ -23,6 +23,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use std::time::Duration;
 use tempfile::NamedTempFile;
 use tempfile::TempDir;
 
@@ -69,6 +70,25 @@ fn setup_log_file() -> (LogFileState, NamedTempFile) {
     let tmp = NamedTempFile::new().expect("temp log");
     let state = LogFileState::new(tmp.path().to_path_buf()).expect("create log sink");
     (state, tmp)
+}
+
+fn read_log_events(path: &Path) -> Vec<serde_json::Value> {
+    for _ in 0..100 {
+        let content = std::fs::read_to_string(path).unwrap_or_default();
+        let events: Vec<serde_json::Value> = content
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect();
+        if !events.is_empty() {
+            return events;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    let content = std::fs::read_to_string(path).unwrap_or_default();
+    content
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
 }
 
 fn test_coordination_state(
@@ -350,6 +370,21 @@ fn foreground_project_resolution_maps_focus_to_registered_project() {
         &sessions,
     )
     .expect("resolve foreground project");
+
+    assert_eq!(project_id, Some("p1".to_string()));
+}
+
+#[test]
+fn foreground_project_resolution_matches_equivalent_normalized_paths() {
+    let (db, _db_file) = setup_db_with_project("p1", r"\\wsl.localhost\Ubuntu\home\user\project");
+    let sessions = vec![active_session_for("//wsl$/Ubuntu/home/user/project/")];
+
+    let project_id = resolve_foreground_project_id_from_sessions(
+        &db,
+        &attached_focus("taurhaus", "work"),
+        &sessions,
+    )
+    .expect("resolve normalized foreground project");
 
     assert_eq!(project_id, Some("p1".to_string()));
 }
@@ -790,6 +825,50 @@ fn launch_cli_session_uses_daemon_success_response() {
 }
 
 #[test]
+fn launch_cli_session_logs_daemon_request_context() {
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": {
+            "tmux_session": "taurhaus",
+            "tmux_window": "2",
+            "tmux_pane": "%7"
+        },
+        "error": null
+    }));
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    };
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let (log_file, log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+    )
+    .expect("daemon launch should succeed");
+
+    let events = read_log_events(log_file_path.path());
+    let request = events
+        .iter()
+        .find(|event| event["event"] == "command_center.launch.daemon_request")
+        .expect("daemon request event");
+    assert_eq!(request["caller"], "command_center.launch");
+    assert_eq!(request["daemon_request_id"], "launch-session");
+    assert_eq!(request["daemon_method"], protocol::method::LAUNCH_SESSION);
+    assert_eq!(request["project_id"], "p1");
+    assert_eq!(request["project_path"], "/tmp/project");
+}
+
+#[test]
 fn launch_cli_session_surfaces_daemon_error_message() {
     let daemon = start_stub_daemon(serde_json::json!({
         "result": null,
@@ -841,8 +920,14 @@ fn stop_cli_session_surfaces_daemon_error_message() {
         wsl_distro: None,
     };
 
-    let err = stop_cli_session_impl(&provider, "%10".to_string(), Some(CliTool::Codex))
-        .expect_err("daemon stop should return error");
+    let (log_file, _log_file_path) = setup_log_file();
+    let err = stop_cli_session_impl(
+        &log_file,
+        &provider,
+        "%10".to_string(),
+        Some(CliTool::Codex),
+    )
+    .expect_err("daemon stop should return error");
     assert!(err.contains("cannot stop session"));
 }
 

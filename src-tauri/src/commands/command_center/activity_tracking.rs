@@ -30,7 +30,7 @@ pub(super) fn promote_activity_from_sessions_impl(
     let mut active_paths = HashSet::new();
     let mut unattributed_paths = HashSet::new();
     for session in sessions {
-        let normalized_path = normalize_project_path_key(&session.project_path);
+        let normalized_path = crate::provider::path::normalize_project_path(&session.project_path);
         if session.state == crate::session_scanner::SessionState::Active {
             active_paths.insert(normalized_path);
         } else if session.project_unattributed_active {
@@ -51,7 +51,7 @@ pub(super) fn promote_activity_from_sessions_impl(
     let mut by_path = HashMap::new();
     for project in projects {
         by_path.insert(
-            normalize_project_path_key(&project.path),
+            crate::provider::path::normalize_project_path(&project.path),
             (project.id, project.activity_state),
         );
     }

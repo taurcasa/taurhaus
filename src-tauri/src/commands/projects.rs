@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 use serde::Deserialize;
+use serde_json::{Map, Value};
 use tauri::{Emitter, State};
 
 use crate::commands::lifecycle::IpcCommandSpan;
@@ -22,6 +23,61 @@ fn expand_tilde(path: &str) -> String {
         }
     }
     path.to_string()
+}
+
+fn emit_project_event(level: &str, event: &str, message: &str, fields: Map<String, Value>) {
+    crate::commands::logging::emit_global(
+        level,
+        "backend",
+        event,
+        Some(message.to_string()),
+        fields,
+    );
+}
+
+fn project_detail_fields(detail: &ProjectDetail) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert("project_id".to_string(), Value::String(detail.id.clone()));
+    fields.insert(
+        "project_name".to_string(),
+        Value::String(detail.name.clone()),
+    );
+    fields.insert(
+        "project_path".to_string(),
+        Value::String(detail.path.clone()),
+    );
+    fields
+}
+
+fn emit_project_failure(event: &str, message: &str, error: &str, mut fields: Map<String, Value>) {
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error.to_string()),
+    );
+    emit_project_event("warn", event, message, fields);
+}
+
+fn emit_project_reseed_degraded(project_id: &str, project_path: &str, stage: &str, error: &str) {
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert(
+        "project_path".to_string(),
+        Value::String(project_path.to_string()),
+    );
+    fields.insert("stage".to_string(), Value::String(stage.to_string()));
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error.to_string()),
+    );
+    emit_project_event(
+        "warn",
+        "projects.reseed.degraded",
+        "Project reseed degraded after mutation",
+        fields,
+    );
 }
 
 /// Managed state: a mutex-wrapped SQLite connection.
@@ -48,7 +104,7 @@ pub struct DiscoveredProject {
 #[tauri::command]
 pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, String> {
     let span = IpcCommandSpan::start("list_projects");
-    let result = {
+    let result: Result<Vec<ProjectSummary>, String> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         project::list_projects(&conn, &settings.thresholds).sanitize_err()
@@ -60,7 +116,7 @@ pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, Stri
 #[tauri::command]
 pub fn get_project(db: State<'_, DbState>, project_id: String) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("get_project");
-    let result = {
+    let result: Result<ProjectDetail, String> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         get_project_detail_for_selection(&conn, &project_id, &settings.thresholds)
@@ -85,7 +141,9 @@ pub fn register_project(
     name: Option<String>,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("register_project");
-    let result = {
+    let requested_path = path.clone();
+    let requested_name = name.clone();
+    let result: Result<ProjectDetail, String> = {
         let expanded = expand_tilde(&path);
         let detail = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -100,6 +158,34 @@ pub fn register_project(
         Ok(detail)
     };
     span.finish_result(&result);
+    match &result {
+        Ok(detail) => {
+            let mut fields = project_detail_fields(detail);
+            fields.insert("requested_path".to_string(), Value::String(requested_path));
+            if let Some(name) = requested_name {
+                fields.insert("requested_name".to_string(), Value::String(name));
+            }
+            emit_project_event(
+                "info",
+                "projects.register.completed",
+                "Project registered",
+                fields,
+            );
+        }
+        Err(error) => {
+            let mut fields = Map::new();
+            fields.insert("requested_path".to_string(), Value::String(requested_path));
+            if let Some(name) = requested_name {
+                fields.insert("requested_name".to_string(), Value::String(name));
+            }
+            emit_project_failure(
+                "projects.register.failed",
+                "Project registration failed",
+                error,
+                fields,
+            );
+        }
+    }
     result
 }
 
@@ -184,6 +270,29 @@ fn join_project_creation_path(parent_dir: &str, name: &str) -> String {
     }
 }
 
+fn scan_directory_impl(db: &DbState, path: String) -> Result<Vec<DiscoveredProject>, String> {
+    let expanded = expand_tilde(&path);
+    let policy = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::services::scan_policy::ScanIndexPolicy::load(&conn).sanitize_err()?
+    };
+
+    let results = crate::services::scanner::scan_directory_with_policy(
+        std::path::Path::new(&expanded),
+        2,
+        &policy,
+    )?;
+
+    Ok(results
+        .into_iter()
+        .map(|d| DiscoveredProject {
+            path: d.path,
+            name: d.name,
+            has_git: d.has_git,
+        })
+        .collect())
+}
+
 fn initialize_project_repo(
     target_dir: &std::path::Path,
     raw_target_path: &str,
@@ -266,7 +375,9 @@ pub fn create_project(
     parent_dir: String,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("create_project");
-    let result = {
+    let requested_name = name.clone();
+    let requested_parent_dir = parent_dir.clone();
+    let result: Result<ProjectDetail, String> = {
         let expanded_parent = expand_tilde(&parent_dir);
         let detail = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -280,6 +391,35 @@ pub fn create_project(
         Ok(detail)
     };
     span.finish_result(&result);
+    match &result {
+        Ok(detail) => {
+            let mut fields = project_detail_fields(detail);
+            fields.insert(
+                "parent_dir".to_string(),
+                Value::String(requested_parent_dir),
+            );
+            emit_project_event(
+                "info",
+                "projects.create.completed",
+                "Project created",
+                fields,
+            );
+        }
+        Err(error) => {
+            let mut fields = Map::new();
+            fields.insert("project_name".to_string(), Value::String(requested_name));
+            fields.insert(
+                "parent_dir".to_string(),
+                Value::String(requested_parent_dir),
+            );
+            emit_project_failure(
+                "projects.create.failed",
+                "Project creation failed",
+                error,
+                fields,
+            );
+        }
+    }
     result
 }
 
@@ -290,6 +430,10 @@ pub fn update_project(
     fields: UpdateProjectFields,
 ) -> Result<ProjectDetail, String> {
     let span = IpcCommandSpan::start("update_project");
+    let requested_project_id = project_id.clone();
+    let updated_name = fields.name.is_some();
+    let updated_description = fields.description.is_some();
+    let updated_hero_preference = fields.hero_preference.is_some();
     let result = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
@@ -308,6 +452,48 @@ pub fn update_project(
         project::get_project(&conn, &project_id, &thresholds).sanitize_err()
     };
     span.finish_result(&result);
+    match &result {
+        Ok(detail) => {
+            let mut log_fields = project_detail_fields(detail);
+            log_fields.insert("updated_name".to_string(), Value::Bool(updated_name));
+            log_fields.insert(
+                "updated_description".to_string(),
+                Value::Bool(updated_description),
+            );
+            log_fields.insert(
+                "updated_hero_preference".to_string(),
+                Value::Bool(updated_hero_preference),
+            );
+            emit_project_event(
+                "info",
+                "projects.update.completed",
+                "Project updated",
+                log_fields,
+            );
+        }
+        Err(error) => {
+            let mut log_fields = Map::new();
+            log_fields.insert(
+                "project_id".to_string(),
+                Value::String(requested_project_id),
+            );
+            log_fields.insert("updated_name".to_string(), Value::Bool(updated_name));
+            log_fields.insert(
+                "updated_description".to_string(),
+                Value::Bool(updated_description),
+            );
+            log_fields.insert(
+                "updated_hero_preference".to_string(),
+                Value::Bool(updated_hero_preference),
+            );
+            emit_project_failure(
+                "projects.update.failed",
+                "Project update failed",
+                error,
+                log_fields,
+            );
+        }
+    }
     result
 }
 
@@ -318,32 +504,93 @@ pub fn remove_project(
     project_id: String,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("remove_project");
-    let result = {
+    struct RemoveProjectOutcome {
+        project_name: Option<String>,
+        project_path: Option<String>,
+        search_cleanup_status: &'static str,
+        search_cleanup_error: Option<String>,
+    }
+
+    let outcome: Result<RemoveProjectOutcome, String> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let removed_project = queries::get_project(&conn, &project_id).sanitize_err()?;
         project::remove_project(&conn, &project_id).sanitize_err()?;
 
         // Clean up search index entries for this project
-        match search.0.lock() {
+        let (search_cleanup_status, search_cleanup_error) = match search.0.lock() {
             Ok(mut index) => {
                 index.remove_by_project(&project_id);
                 if let Err(e) = index.commit() {
                     tracing::warn!(project_id, error = %e, "search index commit failed after project removal");
+                    ("commit_failed", Some(e.to_string()))
+                } else {
+                    ("committed", None)
                 }
             }
             Err(e) => {
                 tracing::warn!(project_id, error = %e, "search index lock failed during project removal");
+                ("lock_failed", Some(e.to_string()))
             }
-        }
-        Ok(())
+        };
+        Ok(RemoveProjectOutcome {
+            project_name: removed_project.as_ref().map(|project| project.name.clone()),
+            project_path: removed_project.as_ref().map(|project| project.path.clone()),
+            search_cleanup_status,
+            search_cleanup_error,
+        })
     };
+    let result: Result<(), String> = outcome
+        .as_ref()
+        .map(|_| ())
+        .map_err(|error: &String| error.clone());
     span.finish_result(&result);
+    match outcome {
+        Ok(outcome) => {
+            let mut fields = Map::new();
+            fields.insert("project_id".to_string(), Value::String(project_id));
+            if let Some(project_name) = outcome.project_name {
+                fields.insert("project_name".to_string(), Value::String(project_name));
+            }
+            if let Some(project_path) = outcome.project_path {
+                fields.insert("project_path".to_string(), Value::String(project_path));
+            }
+            fields.insert(
+                "search_cleanup_status".to_string(),
+                Value::String(outcome.search_cleanup_status.to_string()),
+            );
+            if let Some(error) = outcome.search_cleanup_error {
+                fields.insert("search_cleanup_error".to_string(), Value::String(error));
+            }
+            let level = if outcome.search_cleanup_status == "committed" {
+                "info"
+            } else {
+                "warn"
+            };
+            emit_project_event(
+                level,
+                "projects.remove.completed",
+                "Project removed",
+                fields,
+            );
+        }
+        Err(error) => {
+            let mut fields = Map::new();
+            fields.insert("project_id".to_string(), Value::String(project_id));
+            emit_project_failure(
+                "projects.remove.failed",
+                "Project removal failed",
+                &error,
+                fields,
+            );
+        }
+    }
     result
 }
 
 #[tauri::command]
 pub fn is_first_run(db: State<'_, DbState>) -> Result<bool, String> {
     let span = IpcCommandSpan::start("is_first_run");
-    let result = {
+    let result: Result<bool, String> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let count = crate::db::queries::project_count(&conn).sanitize_err()?;
         Ok(count == 0)
@@ -370,7 +617,8 @@ pub fn register_projects_batch(
     paths: Vec<String>,
 ) -> Result<Vec<BatchRegistrationResult>, String> {
     let span = IpcCommandSpan::start("register_projects_batch");
-    let result = {
+    let requested_batch_size = paths.len() as u64;
+    let result: Result<Vec<BatchRegistrationResult>, String> = {
         let results = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
@@ -418,6 +666,57 @@ pub fn register_projects_batch(
         Ok(results)
     };
     span.finish_result(&result);
+    match &result {
+        Ok(results) => {
+            let success_count = results.iter().filter(|result| result.success).count() as u64;
+            let failure_count = results.len() as u64 - success_count;
+            for item in results.iter().filter(|item| !item.success) {
+                let mut fields = Map::new();
+                fields.insert("path".to_string(), Value::String(item.path.clone()));
+                if let Some(error) = item.error.as_ref() {
+                    fields.insert("error.message".to_string(), Value::String(error.clone()));
+                }
+                emit_project_event(
+                    "warn",
+                    "projects.batch_register.item_failed",
+                    "Project batch registration item failed",
+                    fields,
+                );
+            }
+            let mut fields = Map::new();
+            fields.insert(
+                "batch_size".to_string(),
+                Value::Number(serde_json::Number::from(requested_batch_size)),
+            );
+            fields.insert(
+                "success_count".to_string(),
+                Value::Number(serde_json::Number::from(success_count)),
+            );
+            fields.insert(
+                "failure_count".to_string(),
+                Value::Number(serde_json::Number::from(failure_count)),
+            );
+            emit_project_event(
+                "info",
+                "projects.batch_register.completed",
+                "Project batch registration completed",
+                fields,
+            );
+        }
+        Err(error) => {
+            let mut fields = Map::new();
+            fields.insert(
+                "batch_size".to_string(),
+                Value::Number(serde_json::Number::from(requested_batch_size)),
+            );
+            emit_project_failure(
+                "projects.batch_register.failed",
+                "Project batch registration failed",
+                error,
+                fields,
+            );
+        }
+    }
     result
 }
 
@@ -432,8 +731,8 @@ fn reseed_activity_for_project(
     let provider = providers.resolve(project_path);
 
     // Cache branch + dirty status so sidebar shows them immediately
-    if let Ok(status) = provider.git_status(project_path) {
-        match db.0.lock() {
+    match provider.git_status(project_path) {
+        Ok(status) => match db.0.lock() {
             Ok(conn) => {
                 if let Err(e) = queries::update_cached_git_status(
                     &conn,
@@ -442,11 +741,31 @@ fn reseed_activity_for_project(
                     status.is_dirty,
                 ) {
                     tracing::warn!(project_id, error = %e, "reseed: failed to cache git status");
+                    emit_project_reseed_degraded(
+                        project_id,
+                        project_path,
+                        "git_status_cache",
+                        &e.to_string(),
+                    );
                 }
             }
             Err(e) => {
                 tracing::warn!(project_id, error = %e, "reseed: db lock failed for git status cache");
+                emit_project_reseed_degraded(
+                    project_id,
+                    project_path,
+                    "git_status_db_lock",
+                    &e.to_string(),
+                );
             }
+        },
+        Err(e) => {
+            emit_project_reseed_degraded(
+                project_id,
+                project_path,
+                "git_status_query",
+                &e.to_string(),
+            );
         }
     }
 
@@ -466,10 +785,22 @@ fn reseed_activity_for_project(
                         None,
                     ) {
                         tracing::warn!(project_id, error = %e, "reseed: failed to update last_activity_at");
+                        emit_project_reseed_degraded(
+                            project_id,
+                            project_path,
+                            "activity_update",
+                            &e.to_string(),
+                        );
                     }
                 }
                 Err(e) => {
                     tracing::warn!(project_id, error = %e, "reseed: db lock failed for activity update");
+                    emit_project_reseed_degraded(
+                        project_id,
+                        project_path,
+                        "activity_db_lock",
+                        &e.to_string(),
+                    );
                 }
             }
         }
@@ -482,25 +813,23 @@ fn reseed_activity_for_project(
         }
         Err(e) => {
             tracing::warn!(project_id, project_path, error = %e, "reseed: git query failed, keeping registration time");
+            emit_project_reseed_degraded(
+                project_id,
+                project_path,
+                "latest_commit_time",
+                &e.to_string(),
+            );
         }
     }
 }
 
 #[tauri::command]
-pub fn scan_directory(path: String) -> Result<Vec<DiscoveredProject>, String> {
+pub fn scan_directory(
+    db: State<'_, DbState>,
+    path: String,
+) -> Result<Vec<DiscoveredProject>, String> {
     let span = IpcCommandSpan::start("scan_directory");
-    let result = {
-        let expanded = expand_tilde(&path);
-        let results = crate::services::scanner::scan_directory(std::path::Path::new(&expanded), 2)?;
-        Ok(results
-            .into_iter()
-            .map(|d| DiscoveredProject {
-                path: d.path,
-                name: d.name,
-                has_git: d.has_git,
-            })
-            .collect())
-    };
+    let result = scan_directory_impl(db.inner(), path);
     span.finish_result(&result);
     result
 }
@@ -744,7 +1073,9 @@ mod tests {
         let hidden = parent.path().join(".hidden");
         std::fs::create_dir(&hidden).unwrap();
 
-        let results = scan_directory(parent.path().to_str().unwrap().to_string()).unwrap();
+        let (db, _tmp) = test_db_state();
+        let results =
+            scan_directory_impl(&db, parent.path().to_str().unwrap().to_string()).unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].name, "project-a");
         assert!(results[0].has_git);
@@ -754,8 +1085,41 @@ mod tests {
 
     #[test]
     fn scan_directory_rejects_nonexistent() {
-        let result = scan_directory("/nonexistent/path".to_string());
+        let (db, _tmp) = test_db_state();
+        let result = scan_directory_impl(&db, "/nonexistent/path".to_string());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn scan_directory_honors_saved_ignore_patterns() {
+        let (db, _tmp) = test_db_state();
+        let parent = TempDir::new().unwrap();
+
+        let kept = parent.path().join("project-a");
+        std::fs::create_dir_all(kept.join(".git")).unwrap();
+
+        let ignored_root = parent.path().join("vendor");
+        let ignored_project = ignored_root.join("project-b");
+        std::fs::create_dir_all(ignored_project.join(".git")).unwrap();
+
+        {
+            let conn = db.0.lock().expect("lock db");
+            let mut settings = settings_queries::get_all_settings(&conn).expect("get settings");
+            settings.scan_directories = vec![parent.path().to_string_lossy().to_string()];
+            settings.ignore_patterns = vec!["vendor".into()];
+            settings_queries::save_settings(&conn, &settings).expect("save settings");
+        }
+
+        let results =
+            scan_directory_impl(&db, parent.path().to_string_lossy().to_string()).unwrap();
+        let names: Vec<&str> = results
+            .iter()
+            .map(|project| project.name.as_str())
+            .collect();
+
+        assert!(names.contains(&"project-a"));
+        assert!(!names.contains(&"vendor"));
+        assert!(!names.contains(&"project-b"));
     }
 
     #[test]

@@ -77,12 +77,13 @@ pub fn launch_cli_session(
 
 #[tauri::command]
 pub fn stop_cli_session(
+    log_file: State<'_, crate::commands::logging::LogFileState>,
     provider: State<'_, ProviderState>,
     tmux_pane: String,
     cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
     let span = IpcCommandSpan::start("stop_cli_session");
-    let result = stop_cli_session_impl(provider.inner(), tmux_pane, cli_tool);
+    let result = stop_cli_session_impl(log_file.inner(), provider.inner(), tmux_pane, cli_tool);
     span.finish_result(&result);
     result
 }
@@ -158,18 +159,6 @@ pub fn get_foreground_project(
     result
 }
 
-fn normalize_project_path_key(path: &str) -> String {
-    let normalized = path
-        .trim_end_matches('/')
-        .trim_end_matches('\\')
-        .to_string();
-    if cfg!(windows) {
-        normalized.to_ascii_lowercase()
-    } else {
-        normalized
-    }
-}
-
 pub(crate) fn get_foreground_project_impl(
     app: &tauri::AppHandle,
     db: &DbState,
@@ -206,12 +195,12 @@ fn resolve_project_id_from_path(
     db: &DbState,
     project_path: &str,
 ) -> Result<Option<String>, String> {
-    let project_key = normalize_project_path_key(project_path);
+    let project_key = crate::provider::path::normalize_project_path(project_path);
     let conn = db.0.lock().map_err(|error| error.to_string())?;
     let projects = crate::db::queries::list_projects(&conn).sanitize_err()?;
     Ok(projects
         .into_iter()
-        .find(|project| normalize_project_path_key(&project.path) == project_key)
+        .find(|project| crate::provider::path::normalize_project_path(&project.path) == project_key)
         .map(|project| project.id))
 }
 

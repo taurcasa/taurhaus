@@ -4,6 +4,7 @@ use tantivy::schema::{Field, Schema, STORED, STRING, TEXT};
 use tantivy::{Index, IndexWriter, TantivyDocument};
 
 use crate::errors::AppError;
+use crate::services::scan_policy::ScanIndexPolicy;
 
 /// Heap size for the tantivy index writer (50 MB).
 const WRITER_HEAP_SIZE: usize = 50 * 1024 * 1024;
@@ -255,9 +256,19 @@ pub fn index_project_files(
     project_id: &str,
     project_root: &Path,
 ) -> Result<usize, AppError> {
+    index_project_files_with_policy(index, project_id, project_root, &ScanIndexPolicy::default())
+}
+
+pub fn index_project_files_with_policy(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    policy: &ScanIndexPolicy,
+) -> Result<usize, AppError> {
     use ignore::WalkBuilder;
 
     let mut count = 0;
+    let matcher = policy.matcher_for_root(project_root);
 
     let walker = WalkBuilder::new(project_root)
         .follow_links(false)
@@ -269,6 +280,14 @@ pub fn index_project_files(
 
     for entry in walker.flatten() {
         let path = entry.path();
+        let is_dir = entry
+            .file_type()
+            .map(|file_type| file_type.is_dir())
+            .unwrap_or(false);
+        if matcher.ignores_path(path, is_dir) {
+            continue;
+        }
+
         if !path.is_file() || !is_indexable_file(path) {
             continue;
         }
@@ -433,10 +452,21 @@ pub fn build_project_index(
     project_root: &Path,
     conn: &rusqlite::Connection,
 ) -> Result<(usize, usize, usize), AppError> {
+    let policy = ScanIndexPolicy::load(conn)?;
+    build_project_index_with_policy(index, project_id, project_root, conn, &policy)
+}
+
+pub fn build_project_index_with_policy(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    conn: &rusqlite::Connection,
+    policy: &ScanIndexPolicy,
+) -> Result<(usize, usize, usize), AppError> {
     // Remove existing entries for this project before re-indexing
     index.remove_by_project(project_id);
 
-    let files = index_project_files(index, project_id, project_root)?;
+    let files = index_project_files_with_policy(index, project_id, project_root, policy)?;
     let session_stats = index_project_sessions(index, project_id, conn)?;
     let sessions = session_stats.indexed;
     let commits = index_project_commits(index, project_id, project_root, 100)?;
@@ -450,6 +480,15 @@ pub fn build_project_index(
 pub fn rebuild_all(
     index: &mut SearchIndex,
     conn: &rusqlite::Connection,
+) -> Result<usize, AppError> {
+    let policy = ScanIndexPolicy::load(conn)?;
+    rebuild_all_with_policy(index, conn, &policy)
+}
+
+pub fn rebuild_all_with_policy(
+    index: &mut SearchIndex,
+    conn: &rusqlite::Connection,
+    policy: &ScanIndexPolicy,
 ) -> Result<usize, AppError> {
     use crate::db::queries;
 
@@ -465,7 +504,7 @@ pub fn rebuild_all(
         }
 
         let (files, sessions, commits) =
-            build_project_index(index, &project.id, project_root, conn)?;
+            build_project_index_with_policy(index, &project.id, project_root, conn, policy)?;
         total += files + sessions + commits;
         tracing::info!(
             project = project.name,
@@ -494,7 +533,23 @@ pub fn update_file(
     project_root: &Path,
     absolute_path: &Path,
 ) -> Result<bool, AppError> {
-    update_file_with_policy(index, project_id, project_root, absolute_path, true)
+    update_file_with_scan_policy(
+        index,
+        project_id,
+        project_root,
+        absolute_path,
+        &ScanIndexPolicy::default(),
+    )
+}
+
+pub fn update_file_with_scan_policy(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    absolute_path: &Path,
+    policy: &ScanIndexPolicy,
+) -> Result<bool, AppError> {
+    update_file_impl(index, project_id, project_root, absolute_path, true, policy)
 }
 
 /// Batch-mode variant of `update_file` that defers commit until caller flushes.
@@ -504,7 +559,30 @@ pub fn update_file_batched(
     project_root: &Path,
     absolute_path: &Path,
 ) -> Result<bool, AppError> {
-    update_file_with_policy(index, project_id, project_root, absolute_path, false)
+    update_file_batched_with_scan_policy(
+        index,
+        project_id,
+        project_root,
+        absolute_path,
+        &ScanIndexPolicy::default(),
+    )
+}
+
+pub fn update_file_batched_with_scan_policy(
+    index: &mut SearchIndex,
+    project_id: &str,
+    project_root: &Path,
+    absolute_path: &Path,
+    policy: &ScanIndexPolicy,
+) -> Result<bool, AppError> {
+    update_file_impl(
+        index,
+        project_id,
+        project_root,
+        absolute_path,
+        false,
+        policy,
+    )
 }
 
 /// Flush buffered updates after a batch of `update_file_batched` calls.
@@ -512,12 +590,13 @@ pub fn commit_batch(index: &mut SearchIndex) -> Result<(), AppError> {
     index.commit()
 }
 
-fn update_file_with_policy(
+fn update_file_impl(
     index: &mut SearchIndex,
     project_id: &str,
     project_root: &Path,
     absolute_path: &Path,
     auto_commit: bool,
+    policy: &ScanIndexPolicy,
 ) -> Result<bool, AppError> {
     fn remove_path(
         index: &mut SearchIndex,
@@ -546,6 +625,11 @@ fn update_file_with_policy(
         Err(_) => return remove_path(index, &relative, auto_commit),
     };
     if !canonical_file.starts_with(&canonical_root) {
+        return remove_path(index, &relative, auto_commit);
+    }
+
+    let matcher = policy.matcher_for_root(project_root);
+    if matcher.ignores_path(absolute_path, false) {
         return remove_path(index, &relative, auto_commit);
     }
 
@@ -657,6 +741,7 @@ pub fn reindex_commits(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Settings;
 
     #[test]
     fn create_in_memory_index() {
@@ -857,6 +942,28 @@ mod tests {
         index.commit().unwrap();
 
         assert_eq!(count, 1); // only small.md
+    }
+
+    #[test]
+    fn index_project_files_respects_saved_ignore_patterns() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("README.md"), "# keep me").unwrap();
+        std::fs::create_dir_all(dir.path().join("generated")).unwrap();
+        std::fs::write(dir.path().join("generated/skip.md"), "skip me").unwrap();
+
+        let policy = ScanIndexPolicy::from_settings(&Settings {
+            ignore_patterns: vec!["generated".into()],
+            ..Settings::default()
+        });
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let count = index_project_files_with_policy(&mut index, "p1", dir.path(), &policy).unwrap();
+        index.commit().unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(index.doc_count().unwrap(), 1);
+        assert!(index.search("keep", 10).unwrap().len() == 1);
+        assert!(index.search("skip", 10).unwrap().is_empty());
     }
 
     #[test]
@@ -1175,6 +1282,29 @@ mod tests {
         // Should return true (removed from index if it was there) but doc count stays 0
         assert!(modified);
         assert_eq!(index.doc_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn update_file_removes_or_skips_paths_blocked_by_policy() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(dir.path().join("generated")).unwrap();
+        let file_path = dir.path().join("generated/output.md");
+        std::fs::write(&file_path, "should not be searchable").unwrap();
+
+        let policy = ScanIndexPolicy::from_settings(&Settings {
+            ignore_patterns: vec!["generated".into()],
+            ..Settings::default()
+        });
+
+        let mut index = SearchIndex::open_in_memory().unwrap();
+        let modified =
+            update_file_batched_with_scan_policy(&mut index, "p1", dir.path(), &file_path, &policy)
+                .unwrap();
+        commit_batch(&mut index).unwrap();
+
+        assert!(modified);
+        assert_eq!(index.doc_count().unwrap(), 0);
+        assert!(index.search("searchable", 10).unwrap().is_empty());
     }
 
     #[test]
