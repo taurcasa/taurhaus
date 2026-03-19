@@ -546,6 +546,17 @@ impl CoordinationOrchestrator {
         &mut self,
         team_name: &str,
     ) -> Result<(), CoordinationError> {
+        self.reconcile_team_presence_for_live_status_with_runtime_sessions(team_name, &[])?;
+        Ok(())
+    }
+
+    /// Reconcile pane-backed presence drift for live-status reads, including
+    /// daemon runtime snapshots that may still advertise stale members.
+    pub fn reconcile_team_presence_for_live_status_with_runtime_sessions(
+        &mut self,
+        team_name: &str,
+        runtime_sessions: &[crate::session_scanner::RuntimeSession],
+    ) -> Result<HashSet<String>, CoordinationError> {
         validate_team_name(team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let members_by_name = config
@@ -554,13 +565,29 @@ impl CoordinationOrchestrator {
             .map(|member| (member.name.clone(), member))
             .collect::<HashMap<_, _>>();
         let runtime_records = MemberRuntimeStore::load_all(&self.teams_dir, team_name)?;
+        let runtime_sessions_by_member = runtime_sessions
+            .iter()
+            .filter(|session| session.group_id.as_deref() == Some(team_name))
+            .filter_map(|session| {
+                session
+                    .member_name
+                    .as_ref()
+                    .map(|member_name| (member_name.clone(), session))
+            })
+            .collect::<HashMap<_, _>>();
+        let mut reconciled_members = HashSet::new();
 
         for (member_name, mut runtime) in runtime_records {
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
             };
 
-            let offline_detected = match runtime.pane_id.as_deref() {
+            let snapshot_pane_id = runtime_sessions_by_member
+                .get(&member_name)
+                .and_then(|session| session.tmux_pane.as_deref());
+            let pane_id = snapshot_pane_id.or(runtime.pane_id.as_deref());
+
+            let offline_detected = match pane_id {
                 None => true,
                 Some(pane_id) => {
                     if !self.runtime.pane_exists(pane_id)? || self.runtime.pane_is_dead(pane_id)? {
@@ -577,6 +604,10 @@ impl CoordinationOrchestrator {
 
             runtime.health = HealthState::SessionDead;
             runtime.session_id = None;
+            runtime.jsonl_path = None;
+            if runtime.pane_id.is_none() {
+                runtime.pane_id = snapshot_pane_id.map(ToOwned::to_owned);
+            }
 
             if member.cli_tool != CliTool::Claude {
                 if let Some(pid) = runtime.daemon_pid {
@@ -608,9 +639,10 @@ impl CoordinationOrchestrator {
             }
 
             MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+            reconciled_members.insert(member_name);
         }
 
-        Ok(())
+        Ok(reconciled_members)
     }
 
     /// Reconcile member liveness for a team using pane + daemon state.

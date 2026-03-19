@@ -1,7 +1,10 @@
 use std::collections::HashSet;
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::thread;
 
 use chrono::{DateTime, Utc};
 use tempfile::{NamedTempFile, TempDir};
@@ -15,6 +18,8 @@ use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{
     ActiveProjectTeamStore, MemberRuntimeStore, OperationalContextSnapshotStore, TeamConfigStore,
 };
+use taurhaus_lib::daemon_api::protocol;
+use taurhaus_lib::ProviderState;
 
 #[derive(Debug, Default)]
 struct MockBinaryLookup {
@@ -67,6 +72,53 @@ fn test_timestamp(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
         .expect("valid timestamp")
         .with_timezone(&Utc)
+}
+
+struct StubDaemon {
+    addr: String,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for StubDaemon {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn start_stub_daemon(response: serde_json::Value) -> StubDaemon {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind stub daemon");
+    let addr = listener.local_addr().expect("stub daemon addr");
+    let addr_string = format!("127.0.0.1:{}", addr.port());
+
+    let handle = thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("accept daemon client");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("read request");
+
+        let request: protocol::DaemonRequest =
+            serde_json::from_str(&line).expect("parse daemon request");
+        let mut response = response;
+        if let Some(map) = response.as_object_mut() {
+            map.insert("id".to_string(), serde_json::Value::String(request.id));
+        }
+        let response_line = format!(
+            "{}\n",
+            serde_json::to_string(&response).expect("serialize daemon response")
+        );
+        let mut writer = stream;
+        writer
+            .write_all(response_line.as_bytes())
+            .expect("write daemon response");
+        writer.flush().expect("flush daemon response");
+    });
+
+    StubDaemon {
+        addr: addr_string,
+        handle: Some(handle),
+    }
 }
 
 fn sample_preflight_request() -> InitializeTeamRequest {
@@ -2265,6 +2317,156 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
                 | RuntimeCall::CheckPaneShell { .. }
         )
     }));
+}
+
+#[test]
+fn live_status_provider_snapshot_yields_to_current_pane_loss() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime.clone());
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize");
+
+    let frontend_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+            .expect("frontend runtime");
+    let lead_runtime = MemberRuntimeStore::load(tmp.path(), "architecture-final", "team-lead")
+        .expect("lead runtime");
+    let reviewer_runtime = MemberRuntimeStore::load(tmp.path(), "architecture-final", "reviewer")
+        .expect("reviewer runtime");
+
+    let frontend_pane_id = frontend_runtime.pane_id.clone().expect("frontend pane id");
+    runtime.set_pane_exists(&frontend_pane_id, false);
+
+    let snapshot_payload = serde_json::json!({
+        "version": 3,
+        "display_sessions": [],
+        "runtime_sessions": [
+            {
+                "pid": 101,
+                "project_path": "/projects/core",
+                "tty": "pts/1",
+                "args": "claude",
+                "cli_tool": "claude",
+                "tmux_session": "taurhaus",
+                "tmux_window": "@1",
+                "tmux_pane": lead_runtime.pane_id.clone().expect("lead pane id"),
+                "tmux_window_name": "architecture-final:team-lead",
+                "state": "active",
+                "session_id": lead_runtime.session_id.clone(),
+                "jsonl_path": null,
+                "recent_io": true,
+                "last_output_age_secs": 1,
+                "activity_confidence": "high",
+                "activity_attribution": "attributed",
+                "project_unattributed_active": false,
+                "group_kind": "mesh_team",
+                "group_id": "architecture-final",
+                "group_label": "architecture-final",
+                "member_name": "team-lead"
+            },
+            {
+                "pid": 202,
+                "project_path": "/projects/web",
+                "tty": "pts/2",
+                "args": "codex",
+                "cli_tool": "codex",
+                "tmux_session": "taurhaus",
+                "tmux_window": "@2",
+                "tmux_pane": frontend_pane_id,
+                "tmux_window_name": "architecture-final:frontend-dev",
+                "state": "active",
+                "session_id": frontend_runtime.session_id.clone(),
+                "jsonl_path": null,
+                "recent_io": true,
+                "last_output_age_secs": 1,
+                "activity_confidence": "high",
+                "activity_attribution": "attributed",
+                "project_unattributed_active": false,
+                "group_kind": "mesh_team",
+                "group_id": "architecture-final",
+                "group_label": "architecture-final",
+                "member_name": "frontend-dev"
+            },
+            {
+                "pid": 303,
+                "project_path": "/projects/api",
+                "tty": "pts/3",
+                "args": "gemini",
+                "cli_tool": "gemini",
+                "tmux_session": "taurhaus",
+                "tmux_window": "@3",
+                "tmux_pane": reviewer_runtime.pane_id.clone().expect("reviewer pane id"),
+                "tmux_window_name": "architecture-final:reviewer",
+                "state": "active",
+                "session_id": reviewer_runtime.session_id.clone(),
+                "jsonl_path": null,
+                "recent_io": true,
+                "last_output_age_secs": 1,
+                "activity_confidence": "high",
+                "activity_attribution": "attributed",
+                "project_unattributed_active": false,
+                "group_kind": "mesh_team",
+                "group_id": "architecture-final",
+                "group_label": "architecture-final",
+                "member_name": "reviewer"
+            }
+        ],
+        "focus": null,
+        "foreground_project_path": "/projects/core"
+    });
+    let decoded_snapshot =
+        crate::commands::runtime_snapshot::decode_daemon_runtime_session_snapshot(Some(
+            snapshot_payload.clone(),
+        ))
+        .expect("decode runtime snapshot payload");
+    assert_eq!(decoded_snapshot.runtime_sessions.len(), 3);
+
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": snapshot_payload,
+        "error": null
+    }));
+    let provider = ProviderState {
+        local: taurhaus_lib::provider::local::LocalProvider,
+        daemon: Some(
+            taurhaus_lib::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    };
+
+    // Regression: provider-backed live status trusted a stale daemon runtime
+    // snapshot and kept pane-loss members active, so the runtime bar stayed on
+    // "Team running normally" and exposed Add Agent instead of degraded actions.
+    let status = coordination_get_live_team_status_impl(
+        &state,
+        Some(&provider),
+        "architecture-final".to_string(),
+    )
+    .expect("live status should succeed");
+
+    assert_eq!(
+        status.runtime_snapshot_freshness,
+        crate::commands::coordination_types::LiveRuntimeSnapshotFreshness::Fresh
+    );
+    let frontend_dev = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev should exist");
+    assert_eq!(frontend_dev.session_status, SessionStatus::Offline);
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("reload frontend runtime");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
 }
 
 #[test]

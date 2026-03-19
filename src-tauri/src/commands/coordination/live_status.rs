@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::commands::coordination_types::{
@@ -33,10 +34,25 @@ pub(super) fn coordination_get_live_team_status_impl(
     if let Some(provider) = provider {
         let snapshot_outcome = daemon_runtime_session_snapshot(provider)?;
         if let Some(snapshot) = snapshot_outcome.snapshot {
+            let reconciled_offline_members = state
+                .with_orchestrator(|orchestrator| {
+                    orchestrator.reconcile_team_presence_for_live_status_with_runtime_sessions(
+                        &team_name,
+                        &snapshot.runtime_sessions,
+                    )
+                })
+                .map_err(super::map_coordination_error)?;
             let roster = get_team_roster_with_runtime_sessions(
                 state.teams_dir(),
                 &team_name,
                 &snapshot.runtime_sessions,
+            )
+            .map_err(super::map_coordination_error)?;
+            let roster = apply_reconciled_offline_members(
+                state.teams_dir(),
+                &team_name,
+                roster,
+                &reconciled_offline_members,
             )
             .map_err(super::map_coordination_error)?;
             let lead_name = roster_lead_name(&roster);
@@ -127,6 +143,33 @@ pub(super) fn derive_cross_project_status(
         is_cross_project,
         project_label,
     }
+}
+
+fn apply_reconciled_offline_members(
+    teams_dir: &Path,
+    team_name: &str,
+    roster: Vec<TeamMemberView>,
+    reconciled_offline_members: &std::collections::HashSet<String>,
+) -> Result<Vec<TeamMemberView>, CoordinationError> {
+    if reconciled_offline_members.is_empty() {
+        return Ok(roster);
+    }
+
+    let attachment_by_member = get_team_roster_with_attachments(teams_dir, team_name)?
+        .into_iter()
+        .map(|member| (member.member_name.clone(), member))
+        .collect::<HashMap<_, _>>();
+
+    Ok(roster
+        .into_iter()
+        .map(|member| {
+            attachment_by_member
+                .get(&member.member_name)
+                .cloned()
+                .filter(|_| reconciled_offline_members.contains(&member.member_name))
+                .unwrap_or(member)
+        })
+        .collect())
 }
 
 fn coordination_get_project_mesh_snapshot_with_availability(
