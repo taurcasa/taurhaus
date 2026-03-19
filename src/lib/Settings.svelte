@@ -1,5 +1,12 @@
 <script>
-  import { getSettings, updateSettings, getIndexStatus, rebuildIndex } from './ipc.js'
+  import {
+    getSettings,
+    updateSettings,
+    getIndexStatus,
+    rebuildIndex,
+    getPlatform,
+  } from './ipc.js'
+  import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
@@ -33,33 +40,28 @@
   let scanDirsText = $state('')
   let ignoreText = $state('')
 
-  function createEmptyToolCommands() {
-    return {
-      continue_cmd: '',
-      fresh: '',
-      resume: '',
-    }
-  }
-
   function cloneCliCommands(source) {
     return {
-      claude: { ...(source?.claude ?? createEmptyToolCommands()) },
-      codex: { ...(source?.codex ?? createEmptyToolCommands()) },
-      gemini: { ...(source?.gemini ?? createEmptyToolCommands()) },
+      claude: {
+        continue_cmd: source?.claude?.continue_cmd ?? '',
+        fresh: source?.claude?.fresh ?? '',
+        resume: source?.claude?.resume ?? '',
+      },
+      codex: {
+        continue_cmd: source?.codex?.continue_cmd ?? '',
+        fresh: source?.codex?.fresh ?? '',
+        resume: source?.codex?.resume ?? '',
+      },
+      gemini: {
+        continue_cmd: source?.gemini?.continue_cmd ?? '',
+        fresh: source?.gemini?.fresh ?? '',
+        resume: source?.gemini?.resume ?? '',
+      },
     }
   }
 
-  function createFallbackTerminalContract() {
-    return {
-      platform: 'linux',
-      default_emulator: 'manual',
-      supported_emulators: ['manual'],
-      cli_command_defaults: cloneCliCommands(),
-    }
-  }
-
-  function createFallbackSettings() {
-    const terminalContract = createFallbackTerminalContract()
+  function createFallbackSettings(platform = 'linux') {
+    const terminalContract = buildFrontendFallbackTerminalContract(platform)
     return {
       scan_directories: ['~/projects'],
       thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
@@ -79,7 +81,7 @@
   }
 
   function getTerminalContract() {
-    return settings?.terminal_contract ?? createFallbackTerminalContract()
+    return settings?.terminal_contract ?? buildFrontendFallbackTerminalContract('linux')
   }
 
   function getTerminalDefaultEmulator() {
@@ -128,7 +130,8 @@
     } catch (e) {
       loadError = formatUserFacingError(e, 'Failed to load settings')
       // Provide defaults so the UI is still usable
-      settings = createFallbackSettings()
+      const platform = await getPlatform().catch(() => 'linux')
+      settings = createFallbackSettings(platform)
     } finally {
       loading = false
     }

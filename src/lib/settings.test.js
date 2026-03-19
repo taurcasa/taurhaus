@@ -112,6 +112,7 @@ describe('Settings component', () => {
     getSettings.mockResolvedValue(mockSettings())
     getIndexStatus.mockResolvedValue({ doc_count: 42, is_empty: false })
     updateSettings.mockImplementation(async (s) => s)
+    getPlatform.mockResolvedValue('windows')
   })
 
   // --- IPC loading ---
@@ -143,6 +144,57 @@ describe('Settings component', () => {
     await waitFor(() => {
       expect(screen.getByTestId('settings-load-error')).toBeTruthy()
       expect(screen.getByTestId('settings-load-error').textContent).toContain('DB unavailable')
+    })
+  })
+
+  it('uses the shared Windows fallback contract when settings loading fails', async () => {
+    getSettings.mockRejectedValue(new Error('DB unavailable'))
+    getPlatform.mockResolvedValue('windows')
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      const select = screen.getByTestId('terminal-emulator')
+      const values = Array.from(select.querySelectorAll('option')).map((option) => option.value)
+      expect(getPlatform).toHaveBeenCalled()
+      expect(values).toEqual(['windows_terminal', 'custom'])
+      expect(select).toHaveValue('windows_terminal')
+      expect(screen.queryByTestId('terminal-linux-note')).toBeNull()
+      expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
+      expect(screen.getByTestId('cli-claude-continue').placeholder)
+        .toBe('claude --dangerously-skip-permissions --continue')
+    })
+  })
+
+  it('uses the shared macOS fallback contract when settings loading fails', async () => {
+    getSettings.mockRejectedValue(new Error('DB unavailable'))
+    getPlatform.mockResolvedValue('macos')
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      const select = screen.getByTestId('terminal-emulator')
+      const values = Array.from(select.querySelectorAll('option')).map((option) => option.value)
+      expect(values).toEqual(['iterm2', 'ghostty', 'terminal_app', 'custom'])
+      expect(select).toHaveValue('iterm2')
+      expect(screen.queryByTestId('terminal-linux-note')).toBeNull()
+      expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
+      expect(screen.getByTestId('cli-codex-resume').placeholder)
+        .toBe('codex resume --last --yolo')
+    })
+  })
+
+  it('uses the shared Linux fallback contract when settings loading fails', async () => {
+    getSettings.mockRejectedValue(new Error('DB unavailable'))
+    getPlatform.mockResolvedValue('linux')
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => {
+      const select = screen.getByTestId('terminal-emulator')
+      const values = Array.from(select.querySelectorAll('option')).map((option) => option.value)
+      expect(values).toEqual(['manual'])
+      expect(select).toHaveValue('manual')
+      expect(screen.getByTestId('terminal-linux-note')).toBeTruthy()
+      expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
+      expect(screen.getByTestId('cli-gemini-fresh').placeholder).toBe('gemini --yolo')
     })
   })
 

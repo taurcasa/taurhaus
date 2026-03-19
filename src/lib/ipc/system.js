@@ -56,7 +56,7 @@ function normalizeToolCommands(raw, defaults = {}) {
   }
 }
 
-function getDefaultTerminalContract(platform = 'linux') {
+export function buildFrontendFallbackTerminalContract(platform = 'linux') {
   const fallback = DEFAULT_TERMINAL_CONTRACTS[platform] ?? DEFAULT_TERMINAL_CONTRACTS.linux
   return {
     platform: fallback.platform,
@@ -73,7 +73,7 @@ function getDefaultTerminalContract(platform = 'linux') {
 function normalizeTerminalContract(raw) {
   const contract = raw && typeof raw === 'object' ? raw : {}
   const platform = contract.platform ?? 'linux'
-  const defaults = getDefaultTerminalContract(platform)
+  const defaults = buildFrontendFallbackTerminalContract(platform)
   const supportedEmulators = Array.isArray(contract.supported_emulators)
     ? contract.supported_emulators
     : Array.isArray(contract.supportedEmulators)
