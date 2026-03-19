@@ -1,8 +1,9 @@
 <script>
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions, startDaemon } from './lib/ipc.js'
   import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, markSessionPresenceStale, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
+  import { describeDaemonSetupError } from './lib/errorCopy.js'
   import {
     applyShellDaemonStatusSnapshot,
     canCheckDaemonUpdate,
@@ -74,6 +75,9 @@
       if (daemonStatusRefreshTimer !== null) {
         clearTimeout(daemonStatusRefreshTimer)
       }
+      if (daemonRecoveryEscalationTimer !== null) {
+        clearTimeout(daemonRecoveryEscalationTimer)
+      }
     }
   })
   let searchOpen = $state(false)
@@ -93,6 +97,10 @@
   let daemonUpdateAvailable = $state(null)  // { version, bundled_version } or null
   let daemonUpdateDismissed = $state(false)
   let daemonUpdating = $state(false)
+  let daemonRestarting = $state(false)
+  let daemonRecoveryStartedAt = $state(null)
+  let daemonRecoveryEscalated = $state(false)
+  let daemonRecoveryEscalationTimer = null
   let shellNotice = $state(null)
 
   /*
@@ -349,6 +357,37 @@
     return isShellDaemonRecoveryPending(daemonStatus, { initialized: daemonStatusInitialized })
   }
 
+  $effect(() => {
+    const recovering = daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected'
+    if (!recovering) {
+      daemonRecoveryStartedAt = null
+      daemonRecoveryEscalated = false
+      if (daemonRecoveryEscalationTimer !== null) {
+        clearTimeout(daemonRecoveryEscalationTimer)
+        daemonRecoveryEscalationTimer = null
+      }
+      return
+    }
+
+    const startedAt = daemonRecoveryStartedAt ?? Date.now()
+    daemonRecoveryStartedAt = startedAt
+    const elapsedMs = Date.now() - startedAt
+    const shouldEscalate = elapsedMs >= 30_000
+    daemonRecoveryEscalated = shouldEscalate
+
+    if (daemonRecoveryEscalationTimer !== null) {
+      clearTimeout(daemonRecoveryEscalationTimer)
+      daemonRecoveryEscalationTimer = null
+    }
+
+    if (!shouldEscalate) {
+      daemonRecoveryEscalationTimer = setTimeout(() => {
+        daemonRecoveryEscalated = true
+        daemonRecoveryEscalationTimer = null
+      }, 30_000 - elapsedMs)
+    }
+  })
+
   function maybeRetryPendingProjectLoad() {
     if (!pendingProjectLoadRetry || !selectedProject || daemonRecoveryPending()) {
       return
@@ -498,6 +537,24 @@
       console.error('Daemon update failed:', e)
     } finally {
       daemonUpdating = false
+    }
+  }
+
+  async function handleRestartDaemon() {
+    if (daemonRestarting) return
+    daemonRestarting = true
+    try {
+      await startDaemon()
+      await loadDaemonStatusWithRefresh({
+        allowInitial: false,
+        confirmBusy: false,
+        includeUpdateCheck: true,
+      })
+    } catch (error) {
+      console.error('[daemon] restart failed:', error)
+      shellNotice = describeDaemonSetupError(error, { action: 'restart' })
+    } finally {
+      daemonRestarting = false
     }
   }
 
@@ -1061,108 +1118,113 @@
 
 {#if showWizard}
   <div class="shell-frame h-full font-sans antialiased" data-tauri-drag-region>
-    <FirstRunWizard {dark} onComplete={handleWizardComplete} />
+    <FirstRunWizard {dark} onComplete={handleWizardComplete} onDismiss={handleWizardComplete} />
   </div>
 {:else}
 <div class="shell-frame h-full flex flex-col font-sans antialiased">
-  <ShellTitlebar
-    {dark}
-    {activeTab}
-    {settingsOpen}
-    onSwitchTab={(tab) => switchTab(tab)}
-    onToggleSearch={() => {
-      searchOpen = !searchOpen
-    }}
-    onSetDarkMode={setDarkMode}
-    onMinimizeWindow={minimizeWindow}
-    onToggleMaximize={toggleMaximize}
-    onCloseWindow={closeWindow}
-  />
-
-  <!-- ═══ BODY — panels floating inside the dark frame ═══ -->
-  <div class="flex-1 flex gap-1.5 p-1.5 pt-0 min-h-0">
-
-    <!-- ═══ SIDEBAR ═══ -->
-      <Sidebar
-        {projects}
-        {sidebarLoading}
-        {sidebarError}
-        {selectedProject}
-        {foregroundProjectId}
-        onForegroundProjectChange={setForegroundProject}
-        daemonStatus={daemonStatus}
-        {settingsOpen}
-        {dark}
-        actions={{
-          onProjectHover: prefetchProjectSelection,
-        }}
-    />
-
-    <ShellMainPanel
+  <div data-shell-app-root class="contents">
+    <ShellTitlebar
       {dark}
-      {codeTheme}
-      {codeThemeLight}
-      {codeThemeDark}
-      {settingsOpen}
-      {daemonStatus}
-      {daemonUpdateAvailable}
-      {daemonUpdateDismissed}
-      {daemonUpdating}
-      {shellNotice}
-      {projectLoadIssues}
-      {selectedProject}
-      {projects}
       {activeTab}
-      {visitedTabs}
-      {recentCommits}
-      {commitsLoading}
-      {latestSession}
-      {sessionHistory}
-      {sessionLoading}
-      {readmeContent}
-      {relationships}
-      {relationshipsLoading}
-      {gitNavTarget}
-      {filesNavTarget}
-      {taskNavTarget}
-      {fileChangePaths}
-      bind:filesPosition
-      bind:gitPosition
-      bind:taskPosition
-      onCloseSettings={() => {
-        settingsOpen = false
+      {settingsOpen}
+      onSwitchTab={(tab) => switchTab(tab)}
+      onToggleSearch={() => {
+        searchOpen = !searchOpen
       }}
-      onSettingsChanged={loadProjects}
-      onCodeThemeChanged={handleCodeThemeChanged}
-      onViewAllCommits={viewAllCommits}
-      onDismissRelationship={handleDismissRelationship}
-      onMarkdownNavigate={handleMarkdownNavigate}
-      onRetryProjectLoad={retryProjectLoad}
-      onHandleDaemonUpdate={handleDaemonUpdate}
-      onDismissDaemonUpdate={() => {
-        daemonUpdateDismissed = true
-      }}
-      onDismissProjectLoadIssues={() => {
-        projectLoadIssues = []
-      }}
-      onDismissShellNotice={() => {
-        shellNotice = null
-      }}
-      onNavigateToFile={navigateToFile}
-      onMeshFocusPane={handleMeshFocusPane}
-      onClearTaskNavTarget={() => {
-        taskNavTarget = null
-      }}
-      onClearGitNavTarget={() => {
-        gitNavTarget = null
-      }}
-      onClearFilesNavTarget={() => {
-        filesNavTarget = null
-      }}
-      onChangedPathsConsumed={() => {
-        fileChangePaths = null
-      }}
+      onSetDarkMode={setDarkMode}
+      onMinimizeWindow={minimizeWindow}
+      onToggleMaximize={toggleMaximize}
+      onCloseWindow={closeWindow}
     />
+
+    <!-- ═══ BODY — panels floating inside the dark frame ═══ -->
+    <div class="flex-1 flex gap-1.5 p-1.5 pt-0 min-h-0">
+
+      <!-- ═══ SIDEBAR ═══ -->
+        <Sidebar
+          {projects}
+          {sidebarLoading}
+          {sidebarError}
+          {selectedProject}
+          {foregroundProjectId}
+          onForegroundProjectChange={setForegroundProject}
+          daemonStatus={daemonStatus}
+          {settingsOpen}
+          {dark}
+          actions={{
+            onProjectHover: prefetchProjectSelection,
+          }}
+      />
+
+      <ShellMainPanel
+        {dark}
+        {codeTheme}
+        {codeThemeLight}
+        {codeThemeDark}
+        {settingsOpen}
+        {daemonStatus}
+        {daemonRecoveryEscalated}
+        {daemonUpdateAvailable}
+        {daemonUpdateDismissed}
+        {daemonUpdating}
+        {daemonRestarting}
+        {shellNotice}
+        {projectLoadIssues}
+        {selectedProject}
+        {projects}
+        {activeTab}
+        {visitedTabs}
+        {recentCommits}
+        {commitsLoading}
+        {latestSession}
+        {sessionHistory}
+        {sessionLoading}
+        {readmeContent}
+        {relationships}
+        {relationshipsLoading}
+        {gitNavTarget}
+        {filesNavTarget}
+        {taskNavTarget}
+        {fileChangePaths}
+        bind:filesPosition
+        bind:gitPosition
+        bind:taskPosition
+        onCloseSettings={() => {
+          settingsOpen = false
+        }}
+        onSettingsChanged={loadProjects}
+        onCodeThemeChanged={handleCodeThemeChanged}
+        onViewAllCommits={viewAllCommits}
+        onDismissRelationship={handleDismissRelationship}
+        onMarkdownNavigate={handleMarkdownNavigate}
+        onRetryProjectLoad={retryProjectLoad}
+        onHandleDaemonUpdate={handleDaemonUpdate}
+        onRestartDaemon={handleRestartDaemon}
+        onDismissDaemonUpdate={() => {
+          daemonUpdateDismissed = true
+        }}
+        onDismissProjectLoadIssues={() => {
+          projectLoadIssues = []
+        }}
+        onDismissShellNotice={() => {
+          shellNotice = null
+        }}
+        onNavigateToFile={navigateToFile}
+        onMeshFocusPane={handleMeshFocusPane}
+        onClearTaskNavTarget={() => {
+          taskNavTarget = null
+        }}
+        onClearGitNavTarget={() => {
+          gitNavTarget = null
+        }}
+        onClearFilesNavTarget={() => {
+          filesNavTarget = null
+        }}
+        onChangedPathsConsumed={() => {
+          fileChangePaths = null
+        }}
+      />
+    </div>
   </div>
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={handleSearchNavigate} />

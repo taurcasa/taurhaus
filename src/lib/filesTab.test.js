@@ -150,6 +150,27 @@ describe('FilesTab', () => {
     })
   })
 
+  it('opens the file context menu from the keyboard', async () => {
+    render(FilesTab, {
+      props: {
+        dark: false,
+        codeTheme: 'github-light',
+        selectedProject: { id: 'project-1', path: '/tmp/project-1' },
+        isActive: true,
+      },
+    })
+
+    const firstRow = await screen.findByRole('button', { name: 'first.js' })
+    firstRow.focus()
+
+    await fireEvent.keyDown(firstRow, { key: 'ContextMenu' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('src/first.js')
+    })
+  })
+
   it('keeps first file read result when selectedProject metadata updates with same project id', async () => {
     const firstRead = createDeferred()
     readFile.mockImplementation((_, path) => {

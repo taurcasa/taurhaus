@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 let previousIntersectionObserver
@@ -91,6 +91,11 @@ import GitTab from './GitTab.svelte'
 describe('GitTab component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    if (!navigator.clipboard) {
+      Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    } else {
+      navigator.clipboard.writeText = vi.fn().mockResolvedValue(undefined)
+    }
   })
 
   // --- Loading state ---
@@ -178,6 +183,22 @@ describe('GitTab component', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('commit-row')[0]).toHaveAttribute('aria-current', 'true')
       expect(screen.getAllByTestId('commit-row')[1]).not.toHaveAttribute('aria-current')
+    })
+  })
+
+  it('opens the commit context menu from the keyboard', async () => {
+    getAllCommits.mockResolvedValue(makeCommits(1))
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+
+    const commitRow = await screen.findByTestId('commit-row')
+    commitRow.focus()
+
+    await fireEvent.keyDown(commitRow, { key: 'ContextMenu' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abc00000')
     })
   })
 

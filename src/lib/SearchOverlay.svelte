@@ -1,4 +1,5 @@
 <script>
+  import { focusFirstInteractiveElement, getFocusableElements, registerModalLayer } from './a11y.js'
   import { search } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
 
@@ -10,21 +11,10 @@
   let debounceTimer = $state(null)
   let inputEl = $state(null)
   let overlayEl = $state(null)
+  let rootEl = $state(null)
   let selectedIndex = $state(-1)
   let searchRequestId = 0
-  const FOCUSABLE_SELECTOR = [
-    'a[href]',
-    'area[href]',
-    'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])',
-    'textarea:not([disabled])',
-    'button:not([disabled])',
-    'iframe',
-    'object',
-    'embed',
-    '[contenteditable="true"]',
-    '[tabindex]:not([tabindex="-1"])',
-  ].join(',')
+  let restoreFocusElement = null
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -77,26 +67,6 @@
 
   // Flat list of results for keyboard navigation (document -> session -> commit).
   const flatResults = $derived.by(() => groupedResults.flat)
-
-  function getFocusableElements() {
-    if (!overlayEl) return []
-    return Array.from(overlayEl.querySelectorAll(FOCUSABLE_SELECTOR))
-      .filter((element) => (
-        element instanceof HTMLElement
-        && !element.hasAttribute('disabled')
-        && element.tabIndex >= 0
-        && element.getAttribute('aria-hidden') !== 'true'
-      ))
-  }
-
-  function focusFirstInteractiveElement() {
-    const focusable = getFocusableElements()
-    if (focusable.length > 0) {
-      focusable[0].focus()
-      return
-    }
-    overlayEl?.focus()
-  }
 
   // Reset overlay-local state when closed
   $effect(() => {
@@ -160,7 +130,7 @@
     }
 
     if (e.key === 'Tab') {
-      const focusable = getFocusableElements()
+      const focusable = getFocusableElements(overlayEl)
       if (focusable.length === 0) {
         e.preventDefault()
         overlayEl?.focus()
@@ -209,22 +179,29 @@
 
   $effect(() => {
     if (!open) return
-    const previousFocusedElement = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null
+    if (
+      !restoreFocusElement
+      && document.activeElement instanceof HTMLElement
+      && !rootEl?.contains(document.activeElement)
+    ) {
+      restoreFocusElement = document.activeElement
+    }
+
+    const unregisterModal = registerModalLayer(rootEl)
 
     const rafId = requestAnimationFrame(() => {
-      focusFirstInteractiveElement()
-      inputEl?.focus()
+      focusFirstInteractiveElement(overlayEl, inputEl)
     })
 
     window.addEventListener('keydown', handleSearchKeydown)
     return () => {
       cancelAnimationFrame(rafId)
+      unregisterModal()
       window.removeEventListener('keydown', handleSearchKeydown)
-      if (previousFocusedElement && previousFocusedElement.isConnected) {
-        previousFocusedElement.focus()
+      if (restoreFocusElement?.isConnected) {
+        restoreFocusElement.focus()
       }
+      restoreFocusElement = null
     }
   })
 
@@ -254,6 +231,7 @@
 
 {#if open}
   <div
+    bind:this={rootEl}
     class="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/40 backdrop-blur-sm"
     data-testid="search-overlay"
     data-shell-overlay
@@ -291,6 +269,7 @@
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
+          aria-label="Search across all projects"
           data-testid="search-input"
         />
         {#if loading}

@@ -4,6 +4,7 @@
   import OverviewTab from '../../OverviewTab.svelte'
   import Settings from '../../Settings.svelte'
   import TaskBoard from '../../TaskBoard.svelte'
+  import { describeProjectLoadBanner } from '../../errorCopy.js'
   import { themeTokens } from '../../themeTokens.js'
   import MeshTab from '../MeshTab.svelte'
 
@@ -14,9 +15,11 @@
     codeThemeDark,
     settingsOpen = false,
     daemonStatus = null,
+    daemonRecoveryEscalated = false,
     daemonUpdateAvailable = null,
     daemonUpdateDismissed = false,
     daemonUpdating = false,
+    daemonRestarting = false,
     shellNotice = null,
     projectLoadIssues = [],
     selectedProject = null,
@@ -46,6 +49,7 @@
     onMarkdownNavigate = () => {},
     onRetryProjectLoad = () => {},
     onHandleDaemonUpdate = () => {},
+    onRestartDaemon = () => {},
     onDismissDaemonUpdate = () => {},
     onDismissProjectLoadIssues = () => {},
     onDismissShellNotice = () => {},
@@ -58,27 +62,43 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const projectLoadBannerMessage = $derived(describeProjectLoadBanner(projectLoadIssues))
 </script>
 
 <main class="shell-main-surface shell-main-panel flex-1 {t.textBody} rounded-b-lg rounded-tr-lg flex flex-col min-w-0 overflow-hidden">
-  {#if (daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected') && !settingsOpen}
+  {#if (daemonStatus === 'busy' || daemonStatus === 'reconnecting' || daemonStatus === 'disconnected' || daemonStatus === 'failed') && !settingsOpen}
     <div
       class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-brand-500/10 border-b border-brand-500/20' : 'bg-brand-50 border-b border-brand-200'}"
+      aria-live="polite"
       data-testid="daemon-connecting-banner"
     >
       <svg class="h-4 w-4 shrink-0 text-brand-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fill-rule="evenodd" d="M10 18a8 8 0 1 0-5.657-2.343l1.414-1.414A6 6 0 1 1 10 16v2Zm1-11V4H9v5h5V7h-3Z" clip-rule="evenodd" />
       </svg>
       <span class="flex-1 text-[12px] {t.textSecondary}">
-        {daemonStatus === 'busy'
-          ? 'Daemon is busy with another request. The shell is available; status and session updates may be delayed.'
-          : 'Connecting to daemon. The shell is available; session updates may be delayed.'}
+        {#if daemonStatus === 'busy'}
+          The helper service is busy with another request. Live updates may be delayed for a moment.
+        {:else if daemonStatus === 'failed'}
+          The helper service stopped responding. Restart it to restore live updates.
+        {:else if daemonRecoveryEscalated}
+          Still trying to reconnect to the helper service. You can keep working, or restart it now.
+        {:else}
+          Reconnecting to the helper service. Live updates may be delayed for a moment.
+        {/if}
       </span>
+      {#if daemonStatus === 'disconnected' || daemonStatus === 'failed' || daemonRecoveryEscalated}
+        <button
+          class="text-[12px] font-medium text-brand-500 hover:text-brand-400 transition-colors disabled:opacity-50"
+          onclick={onRestartDaemon}
+          disabled={daemonRestarting}
+          data-testid="daemon-restart-button"
+        >{daemonRestarting ? 'Restarting...' : 'Restart helper'}</button>
+      {/if}
     </div>
   {/if}
 
   {#if daemonUpdateAvailable && !daemonUpdateDismissed && !settingsOpen}
-    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" data-testid="daemon-update-banner">
+    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" aria-live="polite" data-testid="daemon-update-banner">
       <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1">
         Daemon update available: v{daemonUpdateAvailable.version} → v{daemonUpdateAvailable.bundled_version}
@@ -98,10 +118,10 @@
   {/if}
 
   {#if projectLoadIssues.length > 0 && !settingsOpen}
-    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" data-testid="project-load-degraded-banner">
+    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-red-500/10 border-b border-red-500/20' : 'bg-red-50 border-b border-red-200'}" aria-live="polite" data-testid="project-load-degraded-banner">
       <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1" data-testid="project-load-degraded-message">
-        Partial project load: {projectLoadIssues.map(i => i.section).join(', ')} failed.
+        {projectLoadBannerMessage}
       </span>
       <button
         class="text-[12px] font-medium text-brand-500 hover:text-brand-400 transition-colors"
@@ -117,7 +137,7 @@
   {/if}
 
   {#if shellNotice && !settingsOpen}
-    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" data-testid="shell-notice-banner">
+    <div class="flex items-center gap-3 px-4 py-2 {dark ? 'bg-warning-500/10 border-b border-warning-500/20' : 'bg-warning-50 border-b border-warning-200'}" aria-live="polite" data-testid="shell-notice-banner">
       <svg class="w-4 h-4 text-warning-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
       <span class="text-[12px] {t.textSecondary} flex-1" data-testid="shell-notice-message">{shellNotice}</span>
       <button
@@ -144,7 +164,14 @@
   {:else}
     {#key selectedProject.id}
       <div class="flex-1 flex flex-col min-w-0 overflow-hidden content-enter" data-testid="content-wrapper">
-        <div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:hidden={activeTab !== 'overview'}>
+        <div
+          id="shell-panel-overview"
+          class="flex-1 flex flex-col min-h-0 overflow-hidden"
+          role="tabpanel"
+          aria-labelledby="shell-tab-overview"
+          hidden={activeTab !== 'overview'}
+          class:hidden={activeTab !== 'overview'}
+        >
           <OverviewTab
             {dark}
             {codeTheme}
@@ -166,7 +193,14 @@
           />
         </div>
 
-        <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'tasks'}>
+        <div
+          id="shell-panel-tasks"
+          class="flex-1 flex min-h-0 overflow-hidden"
+          role="tabpanel"
+          aria-labelledby="shell-tab-tasks"
+          hidden={activeTab !== 'tasks'}
+          class:hidden={activeTab !== 'tasks'}
+        >
           {#if visitedTabs.has('tasks')}
             <TaskBoard
               projectId={selectedProject.id}
@@ -181,7 +215,14 @@
           {/if}
         </div>
 
-        <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'mesh'}>
+        <div
+          id="shell-panel-mesh"
+          class="flex-1 flex min-h-0 overflow-hidden"
+          role="tabpanel"
+          aria-labelledby="shell-tab-mesh"
+          hidden={activeTab !== 'mesh'}
+          class:hidden={activeTab !== 'mesh'}
+        >
           {#if visitedTabs.has('mesh')}
             <MeshTab
               {dark}
@@ -192,7 +233,14 @@
           {/if}
         </div>
 
-        <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'git'}>
+        <div
+          id="shell-panel-git"
+          class="flex-1 flex min-h-0 overflow-hidden"
+          role="tabpanel"
+          aria-labelledby="shell-tab-git"
+          hidden={activeTab !== 'git'}
+          class:hidden={activeTab !== 'git'}
+        >
           {#if visitedTabs.has('git')}
             <GitTab
               projectPath={selectedProject.path}
@@ -206,7 +254,14 @@
           {/if}
         </div>
 
-        <div class="flex-1 flex min-h-0 overflow-hidden" class:hidden={activeTab !== 'files'}>
+        <div
+          id="shell-panel-files"
+          class="flex-1 flex min-h-0 overflow-hidden"
+          role="tabpanel"
+          aria-labelledby="shell-tab-files"
+          hidden={activeTab !== 'files'}
+          class:hidden={activeTab !== 'files'}
+        >
           {#if visitedTabs.has('files')}
             <FilesTab
               {dark}

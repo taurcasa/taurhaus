@@ -1,4 +1,5 @@
 <script>
+  import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from './a11y.js'
   import {
     scanDirectory,
     registerProjectsBatch,
@@ -12,6 +13,7 @@
   import CreateWorkflow from './CreateWorkflow.svelte'
   import ManualWorkflow from './ManualWorkflow.svelte'
   import ScanWorkflow from './ScanWorkflow.svelte'
+  import { describeScanDirectoryError } from './errorCopy.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
 
@@ -66,6 +68,8 @@
   let manualPath = $state('')
   let manualError = $state(null)
   let addSuccess = $state(null) // "3 projects added" message
+  let addFailureSummary = $state(null)
+  let addFailureDetails = $state([])
   let createProjectName = $state('')
   let createParentDir = $state(DEFAULT_CREATE_PARENT_DIR)
   let createError = $state(null)
@@ -83,39 +87,8 @@
   const allSelected = $derived(selectableProjects.length > 0 && selected.size === selectableProjects.length)
 
   let dialogEl = $state(null)
-  const FOCUSABLE_SELECTOR = [
-    'a[href]',
-    'area[href]',
-    'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])',
-    'textarea:not([disabled])',
-    'button:not([disabled])',
-    'iframe',
-    'object',
-    'embed',
-    '[contenteditable="true"]',
-    '[tabindex]:not([tabindex="-1"])',
-  ].join(',')
-
-  function getFocusableElements() {
-    if (!dialogEl) return []
-    return Array.from(dialogEl.querySelectorAll(FOCUSABLE_SELECTOR))
-      .filter((element) => (
-        element instanceof HTMLElement
-        && !element.hasAttribute('disabled')
-        && element.tabIndex >= 0
-        && element.getAttribute('aria-hidden') !== 'true'
-      ))
-  }
-
-  function focusFirstInteractiveElement() {
-    const focusable = getFocusableElements()
-    if (focusable.length > 0) {
-      focusable[0].focus()
-      return
-    }
-    dialogEl?.focus()
-  }
+  let modalRootEl = $state(null)
+  let restoreFocusElement = null
 
   // Load registered projects on mount
   $effect(() => {
@@ -134,51 +107,29 @@
 
   // Keyboard trap + escape key
   $effect(() => {
-    if (!dialogEl) return
-    const previousFocusedElement = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null
-    focusFirstInteractiveElement()
+    if (!dialogEl || !modalRootEl) return
+    if (
+      !restoreFocusElement
+      && document.activeElement instanceof HTMLElement
+      && !modalRootEl.contains(document.activeElement)
+    ) {
+      restoreFocusElement = document.activeElement
+    }
+
+    const unregisterModal = registerModalLayer(modalRootEl)
+    focusFirstInteractiveElement(dialogEl)
 
     function handleKeydown(e) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-        return
-      }
-
-      if (e.key !== 'Tab') return
-      const focusable = getFocusableElements()
-      if (focusable.length === 0) {
-        e.preventDefault()
-        dialogEl.focus()
-        return
-      }
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      const active = document.activeElement
-
-      if (!(active instanceof HTMLElement) || !dialogEl.contains(active)) {
-        e.preventDefault()
-        ;(e.shiftKey ? last : first).focus()
-        return
-      }
-
-      if (!e.shiftKey && active === last) {
-        e.preventDefault()
-        first.focus()
-      } else if (e.shiftKey && active === first) {
-        e.preventDefault()
-        last.focus()
-      }
+      handleModalKeydown(e, dialogEl, onClose)
     }
     window.addEventListener('keydown', handleKeydown)
     return () => {
+      unregisterModal()
       window.removeEventListener('keydown', handleKeydown)
-      if (previousFocusedElement && previousFocusedElement.isConnected) {
-        previousFocusedElement.focus()
+      if (restoreFocusElement?.isConnected) {
+        restoreFocusElement.focus()
       }
+      restoreFocusElement = null
     }
   })
 
@@ -267,6 +218,8 @@
     discovered = []
     selected = new Set()
     addSuccess = null
+    addFailureSummary = null
+    addFailureDetails = []
     try {
       const results = await scanDirectory('~/projects')
       discovered = results
@@ -275,7 +228,7 @@
         results.filter(p => p.has_git && !registeredPaths.has(p.path)).map(p => p.path)
       )
     } catch (e) {
-      scanError = formatUserFacingError(e, 'Failed to scan directory')
+      scanError = describeScanDirectoryError(e)
     } finally {
       scanning = false
     }
@@ -303,18 +256,35 @@
     const paths = [...selected]
     if (paths.length === 0) return
     registering = true
+    addFailureSummary = null
+    addFailureDetails = []
 
     try {
       const results = await registerProjectsBatch(paths)
-      const count = results.filter(r => r.success).length
-      addSuccess = `${count} project${count !== 1 ? 's' : ''} added`
-      // Refresh the registered list
+      const succeeded = results.filter((result) => result.success)
+      const failed = results
+        .filter((result) => !result.success)
+        .map((result) => ({
+          path: result.path,
+          error: formatUserFacingError(result.error, 'Could not add this project.'),
+        }))
+      const count = succeeded.length
+      addSuccess = count > 0 ? `${count} project${count !== 1 ? 's' : ''} added` : null
+      addFailureSummary = failed.length > 0
+        ? `${failed.length} project${failed.length !== 1 ? 's' : ''} could not be added`
+        : null
+      addFailureDetails = failed
       await loadRegistered()
-      // Reset add state
-      discovered = []
-      selected = new Set()
-      showAddSection = false
-      onProjectsChanged()
+      if (count > 0) {
+        onProjectsChanged()
+      }
+      if (failed.length === 0) {
+        discovered = []
+        selected = new Set()
+        showAddSection = false
+      } else {
+        selected = new Set(failed.map((result) => result.path))
+      }
     } catch (e) {
       scanError = formatUserFacingError(e, 'Registration failed')
     } finally {
@@ -468,6 +438,7 @@
 <!-- Backdrop -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+  bind:this={modalRootEl}
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
   onmousedown={handleBackdropClick}
   data-shell-overlay
@@ -549,6 +520,30 @@
         <div class="mx-5 mb-3 px-3 py-2 rounded-md {dark ? 'bg-success-500/10 text-success-400' : 'bg-success-50 text-success-700'} text-[12px] flex items-center gap-2" data-testid="add-success">
           <svg class="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
           {addSuccess}
+        </div>
+      {/if}
+
+      {#if addFailureSummary}
+        <div class="mx-5 mb-3 rounded-md border border-warning-500/30 {dark ? 'bg-warning-500/10 text-warning-200' : 'bg-warning-50 text-warning-900'} px-3 py-2 text-[12px]" data-testid="add-failure-summary">
+          <div class="flex items-start gap-2">
+            <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-500" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
+            <div class="min-w-0 flex-1">
+              <p>{addFailureSummary}.</p>
+              {#if addFailureDetails.length > 0}
+                <details class="mt-2" data-testid="add-failure-details">
+                  <summary class="cursor-pointer font-medium">Show failed paths</summary>
+                  <div class="mt-2 space-y-1">
+                    {#each addFailureDetails as failed}
+                      <div class="rounded border border-white/10 px-2 py-1">
+                        <div class="truncate font-mono text-[11px]">{failed.path}</div>
+                        <div class="mt-0.5 text-[11px] {dark ? 'text-warning-100/80' : 'text-warning-900/80'}">{failed.error}</div>
+                      </div>
+                    {/each}
+                  </div>
+                </details>
+              {/if}
+            </div>
+          </div>
         </div>
       {/if}
 

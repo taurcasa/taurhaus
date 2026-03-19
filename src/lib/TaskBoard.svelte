@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte'
   import { getProjectTasks, getTaskDetail } from './ipc.js'
   import { groupTasksByStatus } from './taskHelpers.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
@@ -14,6 +15,8 @@
 
   // Sub-tab state: 'active' (Kanban) or 'history' (SessionHistory)
   let activeSubTab = $state('active')
+  let activeSubTabEl = $state(null)
+  let historySubTabEl = $state(null)
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -260,6 +263,39 @@
     closeDetail()
   }
 
+  function focusSubTab(tab) {
+    const buttons = {
+      active: activeSubTabEl,
+      history: historySubTabEl,
+    }
+    buttons[tab]?.focus()
+  }
+
+  async function handleSubTabKeydown(event, tab) {
+    const order = ['active', 'history']
+    const currentIndex = order.indexOf(tab)
+    if (currentIndex === -1) return
+
+    let targetIndex = currentIndex
+    if (event.key === 'ArrowRight') {
+      targetIndex = (currentIndex + 1) % order.length
+    } else if (event.key === 'ArrowLeft') {
+      targetIndex = (currentIndex - 1 + order.length) % order.length
+    } else if (event.key === 'Home') {
+      targetIndex = 0
+    } else if (event.key === 'End') {
+      targetIndex = order.length - 1
+    } else {
+      return
+    }
+
+    event.preventDefault()
+    const nextTab = order[targetIndex]
+    switchSubTab(nextTab)
+    await tick()
+    focusSubTab(nextTab)
+  }
+
   function navigateToCommit(hash) {
     projectContext?.navigateToCommit?.(hash)
   }
@@ -283,25 +319,36 @@
   <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
     <div class="flex items-center gap-1" role="tablist" data-testid="sub-tab-list">
       <button
+        bind:this={activeSubTabEl}
+        id="task-board-tab-active"
         role="tab"
         aria-selected={activeSubTab === 'active'}
+        aria-controls="task-board-panel-active"
+        tabindex={activeSubTab === 'active' ? '0' : '-1'}
         class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] border-b-2 transition-colors cursor-pointer
           {activeSubTab === 'active' ? subTabActive : subTabInactive}"
         data-testid="sub-tab-active"
         onclick={() => switchSubTab('active')}
+        onkeydown={(event) => handleSubTabKeydown(event, 'active')}
       >Active{#if activeSubTab === 'active' && tasks.length > 0}<span class="ml-1.5 font-normal normal-case tracking-normal {t.textTertiary}">&middot; {tasks.length}</span>{/if}</button>
       <button
+        bind:this={historySubTabEl}
+        id="task-board-tab-history"
         role="tab"
         aria-selected={activeSubTab === 'history'}
+        aria-controls="task-board-panel-history"
+        tabindex={activeSubTab === 'history' ? '0' : '-1'}
         class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] border-b-2 transition-colors cursor-pointer
           {activeSubTab === 'history' ? subTabActive : subTabInactive}"
         data-testid="sub-tab-history"
         onclick={() => switchSubTab('history')}
+        onkeydown={(event) => handleSubTabKeydown(event, 'history')}
       >History</button>
     </div>
   </div>
 
   {#if activeSubTab === 'active'}
+    <div id="task-board-panel-active" role="tabpanel" aria-labelledby="task-board-tab-active" class="contents">
     {#if loading}
       <!-- Loading skeleton — three column placeholders -->
       <div class="flex-1 flex gap-3 px-5 pb-5 overflow-hidden" data-testid="tasks-loading">
@@ -384,24 +431,27 @@
         </div>
       {/key}
     {/if}
+    </div>
   {:else}
     <!-- History sub-tab — SessionHistory accordion -->
-    {#if historyRevealKey}
-      {#key historyRevealKey}
-        <div class="flex-1 overflow-hidden content-enter" data-testid="history-tab-content">
-          <SessionHistory
-            {projectPath}
-            {dark}
-            {projectId}
-            isActive={isActive && activeSubTab === 'history'}
-            onSelectTask={selectTask}
-            onNavigateToCommit={navigateToCommit}
-            onNavigateToFile={navigateToFile}
-            onNavigateToCommitRange={navigateToCommitRange}
-          />
-        </div>
-      {/key}
-    {/if}
+    <div id="task-board-panel-history" role="tabpanel" aria-labelledby="task-board-tab-history" class="contents">
+      {#if historyRevealKey}
+        {#key historyRevealKey}
+          <div class="flex-1 overflow-hidden content-enter" data-testid="history-tab-content">
+            <SessionHistory
+              {projectPath}
+              {dark}
+              {projectId}
+              isActive={isActive && activeSubTab === 'history'}
+              onSelectTask={selectTask}
+              onNavigateToCommit={navigateToCommit}
+              onNavigateToFile={navigateToFile}
+              onNavigateToCommitRange={navigateToCommitRange}
+            />
+          </div>
+        {/key}
+      {/if}
+    </div>
   {/if}
   </div>
 

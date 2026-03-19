@@ -1,4 +1,6 @@
 <script>
+  import { isContextMenuKey } from './a11y.js'
+
   let {
     sidebarLoading = false,
     sidebarError = null,
@@ -17,6 +19,7 @@
     rowTintForSessions = () => '',
     onProjectClick = () => {},
     onProjectContextMenu = () => {},
+    onProjectContextMenuKey = () => {},
     onProjectMouseEnter = () => {},
     onProjectMouseLeave = () => {},
     onSessionJump = () => {},
@@ -124,6 +127,10 @@
           {selected ? 'bg-white/[0.08]' : ctxMenuProjectId === project.id ? 'bg-white/[0.08]' : `hover:bg-white/[0.04] ${rowTintForSessions(projectSessions)}`} relative overflow-hidden"
         onclick={() => onProjectClick(project)}
         oncontextmenu={(e) => onProjectContextMenu(e, project, projectSessions)}
+        onkeydown={(e) => {
+          if (!isContextMenuKey(e)) return
+          onProjectContextMenuKey(e, project, projectSessions, e.currentTarget)
+        }}
         onmouseenter={(e) => onProjectMouseEnter(project, projectSessions, e.currentTarget)}
         onmouseleave={onProjectMouseLeave}
       >

@@ -1,4 +1,5 @@
 <script>
+  import { getContextMenuPoint, isContextMenuKey } from './a11y.js'
   import { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
   import ContextMenu from './ContextMenu.svelte'
@@ -378,6 +379,12 @@
     commitCtxMenu = { x: e.clientX, y: e.clientY, hash: commit.hash, message: commit.message }
   }
 
+  function openCommitContextMenuFromKeyboard(event, commit) {
+    event.preventDefault()
+    const point = getContextMenuPoint(event.currentTarget)
+    commitCtxMenu = { x: point.x, y: point.y, hash: commit.hash, message: commit.message }
+  }
+
   function closeCommitContextMenu() {
     commitCtxMenu = null
   }
@@ -621,6 +628,10 @@
                     {isSelected ? t.listSelected : t.listHover}"
                   onclick={() => selectCommit(commit.hash)}
                   oncontextmenu={(e) => openCommitContextMenu(e, commit)}
+                  onkeydown={(event) => {
+                    if (!isContextMenuKey(event)) return
+                    openCommitContextMenuFromKeyboard(event, commit)
+                  }}
                   data-testid="commit-row"
                   aria-current={isSelected ? 'true' : undefined}
                 >

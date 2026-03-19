@@ -1,5 +1,6 @@
 <script>
   import { tick } from 'svelte'
+  import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -25,63 +26,19 @@
   )
 
   let panelElement = $state(null)
+  let rootElement = $state(null)
   let rendered = $state(false)
   let closing = $state(false)
   let prevOpen = false
   let exitTimer = null
+  let restoreFocusElement = null
 
   const visible = $derived(open || rendered)
-
-  function getFocusableElements(panel) {
-    if (!panel) return []
-    return [...panel.querySelectorAll(
-      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    )]
-  }
 
   function handleBackdropClick(event) {
     if (event.target === event.currentTarget) {
       event.stopPropagation()
       onClose()
-    }
-  }
-
-  function handleGlobalKeydown(event, panel) {
-    if (!visible || closing) return
-
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-
-    if (event.key !== 'Tab') return
-
-    const focusable = getFocusableElements(panel)
-    if (focusable.length === 0) {
-      event.preventDefault()
-      panel?.focus()
-      return
-    }
-
-    const first = focusable[0]
-    const last = focusable[focusable.length - 1]
-    const active = document.activeElement
-
-    if (event.shiftKey) {
-      if (active === first || !panel.contains(active)) {
-        event.preventDefault()
-        last.focus()
-      }
-      return
-    }
-
-    if (active === last) {
-      event.preventDefault()
-      first.focus()
-    } else if (!panel.contains(active)) {
-      event.preventDefault()
-      first.focus()
     }
   }
 
@@ -120,34 +77,49 @@
     if (!visible || closing) return
 
     const panel = panelElement
-    if (!panel) return
+    const root = rootElement
+    if (!panel || !root) return
     let cancelled = false
+
+    if (
+      !restoreFocusElement
+      && document.activeElement instanceof HTMLElement
+      && !root.contains(document.activeElement)
+    ) {
+      restoreFocusElement = document.activeElement
+    }
+
+    const unregisterModal = registerModalLayer(root)
 
     async function focusOnOpen() {
       await tick()
       if (cancelled) return
-      const focusable = getFocusableElements(panel)
-      const target = focusable[0] || panel
-      target?.focus()
+      focusFirstInteractiveElement(panel)
     }
 
     void focusOnOpen()
 
     function handleKeydown(event) {
-      handleGlobalKeydown(event, panel)
+      if (!visible || closing) return
+      handleModalKeydown(event, panel, onClose)
     }
 
     window.addEventListener('keydown', handleKeydown)
 
     return () => {
       cancelled = true
+      unregisterModal()
       window.removeEventListener('keydown', handleKeydown)
+      if (restoreFocusElement?.isConnected) {
+        restoreFocusElement.focus()
+      }
+      restoreFocusElement = null
     }
   })
 </script>
 
 {#if visible}
-  <div class="fixed inset-0 z-[45] pointer-events-none" data-testid="slideover-root">
+  <div bind:this={rootElement} class="fixed inset-0 z-[45] pointer-events-none" data-testid="slideover-root">
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div

@@ -144,6 +144,30 @@ describe('SearchOverlay', () => {
     })
   })
 
+  it('makes sibling shell content inert while the overlay is open', async () => {
+    const shellFrame = document.createElement('div')
+    const shellContent = document.createElement('div')
+    shellContent.setAttribute('data-testid', 'shell-content')
+    shellFrame.appendChild(shellContent)
+    document.body.appendChild(shellFrame)
+
+    const { rerender } = render(SearchOverlay, {
+      target: shellFrame,
+      props: { open: true },
+    })
+
+    await waitFor(() => {
+      expect(shellContent).toHaveAttribute('inert')
+      expect(shellContent).toHaveAttribute('aria-hidden', 'true')
+    })
+
+    await rerender({ open: false })
+
+    expect(shellContent).not.toHaveAttribute('inert')
+    expect(shellContent).not.toHaveAttribute('aria-hidden')
+    shellFrame.remove()
+  })
+
   it('handles search rejection by showing no-results state', async () => {
     search.mockRejectedValue(new Error('boom'))
 

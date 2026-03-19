@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import SlideOverHarness from './SlideOverHarness.svelte'
@@ -103,5 +103,29 @@ describe('SlideOver', () => {
 
     await fireEvent.keyDown(window, { key: 'Tab', code: 'Tab', shiftKey: true })
     expect(lastButton).toHaveFocus()
+  })
+
+  it('restores focus to the previously focused element when closed', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open panel'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    const { rerender } = render(SlideOverHarness, {
+      props: {
+        open: true,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('slideover-close')).toHaveFocus()
+    })
+
+    await rerender({ open: false })
+
+    await waitFor(() => {
+      expect(trigger).toHaveFocus()
+    })
+    trigger.remove()
   })
 })

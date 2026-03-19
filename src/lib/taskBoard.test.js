@@ -853,6 +853,24 @@ describe('TaskBoard component', () => {
     })
   })
 
+  it('supports arrow-key navigation between sub-tabs', async () => {
+    getProjectTasks.mockResolvedValue({ tasks: [makeTask({ status: 'pending' })], errors: [] })
+    mockArchivedSessions([])
+    const { fireEvent } = await import('@testing-library/svelte')
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: false } })
+
+    const activeTab = await screen.findByTestId('sub-tab-active')
+    activeTab.focus()
+
+    await fireEvent.keyDown(activeTab, { key: 'ArrowRight' })
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('sub-tab-history'))
+      expect(screen.getByTestId('sub-tab-history').getAttribute('aria-selected')).toBe('true')
+    })
+  })
+
   // ---------------------------------------------------------------------------
   // History → TaskDetailPanel integration
   // ---------------------------------------------------------------------------

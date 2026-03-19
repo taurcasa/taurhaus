@@ -322,6 +322,43 @@ describe('Sidebar component branches', () => {
     expect(navigateToSession).toHaveBeenCalledWith('team', '1', '%3')
   })
 
+  it('shows a sidebar notice when session navigation fails', async () => {
+    const projects = [makeProjects(1)[0]]
+    navigateToSession.mockRejectedValueOnce(new Error('pane not found'))
+
+    const interactiveSession = {
+      tmux_session: 'team',
+      tmux_window: '1',
+      tmux_pane: '%3',
+      cli_tool: 'codex',
+      state: 'active',
+      project_path: projects[0].path,
+    }
+
+    getSessionsForProject.mockImplementation(() => [interactiveSession])
+    toolIndicators.mockImplementation(() => ([
+      {
+        kind: 'session',
+        interactive: true,
+        colorClass: 'text-success-400',
+        isActive: true,
+        ariaLabel: 'Codex active',
+        icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' },
+        session: interactiveSession,
+      },
+    ]))
+
+    render(Sidebar, { props: { projects } })
+
+    await fireEvent.click(await screen.findByLabelText('Codex active'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-notice-message')).toHaveTextContent(
+        'Could not open that terminal. The session may have already closed.'
+      )
+    })
+  })
+
   it('ignores rapid repeated standalone session clicks while navigation is in flight', async () => {
     const projects = [makeProjects(1)[0]]
     const onForegroundProjectChange = vi.fn()
@@ -626,8 +663,25 @@ describe('Sidebar component branches', () => {
     })
   })
 
-  it('context menu supports open/restart/stop session flows and stop confirmation', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('opens the project context menu with Shift+F10', async () => {
+    const projects = [makeProjects(1)[0]]
+
+    render(Sidebar, {
+      props: {
+        projects,
+      },
+    })
+
+    const projectItem = await screen.findByTestId('project-item')
+    projectItem.focus()
+
+    await fireEvent.keyDown(projectItem, { key: 'F10', shiftKey: true })
+
+    expect(screen.getByTestId('context-menu')).toBeInTheDocument()
+    expect(screen.getByText('Copy Path')).toBeInTheDocument()
+  })
+
+  it('context menu hides terminal navigation until a tmux target exists and still supports restart/stop', async () => {
     const project = makeProjects(1)[0]
     const session = {
       state: 'active',
@@ -651,16 +705,24 @@ describe('Sidebar component branches', () => {
     })
 
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
-    await fireEvent.mouseDown(screen.getByText('Open in Terminal'))
-    expect(navigateToSession).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalled()
+    expect(screen.queryByText('Open in Terminal')).not.toBeInTheDocument()
+    expect(screen.queryByText('Continue Codex')).not.toBeInTheDocument()
+    expect(screen.queryByText('Continue Gemini')).not.toBeInTheDocument()
+    expect(screen.getByText('New Codex Session')).toBeInTheDocument()
+    expect(screen.getByText('Resume Gemini')).toBeInTheDocument()
 
     getSessionForProject.mockImplementation(() => session)
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Open in Terminal'))
+    await waitFor(() => {
+      expect(navigateToSession).toHaveBeenCalledWith('team', '2', '%9', true)
+    })
+
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
     await fireEvent.mouseDown(screen.getByText('Restart Codex'))
     await waitFor(() => {
       expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
-      expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'continue', 'codex')
+      expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'fresh', 'codex')
     })
 
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
@@ -671,8 +733,50 @@ describe('Sidebar component branches', () => {
     await waitFor(() => {
       expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
     })
+  })
 
-    warnSpy.mockRestore()
+  it('surfaces launch and stop failures from the session context menu', async () => {
+    const project = makeProjects(1)[0]
+    const session = {
+      state: 'active',
+      cli_tool: 'codex',
+      tmux_pane: '%9',
+      tmux_session: 'team',
+      tmux_window: '2',
+    }
+
+    getSessionsForProject.mockImplementation(() => [session])
+    launchClaudeSession.mockRejectedValueOnce(new Error('boom'))
+    stopClaudeSession.mockRejectedValueOnce(new Error('boom'))
+
+    render(Sidebar, {
+      props: {
+        projects: [project],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-item')).toBeInTheDocument()
+    })
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Continue Claude'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-notice-message')).toHaveTextContent(
+        'Could not start Claude. Please try again.'
+      )
+    })
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Stop Codex'))
+    await fireEvent.mouseDown(screen.getByText('Confirm stop Codex?'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-notice-message')).toHaveTextContent(
+        'Could not stop Codex. Please try again.'
+      )
+    })
   })
 
   it('virtualizes large project lists and clears pending timers on unmount', async () => {

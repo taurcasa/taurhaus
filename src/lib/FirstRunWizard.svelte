@@ -1,10 +1,12 @@
 <script>
-  import { scanDirectory, registerProjectsBatch, checkDaemonInstallStatus, installDaemon, getPlatform, isTauri } from './ipc.js'
+  import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from './a11y.js'
+  import { scanDirectory, registerProjectsBatch, checkDaemonInstallStatus, installDaemon, getPlatform, isTauri, openExternalUrl } from './ipc.js'
   import { getBatchProgressName } from './batchRegistrationProgress.js'
+  import { describeDaemonSetupError, describeScanDirectoryError, WSL_INSTALL_URL } from './errorCopy.js'
   import { themeTokens } from './themeTokens.js'
   import DirectoryBrowser from './DirectoryBrowser.svelte'
 
-  let { dark = false, onComplete = () => {} } = $props()
+  let { dark = false, onComplete = () => {}, onDismiss = onComplete } = $props()
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
@@ -37,6 +39,9 @@
   let daemonChecking = $state(false)
   let daemonInstalling = $state(false)
   let daemonError = $state(null)
+  let wizardRootEl = $state(null)
+  let dialogEl = $state(null)
+  let restoreFocusElement = null
 
   const isWindows = $derived(platform === 'windows')
 
@@ -74,7 +79,7 @@
         setTimeout(() => { step = 3 }, 800)
       }
     } catch (e) {
-      daemonError = e?.toString() || 'Failed to check daemon status'
+      daemonError = describeDaemonSetupError(e, { isWindows, action: 'check' })
     } finally {
       daemonChecking = false
     }
@@ -91,7 +96,7 @@
         setTimeout(() => { step = 3 }, 800)
       }
     } catch (e) {
-      daemonError = e?.toString() || 'Failed to install daemon'
+      daemonError = describeDaemonSetupError(e, { isWindows, action: 'install' })
     } finally {
       daemonInstalling = false
     }
@@ -109,7 +114,7 @@
       selected = new Set(results.filter(p => p.has_git).map(p => p.path))
       step = 4
     } catch (e) {
-      scanError = e?.toString() || 'Failed to scan directory'
+      scanError = describeScanDirectoryError(e)
     } finally {
       scanning = false
     }
@@ -169,10 +174,60 @@
       if (unlisten) unlisten()
     }
   }
+
+  function closeWizard() {
+    if (registering) return
+    onDismiss()
+  }
+
+  $effect(() => {
+    if (!wizardRootEl || !dialogEl) return
+
+    if (
+      !restoreFocusElement
+      && document.activeElement instanceof HTMLElement
+      && !wizardRootEl.contains(document.activeElement)
+    ) {
+      restoreFocusElement = document.activeElement
+    }
+
+    const unregisterModal = registerModalLayer(wizardRootEl)
+
+    function handleKeydown(event) {
+      handleModalKeydown(event, dialogEl, closeWizard)
+    }
+
+    window.addEventListener('keydown', handleKeydown)
+
+    return () => {
+      unregisterModal()
+      window.removeEventListener('keydown', handleKeydown)
+      if (restoreFocusElement?.isConnected) {
+        restoreFocusElement.focus()
+      }
+      restoreFocusElement = null
+    }
+  })
+
+  $effect(() => {
+    const currentStep = step
+    if (!dialogEl) return
+    requestAnimationFrame(() => {
+      if (step !== currentStep) return
+      focusFirstInteractiveElement(dialogEl)
+    })
+  })
 </script>
 
-<div class="h-full {t.mainBg} flex items-center justify-center" data-testid="first-run-wizard" data-tauri-drag-region>
-  <div class="max-w-[480px] w-full px-6">
+<div bind:this={wizardRootEl} class="h-full {t.mainBg} flex items-center justify-center" data-testid="first-run-wizard" data-shell-overlay data-tauri-drag-region>
+  <div
+    bind:this={dialogEl}
+    class="max-w-[480px] w-full px-6"
+    role="dialog"
+    aria-modal="true"
+    aria-label="First run setup"
+    tabindex="-1"
+  >
 
     {#if step === 1}
       <!-- ═══ STEP 1: WELCOME ═══ -->
@@ -222,8 +277,15 @@
               <div>
                 <p class="text-[13px] font-medium text-danger-500 mb-1">{isWindows ? 'WSL 2 is required' : 'Setup error'}</p>
                 <p class="text-[12px] {t.textSecondary}">
-                  {daemonStatus.error || (isWindows ? 'WSL is not installed or not available.' : 'Helper service could not be configured.')}
+                  {describeDaemonSetupError(daemonStatus.error, { isWindows, action: 'check' })}
                 </p>
+                {#if isWindows}
+                  <button
+                    class="mt-2 text-[12px] font-medium {t.linkColor} transition-colors"
+                    onclick={() => openExternalUrl(WSL_INSTALL_URL)}
+                    data-testid="daemon-wsl-help-link"
+                  >Open WSL setup guide</button>
+                {/if}
               </div>
             </div>
           </div>

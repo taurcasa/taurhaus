@@ -69,6 +69,13 @@
 
   // Keyboard navigation
   $effect(() => {
+    if (!menuEl) return
+    queueMicrotask(() => {
+      menuEl?.focus()
+    })
+  })
+
+  $effect(() => {
     function handleKeydown(e) {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -101,8 +108,11 @@
 
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
-        if (focusIndex >= 0 && focusIndex < actionableItems.length) {
-          const item = actionableItems[focusIndex]
+        const itemIndex = focusIndex >= 0
+          ? focusIndex
+          : actionableItems.findIndex(item => !item.disabled)
+        if (itemIndex >= 0 && itemIndex < actionableItems.length) {
+          const item = actionableItems[itemIndex]
           if (!item.disabled && item.action) {
             item.action()
             if (!item.keepOpen) onClose()

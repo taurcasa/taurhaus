@@ -1,4 +1,5 @@
 <script>
+  import { getContextMenuPoint } from './a11y.js'
   import { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } from './ipc.js'
   import { getProjectContext } from './context/ProjectContext.js'
   import { getSessionContext } from './context/SessionContext.js'
@@ -6,6 +7,7 @@
   import { getSessionForProject, getSessionsForProject } from './sessionStore.svelte.js'
   import { rowTintForSessions, toolIndicators } from './sessionIndicator.js'
   import { buildSidebarProjection } from './sidebar.js'
+  import { describeSessionActionError } from './errorCopy.js'
   import SidebarProjectList from './SidebarProjectList.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import HoverCard from './HoverCard.svelte'
@@ -52,6 +54,8 @@
   let hoverCardVisible = $state(false)
   let hoverTimeout = $state(null)
   let sessionJumpInFlight = $state(false)
+  let sidebarNotice = $state(null)
+  let sidebarNoticeTimeout = $state(null)
 
   function showHoverCard(project, sessions, el) {
     clearTimeout(hoverTimeout)
@@ -103,8 +107,23 @@
         clearTimeout(ctxConfirmTimeout)
         ctxConfirmTimeout = null
       }
+      if (sidebarNoticeTimeout) {
+        clearTimeout(sidebarNoticeTimeout)
+        sidebarNoticeTimeout = null
+      }
     }
   })
+
+  function showSidebarNotice(message) {
+    sidebarNotice = message
+    if (sidebarNoticeTimeout) {
+      clearTimeout(sidebarNoticeTimeout)
+    }
+    sidebarNoticeTimeout = setTimeout(() => {
+      sidebarNotice = null
+      sidebarNoticeTimeout = null
+    }, 6000)
+  }
 
   function handleProjectListScroll(event) {
     hoverCardVisible = false
@@ -161,6 +180,11 @@
           session.tmux_pane,
         )
       }
+      return true
+    } catch (error) {
+      console.error('[sidebar] navigate failed:', error)
+      showSidebarNotice(describeSessionActionError('navigate', {}, error))
+      return false
     } finally {
       sessionJumpInFlight = false
     }
@@ -179,6 +203,16 @@
     ctxConfirmStop = false
     if (ctxConfirmTimeout) { clearTimeout(ctxConfirmTimeout); ctxConfirmTimeout = null }
     ctxMenu = { x: e.clientX, y: e.clientY, project }
+  }
+
+  function openContextMenuFromKeyboard(event, project, _projectSessions, target) {
+    event.preventDefault()
+    event.stopPropagation()
+    const point = getContextMenuPoint(target)
+    ctxConfirmRemove = false
+    ctxConfirmStop = false
+    if (ctxConfirmTimeout) { clearTimeout(ctxConfirmTimeout); ctxConfirmTimeout = null }
+    ctxMenu = { x: point.x, y: point.y, project }
   }
 
   function closeContextMenu() {
@@ -257,20 +291,38 @@
     console.log(`[cmd-center] ${mode} ${tool} session:`, ctxMenu.project.id, ctxMenu.project.name)
     launchClaudeSession(ctxMenu.project.id, mode, tool)
       .then(r => console.log('[cmd-center] launch OK:', r))
-      .catch(e => console.error('[cmd-center] launch FAILED:', e))
+      .catch((error) => {
+        console.error('[cmd-center] launch FAILED:', error)
+        showSidebarNotice(describeSessionActionError('launch', { tool }, error))
+      })
+  }
+
+  function hasNavigableTmuxTarget(session) {
+    return Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
+  }
+
+  function getNavigableSessionForProject(project) {
+    if (!project?.path) return null
+    const focusedSession = getSessionForProject(project.path)
+    return hasNavigableTmuxTarget(focusedSession) ? focusedSession : null
   }
 
   function ctxOpenInTerminal() {
     if (!ctxMenu?.project) return
-    const session = getSessionForProject(ctxMenu.project.path)
+    const session = getNavigableSessionForProject(ctxMenu.project)
     console.log('[cmd-center] Open in Terminal:', ctxMenu.project.path, 'session:', session ? { tmux_session: session.tmux_session, tmux_window: session.tmux_window, tmux_pane: session.tmux_pane } : 'null')
-    if (session?.tmux_session && session?.tmux_window && session?.tmux_pane) {
-      navigateToSidebarSession(session, ctxMenu.project, true)
-        .then(() => console.log('[cmd-center] navigate OK'))
-        .catch(e => console.error('[cmd-center] navigate FAILED:', e))
-    } else {
+    if (!session) {
       console.warn('[cmd-center] Open in Terminal: missing tmux fields, cannot navigate')
+      showSidebarNotice('No active terminal is available for this project yet.')
+      return
     }
+
+    navigateToSidebarSession(session, ctxMenu.project, true)
+      .then((didNavigate) => {
+        if (didNavigate) {
+          console.log('[cmd-center] navigate OK')
+        }
+      })
   }
 
   function ctxStopTool(session) {
@@ -283,7 +335,10 @@
       }, 3000)
       return
     }
-    stopClaudeSession(session.tmux_pane, session.cli_tool).catch(e => console.error('Failed to stop session:', e))
+    stopClaudeSession(session.tmux_pane, session.cli_tool).catch((error) => {
+      console.error('Failed to stop session:', error)
+      showSidebarNotice(describeSessionActionError('stop', { tool: session.cli_tool }, error))
+    })
     closeContextMenu()
   }
 
@@ -292,8 +347,11 @@
     const projectId = ctxMenu.project.id
     const tool = session.cli_tool
     stopClaudeSession(session.tmux_pane, tool)
-      .then(() => launchClaudeSession(projectId, 'continue', tool))
-      .catch(e => console.error('Failed to restart session:', e))
+      .then(() => launchClaudeSession(projectId, 'fresh', tool))
+      .catch((error) => {
+        console.error('Failed to restart session:', error)
+        showSidebarNotice(describeSessionActionError('restart', { tool }, error))
+      })
   }
 
   /** Tool display names for context menu labels. */
@@ -304,26 +362,25 @@
     if (!ctxMenu?.project) return []
     const allSessions = getSessionsForProject(ctxMenu.project.path)
     const liveSessions = allSessions.filter(s => s.state === 'active' || s.state === 'idle')
+    const navigableSession = getNavigableSessionForProject(ctxMenu.project)
 
     const items = []
 
-    if (liveSessions.length > 0) {
+    if (navigableSession) {
       items.push({ label: 'Open in Terminal', action: ctxOpenInTerminal, icon: CTX_ICON_TERMINAL })
       items.push({ separator: true })
     }
 
-    // Continue — consistent across all tools
+    // Continue is only distinct for Claude.
     items.push({ label: 'Continue Claude', action: () => ctxLaunchTool('continue', 'claude'), icon: CTX_ICON_PLAY })
-    items.push({ label: 'Continue Codex', action: () => ctxLaunchTool('continue', 'codex'), icon: CTX_ICON_PLAY })
-    items.push({ label: 'Continue Gemini', action: () => ctxLaunchTool('continue', 'gemini'), icon: CTX_ICON_PLAY })
 
-    // New session — consistent across all tools
+    // New session remains distinct for all tools.
     items.push({ separator: true })
     items.push({ label: 'New Claude Session', action: () => ctxLaunchTool('fresh', 'claude'), icon: CTX_ICON_PLUS })
     items.push({ label: 'New Codex Session', action: () => ctxLaunchTool('fresh', 'codex'), icon: CTX_ICON_PLUS })
     items.push({ label: 'New Gemini Session', action: () => ctxLaunchTool('fresh', 'gemini'), icon: CTX_ICON_PLUS })
 
-    // Resume — consistent across all tools
+    // Resume stays distinct for Claude, Codex, and Gemini.
     items.push({ separator: true })
     items.push({ label: 'Resume Claude', action: () => ctxLaunchTool('resume', 'claude'), icon: CTX_ICON_CLOCK })
     items.push({ label: 'Resume Codex', action: () => ctxLaunchTool('resume', 'codex'), icon: CTX_ICON_CLOCK })
@@ -454,6 +511,23 @@
     </div>
   </div>
 
+  {#if sidebarNotice}
+    <div class="mx-3 mb-1 rounded-md border border-warning-400/30 bg-warning-500/10 px-3 py-2 text-[11px] text-warning-100" data-testid="sidebar-notice">
+      <div class="flex items-start gap-2">
+        <svg class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning-300" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M4.93 19.5h14.14c1.54 0 2.502-1.667 1.732-3L13.732 4.25c-.77-1.333-2.694-1.333-3.464 0L3.198 16.5c-.77 1.333.192 3 1.732 3Z"/></svg>
+        <span class="flex-1" data-testid="sidebar-notice-message">{sidebarNotice}</span>
+        <button
+          class="text-warning-200/70 transition-colors hover:text-warning-100"
+          onclick={() => { sidebarNotice = null }}
+          aria-label="Dismiss sidebar notice"
+          data-testid="sidebar-notice-dismiss"
+        >
+          <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <!-- Project list -->
   <div
     bind:this={projectListEl}
@@ -484,6 +558,7 @@
         clearTimeout(hoverTimeout)
         openContextMenu(event, project)
       }}
+      onProjectContextMenuKey={openContextMenuFromKeyboard}
       onProjectMouseEnter={handleProjectMouseEnter}
       onProjectMouseLeave={hideHoverCard}
       onSessionJump={jumpToSession}

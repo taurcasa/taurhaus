@@ -1,4 +1,5 @@
 <script>
+  import { getContextMenuPoint, isContextMenuKey } from './a11y.js'
   import { getFileTree, readFile, readProjectAsset } from './ipc.js'
   import { classifyFile } from './fileClassifier.js'
   import { pathWasChanged } from './fileChange.js'
@@ -288,6 +289,11 @@
   }
 
   function handleRowKeydown(event, action) {
+    if (isContextMenuKey(event)) {
+      event.preventDefault()
+      return 'context-menu'
+    }
+
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       action()
@@ -418,6 +424,12 @@
     fileCtxMenu = { x: e.clientX, y: e.clientY, path, name }
   }
 
+  function openFileContextMenuFromKeyboard(event, path, name) {
+    event.preventDefault()
+    const point = getContextMenuPoint(event.currentTarget)
+    fileCtxMenu = { x: point.x, y: point.y, path, name }
+  }
+
   function closeFileContextMenu() {
     fileCtxMenu = null
   }
@@ -485,7 +497,11 @@
                 class="w-full flex items-center gap-1.5 h-[32px] text-left text-[13px] {t.textSecondary} {t.listHover} rounded transition-colors"
                 style="padding-left: {8 + depth * 16}px"
                 onclick={() => toggleDir(node.path)}
-                onkeydown={(event) => handleRowKeydown(event, () => toggleDir(node.path))}
+                onkeydown={(event) => {
+                  if (handleRowKeydown(event, () => toggleDir(node.path)) === 'context-menu') {
+                    openFileContextMenuFromKeyboard(event, node.path, node.name)
+                  }
+                }}
                 oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
                 data-testid="file-tree-node"
               >
@@ -500,7 +516,11 @@
                   {isSelected ? t.listSelected : `${dark ? 'text-zinc-400' : 'text-zinc-600'} ${t.listHover}`}"
                 style="padding-left: {22 + depth * 16}px"
                 onclick={() => openFile(node.path)}
-                onkeydown={(event) => handleRowKeydown(event, () => openFile(node.path))}
+                onkeydown={(event) => {
+                  if (handleRowKeydown(event, () => openFile(node.path)) === 'context-menu') {
+                    openFileContextMenuFromKeyboard(event, node.path, node.name)
+                  }
+                }}
                 oncontextmenu={(e) => openFileContextMenu(e, node.path, node.name)}
                 aria-current={isSelected ? 'true' : undefined}
                 data-testid="file-tree-node"
