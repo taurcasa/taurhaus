@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte'
   import PresetCard from './PresetCard.svelte'
   import ValidationBar from './ValidationBar.svelte'
   import { themeTokens } from '../themeTokens.js'
@@ -15,6 +16,8 @@
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { projectNameFromPath } from './meshTabUtils.js'
+
+  const CATALOG_DENSITY_STORAGE_KEY = 'taurhaus.mesh.roleCatalogDensity'
 
   let {
     dark = false,
@@ -83,6 +86,7 @@
   let agentDropState = $state('idle')
   let reorderTargetAgentId = $state('')
   let catalogSearchInput = $state(null)
+  let catalogDensityPreference = $state(null)
 
   const normalizedTeam = $derived(teamConfig ?? { description: '', lead: null, agents: [] })
   const normalizedRoles = $derived.by(() =>
@@ -126,6 +130,9 @@
   const leadRoles = $derived(filteredRoles.filter((role) => role.kind === 'lead'))
   const agentRoles = $derived(filteredRoles.filter((role) => role.kind !== 'lead'))
   const visibleRoleCount = $derived(filteredRoles.length)
+  const catalogDensityMode = $derived(
+    catalogDensityPreference ?? (visibleRoleCount > 8 ? 'compact' : 'expanded')
+  )
   const toolFilterCounts = $derived.by(() => ({
     all: normalizedRoles.length,
     claude: normalizedRoles.filter((role) => role.cliTool === 'claude').length,
@@ -163,6 +170,17 @@
   const canInitialize = $derived(
     Boolean(normalizedTeam?.lead) && !validationIssues.some((issue) => issue.severity === 'error')
   )
+
+  onMount(() => {
+    try {
+      const storedValue = window.localStorage.getItem(CATALOG_DENSITY_STORAGE_KEY)
+      if (storedValue === 'compact' || storedValue === 'expanded') {
+        catalogDensityPreference = storedValue
+      }
+    } catch {
+      // Ignore localStorage failures and fall back to the smart default.
+    }
+  })
 
   function slugify(value) {
     return String(value || '')
@@ -382,6 +400,17 @@
     }
   }
 
+  function densityButtonTone(active) {
+    if (active) {
+      return dark
+        ? 'border-brand-400/50 bg-brand-500/18 text-zinc-100'
+        : 'border-brand-400/60 bg-brand-50 text-brand-900'
+    }
+    return dark
+      ? 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
+      : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50'
+  }
+
   function roleChipTone(role) {
     if (role.kind === 'lead') {
       return dark
@@ -391,6 +420,25 @@
     return dark
       ? 'border-white/[0.08] bg-white/[0.05] text-zinc-300'
       : 'border-zinc-200 bg-zinc-50 text-zinc-700'
+  }
+
+  function roleKindLabel(role) {
+    return role.kind === 'lead' ? 'Lead' : 'Agent'
+  }
+
+  function roleSummaryText(role) {
+    return role.summary || (role.kind === 'lead'
+      ? 'Direction-setting lead role.'
+      : 'Execution-focused specialist role.')
+  }
+
+  function setCatalogDensityPreference(mode) {
+    catalogDensityPreference = mode
+    try {
+      window.localStorage.setItem(CATALOG_DENSITY_STORAGE_KEY, mode)
+    } catch {
+      // Ignore localStorage failures and keep the in-memory preference.
+    }
   }
 </script>
 
@@ -445,7 +493,40 @@
       <section class="space-y-2" data-testid="mesh-builder-filter-tools">
         <div class="flex items-center justify-between">
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Quick Filters</p>
-          <span class="text-[10px] {t.textMuted}">{visibleRoleCount} visible</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] {t.textMuted}">{visibleRoleCount} visible</span>
+            <div class="flex items-center gap-1" data-testid="mesh-builder-density-toggle">
+              <button
+                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border transition {densityButtonTone(catalogDensityMode === 'compact')}"
+                type="button"
+                aria-label="Use compact role density"
+                aria-pressed={catalogDensityMode === 'compact'}
+                title="Compact density"
+                onclick={() => setCatalogDensityPreference('compact')}
+                data-testid="mesh-builder-density-compact"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <path d="M3 4.25h10M3 8h10M3 11.75h10" stroke-linecap="round"></path>
+                </svg>
+              </button>
+              <button
+                class="inline-flex h-7 w-7 items-center justify-center rounded-lg border transition {densityButtonTone(catalogDensityMode === 'expanded')}"
+                type="button"
+                aria-label="Use expanded role density"
+                aria-pressed={catalogDensityMode === 'expanded'}
+                title="Expanded density"
+                onclick={() => setCatalogDensityPreference('expanded')}
+                data-testid="mesh-builder-density-expanded"
+              >
+                <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"></rect>
+                  <rect x="9" y="2.5" width="4.5" height="4.5" rx="1"></rect>
+                  <rect x="2.5" y="9" width="4.5" height="4.5" rx="1"></rect>
+                  <rect x="9" y="9" width="4.5" height="4.5" rx="1"></rect>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -527,40 +608,75 @@
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Leads</p>
           <span class="text-[10px] {t.textMuted}">{leadRoles.length}</span>
         </div>
-        <div class="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(188px,1fr))]">
+        <div
+          class={catalogDensityMode === 'compact'
+            ? 'space-y-1'
+            : 'grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(188px,1fr))]'}
+          data-testid="mesh-builder-role-list-leads"
+          data-density-mode={catalogDensityMode}
+        >
           {#each leadRoles as role (role.roleId)}
-            <button
-              class="group relative flex min-h-[92px] w-full flex-col gap-2 overflow-hidden rounded-[18px] border p-2.5 text-left transition {surfaceTone} {roleCardTone(role)}"
-              type="button"
-              draggable="true"
-              onclick={() => onAssignLeadRole(role.roleId)}
-              ondragstart={(event) => handleCatalogDragStart(event, role)}
-              ondragend={handleCatalogDragEnd}
-              data-testid={`mesh-builder-role-${role.roleId}`}
-            >
-              <div class="flex items-start justify-between gap-2">
-                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
-                  <svg class="h-4 w-4" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={getToolIcon(role.cliTool).path}></path>
+            {#if catalogDensityMode === 'compact'}
+              <button
+                class="group relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl border px-2 text-left transition {surfaceTone} {roleCardTone(role)}"
+                type="button"
+                draggable="true"
+                title={roleSummaryText(role)}
+                onclick={() => onAssignLeadRole(role.roleId)}
+                ondragstart={(event) => handleCatalogDragStart(event, role)}
+                ondragend={handleCatalogDragEnd}
+                data-testid={`mesh-builder-role-${role.roleId}`}
+              >
+                <span class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-md border {roleMedallionTone(role.cliTool)}">
+                  <svg class="h-2.5 w-2.5" viewBox={getToolIcon(role.cliTool, 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
+                    <path d={getToolIcon(role.cliTool, 'sidebarSmall').path}></path>
                   </svg>
                 </span>
-                <div class="flex items-center gap-1.5">
-                  <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
-                    Lead
-                  </span>
-                  <span class="text-[12px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
-                </div>
-              </div>
-              <div class="min-w-0">
-                <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
-                <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                <p class="min-w-0 shrink-0 truncate text-[11px] font-semibold {t.textPrimary}">{role.name}</p>
+                <p class="min-w-0 flex-1 truncate text-[10px] font-medium {t.textMuted}">
                   {getToolName(role.cliTool)} · {role.model}
                 </p>
-                <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
-                  {role.summary || 'Direction-setting lead role.'}
-                </p>
-              </div>
-            </button>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                    {roleKindLabel(role)}
+                  </span>
+                  <span class="text-[10px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
+                </div>
+              </button>
+            {:else}
+              <button
+                class="group relative flex min-h-[92px] w-full flex-col gap-2 overflow-hidden rounded-[18px] border p-2.5 text-left transition {surfaceTone} {roleCardTone(role)}"
+                type="button"
+                draggable="true"
+                onclick={() => onAssignLeadRole(role.roleId)}
+                ondragstart={(event) => handleCatalogDragStart(event, role)}
+                ondragend={handleCatalogDragEnd}
+                data-testid={`mesh-builder-role-${role.roleId}`}
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
+                    <svg class="h-4 w-4" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                      <path d={getToolIcon(role.cliTool).path}></path>
+                    </svg>
+                  </span>
+                  <div class="flex items-center gap-1.5">
+                    <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                      {roleKindLabel(role)}
+                    </span>
+                    <span class="text-[12px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
+                  </div>
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
+                  <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                    {getToolName(role.cliTool)} · {role.model}
+                  </p>
+                  <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
+                    {roleSummaryText(role)}
+                  </p>
+                </div>
+              </button>
+            {/if}
           {/each}
         </div>
       </section>
@@ -572,40 +688,75 @@
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Agents</p>
           <span class="text-[10px] {t.textMuted}">{agentRoles.length}</span>
         </div>
-        <div class="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(188px,1fr))]">
+        <div
+          class={catalogDensityMode === 'compact'
+            ? 'space-y-1'
+            : 'grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(188px,1fr))]'}
+          data-testid="mesh-builder-role-list-agents"
+          data-density-mode={catalogDensityMode}
+        >
           {#each agentRoles as role (role.roleId)}
-            <button
-              class="group relative flex min-h-[92px] w-full flex-col gap-2 overflow-hidden rounded-[18px] border p-2.5 text-left transition {surfaceTone} {roleCardTone(role)}"
-              type="button"
-              draggable="true"
-              onclick={() => onAppendAgentRole(role.roleId)}
-              ondragstart={(event) => handleCatalogDragStart(event, role)}
-              ondragend={handleCatalogDragEnd}
-              data-testid={`mesh-builder-role-${role.roleId}`}
-            >
-              <div class="flex items-start justify-between gap-2">
-                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
-                  <svg class="h-4 w-4" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={getToolIcon(role.cliTool).path}></path>
+            {#if catalogDensityMode === 'compact'}
+              <button
+                class="group relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl border px-2 text-left transition {surfaceTone} {roleCardTone(role)}"
+                type="button"
+                draggable="true"
+                title={roleSummaryText(role)}
+                onclick={() => onAppendAgentRole(role.roleId)}
+                ondragstart={(event) => handleCatalogDragStart(event, role)}
+                ondragend={handleCatalogDragEnd}
+                data-testid={`mesh-builder-role-${role.roleId}`}
+              >
+                <span class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-md border {roleMedallionTone(role.cliTool)}">
+                  <svg class="h-2.5 w-2.5" viewBox={getToolIcon(role.cliTool, 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
+                    <path d={getToolIcon(role.cliTool, 'sidebarSmall').path}></path>
                   </svg>
                 </span>
-                <div class="flex items-center gap-1.5">
-                  <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
-                    Agent
-                  </span>
-                  <span class="text-[12px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
-                </div>
-              </div>
-              <div class="min-w-0">
-                <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
-                <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                <p class="min-w-0 shrink-0 truncate text-[11px] font-semibold {t.textPrimary}">{role.name}</p>
+                <p class="min-w-0 flex-1 truncate text-[10px] font-medium {t.textMuted}">
                   {getToolName(role.cliTool)} · {role.model}
                 </p>
-                <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
-                  {role.summary || 'Execution-focused specialist role.'}
-                </p>
-              </div>
-            </button>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                    {roleKindLabel(role)}
+                  </span>
+                  <span class="text-[10px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
+                </div>
+              </button>
+            {:else}
+              <button
+                class="group relative flex min-h-[92px] w-full flex-col gap-2 overflow-hidden rounded-[18px] border p-2.5 text-left transition {surfaceTone} {roleCardTone(role)}"
+                type="button"
+                draggable="true"
+                onclick={() => onAppendAgentRole(role.roleId)}
+                ondragstart={(event) => handleCatalogDragStart(event, role)}
+                ondragend={handleCatalogDragEnd}
+                data-testid={`mesh-builder-role-${role.roleId}`}
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
+                    <svg class="h-4 w-4" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                      <path d={getToolIcon(role.cliTool).path}></path>
+                    </svg>
+                  </span>
+                  <div class="flex items-center gap-1.5">
+                    <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                      {roleKindLabel(role)}
+                    </span>
+                    <span class="text-[12px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
+                  </div>
+                </div>
+                <div class="min-w-0">
+                  <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
+                  <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                    {getToolName(role.cliTool)} · {role.model}
+                  </p>
+                  <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
+                    {roleSummaryText(role)}
+                  </p>
+                </div>
+              </button>
+            {/if}
           {/each}
         </div>
       </section>

@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import MeshTeamBuilder from './MeshTeamBuilder.svelte'
 
-function sampleRoles() {
-  return [
+function sampleRoles(extraAgentCount = 0) {
+  const roles = [
     {
       roleId: 'lead-claude',
       name: 'Claude Orchestrator',
@@ -39,6 +39,19 @@ function sampleRoles() {
       behaviorSummary: 'Finds source material.',
     },
   ]
+
+  for (let index = 0; index < extraAgentCount; index += 1) {
+    roles.push({
+      roleId: `agent-extra-${index + 1}`,
+      name: `Extra Agent ${index + 1}`,
+      kind: 'agent',
+      cliTool: index % 2 === 0 ? 'codex' : 'gemini',
+      model: index % 2 === 0 ? 'gpt-5.4 high' : 'gemini-2.5-pro',
+      behaviorSummary: `Extra agent summary ${index + 1}.`,
+    })
+  }
+
+  return roles
 }
 
 function renderBuilder(props = {}) {
@@ -77,6 +90,10 @@ function renderBuilder(props = {}) {
 }
 
 describe('MeshTeamBuilder', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
   it('filters roles by tool icon toggle', async () => {
     renderBuilder()
 
@@ -120,5 +137,52 @@ describe('MeshTeamBuilder', () => {
     })
 
     expect(screen.getByTestId('mesh-builder-empty-results')).toBeInTheDocument()
+  })
+
+  it('defaults to compact density when more than eight roles are visible and still assigns on click', async () => {
+    const onAppendAgentRole = vi.fn()
+    renderBuilder({
+      roleTemplates: sampleRoles(6),
+      onAppendAgentRole,
+    })
+
+    expect(screen.getByTestId('mesh-builder-density-compact')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('mesh-builder-density-expanded')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByText('Implements scoped changes.')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-role-agent-codex')).toHaveAttribute(
+      'title',
+      'Implements scoped changes.'
+    )
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-agent-codex'))
+
+    expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
+  })
+
+  it('defaults to expanded density when eight or fewer roles are visible', () => {
+    renderBuilder()
+
+    expect(screen.getByTestId('mesh-builder-density-expanded')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Implements scoped changes.')).toBeInTheDocument()
+  })
+
+  it('persists a manual density toggle in localStorage across remounts', async () => {
+    const { unmount } = renderBuilder({
+      roleTemplates: sampleRoles(6),
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-density-expanded'))
+
+    expect(window.localStorage.getItem('taurhaus.mesh.roleCatalogDensity')).toBe('expanded')
+    expect(screen.getByText('Implements scoped changes.')).toBeInTheDocument()
+
+    unmount()
+
+    renderBuilder({
+      roleTemplates: sampleRoles(6),
+    })
+
+    expect(screen.getByTestId('mesh-builder-density-expanded')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Implements scoped changes.')).toBeInTheDocument()
   })
 })
