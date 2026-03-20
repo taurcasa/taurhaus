@@ -1,6 +1,5 @@
 <script>
   import { onMount } from 'svelte'
-  import PresetCard from './PresetCard.svelte'
   import ValidationBar from './ValidationBar.svelte'
   import { themeTokens } from '../themeTokens.js'
   import {
@@ -80,6 +79,16 @@
     dark
       ? 'border-danger-500/50 bg-danger-500/10'
       : 'border-danger-400/60 bg-danger-50'
+  )
+  const presetRowTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-black/15 hover:bg-white/[0.05]'
+      : 'border-zinc-200 bg-white hover:bg-zinc-50'
+  )
+  const presetBadgeTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-white/[0.06] text-zinc-300'
+      : 'border-zinc-200 bg-zinc-50 text-zinc-600'
   )
 
   let searchQuery = $state('')
@@ -506,6 +515,31 @@
       : 'Execution-focused specialist role.')
   }
 
+  function presetTools(preset) {
+    if (!Array.isArray(preset?.tools)) return []
+    return [...new Set(preset.tools.map((tool) => String(tool || '').toLowerCase()).filter(Boolean))]
+  }
+
+  function presetAgentCount(preset) {
+    return Math.max(0, Number(preset?.agentCount ?? 0))
+  }
+
+  function presetLeadCount(preset) {
+    const explicitLeadCount = Number(preset?.leadCount)
+    if (Number.isFinite(explicitLeadCount)) {
+      return Math.max(0, explicitLeadCount)
+    }
+    const agentCount = presetAgentCount(preset)
+    const roleCount = Number(preset?.roleCount ?? agentCount + 1)
+    return Math.max(1, roleCount - agentCount)
+  }
+
+  function presetMemberSummary(preset) {
+    const agentCount = presetAgentCount(preset)
+    const leadCount = presetLeadCount(preset)
+    return `${agentCount} agent${agentCount === 1 ? '' : 's'} · ${leadCount} lead${leadCount === 1 ? '' : 's'}`
+  }
+
   function pinButtonTone(active) {
     if (active) {
       return dark
@@ -753,7 +787,7 @@
             {#if catalogDensityMode === 'compact'}
               <div class="group relative">
                 <button
-                  class="flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl border px-2 pr-9 text-left transition {surfaceTone} {roleCardTone(role)}"
+                  class="flex h-9 w-full items-center gap-2 overflow-hidden rounded-xl border px-2 pr-9 text-left transition {surfaceTone} {roleCardTone(role)}"
                   type="button"
                   draggable="true"
                   title={roleSummaryText(role)}
@@ -767,12 +801,12 @@
                       <path d={getToolIcon(role.cliTool, 'sidebarSmall').path}></path>
                     </svg>
                   </span>
-                  <p class="min-w-0 shrink-0 truncate text-[11px] font-semibold {t.textPrimary}">{role.name}</p>
-                  <p class="min-w-0 flex-1 truncate text-[10px] font-medium {t.textMuted}">
+                  <p class="min-w-0 shrink-0 truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
+                  <p class="min-w-0 flex-1 truncate text-[11px] font-medium {t.textMuted}">
                     {getToolName(role.cliTool)} · {role.model}
                   </p>
                   <div class="flex items-center gap-1.5 shrink-0">
-                    <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                    <span class="rounded-full border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
                       {roleKindLabel(role)}
                     </span>
                     <span class="text-[10px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
@@ -861,7 +895,7 @@
             {#if catalogDensityMode === 'compact'}
               <div class="group relative">
                 <button
-                  class="flex h-8 w-full items-center gap-2 overflow-hidden rounded-xl border px-2 pr-9 text-left transition {surfaceTone} {roleCardTone(role)}"
+                  class="flex h-9 w-full items-center gap-2 overflow-hidden rounded-xl border px-2 pr-9 text-left transition {surfaceTone} {roleCardTone(role)}"
                   type="button"
                   draggable="true"
                   title={roleSummaryText(role)}
@@ -875,12 +909,12 @@
                       <path d={getToolIcon(role.cliTool, 'sidebarSmall').path}></path>
                     </svg>
                   </span>
-                  <p class="min-w-0 shrink-0 truncate text-[11px] font-semibold {t.textPrimary}">{role.name}</p>
-                  <p class="min-w-0 flex-1 truncate text-[10px] font-medium {t.textMuted}">
+                  <p class="min-w-0 shrink-0 truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
+                  <p class="min-w-0 flex-1 truncate text-[11px] font-medium {t.textMuted}">
                     {getToolName(role.cliTool)} · {role.model}
                   </p>
                   <div class="flex items-center gap-1.5 shrink-0">
-                    <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                    <span class="rounded-full border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
                       {roleKindLabel(role)}
                     </span>
                     <span class="text-[10px] font-bold {t.textMuted}" aria-hidden="true">⋮⋮</span>
@@ -962,20 +996,50 @@
           </div>
           <span class="text-[10px] {t.textMuted}">{(presets ?? []).length}</span>
         </div>
-        <div class="space-y-2">
+        <div class="space-y-1.5">
           {#each presets as preset (preset.presetId ?? preset.name)}
-            <PresetCard
-              name={preset.name}
-              description={preset.description}
-              leadCount={preset.leadCount ?? 1}
-              agentCount={preset.agentCount ?? 0}
-              tools={preset.tools ?? []}
-              builtIn={preset.builtIn ?? false}
-              dark={dark}
-              testId={`mesh-template-preset-${preset.presetId ?? preset.name}`}
-              onSelect={() => onApplyPreset(preset)}
-              onInspect={focusCatalogSearch}
-            />
+            <button
+              class="flex h-9 w-full items-center gap-2 rounded-xl border px-2.5 text-left transition {presetRowTone}"
+              type="button"
+              title={preset.description || 'No preset description available.'}
+              onclick={() => onApplyPreset(preset)}
+              data-testid={`mesh-template-preset-${preset.presetId ?? preset.name}`}
+            >
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-[12px] font-semibold {t.textPrimary}">
+                  {preset.name || 'Untitled preset'}
+                </p>
+                <p class="truncate text-[11px] {t.textMuted}" data-testid={`mesh-template-preset-summary-${preset.presetId ?? preset.name}`}>
+                  {presetMemberSummary(preset)}
+                </p>
+              </div>
+              <div class="flex items-center gap-1.5">
+                {#each presetTools(preset) as tool}
+                  <span
+                    class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-md border {roleMedallionTone(tool)}"
+                    title={getToolName(tool)}
+                    data-testid={`mesh-template-preset-tool-${preset.presetId ?? preset.name}-${tool}`}
+                  >
+                    <svg
+                      class="h-2.5 w-2.5"
+                      viewBox={getToolIcon(tool, 'sidebarSmall').viewBox}
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path d={getToolIcon(tool, 'sidebarSmall').path}></path>
+                    </svg>
+                  </span>
+                {/each}
+                {#if preset.builtIn ?? false}
+                  <span
+                    class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {presetBadgeTone}"
+                    data-testid={`mesh-template-preset-built-in-${preset.presetId ?? preset.name}`}
+                  >
+                    Built-in
+                  </span>
+                {/if}
+              </div>
+            </button>
           {/each}
         </div>
       </section>
