@@ -6,57 +6,89 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-## [0.5.10] - 2026-03-20
+## [0.6.0] - 2026-03-20
 
-Quality phase release. Every user-facing surface was audited for functional honesty, error messaging, accessibility, and documentation accuracy. Major resource usage improvements for Linux/WSL users.
+Major release combining a thorough quality phase with significant Windows/WSL stability improvements and Mesh runtime hardening. 359 commits since v0.5.9 — every user-facing surface was audited for functional honesty, error messaging, accessibility, and documentation accuracy.
 
 ### Quality & Reliability
 
 - **Settings now control real behavior** — scan directories and ignore patterns were previously saved but silently ignored by the scanner and search indexer. They now drive both project discovery and index rebuilds, with "Active" badges in Settings confirming enforcement.
 - **Accurate session duration tracking** — session activity durations were undercounted by 10x due to a polling-interval mismatch. Fixed to use the correct interval for both Tauri and mock modes.
 - **Consistent terminal settings** — terminal emulator defaults are now sourced from a shared backend contract so the frontend, backend, and tests all agree on what's available per platform.
-- **Event-driven updates restored** — tmux focus changes, file modifications, task updates, and session state changes now propagate in real-time through the daemon event bridge.
+- **Event-driven updates restored** — tmux focus changes, file modifications, task updates, and session state changes now propagate in real-time. Fixed multiple root causes: missing tmux focus hook install, overlapping activity-watch reconciles, and missing startup watch triggers.
 - **Honest UI labels** — mesh node "Stop" button renamed to "Remove" (it removes from team, not just stops), dead Edit/Remove buttons removed from Overview tab, "Open in Terminal" now shows a notice instead of silently failing when no session exists.
+- **Mesh cold-resume detection** — restarting the app with an existing team now correctly surfaces the Resume Team UI instead of showing the setup flow.
+- **Mesh runtime status honesty** — when all team members are stopped, the runtime bar now shows "All members stopped" instead of "Team running normally", and hides the Add Agent button until the team is active.
+- **Mesh pane-loss reconciliation** — when a member's tmux pane dies, the member is now reconciled as offline/degraded instead of showing stale state.
+
+### Windows & WSL Stability
+
+- **Startup freeze fix** — resolved white-screen startup failures caused by blocking daemon status checks on the pre-window path.
+- **WSL UNC path handling** — search index rebuilds, project creation, and git trust operations now handle WSL UNC paths correctly instead of freezing or failing silently.
+- **Daemon bootstrap race** — fixed a race between startup and the health check that could leave the daemon in an inconsistent state.
+- **Silent install improvements** — the installer now kills running instances before install and verifies the installed binary hash matches the built payload.
+- **Task tracking fix** — Claude task scanning on Windows was watching the wrong directory. All path resolution now uses the platform-aware authority.
+- **Session bridge recovery** — stale session presence is preserved across daemon connection gaps so the sidebar doesn't flicker on reconnect.
+
+### Mesh Runtime Hardening
+
+- **Mesh 0.2.17** — bundled mesh binary updated through 6 versions (0.2.12→0.2.17) with fixes for daemon recovery, auth failures, and member lifecycle.
+- **3-slot daemon connection pool** — replaced single connection with a pool, with dedicated connections for session bridge seeding.
+- **Add-agent pipeline** — fixed error masking in the add-agent flow and routed onboarding notices through proper delivery channels.
+- **Team daemon auto-rotation** — daemon processes automatically rotate after mesh binary updates.
+- **Compaction reinjection** — post-compaction recovery now includes full role instructions and runtime compact summaries for better context restoration.
+- **V3 role definitions** — updated Claude and Codex role definitions based on production experience, with context-steering metadata instead of capability labels.
+- **Fresh sessions on resume** — removed checkpoint-based continue mode in favor of always starting fresh sessions, which is more reliable across tools.
 
 ### Accessibility
 
 - **WCAG Level A compliance** — all dialogs and overlays now have proper `role="dialog"`, focus traps, Escape-to-close, and focus restoration. Background content is marked `inert` when modals are open.
-- **Keyboard navigation** — tab bar supports Arrow Left/Right/Home/End, context menus open via Shift+F10, visible focus rings on all interactive elements.
-- **Screen reader support** — icon-only buttons have `aria-label`, daemon status changes use `aria-live` regions, tab bar uses `role="tablist"` with `aria-selected`.
+- **Keyboard navigation** — tab bar supports Arrow Left/Right/Home/End, context menus open via Shift+F10, type-ahead search in menus, visible focus-visible rings on all interactive elements.
+- **Screen reader support** — icon-only buttons have `aria-label`, daemon status changes use `aria-live` regions, tab bar uses `role="tablist"` with `aria-selected`, settings textareas have accessible labels.
 
 ### Error Handling
 
 - **Visible error feedback** — session launch, stop, and navigation failures now show sidebar notices instead of silently logging to the console.
 - **Human-readable error messages** — technical backend errors are translated to plain language via a centralized error copy module. Daemon install failures, scan errors, and mesh init issues all show actionable guidance.
-- **Daemon reconnect escalation** — a calm "connecting" banner appears initially; after 30 seconds without reconnection, the message escalates and offers a "Restart helper" button.
+- **Daemon reconnect escalation** — a calm "connecting" banner appears initially; after 30 seconds without reconnection, the message escalates and offers a "Restart helper" button. Distinguishes between busy, reconnecting, and failed states.
 - **Batch registration feedback** — when some projects fail to register, the failure count and individual errors are now shown instead of only the success count.
+- **"Helper service" language** — all user-facing error messages and setup flows now use "helper service" instead of internal "daemon" terminology.
 
 ### Performance
 
 - **Inotify watcher consolidation** — the daemon now uses ~4 inotify instances instead of ~25, through a global shared watch registry with reference-counted subscriptions. App-side watchers use shared pools instead of one watcher per project.
-- **Windows task tracking fixed** — Claude task scanning on Windows was watching the wrong directory. All path resolution now uses the platform-aware authority.
+- **Startup optimization** — install work moved off the pre-window path, deferred retryable load warnings until daemon recovery settles, and split project selection into critical and deferred phases.
+- **Task update efficiency** — removed blocking task recovery from request paths and eliminated redundant task reloads after background refresh.
+- **Task board self-heal** — recovers from empty DB by scanning Claude task files directly.
 - **Member daemon lifecycle** — re-adding a team member no longer inherits stale daemon PIDs from a previous session.
 
 ### Code Quality
 
-- **5 major file decompositions** — Shell.svelte, stall_detector, orchestrator, session_scanner, and meshTabController all split into focused modules under 600 LOC.
+- **5 major file decompositions** — Shell.svelte (1503→589 LOC + 4 controllers), stall_detector (2978→focused modules), orchestrator (1895→7 modules, max 545), session_scanner (1945→6 modules, max 595), and meshTabController (1565→260 orchestrator + 4 state modules). All under the 600 LOC target.
 - **Shared contracts** — tmux layout allocation, scan/index policy, path normalization, and terminal platform contract extracted from duplicated inline logic.
-- **Structured logging** — coordination lifecycle, project mutations, and startup events now emit machine-readable JSONL events with correlation IDs.
+- **Structured logging** — coordination lifecycle, project mutations, startup events, and daemon caller context now emit machine-readable JSONL events with correlation IDs.
 - **Inotify telemetry** — daemon emits structured diagnostics for instance/watch counts and capacity warnings.
 
 ### Documentation
 
-- **Full docs refresh** — all user-facing docs reviewed for accuracy after quality phase changes. 24 specific clarity rewrites applied across 8 documents.
-- **"Helper service" language** — README and getting-started now consistently use "helper service" instead of "daemon" in user-facing text.
+- **Full docs refresh** — all user-facing docs reviewed for accuracy. 24 specific clarity rewrites applied across 8 documents to remove jargon and lead with user behavior.
 - **Keyboard shortcuts reference** — added to getting-started.md with all supported shortcuts.
-- **inotify resource note** — Linux/WSL users can now find guidance on watcher limits and how to raise them.
-- **Session management rewrite** — feature doc restructured to lead with user behavior instead of implementation architecture.
+- **"How taurhaus works"** — new conceptual overview paragraph in getting-started for users who want the mental model.
+- **inotify resource note** — Linux/WSL users can find guidance on watcher limits and how to raise them.
+- **Architecture doc reconciliation** — ARCHITECTURE.md, data-architecture, and coordination-architecture now have clear ownership boundaries with no overlapping explanations.
+- **Settings docs promoted** — now in the Quick Links navigation for easier discovery.
 
 ### Testing
 
 - **4 new E2E specs** — first-run wizard, command center real actions, session management runtime truth, and mesh recovery now have end-to-end coverage with real tmux integration.
 - **2,000+ new E2E test lines** — proving that launch modes execute correct commands, stop actually kills sessions, activity detection reflects real I/O, and mesh lifecycle works end-to-end.
-- **Security and code quality re-audits** — both passed clean after all quality phase changes.
+- **Security and code quality re-audits** — both passed clean after all quality phase changes. Code quality re-audit confirmed substantial structural improvement.
+- **1,203 frontend unit tests** — all passing. Full `just check` gate green.
+
+### Known Issues
+
+- **Mesh degraded-path E2E** — some mesh recovery edge cases (degraded member resume after pane loss) have skipped E2E checks due to team-daemon startup verification timeouts after resume.
+- **Mesh team-daemon resume** — after resuming a team, the team-daemon startup verification can time out, leaving agents in idle state despite coordination reporting success. Tracked for follow-up.
 
 ## [0.5.9] - 2026-03-10
 
