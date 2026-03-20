@@ -190,19 +190,15 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (18)**:
-  - `claude-orchestrator`, `claude-researcher`, `claude-reviewer`
-  - `claude-product-checker`, `claude-design-lead`
-  - `codex-orchestrator`, `codex-architect`, `codex-developer`, `codex-qa`
-  - `codex-product-lead`, `codex-vertical-slice-developer`
-  - `gemini-orchestrator`, `gemini-ui-specialist`
-  - `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, `taurhaus-designer`
-- **Presets (14)**:
-  - `standard-team`, `standard-team-codex`, `standard-team-gemini`
-  - `fullstack-dev`, `fullstack-dev-codex`, `fullstack-dev-gemini`
-  - `research-dev`, `research-dev-codex`, `research-dev-gemini`
-  - `review-team`, `review-team-codex`, `review-team-gemini`
-  - `taurhaus-standard`, `taurhaus-standard-codex`
+- **Roles (34)**:
+  - legacy and imported-compatible roles such as `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-developer`, and `gemini-ui-specialist`
+  - taurhaus-specific roles such as `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, and `taurhaus-designer`
+  - v2 and v3 role families such as `v2-lead-claude`, `v2-developer-codex`, `v3-lead-claude`, `v3-architect-codex`, and `v3-product-checker-claude`
+- **Presets (4)**:
+  - `pair`
+  - `dev-team`
+  - `full-team`
+  - `research-team`
 
 These built-ins are most useful when you read them as lane definitions:
 

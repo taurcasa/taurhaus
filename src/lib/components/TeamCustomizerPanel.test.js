@@ -8,7 +8,7 @@ function baseTeamConfig() {
   return {
     teamName: 'taurhaus-team',
     description: 'Mesh team config',
-    presetId: 'fullstack-dev',
+    presetId: 'dev-team',
     lead: {
       id: 'lead',
       name: 'team-lead',

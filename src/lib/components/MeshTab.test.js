@@ -235,8 +235,8 @@ describe('MeshTab', () => {
     ])
     listTeamPresets.mockResolvedValue([
       {
-        presetId: 'fullstack-dev',
-        name: 'Full Stack Dev Team',
+        presetId: 'dev-team',
+        name: 'Dev Team',
         description: 'Lead + agents',
         leadRoleId: 'lead-default',
         roleCount: 3,
@@ -246,7 +246,7 @@ describe('MeshTab', () => {
     ])
     getRoleTemplate.mockResolvedValue({ roleId: 'lead-default', instructions: 'Lead the team.' })
     getTeamPreset.mockResolvedValue({
-      presetId: 'fullstack-dev',
+      presetId: 'dev-team',
       leadRoleId: 'lead-default',
       agentSlots: [{ roleId: 'agent-default', count: 2 }],
     })
@@ -2270,7 +2270,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-preset-fullstack-dev'))
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-dev-team'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
@@ -2281,7 +2281,7 @@ describe('MeshTab', () => {
       expect(coordinationInitializeTeam).toHaveBeenCalledWith(
         expect.objectContaining({
           teamName: 'my-app-team',
-          presetId: 'fullstack-dev',
+          presetId: 'dev-team',
           lead: expect.objectContaining({
             cliTool: '',
           }),
@@ -2296,18 +2296,18 @@ describe('MeshTab', () => {
 
   it.each([
     {
-      presetId: 'fullstack-dev-codex',
+      presetId: 'custom-codex-team',
       leadRoleId: 'codex-orchestrator',
       leadTool: 'codex',
       leadModel: 'gpt-5.4 high',
     },
     {
-      presetId: 'standard-team-gemini',
+      presetId: 'custom-gemini-team',
       leadRoleId: 'gemini-orchestrator',
       leadTool: 'gemini',
       leadModel: 'gemini-3.1-pro',
     },
-  ])('composes and initializes non-Claude quick preset $presetId cleanly', async ({
+  ])('composes and initializes backend-loaded non-Claude preset $presetId cleanly', async ({
     presetId,
     leadRoleId,
     leadTool,
@@ -2400,19 +2400,18 @@ describe('MeshTab', () => {
   it('loads quick preset members into the editable roster before initialization', async () => {
     coordinationInitializeTeam.mockClear()
     getTeamPreset.mockResolvedValueOnce({
-      presetId: 'standard-team',
-      name: 'Standard Dev Team',
-      leadRoleId: 'claude-orchestrator',
+      presetId: 'full-team',
+      name: 'Full Team',
+      leadRoleId: 'v3-lead-claude',
       agentSlots: [
         {
-          roleId: 'codex-architect',
+          roleId: 'v3-architect-codex',
           count: 1,
           overrides: { namePattern: 'architect' },
         },
         {
-          roleId: 'codex-developer',
-          count: 1,
-          overrides: { namePattern: 'developer{n}' },
+          roleId: 'v3-developer-codex',
+          count: 2,
         },
       ],
     })
@@ -2420,8 +2419,8 @@ describe('MeshTab', () => {
       roster: [
         {
           name: 'team-lead',
-          roleId: 'claude-orchestrator',
-          roleName: 'Claude Orchestrator',
+          roleId: 'v3-lead-claude',
+          roleName: 'V3 Team Lead (Claude)',
           roleKind: 'lead',
           cliTool: 'claude',
           model: 'opus',
@@ -2432,8 +2431,8 @@ describe('MeshTab', () => {
         },
         {
           name: 'architect',
-          roleId: 'codex-architect',
-          roleName: 'Codex Architect',
+          roleId: 'v3-architect-codex',
+          roleName: 'V3 Architect (Codex)',
           roleKind: 'agent',
           cliTool: 'codex',
           model: 'gpt-5.4 high',
@@ -2443,9 +2442,21 @@ describe('MeshTab', () => {
           projectId: null,
         },
         {
-          name: 'developer1',
-          roleId: 'codex-developer',
-          roleName: 'Codex Developer',
+          name: 'dev-1',
+          roleId: 'v3-developer-codex',
+          roleName: 'V3 Developer (Codex)',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own implementation',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'dev-2',
+          roleId: 'v3-developer-codex',
+          roleName: 'V3 Developer (Codex)',
           roleKind: 'agent',
           cliTool: 'codex',
           model: 'gpt-5.4 high',
@@ -2460,12 +2471,12 @@ describe('MeshTab', () => {
     })
     listTeamPresets.mockResolvedValueOnce([
       {
-        presetId: 'standard-team',
-        name: 'Standard Dev Team',
+        presetId: 'full-team',
+        name: 'Full Team',
         description: 'Lead + agents',
-        leadRoleId: 'claude-orchestrator',
-        roleCount: 3,
-        agentCount: 2,
+        leadRoleId: 'v3-lead-claude',
+        roleCount: 4,
+        agentCount: 3,
         tools: ['claude', 'codex'],
       },
     ])
@@ -2481,13 +2492,14 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-preset-standard-team'))
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-full-team'))
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
       expect(screen.getByTestId('mesh-builder-lead-name-input')).toHaveValue('team-lead')
       expect(screen.getByTestId('mesh-builder-agent-name-input-architect')).toHaveValue('architect')
-      expect(screen.getByTestId('mesh-builder-agent-name-input-developer1')).toHaveValue('developer1')
+      expect(screen.getByTestId('mesh-builder-agent-name-input-dev-1')).toHaveValue('dev-1')
+      expect(screen.getByTestId('mesh-builder-agent-name-input-dev-2')).toHaveValue('dev-2')
     })
 
     expect(coordinationInitializeTeam).not.toHaveBeenCalled()
@@ -2496,24 +2508,18 @@ describe('MeshTab', () => {
   it('uses backend-composed preset roster for setup names but sends a minimal preset payload on initialize', async () => {
     coordinationInitializeTeam.mockClear()
     getTeamPreset.mockResolvedValueOnce({
-      presetId: 'standard-team',
-      name: 'Standard Dev Team',
-      leadRoleId: 'claude-orchestrator',
+      presetId: 'full-team',
+      name: 'Full Team',
+      leadRoleId: 'v3-lead-claude',
       agentSlots: [
         {
-          roleId: 'codex-architect',
+          roleId: 'v3-architect-codex',
           count: 1,
           overrides: { namePattern: 'architect' },
         },
         {
-          roleId: 'codex-developer',
+          roleId: 'v3-developer-codex',
           count: 2,
-          overrides: { namePattern: 'developer{n}' },
-        },
-        {
-          roleId: 'gemini-ui-specialist',
-          count: 1,
-          overrides: { namePattern: 'ui-specialist' },
         },
       ],
     })
@@ -2521,7 +2527,7 @@ describe('MeshTab', () => {
       roster: [
         {
           name: 'team-lead',
-          roleId: 'claude-orchestrator',
+          roleId: 'v3-lead-claude',
           roleKind: 'lead',
           cliTool: 'claude',
           model: 'opus',
@@ -2536,7 +2542,7 @@ describe('MeshTab', () => {
         },
         {
           name: 'architect',
-          roleId: 'codex-architect',
+          roleId: 'v3-architect-codex',
           roleKind: 'agent',
           cliTool: 'codex',
           model: 'gpt-5.4 high',
@@ -2550,8 +2556,8 @@ describe('MeshTab', () => {
           projectId: null,
         },
         {
-          name: 'developer1',
-          roleId: 'codex-developer',
+          name: 'dev-1',
+          roleId: 'v3-developer-codex',
           roleKind: 'agent',
           cliTool: 'codex',
           model: 'gpt-5.4 high',
@@ -2565,8 +2571,8 @@ describe('MeshTab', () => {
           projectId: null,
         },
         {
-          name: 'developer2',
-          roleId: 'codex-developer',
+          name: 'dev-2',
+          roleId: 'v3-developer-codex',
           roleKind: 'agent',
           cliTool: 'codex',
           model: 'gpt-5.4 high',
@@ -2574,21 +2580,6 @@ describe('MeshTab', () => {
           focusArea: 'Scoped implementation',
           contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
           behaviorSummary: 'Implements narrowly and escalates blockers.',
-          behavioralContract: { communication: [], execution: [], escalation: [] },
-          capabilities: [],
-          projectBinding: 'lead_project',
-          projectId: null,
-        },
-        {
-          name: 'ui-specialist',
-          roleId: 'gemini-ui-specialist',
-          roleKind: 'agent',
-          cliTool: 'gemini',
-          model: 'gemini-3.1-pro',
-          instructions: 'Own UI polish',
-          focusArea: 'Visual design and UX polish',
-          contextSummary: 'Maintains design consistency and visual clarity.',
-          behaviorSummary: 'Explores UI direction without broadening product scope.',
           behavioralContract: { communication: [], execution: [], escalation: [] },
           capabilities: [],
           projectBinding: 'lead_project',
@@ -2610,7 +2601,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-preset-standard-team'))
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-full-team'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
@@ -2623,7 +2614,7 @@ describe('MeshTab', () => {
 
     const request = coordinationInitializeTeam.mock.calls.at(-1)?.[0]
     expect(request?.lead?.name).toBe('team-lead')
-    expect(request?.presetId).toBe('standard-team')
+    expect(request?.presetId).toBe('full-team')
     expect(request?.lead).toEqual(expect.objectContaining({
       cliTool: '',
       model: '',
@@ -2633,9 +2624,8 @@ describe('MeshTab', () => {
     }))
     expect(request?.agents?.map((agent) => agent.name)).toEqual([
       'architect',
-      'developer1',
-      'developer2',
-      'ui-specialist',
+      'dev-1',
+      'dev-2',
     ])
     expect(request?.agents.every((agent) => (
       agent.cliTool === ''

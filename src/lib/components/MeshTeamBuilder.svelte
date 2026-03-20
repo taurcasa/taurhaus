@@ -80,6 +80,11 @@
       ? 'border-danger-500/50 bg-danger-500/10'
       : 'border-danger-400/60 bg-danger-50'
   )
+  const rosterSectionTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-white/[0.02]'
+      : 'border-zinc-200/90 bg-zinc-50/70'
+  )
   const presetRowTone = $derived(
     dark
       ? 'border-white/[0.08] bg-black/15 hover:bg-white/[0.05]'
@@ -193,6 +198,10 @@
   const canInitialize = $derived(
     Boolean(normalizedTeam?.lead) && !validationIssues.some((issue) => issue.severity === 'error')
   )
+  const presetCountLabel = $derived.by(() => {
+    const count = Array.isArray(presets) ? presets.length : 0
+    return `${count} preset${count === 1 ? '' : 's'}`
+  })
 
   onMount(() => {
     try {
@@ -994,7 +1003,7 @@
               Load a preset into the roster, then adjust it before you initialize.
             </p>
           </div>
-          <span class="text-[10px] {t.textMuted}">{(presets ?? []).length}</span>
+          <span class="text-[10px] {t.textMuted}">{presetCountLabel}</span>
         </div>
         <div class="space-y-1.5">
           {#each presets as preset (preset.presetId ?? preset.name)}
@@ -1071,19 +1080,12 @@
 
       <ValidationBar issues={validationIssues} {dark} />
 
-      <section class="space-y-2" data-testid="mesh-builder-lead-section">
+      <section class="space-y-2 rounded-[18px] border p-3 {rosterSectionTone}" data-testid="mesh-builder-lead-section">
         <div class="flex items-center justify-between">
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Lead</p>
-          {#if normalizedTeam.lead}
-            <button
-              class="rounded-lg border px-2 py-1 text-[10px] font-bold {ghostTone}"
-              type="button"
-              onclick={onClearLead}
-              data-testid="mesh-builder-lead-clear"
-            >
-              Clear
-            </button>
-          {/if}
+          <span class="text-[10px] {t.textMuted}">
+            {normalizedTeam.lead ? '1 assigned' : 'Open slot'}
+          </span>
         </div>
 
         <div
@@ -1098,19 +1100,33 @@
           data-testid="mesh-builder-lead-slot"
         >
           {#if normalizedTeam.lead}
-            <div class="space-y-3" data-testid="mesh-builder-lead-card">
-              <div class="flex items-start gap-3">
-                <svg class="mt-0.5 h-4 w-4 shrink-0 {t.textSecondary}" viewBox={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).viewBox} fill="currentColor" aria-hidden="true">
-                  <path d={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).path}></path>
-                </svg>
+            <div class="group space-y-3" data-testid="mesh-builder-lead-card">
+              <div
+                class="flex min-h-9 items-center gap-3 rounded-xl border px-3 py-2 transition {dark ? 'border-white/[0.06] bg-black/10' : 'border-zinc-200/90 bg-white/80'}"
+                data-testid="mesh-builder-lead-summary"
+              >
+                <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border {roleMedallionTone(normalizeTool(normalizedTeam.lead.tool))}">
+                  <svg class="h-3 w-3 {t.textSecondary}" viewBox={getToolIcon(normalizeTool(normalizedTeam.lead.tool), 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
+                    <path d={getToolIcon(normalizeTool(normalizedTeam.lead.tool), 'sidebarSmall').path}></path>
+                  </svg>
+                </span>
                 <div class="min-w-0 flex-1">
-                  <p class="text-[12px] font-semibold {t.textPrimary}">
+                  <p class="truncate text-[12px] font-semibold {t.textPrimary}">
                     {normalizedTeam.lead.roleName || normalizedTeam.lead.roleId || 'Lead'}
                   </p>
-                  <p class="mt-1 text-[10px] uppercase tracking-wide {t.textMuted}">
+                  <p class="truncate text-[10px] uppercase tracking-wide {t.textMuted}">
                     {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
                   </p>
                 </div>
+                <button
+                  class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition {ghostTone} opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                  type="button"
+                  aria-label="Clear lead role"
+                  onclick={onClearLead}
+                  data-testid="mesh-builder-lead-clear"
+                >
+                  x
+                </button>
               </div>
 
               <div class="grid gap-2 lg:grid-cols-3">
@@ -1148,24 +1164,31 @@
               </div>
             </div>
           {:else}
-            <div class="rounded-2xl border border-dashed p-8 text-center" data-testid="mesh-builder-lead-empty">
-              <p class="text-[12px] font-semibold {t.textPrimary}">Drop lead role here</p>
-              <p class="mt-1 text-[11px] {t.textSecondary}">Only lead roles can occupy this slot.</p>
+            <div class="rounded-2xl border border-dashed p-6 text-center {surfaceTone}" data-testid="mesh-builder-lead-empty">
+              <span class="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-full border {dark ? 'border-white/[0.08] bg-white/[0.04]' : 'border-zinc-200 bg-white'}">
+                <svg class="h-4 w-4 {t.textSecondary}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                  <path d="M8 2.25l1.84 3.72 4.1.6-2.97 2.9.7 4.1L8 11.6l-3.67 1.96.7-4.1-2.97-2.9 4.1-.6L8 2.25Z" stroke-linejoin="round"></path>
+                </svg>
+              </span>
+              <p class="mt-3 text-[12px] font-semibold {t.textPrimary}">Pick a lead role</p>
+              <p class="mt-1 text-[11px] {t.textSecondary}">
+                Click a lead in the catalog or drag one here.
+              </p>
             </div>
           {/if}
         </div>
       </section>
 
-      <section class="space-y-2" data-testid="mesh-builder-agents-section">
+      <section class="space-y-2 rounded-[18px] border p-3 {rosterSectionTone}" data-testid="mesh-builder-agents-section">
         <div class="flex items-center justify-between">
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Agents</p>
-          <span class="text-[10px] {t.textMuted}">{agents.length}</span>
+          <span class="text-[10px] {t.textMuted}">{agents.length} assigned</span>
         </div>
 
         <div class="space-y-2">
-          {#each agents as agent, index (agent.id)}
+          {#each agents as agent (agent.id)}
             <article
-              class="rounded-2xl border p-3 transition {reorderTargetAgentId === agent.id ? leadDropTone : surfaceTone}"
+              class="group rounded-[16px] border p-3 transition {reorderTargetAgentId === agent.id ? leadDropTone : surfaceTone}"
               draggable="true"
               ondragstart={(event) => handleRosterDragStart(event, agent.id)}
               ondragend={handleRosterDragEnd}
@@ -1173,27 +1196,32 @@
               ondrop={(event) => handleAgentCardDrop(event, agent.id)}
               data-testid={`mesh-builder-agent-card-${agent.id}`}
             >
-              <div class="flex items-start gap-3" data-testid="mesh-node-agent">
-                <svg class="mt-0.5 h-4 w-4 shrink-0 {t.textSecondary}" viewBox={getToolIcon(normalizeTool(agent.tool)).viewBox} fill="currentColor" aria-hidden="true">
-                  <path d={getToolIcon(normalizeTool(agent.tool)).path}></path>
-                </svg>
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center justify-between gap-2">
+              <div data-testid={`mesh-builder-agent-summary-${agent.id}`}>
+                <div
+                  class="flex min-h-9 items-center gap-3 rounded-xl border px-3 py-2 {dark ? 'border-white/[0.06] bg-black/10' : 'border-zinc-200/90 bg-white/80'}"
+                  data-testid="mesh-node-agent"
+                >
+                  <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border {roleMedallionTone(normalizeTool(agent.tool))}">
+                    <svg class="h-3 w-3 {t.textSecondary}" viewBox={getToolIcon(normalizeTool(agent.tool), 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
+                      <path d={getToolIcon(normalizeTool(agent.tool), 'sidebarSmall').path}></path>
+                    </svg>
+                  </span>
+                  <div class="min-w-0 flex-1">
                     <p class="truncate text-[12px] font-semibold {t.textPrimary}">
                       {agent.roleName || agent.roleId || agent.name}
                     </p>
-                    <button
-                      class="rounded-lg border px-2 py-1 text-[10px] font-bold {ghostTone}"
-                      type="button"
-                      onclick={() => onRemoveAgent(agent.id)}
-                      data-testid={`mesh-builder-agent-remove-${agent.id}`}
-                    >
-                      x
-                    </button>
+                    <p class="truncate text-[10px] uppercase tracking-wide {t.textMuted}">
+                      {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
+                    </p>
                   </div>
-                  <p class="mt-1 text-[10px] uppercase tracking-wide {t.textMuted}">
-                    {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
-                  </p>
+                <button
+                  class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition {ghostTone} opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                  type="button"
+                  onclick={() => onRemoveAgent(agent.id)}
+                  data-testid={`mesh-builder-agent-remove-${agent.id}`}
+                >
+                    x
+                  </button>
                 </div>
               </div>
 
@@ -1234,18 +1262,35 @@
           {/each}
 
           <div
-            class="rounded-2xl border border-dashed p-5 text-center transition {agentDropState === 'valid' ? leadDropTone : agentDropState === 'invalid' ? invalidDropTone : surfaceTone}"
+            class={agents.length > 0
+              ? `flex h-10 items-center justify-center gap-2 rounded-xl border border-dashed px-3 text-center transition ${agentDropState === 'valid' ? leadDropTone : agentDropState === 'invalid' ? invalidDropTone : surfaceTone}`
+              : `rounded-2xl border border-dashed p-6 text-center transition ${agentDropState === 'valid' ? leadDropTone : agentDropState === 'invalid' ? invalidDropTone : surfaceTone}`}
             role="group"
             aria-label="Agent drop zone"
             ondragover={handleAgentDropZoneOver}
             ondragleave={handleAgentDropZoneLeave}
             ondrop={handleAgentDropZoneDrop}
             data-testid="mesh-builder-agent-dropzone"
+            data-dropzone-mode={agents.length > 0 ? 'compact' : 'empty'}
           >
-            <p class="text-[12px] font-semibold {t.textPrimary}">Drop agent role here</p>
-            <p class="mt-1 text-[11px] {t.textSecondary}">
-              Drag from the catalog to append a new agent, or drag a roster card here to move it to the end.
-            </p>
+            {#if agents.length > 0}
+              <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border {dark ? 'border-white/[0.08] bg-white/[0.04]' : 'border-zinc-200 bg-white'}">
+                <svg class="h-3 w-3 {t.textSecondary}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M8 3.25v9.5M3.25 8h9.5" stroke-linecap="round"></path>
+                </svg>
+              </span>
+              <p class="text-[11px] font-semibold {t.textPrimary}">Drag or click a role to add</p>
+            {:else}
+              <span class="mx-auto inline-flex h-10 w-10 items-center justify-center rounded-full border {dark ? 'border-white/[0.08] bg-white/[0.04]' : 'border-zinc-200 bg-white'}">
+                <svg class="h-4 w-4 {t.textSecondary}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d="M8 3.25v9.5M3.25 8h9.5" stroke-linecap="round"></path>
+                </svg>
+              </span>
+              <p class="mt-3 text-[12px] font-semibold {t.textPrimary}">Drag or click a role to add</p>
+              <p class="mt-1 text-[11px] {t.textSecondary}">
+                Pick an agent in the catalog or drag it here.
+              </p>
+            {/if}
           </div>
         </div>
       </section>

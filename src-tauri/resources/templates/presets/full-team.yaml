@@ -1,0 +1,23 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: full-team
+name: Full Team
+description: "One lead, one architect, and two developers for structural work plus implementation throughput."
+version: "3.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: v3-architect-codex
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: architect
+  - role_id: v3-developer-codex
+    count: 2
+    project_binding: lead_project
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled

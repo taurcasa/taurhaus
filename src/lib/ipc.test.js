@@ -1427,12 +1427,12 @@ describe('ipc module', () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValueOnce([
         {
-          presetId: 'review-team',
-          name: 'Review Team',
-          leadRoleId: 'claude-reviewer',
+          presetId: 'pair',
+          name: 'Pair',
+          leadRoleId: 'v3-lead-claude',
           source: 'built_in',
           readOnly: true,
-          agentSlots: [{ roleId: 'codex-developer', count: 2 }],
+          agentSlots: [{ roleId: 'v3-developer-codex', count: 1 }],
         },
       ])
 
@@ -1442,10 +1442,10 @@ describe('ipc module', () => {
       expect(tauriCore.invoke).toHaveBeenCalledWith('templates_list_presets_full')
       expect(result).toEqual([
         expect.objectContaining({
-          presetId: 'review-team',
-          leadRoleId: 'claude-reviewer',
+          presetId: 'pair',
+          leadRoleId: 'v3-lead-claude',
           roleCount: 1,
-          agentCount: 2,
+          agentCount: 1,
           builtIn: true,
           readOnly: true,
         }),
@@ -1540,13 +1540,13 @@ describe('ipc module', () => {
     it('getTeamPreset normalizes snake_case preset detail fields', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValueOnce({
-        preset_id: 'review-team',
-        name: 'Review Team',
-        lead_role_id: 'claude-reviewer',
+        preset_id: 'pair',
+        name: 'Pair',
+        lead_role_id: 'v3-lead-claude',
         agent_slots: [
           {
-            role_id: 'codex-developer',
-            count: 2,
+            role_id: 'v3-developer-codex',
+            count: 1,
             project_binding: 'lead_project',
             project_id: null,
           },
@@ -1557,17 +1557,17 @@ describe('ipc module', () => {
         },
       })
 
-      const result = await ipc.getTeamPreset('review-team')
+      const result = await ipc.getTeamPreset('pair')
 
       expect(result).toEqual(expect.objectContaining({
-        presetId: 'review-team',
-        name: 'Review Team',
+        presetId: 'pair',
+        name: 'Pair',
         description: '',
-        leadRoleId: 'claude-reviewer',
+        leadRoleId: 'v3-lead-claude',
         agentSlots: [
           {
-            roleId: 'codex-developer',
-            count: 2,
+            roleId: 'v3-developer-codex',
+            count: 1,
             projectBinding: 'lead_project',
             projectId: null,
             overrides: null,

@@ -1094,35 +1094,28 @@ mod tests {
             presets.len(),
             "built-in team presets should have unique preset ids"
         );
+        assert_eq!(
+            presets.len(),
+            4,
+            "expected exactly four built-in team presets"
+        );
         assert!(
-            presets
-                .iter()
-                .any(|preset| preset.preset_id == "standard-team"),
-            "expected standard-team preset in built-ins"
+            presets.iter().any(|preset| preset.preset_id == "pair"),
+            "expected pair preset in built-ins"
+        );
+        assert!(
+            presets.iter().any(|preset| preset.preset_id == "dev-team"),
+            "expected dev-team preset in built-ins"
+        );
+        assert!(
+            presets.iter().any(|preset| preset.preset_id == "full-team"),
+            "expected full-team preset in built-ins"
         );
         assert!(
             presets
                 .iter()
-                .any(|preset| preset.preset_id == "standard-team-gemini"),
-            "expected standard-team-gemini preset in built-ins"
-        );
-        assert!(
-            presets
-                .iter()
-                .any(|preset| preset.preset_id == "fullstack-dev-codex"),
-            "expected fullstack-dev-codex preset in built-ins"
-        );
-        assert!(
-            presets
-                .iter()
-                .any(|preset| preset.preset_id == "taurhaus-standard"),
-            "expected taurhaus-standard preset in built-ins"
-        );
-        assert!(
-            presets
-                .iter()
-                .any(|preset| preset.preset_id == "taurhaus-standard-codex"),
-            "expected taurhaus-standard-codex preset in built-ins"
+                .any(|preset| preset.preset_id == "research-team"),
+            "expected research-team preset in built-ins"
         );
 
         for preset in &presets {
@@ -1135,13 +1128,13 @@ mod tests {
     }
 
     #[test]
-    fn fullstack_preset_resolves_member_names() {
+    fn dev_team_preset_resolves_member_names() {
         let roles = load_role_templates();
         let presets = load_team_presets();
         let preset = presets
             .iter()
-            .find(|preset| preset.preset_id == "fullstack-dev")
-            .expect("fullstack-dev preset exists");
+            .find(|preset| preset.preset_id == "dev-team")
+            .expect("dev-team preset exists");
 
         let names = preset
             .resolve_member_names(&roles, "taurhaus")
@@ -1156,13 +1149,13 @@ mod tests {
     }
 
     #[test]
-    fn codex_fullstack_preset_resolves_member_names() {
+    fn pair_preset_resolves_member_names() {
         let roles = load_role_templates();
         let presets = load_team_presets();
         let preset = presets
             .iter()
-            .find(|preset| preset.preset_id == "fullstack-dev-codex")
-            .expect("fullstack-dev-codex preset exists");
+            .find(|preset| preset.preset_id == "pair")
+            .expect("pair preset exists");
 
         let names = preset
             .resolve_member_names(&roles, "taurhaus")
@@ -1170,17 +1163,17 @@ mod tests {
 
         assert!(names.iter().any(|name| name == "lead-taurhaus"));
         assert!(names.iter().any(|name| name == "dev-1"));
-        assert!(names.iter().any(|name| name == "dev-2"));
+        assert_eq!(names.len(), 2);
     }
 
     #[test]
-    fn gemini_standard_preset_resolves_member_names() {
+    fn full_team_preset_resolves_member_names() {
         let roles = load_role_templates();
         let presets = load_team_presets();
         let preset = presets
             .iter()
-            .find(|preset| preset.preset_id == "standard-team-gemini")
-            .expect("standard-team-gemini preset exists");
+            .find(|preset| preset.preset_id == "full-team")
+            .expect("full-team preset exists");
 
         let names = preset
             .resolve_member_names(&roles, "taurhaus")
@@ -1188,9 +1181,26 @@ mod tests {
 
         assert!(names.iter().any(|name| name == "lead-taurhaus"));
         assert!(names.iter().any(|name| name == "architect"));
-        assert!(names.iter().any(|name| name == "developer1"));
-        assert!(names.iter().any(|name| name == "developer2"));
-        assert!(names.iter().any(|name| name == "ui-specialist"));
+        assert!(names.iter().any(|name| name == "dev-1"));
+        assert!(names.iter().any(|name| name == "dev-2"));
+    }
+
+    #[test]
+    fn research_team_preset_resolves_member_names() {
+        let roles = load_role_templates();
+        let presets = load_team_presets();
+        let preset = presets
+            .iter()
+            .find(|preset| preset.preset_id == "research-team")
+            .expect("research-team preset exists");
+
+        let names = preset
+            .resolve_member_names(&roles, "taurhaus")
+            .expect("member names should resolve");
+
+        assert!(names.iter().any(|name| name == "lead-taurhaus"));
+        assert!(names.iter().any(|name| name == "researcher"));
+        assert!(names.iter().any(|name| name == "dev-1"));
     }
 
     #[test]

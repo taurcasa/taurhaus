@@ -1,0 +1,18 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: dev-team
+name: Dev Team
+description: "One lead and two developers for parallel implementation work."
+version: "3.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: v3-developer-codex
+    count: 2
+    project_binding: lead_project
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled

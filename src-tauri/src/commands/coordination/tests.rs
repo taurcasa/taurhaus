@@ -1735,9 +1735,9 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
     let state = test_state(tmp.path().join("teams"));
 
     let request = InitializeTeamRequest {
-        team_name: "review-team".to_string(),
-        team_description: Some("Review-focused team".to_string()),
-        preset_id: Some("review-team".to_string()),
+        team_name: "dev-team".to_string(),
+        team_description: Some("Dev-focused team".to_string()),
+        preset_id: Some("dev-team".to_string()),
         lead_mode: LeadMode::LaunchNew,
         lead: AgentSetupConfig {
             name: "team-lead".to_string(),
@@ -1757,7 +1757,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
         },
         agents: vec![
             AgentSetupConfig {
-                name: "reviewer-1".to_string(),
+                name: "dev-1".to_string(),
                 cli_tool: String::new(),
                 model: String::new(),
                 role_id: None,
@@ -1773,7 +1773,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 capabilities: None,
             },
             AgentSetupConfig {
-                name: "reviewer-2".to_string(),
+                name: "dev-2".to_string(),
                 cli_tool: String::new(),
                 model: String::new(),
                 role_id: None,
@@ -1801,31 +1801,31 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
     )
     .expect("initialize should succeed");
 
-    assert_eq!(report.team_name, "review-team");
+    assert_eq!(report.team_name, "dev-team");
 
-    let stored = TeamConfigStore::load(state.teams_dir(), "review-team").expect("load team config");
+    let stored = TeamConfigStore::load(state.teams_dir(), "dev-team").expect("load team config");
     let lead = stored
         .members
         .iter()
         .find(|member| member.role == MemberRole::Lead)
         .expect("lead");
-    let reviewer = stored
+    let developer = stored
         .members
         .iter()
-        .find(|member| member.name == "reviewer-1")
-        .expect("reviewer");
+        .find(|member| member.name == "dev-1")
+        .expect("developer");
 
-    assert_eq!(lead.role_id.as_deref(), Some("claude-orchestrator"));
-    assert_eq!(lead.role_name.as_deref(), Some("Claude Orchestrator"));
+    assert_eq!(lead.role_id.as_deref(), Some("v3-lead-claude"));
+    assert_eq!(lead.role_name.as_deref(), Some("V3 Team Lead (Claude)"));
     assert_eq!(lead.cli_tool, CliTool::Claude);
-    assert_eq!(reviewer.role_id.as_deref(), Some("claude-reviewer"));
-    assert_eq!(reviewer.role_name.as_deref(), Some("Claude Reviewer"));
-    assert_eq!(reviewer.cli_tool, CliTool::Claude);
-    assert!(reviewer
+    assert_eq!(developer.role_id.as_deref(), Some("v3-developer-codex"));
+    assert_eq!(developer.role_name.as_deref(), Some("V3 Developer (Codex)"));
+    assert_eq!(developer.cli_tool, CliTool::Codex);
+    assert!(developer
         .instructions
         .as_deref()
         .unwrap_or("")
-        .contains("Split review scope to avoid duplication"));
+        .contains("vertical user behavior"));
 }
 
 #[test]

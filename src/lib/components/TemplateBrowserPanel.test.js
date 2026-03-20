@@ -132,13 +132,13 @@ describe('TemplateBrowserPanel', () => {
 
     listTeamPresets.mockResolvedValue([
       {
-        presetId: 'review-team',
-        name: 'Review Team',
-        description: 'Lead plus two reviewers',
-        leadRoleId: 'claude-orchestrator',
+        presetId: 'research-team',
+        name: 'Research Team',
+        description: 'Lead plus one researcher and one developer',
+        leadRoleId: 'v3-lead-claude',
         roleCount: 1,
         agentCount: 2,
-        tools: ['claude'],
+        tools: ['claude', 'codex'],
         builtIn: true,
       },
       {
@@ -152,22 +152,22 @@ describe('TemplateBrowserPanel', () => {
         builtIn: false,
       },
       {
-        presetId: 'fullstack-dev-codex',
-        name: 'Full Stack Dev Team (Codex Lead)',
+        presetId: 'backend-codex-team',
+        name: 'Backend Sprint Team (Codex Lead)',
         description: 'Codex lead plus two backend agents',
         leadRoleId: 'codex-orchestrator',
         roleCount: 1,
         agentCount: 2,
         tools: ['codex'],
-        builtIn: true,
+        builtIn: false,
       },
     ])
 
     getTeamPreset.mockImplementation(async (id) => {
-      if (id === 'fullstack-dev-codex') {
+      if (id === 'backend-codex-team') {
         return {
           presetId: id,
-          name: 'Full Stack Dev Team (Codex Lead)',
+          name: 'Backend Sprint Team (Codex Lead)',
           description: 'Preset details',
           leadRoleId: 'codex-orchestrator',
           agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
@@ -192,9 +192,9 @@ describe('TemplateBrowserPanel', () => {
       }
       return {
         presetId: id,
-        name: 'Review Team',
+        name: 'Research Team',
         description: 'Preset details',
-        leadRoleId: 'claude-orchestrator',
+        leadRoleId: 'v3-lead-claude',
         agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
         defaults: {
           teamNamePattern: '{project}-team',
@@ -344,12 +344,12 @@ describe('TemplateBrowserPanel', () => {
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('template-browser-preset-review-team')).toBeInTheDocument()
+      expect(screen.getByTestId('template-browser-preset-research-team')).toBeInTheDocument()
     })
-    await fireEvent.click(screen.getByTestId('template-browser-preset-review-team'))
+    await fireEvent.click(screen.getByTestId('template-browser-preset-research-team'))
 
     expect(onSelectPreset).toHaveBeenCalledTimes(1)
-    expect(onSelectPreset.mock.calls[0][0].presetId).toBe('review-team')
+    expect(onSelectPreset.mock.calls[0][0].presetId).toBe('research-team')
   })
 
   it('exposes non-Claude lead presets in the catalog', async () => {
@@ -362,7 +362,7 @@ describe('TemplateBrowserPanel', () => {
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('template-browser-preset-fullstack-dev-codex')).toBeInTheDocument()
+      expect(screen.getByTestId('template-browser-preset-backend-codex-team')).toBeInTheDocument()
     })
   })
 
@@ -426,9 +426,9 @@ describe('TemplateBrowserPanel', () => {
     expect(screen.getByTestId('template-preset-duplicate-backend-sprint-team')).toBeInTheDocument()
     expect(screen.getByTestId('template-preset-delete-backend-sprint-team')).toBeInTheDocument()
 
-    expect(screen.queryByTestId('template-preset-edit-review-team')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('template-preset-duplicate-review-team')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('template-preset-delete-review-team')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('template-preset-edit-research-team')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('template-preset-duplicate-research-team')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('template-preset-delete-research-team')).not.toBeInTheDocument()
   })
 
   it('opens TeamCustomizerPanel from the + Create preset action', async () => {

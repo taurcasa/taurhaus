@@ -228,14 +228,14 @@ describe('meshTabUtils cross-project metadata', () => {
   it('builds a minimal preset initialization payload and omits role metadata', () => {
     const request = buildInitializationRequest({
       initializationMode: 'preset',
-      presetId: 'standard-team',
+      presetId: 'full-team',
       lead: {
         name: 'team-lead',
         tool: 'claude',
         model: 'opus',
         projectId: '/projects/taurhaus',
-        roleId: 'claude-orchestrator',
-        roleName: 'Claude Orchestrator',
+        roleId: 'v3-lead-claude',
+        roleName: 'V3 Team Lead (Claude)',
         focusArea: 'Team sequencing and escalation',
         contextSummary: 'Keeps the delivery plan and blocker state in view.',
         behaviorSummary: 'Coordinates specialists and escalates blockers.',
@@ -247,8 +247,8 @@ describe('meshTabUtils cross-project metadata', () => {
           tool: 'codex',
           model: 'gpt-5.4 high',
           projectId: '/projects/taurhaus',
-          roleId: 'codex-architect',
-          roleName: 'Codex Architect',
+          roleId: 'v3-architect-codex',
+          roleName: 'V3 Architect (Codex)',
           focusArea: 'Architecture decisions and structural review',
           contextSummary: 'Carries long-lived context around module boundaries and reviews.',
           behaviorSummary: 'Handles pattern choices and escalates direction changes.',
@@ -261,7 +261,7 @@ describe('meshTabUtils cross-project metadata', () => {
       teamName: 'taurhaus-team',
       teamDescription: null,
       leadMode: 'launch_new',
-      presetId: 'standard-team',
+      presetId: 'full-team',
       lead: {
         name: 'team-lead',
         cliTool: '',

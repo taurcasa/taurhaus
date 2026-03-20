@@ -1,0 +1,23 @@
+schema:
+  kind: team_preset
+  version: 1
+
+preset_id: research-team
+name: Research Team
+description: "One lead, one researcher, and one developer for investigation paired with implementation."
+version: "3.0.0"
+lead_role_id: v3-lead-claude
+
+agent_slots:
+  - role_id: claude-researcher
+    count: 1
+    project_binding: lead_project
+    overrides:
+      name_pattern: researcher
+  - role_id: v3-developer-codex
+    count: 1
+    project_binding: lead_project
+
+defaults:
+  team_name_pattern: "{project}-team"
+  tmux_layout: tiled

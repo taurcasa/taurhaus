@@ -56,7 +56,7 @@ When no team exists for the current project, Mesh opens in the empty/setup path 
 
 The setup view offers:
 
-- quick presets such as Standard Dev Team, Full Stack Dev Team, Research + Development Team, and Review Team
+- quick presets such as Pair, Dev Team, Full Team, and Research Team
 - searchable role filters by tool and kind
 - drag-and-drop lead and agent composition
 - inline editing for team name, description, member names, tool/model defaults, and project binding

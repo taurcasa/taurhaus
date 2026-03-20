@@ -493,9 +493,9 @@ mod tests {
     }
 
     #[test]
-    fn compose_valid_fullstack_team() {
+    fn compose_valid_dev_team() {
         let roles = load_roles();
-        let preset = load_preset("fullstack-dev");
+        let preset = load_preset("dev-team");
 
         let result = compose_team(
             &preset.lead_role_id,
@@ -522,9 +522,9 @@ mod tests {
     }
 
     #[test]
-    fn compose_valid_fullstack_team_with_codex_lead() {
+    fn compose_valid_pair_team() {
         let roles = load_roles();
-        let preset = load_preset("fullstack-dev-codex");
+        let preset = load_preset("pair");
 
         let result = compose_team(
             &preset.lead_role_id,
@@ -541,20 +541,22 @@ mod tests {
             "expected valid composition, got errors: {:?}",
             result.validation_errors
         );
+        assert_eq!(result.roster.len(), 2);
         assert!(result
             .roster
             .iter()
-            .any(|member| member.role_id == "codex-orchestrator"));
+            .any(|member| member.role_id == "v3-lead-claude"));
         assert!(result
             .roster
             .iter()
             .any(|member| member.name == "lead-taurhaus"));
+        assert!(result.roster.iter().any(|member| member.name == "dev-1"));
     }
 
     #[test]
-    fn compose_valid_standard_team_with_gemini_lead() {
+    fn compose_valid_full_team() {
         let roles = load_roles();
-        let preset = load_preset("standard-team-gemini");
+        let preset = load_preset("full-team");
 
         let result = compose_team(
             &preset.lead_role_id,
@@ -574,23 +576,13 @@ mod tests {
         assert!(result
             .roster
             .iter()
-            .any(|member| member.role_id == "gemini-orchestrator"));
+            .any(|member| member.role_id == "v3-lead-claude"));
         assert!(result
             .roster
             .iter()
             .any(|member| member.name == "architect"));
-        assert!(result
-            .roster
-            .iter()
-            .any(|member| member.name == "developer1"));
-        assert!(result
-            .roster
-            .iter()
-            .any(|member| member.name == "developer2"));
-        assert!(result
-            .roster
-            .iter()
-            .any(|member| member.name == "ui-specialist"));
+        assert!(result.roster.iter().any(|member| member.name == "dev-1"));
+        assert!(result.roster.iter().any(|member| member.name == "dev-2"));
     }
 
     #[test]
