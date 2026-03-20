@@ -2397,6 +2397,102 @@ describe('MeshTab', () => {
     })
   })
 
+  it('loads quick preset members into the editable roster before initialization', async () => {
+    coordinationInitializeTeam.mockClear()
+    getTeamPreset.mockResolvedValueOnce({
+      presetId: 'standard-team',
+      name: 'Standard Dev Team',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [
+        {
+          roleId: 'codex-architect',
+          count: 1,
+          overrides: { namePattern: 'architect' },
+        },
+        {
+          roleId: 'codex-developer',
+          count: 1,
+          overrides: { namePattern: 'developer{n}' },
+        },
+      ],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [
+        {
+          name: 'team-lead',
+          roleId: 'claude-orchestrator',
+          roleName: 'Claude Orchestrator',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          instructions: 'Own orchestration',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'architect',
+          roleId: 'codex-architect',
+          roleName: 'Codex Architect',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own structural review',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'developer1',
+          roleId: 'codex-developer',
+          roleName: 'Codex Developer',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own implementation',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+      ],
+      warnings: [],
+      validationErrors: [],
+    })
+    listTeamPresets.mockResolvedValueOnce([
+      {
+        presetId: 'standard-team',
+        name: 'Standard Dev Team',
+        description: 'Lead + agents',
+        leadRoleId: 'claude-orchestrator',
+        roleCount: 3,
+        agentCount: 2,
+        tools: ['claude', 'codex'],
+      },
+    ])
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-standard-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-lead-name-input')).toHaveValue('team-lead')
+      expect(screen.getByTestId('mesh-builder-agent-name-input-architect')).toHaveValue('architect')
+      expect(screen.getByTestId('mesh-builder-agent-name-input-developer1')).toHaveValue('developer1')
+    })
+
+    expect(coordinationInitializeTeam).not.toHaveBeenCalled()
+  })
+
   it('uses backend-composed preset roster for setup names but sends a minimal preset payload on initialize', async () => {
     coordinationInitializeTeam.mockClear()
     getTeamPreset.mockResolvedValueOnce({
