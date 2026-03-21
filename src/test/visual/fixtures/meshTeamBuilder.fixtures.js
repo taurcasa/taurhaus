@@ -269,9 +269,9 @@ const fullTeamRoster = {
   ],
 }
 
-export const draft_board_empty_state = createScenario({
-  name: 'draft_board_empty_state',
-  theme: 'light',
+export const roster_builder_empty_state = createScenario({
+  name: 'roster_builder_empty_state',
+  theme: 'dark',
   mode: 'empty',
   teamName: 'taurhaus-team',
   teamConfig: emptyTeam,
@@ -279,28 +279,13 @@ export const draft_board_empty_state = createScenario({
   presets,
   availableProjects,
   expected: {
-    labels: ['Draft Board', 'Pick a lead role', 'Presets', 'Catalog'],
+    labels: ['Available Roles', 'Your Team', 'Choose a lead role to anchor the team.', 'Quick start'],
     catalogCollapsed: 'false',
   },
 })
 
-export const draft_board_preset_applied = createScenario({
-  name: 'draft_board_preset_applied',
-  theme: 'dark',
-  mode: 'setup',
-  teamName: 'taurhaus-team',
-  teamConfig: devTeamRoster,
-  roleTemplates,
-  presets,
-  availableProjects,
-  expected: {
-    labels: ['Preset-loaded implementation team.', '2 assigned', 'Expand Catalog'],
-    catalogCollapsed: 'true',
-  },
-})
-
-export const draft_board_partially_built = createScenario({
-  name: 'draft_board_partially_built',
+export const roster_builder_partial_state = createScenario({
+  name: 'roster_builder_partial_state',
   theme: 'light',
   mode: 'setup',
   teamName: 'taurhaus-team',
@@ -308,46 +293,14 @@ export const draft_board_partially_built = createScenario({
   roleTemplates,
   presets,
   availableProjects,
-  expandCatalogAfterMount: true,
   expected: {
-    labels: ['Lead, implementation, and review are in place.', 'Collapse Catalog', 'Catalog'],
+    labels: ['Available Roles', 'Your Team', '3 members', 'Lead, implementation, and review are in place.'],
     catalogCollapsed: 'false',
   },
 })
 
-export const draft_board_catalog_collapsed = createScenario({
-  name: 'draft_board_catalog_collapsed',
-  theme: 'dark',
-  mode: 'setup',
-  teamName: 'taurhaus-team',
-  teamConfig: partialRoster,
-  roleTemplates,
-  presets,
-  availableProjects,
-  expected: {
-    labels: ['Lead, implementation, and review are in place.', 'Expand Catalog'],
-    catalogCollapsed: 'true',
-  },
-})
-
-export const draft_board_catalog_with_favorites = createScenario({
-  name: 'draft_board_catalog_with_favorites',
-  theme: 'light',
-  mode: 'setup',
-  teamName: 'taurhaus-team',
-  teamConfig: emptyTeam,
-  roleTemplates,
-  presets,
-  availableProjects,
-  pinnedRoleIds: ['lead-codex', 'agent-research', 'agent-review'],
-  expected: {
-    labels: ['Favorites', 'Codex Product Lead', 'Claude Researcher', 'Claude Reviewer'],
-    catalogCollapsed: 'false',
-  },
-})
-
-export const draft_board_full_team_ready = createScenario({
-  name: 'draft_board_full_team_ready',
+export const roster_builder_ready_state = createScenario({
+  name: 'roster_builder_ready_state',
   theme: 'dark',
   mode: 'setup',
   teamName: 'release-train-team',
@@ -355,18 +308,15 @@ export const draft_board_full_team_ready = createScenario({
   roleTemplates,
   presets,
   availableProjects,
-  viewport: { width: 1100, height: 1480 },
+  viewport: { width: 1280, height: 1320 },
   expected: {
-    labels: ['Full release roster staged and ready to initialize.', '4 assigned', 'Initialize Team'],
-    catalogCollapsed: 'true',
+    labels: ['Available Roles', 'Your Team', '5 members', 'Initialize Team'],
+    catalogCollapsed: 'false',
   },
 })
 
 export const meshTeamBuilderScenarios = [
-  draft_board_empty_state,
-  draft_board_preset_applied,
-  draft_board_partially_built,
-  draft_board_catalog_collapsed,
-  draft_board_catalog_with_favorites,
-  draft_board_full_team_ready,
+  roster_builder_empty_state,
+  roster_builder_partial_state,
+  roster_builder_ready_state,
 ]

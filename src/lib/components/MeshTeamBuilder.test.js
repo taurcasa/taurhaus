@@ -388,7 +388,7 @@ describe('MeshTeamBuilder', () => {
     expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
   })
 
-  it('keeps the catalog expanded for empty setup and collapses it for a populated roster', async () => {
+  it('keeps the catalog visible for both empty and populated rosters', () => {
     const { unmount } = renderBuilder()
 
     expect(screen.getByTestId('mesh-builder-catalog')).toHaveAttribute('data-collapsed', 'false')
@@ -400,17 +400,13 @@ describe('MeshTeamBuilder', () => {
       teamConfig: sampleRosterConfig(),
     })
 
-    expect(screen.getByTestId('mesh-builder-catalog')).toHaveAttribute('data-collapsed', 'true')
-    expect(screen.queryByTestId('mesh-builder-catalog-content')).not.toBeInTheDocument()
-
-    await fireEvent.click(screen.getByTestId('mesh-builder-catalog-toggle'))
-
     expect(screen.getByTestId('mesh-builder-catalog')).toHaveAttribute('data-collapsed', 'false')
     expect(screen.getByTestId('mesh-builder-catalog-content')).toBeInTheDocument()
   })
 
   it('uses the updated empty roster copy and add guidance', () => {
     renderBuilder({
+      presets: samplePresets(),
       teamConfig: {
         description: '',
         lead: null,
@@ -418,22 +414,26 @@ describe('MeshTeamBuilder', () => {
       },
     })
 
-    expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent('Pick a lead role')
+    expect(screen.getByTestId('mesh-builder-catalog')).toHaveTextContent('Available Roles')
+    expect(screen.getByTestId('mesh-builder-team-panel')).toHaveTextContent('Your Team')
     expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent(
-      'Click the + button on a lead role below.'
+      'Choose a lead role to anchor the team.'
+    )
+    expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent(
+      'Use the + button next to any lead on the left.'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
       'data-dropzone-mode',
       'empty'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
-      'Use the catalog below to add agents'
+      '+ Add from catalog'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
       'Start with a developer, researcher, or reviewer to flesh out the team.'
     )
-    expect(screen.getByTestId('mesh-builder-preset-section')).toHaveTextContent('Presets')
-    expect(screen.getByText('Browse roles below to build your team.')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-preset-section')).toHaveTextContent('Quick start')
+    expect(screen.getByText('Search, filter, and add from the live role catalog.')).toBeInTheDocument()
   })
 
   it('shows collapsed roster summary rows by default and reveals member fields on demand', async () => {
@@ -441,10 +441,10 @@ describe('MeshTeamBuilder', () => {
       teamConfig: sampleRosterConfig(),
     })
 
-    expect(screen.getByTestId('mesh-builder-lead-section')).toHaveTextContent('1 assigned')
+    expect(screen.getByTestId('mesh-builder-team-panel')).toHaveTextContent('2 members')
     expect(screen.getByTestId('mesh-builder-lead-summary')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-builder-lead-name-input')).not.toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-agents-section')).toHaveTextContent('1 assigned')
+    expect(screen.getByTestId('mesh-builder-agents-section')).toHaveTextContent('Codex Developer')
     expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-builder-agent-name-input-agent-codex-1')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
@@ -452,7 +452,7 @@ describe('MeshTeamBuilder', () => {
       'compact'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
-      'Click + on any agent role below to add it here.'
+      'Keep building with developer, reviewer, and research roles from the left.'
     )
 
     await fireEvent.click(screen.getByTestId('mesh-builder-lead-edit-toggle'))

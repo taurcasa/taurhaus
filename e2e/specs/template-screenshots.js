@@ -1,5 +1,5 @@
 /**
- * Draft Board roster builder screenshot capture for design/product review.
+ * Roster Builder screenshot capture for design/product review.
  *
  * Run with:
  *   just test-e2e-spec template-screenshots
@@ -217,27 +217,11 @@ async function ensureSetupModeFromCustom() {
 }
 
 async function ensureCatalogExpanded() {
-  if (!(await hasTestId('mesh-builder-catalog'))) return
-  const catalog = await $('[data-testid="mesh-builder-catalog"]')
-  if ((await catalog.getAttribute('data-collapsed')) === 'true') {
-    await clickTestId('mesh-template-browse-catalog')
-    await browser.waitUntil(
-      async () => (await catalog.getAttribute('data-collapsed')) === 'false',
-      { ...WAIT_MEDIUM, timeoutMsg: 'Catalog did not expand' }
-    )
-  }
+  return
 }
 
 async function ensureCatalogCollapsed() {
-  if (!(await hasTestId('mesh-builder-catalog'))) return
-  const catalog = await $('[data-testid="mesh-builder-catalog"]')
-  if ((await catalog.getAttribute('data-collapsed')) === 'false') {
-    await clickTestId('mesh-builder-catalog-toggle')
-    await browser.waitUntil(
-      async () => (await catalog.getAttribute('data-collapsed')) === 'true',
-      { ...WAIT_MEDIUM, timeoutMsg: 'Catalog did not collapse' }
-    )
-  }
+  return
 }
 
 async function clickFirstSectionAction(sectionTestId, prefix) {
@@ -284,7 +268,6 @@ async function clickNthSectionAction(sectionTestId, prefix, index) {
 
 async function buildPartialRoster() {
   if (!(await ensureSetupModeFromCustom())) return false
-  await ensureCatalogExpanded()
 
   await clickFirstSectionAction('mesh-builder-role-section-leads', 'mesh-builder-add-')
   await browser.waitUntil(
@@ -292,7 +275,6 @@ async function buildPartialRoster() {
     { ...WAIT_MEDIUM, timeoutMsg: 'Lead card did not appear after selecting a lead' }
   )
 
-  await ensureCatalogExpanded()
   await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-add-', 0)
   await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-add-', 1)
   await browser.waitUntil(
@@ -305,7 +287,6 @@ async function buildPartialRoster() {
 
 async function pinFavorites() {
   if (!(await ensureSetupModeFromCustom())) return false
-  await ensureCatalogExpanded()
 
   await clickNthSectionAction('mesh-builder-role-section-leads', 'mesh-builder-pin-', 0)
   await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-pin-', 0)
@@ -321,18 +302,16 @@ async function pinFavorites() {
 
 async function buildFullTeam() {
   if (!(await ensureSetupModeFromPreset('full-team'))) return false
-  await ensureCatalogExpanded()
   await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-add-', 0)
   await browser.waitUntil(
     async () => (await $$('[data-testid^="mesh-builder-agent-card-"]')).length >= 4,
     { ...WAIT_MEDIUM, timeoutMsg: 'Expected full team roster with four agents' }
   )
 
-  await ensureCatalogCollapsed()
   return true
 }
 
-describe('Draft Board screenshot capture', () => {
+describe('Roster Builder screenshot capture', () => {
   before(async () => {
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
@@ -359,35 +338,24 @@ describe('Draft Board screenshot capture', () => {
     }
   })
 
-  it('captures all required Draft Board roster builder views', async function () {
+  it('captures all required roster builder views', async function () {
     if (!mainApp) return this.skip()
     if (!(await ensureMeshAvailable(this))) return
 
     await setTheme('dark')
     if (!(await ensureEmptyMode())) return this.skip()
-    await shot('01-draft-board-empty-state-dark')
+    await shot('01-roster-builder-empty-state-dark')
 
     await setTheme('dark')
     if (!(await ensureSetupModeFromPreset('dev-team'))) return this.skip()
-    await shot('02-draft-board-preset-applied-dark')
+    await shot('02-roster-builder-preset-applied-dark')
 
     await setTheme('light')
     if (!(await buildPartialRoster())) return this.skip()
-    await ensureCatalogExpanded()
-    await shot('03-draft-board-partially-built-light')
-
-    await setTheme('dark')
-    if (!(await buildPartialRoster())) return this.skip()
-    await ensureCatalogCollapsed()
-    await shot('04-draft-board-catalog-collapsed-dark')
-
-    await setTheme('light')
-    if (!(await pinFavorites())) return this.skip()
-    await ensureCatalogExpanded()
-    await shot('05-draft-board-catalog-favorites-light')
+    await shot('03-roster-builder-partially-built-light')
 
     await setTheme('dark')
     if (!(await buildFullTeam())) return this.skip()
-    await shot('06-draft-board-full-team-ready-dark')
+    await shot('04-roster-builder-full-team-ready-dark')
   })
 })

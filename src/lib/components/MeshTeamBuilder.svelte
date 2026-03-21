@@ -208,10 +208,16 @@
     Boolean(normalizedTeam?.lead) && !validationIssues.some((issue) => issue.severity === 'error')
   )
   const teamNameLabel = $derived(String(teamName ?? '').trim() || 'Name this team')
+  const teamNameDisplayLabel = $derived(String(teamName ?? '').trim() || 'New Team')
   const teamDescriptionLabel = $derived(
     String(normalizedTeam?.description ?? '').trim()
       || 'Add a one-line brief so the roster has the right context before initialization.'
   )
+  const teamDescriptionDisplayLabel = $derived(
+    String(normalizedTeam?.description ?? '').trim()
+      || 'Pick roles from the left to build your lineup.'
+  )
+  const memberCount = $derived((normalizedTeam?.lead ? 1 : 0) + agents.length)
   const presetCountLabel = $derived.by(() => {
     const count = Array.isArray(presets) ? presets.length : 0
     return `${count} preset${count === 1 ? '' : 's'}`
@@ -235,7 +241,7 @@
           : []
       }
 
-      catalogCollapsed = mode === 'setup' && Boolean(normalizedTeam?.lead || agents.length > 0)
+      catalogCollapsed = false
     } catch {
       // Ignore localStorage failures and fall back to the smart default.
     }
@@ -438,7 +444,6 @@
   }
 
   async function focusCatalogSearch() {
-    catalogCollapsed = false
     await tick()
     catalogSearchInput?.focus?.()
     onBrowseCatalog()
@@ -467,7 +472,6 @@
   }
 
   function handleBuildCustom() {
-    catalogCollapsed = false
     onBuildCustom()
   }
 
@@ -476,7 +480,6 @@
     editingDescription = false
     leadDetailsExpanded = false
     expandedAgentIds = []
-    catalogCollapsed = false
     onReset()
   }
 
@@ -556,7 +559,6 @@
   }
 
   function handlePresetApply(preset) {
-    catalogCollapsed = true
     leadDetailsExpanded = false
     expandedAgentIds = []
     triggerRosterFeedback('all')
@@ -687,7 +689,7 @@
 </script>
 
 <section
-  class="mx-auto flex w-full max-w-[860px] flex-col gap-3"
+  class="mx-auto flex w-full max-w-[1180px] flex-col gap-3"
   data-testid={mode === 'empty' ? 'mesh-mode-empty' : 'mesh-mode-setup'}
 >
   {#if mode === 'empty'}
@@ -695,501 +697,117 @@
   {/if}
 
   <main class="space-y-3" data-testid="mesh-builder-roster">
-    <header class="sticky top-2 z-20 rounded-[22px] border p-4 shadow-sm backdrop-blur {panelTone}">
-      <div class="min-w-0 space-y-3">
-        <div class="space-y-2">
-          <p class="text-[10px] font-bold uppercase tracking-[0.24em] {t.textMuted}">Draft Board</p>
-
-          <div class="space-y-2">
-            {#if editingTeamName}
-              <input
-                bind:this={teamNameInput}
-                class="h-11 w-full rounded-xl border px-3 text-lg font-semibold outline-none {inputTone}"
-                value={teamName}
-                oninput={(event) => onTeamNameChange(event.currentTarget.value)}
-                onblur={finishEditingTeamName}
-                onkeydown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    finishEditingTeamName()
-                  }
-                }}
-                data-testid="mesh-builder-team-name-input"
-              />
-            {:else}
-              <button
-                class="w-full rounded-[18px] border px-3 py-3 text-left transition {surfaceTone}"
-                type="button"
-                onclick={startEditingTeamName}
-                data-testid="mesh-builder-team-name-display"
-              >
-                <span class="block text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Team Name</span>
-                <span class="mt-1 block truncate text-lg font-semibold {t.textPrimary}">
-                  {teamNameLabel}
-                </span>
-              </button>
-            {/if}
-
-            {#if editingDescription}
-              <input
-                bind:this={teamDescriptionInput}
-                class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                value={normalizedTeam.description ?? ''}
-                oninput={(event) => onDescriptionChange(event.currentTarget.value)}
-                onblur={finishEditingDescription}
-                onkeydown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    finishEditingDescription()
-                  }
-                }}
-                data-testid="mesh-builder-team-description-input"
-              />
-            {:else}
-              <button
-                class="w-full rounded-[18px] border px-3 py-3 text-left transition {surfaceTone}"
-                type="button"
-                onclick={startEditingDescription}
-                data-testid="mesh-builder-team-description-display"
-              >
-                <span class="block text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Description</span>
-                <span class="mt-1 block text-sm {t.textSecondary}">
-                  {teamDescriptionLabel}
-                </span>
-              </button>
-            {/if}
-          </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-          <button
-            class="h-8 rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] {ghostTone}"
-            type="button"
-            onclick={focusCatalogSearch}
-            data-testid="mesh-template-browse-catalog"
-          >
-            Browse Catalog
-          </button>
-          {#if mode === 'empty'}
-            <button
-              class="h-8 rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] {ghostTone}"
-              type="button"
-              onclick={handleBuildCustom}
-              data-testid="mesh-template-build-custom"
-            >
-              Start from scratch
-            </button>
-          {/if}
-          <span class="text-[10px] {t.textMuted}">
-            {catalogCollapsed ? 'Scroll down or click Browse Catalog to add more roles.' : 'Browse roles below to build your team.'}
-          </span>
-        </div>
-      </div>
-    </header>
-
     <ValidationBar issues={validationIssues} {dark} />
 
-    <section
-      class="space-y-3 rounded-[22px] border p-4 transition {highlightedRosterSection === 'lead' || highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
-      data-testid="mesh-builder-lead-section"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Lead</p>
-          <p class="mt-1 text-sm font-semibold {t.textPrimary}">
-            {normalizedTeam.lead ? 'Lead assigned.' : 'Choose the lead role first.'}
-          </p>
-        </div>
-        <span class="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] {presetBadgeTone}">
-          {normalizedTeam.lead ? '1 assigned' : 'Open slot'}
-        </span>
-      </div>
-
-      <div class="rounded-[20px] border p-3 {surfaceTone}" data-testid="mesh-builder-lead-slot">
-        {#if normalizedTeam.lead}
-          <div class="space-y-3" data-testid="mesh-builder-lead-card">
-            <div
-              class="flex min-h-12 items-center gap-2 rounded-[18px] border px-3 py-2.5 {surfaceTone}"
-              data-testid="mesh-builder-lead-summary"
-            >
-              <button
-                class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                type="button"
-                onclick={toggleLeadDetails}
-                data-testid="mesh-builder-lead-edit-toggle"
-              >
-                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(normalizeTool(normalizedTeam.lead.tool))}">
-                  <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).path}></path>
-                  </svg>
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate text-[13px] font-semibold {t.textPrimary}">
-                    {normalizedTeam.lead.roleName || normalizedTeam.lead.roleId || 'Lead'}
-                  </span>
-                  <span class="block truncate text-[11px] uppercase tracking-[0.12em] {t.textMuted}">
-                    {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
-                  </span>
-                </span>
-              </button>
-              <button
-                class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
-                type="button"
-                aria-label={leadDetailsExpanded ? 'Collapse lead details' : 'Edit lead details'}
-                onclick={toggleLeadDetails}
-              >
-                <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                  <path d={leadDetailsExpanded ? 'M4 10.25 8 6.25l4 4' : 'M4 5.75 8 9.75l4-4'} stroke-linecap="round" stroke-linejoin="round"></path>
-                </svg>
-              </button>
-              <button
-                class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
-                type="button"
-                aria-label="Clear lead role"
-                onclick={onClearLead}
-                data-testid="mesh-builder-lead-clear"
-              >
-                ×
-              </button>
+    <div class="grid gap-3 xl:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]">
+      <section
+        class="space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {panelTone}"
+        data-testid="mesh-builder-catalog"
+        data-collapsed="false"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <h2 class="text-[16px] font-semibold {t.textPrimary}">Available Roles</h2>
+              <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
+                {visibleRoleCount} visible
+              </span>
             </div>
-
-            {#if leadDetailsExpanded}
-              <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(200px,0.9fr)_minmax(220px,1.1fr)]">
-                <label class="space-y-1">
-                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Lead Name</span>
-                  <input
-                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                    value={normalizedTeam.lead.name ?? ''}
-                    oninput={(event) => onUpdateLead({ name: event.currentTarget.value })}
-                    data-testid="mesh-builder-lead-name-input"
-                  />
-                </label>
-                <label class="space-y-1">
-                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Model</span>
-                  <select
-                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                    value={normalizedTeam.lead.model ?? defaultModelForTool(normalizedTeam.lead.tool)}
-                    onchange={(event) => onUpdateLead({ model: event.currentTarget.value })}
-                    data-testid="mesh-builder-lead-model-input"
-                  >
-                    {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(normalizedTeam.lead.tool)] ?? [defaultModelForTool(normalizedTeam.lead.tool)] as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </select>
-                </label>
-                <label class="space-y-1">
-                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Project</span>
-                  <input
-                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                    value={normalizedTeam.lead.projectId ?? ''}
-                    oninput={(event) => onUpdateLead({ projectId: event.currentTarget.value })}
-                    data-testid="mesh-builder-lead-project-input"
-                  />
-                </label>
-              </div>
-            {/if}
-          </div>
-        {:else}
-          <div class="rounded-[18px] border border-dashed p-6 text-center {surfaceTone}" data-testid="mesh-builder-lead-empty">
-            <p class="text-[13px] font-semibold {t.textPrimary}">Pick a lead role</p>
-            <p class="mt-1 text-[11px] {t.textSecondary}">
-              Click the + button on a lead role below.
+            <p class="text-[12px] {t.textSecondary}">
+              Search, filter, and add from the live role catalog.
             </p>
           </div>
-        {/if}
-      </div>
-    </section>
 
-    <section
-      class="space-y-3 rounded-[22px] border p-4 transition {highlightedRosterSection === 'agents' || highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
-      data-testid="mesh-builder-agents-section"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Agents</p>
-          <p class="mt-1 text-sm font-semibold {t.textPrimary}">
-            {agents.length > 0 ? 'Team agents.' : 'Add the first agent from the catalog.'}
-          </p>
-        </div>
-        <span class="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] {presetBadgeTone}">
-          {agents.length} assigned
-        </span>
-      </div>
-
-      <div class="space-y-2">
-        {#each agents as agent, index (agent.id)}
-          <article
-            class="space-y-3 rounded-[20px] border p-3 {surfaceTone}"
-            data-testid={`mesh-builder-agent-card-${agent.id}`}
-          >
-            <div class="flex items-start gap-3" data-testid={`mesh-builder-agent-summary-${agent.id}`}>
-              <span class="inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-xl border text-[10px] font-bold {presetBadgeTone}">
-                {index + 1}
-              </span>
-              <div
-                class="flex min-h-12 flex-1 items-center gap-2 rounded-[18px] border px-3 py-2.5 {surfaceTone}"
-                data-testid="mesh-node-agent"
+          <div class="flex items-center gap-2">
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+              type="button"
+              onclick={focusCatalogSearch}
+              data-testid="mesh-template-browse-catalog"
+            >
+              Browse catalog
+            </button>
+            {#if mode === 'empty'}
+              <button
+                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+                type="button"
+                onclick={handleBuildCustom}
+                data-testid="mesh-template-build-custom"
               >
-                <button
-                  class="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  type="button"
-                  onclick={() => toggleAgentDetails(agent.id)}
-                  data-testid={`mesh-builder-agent-edit-toggle-${agent.id}`}
-                >
-                  <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(normalizeTool(agent.tool))}">
-                    <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(agent.tool)).viewBox} fill="currentColor" aria-hidden="true">
-                      <path d={getToolIcon(normalizeTool(agent.tool)).path}></path>
-                    </svg>
-                  </span>
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate text-[13px] font-semibold {t.textPrimary}">
-                      {agent.roleName || agent.roleId || agent.name}
-                    </span>
-                    <span class="block truncate text-[11px] uppercase tracking-[0.12em] {t.textMuted}">
-                      {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
-                    </span>
-                  </span>
-                </button>
-                <button
-                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
-                  type="button"
-                  aria-label={isAgentExpanded(agent.id) ? `Collapse ${agent.name} details` : `Edit ${agent.name} details`}
-                  onclick={() => toggleAgentDetails(agent.id)}
-                >
-                  <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                    <path d={isAgentExpanded(agent.id) ? 'M4 10.25 8 6.25l4 4' : 'M4 5.75 8 9.75l4-4'} stroke-linecap="round" stroke-linejoin="round"></path>
-                  </svg>
-                </button>
-                <button
-                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
-                  type="button"
-                  onclick={() => onRemoveAgent(agent.id)}
-                  data-testid={`mesh-builder-agent-remove-${agent.id}`}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-
-            {#if isAgentExpanded(agent.id)}
-              <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(200px,0.9fr)_minmax(220px,1.1fr)]">
-                <label class="space-y-1">
-                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Agent Name</span>
-                  <input
-                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                    value={agent.name ?? ''}
-                    oninput={(event) => onUpdateAgent(agent.id, { name: event.currentTarget.value })}
-                    data-testid={`mesh-builder-agent-name-input-${agent.id}`}
-                  />
-                </label>
-                <label class="space-y-1">
-                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Model</span>
-                  <select
-                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                    value={agent.model ?? defaultModelForTool(agent.tool)}
-                    onchange={(event) => onUpdateAgent(agent.id, { model: event.currentTarget.value })}
-                    data-testid={`mesh-builder-agent-model-input-${agent.id}`}
-                  >
-                    {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(agent.tool)] ?? [defaultModelForTool(agent.tool)] as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </select>
-                </label>
-                <label class="space-y-1">
-                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Project</span>
-                  <input
-                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                    value={agent.projectId ?? ''}
-                    oninput={(event) => onUpdateAgent(agent.id, { projectId: event.currentTarget.value })}
-                    data-testid={`mesh-builder-agent-project-input-${agent.id}`}
-                  />
-                </label>
-              </div>
+                Start from scratch
+              </button>
             {/if}
-          </article>
-        {/each}
-
-        <div
-          class="rounded-[18px] border border-dashed p-4 text-center {surfaceTone}"
-          data-testid="mesh-builder-agent-dropzone"
-          data-dropzone-mode={agents.length > 0 ? 'compact' : 'empty'}
-        >
-          <p class="text-[12px] font-semibold {t.textPrimary}">Use the catalog below to add agents</p>
-          <p class="mt-1 text-[11px] {t.textSecondary}">
-            {agents.length > 0
-              ? 'Click + on any agent role below to add it here.'
-              : 'Start with a developer, researcher, or reviewer to flesh out the team.'}
-          </p>
+          </div>
         </div>
-      </div>
-    </section>
 
-    <section
-      class="space-y-3 rounded-[22px] border p-4 {panelTone}"
-      data-testid="mesh-builder-preset-section"
-    >
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Presets</p>
-          <p class="mt-1 text-sm font-semibold {t.textPrimary}">
-            Load a starting roster, then keep editing inline.
-          </p>
-        </div>
-        <span class="text-[10px] {t.textMuted}">{presetCountLabel}</span>
-      </div>
-
-      <div class="flex flex-wrap gap-2">
-        {#each presets as preset (preset.presetId ?? preset.name)}
-          <button
-            class="min-w-[180px] flex-1 rounded-[18px] border px-3 py-3 text-left transition {presetRowTone}"
-            type="button"
-            title={preset.description || 'No preset description available.'}
-            onclick={() => handlePresetApply(preset)}
-            data-testid={`mesh-template-preset-${preset.presetId ?? preset.name}`}
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-[12px] font-semibold {t.textPrimary}">
-                  {preset.name || 'Untitled preset'}
-                </p>
-                <p class="mt-1 truncate text-[11px] {t.textMuted}" data-testid={`mesh-template-preset-summary-${preset.presetId ?? preset.name}`}>
-                  {presetMemberSummary(preset)}
-                </p>
-              </div>
-              <div class="flex items-center gap-1.5">
-                {#each presetTools(preset) as tool}
-                  <span
-                    class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border {roleMedallionTone(tool)}"
-                    title={getToolName(tool)}
-                    data-testid={`mesh-template-preset-tool-${preset.presetId ?? preset.name}-${tool}`}
-                  >
-                    <svg
-                      class="h-3 w-3"
-                      viewBox={getToolIcon(tool, 'sidebarSmall').viewBox}
-                      fill="currentColor"
-                      aria-hidden="true"
-                    >
-                      <path d={getToolIcon(tool, 'sidebarSmall').path}></path>
-                    </svg>
-                  </span>
-                {/each}
-              </div>
-            </div>
-            <div class="mt-2 flex items-center justify-between gap-2">
-              <span class="truncate text-[11px] {t.textSecondary}">
-                {preset.description || 'Preset-ready roster'}
-              </span>
-              {#if preset.builtIn ?? false}
-                <span
-                  class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {presetBadgeTone}"
-                  data-testid={`mesh-template-preset-built-in-${preset.presetId ?? preset.name}`}
-                >
-                  Built-in
-                </span>
-              {/if}
-            </div>
-          </button>
-        {/each}
-      </div>
-    </section>
-
-    <section
-      class="space-y-3 rounded-[22px] border p-4 {panelTone}"
-      data-testid="mesh-builder-catalog"
-      data-collapsed={catalogCollapsed ? 'true' : 'false'}
-    >
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Catalog</p>
-          <p class="mt-1 text-sm font-semibold {t.textPrimary}">
-            Search, filter, and pin roles before adding them to the draft board.
-          </p>
-          <p class="mt-1 text-[11px] {t.textSecondary}">
-            {visibleRoleCount} visible role{visibleRoleCount === 1 ? '' : 's'} · {pinnedRoles.length} pinned
-          </p>
-        </div>
-        <button
-          class="h-9 rounded-xl border px-3 text-[11px] font-semibold transition {ghostTone}"
-          type="button"
-          onclick={() => {
-            catalogCollapsed = !catalogCollapsed
-          }}
-          data-testid="mesh-builder-catalog-toggle"
-        >
-          {catalogCollapsed ? 'Expand Catalog' : 'Collapse Catalog'}
-        </button>
-      </div>
-
-      {#if !catalogCollapsed}
         <div class="space-y-3" data-testid="mesh-builder-catalog-content">
           <label class="block">
             <span class="sr-only">Search roles</span>
-            <input
-              bind:this={catalogSearchInput}
-              class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-              placeholder="Search roles by name, id, or tool"
-              value={searchQuery}
-              oninput={(event) => {
-                searchQuery = event.currentTarget.value
-              }}
-              data-testid="mesh-builder-role-search"
-            />
-          </label>
-
-          <section class="space-y-2" data-testid="mesh-builder-filter-tools">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Quick Filters</p>
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] {t.textMuted}">{visibleRoleCount} visible</span>
-                <div class="flex items-center gap-1" data-testid="mesh-builder-density-toggle">
-                  <button
-                    class="inline-flex h-7 w-7 items-center justify-center rounded-lg border transition {densityButtonTone(catalogDensityMode === 'compact')}"
-                    type="button"
-                    aria-label="Use compact role density"
-                    aria-pressed={catalogDensityMode === 'compact'}
-                    title="Compact density"
-                    onclick={() => setCatalogDensityPreference('compact')}
-                    data-testid="mesh-builder-density-compact"
-                  >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-                      <path d="M3 4.25h10M3 8h10M3 11.75h10" stroke-linecap="round"></path>
-                    </svg>
-                  </button>
-                  <button
-                    class="inline-flex h-7 w-7 items-center justify-center rounded-lg border transition {densityButtonTone(catalogDensityMode === 'expanded')}"
-                    type="button"
-                    aria-label="Use expanded role density"
-                    aria-pressed={catalogDensityMode === 'expanded'}
-                    title="Expanded density"
-                    onclick={() => setCatalogDensityPreference('expanded')}
-                    data-testid="mesh-builder-density-expanded"
-                  >
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-                      <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"></rect>
-                      <rect x="9" y="2.5" width="4.5" height="4.5" rx="1"></rect>
-                      <rect x="2.5" y="9" width="4.5" height="4.5" rx="1"></rect>
-                      <rect x="9" y="9" width="4.5" height="4.5" rx="1"></rect>
-                    </svg>
-                  </button>
-                </div>
+            <div class="flex h-11 items-center gap-3 rounded-[18px] border px-3 {surfaceTone}">
+              <svg class="h-4 w-4 shrink-0 {t.textMuted}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <circle cx="7" cy="7" r="4.5"></circle>
+                <path d="M10.5 10.5 14 14" stroke-linecap="round"></path>
+              </svg>
+              <input
+                bind:this={catalogSearchInput}
+                class="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none {dark ? 'text-zinc-100 placeholder-zinc-500' : 'text-zinc-900 placeholder-zinc-400'}"
+                placeholder="Search roles"
+                value={searchQuery}
+                oninput={(event) => {
+                  searchQuery = event.currentTarget.value
+                }}
+                data-testid="mesh-builder-role-search"
+              />
+              <div class="flex items-center gap-1" data-testid="mesh-builder-density-toggle">
+                <button
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-lg border transition {densityButtonTone(catalogDensityMode === 'compact')}"
+                  type="button"
+                  aria-label="Use compact role density"
+                  aria-pressed={catalogDensityMode === 'compact'}
+                  title="Compact density"
+                  onclick={() => setCatalogDensityPreference('compact')}
+                  data-testid="mesh-builder-density-compact"
+                >
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                    <path d="M3 4.25h10M3 8h10M3 11.75h10" stroke-linecap="round"></path>
+                  </svg>
+                </button>
+                <button
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-lg border transition {densityButtonTone(catalogDensityMode === 'expanded')}"
+                  type="button"
+                  aria-label="Use expanded role density"
+                  aria-pressed={catalogDensityMode === 'expanded'}
+                  title="Expanded density"
+                  onclick={() => setCatalogDensityPreference('expanded')}
+                  data-testid="mesh-builder-density-expanded"
+                >
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"></rect>
+                    <rect x="9" y="2.5" width="4.5" height="4.5" rx="1"></rect>
+                    <rect x="2.5" y="9" width="4.5" height="4.5" rx="1"></rect>
+                    <rect x="9" y="9" width="4.5" height="4.5" rx="1"></rect>
+                  </svg>
+                </button>
               </div>
             </div>
+          </label>
 
+          <section class="space-y-3" data-testid="mesh-builder-filter-tools">
             <div class="flex flex-wrap gap-2">
               <button
-                class="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[11px] font-semibold transition {filterButtonTone(activeToolFilter === 'all')}"
+                class="inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeToolFilter === 'all')}"
                 type="button"
                 onclick={() => {
                   activeToolFilter = 'all'
                 }}
                 data-testid="mesh-builder-filter-tool-all"
               >
-                <span>All tools</span>
+                <span>All</span>
                 <span class="text-[10px] {t.textMuted}">{toolFilterCounts.all}</span>
               </button>
               {#each ['claude', 'codex', 'gemini'] as tool}
                 <button
-                  class="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[11px] font-semibold transition {filterButtonTone(activeToolFilter === tool)}"
+                  class="inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeToolFilter === tool)}"
                   type="button"
                   onclick={() => toggleToolFilter(tool)}
                   data-testid={`mesh-builder-filter-tool-${tool}`}
@@ -1205,49 +823,94 @@
                     </svg>
                   </span>
                   <span>{getToolName(tool)}</span>
-                  <span class="text-[10px] {t.textMuted}">{toolFilterCounts[tool]}</span>
                 </button>
               {/each}
             </div>
 
             <div class="flex flex-wrap gap-2" data-testid="mesh-builder-filter-kinds">
               <button
-                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition {filterButtonTone(activeKindFilter === 'all')}"
+                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeKindFilter === 'all')}"
                 type="button"
                 onclick={() => {
                   activeKindFilter = 'all'
                 }}
                 data-testid="mesh-builder-filter-kind-all"
               >
-                All roles
-                <span class="text-[10px] normal-case tracking-normal {t.textMuted}">{kindFilterCounts.all}</span>
+                All Roles
+                <span class="text-[10px] {t.textMuted}">{kindFilterCounts.all}</span>
               </button>
               <button
-                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition {filterButtonTone(activeKindFilter === 'lead')}"
+                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeKindFilter === 'lead')}"
                 type="button"
                 onclick={() => toggleKindFilter('lead')}
                 data-testid="mesh-builder-filter-kind-lead"
               >
-                Lead
-                <span class="text-[10px] normal-case tracking-normal {t.textMuted}">{kindFilterCounts.lead}</span>
+                Leads
+                <span class="text-[10px] {t.textMuted}">{kindFilterCounts.lead}</span>
               </button>
               <button
-                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition {filterButtonTone(activeKindFilter === 'agent')}"
+                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeKindFilter === 'agent')}"
                 type="button"
                 onclick={() => toggleKindFilter('agent')}
                 data-testid="mesh-builder-filter-kind-agent"
               >
-                Agent
-                <span class="text-[10px] normal-case tracking-normal {t.textMuted}">{kindFilterCounts.agent}</span>
+                Agents
+                <span class="text-[10px] {t.textMuted}">{kindFilterCounts.agent}</span>
               </button>
             </div>
 
+            {#if presets.length > 0}
+              <section class="space-y-2" data-testid="mesh-builder-preset-section">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-[12px] font-medium {t.textSecondary}">Quick start</p>
+                  <span class="text-[11px] {t.textMuted}">{presetCountLabel}</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  {#each presets as preset (preset.presetId ?? preset.name)}
+                    <button
+                      class="inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-2 text-left text-[11px] font-medium transition {presetRowTone}"
+                      type="button"
+                      title={preset.description || 'No preset description available.'}
+                      onclick={() => handlePresetApply(preset)}
+                      data-testid={`mesh-template-preset-${preset.presetId ?? preset.name}`}
+                    >
+                      <span>{preset.name || 'Untitled preset'}</span>
+                      <span class="text-[10px] {t.textMuted}" data-testid={`mesh-template-preset-summary-${preset.presetId ?? preset.name}`}>
+                        {presetMemberSummary(preset)}
+                      </span>
+                      <span class="flex items-center gap-1">
+                        {#each presetTools(preset) as tool}
+                          <span
+                            class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border {roleMedallionTone(tool)}"
+                            title={getToolName(tool)}
+                            data-testid={`mesh-template-preset-tool-${preset.presetId ?? preset.name}-${tool}`}
+                          >
+                            <svg class="h-2.5 w-2.5" viewBox={getToolIcon(tool, 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
+                              <path d={getToolIcon(tool, 'sidebarSmall').path}></path>
+                            </svg>
+                          </span>
+                        {/each}
+                      </span>
+                      {#if preset.builtIn ?? false}
+                        <span
+                          class="rounded-full border px-1.5 py-0.5 text-[9px] font-medium {presetBadgeTone}"
+                          data-testid={`mesh-template-preset-built-in-${preset.presetId ?? preset.name}`}
+                        >
+                          Built-in
+                        </span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+
             <div class="flex items-center justify-between gap-2">
-              <p class="text-[10px] {t.textMuted}">
+              <p class="text-[11px] {t.textMuted}">
                 {showAllRoleVersions ? 'Showing all saved role versions.' : 'Showing the latest saved version for each role.'}
               </p>
               <button
-                class="text-[11px] font-semibold underline decoration-current/40 underline-offset-4 transition hover:decoration-current {dark ? 'text-zinc-200' : 'text-zinc-700'}"
+                class="text-[11px] font-medium underline decoration-current/35 underline-offset-4 transition hover:decoration-current {dark ? 'text-zinc-200' : 'text-zinc-700'}"
                 type="button"
                 onclick={toggleRoleVersionVisibility}
                 data-testid="mesh-builder-version-visibility-toggle"
@@ -1259,30 +922,28 @@
 
           {#if pinnedRoles.length > 0}
             <section class="space-y-2" data-testid="mesh-builder-pinned-strip">
-              <div class="flex items-center justify-between">
-                <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Favorites</p>
-                <span class="text-[10px] {t.textMuted}">{pinnedRoles.length}</span>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-[13px] font-medium {t.textPrimary}">Favorites</p>
+                <span class="text-[11px] {t.textMuted}">{pinnedRoles.length}</span>
               </div>
-              <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" data-testid="mesh-builder-pinned-list">
+              <div class="space-y-1.5" data-testid="mesh-builder-pinned-list">
                 {#each pinnedRoles as role (role.roleId)}
                   <button
-                    class="flex h-10 min-w-[132px] shrink-0 items-center gap-2 rounded-xl border px-2.5 text-left transition {surfaceTone}"
+                    class="flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 text-left transition {surfaceTone}"
                     type="button"
                     onclick={() => assignRole(role)}
                     data-testid={`mesh-builder-pinned-chip-${role.roleId}`}
                   >
-                    <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border {roleMedallionTone(role.cliTool)}">
-                      <svg
-                        class="h-3 w-3"
-                        viewBox={getToolIcon(role.cliTool, 'sidebarSmall').viewBox}
-                        fill="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path d={getToolIcon(role.cliTool, 'sidebarSmall').path}></path>
+                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
+                      <svg class="h-3.5 w-3.5" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                        <path d={getToolIcon(role.cliTool).path}></path>
                       </svg>
                     </span>
-                    <span class="truncate text-[11px] font-semibold {t.textPrimary}">
-                      {role.name}
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</span>
+                      <span class="block truncate text-[11px] {t.textSecondary}">
+                        {getToolName(role.cliTool)} · {role.model}
+                      </span>
                     </span>
                   </button>
                 {/each}
@@ -1291,27 +952,25 @@
           {/if}
 
           {#if visibleRoleCount === 0}
-            <div class="rounded-[18px] border border-dashed p-5 text-center {surfaceTone}" data-testid="mesh-builder-empty-results">
-              <p class="text-[12px] font-semibold {t.textPrimary}">No roles match these filters</p>
-              <p class="mt-1 text-[11px] {t.textSecondary}">Clear a tool or kind filter, or widen the search query.</p>
+            <div class="rounded-[18px] border px-4 py-5 text-center {surfaceTone}" data-testid="mesh-builder-empty-results">
+              <p class="text-[13px] font-semibold {t.textPrimary}">No roles match these filters</p>
+              <p class="mt-1 text-[11px] {t.textSecondary}">Clear a filter or widen the search.</p>
             </div>
           {/if}
 
           {#if activeKindFilter !== 'agent' && leadRoles.length > 0}
-            <section data-testid="mesh-builder-role-section-leads">
-              <div class="mb-2 flex items-center justify-between">
-                <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Leads</p>
-                <span class="text-[10px] {t.textMuted}">{leadRoles.length}</span>
+            <section class="space-y-2" data-testid="mesh-builder-role-section-leads">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-[13px] font-medium {t.textPrimary}">Lead roles</p>
+                <span class="text-[11px] {t.textMuted}">{leadRoles.length}</span>
               </div>
               <div
-                class={catalogDensityMode === 'compact'
-                  ? 'space-y-1.5'
-                  : 'space-y-2'}
+                class={catalogDensityMode === 'compact' ? 'space-y-1.5' : 'space-y-2'}
                 data-testid="mesh-builder-role-list-leads"
                 data-density-mode={catalogDensityMode}
               >
                 {#each leadRoles as role (role.roleId)}
-                  <div class="flex items-center gap-2 rounded-[18px] border p-2 transition {surfaceTone} {roleCardTone(role)}">
+                  <div class="flex items-center gap-2 rounded-[18px] border px-3 py-2.5 transition {surfaceTone} {roleCardTone(role)}">
                     <button
                       class={catalogDensityMode === 'compact'
                         ? 'flex min-w-0 flex-1 items-center gap-3 overflow-hidden text-left'
@@ -1322,7 +981,7 @@
                       data-testid={`mesh-builder-role-${role.roleId}`}
                     >
                       <span class={catalogDensityMode === 'compact'
-                        ? `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${roleMedallionTone(role.cliTool)}`
+                        ? `inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${roleMedallionTone(role.cliTool)}`
                         : `inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${roleMedallionTone(role.cliTool)}`}>
                         <svg class={catalogDensityMode === 'compact' ? 'h-3.5 w-3.5' : 'h-4 w-4'} viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
                           <path d={getToolIcon(role.cliTool).path}></path>
@@ -1331,15 +990,15 @@
                       <span class="min-w-0 flex-1">
                         <span class="flex flex-wrap items-center gap-2">
                           <span class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</span>
-                          <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                          <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-medium {roleChipTone(role)}">
                             {roleKindLabel(role)}
                           </span>
                         </span>
-                        <span class="mt-1 block truncate text-[11px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                        <span class="mt-0.5 block truncate text-[11px] {t.textMuted}">
                           {getToolName(role.cliTool)} · {role.model}
                         </span>
                         {#if catalogDensityMode === 'expanded'}
-                          <span class="mt-2 block text-[11px] leading-4 {t.textSecondary}">
+                          <span class="mt-1 block text-[11px] leading-4 {t.textSecondary}">
                             {roleSummaryText(role)}
                           </span>
                         {/if}
@@ -1347,16 +1006,7 @@
                     </button>
                     <div class="flex shrink-0 items-center gap-1.5">
                       <button
-                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border transition {ghostTone}"
-                        type="button"
-                        aria-label={`Add ${role.name}`}
-                        onclick={() => assignRole(role)}
-                        data-testid={`mesh-builder-add-${role.roleId}`}
-                      >
-                        +
-                      </button>
-                      <button
-                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border transition {pinButtonTone(isRolePinned(role.roleId))}"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
                         aria-pressed={isRolePinned(role.roleId)}
@@ -1366,6 +1016,15 @@
                         <svg class="h-4 w-4" viewBox="0 0 16 16" fill={isRolePinned(role.roleId) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.4" aria-hidden="true">
                           <path d="M8 1.7l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.67 4.48 12.55l.67-3.93L2.3 5.84l3.94-.57L8 1.7Z" stroke-linejoin="round"></path>
                         </svg>
+                      </button>
+                      <button
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label={`Add ${role.name}`}
+                        onclick={() => assignRole(role)}
+                        data-testid={`mesh-builder-add-${role.roleId}`}
+                      >
+                        +
                       </button>
                     </div>
                   </div>
@@ -1375,20 +1034,18 @@
           {/if}
 
           {#if activeKindFilter !== 'lead' && agentRoles.length > 0}
-            <section data-testid="mesh-builder-role-section-agents">
-              <div class="mb-2 flex items-center justify-between">
-                <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Agents</p>
-                <span class="text-[10px] {t.textMuted}">{agentRoles.length}</span>
+            <section class="space-y-2" data-testid="mesh-builder-role-section-agents">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-[13px] font-medium {t.textPrimary}">Agent roles</p>
+                <span class="text-[11px] {t.textMuted}">{agentRoles.length}</span>
               </div>
               <div
-                class={catalogDensityMode === 'compact'
-                  ? 'space-y-1.5'
-                  : 'space-y-2'}
+                class={catalogDensityMode === 'compact' ? 'space-y-1.5' : 'space-y-2'}
                 data-testid="mesh-builder-role-list-agents"
                 data-density-mode={catalogDensityMode}
               >
                 {#each agentRoles as role (role.roleId)}
-                  <div class="flex items-center gap-2 rounded-[18px] border p-2 transition {surfaceTone} {roleCardTone(role)}">
+                  <div class="flex items-center gap-2 rounded-[18px] border px-3 py-2.5 transition {surfaceTone} {roleCardTone(role)}">
                     <button
                       class={catalogDensityMode === 'compact'
                         ? 'flex min-w-0 flex-1 items-center gap-3 overflow-hidden text-left'
@@ -1399,7 +1056,7 @@
                       data-testid={`mesh-builder-role-${role.roleId}`}
                     >
                       <span class={catalogDensityMode === 'compact'
-                        ? `inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${roleMedallionTone(role.cliTool)}`
+                        ? `inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${roleMedallionTone(role.cliTool)}`
                         : `inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${roleMedallionTone(role.cliTool)}`}>
                         <svg class={catalogDensityMode === 'compact' ? 'h-3.5 w-3.5' : 'h-4 w-4'} viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
                           <path d={getToolIcon(role.cliTool).path}></path>
@@ -1408,15 +1065,15 @@
                       <span class="min-w-0 flex-1">
                         <span class="flex flex-wrap items-center gap-2">
                           <span class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</span>
-                          <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(role)}">
+                          <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-medium {roleChipTone(role)}">
                             {roleKindLabel(role)}
                           </span>
                         </span>
-                        <span class="mt-1 block truncate text-[11px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
+                        <span class="mt-0.5 block truncate text-[11px] {t.textMuted}">
                           {getToolName(role.cliTool)} · {role.model}
                         </span>
                         {#if catalogDensityMode === 'expanded'}
-                          <span class="mt-2 block text-[11px] leading-4 {t.textSecondary}">
+                          <span class="mt-1 block text-[11px] leading-4 {t.textSecondary}">
                             {roleSummaryText(role)}
                           </span>
                         {/if}
@@ -1424,16 +1081,7 @@
                     </button>
                     <div class="flex shrink-0 items-center gap-1.5">
                       <button
-                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border transition {ghostTone}"
-                        type="button"
-                        aria-label={`Add ${role.name}`}
-                        onclick={() => assignRole(role)}
-                        data-testid={`mesh-builder-add-${role.roleId}`}
-                      >
-                        +
-                      </button>
-                      <button
-                        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border transition {pinButtonTone(isRolePinned(role.roleId))}"
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
                         aria-pressed={isRolePinned(role.roleId)}
@@ -1444,6 +1092,15 @@
                           <path d="M8 1.7l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.67 4.48 12.55l.67-3.93L2.3 5.84l3.94-.57L8 1.7Z" stroke-linejoin="round"></path>
                         </svg>
                       </button>
+                      <button
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label={`Add ${role.name}`}
+                        onclick={() => assignRole(role)}
+                        data-testid={`mesh-builder-add-${role.roleId}`}
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
                 {/each}
@@ -1451,38 +1108,342 @@
             </section>
           {/if}
         </div>
-      {/if}
-    </section>
+      </section>
 
-    <footer class="sticky bottom-2 z-20 flex items-center justify-between gap-3 rounded-[20px] border p-3 shadow-sm backdrop-blur {panelTone}" data-testid="mesh-action-bar">
-      <button
-        class="h-10 rounded-lg border px-4 text-[11px] font-bold {ghostTone}"
-        type="button"
-        onclick={onSavePreset}
-        data-testid="mesh-builder-save-preset"
+      <section
+        class="space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
+        data-testid="mesh-builder-team-panel"
       >
-        Save Preset
-      </button>
+        <div class="rounded-[24px] border p-4 {dark ? 'border-white/[0.08] bg-white/[0.055]' : 'border-brand-200/55 bg-brand-50/55'}">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1 space-y-2">
+              <div class="flex items-center gap-2">
+                <h2 class="text-[16px] font-semibold {t.textPrimary}">Your Team</h2>
+                <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
+                  {memberCount} member{memberCount === 1 ? '' : 's'}
+                </span>
+              </div>
 
-      <div class="flex items-center gap-2">
-        <button
-          class="h-10 rounded-lg border px-4 text-[11px] font-bold {ghostTone}"
-          type="button"
-          onclick={handleReset}
-          data-testid="mesh-action-reset"
-        >
-          Reset
-        </button>
-        <button
-          class="h-10 rounded-lg bg-brand-600 px-4 text-[11px] font-bold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-          type="button"
-          onclick={onInitialize}
-          disabled={!canInitialize}
-          data-testid="mesh-action-initialize"
-        >
-          Initialize Team
-        </button>
-      </div>
-    </footer>
+              <div class="space-y-1">
+                {#if editingTeamName}
+                  <input
+                    bind:this={teamNameInput}
+                    class="h-10 w-full rounded-[14px] border px-3 text-[20px] font-semibold outline-none {inputTone}"
+                    value={teamName}
+                    oninput={(event) => onTeamNameChange(event.currentTarget.value)}
+                    onblur={finishEditingTeamName}
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        finishEditingTeamName()
+                      }
+                    }}
+                    data-testid="mesh-builder-team-name-input"
+                  />
+                {:else}
+                  <button
+                    class="flex min-w-0 items-center gap-2 text-left"
+                    type="button"
+                    onclick={startEditingTeamName}
+                    data-testid="mesh-builder-team-name-display"
+                  >
+                    <span class="truncate text-[22px] font-semibold leading-tight {t.textPrimary}">
+                      {teamNameDisplayLabel}
+                    </span>
+                    <svg class="h-4 w-4 shrink-0 {t.textMuted}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                      <path d="m11.9 2.4 1.7 1.7M3 13l2.8-.6 7-7a1.2 1.2 0 0 0 0-1.7l-.5-.5a1.2 1.2 0 0 0-1.7 0l-7 7L3 13Z" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </button>
+                {/if}
+
+                {#if editingDescription}
+                  <input
+                    bind:this={teamDescriptionInput}
+                    class="h-9 w-full rounded-[14px] border px-3 text-[13px] outline-none {inputTone}"
+                    value={normalizedTeam.description ?? ''}
+                    oninput={(event) => onDescriptionChange(event.currentTarget.value)}
+                    onblur={finishEditingDescription}
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        finishEditingDescription()
+                      }
+                    }}
+                    data-testid="mesh-builder-team-description-input"
+                  />
+                {:else}
+                  <button
+                    class="flex min-w-0 items-center gap-2 text-left"
+                    type="button"
+                    onclick={startEditingDescription}
+                    data-testid="mesh-builder-team-description-display"
+                  >
+                    <span class="truncate text-[13px] {t.textSecondary}">
+                      {teamDescriptionDisplayLabel}
+                    </span>
+                    <svg class="h-3.5 w-3.5 shrink-0 {t.textMuted}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                      <path d="m11.9 2.4 1.7 1.7M3 13l2.8-.6 7-7a1.2 1.2 0 0 0 0-1.7l-.5-.5a1.2 1.2 0 0 0-1.7 0l-7 7L3 13Z" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </button>
+                {/if}
+              </div>
+            </div>
+
+            <div class="text-right">
+              <p class="text-[11px] {t.textMuted}">
+                {memberCount === 0 ? 'Start with a lead, then add agents.' : 'Roster updates instantly as you add roles.'}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-4 space-y-3">
+            <section
+              class="space-y-2 transition {highlightedRosterSection === 'lead' || highlightedRosterSection === 'all' ? leadDropTone : ''}"
+              data-testid="mesh-builder-lead-section"
+            >
+              {#if normalizedTeam.lead}
+                <article
+                  class="rounded-[20px] border p-3 {dark ? 'border-amber-400/20 bg-amber-500/[0.07]' : 'border-amber-300/70 bg-amber-50/85'}"
+                  data-testid="mesh-builder-lead-card"
+                >
+                  <div class="flex items-start gap-3" data-testid="mesh-builder-lead-summary">
+                    <button
+                      class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      type="button"
+                      onclick={toggleLeadDetails}
+                      data-testid="mesh-builder-lead-edit-toggle"
+                    >
+                      <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border {roleMedallionTone(normalizeTool(normalizedTeam.lead.tool))}">
+                        <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).viewBox} fill="currentColor" aria-hidden="true">
+                          <path d={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).path}></path>
+                        </svg>
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="flex items-center gap-2">
+                          <span class="rounded-full border px-2 py-0.5 text-[9px] font-medium {dark ? 'border-amber-400/25 text-amber-200' : 'border-amber-300/70 text-amber-800'}">
+                            Lead
+                          </span>
+                        </span>
+                        <span class="mt-1 block truncate text-[14px] font-semibold {t.textPrimary}">
+                          {normalizedTeam.lead.roleName || normalizedTeam.lead.roleId || 'Lead'}
+                        </span>
+                        <span class="mt-0.5 block truncate text-[11px] {t.textSecondary}">
+                          {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
+                        </span>
+                      </span>
+                    </button>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <button
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label={leadDetailsExpanded ? 'Collapse lead details' : 'Edit lead details'}
+                        onclick={toggleLeadDetails}
+                      >
+                        <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                          <path d={leadDetailsExpanded ? 'M4 10.25 8 6.25l4 4' : 'M4 5.75 8 9.75l4-4'} stroke-linecap="round" stroke-linejoin="round"></path>
+                        </svg>
+                      </button>
+                      <button
+                        class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label="Clear lead role"
+                        onclick={onClearLead}
+                        data-testid="mesh-builder-lead-clear"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+
+                  {#if leadDetailsExpanded}
+                    <div class="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                      <label class="space-y-1">
+                        <span class="text-[10px] {t.textMuted}">Lead name</span>
+                        <input
+                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
+                          value={normalizedTeam.lead.name ?? ''}
+                          oninput={(event) => onUpdateLead({ name: event.currentTarget.value })}
+                          data-testid="mesh-builder-lead-name-input"
+                        />
+                      </label>
+                      <label class="space-y-1">
+                        <span class="text-[10px] {t.textMuted}">Model</span>
+                        <select
+                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
+                          value={normalizedTeam.lead.model ?? defaultModelForTool(normalizedTeam.lead.tool)}
+                          onchange={(event) => onUpdateLead({ model: event.currentTarget.value })}
+                          data-testid="mesh-builder-lead-model-input"
+                        >
+                          {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(normalizedTeam.lead.tool)] ?? [defaultModelForTool(normalizedTeam.lead.tool)] as option}
+                            <option value={option}>{option}</option>
+                          {/each}
+                        </select>
+                      </label>
+                      <label class="space-y-1">
+                        <span class="text-[10px] {t.textMuted}">Project</span>
+                        <input
+                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
+                          value={normalizedTeam.lead.projectId ?? ''}
+                          oninput={(event) => onUpdateLead({ projectId: event.currentTarget.value })}
+                          data-testid="mesh-builder-lead-project-input"
+                        />
+                      </label>
+                    </div>
+                  {/if}
+                </article>
+              {:else}
+                <div class="px-1 py-2" data-testid="mesh-builder-lead-empty">
+                  <p class="text-[13px] font-medium {t.textPrimary}">Choose a lead role to anchor the team.</p>
+                  <p class="mt-1 text-[11px] {t.textSecondary}">
+                    Use the + button next to any lead on the left.
+                  </p>
+                </div>
+              {/if}
+            </section>
+
+            <section
+              class="space-y-2 transition {highlightedRosterSection === 'agents' || highlightedRosterSection === 'all' ? leadDropTone : ''}"
+              data-testid="mesh-builder-agents-section"
+            >
+              {#each agents as agent, index (agent.id)}
+                <article
+                  class="rounded-[20px] border p-3 {dark ? 'border-emerald-400/18 bg-emerald-500/[0.06]' : 'border-emerald-300/65 bg-emerald-50/80'}"
+                  data-testid={`mesh-builder-agent-card-${agent.id}`}
+                >
+                  <div class="flex items-start gap-3" data-testid={`mesh-builder-agent-summary-${agent.id}`}>
+                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium {presetBadgeTone}">
+                      {index + 1}
+                    </span>
+                    <div class="flex min-w-0 flex-1 items-start gap-3" data-testid="mesh-node-agent">
+                      <button
+                        class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        type="button"
+                        onclick={() => toggleAgentDetails(agent.id)}
+                        data-testid={`mesh-builder-agent-edit-toggle-${agent.id}`}
+                      >
+                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] border {roleMedallionTone(normalizeTool(agent.tool))}">
+                          <svg class="h-3.5 w-3.5" viewBox={getToolIcon(normalizeTool(agent.tool)).viewBox} fill="currentColor" aria-hidden="true">
+                            <path d={getToolIcon(normalizeTool(agent.tool)).path}></path>
+                          </svg>
+                        </span>
+                        <span class="min-w-0 flex-1">
+                          <span class="block truncate text-[13px] font-semibold {t.textPrimary}">
+                            {agent.roleName || agent.roleId || agent.name}
+                          </span>
+                          <span class="mt-0.5 block truncate text-[11px] {t.textSecondary}">
+                            {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
+                          </span>
+                        </span>
+                      </button>
+                      <div class="flex shrink-0 items-center gap-2">
+                        <button
+                          class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
+                          type="button"
+                          aria-label={isAgentExpanded(agent.id) ? `Collapse ${agent.name} details` : `Edit ${agent.name} details`}
+                          onclick={() => toggleAgentDetails(agent.id)}
+                        >
+                          <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                            <path d={isAgentExpanded(agent.id) ? 'M4 10.25 8 6.25l4 4' : 'M4 5.75 8 9.75l4-4'} stroke-linecap="round" stroke-linejoin="round"></path>
+                          </svg>
+                        </button>
+                        <button
+                          class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
+                          type="button"
+                          onclick={() => onRemoveAgent(agent.id)}
+                          data-testid={`mesh-builder-agent-remove-${agent.id}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {#if isAgentExpanded(agent.id)}
+                    <div class="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                      <label class="space-y-1">
+                        <span class="text-[10px] {t.textMuted}">Agent name</span>
+                        <input
+                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
+                          value={agent.name ?? ''}
+                          oninput={(event) => onUpdateAgent(agent.id, { name: event.currentTarget.value })}
+                          data-testid={`mesh-builder-agent-name-input-${agent.id}`}
+                        />
+                      </label>
+                      <label class="space-y-1">
+                        <span class="text-[10px] {t.textMuted}">Model</span>
+                        <select
+                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
+                          value={agent.model ?? defaultModelForTool(agent.tool)}
+                          onchange={(event) => onUpdateAgent(agent.id, { model: event.currentTarget.value })}
+                          data-testid={`mesh-builder-agent-model-input-${agent.id}`}
+                        >
+                          {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(agent.tool)] ?? [defaultModelForTool(agent.tool)] as option}
+                            <option value={option}>{option}</option>
+                          {/each}
+                        </select>
+                      </label>
+                      <label class="space-y-1">
+                        <span class="text-[10px] {t.textMuted}">Project</span>
+                        <input
+                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
+                          value={agent.projectId ?? ''}
+                          oninput={(event) => onUpdateAgent(agent.id, { projectId: event.currentTarget.value })}
+                          data-testid={`mesh-builder-agent-project-input-${agent.id}`}
+                        />
+                      </label>
+                    </div>
+                  {/if}
+                </article>
+              {/each}
+
+              <div
+                class="px-1 py-2"
+                data-testid="mesh-builder-agent-dropzone"
+                data-dropzone-mode={agents.length > 0 ? 'compact' : 'empty'}
+              >
+                <p class="text-[12px] font-medium {t.textPrimary}">+ Add from catalog</p>
+                <p class="mt-1 text-[11px] {t.textSecondary}">
+                  {agents.length > 0
+                    ? 'Keep building with developer, reviewer, and research roles from the left.'
+                    : 'Start with a developer, researcher, or reviewer to flesh out the team.'}
+                </p>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <footer class="space-y-3" data-testid="mesh-action-bar">
+          <button
+            class="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-brand-600 px-4 text-[13px] font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            onclick={onInitialize}
+            disabled={!canInitialize}
+            data-testid="mesh-action-initialize"
+          >
+            Initialize Team
+            <span aria-hidden="true">→</span>
+          </button>
+
+          <div class="flex items-center justify-between gap-3">
+            <button
+              class="text-[12px] font-medium underline decoration-current/30 underline-offset-4 transition hover:decoration-current {dark ? 'text-zinc-100' : 'text-zinc-800'}"
+              type="button"
+              onclick={onSavePreset}
+              data-testid="mesh-builder-save-preset"
+            >
+              Save as Preset
+            </button>
+            <button
+              class="text-[12px] font-medium underline decoration-current/30 underline-offset-4 transition hover:decoration-current {t.textMuted}"
+              type="button"
+              onclick={handleReset}
+              data-testid="mesh-action-reset"
+            >
+              Reset
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
   </main>
 </section>

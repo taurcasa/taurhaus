@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { getRegistryEntry, visualRegistry, viewportPresets } from './registry.js'
 
 describe('visual host registry', () => {
-  it('registers all five target components', () => {
-    expect(visualRegistry.map((entry) => entry.id)).toEqual([
+  it('registers the core target components before any design explorations', () => {
+    expect(visualRegistry.map((entry) => entry.id).slice(0, 5)).toEqual([
       'mesh-canvas',
       'hover-card',
       'mesh-node-detail',
