@@ -1,6 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
+
+vi.mock('../ipc.js', () => ({
+  deleteRoleTemplate: vi.fn(),
+  exportRoleToFile: vi.fn(),
+  getRoleTemplate: vi.fn(),
+  importRoleFromFile: vi.fn(),
+  isTauri: vi.fn(),
+  upsertRoleTemplate: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: vi.fn(),
+  save: vi.fn(),
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+  writeTextFile: vi.fn(),
+}))
+
+const {
+  deleteRoleTemplate,
+  exportRoleToFile,
+  getRoleTemplate,
+  importRoleFromFile,
+  isTauri,
+  upsertRoleTemplate,
+} = await import('../ipc.js')
+const { open, save } = await import('@tauri-apps/plugin-dialog')
+const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
 import MeshTeamBuilder from './MeshTeamBuilder.svelte'
 
@@ -188,6 +217,7 @@ function builderProps(props = {}) {
     onRemoveAgent: vi.fn(),
     onReorderAgent: vi.fn(),
     onMoveAgentToEnd: vi.fn(),
+    onRefreshRoleTemplates: vi.fn(),
     onInitialize: vi.fn(),
     onReset: vi.fn(),
     onSavePreset: vi.fn(),
@@ -204,6 +234,29 @@ function renderBuilder(props = {}) {
 describe('MeshTeamBuilder', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    vi.clearAllMocks()
+    isTauri.mockReturnValue(true)
+    getRoleTemplate.mockImplementation(async (roleId) => (
+      sampleRoles().find((role) => role.roleId === roleId) ?? null
+    ))
+    upsertRoleTemplate.mockResolvedValue(undefined)
+    deleteRoleTemplate.mockResolvedValue(undefined)
+    exportRoleToFile.mockResolvedValue({
+      targetFormat: 'yaml',
+      fileContent: 'schema:\n  kind: role_template\n',
+      lossyFields: [],
+    })
+    importRoleFromFile.mockResolvedValue({
+      success: true,
+      role: {
+        roleId: 'imported-role',
+        name: 'Imported Role',
+      },
+      conflict: null,
+    })
+    open.mockResolvedValue(null)
+    save.mockResolvedValue('/tmp/exported-role.yaml')
+    writeTextFile.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -473,6 +526,135 @@ describe('MeshTeamBuilder', () => {
 
     expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
     expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
+  })
+
+  it('creates a new custom role from the builder catalog', async () => {
+    const onRefreshRoleTemplates = vi.fn().mockResolvedValue(undefined)
+
+    renderBuilder({ onRefreshRoleTemplates })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-create-role'))
+
+    expect(screen.getByRole('dialog', { name: 'Create Role' })).toBeInTheDocument()
+
+    await fireEvent.input(screen.getByTestId('mesh-role-editor-name-input'), {
+      target: { value: 'QA Specialist' },
+    })
+    await fireEvent.input(screen.getByTestId('mesh-role-editor-context-summary-input'), {
+      target: { value: 'Owns verification context for scoped releases.' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-role-editor-save'))
+
+    await waitFor(() => expect(upsertRoleTemplate).toHaveBeenCalledTimes(1))
+    expect(upsertRoleTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roleId: 'qa-specialist',
+        name: 'QA Specialist',
+        kind: 'agent',
+        defaults: expect.objectContaining({
+          cliTool: 'codex',
+        }),
+        contextSummary: 'Owns verification context for scoped releases.',
+      })
+    )
+    expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches from role detail into edit mode and saves role changes', async () => {
+    const onRefreshRoleTemplates = vi.fn().mockResolvedValue(undefined)
+    getRoleTemplate.mockResolvedValue({
+      ...sampleRoles().find((role) => role.roleId === 'agent-codex'),
+      instructions: 'Keep implementation scoped.',
+      defaults: {
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        defaultNamePattern: 'agent-codex-{n}',
+      },
+      behavioralContract: {
+        communication: ['Confirm handoffs clearly.'],
+        execution: ['Implement the scoped change.'],
+        escalation: ['Escalate dependency issues.'],
+      },
+      constraints: {
+        minInstances: 0,
+        maxInstances: 8,
+        requiresLeadTool: null,
+        allowedProjectBinding: 'lead_project',
+      },
+    })
+
+    renderBuilder({ onRefreshRoleTemplates })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
+
+    expect(await screen.findByRole('dialog', { name: 'Edit Role' })).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-role-editor-name-input')).toHaveValue('Codex Developer')
+
+    await fireEvent.input(screen.getByTestId('mesh-role-editor-context-summary-input'), {
+      target: { value: 'Carries implementation context across PR-sized changes.' },
+    })
+    await fireEvent.click(screen.getByTestId('mesh-role-editor-save'))
+
+    await waitFor(() => expect(upsertRoleTemplate).toHaveBeenCalledTimes(1))
+    expect(upsertRoleTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roleId: 'agent-codex',
+        contextSummary: 'Carries implementation context across PR-sized changes.',
+        behavioralContract: expect.objectContaining({
+          execution: ['Implement the scoped change.'],
+        }),
+      })
+    )
+    expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
+  })
+
+  it('exports role detail as yaml from the shared detail view', async () => {
+    renderBuilder()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-export'))
+
+    await waitFor(() => expect(exportRoleToFile).toHaveBeenCalledWith('agent-codex', 'yaml'))
+    await waitFor(() => expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: 'codex-developer.yaml',
+      })
+    ))
+    await waitFor(() => expect(writeTextFile).toHaveBeenCalledWith(
+      '/tmp/exported-role.yaml',
+      'schema:\n  kind: role_template\n'
+    ))
+  })
+
+  it('imports yaml into the catalog and refreshes the role list', async () => {
+    const onRefreshRoleTemplates = vi.fn().mockResolvedValue(undefined)
+    open.mockResolvedValue('/tmp/imported-role.yaml')
+
+    renderBuilder({ onRefreshRoleTemplates })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-import-yaml'))
+
+    await waitFor(() => expect(importRoleFromFile).toHaveBeenCalledWith('/tmp/imported-role.yaml'))
+    expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('mesh-builder-role-status')).toHaveTextContent("Imported 'Imported Role'.")
+  })
+
+  it('confirms and deletes a custom role from the detail view', async () => {
+    const onRefreshRoleTemplates = vi.fn().mockResolvedValue(undefined)
+
+    renderBuilder({ onRefreshRoleTemplates })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-delete'))
+    await fireEvent.click(
+      screen
+        .getAllByTestId('confirm-dialog-confirm')
+        .find((element) => element.textContent?.includes('Delete'))
+    )
+
+    await waitFor(() => expect(deleteRoleTemplate).toHaveBeenCalledWith('agent-codex'))
+    expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the catalog visible for both empty and populated rosters', () => {

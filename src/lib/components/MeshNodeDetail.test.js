@@ -110,6 +110,29 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByText('Template')).toBeInTheDocument()
   })
 
+  it('renders builder detail management actions when provided', () => {
+    renderDetail({
+      mode: 'builder',
+      node: {
+        status: '',
+        paneId: '',
+        sessionId: '',
+        sessionState: '',
+      },
+      actions: {
+        onAdd: vi.fn(),
+        onEdit: vi.fn(),
+        onExport: vi.fn(),
+        onDelete: vi.fn(),
+        onClose: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-edit')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-export')).toHaveTextContent('Export YAML')
+    expect(screen.getByTestId('mesh-node-detail-delete')).toBeInTheDocument()
+  })
+
   it('invokes runtime actions and close affordances', async () => {
     const onResume = vi.fn()
     const onStop = vi.fn()

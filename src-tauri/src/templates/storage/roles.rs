@@ -318,6 +318,7 @@ fn infer_markdown_import_format(external_path: &Path, raw: &str) -> RoleExportFo
 
 fn render_role_import_format(format: RoleExportFormat) -> &'static str {
     match format {
+        RoleExportFormat::Yaml => "yaml",
         RoleExportFormat::ClaudeAgent => "claude_agent",
         RoleExportFormat::CopilotAgent => "copilot_agent",
         RoleExportFormat::AgentsMd => "agents_md",

@@ -382,6 +382,33 @@
             >
               Add to Team
             </button>
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
+              type="button"
+              onclick={() => invoke(actions?.onEdit)}
+              disabled={typeof actions?.onEdit !== 'function'}
+              data-testid="mesh-node-detail-edit"
+            >
+              Edit
+            </button>
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
+              type="button"
+              onclick={() => invoke(actions?.onExport)}
+              disabled={Boolean(actions?.exportDisabled) || typeof actions?.onExport !== 'function'}
+              data-testid="mesh-node-detail-export"
+            >
+              Export YAML
+            </button>
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {dangerActionTone}"
+              type="button"
+              onclick={() => invoke(actions?.onDelete)}
+              disabled={Boolean(actions?.deleteDisabled) || typeof actions?.onDelete !== 'function'}
+              data-testid="mesh-node-detail-delete"
+            >
+              Delete
+            </button>
           {/if}
         </div>
       </div>

@@ -217,6 +217,7 @@
       onRemoveAgent={controller.handleRemoveBuilderAgent}
       onReorderAgent={controller.handleReorderBuilderAgent}
       onMoveAgentToEnd={controller.handleMoveBuilderAgentToEnd}
+      onRefreshRoleTemplates={controller.reloadRoleTemplates}
       onInitialize={controller.handleInitialize}
       onReset={controller.handleReset}
       onSavePreset={controller.handleSaveBuilderPreset}

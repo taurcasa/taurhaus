@@ -27,6 +27,7 @@
     onRemoveAgent = () => {},
     onReorderAgent = () => {},
     onMoveAgentToEnd = () => {},
+    onRefreshRoleTemplates = () => {},
     onInitialize = () => {},
     onReset = () => {},
     onSavePreset = () => {},
@@ -65,6 +66,7 @@
       onRemoveAgent={onRemoveAgent}
       onReorderAgent={onReorderAgent}
       onMoveAgentToEnd={onMoveAgentToEnd}
+      onRefreshRoleTemplates={onRefreshRoleTemplates}
       onInitialize={onInitialize}
       onReset={onReset}
       onSavePreset={onSavePreset}
@@ -92,6 +94,7 @@
       onRemoveAgent={onRemoveAgent}
       onReorderAgent={onReorderAgent}
       onMoveAgentToEnd={onMoveAgentToEnd}
+      onRefreshRoleTemplates={onRefreshRoleTemplates}
       onInitialize={onInitialize}
       onReset={onReset}
       onSavePreset={onSavePreset}

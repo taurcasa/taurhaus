@@ -101,6 +101,7 @@ pub struct RoleFieldMappingRow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RoleExportFormat {
+    Yaml,
     ClaudeAgent,
     CopilotAgent,
     AgentsMd,
@@ -209,6 +210,7 @@ impl StringListOrScalar {
 pub fn export_role(role: &RoleTemplate, format: RoleExportFormat) -> RoleExportResult {
     let lossy_fields = combined_lossy_fields_for_export(role, format);
     let file_content = match format {
+        RoleExportFormat::Yaml => serde_norway::to_string(role).expect("serialize role yaml"),
         RoleExportFormat::ClaudeAgent => render_claude_agent(role, &compile_prompt_body(role)),
         RoleExportFormat::CopilotAgent => render_copilot_agent(role, &compile_prompt_body(role)),
         RoleExportFormat::AgentsMd => render_agents_md(role, &lossy_fields),
@@ -237,6 +239,7 @@ pub fn import_role_at(
     imported_at: DateTime<Utc>,
 ) -> Result<ImportedRoleTemplate, RoleImportError> {
     match format {
+        RoleExportFormat::Yaml => Err(RoleImportError::UnsupportedFormat(format)),
         RoleExportFormat::ClaudeAgent => import_claude_agent_at(raw, source_path, imported_at),
         RoleExportFormat::CopilotAgent => import_copilot_agent_at(raw, source_path, imported_at),
         other => Err(RoleImportError::UnsupportedFormat(other)),
@@ -395,6 +398,7 @@ pub fn lossy_fields_for_export(role: &RoleTemplate, format: RoleExportFormat) ->
     let mut lossy = Vec::new();
 
     match format {
+        RoleExportFormat::Yaml => {}
         RoleExportFormat::ClaudeAgent => {
             if !role.capabilities.is_empty() {
                 lossy.push("capabilities".to_string());
@@ -681,6 +685,7 @@ fn synthesized_fields_for_import(format: RoleExportFormat) -> Vec<String> {
         "behavior_summary".to_string(),
     ];
     match format {
+        RoleExportFormat::Yaml => {}
         RoleExportFormat::ClaudeAgent => {
             fields.push("context_summary".to_string());
         }
@@ -883,6 +888,10 @@ mod tests {
     #[test]
     fn role_export_format_serializes_with_snake_case() {
         assert_eq!(
+            serde_json::to_string(&RoleExportFormat::Yaml).unwrap(),
+            "\"yaml\""
+        );
+        assert_eq!(
             serde_json::to_string(&RoleExportFormat::ClaudeAgent).unwrap(),
             "\"claude_agent\""
         );
@@ -953,6 +962,21 @@ mod tests {
         assert!(exported
             .lossy_fields
             .contains(&"defaults.model".to_string()));
+    }
+
+    #[test]
+    fn export_role_to_yaml_round_trips_without_lossy_fields() {
+        let role = sample_role();
+        let exported = export_role(&role, RoleExportFormat::Yaml);
+
+        assert_eq!(exported.target_format, RoleExportFormat::Yaml);
+        assert!(exported.lossy_fields.is_empty());
+
+        let parsed = serde_norway::from_str::<RoleTemplate>(&exported.file_content)
+            .expect("parse exported role yaml");
+        assert_eq!(parsed.role_id, role.role_id);
+        assert_eq!(parsed.name, role.name);
+        assert_eq!(parsed.defaults.model, role.defaults.model);
     }
 
     #[test]

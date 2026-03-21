@@ -278,6 +278,7 @@ export function createMeshTabPublicApi({ state, gate, setup, init, runtime }) {
     handleReorderBuilderAgent: setup.handleReorderBuilderAgent,
     handleMoveBuilderAgentToEnd: setup.handleMoveBuilderAgentToEnd,
     handleSaveBuilderPreset: setup.handleSaveBuilderPreset,
+    reloadRoleTemplates: setup.loadRoleTemplates,
     handleInitialize: init.handleInitialize,
     handleInitializeSuccess: init.handleInitializeSuccess,
     openAddAgentPanel: setup.openAddAgentPanel,

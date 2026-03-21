@@ -1,5 +1,13 @@
 <script>
   import { onDestroy, onMount, tick } from 'svelte'
+  import {
+    deleteRoleTemplate,
+    exportRoleToFile,
+    getRoleTemplate,
+    importRoleFromFile,
+    isTauri,
+    upsertRoleTemplate,
+  } from '../ipc.js'
   import { themeTokens } from '../themeTokens.js'
   import {
     MODEL_OPTIONS_BY_TOOL,
@@ -14,7 +22,9 @@
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { projectNameFromPath } from './meshTabUtils.js'
+  import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
+  import MeshRoleEditorDialog from './MeshRoleEditorDialog.svelte'
   import {
     latestRoleVersions,
     ROLE_VERSION_VISIBILITY_STORAGE_KEY,
@@ -48,6 +58,7 @@
     onRemoveAgent = () => {},
     onReorderAgent = () => {},
     onMoveAgentToEnd = () => {},
+    onRefreshRoleTemplates = async () => {},
     onInitialize = () => {},
     onReset = () => {},
     onSavePreset = () => {},
@@ -138,8 +149,18 @@
   let teamNameInput = $state(null)
   let teamDescriptionInput = $state(null)
   let selectedRoleDetailId = $state('')
+  let roleEditorOpen = $state(false)
+  let roleEditorRole = $state(null)
+  let roleEditorError = $state('')
+  let roleEditorSaving = $state(false)
+  let roleStatusMessage = $state('')
+  let roleStatusKind = $state('info')
+  let deleteRoleContext = $state(null)
+  let importConflict = $state(null)
+  let exportingRoleId = $state('')
   let rosterFeedbackTimer = null
   let roleFeedbackTimer = null
+  let roleStatusTimer = null
   let previousRosterMemberIds = []
   let hasObservedRosterMembers = false
   const memberEntryTimers = new Map()
@@ -299,6 +320,9 @@
     }
     if (roleFeedbackTimer) {
       clearTimeout(roleFeedbackTimer)
+    }
+    if (roleStatusTimer) {
+      clearTimeout(roleStatusTimer)
     }
     for (const timer of memberEntryTimers.values()) {
       clearTimeout(timer)
@@ -974,6 +998,295 @@
       // Ignore localStorage failures and keep the in-memory preference.
     }
   }
+
+  function showRoleStatus(message, kind = 'info') {
+    roleStatusMessage = String(message ?? '').trim()
+    roleStatusKind = kind === 'error' ? 'error' : 'info'
+    if (roleStatusTimer) {
+      clearTimeout(roleStatusTimer)
+    }
+    if (!roleStatusMessage) {
+      roleStatusTimer = null
+      return
+    }
+    roleStatusTimer = setTimeout(() => {
+      roleStatusMessage = ''
+      roleStatusTimer = null
+    }, 3200)
+  }
+
+  function clearRoleStatus() {
+    if (roleStatusTimer) {
+      clearTimeout(roleStatusTimer)
+      roleStatusTimer = null
+    }
+    roleStatusMessage = ''
+  }
+
+  function closeRoleEditor() {
+    roleEditorOpen = false
+    roleEditorRole = null
+    roleEditorError = ''
+    roleEditorSaving = false
+  }
+
+  function exportFilenameForRole(role) {
+    const base = String(role?.name ?? role?.roleId ?? 'role')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'role'
+    return `${base}.yaml`
+  }
+
+  async function saveExportedRoleFile(filename, fileContent) {
+    if (isTauri()) {
+      const [{ save }, { writeTextFile }] = await Promise.all([
+        import('@tauri-apps/plugin-dialog'),
+        import('@tauri-apps/plugin-fs'),
+      ])
+
+      const path = await save({
+        defaultPath: filename,
+        filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
+      })
+
+      if (!path) return false
+      await writeTextFile(path, fileContent)
+      return true
+    }
+
+    const blob = new Blob([fileContent], { type: 'application/yaml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+    return true
+  }
+
+  async function pickRoleImportFile() {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selection = await open({
+      multiple: false,
+      filters: [{ name: 'YAML', extensions: ['yaml', 'yml'] }],
+    })
+
+    if (Array.isArray(selection)) {
+      return typeof selection[0] === 'string' ? selection[0] : null
+    }
+
+    return typeof selection === 'string' ? selection : null
+  }
+
+  function createDefaultBehavioralContract() {
+    return {
+      communication: [],
+      execution: [],
+      escalation: [],
+    }
+  }
+
+  function buildRoleSavePayload(draft) {
+    const source = roleEditorRole && typeof roleEditorRole === 'object' ? roleEditorRole : null
+    const roleId = String(draft?.roleId ?? '').trim()
+    const kind = String(draft?.kind ?? source?.kind ?? 'agent').trim().toLowerCase() === 'lead'
+      ? 'lead'
+      : 'agent'
+    const tool = normalizeTool(draft?.tool ?? source?.tool ?? source?.cliTool ?? 'codex')
+    const model = String(draft?.model ?? '').trim() || defaultModelForTool(tool)
+    const defaultNamePattern = source?.defaults?.defaultNamePattern
+      ?? source?.defaults?.default_name_pattern
+      ?? (kind === 'lead' ? 'team-lead' : `${roleId || 'agent'}-{n}`)
+    const sourceConstraints = source?.constraints && typeof source.constraints === 'object'
+      ? source.constraints
+      : {}
+
+    return {
+      schema: {
+        kind: 'role_template',
+        version: Number(source?.schema?.version ?? 1) || 1,
+      },
+      roleId,
+      name: String(draft?.name ?? '').trim(),
+      version: String(source?.version ?? '1.0.0'),
+      kind,
+      defaults: {
+        cliTool: tool,
+        model,
+        defaultNamePattern,
+      },
+      instructions: String(draft?.instructions ?? '').trim(),
+      focusArea: draft?.focusArea ?? null,
+      contextSummary: draft?.contextSummary ?? null,
+      behaviorSummary: draft?.behaviorSummary ?? null,
+      behavioralContract:
+        source?.behavioralContract
+        ?? source?.behavioral_contract
+        ?? createDefaultBehavioralContract(),
+      capabilities: Array.isArray(source?.capabilities) ? source.capabilities : [],
+      provenance: source?.provenance ?? null,
+      constraints: {
+        minInstances:
+          kind === 'lead'
+            ? 1
+            : Math.max(0, Number(sourceConstraints.minInstances ?? 0) || 0),
+        maxInstances:
+          kind === 'lead'
+            ? 1
+            : Math.max(1, Number(sourceConstraints.maxInstances ?? 8) || 8),
+        requiresLeadTool: sourceConstraints.requiresLeadTool ?? null,
+        allowedProjectBinding: sourceConstraints.allowedProjectBinding ?? 'lead_project',
+      },
+    }
+  }
+
+  function openCreateRoleEditor() {
+    clearRoleStatus()
+    selectedRoleDetailId = ''
+    roleEditorRole = null
+    roleEditorError = ''
+    roleEditorSaving = false
+    roleEditorOpen = true
+  }
+
+  async function openRoleEditor(role = selectedRoleDetail) {
+    if (!role?.roleId || role.readOnly) return
+    clearRoleStatus()
+    roleEditorError = ''
+    roleEditorSaving = false
+
+    try {
+      const detail = await getRoleTemplate(role.roleId)
+      roleEditorRole = { ...role, ...detail }
+    } catch {
+      roleEditorRole = { ...role }
+    }
+
+    selectedRoleDetailId = ''
+    roleEditorOpen = true
+  }
+
+  async function handleRoleEditorSave(draft) {
+    roleEditorSaving = true
+    roleEditorError = ''
+
+    try {
+      const payload = buildRoleSavePayload(draft)
+      await upsertRoleTemplate(payload)
+      await onRefreshRoleTemplates?.()
+      closeRoleEditor()
+      selectedRoleDetailId = payload.roleId
+      showRoleStatus(`Saved '${payload.name}'.`)
+    } catch (error) {
+      roleEditorError = error?.message || 'Failed to save role template.'
+    } finally {
+      roleEditorSaving = false
+    }
+  }
+
+  async function handleImportYaml() {
+    clearRoleStatus()
+    let filePath = null
+
+    try {
+      filePath = await pickRoleImportFile()
+    } catch (error) {
+      showRoleStatus(error?.message || 'Failed to open the YAML import dialog.', 'error')
+      return
+    }
+
+    if (!filePath) return
+
+    try {
+      const result = await importRoleFromFile(filePath)
+      if (result?.conflict) {
+        importConflict = {
+          rawRole: result.role,
+          importedRole: result.role,
+          existingRole: result.conflict,
+        }
+        return
+      }
+
+      await onRefreshRoleTemplates?.()
+      selectedRoleDetailId = String(result?.role?.roleId ?? '').trim()
+      showRoleStatus(`Imported '${result?.role?.name ?? result?.role?.roleId ?? 'role'}'.`)
+    } catch (error) {
+      showRoleStatus(error?.message || 'Failed to import role YAML.', 'error')
+    }
+  }
+
+  function cancelImportConflict() {
+    importConflict = null
+  }
+
+  async function confirmImportConflictReplace() {
+    if (!importConflict?.rawRole) return
+    const pendingImport = importConflict
+    importConflict = null
+
+    try {
+      await upsertRoleTemplate(pendingImport.rawRole)
+      await onRefreshRoleTemplates?.()
+      selectedRoleDetailId = String(pendingImport.rawRole?.roleId ?? '').trim()
+      showRoleStatus(
+        `Replaced '${pendingImport.rawRole?.name ?? pendingImport.rawRole?.roleId ?? 'role'}'.`
+      )
+    } catch (error) {
+      showRoleStatus(error?.message || 'Failed to replace the existing role.', 'error')
+    }
+  }
+
+  async function handleRoleDetailExport() {
+    if (!selectedRoleDetail?.roleId || exportingRoleId) return
+    clearRoleStatus()
+    exportingRoleId = selectedRoleDetail.roleId
+
+    try {
+      const exported = await exportRoleToFile(selectedRoleDetail.roleId, 'yaml')
+      const saved = await saveExportedRoleFile(
+        exportFilenameForRole(selectedRoleDetail),
+        exported?.fileContent ?? ''
+      )
+      if (!saved) return
+      showRoleStatus(`Exported '${selectedRoleDetail.name}'.`)
+    } catch (error) {
+      showRoleStatus(error?.message || 'Failed to export role YAML.', 'error')
+    } finally {
+      exportingRoleId = ''
+    }
+  }
+
+  function requestRoleDelete() {
+    if (!selectedRoleDetail?.roleId || selectedRoleDetail.readOnly) return
+    deleteRoleContext = {
+      roleId: selectedRoleDetail.roleId,
+      name: selectedRoleDetail.name,
+    }
+  }
+
+  function cancelRoleDelete() {
+    deleteRoleContext = null
+  }
+
+  async function confirmRoleDelete() {
+    if (!deleteRoleContext?.roleId) return
+    const target = deleteRoleContext
+    deleteRoleContext = null
+
+    try {
+      await deleteRoleTemplate(target.roleId)
+      await onRefreshRoleTemplates?.()
+      if (selectedRoleDetailId === target.roleId) {
+        closeRoleDetail()
+      }
+      showRoleStatus(`Deleted '${target.name ?? target.roleId}'.`)
+    } catch (error) {
+      showRoleStatus(error?.message || 'Failed to delete role template.', 'error')
+    }
+  }
 </script>
 
 <section
@@ -1002,15 +1315,44 @@
             </p>
           </div>
 
-          <button
-            class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
-            type="button"
-            onclick={focusCatalogSearch}
-            data-testid="mesh-template-browse-catalog"
-          >
-            Focus search
-          </button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+              type="button"
+              onclick={handleImportYaml}
+              data-testid="mesh-builder-import-yaml"
+            >
+              Import YAML
+            </button>
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+              type="button"
+              onclick={openCreateRoleEditor}
+              data-testid="mesh-builder-create-role"
+            >
+              New role
+            </button>
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+              type="button"
+              onclick={focusCatalogSearch}
+              data-testid="mesh-template-browse-catalog"
+            >
+              Focus search
+            </button>
+          </div>
         </div>
+
+        {#if roleStatusMessage}
+          <div
+            class="mb-3 rounded-[16px] border px-3 py-2 text-[12px] {roleStatusKind === 'error'
+              ? (dark ? 'border-danger-400/30 bg-danger-500/10 text-danger-100' : 'border-danger-300 bg-danger-50 text-danger-700')
+              : (dark ? 'border-brand-400/30 bg-brand-500/10 text-zinc-100' : 'border-brand-200 bg-brand-50 text-brand-900')}"
+            data-testid="mesh-builder-role-status"
+          >
+            {roleStatusMessage}
+          </div>
+        {/if}
 
         <div class="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden" data-testid="mesh-builder-catalog-content">
           <label class="block">
@@ -1852,10 +2194,51 @@
       {dark}
       actions={{
         onAdd: handleRoleDetailAdd,
+        onEdit: selectedRoleDetail.readOnly ? undefined : () => openRoleEditor(selectedRoleDetail),
+        onExport: handleRoleDetailExport,
+        exportDisabled: exportingRoleId === selectedRoleDetail.roleId,
+        onDelete: selectedRoleDetail.readOnly ? undefined : requestRoleDelete,
+        deleteDisabled: Boolean(selectedRoleDetail.readOnly),
         onClose: closeRoleDetail,
       }}
     />
   {/if}
+
+  <MeshRoleEditorDialog
+    open={roleEditorOpen}
+    role={roleEditorRole}
+    {dark}
+    saving={roleEditorSaving}
+    errorMessage={roleEditorError}
+    onSave={handleRoleEditorSave}
+    onCancel={closeRoleEditor}
+  />
+
+  <ConfirmDialog
+    {dark}
+    open={Boolean(deleteRoleContext)}
+    title="Delete role?"
+    message={deleteRoleContext
+      ? `Delete '${deleteRoleContext.name ?? deleteRoleContext.roleId}' from the local catalog?`
+      : ''}
+    confirmLabel="Delete"
+    variant="danger"
+    onConfirm={confirmRoleDelete}
+    onCancel={cancelRoleDelete}
+  />
+
+  <ConfirmDialog
+    {dark}
+    open={Boolean(importConflict)}
+    title="Replace existing role?"
+    message={importConflict
+      ? `A role with id '${importConflict.rawRole?.roleId ?? ''}' already exists. Replace it with the imported YAML version?`
+      : ''}
+    confirmLabel="Replace"
+    variant="danger"
+    onConfirm={confirmImportConflictReplace}
+    onCancel={cancelImportConflict}
+  />
 </section>
 
 <style>

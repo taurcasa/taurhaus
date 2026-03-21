@@ -689,6 +689,31 @@ mod tests {
     }
 
     #[test]
+    fn export_role_to_file_returns_canonical_yaml_without_lossy_fields() {
+        let tmp = TempDir::new().expect("tempdir");
+        let state = TemplateStoreState::new(tmp.path().to_path_buf());
+        state.0.create_role(&sample_role()).expect("create role");
+
+        let exported = export_role_to_file_internal(
+            &state.0,
+            ExportRoleToFileRequest {
+                role_id: "sample-export-role".to_string(),
+                target_format: RoleExportFormat::Yaml,
+            },
+        )
+        .expect("export role");
+
+        assert_eq!(exported.target_format, RoleExportFormat::Yaml);
+        assert!(exported.lossy_fields.is_empty());
+
+        let parsed = serde_norway::from_str::<RoleTemplate>(&exported.file_content)
+            .expect("parse exported role yaml");
+        assert_eq!(parsed.role_id, "sample-export-role");
+        assert_eq!(parsed.name, "Sample Export Role");
+        assert_eq!(parsed.defaults.model, "claude-opus-4-6");
+    }
+
+    #[test]
     fn export_role_to_file_returns_not_found_for_missing_role() {
         let tmp = TempDir::new().expect("tempdir");
         let state = TemplateStoreState::new(tmp.path().to_path_buf());
