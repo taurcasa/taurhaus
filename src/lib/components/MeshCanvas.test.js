@@ -454,12 +454,12 @@ describe('MeshCanvas', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
-    expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
+    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5')
+    expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Active')
+    expect(screen.getByTestId('mesh-node-role-card-summary')).toHaveTextContent(
       'Architecture decisions and structural review'
     )
-    expect(screen.getByTestId('mesh-node-role-card-behavior')).toHaveTextContent(
-      'Handles pattern choices and escalates direction changes.'
-    )
+    expect(screen.getByTestId('mesh-node-role-card-hint')).toHaveTextContent('Click for details')
 
     await fireEvent.mouseLeave(node)
     expect(screen.queryByTestId('mesh-node-role-card')).not.toBeInTheDocument()
@@ -528,10 +528,12 @@ describe('MeshCanvas', () => {
     expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-role-card-name')).toHaveTextContent('developer1')
     expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Active')
     expect(screen.getByTestId('mesh-node-role-card-placeholder-title')).toHaveTextContent('No role defined')
     expect(screen.getByTestId('mesh-node-role-card-placeholder-message')).toHaveTextContent(
-      'Assign a role template to see focus area and behavioral boundaries here.'
+      'Assign a role template to show a compact focus summary here.'
     )
+    expect(screen.getByTestId('mesh-node-role-card-hint')).toHaveTextContent('Click for details')
 
     vi.useRealTimers()
   })

@@ -13,6 +13,7 @@
   const roleDescription = $derived.by(() =>
     String(node?.instructions ?? node?.description ?? '').trim()
   )
+  const status = $derived.by(() => String(node?.status ?? '').trim().toLowerCase())
   const toolLabel = $derived.by(() => {
     const value = String(node?.tool ?? node?.cliTool ?? node?.cli_tool ?? '').trim().toLowerCase()
     if (value === 'claude') return 'Claude'
@@ -21,16 +22,32 @@
     return value || 'Unknown'
   })
   const model = $derived.by(() => String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim())
-  const hasRoleContent = $derived(
-    roleName.length > 0
-      || roleDescription.length > 0
-      || focusArea.length > 0
-      || contextSummary.length > 0
-      || behaviorSummary.length > 0
-  )
+  const statusLabel = $derived.by(() => {
+    if (status === 'active') return 'Active'
+    if (status === 'idle') return 'Idle'
+    if (status === 'offline') return 'Offline'
+    return 'Unknown'
+  })
+  const statusTone = $derived.by(() => {
+    if (status === 'active') {
+      return dark
+        ? 'border-emerald-400/35 bg-emerald-500/14 text-emerald-100'
+        : 'border-emerald-300/80 bg-emerald-50 text-emerald-800'
+    }
+    if (status === 'idle') {
+      return dark
+        ? 'border-amber-400/35 bg-amber-500/14 text-amber-100'
+        : 'border-amber-300/80 bg-amber-50 text-amber-800'
+    }
+    return dark
+      ? 'border-white/10 bg-white/[0.04] text-zinc-300'
+      : 'border-zinc-200 bg-zinc-50 text-zinc-700'
+  })
+  const compactSummary = $derived.by(() => focusArea || contextSummary || behaviorSummary || roleDescription)
+  const hasRoleContent = $derived.by(() => compactSummary.length > 0)
   const placeholderTitle = $derived('No role defined')
   const placeholderMessage = $derived(
-    'Assign a role template to see focus area and behavioral boundaries here.'
+    'Assign a role template to show a compact focus summary here.'
   )
   const cardTone = $derived(
     dark
@@ -39,6 +56,7 @@
   )
   const labelTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
   const secondaryTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
+  const hintTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const anchoredStyle = $derived.by(() => {
     if (!anchor || typeof anchor !== 'object') return ''
     const left = Number(anchor.left)
@@ -61,34 +79,43 @@
   data-placement={anchor?.placement === 'top' ? 'top' : 'bottom'}
 >
   <div class="space-y-2">
-    <div class="space-y-0.5 min-w-0">
-      <p class="text-[13px] font-semibold truncate" data-testid="mesh-node-role-card-name" title={name}>{name}</p>
-      {#if roleName}
-        <p class="text-[12px] font-medium {secondaryTone}" data-testid="mesh-node-role-card-role-name">{roleName}</p>
-      {/if}
+    <div class="min-w-0 space-y-1.5">
+      <div class="space-y-0.5">
+        <p class="text-[13px] font-semibold truncate" data-testid="mesh-node-role-card-name" title={name}>{name}</p>
+        {#if roleName}
+          <p class="text-[12px] font-medium truncate {secondaryTone}" data-testid="mesh-node-role-card-role-name" title={roleName}>{roleName}</p>
+        {/if}
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <p
+          class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium {dark ? 'border-white/10 bg-white/[0.04] text-zinc-200' : 'border-brand-200 bg-brand-50/65 text-zinc-700'}"
+          data-testid="mesh-node-role-card-tool-model"
+          title={model ? `${toolLabel} · ${model}` : toolLabel}
+        >
+          <span class="inline-block h-1.5 w-1.5 rounded-full bg-brand-500" aria-hidden="true"></span>
+          {toolLabel}{model ? ` · ${model}` : ''}
+        </p>
+        <p
+          class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium {statusTone}"
+          data-testid="mesh-node-role-card-status"
+        >
+          {statusLabel}
+        </p>
+      </div>
     </div>
 
     {#if hasRoleContent}
-      {#if roleDescription}
-        <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-description">
-          {roleDescription}
+      <div class="space-y-0.5 min-w-0">
+        <p class="text-[10px] font-semibold uppercase tracking-wide {labelTone}">Focus</p>
+        <p
+          class="text-[11px] leading-snug line-clamp-2 {secondaryTone}"
+          data-testid="mesh-node-role-card-summary"
+          title={compactSummary}
+        >
+          {compactSummary}
         </p>
-      {/if}
-
-      {#if focusArea}
-        <div class="space-y-0.5">
-          <p class="text-[10px] font-semibold uppercase tracking-wide {labelTone}">Focus</p>
-          <p class="text-[12px] leading-snug {secondaryTone}" data-testid="mesh-node-role-card-focus">{focusArea}</p>
-        </div>
-      {/if}
-
-      {#if contextSummary}
-        <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-context">{contextSummary}</p>
-      {/if}
-
-      {#if behaviorSummary}
-        <p class="text-[11px] leading-relaxed {secondaryTone}" data-testid="mesh-node-role-card-behavior">{behaviorSummary}</p>
-      {/if}
+      </div>
     {:else}
       <div
         class="space-y-1 rounded-xl border px-3 py-2.5 {dark ? 'border-white/10 bg-white/[0.04]' : 'border-brand-200/80 bg-brand-50/60'}"
@@ -100,12 +127,10 @@
     {/if}
 
     <p
-      class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium {dark ? 'border-white/10 bg-white/[0.04] text-zinc-200' : 'border-brand-200 bg-brand-50/65 text-zinc-700'}"
-      data-testid="mesh-node-role-card-tool-model"
-      title={model ? `${toolLabel} · ${model}` : toolLabel}
+      class="text-[10px] font-medium uppercase tracking-[0.14em] {hintTone}"
+      data-testid="mesh-node-role-card-hint"
     >
-      <span class="inline-block h-1.5 w-1.5 rounded-full bg-brand-500" aria-hidden="true"></span>
-      {toolLabel}{model ? ` · ${model}` : ''}
+      Click for details
     </p>
   </div>
 </aside>

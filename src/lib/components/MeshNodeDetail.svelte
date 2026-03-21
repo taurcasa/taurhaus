@@ -70,23 +70,28 @@
 
   const overlayTone = $derived(
     dark
-      ? 'border-white/[0.08] bg-brand-950/96 text-zinc-100 shadow-[0_26px_90px_rgba(0,0,0,0.55)]'
-      : 'border-brand-200/70 bg-white/96 text-zinc-900 shadow-[0_26px_90px_rgba(15,23,42,0.18)]'
+      ? 'border-white/[0.1] bg-brand-950/98 text-zinc-100 shadow-[0_38px_130px_rgba(0,0,0,0.62),0_10px_28px_rgba(2,10,12,0.4)]'
+      : 'border-brand-200/80 bg-white/98 text-zinc-900 shadow-[0_32px_120px_rgba(15,23,42,0.18),0_10px_28px_rgba(15,23,42,0.08)]'
   )
   const toolbarTone = $derived(
     dark
-      ? 'border-white/[0.08] bg-brand-950/88'
-      : 'border-brand-200/70 bg-white/92'
+      ? 'border-white/[0.08] bg-brand-950/92 shadow-[0_12px_36px_rgba(0,0,0,0.2)]'
+      : 'border-brand-200/70 bg-white/95 shadow-[0_10px_26px_rgba(15,23,42,0.08)]'
   )
   const focusCardTone = $derived(
     dark
-      ? 'border-brand-400/25 bg-brand-500/12'
-      : 'border-brand-200/70 bg-brand-50/90'
+      ? 'border-brand-300/25 bg-brand-500/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_16px_34px_rgba(0,0,0,0.18)]'
+      : 'border-brand-200/80 bg-brand-50/95 shadow-[0_14px_32px_rgba(15,23,42,0.06)]'
   )
   const configTone = $derived(
     dark
-      ? 'border-white/[0.08] bg-white/[0.03]'
-      : 'border-zinc-200 bg-zinc-50/70'
+      ? 'border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+      : 'border-zinc-200 bg-zinc-50/85 shadow-[0_10px_26px_rgba(15,23,42,0.05)]'
+  )
+  const sectionTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_16px_36px_rgba(0,0,0,0.16)]'
+      : 'border-zinc-200/90 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.06)]'
   )
   const secondaryActionTone = $derived(
     dark
@@ -115,8 +120,8 @@
   )
   const closeTone = $derived(
     dark
-      ? 'text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-100'
-      : 'text-zinc-500 hover:bg-black/5 hover:text-zinc-900'
+      ? 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-100'
+      : 'border-zinc-200 bg-white/90 text-zinc-500 hover:bg-black/5 hover:text-zinc-900'
   )
   const codeTheme = $derived(dark ? 'github-dark' : 'github-light')
   const breadcrumbLabel = $derived(normalizedContext === 'runtime' ? 'Team Roster' : 'Role Catalog')
@@ -269,7 +274,7 @@
 
 <div
   bind:this={modalRootEl}
-  class="fixed inset-0 z-40 flex items-center justify-center bg-black/58 p-4 backdrop-blur-[2px]"
+  class="fixed inset-0 z-40 flex items-center justify-center bg-black/62 p-4 backdrop-blur-[6px]"
   data-testid="mesh-node-detail-host"
   role="presentation"
   tabindex="-1"
@@ -278,17 +283,28 @@
 >
   <div
     bind:this={dialogEl}
-    class="relative flex h-[min(100%,calc(100vh-2rem))] w-full max-w-[960px] flex-col overflow-hidden rounded-[30px] border {overlayTone}"
+    class="relative flex h-[min(100%,calc(100vh-2rem))] w-full max-w-[980px] flex-col overflow-hidden rounded-[32px] border {overlayTone}"
     role="dialog"
     aria-modal="true"
     aria-label={titleLabel}
     tabindex="-1"
     data-testid="mesh-node-detail"
   >
-    <div class="sticky top-0 z-10 border-b px-6 pb-4 pt-6 backdrop-blur {toolbarTone}">
-      <div class="mx-auto w-full max-w-[640px]">
-        <div class="flex items-start justify-between gap-4">
-          <div class="min-w-0 space-y-2">
+    <button
+      bind:this={closeButtonEl}
+      class="absolute right-6 top-6 z-20 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition {closeTone}"
+      type="button"
+      aria-label="Close role detail"
+      onclick={close}
+      data-testid="mesh-node-detail-close"
+    >
+      <span aria-hidden="true" class="text-lg leading-none">×</span>
+    </button>
+
+    <div class="sticky top-0 z-10 border-b px-6 pb-5 pt-6 backdrop-blur {toolbarTone}">
+      <div class="mx-auto w-full max-w-[640px] pr-12">
+        <div class="flex items-start gap-4">
+          <div class="min-w-0 flex-1 space-y-2">
             <p class="text-[11px] font-medium uppercase tracking-[0.18em] {t.textMuted}">
               {breadcrumbLabel}
             </p>
@@ -316,17 +332,6 @@
               {/if}
             </div>
           </div>
-
-          <button
-            bind:this={closeButtonEl}
-            class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-transparent transition {closeTone}"
-            type="button"
-            aria-label="Close role detail"
-            onclick={close}
-            data-testid="mesh-node-detail-close"
-          >
-            <span aria-hidden="true" class="text-lg leading-none">×</span>
-          </button>
         </div>
 
         <div class="mt-5 flex flex-wrap items-center gap-2" data-testid="mesh-node-detail-toolbar">
@@ -382,10 +387,10 @@
       </div>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-6">
+    <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-7">
       <div class="mx-auto flex w-full max-w-[640px] flex-col gap-6">
         {#if focusArea}
-          <section class="rounded-[22px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
+          <section class="rounded-[24px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
             <div data-testid="mesh-node-detail-focus-area">
               <MarkdownRenderer source={focusArea} {dark} codeTheme={codeTheme} />
             </div>
@@ -393,14 +398,16 @@
         {/if}
 
         {#if contextMarkdown}
-          <section class="space-y-3" data-testid="mesh-node-detail-context-summary">
+          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-context-summary">
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Context Summary</h3>
-            <MarkdownRenderer source={contextMarkdown} {dark} codeTheme={codeTheme} />
+            <div class="{t.textPrimary}">
+              <MarkdownRenderer source={contextMarkdown} {dark} codeTheme={codeTheme} />
+            </div>
           </section>
         {/if}
 
         {#if behaviorMarkdown}
-          <section class="space-y-3" data-testid="mesh-node-detail-role-section">
+          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-role-section">
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Behavior Boundaries</h3>
             <div class="rounded-[20px] border px-5 py-4 {configTone}" data-testid="mesh-node-detail-behavior-summary">
               <MarkdownRenderer source={behaviorMarkdown} {dark} codeTheme={codeTheme} />
@@ -409,16 +416,18 @@
         {/if}
 
         {#if instructionsMarkdown}
-          <section class="space-y-3" data-testid="mesh-node-detail-description">
+          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-description">
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">
               {normalizedContext === 'runtime' ? 'Operational Notes' : 'Instructions'}
             </h3>
-            <MarkdownRenderer source={instructionsMarkdown} {dark} codeTheme={codeTheme} />
+            <div class="{t.textPrimary}">
+              <MarkdownRenderer source={instructionsMarkdown} {dark} codeTheme={codeTheme} />
+            </div>
           </section>
         {/if}
 
         {#if configurationEntries.length > 0}
-          <section class="space-y-3" data-testid={normalizedContext === 'runtime' ? 'mesh-node-detail-runtime' : 'mesh-node-detail-configuration'}>
+          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid={normalizedContext === 'runtime' ? 'mesh-node-detail-runtime' : 'mesh-node-detail-configuration'}>
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Configuration</h3>
             <dl class="rounded-[20px] border px-5 py-4 {configTone}">
               {#each configurationEntries as entry}

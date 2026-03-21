@@ -20,10 +20,11 @@ function renderRoleCard(props = {}) {
 }
 
 describe('MeshNodeRoleCard', () => {
-  it('renders role description from the runtime description field', () => {
+  it('renders a compact runtime summary with tool, model, status, and click hint', () => {
     renderRoleCard({
       node: {
         roleName: 'Claude Reviewer',
+        status: 'active',
         description: 'Perform code reviews focused on correctness, regressions, security risk, and missing tests.',
         focusArea: '',
         contextSummary: '',
@@ -32,9 +33,12 @@ describe('MeshNodeRoleCard', () => {
     })
 
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Claude Reviewer')
-    expect(screen.getByTestId('mesh-node-role-card-description')).toHaveTextContent(
+    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Active')
+    expect(screen.getByTestId('mesh-node-role-card-summary')).toHaveTextContent(
       'Perform code reviews focused on correctness, regressions, security risk, and missing tests.'
     )
+    expect(screen.getByTestId('mesh-node-role-card-hint')).toHaveTextContent('Click for details')
     expect(screen.queryByTestId('mesh-node-role-card-placeholder')).not.toBeInTheDocument()
   })
 
@@ -45,17 +49,20 @@ describe('MeshNodeRoleCard', () => {
         focusArea: '',
         contextSummary: null,
         behaviorSummary: null,
+        status: 'idle',
       },
     })
 
     expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-role-card-name')).toHaveTextContent('developer1')
     expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Idle')
     expect(screen.getByTestId('mesh-node-role-card-placeholder-title')).toHaveTextContent('No role defined')
     expect(screen.getByTestId('mesh-node-role-card-placeholder-message')).toHaveTextContent(
-      'Assign a role template to see focus area and behavioral boundaries here.'
+      'Assign a role template to show a compact focus summary here.'
     )
-    expect(screen.queryByTestId('mesh-node-role-card-focus')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-role-card-hint')).toHaveTextContent('Click for details')
+    expect(screen.queryByTestId('mesh-node-role-card-summary')).not.toBeInTheDocument()
   })
 
   it('renders placeholder content in both dark and light themes', async () => {

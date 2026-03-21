@@ -1679,12 +1679,12 @@ describe('MeshTab', () => {
 
     expect(screen.getByTestId('mesh-node-role-card')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
-    expect(screen.getByTestId('mesh-node-role-card-description')).toHaveTextContent(
-      'Implements UI surface details for the mesh canvas.'
-    )
-    expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
+    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Idle')
+    expect(screen.getByTestId('mesh-node-role-card-summary')).toHaveTextContent(
       'Architecture decisions and structural review'
     )
+    expect(screen.getByTestId('mesh-node-role-card-hint')).toHaveTextContent('Click for details')
 
     vi.useRealTimers()
   })
@@ -1711,18 +1711,12 @@ describe('MeshTab', () => {
     await vi.advanceTimersByTimeAsync(200)
 
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
-    expect(screen.getByTestId('mesh-node-role-card-description')).toHaveTextContent(
-      'Implements UI surface details for the mesh canvas.'
-    )
-    expect(screen.getByTestId('mesh-node-role-card-focus')).toHaveTextContent(
+    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Idle')
+    expect(screen.getByTestId('mesh-node-role-card-summary')).toHaveTextContent(
       'Architecture decisions and structural review'
     )
-    expect(screen.getByTestId('mesh-node-role-card-context')).toHaveTextContent(
-      'Carries long-lived context around module boundaries and reviews.'
-    )
-    expect(screen.getByTestId('mesh-node-role-card-behavior')).toHaveTextContent(
-      'Handles pattern choices and escalates direction changes.'
-    )
+    expect(screen.getByTestId('mesh-node-role-card-hint')).toHaveTextContent('Click for details')
 
     liveStatusPending.resolve(buildLiveTeamStatus())
     vi.useRealTimers()
