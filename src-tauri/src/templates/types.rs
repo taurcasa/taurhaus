@@ -1238,7 +1238,7 @@ mod tests {
             .expect("member names should resolve");
 
         assert!(names.iter().any(|name| name == "lead-taurhaus"));
-        assert!(names.iter().any(|name| name == "dev-1"));
+        assert!(names.iter().any(|name| name == "quick-dev"));
         assert_eq!(names.len(), 2);
     }
 

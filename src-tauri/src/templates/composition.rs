@@ -585,7 +585,7 @@ mod tests {
             .roster
             .iter()
             .any(|member| member.name == "lead-taurhaus"));
-        assert!(result.roster.iter().any(|member| member.name == "dev-1"));
+        assert!(result.roster.iter().any(|member| member.name == "quick-dev"));
     }
 
     #[test]

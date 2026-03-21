@@ -657,8 +657,7 @@ mod tests {
         assert!(body.contains("Ship the requested change with tests first."));
         assert!(body.contains("## Focus Area"));
         assert!(body.contains("## Behavioral Contract"));
-        assert!(exported.lossy_fields.contains(&"capabilities".to_string()));
-        assert!(exported.lossy_fields.contains(&"constraints".to_string()));
+        assert!(exported.lossy_fields.is_empty());
     }
 
     #[test]
@@ -689,10 +688,7 @@ mod tests {
         assert_eq!(parsed.model, "claude-opus-4-6");
         assert!(body.contains("## Context Summary"));
         assert!(body.contains("## Constraints"));
-        assert!(exported
-            .lossy_fields
-            .contains(&"behavioral_contract".to_string()));
-        assert!(exported.lossy_fields.contains(&"constraints".to_string()));
+        assert!(exported.lossy_fields.is_empty());
     }
 
     #[test]
