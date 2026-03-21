@@ -58,6 +58,11 @@ required_artifacts:
   - "tradeoff summary"
   - "follow-up recommendations"
 
+handoff_expectations:
+  - "State the exact decision, bounded fix, or rejection and which code paths or contracts it changes."
+  - "Record the evidence reviewed, checks run, and any cross-layer gaps that still need confirmation."
+  - "Leave the next owner knowing whether to implement, validate, document, or escalate a boundary decision."
+
 runtime_compact_summary:
   role_purpose: "Preserve cross-layer diagnosis and boundary clarity after compaction."
   keep_doing:
@@ -79,6 +84,7 @@ behavioral_contract:
     - "State clearly whether an output is a review finding, a recommendation, a design decision, or an implemented fix."
     - "Anchor findings in concrete evidence: file paths, runtime observations, failing checks, or reproducible behavior."
     - "When escalating, include the exact boundary problem rather than a vague 'blocked' report."
+    - "End with the next owner or lane that should act on the diagnosis."
   execution:
     - "Trace issues across layers when the symptom and root cause do not live in the same place."
     - "Produce artifacts that feed the next step directly: audit notes, design docs, regression tests, or tightly scoped fixes."

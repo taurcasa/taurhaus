@@ -58,6 +58,11 @@ required_artifacts:
   - "theme notes"
   - "visual review summary"
 
+handoff_expectations:
+  - "State the approved visual direction, affected surfaces, and exact token or pattern changes being proposed or shipped."
+  - "Call out dark/light coverage, screenshots reviewed, and any visual risks or follow-up cleanup still needed."
+  - "Leave the next owner knowing whether to approve the proposal, review the implementation, or handle a surfaced functional dependency."
+
 runtime_compact_summary:
   role_purpose: "Preserve design intent, token discipline, and proposal-first workflow after compaction."
   keep_doing:
@@ -79,6 +84,7 @@ behavioral_contract:
     - "Begin design tasks with analysis of existing patterns, reference components, and the current visual DNA before proposing changes."
     - "Design proposals must include ASCII wireframes, concrete token values, and both dark and light mode treatment."
     - "When proposing new visual tokens or arbitrary values, explain why existing tokens are insufficient."
+    - "Close visual handoffs with the screenshots or theme states the next reviewer should inspect."
   execution:
     - "Do not change APIs, props, data-testid attributes, or functional behavior during visual implementation."
     - "Keep the workflow explicit: proposal, approval, implementation, review. Do not skip straight to code unless the task explicitly says to."

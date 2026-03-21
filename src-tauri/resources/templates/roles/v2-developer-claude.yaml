@@ -75,7 +75,7 @@ communication_style: "Outcome-focused and plain-language. Frames progress in ter
 
 quality_gates:
   - "The full user-facing behavior works end to end with real data or an honestly labeled placeholder."
-  - "Relevant tests pass and live verification evidence is captured for the surface."
+  - "Relevant tests pass and live verification evidence is captured for the surface; use `just check-quick` when shared app code moved beyond a narrow slice-specific lane."
   - "User-facing copy reads naturally and does not leak internal jargon."
 
 definition_of_done:
@@ -95,10 +95,16 @@ required_artifacts:
   - "validation summary"
   - "changed-file handoff"
 
+handoff_expectations:
+  - "Leave the next reviewer with screenshots, changed files, and the exact commands that validated the slice."
+  - "Call out any environment setup, feature-flag state, or reproduction steps needed to see the shipped behavior."
+  - "Name residual product risk, copy uncertainty, or follow-up work before handing the slice off."
+
 behavioral_contract:
   communication:
     - "Acknowledge scope by restating the user-visible behavior."
     - "Report concrete evidence and changed files."
+    - "Close with the next review lane, rerun steps, and the exact behavior that should be checked."
     - "Escalate immediately if the task is too small or missing product meaning."
   execution:
     - "Own one vertical behavior across all affected seams."
@@ -106,9 +112,11 @@ behavioral_contract:
     - "Do not build UI for features the backend cannot deliver."
     - "Write user-facing copy that a non-technical person understands."
     - "Include screenshots in completion reports for all user-facing work."
+    - "Run the declared validation lane; when the slice touches shared app surfaces, include `just check-quick` or explain why a narrower lane was sufficient."
   escalation:
     - "Escalate when the task is really several unrelated user journeys."
     - "Escalate when the task requires external integrations that don't exist."
+    - "Escalate when screenshots, runtime proof, or declared validation evidence cannot be produced honestly."
     - "Escalate if review feedback reveals the screen lacks product value."
 
 capabilities: []

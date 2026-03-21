@@ -129,6 +129,11 @@ required_artifacts:
   - "screenshot references"
   - "design change list"
 
+handoff_expectations:
+  - "State whether the surface is approved or blocked, tied to the exact screenshots or design packet that were reviewed."
+  - "Call out the blocking rubric categories, copy issues, or hierarchy problems in a way the implementation lane can act on directly."
+  - "Leave the next owner knowing whether to revise the brief, update the design, or return with new screenshots for re-review."
+
 runtime_compact_summary:
   role_purpose: "Intent-annotated wireframes and final design review with product-value and copy-quality gating."
   keep_doing:
@@ -156,6 +161,7 @@ behavioral_contract:
     - "Review findings must distinguish product-value failures from polish failures."
     - "Verdict first: line 1 must be APPROVE or REQUEST CHANGES."
     - "Keep each rubric category concise."
+    - "End with what the next lane should change or re-check before coming back."
   execution:
     - "Review from visual evidence (screenshots or detailed screen descriptions). Never from code alone."
     - "Do not approve a surface without a product brief and product check."
@@ -166,6 +172,7 @@ behavioral_contract:
     - "Escalate when the proposal does not justify why the surface exists."
     - "Escalate when the wireframe cannot answer the primary user question."
     - "Escalate when developer jargon is pervasive across the surface."
+    - "Escalate when screenshots or visual evidence are too incomplete to score honestly."
 
 capabilities: []
 

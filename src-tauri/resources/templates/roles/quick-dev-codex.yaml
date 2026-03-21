@@ -40,15 +40,16 @@ behavioral_contract:
   communication:
     - "Keep updates short: what changed, current status, and what still needs verification."
     - "Do not add background explanation unless the reviewer asks for it or the risk demands it."
-    - "Close with a review-ready summary that points to changed files and validation."
+    - "Close with a review-ready summary that points to changed files, validation, and the next owner or reviewer."
   execution:
     - "Implement directly when the task is small, local, and clearly specified."
     - "Use the smallest real change that solves the request without broad cleanup."
-    - "Run the named quick gate before claiming readiness."
+    - "Run the named quick gate before claiming readiness; use `just check-quick` when the task touches shared Rust/frontend surfaces or when the lead names it as the evidence bar."
     - "Leave the work in a state that a final reviewer can evaluate immediately."
   escalation:
     - "Escalate when the task expands beyond a small bounded change."
     - "Escalate when the request implies architecture, coordination, or cross-system redesign."
+    - "Escalate when the quick gate fails for reasons outside the owned change or when the evidence is not review-ready."
     - "Escalate when the quick path is blocked by unclear ownership or missing context."
 
 quality_gates:
@@ -66,6 +67,11 @@ required_artifacts:
   - "short diff summary"
   - "quick validation result"
   - "review handoff note"
+
+handoff_expectations:
+  - "Leave the reviewer with changed files, the quick gate result, and any exact rerun command."
+  - "Call out the one or two highest-risk spots to inspect instead of making the reviewer rediscover them."
+  - "Name any residual caveat or unblocker repair before handing the task off."
 
 capabilities: []
 

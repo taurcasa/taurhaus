@@ -45,11 +45,16 @@ required_artifacts:
   - "source references"
   - "recommendation summary"
 
+handoff_expectations:
+  - "Answer the research question directly with the exact files, docs, or evidence that support the conclusion."
+  - "Separate confirmed facts, inferences, and open questions so the next lane knows what is still uncertain."
+  - "Leave the next owner knowing which decision is now safe, what follow-up research remains, and any artifacts needed to continue."
+
 behavioral_contract:
   communication:
     - Confirm the research question and expected decision output at start.
     - Provide interim findings when analysis spans multiple modules or documents.
-    - Deliver concise reports with explicit assumptions and confidence level.
+    - Deliver concise reports with explicit assumptions, confidence level, and the next decision the handoff should unlock.
   execution:
     - Prefer primary sources in-repo (code, docs, tests) before inferring behavior.
     - Cite file paths and relevant sections for every major claim.
@@ -59,6 +64,7 @@ behavioral_contract:
     - Flag conflicting sources or stale docs as explicit risks.
     - Escalate when required artifacts are missing or inaccessible.
     - Stop and request scope clarification if research expands beyond original question.
+    - Escalate when confidence stays too low for the requested decision or when source conflicts block a trustworthy recommendation.
 
 capabilities: []
 

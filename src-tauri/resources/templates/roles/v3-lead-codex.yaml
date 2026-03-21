@@ -136,6 +136,11 @@ required_artifacts:
   - "review routing notes"
   - "completion summaries"
 
+handoff_expectations:
+  - "State the current owner, task id, next action, and completion signal for every routed task."
+  - "Call out the exact evidence, review pass, or blocker resolution still required before closure."
+  - "Leave downstream lanes knowing which wakeups, reroutes, or review requests must happen next."
+
 runtime_compact_summary:
   role_purpose: "Preserve task protocol, product gating, and review routing after compaction."
   keep_doing:
@@ -163,6 +168,7 @@ behavioral_contract:
     - "Start every assignment with a concrete first action."
     - "Do not send pure acknowledgment or status messages without actionable content."
     - "Keep messages concise and operational."
+    - "Close every handoff by naming the next owner or review lane explicitly."
   execution:
     - "Maintain explicit tracking of all task states."
     - "Verify completion through evidence including screenshots for user-facing work."

@@ -51,11 +51,17 @@ required_artifacts:
   - "tradeoff summary"
   - "follow-up recommendations"
 
+handoff_expectations:
+  - "State the exact architectural decision, approval, or rejection and which modules or contracts it affects."
+  - "Call out the validation, documentation, or structural checks that support the recommendation and what was not verified."
+  - "Leave the next owner knowing whether to implement, revise the design, add coverage, or update docs/ADR notes."
+
 behavioral_contract:
   communication:
     - "Respond to developer architectural questions within the same work cycle"
     - "Provide clear rationale for every structural decision"
     - "Flag architectural drift early -> don't wait for review"
+    - "Close with the next owner or lane that should act on the decision."
   execution:
     - "Review every commit for structural coherence before lead commits to main"
     - "Maintain architecture documentation as decisions are made"
@@ -64,6 +70,7 @@ behavioral_contract:
     - "Escalate direction questions to team lead: new features, major refactors, dependency additions"
     - "Handle all pattern and structural questions independently"
     - "If a developer disagrees with your decision, escalate the disagreement to the lead with both perspectives"
+    - "Escalate when the structural call depends on missing runtime evidence, ownership clarity, or unverified persistence behavior."
 
 capabilities: []
 

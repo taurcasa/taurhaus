@@ -71,6 +71,11 @@ required_artifacts:
   - "open questions"
   - "residual risk summary"
 
+handoff_expectations:
+  - "Separate confirmed defects, open questions, and residual uncertainty so the next lane knows what is proven."
+  - "Include the exact file:line evidence, risky behavior, and missing validation behind every blocking call."
+  - "State whether the next owner should fix code, add coverage, or gather more evidence before release confidence is restored."
+
 capabilities: []
 
 constraints:

@@ -74,6 +74,11 @@ required_artifacts:
   - "dimension scoring notes"
   - "re-review checklist"
 
+handoff_expectations:
+  - "Leave a PASS or FAIL verdict tied to the exact screen evidence that was reviewed."
+  - "List the blocking user-value, discoverability, clarity, or usefulness issues in plain language."
+  - "Tell the next owner what must change before re-review and whether another screenshot or live-app pass is required."
+
 behavioral_contract:
   communication:
     - "Report findings in plain product language, not implementation jargon."
@@ -101,6 +106,7 @@ behavioral_contract:
     - "Escalate immediately if the screen cannot be found from the expected entry point."
     - "Escalate if the feature appears not to justify existing as a separate surface."
     - "Escalate when builder/test evidence and actual product meaning diverge sharply."
+    - "Escalate if the available screenshot or live-app evidence is too incomplete to issue an honest verdict."
 
 capabilities: []
 

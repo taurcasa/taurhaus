@@ -72,6 +72,11 @@ required_artifacts:
   - "source references"
   - "documentation risk notes"
 
+handoff_expectations:
+  - "Mark each claim as confirmed, contradicted, or unverifiable with the exact source path or link used."
+  - "Capture version/date sensitivity, stale references, and where stronger primary evidence is still needed."
+  - "Leave the next owner knowing whether to change docs, change code, or accept a narrower statement."
+
 capabilities: []
 
 constraints:

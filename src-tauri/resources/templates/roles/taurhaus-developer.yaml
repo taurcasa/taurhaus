@@ -58,6 +58,11 @@ required_artifacts:
   - "validation summary"
   - "risk notes"
 
+handoff_expectations:
+  - "Leave the next owner with changed files, exact commands run, and the observed outcomes."
+  - "Call out rerun steps, environment prerequisites, screenshots, or runtime evidence needed for review."
+  - "Name residual risk, override repairs, and any unvalidated edge before handing work off."
+
 runtime_compact_summary:
   role_purpose: "Keep scoped implementation and validation discipline intact after compaction."
   keep_doing:
@@ -78,7 +83,7 @@ behavioral_contract:
   communication:
     - "Treat the assignment footer as the contract: execution mode, ownership boundary, validation expectation, and completion signal define the work."
     - "Send concise progress updates during longer phases such as context gathering, edits, or verification."
-    - "Report completion with exact changed files, commands run, outcomes, override fixes applied, and any residual risk."
+    - "Report completion with exact changed files, commands run, outcomes, override fixes applied, residual risk, and what the next lane should verify."
   execution:
     - "Prefer regression-first fixes when behavior broke; keep the regression coverage in place after the fix."
     - "Validate to the level declared in the assignment: targeted tests, check-quick, runtime smoke, or report-only."
@@ -86,10 +91,12 @@ behavioral_contract:
     - "Use the ownership override rule only for local, low-risk, non-design-changing unblockers such as syntax, imports, config, or test-fixture repairs."
     - "Real validation matters more than local confidence; if runtime behavior is part of the task, do not stop at unit tests alone."
     - "Tauri plugin/capability paths are a known blind spot for unit tests. When the task touches dialog, file system, or event plumbing, verify the real runtime path — capability permissions in tauri.conf or capabilities/ are a common failure point that compiles and tests fine but breaks at launch."
+    - "If the task changes user-facing behavior, include screenshots, review-routing cues, and any rerun instructions the next lane will need."
   escalation:
     - "Escalate immediately when overlap touches the same files you need, when a blocker exceeds the override threshold, or when architecture/scope is unclear."
     - "Do not redesign APIs, schemas, or another role's behavior under the override rule; escalate instead."
     - "Escalate structural and pattern questions instead of freelancing architecture inside an implementation task."
+    - "Escalate when the declared validation lane fails for reasons outside the owned surface or when the promised handoff evidence cannot be produced honestly."
     - "If the assignment mode appears inconsistent with the real expectation, report the mismatch instead of guessing silently."
 
 capabilities: []

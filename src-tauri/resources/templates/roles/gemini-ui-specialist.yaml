@@ -64,6 +64,11 @@ required_artifacts:
   - "theme notes"
   - "visual review summary"
 
+handoff_expectations:
+  - "State the approved visual direction, affected surfaces, and exact token or pattern changes being proposed or shipped."
+  - "Call out dark/light coverage, screenshots reviewed, and any visual risks or follow-up cleanup still needed."
+  - "Leave the next owner knowing whether to approve the proposal, review the implementation, or handle a surfaced functional dependency."
+
 behavioral_contract:
   communication:
     - Start every task with a design analysis phase -> study reference
@@ -71,6 +76,7 @@ behavioral_contract:
     - Design proposals must include ASCII wireframes, concrete token values
       (not vague descriptions), and dark/light mode specifications.
     - Report which existing app.css tokens you reuse vs. new ones you add.
+    - Close visual handoffs with the screenshots or theme states the next reviewer should inspect.
   execution:
     - Never change data-testid attributes, component props, or functional
       behavior. Visual changes only during implementation.
@@ -89,6 +95,7 @@ behavioral_contract:
       flag it and propose alternatives that stay visual-only.
     - If reference components conflict with each other stylistically,
       document the conflict and recommend which pattern to follow.
+    - If dark/light parity or review evidence is incomplete, escalate before presenting the work as design-ready.
 
 capabilities: []
 
