@@ -73,6 +73,9 @@
       ? 'border-white/[0.08] bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08]'
       : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100'
   )
+  const rosterPanelHighlightTone = $derived(
+    dark ? 'bg-white/[0.02]' : 'bg-brand-50/55'
+  )
   const leadDropTone = $derived(
     dark
       ? 'border-brand-500/40 bg-brand-500/8'
@@ -86,7 +89,7 @@
   const rosterSectionTone = $derived(
     dark
       ? 'border-white/[0.08] bg-white/[0.02]'
-      : 'border-zinc-200/90 bg-zinc-50/70'
+      : 'border-brand-200/80 bg-brand-50/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]'
   )
   const presetRowTone = $derived(
     dark
@@ -97,6 +100,16 @@
     dark
       ? 'border-white/[0.08] bg-white/[0.06] text-zinc-300'
       : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+  )
+  const teamSummaryTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-black/10'
+      : 'border-brand-200/80 bg-brand-50/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]'
+  )
+  const agentDropzoneTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-black/15'
+      : 'border-brand-200/75 bg-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]'
   )
 
   let searchQuery = $state('')
@@ -636,23 +649,23 @@
     if (kind === 'lead') {
       return dark
         ? 'border-amber-400/35 bg-amber-500/10'
-        : 'border-amber-300/80 bg-amber-50/95'
+        : 'border-amber-300/90 bg-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
     }
 
     const normalizedTool = normalizeTool(tool)
     if (normalizedTool === 'codex') {
       return dark
         ? 'border-sky-400/28 bg-sky-500/10'
-        : 'border-sky-300/75 bg-sky-50/95'
+        : 'border-sky-300/85 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
     }
     if (normalizedTool === 'gemini') {
       return dark
         ? 'border-violet-400/28 bg-violet-500/10'
-        : 'border-violet-300/75 bg-violet-50/95'
+        : 'border-violet-300/85 bg-violet-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
     }
     return dark
       ? 'border-emerald-400/28 bg-emerald-500/10'
-      : 'border-emerald-300/75 bg-emerald-50/95'
+      : 'border-emerald-300/85 bg-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
   }
 
   function memberAccentTone(tool, kind = 'agent') {
@@ -1354,10 +1367,10 @@
       </section>
 
       <section
-        class="flex min-h-0 flex-col gap-4 overflow-hidden p-4 md:pl-5 {highlightedRosterSection === 'all' ? 'bg-white/[0.02]' : ''}"
+        class="flex min-h-0 flex-col gap-4 overflow-hidden p-4 md:pl-5 {highlightedRosterSection === 'all' ? rosterPanelHighlightTone : ''}"
         data-testid="mesh-builder-team-panel"
       >
-        <div class="rounded-[22px] border px-4 py-4 {dark ? 'border-white/[0.08] bg-black/10' : 'border-white/70 bg-white/65'}">
+        <div class="rounded-[22px] border px-4 py-4 {teamSummaryTone}" data-testid="mesh-builder-team-summary-card">
           <div class="space-y-3">
             <div class="min-w-0 space-y-3">
               <div class="flex items-center gap-2">
@@ -1457,7 +1470,7 @@
             </div>
 
             <section
-              class="space-y-2 transition {highlightedRosterSection === 'lead' || highlightedRosterSection === 'all' ? leadDropTone : ''}"
+              class="space-y-2 rounded-[22px] border p-2.5 transition {highlightedRosterSection === 'lead' || highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
               data-testid="mesh-builder-lead-section"
             >
               {#if normalizedTeam.lead}
@@ -1597,7 +1610,7 @@
             </div>
 
             <section
-              class="space-y-2 transition {highlightedRosterSection === 'agents' || highlightedRosterSection === 'all' ? leadDropTone : ''}"
+              class="space-y-2 rounded-[22px] border p-2.5 transition {highlightedRosterSection === 'agents' || highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
               data-testid="mesh-builder-agents-section"
             >
               {#each agents as agent (agent.id)}
@@ -1715,7 +1728,7 @@
               {/each}
 
               <div
-                class="rounded-[18px] border border-dashed px-4 py-3 text-center {surfaceTone}"
+                class="rounded-[18px] border border-dashed px-4 py-3 text-center {agentDropzoneTone}"
                 data-testid="mesh-builder-agent-dropzone"
                 data-dropzone-mode={agents.length > 0 ? 'compact' : 'empty'}
               >
