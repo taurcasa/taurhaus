@@ -25,6 +25,31 @@ export function applyNamePattern(pattern, n, projectName) {
     .replace(/\{project\}/g, projectName)
 }
 
+function seenNameMapHas(seenNames, name) {
+  return seenNames instanceof Set
+    ? seenNames.has(name)
+    : seenNames.has(name)
+}
+
+function seenNameMapAdd(seenNames, name) {
+  if (seenNames instanceof Set) {
+    seenNames.add(name)
+    return
+  }
+  seenNames.set(name, true)
+}
+
+function splitNumericSuffix(name) {
+  const match = String(name).match(/^(.*?)-(\d+)$/)
+  if (!match) {
+    return { stem: name, numericSuffix: null }
+  }
+  return {
+    stem: match[1] || name,
+    numericSuffix: Number(match[2]),
+  }
+}
+
 export function resolveDefaultNamePattern(roleTemplate) {
   return (
     roleTemplate?.defaults?.defaultNamePattern ??
@@ -58,7 +83,25 @@ export function resolveRoleModel(roleTemplate, tool) {
 export function uniquifyMemberName(name, seenNames) {
   const baseName = String(name || '').trim()
   if (!baseName) return ''
-  const seen = seenNames.get(baseName) ?? 0
-  seenNames.set(baseName, seen + 1)
-  return seen === 0 ? baseName : `${baseName}-${seen}`
+  const normalizedBaseName = baseName.toLowerCase()
+  if (!seenNameMapHas(seenNames, normalizedBaseName)) {
+    seenNameMapAdd(seenNames, normalizedBaseName)
+    return baseName
+  }
+
+  const { stem, numericSuffix } = splitNumericSuffix(baseName)
+  const normalizedStem = String(stem || baseName).trim() || baseName
+  let nextSuffix = numericSuffix === null ? 1 : numericSuffix + 1
+
+  while (nextSuffix < 10_000) {
+    const candidate = `${normalizedStem}-${nextSuffix}`
+    const normalizedCandidate = candidate.toLowerCase()
+    if (!seenNameMapHas(seenNames, normalizedCandidate)) {
+      seenNameMapAdd(seenNames, normalizedCandidate)
+      return candidate
+    }
+    nextSuffix += 1
+  }
+
+  return ''
 }

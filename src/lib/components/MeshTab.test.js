@@ -2650,6 +2650,123 @@ describe('MeshTab', () => {
     ))).toBe(true)
   })
 
+  it('detaches edited preset rosters before initialize so the backend receives a custom payload', async () => {
+    coordinationInitializeTeam.mockClear()
+    getTeamPreset.mockResolvedValueOnce({
+      presetId: 'full-team',
+      name: 'Full Team',
+      leadRoleId: 'v3-lead-claude',
+      agentSlots: [
+        {
+          roleId: 'v3-architect-codex',
+          count: 1,
+          overrides: { namePattern: 'architect' },
+        },
+        {
+          roleId: 'v3-developer-codex',
+          count: 2,
+        },
+      ],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [
+        {
+          name: 'team-lead',
+          roleId: 'v3-lead-claude',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          instructions: 'Own orchestration',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'architect',
+          roleId: 'v3-architect-codex',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own structural review',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'dev-1',
+          roleId: 'v3-developer-codex',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own implementation',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'dev-2',
+          roleId: 'v3-developer-codex',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4 high',
+          instructions: 'Own implementation',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+      ],
+      warnings: [],
+      validationErrors: [],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-full-team'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-agent-remove-dev-2')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-remove-dev-2'))
+    await fireEvent.click(screen.getByTestId('mesh-action-initialize'))
+
+    await waitFor(() => {
+      expect(coordinationInitializeTeam).toHaveBeenCalled()
+    })
+
+    const request = coordinationInitializeTeam.mock.calls.at(-1)?.[0]
+    expect(request?.presetId).toBeUndefined()
+    expect(request?.lead).toEqual(expect.objectContaining({
+      name: 'team-lead',
+      cliTool: 'claude',
+      model: 'opus',
+      roleId: 'v3-lead-claude',
+    }))
+    expect(request?.agents).toEqual([
+      expect.objectContaining({
+        name: 'architect',
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        roleId: 'v3-architect-codex',
+      }),
+      expect.objectContaining({
+        name: 'dev-1',
+        cliTool: 'codex',
+        model: 'gpt-5.4 high',
+        roleId: 'v3-developer-codex',
+      }),
+    ])
+  })
+
   it('matches teams when lead project path uses windows drive notation', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 

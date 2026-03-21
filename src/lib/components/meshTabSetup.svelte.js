@@ -1,4 +1,15 @@
 export function createMeshTabSetup({ state, refs, deps, gate }) {
+  function detachPresetConfig(config) {
+    if (!config || config.initializationMode !== 'preset') return config
+    return {
+      ...config,
+      presetId: '',
+      presetName: '',
+      initializationMode: 'custom',
+      composition: null,
+    }
+  }
+
   function closeSlideOver() {
     state.slideOver = null
     state.slideOverContext = null
@@ -89,7 +100,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const role = resolveBuilderRole(roleId)
     if (!role || deps.normalizeRoleKind(role) !== 'lead') return
     const projectPath = deps.getProjectPath()
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     state.teamConfig = {
       ...next,
       lead: deps.createLeadFromRole(role, projectPath),
@@ -100,7 +111,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
   }
 
   function handleClearLead() {
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     state.teamConfig = {
       ...next,
       lead: null,
@@ -112,7 +123,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const role = resolveBuilderRole(roleId)
     if (!role || deps.normalizeRoleKind(role) === 'lead') return
     const projectPath = deps.getProjectPath()
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     state.teamConfig = {
       ...next,
       agents: [...(next.agents ?? []), deps.createAgentFromRole(role, projectPath, next.agents ?? [])],
@@ -122,7 +133,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
   }
 
   function handleUpdateLead(payload) {
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     if (!next.lead) return
     state.teamConfig = {
       ...next,
@@ -134,7 +145,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
   }
 
   function handleUpdateAgent(agentId, payload) {
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     state.teamConfig = {
       ...next,
       agents: (next.agents ?? []).map((agent) => (
@@ -146,7 +157,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
   }
 
   function handleRemoveBuilderAgent(agentId) {
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     state.teamConfig = {
       ...next,
       agents: (next.agents ?? []).filter((agent) => agent.id !== agentId),
@@ -156,7 +167,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
 
   function handleReorderBuilderAgent(sourceId, targetId) {
     if (!sourceId || !targetId || sourceId === targetId) return
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     const currentAgents = [...(next.agents ?? [])]
     const sourceIndex = currentAgents.findIndex((agent) => agent.id === sourceId)
     const targetIndex = currentAgents.findIndex((agent) => agent.id === targetId)
@@ -171,7 +182,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
 
   function handleMoveBuilderAgentToEnd(sourceId) {
     if (!sourceId) return
-    const next = ensureBuilderConfig()
+    const next = detachPresetConfig(ensureBuilderConfig())
     const currentAgents = [...(next.agents ?? [])]
     const sourceIndex = currentAgents.findIndex((agent) => agent.id === sourceId)
     if (sourceIndex < 0 || sourceIndex === currentAgents.length - 1) return

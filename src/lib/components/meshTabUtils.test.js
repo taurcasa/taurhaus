@@ -328,6 +328,31 @@ describe('meshTabUtils cross-project metadata', () => {
     }))
   })
 
+  it('continues numbered agent names when preset slot overrides reuse a concrete numbered name', () => {
+    const config = buildTeamConfigFromPreset(
+      {
+        presetId: 'saved-dev-team',
+        leadRoleId: 'claude-orchestrator',
+        tools: ['claude', 'codex'],
+        agentSlots: [
+          {
+            roleId: 'codex-developer',
+            count: 3,
+            overrides: { namePattern: 'dev-1' },
+          },
+        ],
+      },
+      null,
+      '/projects/taurhaus'
+    )
+
+    expect(config.agents.map((agent) => agent.name)).toEqual([
+      'dev-1',
+      'dev-2',
+      'dev-3',
+    ])
+  })
+
   it('does not backfill Claude when preset lead metadata is absent', () => {
     const config = buildTeamConfigFromPreset(
       {

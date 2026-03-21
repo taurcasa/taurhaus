@@ -63,4 +63,11 @@ describe('meshDefaults', () => {
     expect(uniquifyMemberName('developer', seen)).toBe('developer-2')
     expect(uniquifyMemberName('', seen)).toBe('')
   })
+
+  it('continues numbered member names instead of appending nested suffixes', () => {
+    const seen = new Map()
+    expect(uniquifyMemberName('dev-1', seen)).toBe('dev-1')
+    expect(uniquifyMemberName('dev-1', seen)).toBe('dev-2')
+    expect(uniquifyMemberName('dev-1', seen)).toBe('dev-3')
+  })
 })
