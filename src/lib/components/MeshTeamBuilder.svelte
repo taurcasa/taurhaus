@@ -21,6 +21,11 @@
 
   const CATALOG_DENSITY_STORAGE_KEY = 'taurhaus.mesh.roleCatalogDensity'
   const PINNED_ROLE_IDS_STORAGE_KEY = 'taurhaus.mesh.pinnedRoleIds'
+  const ROLE_SOURCE_FEEDBACK_MS = 400
+  const ROSTER_FEEDBACK_MS = 500
+  const ROSTER_ENTRY_FEEDBACK_MS = 600
+  const REMOVE_AGENT_FEEDBACK_MS = 120
+  const PIN_BOUNCE_FEEDBACK_MS = 200
 
   let {
     dark = false,
@@ -105,6 +110,10 @@
   let leadDetailsExpanded = $state(false)
   let expandedAgentIds = $state([])
   let highlightedRosterSection = $state('')
+  let flashedRoleId = $state('')
+  let enteringMemberIds = $state([])
+  let removingAgentIds = $state([])
+  let bouncingPinRoleIds = $state([])
   let draggingCatalogRoleId = $state('')
   let draggingRosterAgentId = $state('')
   let leadDropState = $state('idle')
@@ -115,6 +124,12 @@
   let teamNameInput = $state(null)
   let teamDescriptionInput = $state(null)
   let rosterFeedbackTimer = null
+  let roleFeedbackTimer = null
+  let previousRosterMemberIds = []
+  let hasObservedRosterMembers = false
+  const memberEntryTimers = new Map()
+  const memberRemovalTimers = new Map()
+  const pinBounceTimers = new Map()
 
   const normalizedTeam = $derived(teamConfig ?? { description: '', lead: null, agents: [] })
   const normalizedRoles = $derived.by(() =>
@@ -257,6 +272,18 @@
     if (rosterFeedbackTimer) {
       clearTimeout(rosterFeedbackTimer)
     }
+    if (roleFeedbackTimer) {
+      clearTimeout(roleFeedbackTimer)
+    }
+    for (const timer of memberEntryTimers.values()) {
+      clearTimeout(timer)
+    }
+    for (const timer of memberRemovalTimers.values()) {
+      clearTimeout(timer)
+    }
+    for (const timer of pinBounceTimers.values()) {
+      clearTimeout(timer)
+    }
   })
 
   $effect(() => {
@@ -276,6 +303,46 @@
       expandedAgentIds = nextExpandedAgentIds
     }
   })
+
+  $effect(() => {
+    const currentRosterMemberIds = [
+      normalizedTeam?.lead?.id ? `lead:${normalizedTeam.lead.id}` : null,
+      ...agents.map((agent) => `agent:${agent.id}`),
+    ].filter(Boolean)
+
+    const nextEnteringMemberIds = enteringMemberIds.filter((memberId) =>
+      currentRosterMemberIds.includes(memberId)
+    )
+    if (!sameItems(nextEnteringMemberIds, enteringMemberIds)) {
+      enteringMemberIds = nextEnteringMemberIds
+    }
+
+    const nextRemovingAgentIds = removingAgentIds.filter((agentId) =>
+      agents.some((agent) => agent.id === agentId)
+    )
+    if (!sameItems(nextRemovingAgentIds, removingAgentIds)) {
+      removingAgentIds = nextRemovingAgentIds
+    }
+
+    if (!hasObservedRosterMembers) {
+      previousRosterMemberIds = currentRosterMemberIds
+      hasObservedRosterMembers = true
+      return
+    }
+
+    const previousIds = new Set(previousRosterMemberIds)
+    for (const memberId of currentRosterMemberIds) {
+      if (!previousIds.has(memberId)) {
+        markRosterMemberEntry(memberId)
+      }
+    }
+    previousRosterMemberIds = currentRosterMemberIds
+  })
+
+  function sameItems(left, right) {
+    if (left.length !== right.length) return false
+    return left.every((item, index) => item === right[index])
+  }
 
   function slugify(value) {
     return String(value || '')
@@ -493,7 +560,64 @@
     rosterFeedbackTimer = setTimeout(() => {
       highlightedRosterSection = ''
       rosterFeedbackTimer = null
-    }, 700)
+    }, ROSTER_FEEDBACK_MS)
+  }
+
+  function triggerRoleSourceFeedback(roleId) {
+    flashedRoleId = roleId
+    if (roleFeedbackTimer) {
+      clearTimeout(roleFeedbackTimer)
+    }
+    roleFeedbackTimer = setTimeout(() => {
+      flashedRoleId = ''
+      roleFeedbackTimer = null
+    }, ROLE_SOURCE_FEEDBACK_MS)
+  }
+
+  function markRosterMemberEntry(memberId) {
+    if (!memberId || enteringMemberIds.includes(memberId)) return
+    enteringMemberIds = [...enteringMemberIds, memberId]
+    const existingTimer = memberEntryTimers.get(memberId)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+    const timer = setTimeout(() => {
+      enteringMemberIds = enteringMemberIds.filter((entry) => entry !== memberId)
+      memberEntryTimers.delete(memberId)
+    }, ROSTER_ENTRY_FEEDBACK_MS)
+    memberEntryTimers.set(memberId, timer)
+  }
+
+  function isRosterMemberEntering(memberId) {
+    return enteringMemberIds.includes(memberId)
+  }
+
+  function markPinBounce(roleId) {
+    if (!roleId) return
+    if (!bouncingPinRoleIds.includes(roleId)) {
+      bouncingPinRoleIds = [...bouncingPinRoleIds, roleId]
+    }
+    const existingTimer = pinBounceTimers.get(roleId)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+    const timer = setTimeout(() => {
+      bouncingPinRoleIds = bouncingPinRoleIds.filter((entry) => entry !== roleId)
+      pinBounceTimers.delete(roleId)
+    }, PIN_BOUNCE_FEEDBACK_MS)
+    pinBounceTimers.set(roleId, timer)
+  }
+
+  function isPinBouncing(roleId) {
+    return bouncingPinRoleIds.includes(roleId)
+  }
+
+  function isRoleFlashing(roleId) {
+    return flashedRoleId === roleId
+  }
+
+  function isAgentRemoving(agentId) {
+    return removingAgentIds.includes(agentId)
   }
 
   function roleCardTone(role) {
@@ -608,11 +732,16 @@
   function handlePinToggle(event, roleId) {
     event.stopPropagation()
     event.preventDefault()
+    const shouldBounce = !isRolePinned(roleId)
     togglePinnedRole(roleId)
+    if (shouldBounce) {
+      markPinBounce(roleId)
+    }
   }
 
   function assignRole(role) {
     if (!role?.roleId) return
+    triggerRoleSourceFeedback(role.roleId)
     if (role.kind === 'lead') {
       triggerRosterFeedback('lead')
       onAssignLeadRole(role.roleId)
@@ -627,6 +756,39 @@
     expandedAgentIds = []
     triggerRosterFeedback('all')
     onApplyPreset(preset)
+  }
+
+  function handleRemoveAgent(agentId) {
+    if (!agentId || isAgentRemoving(agentId)) return
+    removingAgentIds = [...removingAgentIds, agentId]
+    const existingTimer = memberRemovalTimers.get(agentId)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+    const timer = setTimeout(() => {
+      memberRemovalTimers.delete(agentId)
+      onRemoveAgent(agentId)
+      removingAgentIds = removingAgentIds.filter((entry) => entry !== agentId)
+    }, REMOVE_AGENT_FEEDBACK_MS)
+    memberRemovalTimers.set(agentId, timer)
+  }
+
+  async function handleInitializeClick() {
+    if (memberRemovalTimers.size > 0) {
+      const pendingAgentIds = [...memberRemovalTimers.keys()]
+      for (const agentId of pendingAgentIds) {
+        const timer = memberRemovalTimers.get(agentId)
+        if (timer) {
+          clearTimeout(timer)
+        }
+        memberRemovalTimers.delete(agentId)
+        onRemoveAgent(agentId)
+      }
+      removingAgentIds = []
+      await tick()
+    }
+
+    onInitialize()
   }
 
   function toggleLeadDetails() {
@@ -920,7 +1082,7 @@
                 <div class="flex flex-wrap gap-2">
                   {#each presets as preset (preset.presetId ?? preset.name)}
                     <button
-                      class="inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-2 text-left text-[11px] font-medium transition {presetRowTone}"
+                      class="mesh-builder-pressable inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-2 text-left text-[11px] font-medium transition active:scale-[0.98] {presetRowTone}"
                       type="button"
                       title={preset.description || 'No preset description available.'}
                       onclick={() => handlePresetApply(preset)}
@@ -981,7 +1143,7 @@
               <div class="space-y-1.5" data-testid="mesh-builder-pinned-list">
                 {#each pinnedRoles as role (role.roleId)}
                   <button
-                    class="flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 text-left transition {surfaceTone}"
+                    class="mesh-builder-pressable flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 text-left transition active:scale-[0.98] {surfaceTone}"
                     type="button"
                     onclick={() => assignRole(role)}
                     data-testid={`mesh-builder-pinned-chip-${role.roleId}`}
@@ -1026,9 +1188,12 @@
                 data-density-mode={catalogDensityMode}
               >
                 {#each leadRoles as role (role.roleId)}
-                  <div class="flex h-10 items-center gap-2 rounded-[16px] border px-2.5 transition {surfaceTone} {roleCardTone(role)}">
+                  <div
+                    class="mesh-builder-role-row group flex h-10 cursor-pointer items-center gap-2 rounded-[16px] border px-2.5 transition {surfaceTone} {roleCardTone(role)} {isRoleFlashing(role.roleId) ? 'mesh-builder-role-row-active' : ''}"
+                    data-testid={`mesh-builder-role-row-${role.roleId}`}
+                  >
                     <button
-                      class="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
+                      class="mesh-builder-pressable flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
                       type="button"
                       title={roleSummaryText(role)}
                       onclick={() => assignRole(role)}
@@ -1050,7 +1215,7 @@
                         {roleKindLabel(role)}
                       </span>
                       <button
-                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))}"
+                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
                         aria-pressed={isRolePinned(role.roleId)}
@@ -1062,13 +1227,13 @@
                         </svg>
                       </button>
                       <button
-                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {ghostTone}"
+                        class="mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
                         type="button"
                         aria-label={`Add ${role.name}`}
                         onclick={() => assignRole(role)}
                         data-testid={`mesh-builder-add-${role.roleId}`}
                       >
-                        +
+                        {isRoleFlashing(role.roleId) ? '✓' : '+'}
                       </button>
                     </div>
                   </div>
@@ -1089,9 +1254,12 @@
                 data-density-mode={catalogDensityMode}
               >
                 {#each agentRoles as role (role.roleId)}
-                  <div class="flex h-10 items-center gap-2 rounded-[16px] border px-2.5 transition {surfaceTone} {roleCardTone(role)}">
+                  <div
+                    class="mesh-builder-role-row group flex h-10 cursor-pointer items-center gap-2 rounded-[16px] border px-2.5 transition {surfaceTone} {roleCardTone(role)} {isRoleFlashing(role.roleId) ? 'mesh-builder-role-row-active' : ''}"
+                    data-testid={`mesh-builder-role-row-${role.roleId}`}
+                  >
                     <button
-                      class="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
+                      class="mesh-builder-pressable flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
                       type="button"
                       title={roleSummaryText(role)}
                       onclick={() => assignRole(role)}
@@ -1113,7 +1281,7 @@
                         {roleKindLabel(role)}
                       </span>
                       <button
-                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))}"
+                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
                         aria-pressed={isRolePinned(role.roleId)}
@@ -1125,13 +1293,13 @@
                         </svg>
                       </button>
                       <button
-                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {ghostTone}"
+                        class="mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
                         type="button"
                         aria-label={`Add ${role.name}`}
                         onclick={() => assignRole(role)}
                         data-testid={`mesh-builder-add-${role.roleId}`}
                       >
-                        +
+                        {isRoleFlashing(role.roleId) ? '✓' : '+'}
                       </button>
                     </div>
                   </div>
@@ -1252,7 +1420,7 @@
             >
               {#if normalizedTeam.lead}
                 <article
-                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(normalizedTeam.lead.tool, 'lead')}"
+                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(normalizedTeam.lead.tool, 'lead')} {isRosterMemberEntering(`lead:${normalizedTeam.lead.id}`) ? 'content-enter mesh-builder-roster-entry' : ''}"
                   data-testid="mesh-builder-lead-card"
                 >
                   <span
@@ -1392,7 +1560,7 @@
             >
               {#each agents as agent (agent.id)}
                 <article
-                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(agent.tool)}"
+                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(agent.tool)} {isRosterMemberEntering(`agent:${agent.id}`) ? 'content-enter mesh-builder-roster-entry' : ''} {isAgentRemoving(agent.id) ? 'mesh-builder-roster-exit' : ''}"
                   data-testid={`mesh-builder-agent-card-${agent.id}`}
                 >
                   <span
@@ -1440,7 +1608,8 @@
                         <button
                           class="inline-flex h-8 w-8 items-center justify-center rounded-full border transition {ghostTone}"
                           type="button"
-                          onclick={() => onRemoveAgent(agent.id)}
+                          aria-label={`Remove ${agent.name}`}
+                          onclick={() => handleRemoveAgent(agent.id)}
                           data-testid={`mesh-builder-agent-remove-${agent.id}`}
                         >
                           ×
@@ -1524,7 +1693,7 @@
             <button
               class="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-brand-600 px-4 text-[13px] font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
               type="button"
-              onclick={onInitialize}
+              onclick={handleInitializeClick}
               disabled={!canInitialize}
               data-testid="mesh-action-initialize"
             >
@@ -1556,3 +1725,141 @@
     </div>
   </main>
 </section>
+
+<style>
+  .mesh-builder-pressable {
+    transition:
+      transform 140ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .mesh-builder-role-row {
+    transition:
+      transform 160ms ease,
+      box-shadow 180ms ease,
+      border-color 180ms ease,
+      background-color 180ms ease;
+  }
+
+  .mesh-builder-role-row:hover,
+  .mesh-builder-role-row:focus-within {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(15, 118, 110, 0.12);
+  }
+
+  .mesh-builder-role-row-active {
+    animation: mesh-builder-source-flash 400ms ease-out;
+  }
+
+  .mesh-builder-add-button {
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      border-color 160ms ease,
+      background-color 160ms ease;
+  }
+
+  .mesh-builder-role-row:hover .mesh-builder-add-button,
+  .mesh-builder-role-row:focus-within .mesh-builder-add-button {
+    transform: scale(1.08);
+    box-shadow: 0 8px 20px rgba(15, 118, 110, 0.16);
+  }
+
+  .mesh-builder-add-button-added {
+    animation: mesh-builder-add-check 400ms ease-out;
+  }
+
+  .mesh-builder-roster-entry.content-enter {
+    animation:
+      content-enter 120ms ease-out,
+      mesh-builder-roster-glow 600ms ease-out;
+  }
+
+  .mesh-builder-roster-exit {
+    pointer-events: none;
+    animation: mesh-builder-card-exit 120ms ease-in forwards;
+  }
+
+  .mesh-builder-pin-bounce {
+    animation: mesh-builder-pin-bounce 200ms ease-out;
+    transform-origin: center;
+  }
+
+  @keyframes mesh-builder-source-flash {
+    0% {
+      box-shadow:
+        0 0 0 0 rgba(20, 184, 166, 0.28),
+        inset 0 0 0 999px rgba(20, 184, 166, 0.14);
+    }
+
+    65% {
+      box-shadow:
+        0 0 0 10px rgba(20, 184, 166, 0),
+        inset 0 0 0 999px rgba(20, 184, 166, 0.08);
+    }
+
+    100% {
+      box-shadow:
+        0 0 0 14px rgba(20, 184, 166, 0),
+        inset 0 0 0 999px rgba(20, 184, 166, 0);
+    }
+  }
+
+  @keyframes mesh-builder-add-check {
+    0% {
+      transform: scale(0.92);
+    }
+
+    45% {
+      transform: scale(1.12);
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes mesh-builder-roster-glow {
+    0% {
+      box-shadow:
+        0 0 0 0 rgba(20, 184, 166, 0.2),
+        inset 0 0 0 1px rgba(20, 184, 166, 0.28);
+    }
+
+    100% {
+      box-shadow:
+        0 0 0 12px rgba(20, 184, 166, 0),
+        inset 0 0 0 1px rgba(20, 184, 166, 0);
+    }
+  }
+
+  @keyframes mesh-builder-card-exit {
+    from {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+
+    to {
+      opacity: 0;
+      transform: scale(0.96) translateY(-4px);
+    }
+  }
+
+  @keyframes mesh-builder-pin-bounce {
+    0% {
+      transform: scale(1);
+    }
+
+    38% {
+      transform: scale(1.18);
+    }
+
+    70% {
+      transform: scale(0.94);
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+</style>

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
@@ -163,43 +163,51 @@ function sampleAvailableProjects() {
   ]
 }
 
+function builderProps(props = {}) {
+  return {
+    dark: false,
+    mode: 'setup',
+    teamName: 'taurhaus-team',
+    teamConfig: {
+      description: '',
+      lead: null,
+      agents: [],
+    },
+    roleTemplates: sampleRoles(),
+    presets: [],
+    availableProjects: sampleAvailableProjects(),
+    onBrowseCatalog: vi.fn(),
+    onTeamNameChange: vi.fn(),
+    onDescriptionChange: vi.fn(),
+    onApplyPreset: vi.fn(),
+    onAssignLeadRole: vi.fn(),
+    onClearLead: vi.fn(),
+    onAppendAgentRole: vi.fn(),
+    onUpdateLead: vi.fn(),
+    onUpdateAgent: vi.fn(),
+    onRemoveAgent: vi.fn(),
+    onReorderAgent: vi.fn(),
+    onMoveAgentToEnd: vi.fn(),
+    onInitialize: vi.fn(),
+    onReset: vi.fn(),
+    onSavePreset: vi.fn(),
+    ...props,
+  }
+}
+
 function renderBuilder(props = {}) {
   return render(MeshTeamBuilder, {
-    props: {
-      dark: false,
-      mode: 'setup',
-      teamName: 'taurhaus-team',
-      teamConfig: {
-        description: '',
-        lead: null,
-        agents: [],
-      },
-      roleTemplates: sampleRoles(),
-      presets: [],
-      availableProjects: sampleAvailableProjects(),
-      onBrowseCatalog: vi.fn(),
-      onTeamNameChange: vi.fn(),
-      onDescriptionChange: vi.fn(),
-      onApplyPreset: vi.fn(),
-      onAssignLeadRole: vi.fn(),
-      onClearLead: vi.fn(),
-      onAppendAgentRole: vi.fn(),
-      onUpdateLead: vi.fn(),
-      onUpdateAgent: vi.fn(),
-      onRemoveAgent: vi.fn(),
-      onReorderAgent: vi.fn(),
-      onMoveAgentToEnd: vi.fn(),
-      onInitialize: vi.fn(),
-      onReset: vi.fn(),
-      onSavePreset: vi.fn(),
-      ...props,
-    },
+    props: builderProps(props),
   })
 }
 
 describe('MeshTeamBuilder', () => {
   beforeEach(() => {
     window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('uses inline roster header text and opens the team name editor on click', async () => {
@@ -288,6 +296,27 @@ describe('MeshTeamBuilder', () => {
     expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
   })
 
+  it('flashes the source role row and swaps the add button to a checkmark briefly on add', async () => {
+    vi.useFakeTimers()
+    const onAppendAgentRole = vi.fn()
+
+    renderBuilder({ onAppendAgentRole })
+
+    const roleRow = screen.getByTestId('mesh-builder-role-row-agent-codex')
+    const addButton = screen.getByTestId('mesh-builder-add-agent-codex')
+
+    await fireEvent.click(addButton)
+
+    expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
+    expect(roleRow).toHaveClass('mesh-builder-role-row-active')
+    expect(addButton).toHaveTextContent('✓')
+
+    await vi.advanceTimersByTimeAsync(401)
+
+    expect(roleRow).not.toHaveClass('mesh-builder-role-row-active')
+    expect(addButton).toHaveTextContent('+')
+  })
+
   it('defaults to expanded density when eight or fewer roles are visible', () => {
     renderBuilder()
 
@@ -360,6 +389,22 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.queryByTestId('mesh-builder-pinned-strip')).not.toBeInTheDocument()
     expect(window.localStorage.getItem(PINNED_ROLE_IDS_STORAGE_KEY)).toBe(JSON.stringify([]))
+  })
+
+  it('bounces the pin toggle briefly when starring a role', async () => {
+    vi.useFakeTimers()
+
+    renderBuilder()
+
+    const pinButton = screen.getByTestId('mesh-builder-pin-agent-codex')
+
+    await fireEvent.click(pinButton)
+
+    expect(pinButton).toHaveClass('mesh-builder-pin-bounce')
+
+    await vi.advanceTimersByTimeAsync(201)
+
+    expect(pinButton).not.toHaveClass('mesh-builder-pin-bounce')
   })
 
   it('restores pinned roles from localStorage on remount', () => {
@@ -521,6 +566,56 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-lead-project-input')).toHaveDisplayValue('taurhaus')
   })
 
+  it('animates new roster entries when the team gains members', async () => {
+    vi.useFakeTimers()
+    const view = renderBuilder()
+
+    await view.rerender(
+      builderProps({
+        teamConfig: sampleRosterConfig(),
+      })
+    )
+
+    const leadCard = screen.getByTestId('mesh-builder-lead-card')
+    const agentCard = screen.getByTestId('mesh-builder-agent-card-agent-codex-1')
+
+    expect(leadCard).toHaveClass('content-enter')
+    expect(leadCard).toHaveClass('mesh-builder-roster-entry')
+    expect(agentCard).toHaveClass('content-enter')
+    expect(agentCard).toHaveClass('mesh-builder-roster-entry')
+
+    await vi.advanceTimersByTimeAsync(601)
+
+    expect(leadCard).not.toHaveClass('mesh-builder-roster-entry')
+    expect(agentCard).not.toHaveClass('mesh-builder-roster-entry')
+  })
+
+  it('waits for the exit animation before removing an agent card', async () => {
+    vi.useFakeTimers()
+    const onRemoveAgent = vi.fn()
+
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+      onRemoveAgent,
+    })
+
+    const agentCard = screen.getByTestId('mesh-builder-agent-card-agent-codex-1')
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-remove-agent-codex-1'))
+
+    expect(agentCard).toHaveClass('mesh-builder-roster-exit')
+    expect(onRemoveAgent).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(119)
+
+    expect(onRemoveAgent).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(onRemoveAgent).toHaveBeenCalledWith('agent-codex-1')
+    expect(agentCard).not.toHaveClass('mesh-builder-roster-exit')
+  })
+
   it('keeps reset, save, and initialize actions in the sticky footer bar', () => {
     renderBuilder({
       presets: samplePresets(),
@@ -544,6 +639,7 @@ describe('MeshTeamBuilder', () => {
     })
 
     const fullTeamPreset = screen.getByTestId('mesh-template-preset-full-team')
+    expect(fullTeamPreset).toHaveClass('active:scale-[0.98]')
     expect(fullTeamPreset).toHaveAttribute(
       'title',
       'Lead, architect, and two developers.'
