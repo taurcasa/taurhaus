@@ -4,7 +4,7 @@ schema:
 
 preset_id: research-team
 name: Research Team
-description: "One lead, one researcher, and one developer for investigation paired with implementation."
+description: "One lead, one researcher, and one developer for evidence gathering paired with implementation and decision-ready handoff."
 version: "3.0.0"
 lead_role_id: v3-lead-claude
 

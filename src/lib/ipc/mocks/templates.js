@@ -310,20 +310,25 @@ export const MOCK_TEAM_PRESETS = [
   {
     presetId: 'pair',
     name: 'Pair',
-    description: 'One lead and one developer for the smallest delivery loop.',
+    description: 'One lead and one quick-delivery developer for the smallest scoped build-and-review loop.',
     version: '3.0.0',
     leadRoleId: 'v3-lead-claude',
     builtIn: true,
     readOnly: true,
     agentSlots: [
-      { roleId: 'v3-developer-codex', count: 1, projectBinding: 'lead_project', overrides: null },
+      {
+        roleId: 'quick-dev-codex',
+        count: 1,
+        projectBinding: 'lead_project',
+        overrides: { namePattern: 'quick-dev' },
+      },
     ],
     defaults: { teamNamePattern: '{project}-team', tmuxLayout: 'tiled' },
   },
   {
     presetId: 'dev-team',
     name: 'Dev Team',
-    description: 'One lead and two developers for parallel implementation work.',
+    description: 'One lead and two vertical-slice developers for parallel product-visible implementation with shared review gates.',
     version: '3.0.0',
     leadRoleId: 'v3-lead-claude',
     builtIn: true,
@@ -336,7 +341,7 @@ export const MOCK_TEAM_PRESETS = [
   {
     presetId: 'full-team',
     name: 'Full Team',
-    description: 'One lead, one architect, and two developers for structural work plus implementation throughput.',
+    description: 'One lead, one architect, and two developers for structural guidance, implementation throughput, and stronger readiness checks.',
     version: '3.0.0',
     leadRoleId: 'v3-lead-claude',
     builtIn: true,
@@ -355,7 +360,7 @@ export const MOCK_TEAM_PRESETS = [
   {
     presetId: 'research-team',
     name: 'Research Team',
-    description: 'One lead, one researcher, and one developer for investigation paired with implementation.',
+    description: 'One lead, one researcher, and one developer for evidence gathering paired with implementation and decision-ready handoff.',
     version: '3.0.0',
     leadRoleId: 'v3-lead-claude',
     builtIn: true,

@@ -4,7 +4,7 @@ schema:
 
 preset_id: dev-team
 name: Dev Team
-description: "One lead and two developers for parallel implementation work."
+description: "One lead and two vertical-slice developers for parallel product-visible implementation with shared review gates."
 version: "3.0.0"
 lead_role_id: v3-lead-claude
 

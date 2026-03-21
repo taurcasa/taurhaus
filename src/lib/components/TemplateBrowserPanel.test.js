@@ -134,7 +134,7 @@ describe('TemplateBrowserPanel', () => {
       {
         presetId: 'research-team',
         name: 'Research Team',
-        description: 'Lead plus one researcher and one developer',
+        description: 'Lead plus one researcher and one implementation developer',
         leadRoleId: 'v3-lead-claude',
         roleCount: 1,
         agentCount: 2,

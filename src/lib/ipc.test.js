@@ -1432,7 +1432,7 @@ describe('ipc module', () => {
           leadRoleId: 'v3-lead-claude',
           source: 'built_in',
           readOnly: true,
-          agentSlots: [{ roleId: 'v3-developer-codex', count: 1 }],
+          agentSlots: [{ roleId: 'quick-dev-codex', count: 1 }],
         },
       ])
 
@@ -1545,10 +1545,13 @@ describe('ipc module', () => {
         lead_role_id: 'v3-lead-claude',
         agent_slots: [
           {
-            role_id: 'v3-developer-codex',
+            role_id: 'quick-dev-codex',
             count: 1,
             project_binding: 'lead_project',
             project_id: null,
+            overrides: {
+              name_pattern: 'quick-dev',
+            },
           },
         ],
         defaults: {
@@ -1564,15 +1567,17 @@ describe('ipc module', () => {
         name: 'Pair',
         description: '',
         leadRoleId: 'v3-lead-claude',
-        agentSlots: [
-          {
-            roleId: 'v3-developer-codex',
+        agentSlots: expect.arrayContaining([
+          expect.objectContaining({
+            roleId: 'quick-dev-codex',
             count: 1,
             projectBinding: 'lead_project',
             projectId: null,
-            overrides: null,
-          },
-        ],
+            overrides: expect.objectContaining({
+              namePattern: 'quick-dev',
+            }),
+          }),
+        ]),
         defaults: {
           teamNamePattern: '{project}-team',
           tmuxLayout: 'tiled',

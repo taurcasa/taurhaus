@@ -24,7 +24,7 @@ export const QUICK_PRESETS = [
   {
     presetId: 'pair',
     name: 'Pair',
-    description: 'Lead plus one developer',
+    description: 'Lead plus one quick-delivery developer',
     leadCount: 1,
     agentCount: 1,
     tools: ['claude', 'codex'],
@@ -33,7 +33,7 @@ export const QUICK_PRESETS = [
   {
     presetId: 'dev-team',
     name: 'Dev Team',
-    description: 'Lead plus two developers',
+    description: 'Lead plus two vertical-slice developers',
     leadCount: 1,
     agentCount: 2,
     tools: ['claude', 'codex'],
@@ -42,7 +42,7 @@ export const QUICK_PRESETS = [
   {
     presetId: 'full-team',
     name: 'Full Team',
-    description: 'Lead, architect, and two developers',
+    description: 'Lead, architect, and two implementation developers',
     leadCount: 1,
     agentCount: 3,
     tools: ['claude', 'codex'],
@@ -51,7 +51,7 @@ export const QUICK_PRESETS = [
   {
     presetId: 'research-team',
     name: 'Research Team',
-    description: 'Lead, researcher, and developer',
+    description: 'Lead, researcher, and implementation developer',
     leadCount: 1,
     agentCount: 2,
     tools: ['claude', 'codex'],
