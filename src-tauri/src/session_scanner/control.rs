@@ -521,12 +521,42 @@ fn propagate_env_to_tmux() {
     for var in PROPAGATE_VARS {
         if let Ok(val) = std::env::var(var) {
             if !val.is_empty() {
+                if *var == "PATH" {
+                    sync_tmux_path_environment(&val);
+                    continue;
+                }
                 let _ = tmux_command()
                     .args(["set-environment", "-t", TMUX_SESSION_NAME, var, &val])
                     .output();
             }
         }
     }
+}
+
+fn sync_tmux_path_environment(path_value: &str) {
+    if tmux_path_looks_windows_style(path_value) {
+        let _ = tmux_command()
+            .args(["set-environment", "-r", "-t", TMUX_SESSION_NAME, "PATH"])
+            .output();
+        tracing::debug!(
+            "Skipping tmux PATH propagation because the app PATH is Windows-style and would break tmux hooks"
+        );
+        return;
+    }
+
+    let _ = tmux_command()
+        .args([
+            "set-environment",
+            "-t",
+            TMUX_SESSION_NAME,
+            "PATH",
+            path_value,
+        ])
+        .output();
+}
+
+fn tmux_path_looks_windows_style(path_value: &str) -> bool {
+    path_value.contains(';')
 }
 
 fn install_tmux_focus_hooks() {
@@ -699,17 +729,19 @@ fn is_current_tmux_focus_hook(
 fn build_tmux_focus_hook_command(focus_path: &Path) -> String {
     let file = shell_escape(&tmux_shell_path(focus_path));
     let dir = shell_escape(&tmux_shell_parent_path(focus_path));
-    format!(
-        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}\""
-    )
+    let payload = format!(
+        "PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH; mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}"
+    );
+    format!("run-shell -b \"/bin/sh -c {}\"", shell_escape(&payload))
 }
 
 fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
     let file = shell_escape(&tmux_shell_path(focus_path));
     let dir = shell_escape(&tmux_shell_parent_path(focus_path));
-    format!(
-        "run-shell -b \"mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file}\""
-    )
+    let payload = format!(
+        "PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH; mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file}"
+    );
+    format!("run-shell -b \"/bin/sh -c {}\"", shell_escape(&payload))
 }
 
 fn tmux_shell_parent_path(focus_path: &Path) -> String {
@@ -1096,7 +1128,9 @@ after-new-window[0] display-message "hi"
         let focus_path = Path::new("/tmp/taurhaus data/tmux-focus.json");
         let command = build_tmux_focus_hook_command(focus_path);
 
-        assert!(command.contains("after") || command.contains("run-shell -b"));
+        assert!(command.contains("run-shell -b"));
+        assert!(command.contains("/bin/sh -c"));
+        assert!(command.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"));
         assert!(command.contains("/tmp/taurhaus data/tmux-focus.json"));
         assert!(command.contains("#{session_name}"));
         assert!(command.contains("#{window_index}"));
@@ -1108,10 +1142,22 @@ after-new-window[0] display-message "hi"
         let focus_path = Path::new("/tmp/taurhaus-data/tmux-focus.json");
         let command = build_tmux_focus_detached_hook_command(focus_path);
 
+        assert!(command.contains("/bin/sh -c"));
+        assert!(command.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"));
         assert!(command.contains("/tmp/taurhaus-data/tmux-focus.json"));
         assert!(command.contains("\\\"session\\\":null"));
         assert!(command.contains("\\\"window\\\":null"));
         assert!(command.contains("\\\"timestamp\\\":null"));
+    }
+
+    #[test]
+    fn tmux_path_looks_windows_style_rejects_semicolon_lists() {
+        assert!(tmux_path_looks_windows_style(
+            r"C:\Windows\system32;C:\Users\mstie\.bun\bin"
+        ));
+        assert!(!tmux_path_looks_windows_style(
+            "/usr/local/bin:/usr/bin:/bin"
+        ));
     }
 
     #[test]
