@@ -121,7 +121,8 @@ pub struct TeamConfigStore;
 
 #[derive(Debug, Deserialize)]
 struct MeshTeamConfigWire {
-    name: String,
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     description: Option<String>,
     #[serde(rename = "createdAt")]
@@ -579,7 +580,7 @@ fn parse_mesh_config(value: Value, team_name: &str) -> Result<TeamConfig, Coordi
 
     Ok(TeamConfig {
         schema_version: 1,
-        name: wire.name,
+        name: wire.name.unwrap_or_else(|| team_name.to_string()),
         description: wire.description,
         created_at,
         members,
@@ -1113,6 +1114,45 @@ mod tests {
         assert_eq!(config.members[1].instructions, None);
         assert_eq!(config.members[1].behavioral_contract, None);
         assert_eq!(config.members[1].capabilities, None);
+    }
+
+    #[test]
+    fn load_mesh_format_without_name_uses_folder_name() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "legacy-mesh-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+
+        let mesh_json = r#"{
+  "createdAt": 1773711699720,
+  "description": "legacy mesh config without top-level name",
+  "leadAgentId": "evaluator@legacy-mesh-team",
+  "members": [
+    {
+      "name": "evaluator",
+      "agentType": "orchestrator",
+      "model": "claude-opus-4-6",
+      "cwd": "/home/mstie/projects/taureval"
+    },
+    {
+      "name": "agent-under-test",
+      "agentType": "general-purpose",
+      "model": "claude-opus-4-6",
+      "cwd": "/home/mstie/projects/taureval"
+    }
+  ]
+}"#;
+        fs::write(dir.join(CONFIG_FILENAME), mesh_json).expect("write mesh config");
+
+        let config = TeamConfigStore::load(tmp.path(), team_name).expect("load should succeed");
+        assert_eq!(config.name, team_name);
+        assert_eq!(config.members.len(), 2);
+        assert_eq!(config.members[0].role, MemberRole::Lead);
+        assert_eq!(
+            config.members[0].project_path,
+            PathBuf::from("/home/mstie/projects/taureval")
+        );
+        assert_eq!(config.members[1].cli_tool, CliTool::Claude);
     }
 
     #[test]
