@@ -732,7 +732,7 @@ fn build_tmux_focus_hook_command(focus_path: &Path) -> String {
     let payload = format!(
         "[ -d {dir} ] && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file} 2>/dev/null || true"
     );
-    format!("run-shell -b {}", shell_escape(&payload))
+    format!("run-shell -b \"{payload}\"")
 }
 
 fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
@@ -741,7 +741,7 @@ fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
     let payload = format!(
         "[ -d {dir} ] && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file} 2>/dev/null || true"
     );
-    format!("run-shell -b {}", shell_escape(&payload))
+    format!("run-shell -b \"{payload}\"")
 }
 
 fn tmux_shell_parent_path(focus_path: &Path) -> String {
@@ -1129,6 +1129,8 @@ after-new-window[0] display-message "hi"
         let command = build_tmux_focus_hook_command(focus_path);
 
         assert!(command.contains("run-shell -b"));
+        assert!(command.starts_with("run-shell -b \""));
+        assert!(!command.contains("run-shell -b '"));
         assert!(!command.contains("/bin/sh -c"));
         assert!(!command.contains("mkdir -p"));
         assert!(command.contains("[ -d"));
@@ -1137,6 +1139,7 @@ after-new-window[0] display-message "hi"
         assert!(command.contains("#{session_name}"));
         assert!(command.contains("#{window_index}"));
         assert!(command.contains("#{window_activity}"));
+        assert!(command.contains("\\\"session\\\":\\\"#{session_name}\\\""));
     }
 
     #[test]
@@ -1144,6 +1147,8 @@ after-new-window[0] display-message "hi"
         let focus_path = Path::new("/tmp/taurhaus-data/tmux-focus.json");
         let command = build_tmux_focus_detached_hook_command(focus_path);
 
+        assert!(command.starts_with("run-shell -b \""));
+        assert!(!command.contains("run-shell -b '"));
         assert!(!command.contains("/bin/sh -c"));
         assert!(!command.contains("mkdir -p"));
         assert!(command.contains("[ -d"));
