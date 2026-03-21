@@ -270,11 +270,12 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.getByTestId('mesh-builder-density-compact')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('mesh-builder-density-expanded')).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.queryByText('Implements scoped changes.')).not.toBeInTheDocument()
+    expect(screen.getByText('Implements scoped changes.')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-role-agent-codex')).toHaveAttribute(
       'title',
       'Implements scoped changes.'
     )
+    expect(screen.getByTestId('mesh-builder-role-agent-codex')).not.toHaveTextContent('gpt-5.4 high')
 
     await fireEvent.click(screen.getByTestId('mesh-builder-role-agent-codex'))
 
@@ -286,6 +287,7 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.getByTestId('mesh-builder-density-expanded')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('Implements scoped changes.')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-role-agent-codex')).not.toHaveTextContent('gpt-5.4 high')
   })
 
   it('persists a manual density toggle in localStorage across remounts', async () => {
@@ -443,9 +445,12 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.getByTestId('mesh-builder-team-panel')).toHaveTextContent('2 members')
     expect(screen.getByTestId('mesh-builder-lead-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-lead-card')).toHaveClass('bg-brand-50/85')
     expect(screen.queryByTestId('mesh-builder-lead-name-input')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agents-section')).toHaveTextContent('Codex Developer')
     expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-agent-card-agent-codex-1')).toHaveClass('bg-emerald-50/85')
+    expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).not.toHaveTextContent('1')
     expect(screen.queryByTestId('mesh-builder-agent-name-input-agent-codex-1')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
       'data-dropzone-mode',
