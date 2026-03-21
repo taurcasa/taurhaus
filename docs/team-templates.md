@@ -52,6 +52,16 @@ When you author a role, write down three things first:
 
 Those labels are not just the right authoring model. They are first-class persisted fields in the current role schema and now flow through composition, mesh runtime snapshots, hover/detail UI, and role import/export adapters. Instructions, behavioral contract, and constraints still matter, but they now support these context-steering fields instead of replacing them.
 
+Once those three are clear, add the workflow fields that tell the role how to operate inside that lane:
+
+- `communication_style`: how the role should sound in updates, reviews, and handoffs
+- `quality_gates`: checks that must pass before the role can claim success
+- `definition_of_done`: what "finished" means for this lane
+- `phase_scope`: which delivery phases the role is meant to work in
+- `mode`: the default operating mode, such as `research`, `execution`, or `review`
+- `inherits_from`: the parent role when this role is a specialization or variant
+- `required_artifacts`: what outputs the role is expected to produce
+
 ## What A Good Role Definition Looks Like
 
 A strong role definition is concise and lane-specific:
@@ -90,6 +100,21 @@ Use this as the conceptual template for a role:
 focus_area: "Architecture decisions and structural review"
 context_summary: "Carries long-lived context around module boundaries, design tradeoffs, and review history."
 behavior_summary: "Handles pattern choices independently; escalates direction changes immediately."
+communication_style: "Short, decisive check-ins with explicit tradeoffs."
+quality_gates:
+  - "Validate the proposed shape against the touched modules."
+  - "Call out migration or regression risk explicitly."
+definition_of_done:
+  - "The recommended structure is clear enough to implement."
+  - "Open risks and follow-up decisions are documented."
+phase_scope:
+  - "planning"
+  - "implementation"
+mode: "review"
+inherits_from: "taurhaus-base-reviewer"
+required_artifacts:
+  - "decision summary"
+  - "risk list"
 ```
 
 Then support it with:
@@ -100,13 +125,83 @@ Then support it with:
 
 ## Current Structural Reference
 
-The current template system remains structurally the same, but the role schema now explicitly carries the context-steering fields:
+The current template system remains structurally the same, but the role schema now explicitly carries both context-steering and workflow fields:
 
-- **Role template**: tool, model defaults, `focus_area`, `context_summary`, `behavior_summary`, instructions, behavioral contract, constraints, and optional import provenance
+- **Role template**: tool/model defaults, `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`, instructions, behavioral contract, capabilities, constraints, and optional import provenance
 - **Team preset**: one lead role plus agent slots and preset-specific overrides
 - **Composition**: resolved roster produced from the selected lead and slots
 
 That means this guide changes both **how to think about roles** and what concrete fields you should author.
+
+## What Each New Field Does
+
+Use the new fields intentionally; they are not just extra metadata.
+
+- `communication_style`
+  - Use when the role should report in a specific way.
+  - Example: `"Concise updates with exact blockers and file references."`
+- `quality_gates`
+  - Use for checks the role should satisfy before calling the task done.
+  - Example: `"Run the scoped verification lane."`
+- `definition_of_done`
+  - Use to state what a successful outcome looks like for that lane.
+  - Example: `"Residual risk is documented in the handoff."`
+- `phase_scope`
+  - Use to show where the role belongs in the delivery flow.
+  - Example: `["planning", "review"]`
+- `mode`
+  - Use when a role has a normal operating mode that should be visible at a glance.
+  - Example: `"research"`
+- `inherits_from`
+  - Use when the role is a specialization of an existing base role.
+  - Example: `"taurhaus-base-worker"`
+- `required_artifacts`
+  - Use when the role should consistently emit concrete outputs.
+  - Example: `["verification summary", "risk list"]`
+
+## Authoring Guidance By Field
+
+### `communication_style`
+
+Keep this about delivery style, not responsibilities.
+
+- Good: `"Calm, specific updates with exact file references."`
+- Weak: `"Knows Rust and reviews code carefully."`
+
+### `quality_gates`
+
+Write these as verifiable expectations, not aspirations.
+
+- Good: `"Run the named Rust test module before reporting."`
+- Weak: `"Care about quality."`
+
+### `definition_of_done`
+
+Describe user-visible or operator-visible completion.
+
+- Good: `"The bug no longer reproduces and the regression test stays in place."`
+- Weak: `"Work is complete."`
+
+### `phase_scope` and `mode`
+
+Use `phase_scope` for where the role belongs in a workflow and `mode` for how it usually operates.
+
+- `phase_scope`: `["planning", "review"]`
+- `mode`: `"review"`
+
+### `inherits_from`
+
+Reach for this when a new role mostly reuses an existing lane but changes tone or strictness.
+
+- Good candidate: `adversarial-reviewer` inherits from a base `reviewer`
+- Bad candidate: two unrelated roles forced into a fake parent/child link
+
+### `required_artifacts`
+
+Prefer outputs another human or agent can immediately use.
+
+- Good: `"decision summary"`, `"release checklist"`, `"follow-up list"`
+- Weak: `"do good work"`
 
 ## Using Templates In Setup
 
@@ -160,6 +255,8 @@ Imported roles persist provenance metadata:
 - source path
 - import timestamp
 - `non_roundtrippable_fields` for lossy conversions
+
+For Taurhaus-authored Claude and Copilot exports, the adapter now round-trips the extended role fields through compiled Markdown sections. That means `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts` survive export/import when the file came from Taurhaus. Instruction-only exports such as `AGENTS.md` and `GEMINI.md` remain intentionally lossy and record that downgrade in provenance.
 
 The catalog UI surfaces that provenance so imported roles are visibly different from native Taurhaus roles, including in the filtered role catalog shown by `MeshTeamBuilder`.
 

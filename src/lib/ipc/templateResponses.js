@@ -5,6 +5,11 @@ function normalizeStringList(value) {
   return value.map((entry) => String(entry ?? '').trim()).filter(Boolean)
 }
 
+function normalizeOptionalStringList(value) {
+  const normalized = normalizeStringList(value)
+  return normalized.length > 0 ? normalized : null
+}
+
 function normalizeTemplateDefaults(value) {
   if (!value || typeof value !== 'object') return null
 
@@ -12,6 +17,23 @@ function normalizeTemplateDefaults(value) {
     cliTool: value.cliTool ?? value.cli_tool ?? null,
     model: value.model ?? null,
     defaultNamePattern: value.defaultNamePattern ?? value.default_name_pattern ?? null,
+  }
+}
+
+function normalizeSlotOverrides(value) {
+  if (!value || typeof value !== 'object') return null
+
+  return {
+    namePattern: value.namePattern ?? value.name_pattern ?? null,
+    model: value.model ?? null,
+    instructionsReplace: value.instructionsReplace ?? value.instructions_replace ?? null,
+    instructionsAppend: value.instructionsAppend ?? value.instructions_append ?? null,
+    focusArea: value.focusArea ?? value.focus_area ?? null,
+    contextSummary: value.contextSummary ?? value.context_summary ?? null,
+    behaviorSummary: value.behaviorSummary ?? value.behavior_summary ?? null,
+    runtimeCompactSummary: value.runtimeCompactSummary ?? value.runtime_compact_summary ?? null,
+    behavioralContractAppend:
+      value.behavioralContractAppend ?? value.behavioral_contract_append ?? null,
   }
 }
 
@@ -23,7 +45,7 @@ function normalizeAgentSlot(value) {
     count: Math.max(0, Number(value.count ?? 0)),
     projectBinding: value.projectBinding ?? value.project_binding ?? 'lead_project',
     projectId: value.projectId ?? value.project_id ?? null,
-    overrides: value.overrides ?? null,
+    overrides: normalizeSlotOverrides(value.overrides),
   }
 }
 
@@ -79,11 +101,19 @@ export function normalizeRoleTemplateResponse(value) {
     focusArea: value.focusArea ?? value.focus_area ?? '',
     contextSummary: value.contextSummary ?? value.context_summary ?? '',
     behaviorSummary: value.behaviorSummary ?? value.behavior_summary ?? '',
+    communicationStyle: value.communicationStyle ?? value.communication_style ?? '',
+    runtimeCompactSummary: value.runtimeCompactSummary ?? value.runtime_compact_summary ?? null,
     instructions: value.instructions ?? '',
     behavioralContract: normalizeBehavioralContract(
       value.behavioralContract ?? value.behavioral_contract,
       { mode: BEHAVIORAL_CONTRACT_MODES.OPTIONAL_OBJECT }
     ),
+    qualityGates: normalizeOptionalStringList(value.qualityGates ?? value.quality_gates),
+    definitionOfDone: normalizeOptionalStringList(value.definitionOfDone ?? value.definition_of_done),
+    phaseScope: normalizeOptionalStringList(value.phaseScope ?? value.phase_scope),
+    mode: value.mode ?? null,
+    inheritsFrom: value.inheritsFrom ?? value.inherits_from ?? null,
+    requiredArtifacts: normalizeOptionalStringList(value.requiredArtifacts ?? value.required_artifacts),
     capabilities: Array.isArray(value.capabilities) ? value.capabilities : [],
     defaults: normalizeTemplateDefaults(value.defaults),
     provenance: value.provenance ?? null,

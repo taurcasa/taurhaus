@@ -34,4 +34,36 @@ describe('templatePayloads normalizeRoleTemplateInput', () => {
       }),
     }))
   })
+
+  it('normalizes expanded role schema fields and preserves optional metadata', () => {
+    expect(normalizeRoleTemplateInput({
+      roleId: 'reviewer',
+      name: 'Reviewer',
+      communicationStyle: 'Brief and evidence-first.',
+      qualityGates: ['Run scoped tests', 'Link proof'],
+      definitionOfDone: ['Issue resolved', 'Ready for review'],
+      phaseScope: ['review', 'verification'],
+      mode: 'review',
+      inheritsFrom: 'base-reviewer',
+      requiredArtifacts: ['screenshot', 'diff summary'],
+      runtimeCompactSummary: {
+        rolePurpose: 'Keep reviews compact.',
+        keepDoing: ['Find issues'],
+        workflowSequence: ['Inspect changes'],
+        avoid: ['Speculation'],
+        escalateWhen: ['Missing context'],
+      },
+    })).toEqual(expect.objectContaining({
+      communicationStyle: 'Brief and evidence-first.',
+      qualityGates: ['Run scoped tests', 'Link proof'],
+      definitionOfDone: ['Issue resolved', 'Ready for review'],
+      phaseScope: ['review', 'verification'],
+      mode: 'review',
+      inheritsFrom: 'base-reviewer',
+      requiredArtifacts: ['screenshot', 'diff summary'],
+      runtimeCompactSummary: expect.objectContaining({
+        rolePurpose: 'Keep reviews compact.',
+      }),
+    }))
+  })
 })

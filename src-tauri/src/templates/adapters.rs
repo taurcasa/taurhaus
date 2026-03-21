@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::session_scanner::cli_tool::CliTool;
-use crate::templates::types::{ProjectBinding, RoleKind, RoleTemplate};
+use crate::templates::types::{
+    BehavioralContract, ProjectBinding, RoleConstraints, RoleKind, RoleTemplate,
+};
 
 /// Canonical field mapping for Taurhaus role import/export adapters.
 ///
@@ -44,7 +46,7 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         copilot_agent: "Compiled 'Focus Area' section in body",
         instruction_only: "Compiled 'Focus Area' section in body",
         export_mapping: "Rendered into prompt appendix section",
-        import_fidelity: "Lossy unless Taurhaus-specific headings are re-imported",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "context_summary",
@@ -52,7 +54,7 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         copilot_agent: "Compiled 'Context Summary' section in body",
         instruction_only: "Compiled 'Context Summary' section in body",
         export_mapping: "Rendered into prompt appendix section",
-        import_fidelity: "Lossy unless Taurhaus-specific headings are re-imported",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "behavior_summary",
@@ -60,7 +62,15 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         copilot_agent: "frontmatter.description + compiled body section",
         instruction_only: "Compiled 'Behavior Summary' section in body",
         export_mapping: "Rendered into prompt appendix section; Copilot may also mirror it into description",
-        import_fidelity: "Lossy/partial",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy/partial for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "communication_style",
+        claude_agent: "Compiled 'Communication Style' section in body",
+        copilot_agent: "Compiled 'Communication Style' section in body",
+        instruction_only: "Compiled 'Communication Style' section in body",
+        export_mapping: "Rendered into prompt appendix section",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "behavioral_contract",
@@ -68,7 +78,55 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         copilot_agent: "Compiled 'Behavioral Contract' section in body",
         instruction_only: "Compiled 'Behavioral Contract' section in body",
         export_mapping: "Rendered as grouped bullet lists in prompt appendix",
-        import_fidelity: "Lossy unless Taurhaus-specific headings are re-imported",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "quality_gates",
+        claude_agent: "Compiled 'Quality Gates' section in body",
+        copilot_agent: "Compiled 'Quality Gates' section in body",
+        instruction_only: "Compiled 'Quality Gates' section in body",
+        export_mapping: "Rendered as bullet list section in prompt appendix",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "definition_of_done",
+        claude_agent: "Compiled 'Definition of Done' section in body",
+        copilot_agent: "Compiled 'Definition of Done' section in body",
+        instruction_only: "Compiled 'Definition of Done' section in body",
+        export_mapping: "Rendered as bullet list section in prompt appendix",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "phase_scope",
+        claude_agent: "Compiled 'Phase Scope' section in body",
+        copilot_agent: "Compiled 'Phase Scope' section in body",
+        instruction_only: "Compiled 'Phase Scope' section in body",
+        export_mapping: "Rendered as bullet list section in prompt appendix",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "mode",
+        claude_agent: "Compiled 'Mode' section in body",
+        copilot_agent: "Compiled 'Mode' section in body",
+        instruction_only: "Compiled 'Mode' section in body",
+        export_mapping: "Rendered into prompt appendix section",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "inherits_from",
+        claude_agent: "Compiled 'Inherits From' section in body",
+        copilot_agent: "Compiled 'Inherits From' section in body",
+        instruction_only: "Compiled 'Inherits From' section in body",
+        export_mapping: "Rendered into prompt appendix section",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "required_artifacts",
+        claude_agent: "Compiled 'Required Artifacts' section in body",
+        copilot_agent: "Compiled 'Required Artifacts' section in body",
+        instruction_only: "Compiled 'Required Artifacts' section in body",
+        export_mapping: "Rendered as bullet list section in prompt appendix",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "capabilities",
@@ -76,7 +134,7 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         copilot_agent: "No direct field",
         instruction_only: "Compiled 'Capabilities' section in body",
         export_mapping: "Mapped to Claude tools where possible; otherwise body section only",
-        import_fidelity: "Partial for Claude, lossy elsewhere",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; partial for arbitrary Claude imports, lossy for instruction-only formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "constraints",
@@ -84,7 +142,7 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         copilot_agent: "Compiled 'Constraints' section in body",
         instruction_only: "Compiled 'Constraints' section in body",
         export_mapping: "Rendered into prompt appendix section only",
-        import_fidelity: "Lossy",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
     },
 ];
 
@@ -158,6 +216,42 @@ pub struct RoleProvenance {
 struct PromptSection {
     heading: &'static str,
     body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct ParsedCompiledPromptBody {
+    instructions: String,
+    focus_area: Option<String>,
+    context_summary: Option<String>,
+    behavior_summary: Option<String>,
+    communication_style: Option<String>,
+    behavioral_contract: Option<BehavioralContract>,
+    quality_gates: Option<Vec<String>>,
+    definition_of_done: Option<Vec<String>>,
+    phase_scope: Option<Vec<String>>,
+    mode: Option<String>,
+    inherits_from: Option<String>,
+    required_artifacts: Option<Vec<String>>,
+    capabilities: Option<Vec<String>>,
+    constraints: Option<RoleConstraints>,
+    default_cli_tool: Option<CliTool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KnownPromptHeading {
+    FocusArea,
+    ContextSummary,
+    BehaviorSummary,
+    CommunicationStyle,
+    BehavioralContract,
+    QualityGates,
+    DefinitionOfDone,
+    PhaseScope,
+    Mode,
+    InheritsFrom,
+    RequiredArtifacts,
+    Capabilities,
+    Constraints,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -320,7 +414,8 @@ fn build_imported_role(
     imported_tools: Vec<String>,
     cli_tool: CliTool,
 ) -> Result<ImportedRoleTemplate, RoleImportError> {
-    let instructions = body.trim();
+    let parsed_body = parse_compiled_prompt_body(body);
+    let instructions = parsed_body.instructions.trim();
     if instructions.is_empty() {
         return Err(RoleImportError::EmptyBody);
     }
@@ -335,16 +430,21 @@ fn build_imported_role(
         .unwrap_or(fallback_name)
         .to_string();
     let role_id = slugify_identifier(&name);
-    let capabilities = match format {
-        RoleExportFormat::ClaudeAgent => map_claude_tools_to_capabilities(&imported_tools),
-        RoleExportFormat::CopilotAgent => Vec::new(),
-        _ => Vec::new(),
-    };
-    let context_summary = imported_description
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
+    let capabilities = parsed_body
+        .capabilities
+        .clone()
+        .unwrap_or_else(|| match format {
+            RoleExportFormat::ClaudeAgent => map_claude_tools_to_capabilities(&imported_tools),
+            RoleExportFormat::CopilotAgent => Vec::new(),
+            _ => Vec::new(),
+        });
+    let context_summary = parsed_body.context_summary.clone().or_else(|| {
+        imported_description
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    });
     let parsed_fields = RoleParsedFields {
         name: imported_name,
         model: imported_model.clone(),
@@ -357,8 +457,10 @@ fn build_imported_role(
         source_version: Some("1".to_string()),
         source_path: source_path.map(str::to_string),
         imported_at,
-        non_roundtrippable_fields: synthesized_fields_for_import(format),
+        non_roundtrippable_fields: synthesized_fields_for_import(format, &parsed_body),
     };
+
+    let default_cli_tool = parsed_body.default_cli_tool.unwrap_or(cli_tool);
 
     Ok(ImportedRoleTemplate {
         template: RoleTemplate {
@@ -371,20 +473,31 @@ fn build_imported_role(
             version: "imported-1".to_string(),
             kind: RoleKind::Agent,
             defaults: crate::templates::types::RoleDefaults {
-                cli_tool,
+                cli_tool: default_cli_tool,
                 model: imported_model
-                    .unwrap_or_else(|| default_model_for_tool(cli_tool).to_string()),
+                    .unwrap_or_else(|| default_model_for_tool(default_cli_tool).to_string()),
                 default_name_pattern: format!("{role_id}-{{n}}"),
             },
             instructions: instructions.to_string(),
-            focus_area: None,
+            focus_area: parsed_body.focus_area,
             context_summary,
-            behavior_summary: None,
+            behavior_summary: parsed_body.behavior_summary,
+            communication_style: parsed_body.communication_style,
             runtime_compact_summary: None,
-            behavioral_contract: default_import_behavioral_contract(),
+            behavioral_contract: parsed_body
+                .behavioral_contract
+                .unwrap_or_else(default_import_behavioral_contract),
+            quality_gates: parsed_body.quality_gates,
+            definition_of_done: parsed_body.definition_of_done,
+            phase_scope: parsed_body.phase_scope,
+            mode: parsed_body.mode,
+            inherits_from: parsed_body.inherits_from,
+            required_artifacts: parsed_body.required_artifacts,
             capabilities,
             provenance: Some(provenance.clone()),
-            constraints: default_import_constraints(),
+            constraints: parsed_body
+                .constraints
+                .unwrap_or_else(default_import_constraints),
         },
         import_source: RoleImportSource {
             source_format: format,
@@ -399,18 +512,8 @@ pub fn lossy_fields_for_export(role: &RoleTemplate, format: RoleExportFormat) ->
 
     match format {
         RoleExportFormat::Yaml => {}
-        RoleExportFormat::ClaudeAgent => {
-            if !role.capabilities.is_empty() {
-                lossy.push("capabilities".to_string());
-            }
-            push_compiled_section_losses(role, &mut lossy);
-        }
-        RoleExportFormat::CopilotAgent => {
-            if !role.capabilities.is_empty() {
-                lossy.push("capabilities".to_string());
-            }
-            push_compiled_section_losses(role, &mut lossy);
-        }
+        RoleExportFormat::ClaudeAgent => {}
+        RoleExportFormat::CopilotAgent => {}
         RoleExportFormat::AgentsMd | RoleExportFormat::GeminiMd => {
             lossy.push("name".to_string());
             lossy.push("defaults.model".to_string());
@@ -551,6 +654,13 @@ fn compiled_prompt_sections(role: &RoleTemplate) -> Vec<PromptSection> {
         });
     }
 
+    if let Some(value) = non_empty(role.communication_style.as_deref()) {
+        sections.push(PromptSection {
+            heading: "Communication Style",
+            body: value.to_string(),
+        });
+    }
+
     if !role.behavioral_contract.communication.is_empty()
         || !role.behavioral_contract.execution.is_empty()
         || !role.behavioral_contract.escalation.is_empty()
@@ -573,15 +683,64 @@ fn compiled_prompt_sections(role: &RoleTemplate) -> Vec<PromptSection> {
         });
     }
 
+    if let Some(quality_gates) = role
+        .quality_gates
+        .as_ref()
+        .filter(|items| !items.is_empty())
+    {
+        sections.push(PromptSection {
+            heading: "Quality Gates",
+            body: render_bulleted_list(quality_gates),
+        });
+    }
+
+    if let Some(definition_of_done) = role
+        .definition_of_done
+        .as_ref()
+        .filter(|items| !items.is_empty())
+    {
+        sections.push(PromptSection {
+            heading: "Definition of Done",
+            body: render_bulleted_list(definition_of_done),
+        });
+    }
+
+    if let Some(phase_scope) = role.phase_scope.as_ref().filter(|items| !items.is_empty()) {
+        sections.push(PromptSection {
+            heading: "Phase Scope",
+            body: render_bulleted_list(phase_scope),
+        });
+    }
+
+    if let Some(value) = non_empty(role.mode.as_deref()) {
+        sections.push(PromptSection {
+            heading: "Mode",
+            body: value.to_string(),
+        });
+    }
+
+    if let Some(value) = non_empty(role.inherits_from.as_deref()) {
+        sections.push(PromptSection {
+            heading: "Inherits From",
+            body: value.to_string(),
+        });
+    }
+
+    if let Some(required_artifacts) = role
+        .required_artifacts
+        .as_ref()
+        .filter(|items| !items.is_empty())
+    {
+        sections.push(PromptSection {
+            heading: "Required Artifacts",
+            body: render_bulleted_list(required_artifacts),
+        });
+    }
+
     if !role.capabilities.is_empty() {
         sections.push(PromptSection {
             heading: "Capabilities",
-            body: role
-                .capabilities
-                .iter()
-                .map(|item| format!("- {}", item.trim()))
-                .collect::<Vec<_>>()
-                .join("\n"),
+            body: render_bulleted_list(&role.capabilities),
         });
     }
 
@@ -612,6 +771,240 @@ fn render_constraints(role: &RoleTemplate) -> String {
         format!("- default cli tool: {}", role.defaults.cli_tool),
     ]
     .join("\n")
+}
+
+fn parse_compiled_prompt_body(body: &str) -> ParsedCompiledPromptBody {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return ParsedCompiledPromptBody::default();
+    }
+
+    let lines: Vec<&str> = trimmed.lines().collect();
+    let mut parsed = ParsedCompiledPromptBody::default();
+    let mut intro = Vec::new();
+    let mut index = 0usize;
+
+    while index < lines.len() {
+        if prompt_heading_from_line(lines[index]).is_some() {
+            break;
+        }
+        intro.push(lines[index]);
+        index += 1;
+    }
+
+    parsed.instructions = intro.join("\n").trim().to_string();
+
+    while index < lines.len() {
+        let Some(heading) = prompt_heading_from_line(lines[index]) else {
+            let tail = lines[index..].join("\n").trim().to_string();
+            if !tail.is_empty() {
+                if parsed.instructions.is_empty() {
+                    parsed.instructions = tail;
+                } else {
+                    parsed.instructions.push_str("\n\n");
+                    parsed.instructions.push_str(&tail);
+                }
+            }
+            break;
+        };
+
+        index += 1;
+        let body_start = index;
+        while index < lines.len() {
+            if prompt_heading_from_line(lines[index]).is_some() {
+                break;
+            }
+            index += 1;
+        }
+        let section_body = lines[body_start..index].join("\n").trim().to_string();
+        apply_parsed_prompt_section(&mut parsed, heading, &section_body);
+    }
+
+    parsed.instructions = parsed.instructions.trim().to_string();
+    parsed
+}
+
+fn prompt_heading_from_line(line: &str) -> Option<KnownPromptHeading> {
+    match line.trim() {
+        "## Focus Area" => Some(KnownPromptHeading::FocusArea),
+        "## Context Summary" => Some(KnownPromptHeading::ContextSummary),
+        "## Behavior Summary" => Some(KnownPromptHeading::BehaviorSummary),
+        "## Communication Style" => Some(KnownPromptHeading::CommunicationStyle),
+        "## Behavioral Contract" => Some(KnownPromptHeading::BehavioralContract),
+        "## Quality Gates" => Some(KnownPromptHeading::QualityGates),
+        "## Definition of Done" => Some(KnownPromptHeading::DefinitionOfDone),
+        "## Phase Scope" => Some(KnownPromptHeading::PhaseScope),
+        "## Mode" => Some(KnownPromptHeading::Mode),
+        "## Inherits From" => Some(KnownPromptHeading::InheritsFrom),
+        "## Required Artifacts" => Some(KnownPromptHeading::RequiredArtifacts),
+        "## Capabilities" => Some(KnownPromptHeading::Capabilities),
+        "## Constraints" => Some(KnownPromptHeading::Constraints),
+        _ => None,
+    }
+}
+
+fn apply_parsed_prompt_section(
+    parsed: &mut ParsedCompiledPromptBody,
+    heading: KnownPromptHeading,
+    body: &str,
+) {
+    match heading {
+        KnownPromptHeading::FocusArea => {
+            parsed.focus_area = non_empty(Some(body)).map(str::to_string);
+        }
+        KnownPromptHeading::ContextSummary => {
+            parsed.context_summary = non_empty(Some(body)).map(str::to_string);
+        }
+        KnownPromptHeading::BehaviorSummary => {
+            parsed.behavior_summary = non_empty(Some(body)).map(str::to_string);
+        }
+        KnownPromptHeading::CommunicationStyle => {
+            parsed.communication_style = non_empty(Some(body)).map(str::to_string);
+        }
+        KnownPromptHeading::BehavioralContract => {
+            parsed.behavioral_contract = parse_behavioral_contract(body);
+        }
+        KnownPromptHeading::QualityGates => {
+            parsed.quality_gates = parse_bulleted_list(body);
+        }
+        KnownPromptHeading::DefinitionOfDone => {
+            parsed.definition_of_done = parse_bulleted_list(body);
+        }
+        KnownPromptHeading::PhaseScope => {
+            parsed.phase_scope = parse_bulleted_list(body);
+        }
+        KnownPromptHeading::Mode => {
+            parsed.mode = non_empty(Some(body)).map(str::to_string);
+        }
+        KnownPromptHeading::InheritsFrom => {
+            parsed.inherits_from = non_empty(Some(body)).map(str::to_string);
+        }
+        KnownPromptHeading::RequiredArtifacts => {
+            parsed.required_artifacts = parse_bulleted_list(body);
+        }
+        KnownPromptHeading::Capabilities => {
+            parsed.capabilities = parse_bulleted_list(body);
+        }
+        KnownPromptHeading::Constraints => {
+            let (constraints, cli_tool) = parse_constraints_section(body);
+            parsed.constraints = constraints;
+            parsed.default_cli_tool = cli_tool;
+        }
+    }
+}
+
+fn parse_bulleted_list(body: &str) -> Option<Vec<String>> {
+    let items = body
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("- ").map(|item| item.trim()))
+        .filter(|item| !item.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if items.is_empty() {
+        None
+    } else {
+        Some(items)
+    }
+}
+
+fn parse_behavioral_contract(body: &str) -> Option<BehavioralContract> {
+    let mut current_section = None::<&str>;
+    let mut communication = Vec::new();
+    let mut execution = Vec::new();
+    let mut escalation = Vec::new();
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+        match trimmed {
+            "### Communication" => current_section = Some("communication"),
+            "### Execution" => current_section = Some("execution"),
+            "### Escalation" => current_section = Some("escalation"),
+            _ => {
+                let Some(item) = trimmed.strip_prefix("- ").map(str::trim) else {
+                    continue;
+                };
+                if item.is_empty() {
+                    continue;
+                }
+                match current_section {
+                    Some("communication") => communication.push(item.to_string()),
+                    Some("execution") => execution.push(item.to_string()),
+                    Some("escalation") => escalation.push(item.to_string()),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if communication.is_empty() && execution.is_empty() && escalation.is_empty() {
+        None
+    } else {
+        Some(BehavioralContract {
+            communication,
+            execution,
+            escalation,
+        })
+    }
+}
+
+fn parse_constraints_section(body: &str) -> (Option<RoleConstraints>, Option<CliTool>) {
+    let mut constraints = default_import_constraints();
+    let mut saw_field = false;
+    let mut default_cli_tool = None;
+
+    for line in body.lines() {
+        let Some(item) = line.trim().strip_prefix("- ").map(str::trim) else {
+            continue;
+        };
+        let Some((label, value)) = item.split_once(':') else {
+            continue;
+        };
+        let label = label.trim();
+        let value = value.trim();
+        match label {
+            "role kind" => saw_field = true,
+            "min instances" => {
+                if let Ok(parsed) = value.parse::<u32>() {
+                    constraints.min_instances = parsed;
+                    saw_field = true;
+                }
+            }
+            "max instances" => {
+                if let Ok(parsed) = value.parse::<u32>() {
+                    constraints.max_instances = parsed;
+                    saw_field = true;
+                }
+            }
+            "allowed project binding" => {
+                constraints.allowed_project_binding = match value {
+                    "lead_project" => ProjectBinding::LeadProject,
+                    "explicit_project" => ProjectBinding::ExplicitProject,
+                    _ => ProjectBinding::Any,
+                };
+                saw_field = true;
+            }
+            "required lead tool" => {
+                constraints.requires_lead_tool = match value {
+                    "claude" => Some(CliTool::Claude),
+                    "codex" => Some(CliTool::Codex),
+                    "gemini" => Some(CliTool::Gemini),
+                    _ => None,
+                };
+                saw_field = true;
+            }
+            "default cli tool" => {
+                default_cli_tool = match value {
+                    "claude" => Some(CliTool::Claude),
+                    "codex" => Some(CliTool::Codex),
+                    "gemini" => Some(CliTool::Gemini),
+                    _ => None,
+                };
+            }
+            _ => {}
+        }
+    }
+
+    (saw_field.then_some(constraints), default_cli_tool)
 }
 
 fn split_frontmatter_and_body(raw: &str) -> Result<(Option<String>, &str), RoleImportError> {
@@ -677,20 +1070,69 @@ fn default_import_constraints() -> crate::templates::types::RoleConstraints {
     }
 }
 
-fn synthesized_fields_for_import(format: RoleExportFormat) -> Vec<String> {
-    let mut fields = vec![
-        "behavioral_contract".to_string(),
-        "constraints".to_string(),
-        "focus_area".to_string(),
-        "behavior_summary".to_string(),
-    ];
+fn synthesized_fields_for_import(
+    format: RoleExportFormat,
+    parsed_body: &ParsedCompiledPromptBody,
+) -> Vec<String> {
+    let mut fields = Vec::new();
+    push_missing_synthesized_field(
+        &mut fields,
+        "behavioral_contract",
+        parsed_body.behavioral_contract.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "constraints",
+        parsed_body.constraints.is_none(),
+    );
+    push_missing_synthesized_field(&mut fields, "focus_area", parsed_body.focus_area.is_none());
+    push_missing_synthesized_field(
+        &mut fields,
+        "behavior_summary",
+        parsed_body.behavior_summary.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "communication_style",
+        parsed_body.communication_style.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "quality_gates",
+        parsed_body.quality_gates.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "definition_of_done",
+        parsed_body.definition_of_done.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "phase_scope",
+        parsed_body.phase_scope.is_none(),
+    );
+    push_missing_synthesized_field(&mut fields, "mode", parsed_body.mode.is_none());
+    push_missing_synthesized_field(
+        &mut fields,
+        "inherits_from",
+        parsed_body.inherits_from.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "required_artifacts",
+        parsed_body.required_artifacts.is_none(),
+    );
     match format {
         RoleExportFormat::Yaml => {}
         RoleExportFormat::ClaudeAgent => {
-            fields.push("context_summary".to_string());
+            if parsed_body.context_summary.is_none() {
+                fields.push("context_summary".to_string());
+            }
         }
         RoleExportFormat::CopilotAgent => {
-            fields.push("capabilities".to_string());
+            if parsed_body.capabilities.is_none() {
+                fields.push("capabilities".to_string());
+            }
         }
         _ => {}
     }
@@ -770,8 +1212,43 @@ fn push_compiled_section_losses(role: &RoleTemplate, lossy: &mut Vec<String>) {
     if role.behavior_summary.is_some() {
         lossy.push("behavior_summary".to_string());
     }
+    if role.communication_style.is_some() {
+        lossy.push("communication_style".to_string());
+    }
     lossy.push("behavioral_contract".to_string());
+    if role.quality_gates.is_some() {
+        lossy.push("quality_gates".to_string());
+    }
+    if role.definition_of_done.is_some() {
+        lossy.push("definition_of_done".to_string());
+    }
+    if role.phase_scope.is_some() {
+        lossy.push("phase_scope".to_string());
+    }
+    if role.mode.is_some() {
+        lossy.push("mode".to_string());
+    }
+    if role.inherits_from.is_some() {
+        lossy.push("inherits_from".to_string());
+    }
+    if role.required_artifacts.is_some() {
+        lossy.push("required_artifacts".to_string());
+    }
     lossy.push("constraints".to_string());
+}
+
+fn push_missing_synthesized_field(lossy: &mut Vec<String>, field: &str, missing: bool) {
+    if missing {
+        lossy.push(field.to_string());
+    }
+}
+
+fn render_bulleted_list(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|item| format!("- {}", item.trim()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn map_capabilities_to_claude_tools(capabilities: &[String]) -> Vec<String> {
@@ -863,12 +1340,31 @@ mod tests {
             focus_area: Some("Architecture review".to_string()),
             context_summary: Some("Remembers why the architecture looks this way.".to_string()),
             behavior_summary: Some("Escalates direction questions quickly.".to_string()),
+            communication_style: Some("Calm, decisive check-ins.".to_string()),
             runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["Share interim findings.".to_string()],
                 execution: vec!["Verify assumptions in code.".to_string()],
                 escalation: vec!["Escalate blockers immediately.".to_string()],
             },
+            quality_gates: Some(vec![
+                "Run the named verification lane.".to_string(),
+                "Keep regression coverage intact.".to_string(),
+            ]),
+            definition_of_done: Some(vec![
+                "The requested outcome is visible in code or docs.".to_string(),
+                "Residual risk is called out.".to_string(),
+            ]),
+            phase_scope: Some(vec![
+                "implementation".to_string(),
+                "verification".to_string(),
+            ]),
+            mode: Some("execution".to_string()),
+            inherits_from: Some("taurhaus-base-worker".to_string()),
+            required_artifacts: Some(vec![
+                "diff summary".to_string(),
+                "validation summary".to_string(),
+            ]),
             capabilities: vec![
                 "read".to_string(),
                 "write".to_string(),
@@ -919,7 +1415,14 @@ mod tests {
         assert!(body.contains("Architecture review"));
         assert!(body.contains("## Context Summary"));
         assert!(body.contains("## Behavior Summary"));
+        assert!(body.contains("## Communication Style"));
         assert!(body.contains("## Behavioral Contract"));
+        assert!(body.contains("## Quality Gates"));
+        assert!(body.contains("## Definition of Done"));
+        assert!(body.contains("## Phase Scope"));
+        assert!(body.contains("## Mode"));
+        assert!(body.contains("## Inherits From"));
+        assert!(body.contains("## Required Artifacts"));
         assert!(body.contains("### Communication"));
         assert!(body.contains("### Execution"));
         assert!(body.contains("### Escalation"));
@@ -937,11 +1440,7 @@ mod tests {
         assert!(exported.file_content.contains("name: \"Sample Role\""));
         assert!(exported.file_content.contains("model: \"claude-opus-4-6\""));
         assert!(exported.file_content.contains("tools: [read, edit, bash]"));
-        assert!(exported.lossy_fields.contains(&"capabilities".to_string()));
-        assert!(exported
-            .lossy_fields
-            .contains(&"behavioral_contract".to_string()));
-        assert!(exported.lossy_fields.contains(&"constraints".to_string()));
+        assert!(exported.lossy_fields.is_empty());
     }
 
     #[test]
@@ -977,6 +1476,49 @@ mod tests {
         assert_eq!(parsed.role_id, role.role_id);
         assert_eq!(parsed.name, role.name);
         assert_eq!(parsed.defaults.model, role.defaults.model);
+    }
+
+    #[test]
+    fn export_role_to_copilot_agent_preserves_compiled_fields_without_known_loss() {
+        let role = sample_role();
+        let exported = export_role(&role, RoleExportFormat::CopilotAgent);
+
+        assert_eq!(exported.target_format, RoleExportFormat::CopilotAgent);
+        assert!(exported.file_content.contains("name: \"Sample Role\""));
+        assert!(exported
+            .file_content
+            .contains("description: \"Escalates direction questions quickly.\""));
+        assert!(exported.lossy_fields.is_empty());
+
+        let imported = import_role_at(
+            RoleExportFormat::CopilotAgent,
+            &exported.file_content,
+            Some(".github/agents/sample-role.md"),
+            chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 3, 21, 22, 35, 0)
+                .single()
+                .expect("valid timestamp"),
+        )
+        .expect("copilot import should succeed");
+
+        assert_eq!(imported.template.instructions, role.instructions);
+        assert_eq!(
+            imported.template.communication_style,
+            role.communication_style
+        );
+        assert_eq!(imported.template.quality_gates, role.quality_gates);
+        assert_eq!(
+            imported.template.definition_of_done,
+            role.definition_of_done
+        );
+        assert_eq!(imported.template.phase_scope, role.phase_scope);
+        assert_eq!(imported.template.mode, role.mode);
+        assert_eq!(imported.template.inherits_from, role.inherits_from);
+        assert_eq!(
+            imported.template.required_artifacts,
+            role.required_artifacts
+        );
+        assert_eq!(imported.template.capabilities, role.capabilities);
+        assert_eq!(imported.template.constraints, role.constraints);
     }
 
     #[test]
@@ -1089,6 +1631,55 @@ Review architecture changes and report structural risks.
             imported.import_source.provenance.source_format,
             RoleExportFormat::ClaudeAgent
         );
+    }
+
+    #[test]
+    fn import_claude_agent_parses_compiled_taurhaus_sections() {
+        let role = sample_role();
+        let exported = export_role(&role, RoleExportFormat::ClaudeAgent);
+
+        let imported = import_role_at(
+            RoleExportFormat::ClaudeAgent,
+            &exported.file_content,
+            Some(".claude/agents/sample-role.md"),
+            chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 3, 21, 22, 30, 0)
+                .single()
+                .expect("valid timestamp"),
+        )
+        .expect("import should succeed");
+
+        assert_eq!(imported.template.instructions, role.instructions);
+        assert_eq!(imported.template.focus_area, role.focus_area);
+        assert_eq!(imported.template.context_summary, role.context_summary);
+        assert_eq!(imported.template.behavior_summary, role.behavior_summary);
+        assert_eq!(
+            imported.template.communication_style,
+            role.communication_style
+        );
+        assert_eq!(
+            imported.template.behavioral_contract,
+            role.behavioral_contract
+        );
+        assert_eq!(imported.template.quality_gates, role.quality_gates);
+        assert_eq!(
+            imported.template.definition_of_done,
+            role.definition_of_done
+        );
+        assert_eq!(imported.template.phase_scope, role.phase_scope);
+        assert_eq!(imported.template.mode, role.mode);
+        assert_eq!(imported.template.inherits_from, role.inherits_from);
+        assert_eq!(
+            imported.template.required_artifacts,
+            role.required_artifacts
+        );
+        assert_eq!(imported.template.capabilities, role.capabilities);
+        assert_eq!(imported.template.constraints, role.constraints);
+        assert_eq!(imported.template.defaults.cli_tool, role.defaults.cli_tool);
+        assert!(imported
+            .import_source
+            .provenance
+            .non_roundtrippable_fields
+            .is_empty());
     }
 
     #[test]
@@ -1250,7 +1841,23 @@ Review carefully and summarize the tradeoffs.
         assert_eq!(imported.template.name, role.name);
         assert_eq!(imported.template.role_id, role.role_id);
         assert_eq!(imported.template.defaults.model, role.defaults.model);
-        assert_eq!(imported.template.instructions, compile_prompt_body(&role));
+        assert_eq!(imported.template.instructions, role.instructions);
+        assert_eq!(
+            imported.template.communication_style,
+            role.communication_style
+        );
+        assert_eq!(imported.template.quality_gates, role.quality_gates);
+        assert_eq!(
+            imported.template.definition_of_done,
+            role.definition_of_done
+        );
+        assert_eq!(imported.template.phase_scope, role.phase_scope);
+        assert_eq!(imported.template.mode, role.mode);
+        assert_eq!(imported.template.inherits_from, role.inherits_from);
+        assert_eq!(
+            imported.template.required_artifacts,
+            role.required_artifacts
+        );
         assert_eq!(
             imported
                 .template

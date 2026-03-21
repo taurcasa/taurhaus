@@ -6,6 +6,12 @@ function optionalTrimmedString(value) {
   return normalized.length > 0 ? normalized : null
 }
 
+function optionalTrimmedStringList(value) {
+  if (!Array.isArray(value)) return null
+  const normalized = value.map((entry) => String(entry ?? '').trim()).filter(Boolean)
+  return normalized.length > 0 ? normalized : null
+}
+
 export function normalizeRoleTemplateInput(roleData) {
   const source =
     roleData && typeof roleData === 'object' && roleData.template
@@ -61,9 +67,17 @@ export function normalizeRoleTemplateInput(roleData) {
     focusArea: optionalTrimmedString(source.focusArea ?? source.focus_area),
     contextSummary: optionalTrimmedString(source.contextSummary ?? source.context_summary),
     behaviorSummary: optionalTrimmedString(source.behaviorSummary ?? source.behavior_summary),
+    communicationStyle: optionalTrimmedString(source.communicationStyle ?? source.communication_style),
+    runtimeCompactSummary: source.runtimeCompactSummary ?? source.runtime_compact_summary ?? null,
     behavioralContract: normalizeBehavioralContract(source.behavioralContract, {
       mode: BEHAVIORAL_CONTRACT_MODES.TEMPLATE_INPUT,
     }),
+    qualityGates: optionalTrimmedStringList(source.qualityGates ?? source.quality_gates),
+    definitionOfDone: optionalTrimmedStringList(source.definitionOfDone ?? source.definition_of_done),
+    phaseScope: optionalTrimmedStringList(source.phaseScope ?? source.phase_scope),
+    mode: optionalTrimmedString(source.mode),
+    inheritsFrom: optionalTrimmedString(source.inheritsFrom ?? source.inherits_from),
+    requiredArtifacts: optionalTrimmedStringList(source.requiredArtifacts ?? source.required_artifacts),
     capabilities,
     provenance: source.provenance ?? null,
     constraints: {

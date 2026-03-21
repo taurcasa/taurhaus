@@ -219,12 +219,50 @@ pub struct RoleTemplate {
     pub behavior_summary: Option<String>,
     #[serde(
         default,
+        alias = "communication_style",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub communication_style: Option<String>,
+    #[serde(
+        default,
         alias = "runtime_compact_summary",
         skip_serializing_if = "Option::is_none"
     )]
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(alias = "behavioral_contract")]
     pub behavioral_contract: BehavioralContract,
+    #[serde(
+        default,
+        alias = "quality_gates",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub quality_gates: Option<Vec<String>>,
+    #[serde(
+        default,
+        alias = "definition_of_done",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub definition_of_done: Option<Vec<String>>,
+    #[serde(
+        default,
+        alias = "phase_scope",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub phase_scope: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    #[serde(
+        default,
+        alias = "inherits_from",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub inherits_from: Option<String>,
+    #[serde(
+        default,
+        alias = "required_artifacts",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub required_artifacts: Option<Vec<String>>,
     #[serde(default)]
     pub capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,6 +306,9 @@ impl RoleTemplate {
         if let Some(behavior_summary) = self.behavior_summary.as_deref() {
             validate_non_empty("behavior_summary", behavior_summary, &mut errors);
         }
+        if let Some(communication_style) = self.communication_style.as_deref() {
+            validate_non_empty("communication_style", communication_style, &mut errors);
+        }
         if let Some(runtime_compact_summary) = self.runtime_compact_summary.as_ref() {
             runtime_compact_summary.validate("runtime_compact_summary", &mut errors);
         }
@@ -280,6 +321,25 @@ impl RoleTemplate {
         }
         self.behavioral_contract
             .validate("behavioral_contract", &mut errors);
+
+        if let Some(quality_gates) = self.quality_gates.as_ref() {
+            validate_string_list("quality_gates", quality_gates, &mut errors);
+        }
+        if let Some(definition_of_done) = self.definition_of_done.as_ref() {
+            validate_string_list("definition_of_done", definition_of_done, &mut errors);
+        }
+        if let Some(phase_scope) = self.phase_scope.as_ref() {
+            validate_string_list("phase_scope", phase_scope, &mut errors);
+        }
+        if let Some(mode) = self.mode.as_deref() {
+            validate_non_empty("mode", mode, &mut errors);
+        }
+        if let Some(inherits_from) = self.inherits_from.as_deref() {
+            validate_non_empty("inherits_from", inherits_from, &mut errors);
+        }
+        if let Some(required_artifacts) = self.required_artifacts.as_ref() {
+            validate_string_list("required_artifacts", required_artifacts, &mut errors);
+        }
 
         validate_string_list("capabilities", &self.capabilities, &mut errors);
         if let Some(provenance) = &self.provenance {
@@ -861,6 +921,7 @@ mod tests {
             behavior_summary: Some(
                 "Implements assigned work and escalates structural uncertainty.".to_string(),
             ),
+            communication_style: Some("Short, concrete progress updates.".to_string()),
             runtime_compact_summary: Some(RuntimeCompactSummary {
                 role_purpose: "Implement scoped changes with validation-first discipline and explicit ownership boundaries.".to_string(),
                 keep_doing: vec![
@@ -885,6 +946,21 @@ mod tests {
                 execution: vec!["deliver tests".to_string()],
                 escalation: vec!["raise blockers".to_string()],
             },
+            quality_gates: Some(vec![
+                "Run the named validation lane.".to_string(),
+                "Keep regression coverage for confirmed bugs.".to_string(),
+            ]),
+            definition_of_done: Some(vec![
+                "Requested behavior matches the acceptance criteria.".to_string(),
+                "Residual risks are called out explicitly.".to_string(),
+            ]),
+            phase_scope: Some(vec!["implementation".to_string(), "verification".to_string()]),
+            mode: Some("execution".to_string()),
+            inherits_from: Some("taurhaus-base-implementer".to_string()),
+            required_artifacts: Some(vec![
+                "code diff".to_string(),
+                "verification summary".to_string(),
+            ]),
             capabilities: vec!["implementation".to_string()],
             provenance: None,
             constraints: RoleConstraints {
@@ -1223,12 +1299,19 @@ mod tests {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            communication_style: None,
             runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["a".to_string()],
                 execution: vec!["b".to_string()],
                 escalation: vec!["c".to_string()],
             },
+            quality_gates: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
             capabilities: vec!["planning".to_string()],
             provenance: None,
             constraints: RoleConstraints {
@@ -1256,12 +1339,19 @@ mod tests {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            communication_style: None,
             runtime_compact_summary: None,
             behavioral_contract: BehavioralContract {
                 communication: vec!["a".to_string()],
                 execution: vec!["b".to_string()],
                 escalation: vec!["c".to_string()],
             },
+            quality_gates: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
             capabilities: vec!["implementation".to_string()],
             provenance: None,
             constraints: RoleConstraints {
