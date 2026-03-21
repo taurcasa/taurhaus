@@ -1,5 +1,5 @@
 /**
- * Mesh redesign screenshot capture for designer review.
+ * Draft Board roster builder screenshot capture for design/product review.
  *
  * Run with:
  *   just test-e2e-spec template-screenshots
@@ -9,7 +9,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
-import { clickTestId, waitForProjectsLoaded } from '../helpers/navigation.js'
+import { clickTestId, fastClick, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 
@@ -169,111 +169,170 @@ async function ensureEmptyMode() {
   return true
 }
 
-async function clickFirstPreset() {
-  const preset = await $('[data-testid="mesh-template-preset-full-team"]')
-  if (await preset.isExisting()) {
-    await preset.click()
-    return
+async function clickPreset(presetId) {
+  const selector = `[data-testid="mesh-template-preset-${presetId}"]`
+  if (await hasTestId(`mesh-template-preset-${presetId}`)) {
+    const clicked = await fastClick(selector)
+    if (clicked) return
   }
 
   const options = await $$('[data-testid^="mesh-template-preset-"]')
   for (const option of options) {
     if (await option.isDisplayed() && await option.isEnabled()) {
-      await option.click()
-      return
+      await option.scrollIntoView().catch(() => {})
+      const clicked = await browser.execute((el) => {
+        if (!el) return false
+        el.click()
+        return true
+      }, option).catch(() => false)
+      if (clicked) return
     }
   }
 }
 
-async function ensureSetupModeWithPreset() {
+async function ensureSetupModeFromPreset(presetId) {
   await openMeshTab()
   await closeSlideOverIfOpen()
 
   if (!(await hasTestId('mesh-mode-setup'))) {
     if (!(await ensureEmptyMode())) return false
-    await clickFirstPreset()
+    await clickPreset(presetId)
   }
 
   await waitForMode('mesh-mode-setup')
-  await browser.waitUntil(
-    async () => (await $$('[data-testid="mesh-node-agent"]')).length >= 2,
-    { ...WAIT_LONG, timeoutMsg: 'Expected composed setup canvas with agent nodes' }
-  )
   return true
 }
 
-async function openTemplateBrowser() {
-  if (!(await ensureEmptyMode())) return false
-  await clickTestId('mesh-template-browse-catalog')
-  await browser.waitUntil(
-    async () => await hasTestId('template-browser-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Template browser did not open' }
-  )
-  return true
-}
+async function ensureSetupModeFromCustom() {
+  await openMeshTab()
+  await closeSlideOverIfOpen()
 
-async function openTeamCustomizer() {
-  if (!(await ensureSetupModeWithPreset())) return false
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open' }
-  )
-  return true
-}
-
-async function initializeFromSetup() {
-  if (!(await ensureSetupModeWithPreset())) return false
-  await clickTestId('mesh-action-customize')
-  await browser.waitUntil(
-    async () => await hasTestId('team-customizer-panel'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not open before initialization' }
-  )
-  const teamNameInput = await $('[data-testid="team-customizer-name-input"]')
-  await teamNameInput.clearValue()
-  await teamNameInput.setValue(runtimeTeamName)
-  await clickTestId('team-customizer-save')
-  await browser.waitUntil(
-    async () => !(await hasTestId('team-customizer-panel')),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Team customizer did not close before initialization' }
-  )
-  createdTeamNames.add(runtimeTeamName)
-
-  const initializeButton = await $('[data-testid="mesh-action-initialize"]')
-  await initializeButton.waitForExist({ timeout: WAIT_MEDIUM.timeout })
-  if (!(await initializeButton.isEnabled())) {
-    throw new Error('Initialize button is disabled in setup mode')
+  if (!(await hasTestId('mesh-mode-setup'))) {
+    if (!(await ensureEmptyMode())) return false
+    await clickTestId('mesh-template-build-custom')
   }
 
-  await initializeButton.click()
-  await browser.waitUntil(
-    async () =>
-      (await hasTestId('mesh-mode-initializing')) ||
-      (await hasTestId('mesh-mode-runtime')) ||
-      (await hasTestId('mesh-error')),
-    { ...WAIT_LONG, timeoutMsg: 'Mesh did not transition to initializing/runtime mode' }
-  )
-
-  return await hasTestId('mesh-mode-initializing')
+  await waitForMode('mesh-mode-setup')
+  return true
 }
 
-async function waitForRuntimeMode() {
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-mode-runtime'),
-    { ...WAIT_XLONG, timeoutMsg: 'Mesh did not enter runtime mode' }
-  )
+async function ensureCatalogExpanded() {
+  if (!(await hasTestId('mesh-builder-catalog'))) return
+  const catalog = await $('[data-testid="mesh-builder-catalog"]')
+  if ((await catalog.getAttribute('data-collapsed')) === 'true') {
+    await clickTestId('mesh-template-browse-catalog')
+    await browser.waitUntil(
+      async () => (await catalog.getAttribute('data-collapsed')) === 'false',
+      { ...WAIT_MEDIUM, timeoutMsg: 'Catalog did not expand' }
+    )
+  }
 }
 
-async function openAddAgentPanel() {
-  await waitForRuntimeMode()
-  await clickTestId('mesh-runtime-add-agent')
-  await browser.waitUntil(
-    async () => await hasTestId('mesh-add-agent-form'),
-    { ...WAIT_MEDIUM, timeoutMsg: 'Add agent panel did not open' }
-  )
+async function ensureCatalogCollapsed() {
+  if (!(await hasTestId('mesh-builder-catalog'))) return
+  const catalog = await $('[data-testid="mesh-builder-catalog"]')
+  if ((await catalog.getAttribute('data-collapsed')) === 'false') {
+    await clickTestId('mesh-builder-catalog-toggle')
+    await browser.waitUntil(
+      async () => (await catalog.getAttribute('data-collapsed')) === 'true',
+      { ...WAIT_MEDIUM, timeoutMsg: 'Catalog did not collapse' }
+    )
+  }
 }
 
-describe('Mesh redesign screenshot capture', () => {
+async function clickFirstSectionAction(sectionTestId, prefix) {
+  const buttons = await $$(`[data-testid="${sectionTestId}"] [data-testid^="${prefix}"]`)
+  for (const button of buttons) {
+    if (await button.isDisplayed() && await button.isEnabled()) {
+      await button.scrollIntoView().catch(() => {})
+      const testId = await button.getAttribute('data-testid')
+      if (testId) {
+        const clicked = await fastClick(`[data-testid="${testId}"]`)
+        if (clicked) return true
+      }
+
+      const clicked = await browser.execute((el) => {
+        if (!el) return false
+        el.click()
+        return true
+      }, button).catch(() => false)
+      if (clicked) return true
+    }
+  }
+  return false
+}
+
+async function clickNthSectionAction(sectionTestId, prefix, index) {
+  const buttons = await $$(`[data-testid="${sectionTestId}"] [data-testid^="${prefix}"]`)
+  if (buttons[index] && await buttons[index].isDisplayed() && await buttons[index].isEnabled()) {
+    const button = buttons[index]
+    await button.scrollIntoView().catch(() => {})
+    const testId = await button.getAttribute('data-testid')
+    if (testId) {
+      const clicked = await fastClick(`[data-testid="${testId}"]`)
+      if (clicked) return true
+    }
+
+    return await browser.execute((el) => {
+      if (!el) return false
+      el.click()
+      return true
+    }, button).catch(() => false)
+  }
+  return false
+}
+
+async function buildPartialRoster() {
+  if (!(await ensureSetupModeFromCustom())) return false
+  await ensureCatalogExpanded()
+
+  await clickFirstSectionAction('mesh-builder-role-section-leads', 'mesh-builder-add-')
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-builder-lead-card'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Lead card did not appear after selecting a lead' }
+  )
+
+  await ensureCatalogExpanded()
+  await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-add-', 0)
+  await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-add-', 1)
+  await browser.waitUntil(
+    async () => (await $$('[data-testid^="mesh-builder-agent-card-"]')).length >= 2,
+    { ...WAIT_MEDIUM, timeoutMsg: 'Expected at least two agent cards in the roster' }
+  )
+
+  return true
+}
+
+async function pinFavorites() {
+  if (!(await ensureSetupModeFromCustom())) return false
+  await ensureCatalogExpanded()
+
+  await clickNthSectionAction('mesh-builder-role-section-leads', 'mesh-builder-pin-', 0)
+  await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-pin-', 0)
+  await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-pin-', 1)
+
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-builder-pinned-strip'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Pinned favorites strip did not appear' }
+  )
+
+  return true
+}
+
+async function buildFullTeam() {
+  if (!(await ensureSetupModeFromPreset('full-team'))) return false
+  await ensureCatalogExpanded()
+  await clickNthSectionAction('mesh-builder-role-section-agents', 'mesh-builder-add-', 0)
+  await browser.waitUntil(
+    async () => (await $$('[data-testid^="mesh-builder-agent-card-"]')).length >= 4,
+    { ...WAIT_MEDIUM, timeoutMsg: 'Expected full team roster with four agents' }
+  )
+
+  await ensureCatalogCollapsed()
+  return true
+}
+
+describe('Draft Board screenshot capture', () => {
   before(async () => {
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
@@ -300,68 +359,35 @@ describe('Mesh redesign screenshot capture', () => {
     }
   })
 
-  it('captures all required mesh redesign views', async function () {
+  it('captures all required Draft Board roster builder views', async function () {
     if (!mainApp) return this.skip()
     if (!(await ensureMeshAvailable(this))) return
 
     await setTheme('dark')
     if (!(await ensureEmptyMode())) return this.skip()
-    await shot('01-empty-state-dark')
-
-    await setTheme('light')
-    if (!(await ensureEmptyMode())) return this.skip()
-    await shot('02-empty-state-light')
+    await shot('01-draft-board-empty-state-dark')
 
     await setTheme('dark')
-    if (!(await ensureSetupModeWithPreset())) return this.skip()
-    await shot('03-canvas-3-agent-composed-dark')
+    if (!(await ensureSetupModeFromPreset('dev-team'))) return this.skip()
+    await shot('02-draft-board-preset-applied-dark')
 
     await setTheme('light')
-    if (!(await ensureSetupModeWithPreset())) return this.skip()
-    await shot('04-canvas-3-agent-composed-light')
+    if (!(await buildPartialRoster())) return this.skip()
+    await ensureCatalogExpanded()
+    await shot('03-draft-board-partially-built-light')
 
     await setTheme('dark')
-    if (!(await ensureSetupModeWithPreset())) return this.skip()
-    const firstAgentNode = (await $$('[data-testid="mesh-node-agent"]'))[0]
-    if (firstAgentNode) {
-      await firstAgentNode.click()
-      await browser.waitUntil(
-        async () => await hasTestId('mesh-node-detail'),
-        { ...WAIT_MEDIUM, timeoutMsg: 'Node detail did not appear' }
-      )
-    }
-    await shot('05-canvas-selected-node-detail-dark')
+    if (!(await buildPartialRoster())) return this.skip()
+    await ensureCatalogCollapsed()
+    await shot('04-draft-board-catalog-collapsed-dark')
 
-    if (!(await openTemplateBrowser())) return this.skip()
-    await shot('06-template-browser-slideover-dark')
-    await closeSlideOverIfOpen()
+    await setTheme('light')
+    if (!(await pinFavorites())) return this.skip()
+    await ensureCatalogExpanded()
+    await shot('05-draft-board-catalog-favorites-light')
 
-    if (!(await openTeamCustomizer())) return this.skip()
-    await shot('07-team-customizer-slideover-dark')
-    await closeSlideOverIfOpen()
-
-    const capturedInitializing = await initializeFromSetup()
-    if (!capturedInitializing && !(await hasTestId('mesh-mode-runtime')) && !(await hasTestId('mesh-mode-initializing'))) {
-      return this.skip()
-    }
-    await shot('08-initialization-mid-state-dark')
-    if (!capturedInitializing) {
-      // Fast paths can move directly to runtime on local machines.
-      // Keep the required init artifact by capturing immediately after click.
-      await browser.pause(120)
-    }
-    await browser.waitUntil(
-      async () =>
-        (await hasTestId('mesh-mode-runtime')) ||
-        (await hasTestId('mesh-init-failure')) ||
-        (await hasTestId('mesh-error')),
-      { ...WAIT_XLONG, timeoutMsg: 'Mesh did not resolve to runtime or failure state' }
-    )
-    if (!(await hasTestId('mesh-mode-runtime'))) return
-
-    await shot('09-runtime-mixed-statuses-dark')
-
-    await openAddAgentPanel()
-    await shot('10-add-agent-panel-open-dark')
+    await setTheme('dark')
+    if (!(await buildFullTeam())) return this.skip()
+    await shot('06-draft-board-full-team-ready-dark')
   })
 })

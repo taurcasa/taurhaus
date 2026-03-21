@@ -2500,11 +2500,21 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
-      expect(screen.getByTestId('mesh-builder-lead-name-input')).toHaveValue('team-lead')
-      expect(screen.getByTestId('mesh-builder-agent-name-input-architect')).toHaveValue('architect')
-      expect(screen.getByTestId('mesh-builder-agent-name-input-dev-1')).toHaveValue('dev-1')
-      expect(screen.getByTestId('mesh-builder-agent-name-input-dev-2')).toHaveValue('dev-2')
+      expect(screen.getByTestId('mesh-builder-lead-edit-toggle')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-agent-edit-toggle-architect')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-agent-edit-toggle-dev-1')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-builder-agent-edit-toggle-dev-2')).toBeInTheDocument()
     })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-lead-edit-toggle'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-architect'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-dev-1'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-dev-2'))
+
+    expect(screen.getByTestId('mesh-builder-lead-name-input')).toHaveValue('team-lead')
+    expect(screen.getByTestId('mesh-builder-agent-name-input-architect')).toHaveValue('architect')
+    expect(screen.getByTestId('mesh-builder-agent-name-input-dev-1')).toHaveValue('dev-1')
+    expect(screen.getByTestId('mesh-builder-agent-name-input-dev-2')).toHaveValue('dev-2')
 
     expect(coordinationInitializeTeam).not.toHaveBeenCalled()
   })
@@ -2905,8 +2915,7 @@ describe('MeshTab', () => {
       expect(screen.getAllByTestId('mesh-node-agent')).toHaveLength(1)
     })
 
-    const agentMarker = screen.getByTestId('mesh-node-agent')
-    await fireEvent.click(within(agentMarker).getByRole('button', { name: 'x' }))
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-remove-agent-default-1'))
     await waitFor(() => {
       expect(screen.queryAllByTestId('mesh-node-agent')).toHaveLength(0)
     })

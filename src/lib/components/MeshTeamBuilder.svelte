@@ -104,6 +104,8 @@
   let catalogCollapsed = $state(false)
   let editingTeamName = $state(false)
   let editingDescription = $state(false)
+  let leadDetailsExpanded = $state(false)
+  let expandedAgentIds = $state([])
   let highlightedRosterSection = $state('')
   let draggingCatalogRoleId = $state('')
   let draggingRosterAgentId = $state('')
@@ -242,6 +244,24 @@
   onDestroy(() => {
     if (rosterFeedbackTimer) {
       clearTimeout(rosterFeedbackTimer)
+    }
+  })
+
+  $effect(() => {
+    if (!normalizedTeam?.lead && leadDetailsExpanded) {
+      leadDetailsExpanded = false
+    }
+  })
+
+  $effect(() => {
+    const validAgentIds = new Set(agents.map((agent) => agent.id))
+    const nextExpandedAgentIds = expandedAgentIds.filter((agentId) => validAgentIds.has(agentId))
+
+    if (
+      nextExpandedAgentIds.length !== expandedAgentIds.length
+      || nextExpandedAgentIds.some((agentId, index) => agentId !== expandedAgentIds[index])
+    ) {
+      expandedAgentIds = nextExpandedAgentIds
     }
   })
 
@@ -454,6 +474,8 @@
   function handleReset() {
     editingTeamName = false
     editingDescription = false
+    leadDetailsExpanded = false
+    expandedAgentIds = []
     catalogCollapsed = false
     onReset()
   }
@@ -535,8 +557,27 @@
 
   function handlePresetApply(preset) {
     catalogCollapsed = true
+    leadDetailsExpanded = false
+    expandedAgentIds = []
     triggerRosterFeedback('all')
     onApplyPreset(preset)
+  }
+
+  function toggleLeadDetails() {
+    leadDetailsExpanded = !leadDetailsExpanded
+  }
+
+  function isAgentExpanded(agentId) {
+    return expandedAgentIds.includes(agentId)
+  }
+
+  function toggleAgentDetails(agentId) {
+    if (!agentId) return
+    if (expandedAgentIds.includes(agentId)) {
+      expandedAgentIds = expandedAgentIds.filter((entry) => entry !== agentId)
+      return
+    }
+    expandedAgentIds = [...expandedAgentIds, agentId]
   }
 
   function filterButtonTone(active) {
@@ -655,128 +696,98 @@
 
   <main class="space-y-3" data-testid="mesh-builder-roster">
     <header class="sticky top-2 z-20 rounded-[22px] border p-4 shadow-sm backdrop-blur {panelTone}">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div class="min-w-0 flex-1 space-y-3">
+      <div class="min-w-0 space-y-3">
+        <div class="space-y-2">
+          <p class="text-[10px] font-bold uppercase tracking-[0.24em] {t.textMuted}">Draft Board</p>
+
           <div class="space-y-2">
-            <p class="text-[10px] font-bold uppercase tracking-[0.24em] {t.textMuted}">Draft Board</p>
+            {#if editingTeamName}
+              <input
+                bind:this={teamNameInput}
+                class="h-11 w-full rounded-xl border px-3 text-lg font-semibold outline-none {inputTone}"
+                value={teamName}
+                oninput={(event) => onTeamNameChange(event.currentTarget.value)}
+                onblur={finishEditingTeamName}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    finishEditingTeamName()
+                  }
+                }}
+                data-testid="mesh-builder-team-name-input"
+              />
+            {:else}
+              <button
+                class="w-full rounded-[18px] border px-3 py-3 text-left transition {surfaceTone}"
+                type="button"
+                onclick={startEditingTeamName}
+                data-testid="mesh-builder-team-name-display"
+              >
+                <span class="block text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Team Name</span>
+                <span class="mt-1 block truncate text-lg font-semibold {t.textPrimary}">
+                  {teamNameLabel}
+                </span>
+              </button>
+            {/if}
 
-            <div class="space-y-2">
-              {#if editingTeamName}
-                <input
-                  bind:this={teamNameInput}
-                  class="h-11 w-full rounded-xl border px-3 text-lg font-semibold outline-none {inputTone}"
-                  value={teamName}
-                  oninput={(event) => onTeamNameChange(event.currentTarget.value)}
-                  onblur={finishEditingTeamName}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      finishEditingTeamName()
-                    }
-                  }}
-                  data-testid="mesh-builder-team-name-input"
-                />
-              {:else}
-                <button
-                  class="w-full rounded-[18px] border px-3 py-3 text-left transition {surfaceTone}"
-                  type="button"
-                  onclick={startEditingTeamName}
-                  data-testid="mesh-builder-team-name-display"
-                >
-                  <span class="block text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Team Name</span>
-                  <span class="mt-1 block truncate text-lg font-semibold {t.textPrimary}">
-                    {teamNameLabel}
-                  </span>
-                </button>
-              {/if}
-
-              {#if editingDescription}
-                <input
-                  bind:this={teamDescriptionInput}
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={normalizedTeam.description ?? ''}
-                  oninput={(event) => onDescriptionChange(event.currentTarget.value)}
-                  onblur={finishEditingDescription}
-                  onkeydown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      finishEditingDescription()
-                    }
-                  }}
-                  data-testid="mesh-builder-team-description-input"
-                />
-              {:else}
-                <button
-                  class="w-full rounded-[18px] border px-3 py-3 text-left transition {surfaceTone}"
-                  type="button"
-                  onclick={startEditingDescription}
-                  data-testid="mesh-builder-team-description-display"
-                >
-                  <span class="block text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Description</span>
-                  <span class="mt-1 block text-sm {t.textSecondary}">
-                    {teamDescriptionLabel}
-                  </span>
-                </button>
-              {/if}
-            </div>
+            {#if editingDescription}
+              <input
+                bind:this={teamDescriptionInput}
+                class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                value={normalizedTeam.description ?? ''}
+                oninput={(event) => onDescriptionChange(event.currentTarget.value)}
+                onblur={finishEditingDescription}
+                onkeydown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    finishEditingDescription()
+                  }
+                }}
+                data-testid="mesh-builder-team-description-input"
+              />
+            {:else}
+              <button
+                class="w-full rounded-[18px] border px-3 py-3 text-left transition {surfaceTone}"
+                type="button"
+                onclick={startEditingDescription}
+                data-testid="mesh-builder-team-description-display"
+              >
+                <span class="block text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Description</span>
+                <span class="mt-1 block text-sm {t.textSecondary}">
+                  {teamDescriptionLabel}
+                </span>
+              </button>
+            {/if}
           </div>
+        </div>
 
-          <div class="flex flex-wrap items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            class="h-8 rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] {ghostTone}"
+            type="button"
+            onclick={focusCatalogSearch}
+            data-testid="mesh-template-browse-catalog"
+          >
+            Browse Catalog
+          </button>
+          {#if mode === 'empty'}
             <button
               class="h-8 rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] {ghostTone}"
               type="button"
-              onclick={focusCatalogSearch}
-              data-testid="mesh-template-browse-catalog"
+              onclick={handleBuildCustom}
+              data-testid="mesh-template-build-custom"
             >
-              Browse Catalog
+              Start from scratch
             </button>
-            {#if mode === 'empty'}
-              <button
-                class="h-8 rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] {ghostTone}"
-                type="button"
-                onclick={handleBuildCustom}
-                data-testid="mesh-template-build-custom"
-              >
-                Start Empty
-              </button>
-            {/if}
-            <span class="text-[10px] {t.textMuted}">
-              {catalogCollapsed ? 'Catalog collapsed for roster-first editing.' : 'Catalog open for custom composition.'}
-            </span>
-          </div>
-
-          <ValidationBar issues={validationIssues} {dark} />
-        </div>
-
-        <div class="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end" data-testid="mesh-action-bar">
-          <button
-            class="h-10 rounded-lg border px-4 text-[11px] font-bold {ghostTone}"
-            type="button"
-            onclick={onSavePreset}
-            data-testid="mesh-builder-save-preset"
-          >
-            Save as Preset
-          </button>
-          <button
-            class="h-10 rounded-lg border px-4 text-[11px] font-bold {ghostTone}"
-            type="button"
-            onclick={handleReset}
-            data-testid="mesh-action-reset"
-          >
-            Reset
-          </button>
-          <button
-            class="h-10 rounded-lg bg-brand-600 px-4 text-[11px] font-bold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-            type="button"
-            onclick={onInitialize}
-            disabled={!canInitialize}
-            data-testid="mesh-action-initialize"
-          >
-            Initialize Team
-          </button>
+          {/if}
+          <span class="text-[10px] {t.textMuted}">
+            {catalogCollapsed ? 'Scroll down or click Browse Catalog to add more roles.' : 'Browse roles below to build your team.'}
+          </span>
         </div>
       </div>
     </header>
+
+    <ValidationBar issues={validationIssues} {dark} />
 
     <section
       class="space-y-3 rounded-[22px] border p-4 transition {highlightedRosterSection === 'lead' || highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
@@ -786,7 +797,7 @@
         <div>
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Lead</p>
           <p class="mt-1 text-sm font-semibold {t.textPrimary}">
-            {normalizedTeam.lead ? 'One lead is steering the roster.' : 'Choose the lead role first.'}
+            {normalizedTeam.lead ? 'Lead assigned.' : 'Choose the lead role first.'}
           </p>
         </div>
         <span class="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] {presetBadgeTone}">
@@ -798,22 +809,39 @@
         {#if normalizedTeam.lead}
           <div class="space-y-3" data-testid="mesh-builder-lead-card">
             <div
-              class="flex min-h-12 items-center gap-3 rounded-[18px] border px-3 py-3 {surfaceTone}"
+              class="flex min-h-12 items-center gap-2 rounded-[18px] border px-3 py-2.5 {surfaceTone}"
               data-testid="mesh-builder-lead-summary"
             >
-              <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(normalizeTool(normalizedTeam.lead.tool))}">
-                <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).viewBox} fill="currentColor" aria-hidden="true">
-                  <path d={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).path}></path>
+              <button
+                class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                type="button"
+                onclick={toggleLeadDetails}
+                data-testid="mesh-builder-lead-edit-toggle"
+              >
+                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(normalizeTool(normalizedTeam.lead.tool))}">
+                  <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).viewBox} fill="currentColor" aria-hidden="true">
+                    <path d={getToolIcon(normalizeTool(normalizedTeam.lead.tool)).path}></path>
+                  </svg>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-[13px] font-semibold {t.textPrimary}">
+                    {normalizedTeam.lead.roleName || normalizedTeam.lead.roleId || 'Lead'}
+                  </span>
+                  <span class="block truncate text-[11px] uppercase tracking-[0.12em] {t.textMuted}">
+                    {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
+                  </span>
+                </span>
+              </button>
+              <button
+                class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
+                type="button"
+                aria-label={leadDetailsExpanded ? 'Collapse lead details' : 'Edit lead details'}
+                onclick={toggleLeadDetails}
+              >
+                <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                  <path d={leadDetailsExpanded ? 'M4 10.25 8 6.25l4 4' : 'M4 5.75 8 9.75l4-4'} stroke-linecap="round" stroke-linejoin="round"></path>
                 </svg>
-              </span>
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-[13px] font-semibold {t.textPrimary}">
-                  {normalizedTeam.lead.roleName || normalizedTeam.lead.roleId || 'Lead'}
-                </p>
-                <p class="truncate text-[11px] uppercase tracking-[0.12em] {t.textMuted}">
-                  {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
-                </p>
-              </div>
+              </button>
               <button
                 class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
                 type="button"
@@ -821,49 +849,51 @@
                 onclick={onClearLead}
                 data-testid="mesh-builder-lead-clear"
               >
-                x
+                ×
               </button>
             </div>
 
-            <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(200px,0.9fr)_minmax(220px,1.1fr)]">
-              <label class="space-y-1">
-                <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Lead Name</span>
-                <input
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={normalizedTeam.lead.name ?? ''}
-                  oninput={(event) => onUpdateLead({ name: event.currentTarget.value })}
-                  data-testid="mesh-builder-lead-name-input"
-                />
-              </label>
-              <label class="space-y-1">
-                <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Model</span>
-                <select
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={normalizedTeam.lead.model ?? defaultModelForTool(normalizedTeam.lead.tool)}
-                  onchange={(event) => onUpdateLead({ model: event.currentTarget.value })}
-                  data-testid="mesh-builder-lead-model-input"
-                >
-                  {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(normalizedTeam.lead.tool)] ?? [defaultModelForTool(normalizedTeam.lead.tool)] as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </select>
-              </label>
-              <label class="space-y-1">
-                <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Project</span>
-                <input
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={normalizedTeam.lead.projectId ?? ''}
-                  oninput={(event) => onUpdateLead({ projectId: event.currentTarget.value })}
-                  data-testid="mesh-builder-lead-project-input"
-                />
-              </label>
-            </div>
+            {#if leadDetailsExpanded}
+              <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(200px,0.9fr)_minmax(220px,1.1fr)]">
+                <label class="space-y-1">
+                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Lead Name</span>
+                  <input
+                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                    value={normalizedTeam.lead.name ?? ''}
+                    oninput={(event) => onUpdateLead({ name: event.currentTarget.value })}
+                    data-testid="mesh-builder-lead-name-input"
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Model</span>
+                  <select
+                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                    value={normalizedTeam.lead.model ?? defaultModelForTool(normalizedTeam.lead.tool)}
+                    onchange={(event) => onUpdateLead({ model: event.currentTarget.value })}
+                    data-testid="mesh-builder-lead-model-input"
+                  >
+                    {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(normalizedTeam.lead.tool)] ?? [defaultModelForTool(normalizedTeam.lead.tool)] as option}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="space-y-1">
+                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Project</span>
+                  <input
+                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                    value={normalizedTeam.lead.projectId ?? ''}
+                    oninput={(event) => onUpdateLead({ projectId: event.currentTarget.value })}
+                    data-testid="mesh-builder-lead-project-input"
+                  />
+                </label>
+              </div>
+            {/if}
           </div>
         {:else}
           <div class="rounded-[18px] border border-dashed p-6 text-center {surfaceTone}" data-testid="mesh-builder-lead-empty">
             <p class="text-[13px] font-semibold {t.textPrimary}">Pick a lead role</p>
             <p class="mt-1 text-[11px] {t.textSecondary}">
-              Use the catalog below and click `+` on a lead role to place it here.
+              Click the + button on a lead role below.
             </p>
           </div>
         {/if}
@@ -878,7 +908,7 @@
         <div>
           <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Agents</p>
           <p class="mt-1 text-sm font-semibold {t.textPrimary}">
-            {agents.length > 0 ? 'Specialists stacked underneath the lead.' : 'Add the first agent from the catalog.'}
+            {agents.length > 0 ? 'Team agents.' : 'Add the first agent from the catalog.'}
           </p>
         </div>
         <span class="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] {presetBadgeTone}">
@@ -897,66 +927,85 @@
                 {index + 1}
               </span>
               <div
-                class="flex min-h-12 flex-1 items-center gap-3 rounded-[18px] border px-3 py-3 {surfaceTone}"
+                class="flex min-h-12 flex-1 items-center gap-2 rounded-[18px] border px-3 py-2.5 {surfaceTone}"
                 data-testid="mesh-node-agent"
               >
-                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(normalizeTool(agent.tool))}">
-                  <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(agent.tool)).viewBox} fill="currentColor" aria-hidden="true">
-                    <path d={getToolIcon(normalizeTool(agent.tool)).path}></path>
+                <button
+                  class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  type="button"
+                  onclick={() => toggleAgentDetails(agent.id)}
+                  data-testid={`mesh-builder-agent-edit-toggle-${agent.id}`}
+                >
+                  <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(normalizeTool(agent.tool))}">
+                    <svg class="h-4 w-4" viewBox={getToolIcon(normalizeTool(agent.tool)).viewBox} fill="currentColor" aria-hidden="true">
+                      <path d={getToolIcon(normalizeTool(agent.tool)).path}></path>
+                    </svg>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-[13px] font-semibold {t.textPrimary}">
+                      {agent.roleName || agent.roleId || agent.name}
+                    </span>
+                    <span class="block truncate text-[11px] uppercase tracking-[0.12em] {t.textMuted}">
+                      {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
+                  type="button"
+                  aria-label={isAgentExpanded(agent.id) ? `Collapse ${agent.name} details` : `Edit ${agent.name} details`}
+                  onclick={() => toggleAgentDetails(agent.id)}
+                >
+                  <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                    <path d={isAgentExpanded(agent.id) ? 'M4 10.25 8 6.25l4 4' : 'M4 5.75 8 9.75l4-4'} stroke-linecap="round" stroke-linejoin="round"></path>
                   </svg>
-                </span>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-[13px] font-semibold {t.textPrimary}">
-                    {agent.roleName || agent.roleId || agent.name}
-                  </p>
-                  <p class="truncate text-[11px] uppercase tracking-[0.12em] {t.textMuted}">
-                    {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
-                  </p>
-                </div>
+                </button>
                 <button
                   class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition {ghostTone}"
                   type="button"
                   onclick={() => onRemoveAgent(agent.id)}
                   data-testid={`mesh-builder-agent-remove-${agent.id}`}
                 >
-                  x
+                  ×
                 </button>
               </div>
             </div>
 
-            <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(200px,0.9fr)_minmax(220px,1.1fr)]">
-              <label class="space-y-1">
-                <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Agent Name</span>
-                <input
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={agent.name ?? ''}
-                  oninput={(event) => onUpdateAgent(agent.id, { name: event.currentTarget.value })}
-                  data-testid={`mesh-builder-agent-name-input-${agent.id}`}
-                />
-              </label>
-              <label class="space-y-1">
-                <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Model</span>
-                <select
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={agent.model ?? defaultModelForTool(agent.tool)}
-                  onchange={(event) => onUpdateAgent(agent.id, { model: event.currentTarget.value })}
-                  data-testid={`mesh-builder-agent-model-input-${agent.id}`}
-                >
-                  {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(agent.tool)] ?? [defaultModelForTool(agent.tool)] as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </select>
-              </label>
-              <label class="space-y-1">
-                <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Project</span>
-                <input
-                  class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
-                  value={agent.projectId ?? ''}
-                  oninput={(event) => onUpdateAgent(agent.id, { projectId: event.currentTarget.value })}
-                  data-testid={`mesh-builder-agent-project-input-${agent.id}`}
-                />
-              </label>
-            </div>
+            {#if isAgentExpanded(agent.id)}
+              <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(200px,0.9fr)_minmax(220px,1.1fr)]">
+                <label class="space-y-1">
+                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Agent Name</span>
+                  <input
+                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                    value={agent.name ?? ''}
+                    oninput={(event) => onUpdateAgent(agent.id, { name: event.currentTarget.value })}
+                    data-testid={`mesh-builder-agent-name-input-${agent.id}`}
+                  />
+                </label>
+                <label class="space-y-1">
+                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Model</span>
+                  <select
+                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                    value={agent.model ?? defaultModelForTool(agent.tool)}
+                    onchange={(event) => onUpdateAgent(agent.id, { model: event.currentTarget.value })}
+                    data-testid={`mesh-builder-agent-model-input-${agent.id}`}
+                  >
+                    {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(agent.tool)] ?? [defaultModelForTool(agent.tool)] as option}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="space-y-1">
+                  <span class="text-[10px] font-medium uppercase tracking-wide {t.textMuted}">Project</span>
+                  <input
+                    class="h-10 w-full rounded-xl border px-3 text-sm outline-none {inputTone}"
+                    value={agent.projectId ?? ''}
+                    oninput={(event) => onUpdateAgent(agent.id, { projectId: event.currentTarget.value })}
+                    data-testid={`mesh-builder-agent-project-input-${agent.id}`}
+                  />
+                </label>
+              </div>
+            {/if}
           </article>
         {/each}
 
@@ -968,7 +1017,7 @@
           <p class="text-[12px] font-semibold {t.textPrimary}">Use the catalog below to add agents</p>
           <p class="mt-1 text-[11px] {t.textSecondary}">
             {agents.length > 0
-              ? 'Each `+` click appends another agent card here.'
+              ? 'Click + on any agent role below to add it here.'
               : 'Start with a developer, researcher, or reviewer to flesh out the team.'}
           </p>
         </div>
@@ -981,7 +1030,7 @@
     >
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Preset Chips</p>
+          <p class="text-[10px] font-bold uppercase tracking-[0.2em] {t.textMuted}">Presets</p>
           <p class="mt-1 text-sm font-semibold {t.textPrimary}">
             Load a starting roster, then keep editing inline.
           </p>
@@ -1404,5 +1453,36 @@
         </div>
       {/if}
     </section>
+
+    <footer class="sticky bottom-2 z-20 flex items-center justify-between gap-3 rounded-[20px] border p-3 shadow-sm backdrop-blur {panelTone}" data-testid="mesh-action-bar">
+      <button
+        class="h-10 rounded-lg border px-4 text-[11px] font-bold {ghostTone}"
+        type="button"
+        onclick={onSavePreset}
+        data-testid="mesh-builder-save-preset"
+      >
+        Save Preset
+      </button>
+
+      <div class="flex items-center gap-2">
+        <button
+          class="h-10 rounded-lg border px-4 text-[11px] font-bold {ghostTone}"
+          type="button"
+          onclick={handleReset}
+          data-testid="mesh-action-reset"
+        >
+          Reset
+        </button>
+        <button
+          class="h-10 rounded-lg bg-brand-600 px-4 text-[11px] font-bold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+          type="button"
+          onclick={onInitialize}
+          disabled={!canInitialize}
+          data-testid="mesh-action-initialize"
+        >
+          Initialize Team
+        </button>
+      </div>
+    </footer>
   </main>
 </section>

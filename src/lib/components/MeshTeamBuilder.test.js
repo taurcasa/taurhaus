@@ -420,7 +420,7 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent('Pick a lead role')
     expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent(
-      'Use the catalog below and click `+` on a lead role to place it here.'
+      'Click the + button on a lead role below.'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
       'data-dropzone-mode',
@@ -429,21 +429,51 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
       'Use the catalog below to add agents'
     )
+    expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
+      'Start with a developer, researcher, or reviewer to flesh out the team.'
+    )
+    expect(screen.getByTestId('mesh-builder-preset-section')).toHaveTextContent('Presets')
+    expect(screen.getByText('Browse roles below to build your team.')).toBeInTheDocument()
   })
 
-  it('shows compact roster summary rows and a compact add row when roles are assigned', () => {
+  it('shows collapsed roster summary rows by default and reveals member fields on demand', async () => {
     renderBuilder({
       teamConfig: sampleRosterConfig(),
     })
 
     expect(screen.getByTestId('mesh-builder-lead-section')).toHaveTextContent('1 assigned')
     expect(screen.getByTestId('mesh-builder-lead-summary')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-lead-name-input')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agents-section')).toHaveTextContent('1 assigned')
     expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-agent-name-input-agent-codex-1')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
       'data-dropzone-mode',
       'compact'
     )
+    expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
+      'Click + on any agent role below to add it here.'
+    )
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-lead-edit-toggle'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-agent-edit-toggle-agent-codex-1'))
+
+    expect(await screen.findByTestId('mesh-builder-lead-name-input')).toBeInTheDocument()
+    expect(await screen.findByTestId('mesh-builder-agent-name-input-agent-codex-1')).toBeInTheDocument()
+  })
+
+  it('keeps reset, save, and initialize actions in the sticky footer bar', () => {
+    renderBuilder({
+      presets: samplePresets(),
+      teamConfig: sampleRosterConfig(),
+    })
+
+    const actionBar = screen.getByTestId('mesh-action-bar')
+
+    expect(actionBar).toContainElement(screen.getByTestId('mesh-builder-save-preset'))
+    expect(actionBar).toContainElement(screen.getByTestId('mesh-action-reset'))
+    expect(actionBar).toContainElement(screen.getByTestId('mesh-action-initialize'))
+    expect(screen.queryByTestId('mesh-template-build-custom')).not.toBeInTheDocument()
   })
 
   it('renders presets as compact rows with summaries, tool medallions, and built-in badges', async () => {
