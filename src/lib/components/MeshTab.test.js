@@ -1858,6 +1858,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-builder-team-name-display'))
     await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
       target: { value: 'taurhaus-team' },
     })
@@ -1953,6 +1954,7 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
     })
 
+    await fireEvent.click(screen.getByTestId('mesh-builder-team-name-display'))
     await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
       target: { value: 'taurhaus-team' },
     })
@@ -2006,8 +2008,10 @@ describe('MeshTab', () => {
     })
 
     await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
+    await fireEvent.click(screen.getByTestId('mesh-template-browse-catalog'))
     await fireEvent.click(screen.getByTestId('mesh-builder-role-design-specialist'))
 
+    await fireEvent.click(screen.getByTestId('mesh-builder-team-name-display'))
     await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
       target: { value: '2ksim-team' },
     })

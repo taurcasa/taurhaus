@@ -196,6 +196,26 @@ describe('MeshTeamBuilder', () => {
     window.localStorage.clear()
   })
 
+  it('uses inline roster header text and opens the team name editor on click', async () => {
+    const onTeamNameChange = vi.fn()
+
+    renderBuilder({
+      onTeamNameChange,
+    })
+
+    expect(screen.getByTestId('mesh-builder-team-name-display')).toHaveTextContent('taurhaus-team')
+    expect(screen.queryByTestId('mesh-builder-team-name-input')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-team-name-display'))
+
+    const input = screen.getByTestId('mesh-builder-team-name-input')
+    expect(input).toBeInTheDocument()
+
+    await fireEvent.input(input, { target: { value: 'mesh-redesign-team' } })
+
+    expect(onTeamNameChange).toHaveBeenCalledWith('mesh-redesign-team')
+  })
+
   it('filters roles by tool icon toggle', async () => {
     renderBuilder()
 
@@ -368,7 +388,28 @@ describe('MeshTeamBuilder', () => {
     expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
   })
 
-  it('uses the updated empty roster copy and empty agent dropzone treatment', () => {
+  it('keeps the catalog expanded for empty setup and collapses it for a populated roster', async () => {
+    const { unmount } = renderBuilder()
+
+    expect(screen.getByTestId('mesh-builder-catalog')).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByTestId('mesh-builder-catalog-content')).toBeInTheDocument()
+
+    unmount()
+
+    renderBuilder({
+      teamConfig: sampleRosterConfig(),
+    })
+
+    expect(screen.getByTestId('mesh-builder-catalog')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.queryByTestId('mesh-builder-catalog-content')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-catalog-toggle'))
+
+    expect(screen.getByTestId('mesh-builder-catalog')).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByTestId('mesh-builder-catalog-content')).toBeInTheDocument()
+  })
+
+  it('uses the updated empty roster copy and add guidance', () => {
     renderBuilder({
       teamConfig: {
         description: '',
@@ -379,14 +420,14 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent('Pick a lead role')
     expect(screen.getByTestId('mesh-builder-lead-empty')).toHaveTextContent(
-      'Click a lead in the catalog or drag one here.'
+      'Use the catalog below and click `+` on a lead role to place it here.'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
       'data-dropzone-mode',
       'empty'
     )
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveTextContent(
-      'Drag or click a role to add'
+      'Use the catalog below to add agents'
     )
   })
 

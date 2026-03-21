@@ -170,7 +170,7 @@ async function ensureEmptyMode() {
 }
 
 async function clickFirstPreset() {
-  const preset = await $('[data-testid="mesh-template-preset-fullstack-dev"]')
+  const preset = await $('[data-testid="mesh-template-preset-full-team"]')
   if (await preset.isExisting()) {
     await preset.click()
     return

@@ -1,12 +1,14 @@
 import HoverCardHost from './hosts/HoverCardHost.svelte'
 import MeshCanvasHost from './hosts/MeshCanvasHost.svelte'
 import MeshNodeDetailHost from './hosts/MeshNodeDetailHost.svelte'
+import MeshTeamBuilderHost from './hosts/MeshTeamBuilderHost.svelte'
 import SidebarHost from './hosts/SidebarHost.svelte'
 import { configureVisualHostState } from './mockState.js'
 
 import { hoverCardScenarios } from '../test/visual/fixtures/hoverCard.fixtures.js'
 import { meshCanvasScenarios } from '../test/visual/fixtures/meshCanvas.fixtures.js'
 import { meshNodeDetailScenarios } from '../test/visual/fixtures/meshNodeDetail.fixtures.js'
+import { meshTeamBuilderScenarios } from '../test/visual/fixtures/meshTeamBuilder.fixtures.js'
 import { sidebarScenarios } from '../test/visual/fixtures/sidebar.fixtures.js'
 
 export const viewportPresets = [
@@ -58,6 +60,13 @@ export const visualRegistry = [
     label: 'MeshNodeDetail',
     component: MeshNodeDetailHost,
     scenarios: meshNodeDetailScenarios,
+    applyMocks: applyNoopMocks,
+  },
+  {
+    id: 'mesh-team-builder',
+    label: 'MeshTeamBuilder',
+    component: MeshTeamBuilderHost,
+    scenarios: meshTeamBuilderScenarios,
     applyMocks: applyNoopMocks,
   },
   {

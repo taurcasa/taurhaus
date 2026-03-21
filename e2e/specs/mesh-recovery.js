@@ -229,6 +229,20 @@ async function setTeamName(teamName) {
     return
   }
 
+  const inlineDisplay = await $('[data-testid="mesh-builder-team-name-display"]')
+  if (await inlineDisplay.isExisting()) {
+    await inlineDisplay.click()
+    const openedInput = await $('[data-testid="mesh-builder-team-name-input"]')
+    await openedInput.waitForExist({ timeout: WAIT_MEDIUM.timeout })
+    await openedInput.clearValue()
+    await openedInput.setValue(teamName)
+    await browser.waitUntil(
+      async () => (await openedInput.getValue()) === teamName,
+      { ...WAIT_MEDIUM, timeoutMsg: 'Inline mesh builder team name did not update' }
+    )
+    return
+  }
+
   await clickTestId('mesh-action-customize')
   await browser.waitUntil(
     async () => await hasTestId('team-customizer-panel'),

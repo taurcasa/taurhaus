@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { getRegistryEntry, visualRegistry, viewportPresets } from './registry.js'
 
 describe('visual host registry', () => {
-  it('registers all four target components', () => {
+  it('registers all five target components', () => {
     expect(visualRegistry.map((entry) => entry.id)).toEqual([
       'mesh-canvas',
       'hover-card',
       'mesh-node-detail',
+      'mesh-team-builder',
       'sidebar',
     ])
   })
