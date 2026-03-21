@@ -149,6 +149,10 @@
   let teamNameInput = $state(null)
   let teamDescriptionInput = $state(null)
   let selectedRoleDetailId = $state('')
+  let roleDetailEditing = $state(false)
+  let roleDetailDraft = $state(null)
+  let roleDetailSource = $state(null)
+  let roleDetailInitialSnapshot = $state('')
   let roleEditorOpen = $state(false)
   let roleEditorRole = $state(null)
   let roleEditorError = $state('')
@@ -226,6 +230,10 @@
   const agentRoles = $derived(catalogListRoles.filter((role) => role.kind !== 'lead'))
   const selectedRoleDetail = $derived.by(() =>
     normalizedRoles.find((role) => role.roleId === selectedRoleDetailId) ?? null
+  )
+  const roleDetailDirty = $derived.by(() =>
+    roleDetailEditing
+      && serializeRoleDetailDraft(roleDetailDraft) !== roleDetailInitialSnapshot
   )
   const visibleRoleCount = $derived(filteredRoles.length)
   const catalogDensityMode = $derived(
@@ -807,6 +815,122 @@
     onApplyPreset(preset)
   }
 
+  function normalizeBehavioralContract(value) {
+    const base = {
+      communication: [],
+      execution: [],
+      escalation: [],
+    }
+
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const key of Object.keys(base)) {
+        if (Array.isArray(value[key])) {
+          base[key] = value[key].map((entry) => String(entry ?? '').trim()).filter(Boolean)
+        }
+      }
+    }
+
+    return base
+  }
+
+  function buildBehaviorMarkdown(contractValue, fallbackText = '') {
+    const contract = normalizeBehavioralContract(contractValue)
+    const sections = [
+      ['Communication', contract.communication],
+      ['Execution', contract.execution],
+      ['Escalation', contract.escalation],
+    ].filter(([, entries]) => entries.length > 0)
+
+    if (sections.length > 0) {
+      return sections
+        .map(([label, entries]) => `### ${label}\n${entries.map((entry) => `- ${entry}`).join('\n')}`)
+        .join('\n\n')
+    }
+
+    return String(fallbackText ?? '').trim()
+  }
+
+  function buildRoleDetailDraft(role) {
+    const detail = role && typeof role === 'object' ? role : {}
+    const tool = normalizeTool(detail.tool ?? detail.cliTool ?? detail.defaults?.cliTool ?? 'codex')
+
+    return {
+      roleId: String(detail.roleId ?? '').trim(),
+      name: String(detail.name ?? '').trim(),
+      kind: String(detail.kind ?? detail.role ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent',
+      tool,
+      model: String(detail.model ?? detail.defaults?.model ?? defaultModelForTool(tool)).trim(),
+      focusArea: String(detail.focusArea ?? detail.focus_area ?? '').trim(),
+      contextSummary: String(detail.contextSummary ?? detail.context_summary ?? '').trim(),
+      behaviorSummary: buildBehaviorMarkdown(
+        detail.behavioralContract ?? detail.behavioral_contract,
+        detail.behaviorSummary ?? detail.behavior_summary ?? ''
+      ),
+      instructions: String(detail.instructions ?? '').trim(),
+      showInstructions: String(detail.instructions ?? '').trim().length > 0,
+    }
+  }
+
+  function serializeRoleDetailDraft(draft) {
+    if (!draft || typeof draft !== 'object') return ''
+    return JSON.stringify({
+      roleId: String(draft.roleId ?? '').trim(),
+      name: String(draft.name ?? '').trim(),
+      kind: String(draft.kind ?? 'agent').trim(),
+      tool: normalizeTool(draft.tool ?? 'codex'),
+      model: String(draft.model ?? '').trim(),
+      focusArea: String(draft.focusArea ?? '').trim(),
+      contextSummary: String(draft.contextSummary ?? '').trim(),
+      behaviorSummary: String(draft.behaviorSummary ?? '').trim(),
+      instructions: String(draft.instructions ?? '').trim(),
+      showInstructions: Boolean(draft.showInstructions),
+    })
+  }
+
+  function parseBehaviorEditorDraft(rawText) {
+    const text = String(rawText ?? '').trim()
+    const emptyContract = createDefaultBehavioralContract()
+    if (!text) {
+      return {
+        behaviorSummary: null,
+        behavioralContract: emptyContract,
+      }
+    }
+
+    const contract = createDefaultBehavioralContract()
+    let currentSection = null
+    let hasSectionHeadings = false
+
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim()
+      if (!line) continue
+
+      const headingMatch = line.match(/^#{1,6}\s*(communication|execution|escalation)\s*$/i)
+      if (headingMatch) {
+        hasSectionHeadings = true
+        currentSection = headingMatch[1].toLowerCase()
+        continue
+      }
+
+      const bulletMatch = line.match(/^[-*]\s+(.+)$/)
+      if (bulletMatch && currentSection && Array.isArray(contract[currentSection])) {
+        contract[currentSection].push(bulletMatch[1].trim())
+      }
+    }
+
+    if (hasSectionHeadings) {
+      return {
+        behaviorSummary: null,
+        behavioralContract: contract,
+      }
+    }
+
+    return {
+      behaviorSummary: text,
+      behavioralContract: emptyContract,
+    }
+  }
+
   function roleDetailNode(role) {
     if (!role) return null
     return {
@@ -828,16 +952,69 @@
 
   function openRoleDetail(role) {
     selectedRoleDetailId = String(role?.roleId ?? '').trim()
+    roleDetailEditing = false
+    roleDetailDraft = null
+    roleDetailSource = null
+    roleDetailInitialSnapshot = ''
+    roleEditorError = ''
+    roleEditorSaving = false
   }
 
   function closeRoleDetail() {
     selectedRoleDetailId = ''
+    roleDetailEditing = false
+    roleDetailDraft = null
+    roleDetailSource = null
+    roleDetailInitialSnapshot = ''
+    roleEditorError = ''
+    roleEditorSaving = false
   }
 
   function handleRoleDetailAdd() {
     if (!selectedRoleDetail) return
     assignRole(selectedRoleDetail)
     closeRoleDetail()
+  }
+
+  function handleRoleDetailEditChange(nextDraft) {
+    roleDetailDraft = nextDraft
+  }
+
+  function handleRoleDetailCancelEdit() {
+    roleDetailEditing = false
+    roleDetailDraft = null
+    roleDetailSource = null
+    roleDetailInitialSnapshot = ''
+    roleEditorError = ''
+    roleEditorSaving = false
+  }
+
+  async function startInlineRoleEditing(role = selectedRoleDetail) {
+    if (!role?.roleId || role.readOnly) return
+    clearRoleStatus()
+    roleEditorError = ''
+    roleEditorSaving = false
+
+    let detail = role
+    try {
+      detail = { ...role, ...(await getRoleTemplate(role.roleId)) }
+    } catch {
+      detail = { ...role }
+    }
+
+    const draft = buildRoleDetailDraft(detail)
+    roleDetailSource = detail
+    roleDetailDraft = draft
+    roleDetailInitialSnapshot = serializeRoleDetailDraft(draft)
+    roleDetailEditing = true
+  }
+
+  function handleRoleDetailAddSection() {
+    if (!roleDetailDraft) return
+    roleDetailDraft = {
+      ...roleDetailDraft,
+      showInstructions: true,
+    }
   }
 
   function handleRemoveAgent(agentId) {
@@ -1088,8 +1265,9 @@
     }
   }
 
-  function buildRoleSavePayload(draft) {
-    const source = roleEditorRole && typeof roleEditorRole === 'object' ? roleEditorRole : null
+  function buildRoleSavePayload(draft, sourceRole = roleEditorRole) {
+    const source = sourceRole && typeof sourceRole === 'object' ? sourceRole : null
+    const parsedBehavior = parseBehaviorEditorDraft(draft?.behaviorSummary)
     const roleId = String(draft?.roleId ?? '').trim()
     const kind = String(draft?.kind ?? source?.kind ?? 'agent').trim().toLowerCase() === 'lead'
       ? 'lead'
@@ -1120,11 +1298,8 @@
       instructions: String(draft?.instructions ?? '').trim(),
       focusArea: draft?.focusArea ?? null,
       contextSummary: draft?.contextSummary ?? null,
-      behaviorSummary: draft?.behaviorSummary ?? null,
-      behavioralContract:
-        source?.behavioralContract
-        ?? source?.behavioral_contract
-        ?? createDefaultBehavioralContract(),
+      behaviorSummary: parsedBehavior.behaviorSummary,
+      behavioralContract: parsedBehavior.behavioralContract,
       capabilities: Array.isArray(source?.capabilities) ? source.capabilities : [],
       provenance: source?.provenance ?? null,
       constraints: {
@@ -1145,26 +1320,13 @@
   function openCreateRoleEditor() {
     clearRoleStatus()
     selectedRoleDetailId = ''
+    roleDetailEditing = false
+    roleDetailDraft = null
+    roleDetailSource = null
+    roleDetailInitialSnapshot = ''
     roleEditorRole = null
     roleEditorError = ''
     roleEditorSaving = false
-    roleEditorOpen = true
-  }
-
-  async function openRoleEditor(role = selectedRoleDetail) {
-    if (!role?.roleId || role.readOnly) return
-    clearRoleStatus()
-    roleEditorError = ''
-    roleEditorSaving = false
-
-    try {
-      const detail = await getRoleTemplate(role.roleId)
-      roleEditorRole = { ...role, ...detail }
-    } catch {
-      roleEditorRole = { ...role }
-    }
-
-    selectedRoleDetailId = ''
     roleEditorOpen = true
   }
 
@@ -1182,6 +1344,29 @@
     } catch (error) {
       roleEditorError = error?.message || 'Failed to save role template.'
     } finally {
+      roleEditorSaving = false
+    }
+  }
+
+  async function handleInlineRoleDetailSave() {
+    if (!roleDetailDraft) return
+    roleEditorSaving = true
+    roleEditorError = ''
+
+    try {
+      const payload = buildRoleSavePayload(roleDetailDraft, roleDetailSource)
+      await upsertRoleTemplate(payload)
+      await onRefreshRoleTemplates?.()
+      roleDetailEditing = false
+      roleDetailDraft = null
+      roleDetailSource = null
+      roleDetailInitialSnapshot = ''
+      roleEditorSaving = false
+      roleEditorError = ''
+      selectedRoleDetailId = payload.roleId
+      showRoleStatus(`Saved '${payload.name}'.`)
+    } catch (error) {
+      roleEditorError = error?.message || 'Failed to save role template.'
       roleEditorSaving = false
     }
   }
@@ -2192,9 +2377,18 @@
       node={roleDetailNode(selectedRoleDetail)}
       mode="builder"
       {dark}
+      editing={roleDetailEditing}
+      editDraft={roleDetailDraft}
+      saving={roleEditorSaving}
+      errorMessage={roleEditorError}
+      dirty={roleDetailDirty}
       actions={{
         onAdd: handleRoleDetailAdd,
-        onEdit: selectedRoleDetail.readOnly ? undefined : () => openRoleEditor(selectedRoleDetail),
+        onEdit: selectedRoleDetail.readOnly ? undefined : () => startInlineRoleEditing(selectedRoleDetail),
+        onEditChange: handleRoleDetailEditChange,
+        onCancelEdit: handleRoleDetailCancelEdit,
+        onSaveEdit: handleInlineRoleDetailSave,
+        onAddSection: handleRoleDetailAddSection,
         onExport: handleRoleDetailExport,
         exportDisabled: exportingRoleId === selectedRoleDetail.roleId,
         onDelete: selectedRoleDetail.readOnly ? undefined : requestRoleDelete,

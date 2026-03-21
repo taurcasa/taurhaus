@@ -1,12 +1,18 @@
 <script>
   import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
+  import { defaultModelForTool, MODEL_OPTIONS_BY_TOOL, normalizeTool } from '../meshDefaults.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
     node = {},
     mode = 'runtime',
     dark = false,
+    editing = false,
+    editDraft = null,
+    saving = false,
+    errorMessage = '',
+    dirty = false,
     actions = {},
     anchor = null,
     onVisible = () => {},
@@ -15,31 +21,53 @@
   let dialogEl = $state(null)
   let modalRootEl = $state(null)
   let closeButtonEl = $state(null)
+  let titleInputEl = $state(null)
   let restoreFocusElement = null
 
   const t = $derived(themeTokens(dark))
   const normalizedContext = $derived(mode === 'runtime' ? 'runtime' : 'roster')
+  const isEditing = $derived(normalizedContext === 'roster' && Boolean(editing))
   const normalizedRole = $derived(String(node?.role ?? '').trim().toLowerCase() === 'lead' ? 'lead' : 'agent')
   const name = $derived.by(() => String(node?.name ?? '').trim())
   const roleName = $derived.by(() => String(node?.roleName ?? node?.role_name ?? '').trim())
-  const titleLabel = $derived(roleName || name || 'Role detail')
+  const titleLabel = $derived.by(() => {
+    if (isEditing) {
+      return String(editDraft?.name ?? '').trim() || 'Untitled role'
+    }
+    return roleName || name || 'Role detail'
+  })
   const subjectLabel = $derived.by(() => {
+    if (isEditing) return ''
     if (!roleName || !name || roleName === name) return ''
     return name
   })
   const tool = $derived.by(() => String(node?.tool ?? node?.cliTool ?? node?.cli_tool ?? 'claude').trim().toLowerCase())
+  const editTool = $derived.by(() => normalizeTool(editDraft?.tool ?? node?.tool ?? node?.cliTool ?? 'claude'))
   const toolLabel = $derived.by(() => {
+    const currentTool = isEditing ? editTool : tool
+    if (currentTool === 'codex') return 'Codex'
+    if (currentTool === 'gemini') return 'Gemini'
+    if (currentTool === 'claude') return 'Claude'
+    if (isEditing) return String(editDraft?.tool ?? 'Unknown')
     if (tool === 'codex') return 'Codex'
     if (tool === 'gemini') return 'Gemini'
     if (tool === 'claude') return 'Claude'
     return String(node?.tool ?? 'Unknown')
   })
-  const model = $derived.by(() => String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim())
+  const model = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.model ?? defaultModelForTool(editTool)).trim()
+      : String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim()
+  )
+  const editKind = $derived.by(() =>
+    String(editDraft?.kind ?? node?.role ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
+  )
   const projectId = $derived.by(() => String(node?.projectId ?? node?.project_id ?? '').trim())
   const projectLabel = $derived.by(() => String(node?.projectLabel ?? node?.project_label ?? '').trim())
   const projectDisplay = $derived(projectLabel || projectId || 'No project')
   const status = $derived.by(() => String(node?.status ?? node?.sessionStatus ?? node?.session_status ?? '').trim().toLowerCase())
   const statusLabel = $derived.by(() => {
+    if (isEditing) return editKind === 'lead' ? 'Lead' : 'Agent'
     if (normalizedContext !== 'runtime') return 'Template'
     if (status === 'active') return 'Active'
     if (status === 'idle') return 'Idle'
@@ -53,10 +81,26 @@
     if (status === 'idle') return dark ? 'bg-amber-300' : 'bg-amber-300'
     return dark ? 'bg-zinc-500' : 'bg-white/35'
   })
-  const focusArea = $derived.by(() => String(node?.focusArea ?? node?.focus_area ?? '').trim())
-  const contextSummary = $derived.by(() => String(node?.contextSummary ?? node?.context_summary ?? '').trim())
-  const behaviorSummary = $derived.by(() => String(node?.behaviorSummary ?? node?.behavior_summary ?? '').trim())
-  const instructions = $derived.by(() => String(node?.instructions ?? node?.description ?? '').trim())
+  const focusArea = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.focusArea ?? '').trim()
+      : String(node?.focusArea ?? node?.focus_area ?? '').trim()
+  )
+  const contextSummary = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.contextSummary ?? '').trim()
+      : String(node?.contextSummary ?? node?.context_summary ?? '').trim()
+  )
+  const behaviorSummary = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.behaviorSummary ?? '').trim()
+      : String(node?.behaviorSummary ?? node?.behavior_summary ?? '').trim()
+  )
+  const instructions = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.instructions ?? '').trim()
+      : String(node?.instructions ?? node?.description ?? '').trim()
+  )
   const paneId = $derived.by(() => String(node?.paneId ?? node?.pane_id ?? '').trim())
   const sessionId = $derived.by(() => String(node?.sessionId ?? node?.session_id ?? '').trim())
   const sessionState = $derived.by(() => String(node?.sessionState ?? node?.session_state ?? '').trim())
@@ -67,6 +111,16 @@
       : []
   )
   const behavioralContract = $derived.by(() => normalizeBehavioralContract(node?.behavioralContract ?? node?.behavioral_contract))
+  const modelOptions = $derived.by(() => {
+    const options = MODEL_OPTIONS_BY_TOOL[editTool] ?? []
+    if (model && !options.includes(model)) {
+      return [model, ...options]
+    }
+    return options
+  })
+  const instructionsVisible = $derived(
+    !isEditing || Boolean(editDraft?.showInstructions) || String(editDraft?.instructions ?? '').trim().length > 0
+  )
 
   const overlayTone = $derived(
     dark
@@ -93,6 +147,17 @@
       ? 'border-white/[0.08] bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_16px_36px_rgba(0,0,0,0.16)]'
       : 'border-white/60 bg-white shadow-[0_14px_34px_rgba(2,10,12,0.18)]'
   )
+  const editableFieldTone = $derived(
+    dark
+      ? 'bg-white/[0.02] text-zinc-100 placeholder-zinc-500'
+      : 'bg-white/[0.04] text-zinc-100 placeholder-zinc-400'
+  )
+  const selectPillTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-white/[0.04] text-zinc-100'
+      : 'border-white/[0.08] bg-white/[0.06] text-zinc-100'
+  )
+  const subtleHintTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
   const secondaryActionTone = $derived(
     dark
       ? 'border-white/[0.1] bg-white/[0.03] text-zinc-100 hover:bg-white/[0.08]'
@@ -127,7 +192,11 @@
   const shellSecondaryTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-200')
   const focusContentTone = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const codeTheme = $derived(dark ? 'github-dark' : 'github-light')
-  const breadcrumbLabel = $derived(normalizedContext === 'runtime' ? 'Team Roster' : 'Role Catalog')
+  const breadcrumbLabel = $derived.by(() => {
+    if (normalizedContext === 'runtime') return 'Team Roster'
+    if (isEditing) return 'Role Catalog › Edit Role'
+    return 'Role Catalog'
+  })
   const canFocusPane = $derived(typeof actions?.onFocusPane === 'function')
 
   const contextMarkdown = $derived(contextSummary)
@@ -226,7 +295,31 @@
     if (typeof handler === 'function') handler()
   }
 
+  function updateDraft(patch) {
+    if (!isEditing || !editDraft || typeof actions?.onEditChange !== 'function') return
+    actions.onEditChange({
+      ...editDraft,
+      ...patch,
+    })
+  }
+
+  function handleToolChange(value) {
+    const nextTool = normalizeTool(value || 'codex')
+    updateDraft({
+      tool: nextTool,
+      model: defaultModelForTool(nextTool),
+    })
+  }
+
+  function handleSaveEdit() {
+    invoke(actions?.onSaveEdit)
+  }
+
   function close() {
+    if (isEditing && typeof actions?.onCancelEdit === 'function') {
+      invoke(actions?.onCancelEdit)
+      return
+    }
     invoke(actions?.onClose)
   }
 
@@ -243,6 +336,11 @@
   }
 
   function handleKeydown(event) {
+    if (isEditing && event.key === 'Escape') {
+      event.preventDefault()
+      invoke(actions?.onCancelEdit)
+      return
+    }
     handleModalKeydown(event, dialogEl, close)
   }
 
@@ -258,7 +356,7 @@
 
     const unregisterModal = registerModalLayer(modalRootEl)
     const rafId = requestAnimationFrame(() => {
-      focusFirstInteractiveElement(dialogEl, () => closeButtonEl)
+      focusFirstInteractiveElement(dialogEl, () => (isEditing ? titleInputEl : closeButtonEl))
       onVisible?.()
     })
 
@@ -293,16 +391,18 @@
     tabindex="-1"
     data-testid="mesh-node-detail"
   >
-    <button
-      bind:this={closeButtonEl}
-      class="absolute right-6 top-6 z-20 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition {closeTone}"
-      type="button"
-      aria-label="Close role detail"
-      onclick={close}
-      data-testid="mesh-node-detail-close"
-    >
-      <span aria-hidden="true" class="text-lg leading-none">×</span>
-    </button>
+    {#if !isEditing}
+      <button
+        bind:this={closeButtonEl}
+        class="absolute right-6 top-6 z-20 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition {closeTone}"
+        type="button"
+        aria-label="Close role detail"
+        onclick={close}
+        data-testid="mesh-node-detail-close"
+      >
+        <span aria-hidden="true" class="text-lg leading-none">×</span>
+      </button>
+    {/if}
 
     <div
       class="sticky top-0 z-10 border-b px-6 pb-5 pt-6 backdrop-blur {toolbarTone}"
@@ -315,28 +415,72 @@
               {breadcrumbLabel}
             </p>
             <div class="flex min-w-0 flex-wrap items-center gap-3">
-              <h2 class="truncate text-[36px] font-semibold leading-none" data-testid="mesh-node-detail-name">
-                {titleLabel}
-              </h2>
-              {#if normalizedRole === 'lead'}
+              {#if isEditing}
+                <input
+                  bind:this={titleInputEl}
+                  class="min-w-0 flex-1 bg-transparent text-[36px] font-semibold leading-none outline-none {editableFieldTone}"
+                  value={titleLabel}
+                  oninput={(event) => updateDraft({ name: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-name-input"
+                />
+              {:else}
+                <h2 class="truncate text-[36px] font-semibold leading-none" data-testid="mesh-node-detail-name">
+                  {titleLabel}
+                </h2>
+              {/if}
+              {#if !isEditing && normalizedRole === 'lead'}
                 <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[12px] font-semibold {leadBadgeTone}">
                   Lead
                 </span>
               {/if}
             </div>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {shellSecondaryTone}">
-              <span class="inline-flex items-center gap-2">
-                <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
-                {toolLabel}{model ? ` · ${model}` : ''}
-              </span>
-              <span class="inline-flex items-center gap-2">
+            {#if isEditing}
+              <div class="flex flex-wrap items-center gap-2 text-[13px]">
+                <select
+                  class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
+                  value={editTool}
+                  onchange={(event) => handleToolChange(event.currentTarget.value)}
+                  data-testid="mesh-node-detail-tool-input"
+                >
+                  <option value="claude">Claude</option>
+                  <option value="codex">Codex</option>
+                  <option value="gemini">Gemini</option>
+                </select>
+                <select
+                  class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
+                  value={model}
+                  onchange={(event) => updateDraft({ model: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-model-input"
+                >
+                  {#each modelOptions as option}
+                    <option value={option}>{option}</option>
+                  {/each}
+                </select>
+                <select
+                  class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
+                  value={editKind}
+                  onchange={(event) => updateDraft({ kind: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-kind-input"
+                >
+                  <option value="agent">Agent</option>
+                  <option value="lead">Lead</option>
+                </select>
+              </div>
+            {:else}
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {shellSecondaryTone}">
+                <span class="inline-flex items-center gap-2">
                   <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
-                <span>{statusLabel}</span>
-              </span>
-              {#if subjectLabel}
-                <span class="{shellMutedTone}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
-              {/if}
-            </div>
+                  {toolLabel}{model ? ` · ${model}` : ''}
+                </span>
+                <span class="inline-flex items-center gap-2">
+                    <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
+                  <span>{statusLabel}</span>
+                </span>
+                {#if subjectLabel}
+                  <span class="{shellMutedTone}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
+                {/if}
+              </div>
+            {/if}
           </div>
         </div>
 
@@ -377,6 +521,27 @@
               data-testid="mesh-node-detail-capture"
             >
               Capture
+            </button>
+          {:else if isEditing}
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
+              type="button"
+              onclick={() => invoke(actions?.onCancelEdit)}
+              data-testid="mesh-node-detail-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {primaryActionTone}"
+              type="button"
+              onclick={handleSaveEdit}
+              disabled={saving}
+              data-testid="mesh-node-detail-save"
+            >
+              {#if dirty}
+                <span class="inline-block h-2 w-2 rounded-full bg-emerald-300" data-testid="mesh-node-detail-unsaved-dot"></span>
+              {/if}
+              {saving ? 'Saving...' : 'Save Changes'}
             </button>
           {:else}
             <button
@@ -422,44 +587,107 @@
 
     <div class="min-h-0 flex-1 overflow-y-auto px-6 pb-10 pt-7">
       <div class="mx-auto flex w-full max-w-[640px] flex-col gap-6">
-        {#if focusArea}
-          <section class="rounded-[24px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
-            <div class="{focusContentTone}" data-testid="mesh-node-detail-focus-area">
-              <MarkdownRenderer source={focusArea} {dark} codeTheme={codeTheme} />
-            </div>
+        {#if isEditing && errorMessage}
+          <section class="rounded-[20px] border px-5 py-4 {sectionTone}" data-testid="mesh-node-detail-error">
+            <p class="text-[13px] font-medium text-danger-100">{errorMessage}</p>
           </section>
         {/if}
 
-        {#if contextMarkdown}
+        {#if isEditing || focusArea}
+          <section class="rounded-[24px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
+            {#if isEditing}
+              <label class="block space-y-2">
+                <span class="text-[11px] font-medium uppercase tracking-[0.16em] {shellMutedTone}">Focus Area</span>
+                <textarea
+                  rows="2"
+                  class="w-full resize-none overflow-hidden bg-transparent text-[18px] leading-[1.45] outline-none {editableFieldTone}"
+                  value={focusArea}
+                  oninput={(event) => updateDraft({ focusArea: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-focus-input"
+                ></textarea>
+              </label>
+            {:else}
+              <div class="{focusContentTone}" data-testid="mesh-node-detail-focus-area">
+                <MarkdownRenderer source={focusArea} {dark} codeTheme={codeTheme} />
+              </div>
+            {/if}
+          </section>
+        {/if}
+
+        {#if isEditing || contextMarkdown}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-context-summary">
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Context Summary</h3>
-            <div class="{t.textPrimary}">
-              <MarkdownRenderer source={contextMarkdown} {dark} codeTheme={codeTheme} />
-            </div>
+            {#if isEditing}
+              <textarea
+                rows="4"
+                class="w-full resize-none overflow-hidden bg-transparent text-[14px] leading-[1.6] outline-none {editableFieldTone}"
+                value={contextSummary}
+                oninput={(event) => updateDraft({ contextSummary: event.currentTarget.value })}
+                data-testid="mesh-node-detail-context-input"
+              ></textarea>
+            {:else}
+              <div class="{t.textPrimary}">
+                <MarkdownRenderer source={contextMarkdown} {dark} codeTheme={codeTheme} />
+              </div>
+            {/if}
           </section>
         {/if}
 
-        {#if behaviorMarkdown}
+        {#if isEditing || behaviorMarkdown}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-role-section">
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Behavior Boundaries</h3>
             <div class="rounded-[20px] border px-5 py-4 {configTone}" data-testid="mesh-node-detail-behavior-summary">
-              <MarkdownRenderer source={behaviorMarkdown} {dark} codeTheme={codeTheme} />
+              {#if isEditing}
+                <textarea
+                  rows="4"
+                  class="w-full resize-none overflow-hidden bg-transparent text-[14px] leading-[1.6] outline-none {editableFieldTone}"
+                  value={behaviorSummary}
+                  oninput={(event) => updateDraft({ behaviorSummary: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-behavior-input"
+                ></textarea>
+              {:else}
+                <MarkdownRenderer source={behaviorMarkdown} {dark} codeTheme={codeTheme} />
+              {/if}
             </div>
+            {#if isEditing}
+              <p class="text-[12px] {subtleHintTone}" data-testid="mesh-node-detail-markdown-hint">Supports markdown</p>
+            {/if}
           </section>
         {/if}
 
-        {#if instructionsMarkdown}
+        {#if instructionsVisible}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-description">
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">
               {normalizedContext === 'runtime' ? 'Operational Notes' : 'Instructions'}
             </h3>
-            <div class="{t.textPrimary}">
-              <MarkdownRenderer source={instructionsMarkdown} {dark} codeTheme={codeTheme} />
-            </div>
+            {#if isEditing}
+              <textarea
+                rows="4"
+                class="w-full resize-none overflow-hidden bg-transparent text-[14px] leading-[1.6] outline-none {editableFieldTone}"
+                value={instructions}
+                oninput={(event) => updateDraft({ instructions: event.currentTarget.value, showInstructions: true })}
+                data-testid="mesh-node-detail-instructions-input"
+              ></textarea>
+            {:else if instructionsMarkdown}
+              <div class="{t.textPrimary}">
+                <MarkdownRenderer source={instructionsMarkdown} {dark} codeTheme={codeTheme} />
+              </div>
+            {/if}
           </section>
         {/if}
 
-        {#if configurationEntries.length > 0}
+        {#if isEditing && !instructionsVisible}
+          <button
+            class="inline-flex items-center gap-2 self-start rounded-xl border border-transparent px-1 py-1 text-[13px] {subtleHintTone}"
+            type="button"
+            onclick={() => invoke(actions?.onAddSection)}
+            data-testid="mesh-node-detail-add-section"
+          >
+            + Add section
+          </button>
+        {/if}
+
+        {#if !isEditing && configurationEntries.length > 0}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid={normalizedContext === 'runtime' ? 'mesh-node-detail-runtime' : 'mesh-node-detail-configuration'}>
             <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Configuration</h3>
             <dl class="rounded-[20px] border px-5 py-4 {configTone}">

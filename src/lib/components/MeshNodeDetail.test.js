@@ -145,6 +145,45 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-delete')).toBeInTheDocument()
   })
 
+  it('renders in-place editing controls in the shared detail shell', () => {
+    renderDetail({
+      mode: 'builder',
+      editing: true,
+      editDraft: {
+        name: 'Engineering Delivery Lead',
+        kind: 'lead',
+        tool: 'claude',
+        model: 'opus',
+        focusArea: 'Team sequencing, delivery coordination, and blocker escalation',
+        contextSummary: 'Maintains delivery flow and unblocks specialists.',
+        behaviorSummary: '- Escalate blockers quickly',
+        instructions: '',
+        showInstructions: false,
+      },
+      dirty: true,
+      actions: {
+        onCancelEdit: vi.fn(),
+        onSaveEdit: vi.fn(),
+        onEditChange: vi.fn(),
+        onAddSection: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-name-input')).toHaveValue('Engineering Delivery Lead')
+    expect(screen.getByTestId('mesh-node-detail-tool-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-model-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-kind-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-focus-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-context-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-behavior-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-markdown-hint')).toHaveTextContent('Supports markdown')
+    expect(screen.getByTestId('mesh-node-detail-cancel')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-save')).toHaveTextContent('Save Changes')
+    expect(screen.getByTestId('mesh-node-detail-unsaved-dot')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-add-section')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-node-detail-close')).not.toBeInTheDocument()
+  })
+
   it('invokes runtime actions and close affordances', async () => {
     const onResume = vi.fn()
     const onStop = vi.fn()
@@ -186,6 +225,36 @@ describe('MeshNodeDetail', () => {
     await fireEvent.click(screen.getByTestId('mesh-node-detail-host'))
 
     expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses Escape to cancel editing instead of closing the overlay', async () => {
+    const onCancelEdit = vi.fn()
+    const onClose = vi.fn()
+
+    renderDetail({
+      mode: 'builder',
+      editing: true,
+      editDraft: {
+        name: 'Engineering Delivery Lead',
+        kind: 'lead',
+        tool: 'claude',
+        model: 'opus',
+        focusArea: '',
+        contextSummary: '',
+        behaviorSummary: '',
+        instructions: '',
+        showInstructions: false,
+      },
+      actions: {
+        onCancelEdit,
+        onClose,
+      },
+    })
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('returns focus to the opener when closed', async () => {

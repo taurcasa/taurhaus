@@ -588,13 +588,14 @@ describe('MeshTeamBuilder', () => {
     await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
     await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
 
-    expect(await screen.findByRole('dialog', { name: 'Edit Role' })).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-role-editor-name-input')).toHaveValue('Codex Developer')
+    expect(await screen.findByRole('dialog', { name: 'Codex Developer' })).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-name-input')).toHaveValue('Codex Developer')
+    expect(screen.getByTestId('mesh-node-detail-save')).toHaveTextContent('Save Changes')
 
-    await fireEvent.input(screen.getByTestId('mesh-role-editor-context-summary-input'), {
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-context-input'), {
       target: { value: 'Carries implementation context across PR-sized changes.' },
     })
-    await fireEvent.click(screen.getByTestId('mesh-role-editor-save'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-save'))
 
     await waitFor(() => expect(upsertRoleTemplate).toHaveBeenCalledTimes(1))
     expect(upsertRoleTemplate).toHaveBeenCalledWith(
@@ -607,6 +608,7 @@ describe('MeshTeamBuilder', () => {
       })
     )
     expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('mesh-node-detail-name-input')).not.toBeInTheDocument()
   })
 
   it('exports role detail as yaml from the shared detail view', async () => {
