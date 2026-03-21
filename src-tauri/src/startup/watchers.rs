@@ -528,10 +528,7 @@ mod tests {
         let missing = temp_dir.path().join("claude").join("tasks");
 
         assert!(!missing.exists(), "fixture should start missing");
-        assert_eq!(
-            ensure_directory_exists(&missing).expect("create missing directory"),
-            true
-        );
+        assert!(ensure_directory_exists(&missing).expect("create missing directory"));
         assert!(missing.is_dir(), "helper should create the directory");
     }
 
@@ -539,10 +536,7 @@ mod tests {
     fn ensure_directory_exists_is_noop_for_existing_directory() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
-        assert_eq!(
-            ensure_directory_exists(temp_dir.path()).expect("existing dir should succeed"),
-            false
-        );
+        assert!(!ensure_directory_exists(temp_dir.path()).expect("existing dir should succeed"));
     }
 
     #[test]

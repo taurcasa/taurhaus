@@ -352,16 +352,16 @@ impl CompactionSignalWatcherService {
         let loop_command_tx = command_tx.clone();
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let join_handle = thread::spawn(move || {
-            if let Err(error) = run_watcher_service_loop(
+            if let Err(error) = run_watcher_service_loop(SignalWatcherServiceLoopArgs {
                 teams_dir,
-                initial_team_names,
+                desired_team_names: initial_team_names,
                 processor,
-                thread_shutdown,
+                shutdown: thread_shutdown,
                 config,
-                loop_command_tx,
+                command_tx: loop_command_tx,
                 command_rx,
                 ready_tx,
-            ) {
+            }) {
                 tracing::warn!(
                     error = %error,
                     "compaction signal watcher service loop exited with error"
@@ -488,16 +488,28 @@ enum SignalWatcherServiceMessage {
     Stop,
 }
 
-fn run_watcher_service_loop(
+struct SignalWatcherServiceLoopArgs {
     teams_dir: PathBuf,
-    mut desired_team_names: BTreeSet<String>,
+    desired_team_names: BTreeSet<String>,
     processor: Arc<dyn CompactionSignalProcessor>,
     shutdown: Arc<AtomicBool>,
     config: CompactionSignalWatcherConfig,
     command_tx: mpsc::Sender<SignalWatcherServiceMessage>,
     command_rx: mpsc::Receiver<SignalWatcherServiceMessage>,
     ready_tx: mpsc::SyncSender<Result<(), String>>,
-) -> Result<(), CoordinationError> {
+}
+
+fn run_watcher_service_loop(args: SignalWatcherServiceLoopArgs) -> Result<(), CoordinationError> {
+    let SignalWatcherServiceLoopArgs {
+        teams_dir,
+        mut desired_team_names,
+        processor,
+        shutdown,
+        config,
+        command_tx,
+        command_rx,
+        ready_tx,
+    } = args;
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<Event, notify::Error>| {
             let _ = command_tx.send(SignalWatcherServiceMessage::Notify(res));

@@ -269,7 +269,7 @@ const fullTeamRoster = {
   ],
 }
 
-export const roster_builder_empty_state = createScenario({
+const roster_builder_empty_state = createScenario({
   name: 'roster_builder_empty_state',
   theme: 'dark',
   mode: 'empty',
@@ -284,7 +284,7 @@ export const roster_builder_empty_state = createScenario({
   },
 })
 
-export const roster_builder_partial_state = createScenario({
+const roster_builder_partial_state = createScenario({
   name: 'roster_builder_partial_state',
   theme: 'light',
   mode: 'setup',
@@ -299,7 +299,7 @@ export const roster_builder_partial_state = createScenario({
   },
 })
 
-export const roster_builder_ready_state = createScenario({
+const roster_builder_ready_state = createScenario({
   name: 'roster_builder_ready_state',
   theme: 'dark',
   mode: 'setup',
