@@ -5,23 +5,28 @@ use crate::coordination::requests::{
 };
 use crate::templates::types::BehavioralContract;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RoleContext<'a> {
+    pub(crate) role_id: Option<&'a str>,
+    pub(crate) communication_style: Option<&'a str>,
+    pub(crate) instructions: Option<&'a str>,
+    pub(crate) behavioral_contract: Option<&'a BehavioralContract>,
+    pub(crate) quality_gates: Option<&'a [String]>,
+    pub(crate) definition_of_done: Option<&'a [String]>,
+    pub(crate) capabilities: Option<&'a [String]>,
+}
+
 /// Renders typed delivery payloads into deterministic tmux text.
 #[derive(Debug, Default)]
 pub struct DeliveryRenderer;
 
 impl DeliveryRenderer {
     /// Render a deterministic onboarding template for non-Claude agents.
-    pub fn render_onboarding(
+    pub(crate) fn render_onboarding(
         team_name: &str,
         member_name: &str,
         lead_name: &str,
-        role_id: Option<&str>,
-        communication_style: Option<&str>,
-        instructions: Option<&str>,
-        behavioral_contract: Option<&BehavioralContract>,
-        quality_gates: Option<&[String]>,
-        definition_of_done: Option<&[String]>,
-        capabilities: Option<&[String]>,
+        role_context: RoleContext<'_>,
     ) -> String {
         let mut rendered = format!(
             concat!(
@@ -55,31 +60,16 @@ impl DeliveryRenderer {
             member_name = member_name,
             lead_name = lead_name
         );
-        Self::append_role_context_sections(
-            &mut rendered,
-            role_id,
-            communication_style,
-            instructions,
-            behavioral_contract,
-            quality_gates,
-            definition_of_done,
-            capabilities,
-        );
+        Self::append_role_context_sections(&mut rendered, &role_context);
         rendered
     }
 
     /// Render role context for Claude agents as an initial team message.
-    pub fn render_claude_role_context(
+    pub(crate) fn render_claude_role_context(
         team_name: &str,
         member_name: &str,
         lead_name: &str,
-        role_id: Option<&str>,
-        communication_style: Option<&str>,
-        instructions: Option<&str>,
-        behavioral_contract: Option<&BehavioralContract>,
-        quality_gates: Option<&[String]>,
-        definition_of_done: Option<&[String]>,
-        capabilities: Option<&[String]>,
+        role_context: RoleContext<'_>,
     ) -> String {
         let mut rendered = format!(
             concat!(
@@ -106,16 +96,7 @@ impl DeliveryRenderer {
             member_name = member_name,
             lead_name = lead_name
         );
-        Self::append_role_context_sections(
-            &mut rendered,
-            role_id,
-            communication_style,
-            instructions,
-            behavioral_contract,
-            quality_gates,
-            definition_of_done,
-            capabilities,
-        );
+        Self::append_role_context_sections(&mut rendered, &role_context);
         rendered
     }
 
@@ -152,35 +133,36 @@ impl DeliveryRenderer {
         }
     }
 
-    fn append_role_context_sections(
-        rendered: &mut String,
-        role_id: Option<&str>,
-        communication_style: Option<&str>,
-        instructions: Option<&str>,
-        behavioral_contract: Option<&BehavioralContract>,
-        quality_gates: Option<&[String]>,
-        definition_of_done: Option<&[String]>,
-        capabilities: Option<&[String]>,
-    ) {
-        let role_id = role_id.map(str::trim).filter(|value| !value.is_empty());
-        let communication_style = communication_style
+    fn append_role_context_sections(rendered: &mut String, role_context: &RoleContext<'_>) {
+        let role_id = role_context
+            .role_id
             .map(str::trim)
             .filter(|value| !value.is_empty());
-        let instructions = instructions
+        let communication_style = role_context
+            .communication_style
             .map(str::trim)
             .filter(|value| !value.is_empty());
-        let behavioral_contract = behavioral_contract.filter(|contract| {
+        let instructions = role_context
+            .instructions
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let behavioral_contract = role_context.behavioral_contract.filter(|contract| {
             !contract.communication.is_empty()
                 || !contract.execution.is_empty()
                 || !contract.escalation.is_empty()
         });
-        let has_quality_gates = quality_gates
+        let has_quality_gates = role_context
+            .quality_gates
             .map(Self::has_non_empty_items)
             .unwrap_or(false);
-        let has_definition_of_done = definition_of_done
+        let has_definition_of_done = role_context
+            .definition_of_done
             .map(Self::has_non_empty_items)
             .unwrap_or(false);
-        let has_capabilities = capabilities.map(Self::has_non_empty_items).unwrap_or(false);
+        let has_capabilities = role_context
+            .capabilities
+            .map(Self::has_non_empty_items)
+            .unwrap_or(false);
 
         if role_id.is_none()
             && communication_style.is_none()
@@ -215,21 +197,21 @@ impl DeliveryRenderer {
             Self::append_titled_bullets(rendered, "Escalation", &contract.escalation);
         }
 
-        if let Some(quality_gates) = quality_gates {
+        if let Some(quality_gates) = role_context.quality_gates {
             if has_quality_gates {
                 rendered.push_str("\n\nQuality Gates:\n");
                 Self::append_bullets(rendered, quality_gates);
             }
         }
 
-        if let Some(definition_of_done) = definition_of_done {
+        if let Some(definition_of_done) = role_context.definition_of_done {
             if has_definition_of_done {
                 rendered.push_str("\n\nDefinition of Done:\n");
                 Self::append_bullets(rendered, definition_of_done);
             }
         }
 
-        if let Some(capabilities) = capabilities {
+        if let Some(capabilities) = role_context.capabilities {
             if has_capabilities {
                 rendered.push_str("\n\nCapabilities:\n");
                 Self::append_bullets(rendered, capabilities);
@@ -358,13 +340,7 @@ mod tests {
             "architecture-final",
             "codex-reviewer",
             "team-lead",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            RoleContext::default(),
         );
 
         assert!(rendered.contains("You are \"codex-reviewer\" on team \"architecture-final\"."));
@@ -387,13 +363,7 @@ mod tests {
             "architecture-final",
             "codex-reviewer",
             "team-lead",
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
+            RoleContext::default(),
         );
 
         let expected = concat!(
@@ -442,13 +412,15 @@ mod tests {
             "architecture-final",
             "codex-reviewer",
             "team-lead",
-            Some("codex-reviewer"),
-            Some("Brief, evidence-backed updates."),
-            Some("Review architecture patches and propose fixes."),
-            Some(&contract),
-            Some(&quality_gates),
-            Some(&definition_of_done),
-            Some(&capabilities),
+            RoleContext {
+                role_id: Some("codex-reviewer"),
+                communication_style: Some("Brief, evidence-backed updates."),
+                instructions: Some("Review architecture patches and propose fixes."),
+                behavioral_contract: Some(&contract),
+                quality_gates: Some(&quality_gates),
+                definition_of_done: Some(&definition_of_done),
+                capabilities: Some(&capabilities),
+            },
         );
 
         assert!(rendered.contains("Role: codex-reviewer"));
@@ -483,13 +455,15 @@ mod tests {
             "architecture-final",
             "claude-dev",
             "team-lead",
-            Some("claude-developer"),
-            Some("Crisp internal handoffs."),
-            Some("Implement role-specific changes."),
-            Some(&contract),
-            Some(&quality_gates),
-            Some(&definition_of_done),
-            Some(&capabilities),
+            RoleContext {
+                role_id: Some("claude-developer"),
+                communication_style: Some("Crisp internal handoffs."),
+                instructions: Some("Implement role-specific changes."),
+                behavioral_contract: Some(&contract),
+                quality_gates: Some(&quality_gates),
+                definition_of_done: Some(&definition_of_done),
+                capabilities: Some(&capabilities),
+            },
         );
 
         assert!(rendered.contains("[taurhaus] role_context"));

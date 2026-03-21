@@ -2,7 +2,7 @@ use super::*;
 
 use std::path::PathBuf;
 
-use crate::coordination::delivery::DeliveryRenderer;
+use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
@@ -166,26 +166,30 @@ impl CoordinationOrchestrator {
                 &request.team_name,
                 &member.name,
                 lead_name,
-                member.role_id.as_deref(),
-                member.communication_style.as_deref(),
-                member.instructions.as_deref(),
-                member.behavioral_contract.as_ref(),
-                member.quality_gates.as_deref(),
-                member.definition_of_done.as_deref(),
-                member.capabilities.as_deref(),
+                RoleContext {
+                    role_id: member.role_id.as_deref(),
+                    communication_style: member.communication_style.as_deref(),
+                    instructions: member.instructions.as_deref(),
+                    behavioral_contract: member.behavioral_contract.as_ref(),
+                    quality_gates: member.quality_gates.as_deref(),
+                    definition_of_done: member.definition_of_done.as_deref(),
+                    capabilities: member.capabilities.as_deref(),
+                },
             )
         } else {
             DeliveryRenderer::render_onboarding(
                 &request.team_name,
                 &member.name,
                 lead_name,
-                member.role_id.as_deref(),
-                member.communication_style.as_deref(),
-                member.instructions.as_deref(),
-                member.behavioral_contract.as_ref(),
-                member.quality_gates.as_deref(),
-                member.definition_of_done.as_deref(),
-                member.capabilities.as_deref(),
+                RoleContext {
+                    role_id: member.role_id.as_deref(),
+                    communication_style: member.communication_style.as_deref(),
+                    instructions: member.instructions.as_deref(),
+                    behavioral_contract: member.behavioral_contract.as_ref(),
+                    quality_gates: member.quality_gates.as_deref(),
+                    definition_of_done: member.definition_of_done.as_deref(),
+                    capabilities: member.capabilities.as_deref(),
+                },
             )
         };
         self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
@@ -321,26 +325,30 @@ impl CoordinationOrchestrator {
                 &request.team_name,
                 &request.agent.name,
                 &lead_name,
-                request.agent.role_id.as_deref(),
-                request.agent.communication_style.as_deref(),
-                agent_instructions(&request.agent),
-                request.agent.behavioral_contract.as_ref(),
-                request.agent.quality_gates.as_deref(),
-                request.agent.definition_of_done.as_deref(),
-                request.agent.capabilities.as_deref(),
+                RoleContext {
+                    role_id: request.agent.role_id.as_deref(),
+                    communication_style: request.agent.communication_style.as_deref(),
+                    instructions: agent_instructions(&request.agent),
+                    behavioral_contract: request.agent.behavioral_contract.as_ref(),
+                    quality_gates: request.agent.quality_gates.as_deref(),
+                    definition_of_done: request.agent.definition_of_done.as_deref(),
+                    capabilities: request.agent.capabilities.as_deref(),
+                },
             )
         } else {
             DeliveryRenderer::render_onboarding(
                 &request.team_name,
                 &request.agent.name,
                 &lead_name,
-                request.agent.role_id.as_deref(),
-                request.agent.communication_style.as_deref(),
-                agent_instructions(&request.agent),
-                request.agent.behavioral_contract.as_ref(),
-                request.agent.quality_gates.as_deref(),
-                request.agent.definition_of_done.as_deref(),
-                request.agent.capabilities.as_deref(),
+                RoleContext {
+                    role_id: request.agent.role_id.as_deref(),
+                    communication_style: request.agent.communication_style.as_deref(),
+                    instructions: agent_instructions(&request.agent),
+                    behavioral_contract: request.agent.behavioral_contract.as_ref(),
+                    quality_gates: request.agent.quality_gates.as_deref(),
+                    definition_of_done: request.agent.definition_of_done.as_deref(),
+                    capabilities: request.agent.capabilities.as_deref(),
+                },
             )
         };
         self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {

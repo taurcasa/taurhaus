@@ -30,7 +30,7 @@ use crate::coordination::backend::bridged::{
 use crate::coordination::claude_hooks::{
     ensure_compact_hook_installed, team_has_managed_claude_member,
 };
-use crate::coordination::delivery::DeliveryRenderer;
+use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{DeliveryRequest, DeliveryResult, OperatorNoticeDelivery};
@@ -519,13 +519,15 @@ fn coordination_reonboard_impl(
                 &request.team_name,
                 &request.member_name,
                 &lead_name,
-                member.role_id.as_deref(),
-                member.communication_style.as_deref(),
-                member.instructions.as_deref(),
-                member.behavioral_contract.as_ref(),
-                member.quality_gates.as_deref(),
-                member.definition_of_done.as_deref(),
-                member.capabilities.as_deref(),
+                RoleContext {
+                    role_id: member.role_id.as_deref(),
+                    communication_style: member.communication_style.as_deref(),
+                    instructions: member.instructions.as_deref(),
+                    behavioral_contract: member.behavioral_contract.as_ref(),
+                    quality_gates: member.quality_gates.as_deref(),
+                    definition_of_done: member.definition_of_done.as_deref(),
+                    capabilities: member.capabilities.as_deref(),
+                },
             );
 
             orchestrator.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
