@@ -438,6 +438,15 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByText('Search, filter, and add from the live role catalog.')).toBeInTheDocument()
   })
 
+  it('uses a medium-screen breakpoint for the live two-column roster layout', () => {
+    renderBuilder()
+
+    const rosterGrid = screen.getByTestId('mesh-builder-catalog').parentElement
+
+    expect(rosterGrid).toHaveClass('md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
+    expect(rosterGrid).not.toHaveClass('xl:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
+  })
+
   it('shows collapsed roster summary rows by default and reveals member fields on demand', async () => {
     renderBuilder({
       teamConfig: sampleRosterConfig(),

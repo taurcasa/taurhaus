@@ -718,7 +718,7 @@
   <main class="space-y-3" data-testid="mesh-builder-roster">
     <ValidationBar issues={validationIssues} {dark} />
 
-    <div class="grid gap-3 xl:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]">
+    <div class="grid gap-3 md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]">
       <section
         class="space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {panelTone}"
         data-testid="mesh-builder-catalog"
