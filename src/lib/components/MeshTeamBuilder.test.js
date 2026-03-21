@@ -442,24 +442,29 @@ describe('MeshTeamBuilder', () => {
       'Start with a developer, researcher, or reviewer to flesh out the team.'
     )
     expect(screen.getByTestId('mesh-builder-preset-section')).toHaveTextContent('Quick start')
-    expect(screen.getByText('Search, filter, and add from the live role catalog.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Search roles, pin favorites, and build the lineup from left to right.')
+    ).toBeInTheDocument()
     expect(screen.getByTestId('mesh-action-initialize')).toBeDisabled()
     expect(screen.getByTestId('mesh-action-initialize-hint')).toHaveAttribute(
       'title',
       'Lead role is required.'
     )
     expect(screen.queryByText('1 issue')).not.toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-team-lead-group')).toHaveTextContent('Lead role')
-    expect(screen.getByTestId('mesh-builder-team-agents-group')).toHaveTextContent('Agent roles')
+    expect(screen.queryByText('Lead required')).not.toBeInTheDocument()
+    expect(screen.queryByText('Required')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-team-lead-group')).toHaveTextContent('Lead')
+    expect(screen.getByTestId('mesh-builder-team-agents-group')).toHaveTextContent('Agents')
   })
 
   it('uses a medium-screen breakpoint for the live two-column roster layout', () => {
     renderBuilder()
 
-    const rosterGrid = screen.getByTestId('mesh-builder-catalog').parentElement
+    const rosterShell = screen.getByTestId('mesh-builder-shell')
 
-    expect(rosterGrid).toHaveClass('md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
-    expect(rosterGrid).not.toHaveClass('xl:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
+    expect(rosterShell).toHaveClass('md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
+    expect(rosterShell).toHaveClass('md:h-[calc(100vh-10.75rem)]')
+    expect(rosterShell).not.toHaveClass('xl:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
   })
 
   it('keeps roster chrome fixed and only makes the role list scroll', () => {
@@ -468,9 +473,10 @@ describe('MeshTeamBuilder', () => {
       teamConfig: sampleRosterConfig(),
     })
 
-    expect(screen.getByTestId('mesh-builder-catalog')).toHaveClass('md:max-h-[calc(100vh-11rem)]')
+    expect(screen.getByTestId('mesh-builder-shell')).toHaveClass('overflow-hidden')
+    expect(screen.getByTestId('mesh-builder-catalog')).toHaveClass('overflow-hidden')
     expect(screen.getByTestId('mesh-builder-role-scroll')).toHaveClass('md:overflow-y-auto')
-    expect(screen.getByTestId('mesh-builder-team-panel')).toHaveClass('md:sticky')
+    expect(screen.getByTestId('mesh-builder-team-panel')).toHaveClass('overflow-hidden')
     expect(screen.getByTestId('mesh-builder-team-scroll')).toHaveClass('md:overflow-y-auto')
   })
 
@@ -480,13 +486,20 @@ describe('MeshTeamBuilder', () => {
     })
 
     expect(screen.getByTestId('mesh-builder-team-panel')).toHaveTextContent('2 members')
+    expect(screen.getByTestId('mesh-builder-team-meta')).toHaveTextContent(
+      '1 agent supporting the lead.'
+    )
     expect(screen.getByTestId('mesh-builder-lead-summary')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-lead-card')).toHaveClass('bg-brand-50/85')
+    expect(screen.getByTestId('mesh-builder-lead-card')).toHaveClass('bg-amber-50/95')
     expect(screen.queryByTestId('mesh-builder-lead-name-input')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agents-section')).toHaveTextContent('Codex Developer')
     expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-agent-card-agent-codex-1')).toHaveClass('bg-emerald-50/85')
-    expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).not.toHaveTextContent('1')
+    expect(screen.getByTestId('mesh-builder-agent-card-agent-codex-1')).toHaveClass(
+      'bg-sky-50/95'
+    )
+    expect(screen.getByTestId('mesh-builder-agent-summary-agent-codex-1')).toHaveTextContent(
+      'builder-1'
+    )
     expect(screen.queryByTestId('mesh-builder-agent-name-input-agent-codex-1')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-agent-dropzone')).toHaveAttribute(
       'data-dropzone-mode',

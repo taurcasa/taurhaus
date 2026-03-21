@@ -506,21 +506,61 @@
     return ''
   }
 
-  function teamCardTone(tool) {
-    const normalizedTool = normalizeTool(tool)
-    if (normalizedTool === 'claude') {
+  function teamCardTone(tool, kind = 'agent') {
+    if (kind === 'lead') {
       return dark
-        ? 'border-brand-400/22 bg-brand-500/8'
-        : 'border-brand-300/65 bg-brand-50/85'
+        ? 'border-amber-400/35 bg-amber-500/10'
+        : 'border-amber-300/80 bg-amber-50/95'
+    }
+
+    const normalizedTool = normalizeTool(tool)
+    if (normalizedTool === 'codex') {
+      return dark
+        ? 'border-sky-400/28 bg-sky-500/10'
+        : 'border-sky-300/75 bg-sky-50/95'
     }
     if (normalizedTool === 'gemini') {
       return dark
-        ? 'border-sky-400/22 bg-sky-500/8'
-        : 'border-sky-300/65 bg-sky-50/85'
+        ? 'border-violet-400/28 bg-violet-500/10'
+        : 'border-violet-300/75 bg-violet-50/95'
     }
     return dark
-      ? 'border-emerald-400/22 bg-emerald-500/8'
-      : 'border-emerald-300/65 bg-emerald-50/85'
+      ? 'border-emerald-400/28 bg-emerald-500/10'
+      : 'border-emerald-300/75 bg-emerald-50/95'
+  }
+
+  function memberAccentTone(tool, kind = 'agent') {
+    if (kind === 'lead') return dark ? 'bg-amber-300' : 'bg-amber-500'
+    switch (normalizeTool(tool)) {
+      case 'codex':
+        return dark ? 'bg-sky-300' : 'bg-sky-500'
+      case 'gemini':
+        return dark ? 'bg-violet-300' : 'bg-violet-500'
+      default:
+        return dark ? 'bg-emerald-300' : 'bg-emerald-500'
+    }
+  }
+
+  function memberMetaTone(tool, kind = 'agent') {
+    if (kind === 'lead') {
+      return dark
+        ? 'border-amber-400/30 bg-amber-500/14 text-amber-100'
+        : 'border-amber-300/70 bg-amber-50 text-amber-900'
+    }
+    switch (normalizeTool(tool)) {
+      case 'codex':
+        return dark
+          ? 'border-sky-400/30 bg-sky-500/14 text-sky-100'
+          : 'border-sky-300/70 bg-sky-50 text-sky-900'
+      case 'gemini':
+        return dark
+          ? 'border-violet-400/30 bg-violet-500/14 text-violet-100'
+          : 'border-violet-300/70 bg-violet-50 text-violet-900'
+      default:
+        return dark
+          ? 'border-emerald-400/30 bg-emerald-500/14 text-emerald-100'
+          : 'border-emerald-300/70 bg-emerald-50 text-emerald-900'
+    }
   }
 
   function toggleToolFilter(tool) {
@@ -626,16 +666,20 @@
     switch (tool) {
       case 'claude':
         return dark
-          ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
-          : 'border-amber-300/70 bg-amber-50 text-amber-800'
-      case 'gemini':
+          ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
+          : 'border-emerald-300/70 bg-emerald-50 text-emerald-800'
+      case 'codex':
         return dark
           ? 'border-sky-400/35 bg-sky-500/12 text-sky-200'
           : 'border-sky-300/70 bg-sky-50 text-sky-800'
+      case 'gemini':
+        return dark
+          ? 'border-violet-400/35 bg-violet-500/12 text-violet-200'
+          : 'border-violet-300/70 bg-violet-50 text-violet-800'
       default:
         return dark
-          ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
-          : 'border-emerald-300/70 bg-emerald-50 text-emerald-800'
+          ? 'border-white/[0.14] bg-white/[0.05] text-zinc-200'
+          : 'border-zinc-200 bg-zinc-50 text-zinc-700'
     }
   }
 
@@ -725,23 +769,21 @@
     <div class="sr-only" data-testid="mesh-empty-state">Mesh builder empty state</div>
   {/if}
 
-  <main class="space-y-3" data-testid="mesh-builder-roster">
-    <div class="grid gap-3 md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]">
+  <main class="min-h-0" data-testid="mesh-builder-roster">
+    <div
+      class="grid min-h-0 overflow-hidden rounded-[30px] border shadow-sm backdrop-blur {panelTone} md:h-[calc(100vh-10.75rem)] md:min-h-[640px] md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)] md:items-stretch"
+      data-testid="mesh-builder-shell"
+    >
       <section
-        class="flex min-h-0 flex-col space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {panelTone} md:max-h-[calc(100vh-11rem)]"
+        class="flex min-h-0 flex-col overflow-hidden border-b p-4 md:border-b-0 md:border-r md:pr-5 {dark ? 'border-white/[0.08]' : 'border-brand-200/55'}"
         data-testid="mesh-builder-catalog"
         data-collapsed="false"
       >
-        <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="flex flex-wrap items-start justify-between gap-3 pb-4">
           <div class="space-y-1">
-            <div class="flex items-center gap-2">
-              <h2 class="text-[16px] font-semibold {t.textPrimary}">Available Roles</h2>
-              <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
-                {visibleRoleCount} visible
-              </span>
-            </div>
+            <h2 class="text-[16px] font-semibold {t.textPrimary}">Available Roles</h2>
             <p class="text-[12px] {t.textSecondary}">
-              Search, filter, and add from the live role catalog.
+              Search roles, pin favorites, and build the lineup from left to right.
             </p>
           </div>
 
@@ -752,7 +794,7 @@
               onclick={focusCatalogSearch}
               data-testid="mesh-template-browse-catalog"
             >
-              Browse catalog
+              Focus search
             </button>
             {#if mode === 'empty'}
               <button
@@ -767,7 +809,7 @@
           </div>
         </div>
 
-        <div class="space-y-3" data-testid="mesh-builder-catalog-content">
+        <div class="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden" data-testid="mesh-builder-catalog-content">
           <label class="block">
             <span class="sr-only">Search roles</span>
             <div class="flex h-11 items-center gap-3 rounded-[18px] border px-3 {surfaceTone}">
@@ -978,7 +1020,10 @@
             </section>
           {/if}
 
-          <div class="min-h-0 flex-1 space-y-4 md:overflow-y-auto md:pr-1" data-testid="mesh-builder-role-scroll">
+          <div
+            class="min-h-0 flex-1 space-y-4 md:overflow-y-auto md:overscroll-contain md:pr-1"
+            data-testid="mesh-builder-role-scroll"
+          >
           {#if visibleRoleCount === 0}
             <div class="rounded-[18px] border px-4 py-5 text-center {surfaceTone}" data-testid="mesh-builder-empty-results">
               <p class="text-[13px] font-semibold {t.textPrimary}">No roles match these filters</p>
@@ -1116,12 +1161,12 @@
       </section>
 
       <section
-        class="flex min-h-0 flex-col gap-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone} md:sticky md:top-0 md:max-h-[calc(100vh-11rem)]"
+        class="flex min-h-0 flex-col gap-4 overflow-hidden p-4 md:pl-5 {highlightedRosterSection === 'all' ? 'bg-white/[0.02]' : ''}"
         data-testid="mesh-builder-team-panel"
       >
-        <div class="rounded-[24px] border p-4 {dark ? 'border-white/[0.08] bg-white/[0.055]' : 'border-brand-200/55 bg-brand-50/55'}">
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 flex-1 space-y-3">
+        <div class="rounded-[22px] border px-4 py-4 {dark ? 'border-white/[0.08] bg-black/10' : 'border-white/70 bg-white/65'}">
+          <div class="space-y-3">
+            <div class="min-w-0 space-y-3">
               <div class="flex items-center gap-2">
                 <h2 class="text-[16px] font-semibold {t.textPrimary}">Your Team</h2>
                 <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
@@ -1192,31 +1237,25 @@
                   </button>
                 {/if}
               </div>
-
-              <p class="text-[11px] {t.textMuted}" data-testid="mesh-builder-team-meta">
-                {memberCount === 0 ? 'Start with a lead, then add agents.' : 'Lead role first, then fill in the supporting team.'}
-              </p>
             </div>
 
-            <div class="rounded-[18px] border px-3 py-2 text-right {dark ? 'border-white/[0.08] bg-black/10' : 'border-white/70 bg-white/75'}" data-testid="mesh-builder-team-status">
-              <p class="text-[10px] uppercase tracking-[0.16em] {t.textMuted}">Roster status</p>
-              <p class="mt-1 text-[12px] font-medium {t.textPrimary}">
-                {normalizedTeam.lead ? 'Lead ready' : 'Lead required'}
-              </p>
-              <p class="mt-0.5 text-[11px] {t.textMuted}">
-                {agents.length} agent{agents.length === 1 ? '' : 's'} assigned
-              </p>
-            </div>
+            <p class="text-[12px] {t.textSecondary}" data-testid="mesh-builder-team-meta">
+              {memberCount === 0
+                ? 'Pick roles from the left to build your lineup.'
+                : `${agents.length} agent${agents.length === 1 ? '' : 's'} supporting the lead.`}
+            </p>
           </div>
         </div>
 
-        <div class="min-h-0 flex-1 space-y-4 md:overflow-y-auto md:pr-1" data-testid="mesh-builder-team-scroll">
-          <section class="space-y-3 rounded-[22px] border p-3 {dark ? 'border-white/[0.08] bg-black/15' : 'border-zinc-200/80 bg-white/80'}" data-testid="mesh-builder-team-lead-group">
+        <div
+          class="min-h-0 flex-1 space-y-4 md:overflow-y-auto md:overscroll-contain md:pr-1"
+          data-testid="mesh-builder-team-scroll"
+        >
+          <section class="space-y-2" data-testid="mesh-builder-team-lead-group">
             <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="text-[12px] font-semibold {t.textPrimary}">Lead role</p>
-                <p class="text-[11px] {t.textMuted}">Choose the person coordinating the team.</p>
-              </div>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.14em] {t.textMuted}">
+                Lead
+              </p>
               {#if normalizedTeam.lead}
                 <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
                   Assigned
@@ -1230,10 +1269,15 @@
             >
               {#if normalizedTeam.lead}
                 <article
-                  class="rounded-[20px] border p-3 {teamCardTone(normalizedTeam.lead.tool)}"
+                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(normalizedTeam.lead.tool, 'lead')}"
                   data-testid="mesh-builder-lead-card"
                 >
-                  <div class="flex items-start gap-3" data-testid="mesh-builder-lead-summary">
+                  <span
+                    class="absolute inset-y-0 left-0 w-1.5 {memberAccentTone(normalizedTeam.lead.tool, 'lead')}"
+                    aria-hidden="true"
+                  ></span>
+
+                  <div class="flex items-start gap-3 pl-2" data-testid="mesh-builder-lead-summary">
                     <button
                       class="flex min-w-0 flex-1 items-center gap-3 text-left"
                       type="button"
@@ -1247,15 +1291,19 @@
                       </span>
                       <span class="min-w-0 flex-1">
                         <span class="flex items-center gap-2">
-                          <span class="rounded-full border px-2 py-0.5 text-[9px] font-medium {dark ? 'border-amber-400/25 text-amber-200' : 'border-amber-300/70 text-amber-800'}">
-                            Lead
+                          <span class="rounded-full border px-2 py-0.5 text-[9px] font-medium {memberMetaTone(normalizedTeam.lead.tool, 'lead')}">
+                            Team Lead
                           </span>
                         </span>
                         <span class="mt-1 block truncate text-[14px] font-semibold {t.textPrimary}">
                           {normalizedTeam.lead.roleName || normalizedTeam.lead.roleId || 'Lead'}
                         </span>
-                        <span class="mt-0.5 block truncate text-[11px] {t.textSecondary}">
-                          {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
+                        <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] {t.textSecondary}">
+                          <span class="truncate">{normalizedTeam.lead.name || 'team-lead'}</span>
+                          <span class="{t.textMuted}">•</span>
+                          <span class="truncate">
+                            {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
+                          </span>
                         </span>
                       </span>
                     </button>
@@ -1283,7 +1331,7 @@
                   </div>
 
                   {#if leadDetailsExpanded}
-                    <div class="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                    <div class="mt-3 grid gap-2 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'} lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Lead name</span>
                         <input
@@ -1336,28 +1384,20 @@
                 </article>
               {:else}
                 <div class="rounded-[20px] border border-dashed px-4 py-4 {invalidDropTone}" data-testid="mesh-builder-lead-empty">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <p class="text-[13px] font-medium {t.textPrimary}">Choose a lead role to anchor the team.</p>
-                      <p class="mt-1 text-[11px] {t.textSecondary}">
-                        Use the + button next to any lead on the left.
-                      </p>
-                    </div>
-                    <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {dark ? 'border-danger-400/30 text-danger-200' : 'border-danger-300/70 text-danger-700'}">
-                      Required
-                    </span>
-                  </div>
+                  <p class="text-[13px] font-medium {t.textPrimary}">Choose a lead role to anchor the team.</p>
+                  <p class="mt-1 text-[11px] {t.textSecondary}">
+                    Use the + button next to any lead on the left.
+                  </p>
                 </div>
               {/if}
             </section>
           </section>
 
-          <section class="space-y-3 rounded-[22px] border p-3 {dark ? 'border-white/[0.08] bg-black/15' : 'border-zinc-200/80 bg-white/80'}" data-testid="mesh-builder-team-agents-group">
+          <section class="space-y-2" data-testid="mesh-builder-team-agents-group">
             <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="text-[12px] font-semibold {t.textPrimary}">Agent roles</p>
-                <p class="text-[11px] {t.textMuted}">Add specialists from the catalog to round out the team.</p>
-              </div>
+              <p class="text-[11px] font-semibold uppercase tracking-[0.14em] {t.textMuted}">
+                Agents
+              </p>
               <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
                 {agents.length} assigned
               </span>
@@ -1369,10 +1409,15 @@
             >
               {#each agents as agent (agent.id)}
                 <article
-                  class="rounded-[20px] border p-3 {teamCardTone(agent.tool)}"
+                  class="relative overflow-hidden rounded-[20px] border px-3 py-3 shadow-sm {teamCardTone(agent.tool)}"
                   data-testid={`mesh-builder-agent-card-${agent.id}`}
                 >
-                  <div class="flex items-start gap-3" data-testid={`mesh-builder-agent-summary-${agent.id}`}>
+                  <span
+                    class="absolute inset-y-0 left-0 w-1.5 {memberAccentTone(agent.tool)}"
+                    aria-hidden="true"
+                  ></span>
+
+                  <div class="flex items-start gap-3 pl-2" data-testid={`mesh-builder-agent-summary-${agent.id}`}>
                     <div class="flex min-w-0 flex-1 items-start gap-3" data-testid="mesh-node-agent">
                       <button
                         class="flex min-w-0 flex-1 items-center gap-3 text-left"
@@ -1389,8 +1434,12 @@
                           <span class="block truncate text-[13px] font-semibold {t.textPrimary}">
                             {agent.roleName || agent.roleId || agent.name}
                           </span>
-                          <span class="mt-0.5 block truncate text-[11px] {t.textSecondary}">
-                            {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
+                          <span class="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] {t.textSecondary}">
+                            <span class="truncate">{agent.name}</span>
+                            <span class="{t.textMuted}">•</span>
+                            <span class="truncate">
+                              {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
+                            </span>
                           </span>
                         </span>
                       </button>
@@ -1418,7 +1467,7 @@
                   </div>
 
                   {#if isAgentExpanded(agent.id)}
-                    <div class="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                    <div class="mt-3 grid gap-2 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'} lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Agent name</span>
                         <input
@@ -1472,7 +1521,7 @@
               {/each}
 
               <div
-                class="rounded-[18px] border border-dashed px-4 py-4 {surfaceTone}"
+                class="rounded-[18px] border border-dashed px-4 py-3 text-center {surfaceTone}"
                 data-testid="mesh-builder-agent-dropzone"
                 data-dropzone-mode={agents.length > 0 ? 'compact' : 'empty'}
               >
