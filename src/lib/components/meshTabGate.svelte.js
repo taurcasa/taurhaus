@@ -4,6 +4,10 @@ export const INITIAL_RUNTIME_REFRESH_DELAY_MS = 120
 export const RUNTIME_STATUS_POLL_MS = 2000
 
 export function createMeshTabGate({ state, refs, deps }) {
+  function isInternalDiscoveryWarning(message) {
+    return String(message || '').trim().toLowerCase().startsWith('skipped team folder ')
+  }
+
   function nowMs() {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
       return performance.now()
@@ -66,6 +70,10 @@ export function createMeshTabGate({ state, refs, deps }) {
     if (!snapshot.tmuxAvailable) messages.push('tmux is unavailable for this environment.')
     for (const warning of snapshot.warnings) {
       const message = String(warning || '').trim()
+      if (isInternalDiscoveryWarning(message)) {
+        console.warn('[mesh] suppressed internal discovery warning:', message)
+        continue
+      }
       if (message && !messages.includes(message)) messages.push(message)
     }
     return messages.join(' ')

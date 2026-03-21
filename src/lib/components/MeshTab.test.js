@@ -1753,6 +1753,27 @@ describe('MeshTab', () => {
     expect(coordinationPreflightCheck).not.toHaveBeenCalled()
   })
 
+  it('suppresses skipped team folder discovery warnings from the inline availability banner', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildProjectMeshSnapshot({
+      meshAvailable: true,
+      tmuxAvailable: true,
+      warnings: ["skipped team folder 'taureval-1773711699719' because config is missing or invalid"],
+    }))
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/espn_fantasy_desktop',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('mesh-availability-inline')).not.toBeInTheDocument()
+  })
+
   it('empty -> setup transition via inline roster edit', async () => {
     render(MeshTab, {
       props: {
