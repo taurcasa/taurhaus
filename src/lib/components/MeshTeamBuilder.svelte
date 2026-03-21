@@ -179,8 +179,15 @@
       )
     })
   })
-  const leadRoles = $derived(filteredRoles.filter((role) => role.kind === 'lead'))
-  const agentRoles = $derived(filteredRoles.filter((role) => role.kind !== 'lead'))
+  const visiblePinnedRoles = $derived.by(() => {
+    const visibleRoleIds = new Set(filteredRoles.map((role) => role.roleId))
+    return pinnedRoles.filter((role) => visibleRoleIds.has(role.roleId))
+  })
+  const catalogListRoles = $derived(
+    filteredRoles.filter((role) => !pinnedRoleIds.includes(role.roleId))
+  )
+  const leadRoles = $derived(catalogListRoles.filter((role) => role.kind === 'lead'))
+  const agentRoles = $derived(catalogListRoles.filter((role) => role.kind !== 'lead'))
   const visibleRoleCount = $derived(filteredRoles.length)
   const catalogDensityMode = $derived(
     catalogDensityPreference ?? (visibleRoleCount > 8 ? 'compact' : 'expanded')
@@ -1134,32 +1141,69 @@
             </div>
           </section>
 
-          {#if pinnedRoles.length > 0}
-            <section class="space-y-2" data-testid="mesh-builder-pinned-strip">
+          {#if visiblePinnedRoles.length > 0}
+            <section
+              class="space-y-2 border-b pb-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/80'}"
+              data-testid="mesh-builder-pinned-strip"
+            >
               <div class="flex items-center justify-between gap-2">
                 <p class="text-[13px] font-medium {t.textPrimary}">Favorites</p>
-                <span class="text-[11px] {t.textMuted}">{pinnedRoles.length}</span>
+                <span class="text-[11px] {t.textMuted}">{visiblePinnedRoles.length}</span>
               </div>
-              <div class="space-y-1.5" data-testid="mesh-builder-pinned-list">
-                {#each pinnedRoles as role (role.roleId)}
-                  <button
-                    class="mesh-builder-pressable flex w-full items-center gap-3 rounded-[18px] border px-3 py-2.5 text-left transition active:scale-[0.98] {surfaceTone}"
-                    type="button"
-                    onclick={() => assignRole(role)}
-                    data-testid={`mesh-builder-pinned-chip-${role.roleId}`}
+              <div
+                class={catalogDensityMode === 'compact' ? 'space-y-1.5' : 'space-y-2'}
+                data-testid="mesh-builder-pinned-list"
+                data-density-mode={catalogDensityMode}
+              >
+                {#each visiblePinnedRoles as role (role.roleId)}
+                  <div
+                    class="mesh-builder-role-row group flex h-10 cursor-pointer items-center gap-2 rounded-[16px] border px-2.5 transition {surfaceTone} {roleCardTone(role)} {isRoleFlashing(role.roleId) ? 'mesh-builder-role-row-active' : ''}"
+                    data-testid={`mesh-builder-pinned-row-${role.roleId}`}
                   >
-                    <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border {roleMedallionTone(role.cliTool)}">
-                      <svg class="h-3.5 w-3.5" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
-                        <path d={getToolIcon(role.cliTool).path}></path>
-                      </svg>
-                    </span>
-                    <span class="min-w-0 flex-1">
-                      <span class="block truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</span>
-                      <span class="block truncate text-[11px] {t.textSecondary}">
-                        {getToolName(role.cliTool)} · {role.model}
+                    <button
+                      class="mesh-builder-pressable flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
+                      type="button"
+                      onclick={() => assignRole(role)}
+                      data-testid={`mesh-builder-pinned-chip-${role.roleId}`}
+                    >
+                      <span class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border {roleMedallionTone(role.cliTool)}">
+                        <svg class="h-3 w-3" viewBox={getToolIcon(role.cliTool).viewBox} fill="currentColor" aria-hidden="true">
+                          <path d={getToolIcon(role.cliTool).path}></path>
+                        </svg>
                       </span>
-                    </span>
-                  </button>
+                      <span class="min-w-0 flex-1 truncate text-[12px] leading-none">
+                        <span class="font-semibold {t.textPrimary}">{role.name}</span>
+                        <span class="mx-1 {t.textMuted}">—</span>
+                        <span class="{t.textSecondary}">{roleSummaryText(role)}</span>
+                      </span>
+                    </button>
+                    <div class="flex shrink-0 items-center gap-1.5">
+                      <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-none {roleChipTone(role)}">
+                        {roleKindLabel(role)}
+                      </span>
+                      <button
+                        class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
+                        type="button"
+                        aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
+                        aria-pressed={isRolePinned(role.roleId)}
+                        onclick={(event) => handlePinToggle(event, role.roleId)}
+                        data-testid={`mesh-builder-pin-${role.roleId}`}
+                      >
+                        <svg class="h-4 w-4" viewBox="0 0 16 16" fill={isRolePinned(role.roleId) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                          <path d="M8 1.7l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 10.67 4.48 12.55l.67-3.93L2.3 5.84l3.94-.57L8 1.7Z" stroke-linejoin="round"></path>
+                        </svg>
+                      </button>
+                      <button
+                        class="mesh-builder-row-control mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
+                        type="button"
+                        aria-label={`Add ${role.name}`}
+                        onclick={() => assignRole(role)}
+                        data-testid={`mesh-builder-pinned-add-${role.roleId}`}
+                      >
+                        {isRoleFlashing(role.roleId) ? '✓' : '+'}
+                      </button>
+                    </div>
+                  </div>
                 {/each}
               </div>
             </section>
@@ -1195,7 +1239,6 @@
                     <button
                       class="mesh-builder-pressable flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
                       type="button"
-                      title={roleSummaryText(role)}
                       onclick={() => assignRole(role)}
                       data-testid={`mesh-builder-role-${role.roleId}`}
                     >
@@ -1215,7 +1258,7 @@
                         {roleKindLabel(role)}
                       </span>
                       <button
-                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
+                        class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
                         aria-pressed={isRolePinned(role.roleId)}
@@ -1227,7 +1270,7 @@
                         </svg>
                       </button>
                       <button
-                        class="mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
+                        class="mesh-builder-row-control mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
                         type="button"
                         aria-label={`Add ${role.name}`}
                         onclick={() => assignRole(role)}
@@ -1261,7 +1304,6 @@
                     <button
                       class="mesh-builder-pressable flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden text-left"
                       type="button"
-                      title={roleSummaryText(role)}
                       onclick={() => assignRole(role)}
                       data-testid={`mesh-builder-role-${role.roleId}`}
                     >
@@ -1281,7 +1323,7 @@
                         {roleKindLabel(role)}
                       </span>
                       <button
-                        class="inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
+                        class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
                         aria-pressed={isRolePinned(role.roleId)}
@@ -1293,7 +1335,7 @@
                         </svg>
                       </button>
                       <button
-                        class="mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
+                        class="mesh-builder-row-control mesh-builder-add-button inline-flex h-7 w-7 items-center justify-center rounded-full border transition active:scale-[0.98] {ghostTone} {isRoleFlashing(role.roleId) ? 'mesh-builder-add-button-added' : ''}"
                         type="button"
                         aria-label={`Add ${role.name}`}
                         onclick={() => assignRole(role)}
@@ -1734,6 +1776,8 @@
   }
 
   .mesh-builder-role-row {
+    position: relative;
+    isolation: isolate;
     transition:
       transform 160ms ease,
       box-shadow 180ms ease,
@@ -1743,8 +1787,11 @@
 
   .mesh-builder-role-row:hover,
   .mesh-builder-role-row:focus-within {
+    z-index: 2;
     transform: translateY(-1px);
-    box-shadow: 0 10px 24px rgba(15, 118, 110, 0.12);
+    box-shadow:
+      0 0 0 1px rgba(45, 212, 191, 0.14),
+      0 10px 24px rgba(15, 118, 110, 0.12);
   }
 
   .mesh-builder-role-row-active {
@@ -1757,6 +1804,20 @@
       box-shadow 160ms ease,
       border-color 160ms ease,
       background-color 160ms ease;
+  }
+
+  .mesh-builder-row-control {
+    transition:
+      transform 160ms ease,
+      box-shadow 160ms ease,
+      border-color 160ms ease,
+      background-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .mesh-builder-role-row:hover .mesh-builder-row-control,
+  .mesh-builder-role-row:focus-within .mesh-builder-row-control {
+    box-shadow: 0 6px 16px rgba(15, 118, 110, 0.08);
   }
 
   .mesh-builder-role-row:hover .mesh-builder-add-button,

@@ -285,10 +285,7 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-density-compact')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('mesh-builder-density-expanded')).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByText('Implements scoped changes.')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-role-agent-codex')).toHaveAttribute(
-      'title',
-      'Implements scoped changes.'
-    )
+    expect(screen.getByTestId('mesh-builder-role-agent-codex')).not.toHaveAttribute('title')
     expect(screen.getByTestId('mesh-builder-role-agent-codex')).not.toHaveTextContent('gpt-5.4 high')
 
     await fireEvent.click(screen.getByTestId('mesh-builder-role-agent-codex'))
@@ -380,7 +377,11 @@ describe('MeshTeamBuilder', () => {
     await fireEvent.click(screen.getByTestId('mesh-builder-pin-agent-codex'))
 
     expect(screen.getByTestId('mesh-builder-pinned-strip')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-pinned-row-agent-codex')).toHaveClass(
+      'mesh-builder-role-row'
+    )
     expect(screen.getByTestId('mesh-builder-pinned-chip-agent-codex')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-role-row-agent-codex')).not.toBeInTheDocument()
     expect(window.localStorage.getItem(PINNED_ROLE_IDS_STORAGE_KEY)).toBe(
       JSON.stringify(['agent-codex'])
     )
@@ -400,7 +401,7 @@ describe('MeshTeamBuilder', () => {
 
     await fireEvent.click(pinButton)
 
-    expect(pinButton).toHaveClass('mesh-builder-pin-bounce')
+    expect(screen.getByTestId('mesh-builder-pin-agent-codex')).toHaveClass('mesh-builder-pin-bounce')
 
     await vi.advanceTimersByTimeAsync(201)
 
@@ -434,11 +435,28 @@ describe('MeshTeamBuilder', () => {
     await fireEvent.click(screen.getByTestId('mesh-builder-pin-lead-codex'))
     await fireEvent.click(screen.getByTestId('mesh-builder-pin-agent-codex'))
 
+    expect(screen.queryByTestId('mesh-builder-role-row-lead-codex')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-role-row-agent-codex')).not.toBeInTheDocument()
+
     await fireEvent.click(screen.getByTestId('mesh-builder-pinned-chip-lead-codex'))
     await fireEvent.click(screen.getByTestId('mesh-builder-pinned-chip-agent-codex'))
 
     expect(onAssignLeadRole).toHaveBeenCalledWith('lead-codex')
     expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
+  })
+
+  it('uses the same compact row treatment for favorites and suppresses native role tooltips', async () => {
+    renderBuilder()
+
+    expect(screen.getByTestId('mesh-builder-role-agent-codex')).not.toHaveAttribute('title')
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-pin-agent-codex'))
+
+    expect(screen.getByTestId('mesh-builder-pinned-strip')).toHaveTextContent('Favorites')
+    expect(screen.getByTestId('mesh-builder-pinned-row-agent-codex')).toHaveClass(
+      'mesh-builder-role-row'
+    )
+    expect(screen.getByTestId('mesh-builder-pinned-add-agent-codex')).toHaveTextContent('+')
   })
 
   it('keeps the catalog visible for both empty and populated rosters', () => {
