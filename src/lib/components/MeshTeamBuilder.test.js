@@ -156,6 +156,13 @@ function sampleRosterConfig() {
   }
 }
 
+function sampleAvailableProjects() {
+  return [
+    { id: '/projects/taurhaus', path: '/projects/taurhaus', name: 'taurhaus' },
+    { id: '/projects/mesh', path: '/projects/mesh', name: 'mesh' },
+  ]
+}
+
 function renderBuilder(props = {}) {
   return render(MeshTeamBuilder, {
     props: {
@@ -169,7 +176,7 @@ function renderBuilder(props = {}) {
       },
       roleTemplates: sampleRoles(),
       presets: [],
-      availableProjects: [],
+      availableProjects: sampleAvailableProjects(),
       onBuildCustom: vi.fn(),
       onBrowseCatalog: vi.fn(),
       onTeamNameChange: vi.fn(),
@@ -436,6 +443,14 @@ describe('MeshTeamBuilder', () => {
     )
     expect(screen.getByTestId('mesh-builder-preset-section')).toHaveTextContent('Quick start')
     expect(screen.getByText('Search, filter, and add from the live role catalog.')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-action-initialize')).toBeDisabled()
+    expect(screen.getByTestId('mesh-action-initialize-hint')).toHaveAttribute(
+      'title',
+      'Lead role is required.'
+    )
+    expect(screen.queryByText('1 issue')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-team-lead-group')).toHaveTextContent('Lead role')
+    expect(screen.getByTestId('mesh-builder-team-agents-group')).toHaveTextContent('Agent roles')
   })
 
   it('uses a medium-screen breakpoint for the live two-column roster layout', () => {
@@ -445,6 +460,18 @@ describe('MeshTeamBuilder', () => {
 
     expect(rosterGrid).toHaveClass('md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
     expect(rosterGrid).not.toHaveClass('xl:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]')
+  })
+
+  it('keeps roster chrome fixed and only makes the role list scroll', () => {
+    renderBuilder({
+      roleTemplates: sampleRoles(14),
+      teamConfig: sampleRosterConfig(),
+    })
+
+    expect(screen.getByTestId('mesh-builder-catalog')).toHaveClass('md:max-h-[calc(100vh-11rem)]')
+    expect(screen.getByTestId('mesh-builder-role-scroll')).toHaveClass('md:overflow-y-auto')
+    expect(screen.getByTestId('mesh-builder-team-panel')).toHaveClass('md:sticky')
+    expect(screen.getByTestId('mesh-builder-team-scroll')).toHaveClass('md:overflow-y-auto')
   })
 
   it('shows collapsed roster summary rows by default and reveals member fields on demand', async () => {
@@ -474,6 +501,11 @@ describe('MeshTeamBuilder', () => {
 
     expect(await screen.findByTestId('mesh-builder-lead-name-input')).toBeInTheDocument()
     expect(await screen.findByTestId('mesh-builder-agent-name-input-agent-codex-1')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-lead-project-input').tagName).toBe('SELECT')
+    expect(screen.getByTestId('mesh-builder-agent-project-input-agent-codex-1').tagName).toBe(
+      'SELECT'
+    )
+    expect(screen.getByTestId('mesh-builder-lead-project-input')).toHaveDisplayValue('taurhaus')
   })
 
   it('keeps reset, save, and initialize actions in the sticky footer bar', () => {

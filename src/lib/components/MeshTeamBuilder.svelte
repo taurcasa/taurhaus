@@ -1,6 +1,5 @@
 <script>
   import { onDestroy, onMount, tick } from 'svelte'
-  import ValidationBar from './ValidationBar.svelte'
   import { themeTokens } from '../themeTokens.js'
   import {
     MODEL_OPTIONS_BY_TOOL,
@@ -208,6 +207,12 @@
   })
   const canInitialize = $derived(
     Boolean(normalizedTeam?.lead) && !validationIssues.some((issue) => issue.severity === 'error')
+  )
+  const firstValidationIssue = $derived(validationIssues[0] ?? null)
+  const initializeButtonTitle = $derived(
+    canInitialize
+      ? 'Initialize this team'
+      : firstValidationIssue?.message ?? 'Resolve the roster issues before initializing.'
   )
   const teamNameLabel = $derived(String(teamName ?? '').trim() || 'Name this team')
   const teamNameDisplayLabel = $derived(String(teamName ?? '').trim() || 'New Team')
@@ -522,6 +527,11 @@
     activeToolFilter = activeToolFilter === tool ? 'all' : tool
   }
 
+  function projectSelectLabel(projectId) {
+    const option = availableProjectOptions.find((project) => project.id === projectId)
+    return option?.label ?? 'Choose project'
+  }
+
   function toggleKindFilter(kind) {
     activeKindFilter = activeKindFilter === kind ? 'all' : kind
   }
@@ -716,11 +726,9 @@
   {/if}
 
   <main class="space-y-3" data-testid="mesh-builder-roster">
-    <ValidationBar issues={validationIssues} {dark} />
-
     <div class="grid gap-3 md:grid-cols-[minmax(0,1.22fr)_minmax(340px,0.94fr)]">
       <section
-        class="space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {panelTone}"
+        class="flex min-h-0 flex-col space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {panelTone} md:max-h-[calc(100vh-11rem)]"
         data-testid="mesh-builder-catalog"
         data-collapsed="false"
       >
@@ -970,6 +978,7 @@
             </section>
           {/if}
 
+          <div class="min-h-0 flex-1 space-y-4 md:overflow-y-auto md:pr-1" data-testid="mesh-builder-role-scroll">
           {#if visibleRoleCount === 0}
             <div class="rounded-[18px] border px-4 py-5 text-center {surfaceTone}" data-testid="mesh-builder-empty-results">
               <p class="text-[13px] font-semibold {t.textPrimary}">No roles match these filters</p>
@@ -1102,16 +1111,17 @@
               </div>
             </section>
           {/if}
+          </div>
         </div>
       </section>
 
       <section
-        class="space-y-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone}"
+        class="flex min-h-0 flex-col gap-4 rounded-[28px] border p-4 shadow-sm backdrop-blur {highlightedRosterSection === 'all' ? leadDropTone : rosterSectionTone} md:sticky md:top-0 md:max-h-[calc(100vh-11rem)]"
         data-testid="mesh-builder-team-panel"
       >
         <div class="rounded-[24px] border p-4 {dark ? 'border-white/[0.08] bg-white/[0.055]' : 'border-brand-200/55 bg-brand-50/55'}">
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="min-w-0 flex-1 space-y-2">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 flex-1 space-y-3">
               <div class="flex items-center gap-2">
                 <h2 class="text-[16px] font-semibold {t.textPrimary}">Your Team</h2>
                 <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
@@ -1119,7 +1129,7 @@
                 </span>
               </div>
 
-              <div class="space-y-1">
+              <div class="space-y-1.5">
                 {#if editingTeamName}
                   <input
                     bind:this={teamNameInput}
@@ -1182,16 +1192,38 @@
                   </button>
                 {/if}
               </div>
+
+              <p class="text-[11px] {t.textMuted}" data-testid="mesh-builder-team-meta">
+                {memberCount === 0 ? 'Start with a lead, then add agents.' : 'Lead role first, then fill in the supporting team.'}
+              </p>
             </div>
 
-            <div class="text-right">
-              <p class="text-[11px] {t.textMuted}">
-                {memberCount === 0 ? 'Start with a lead, then add agents.' : 'Roster updates instantly as you add roles.'}
+            <div class="rounded-[18px] border px-3 py-2 text-right {dark ? 'border-white/[0.08] bg-black/10' : 'border-white/70 bg-white/75'}" data-testid="mesh-builder-team-status">
+              <p class="text-[10px] uppercase tracking-[0.16em] {t.textMuted}">Roster status</p>
+              <p class="mt-1 text-[12px] font-medium {t.textPrimary}">
+                {normalizedTeam.lead ? 'Lead ready' : 'Lead required'}
+              </p>
+              <p class="mt-0.5 text-[11px] {t.textMuted}">
+                {agents.length} agent{agents.length === 1 ? '' : 's'} assigned
               </p>
             </div>
           </div>
+        </div>
 
-          <div class="mt-4 space-y-3">
+        <div class="min-h-0 flex-1 space-y-4 md:overflow-y-auto md:pr-1" data-testid="mesh-builder-team-scroll">
+          <section class="space-y-3 rounded-[22px] border p-3 {dark ? 'border-white/[0.08] bg-black/15' : 'border-zinc-200/80 bg-white/80'}" data-testid="mesh-builder-team-lead-group">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-[12px] font-semibold {t.textPrimary}">Lead role</p>
+                <p class="text-[11px] {t.textMuted}">Choose the person coordinating the team.</p>
+              </div>
+              {#if normalizedTeam.lead}
+                <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
+                  Assigned
+                </span>
+              {/if}
+            </div>
+
             <section
               class="space-y-2 transition {highlightedRosterSection === 'lead' || highlightedRosterSection === 'all' ? leadDropTone : ''}"
               data-testid="mesh-builder-lead-section"
@@ -1276,25 +1308,60 @@
                       </label>
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
-                        <input
-                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
-                          value={normalizedTeam.lead.projectId ?? ''}
-                          oninput={(event) => onUpdateLead({ projectId: event.currentTarget.value })}
-                          data-testid="mesh-builder-lead-project-input"
-                        />
+                        <div class="relative">
+                          <select
+                            class="h-10 w-full appearance-none rounded-[14px] border px-3 pr-9 text-sm outline-none {inputTone}"
+                            value={normalizedTeam.lead.projectId ?? ''}
+                            onchange={(event) => onUpdateLead({ projectId: event.currentTarget.value })}
+                            disabled={availableProjectOptions.length === 0}
+                            title={projectSelectLabel(normalizedTeam.lead.projectId ?? '')}
+                            data-testid="mesh-builder-lead-project-input"
+                          >
+                            <option value="">
+                              {availableProjectOptions.length > 0 ? 'Choose project' : 'No registered projects'}
+                            </option>
+                            {#each availableProjectOptions as project}
+                              <option value={project.id}>{project.label}</option>
+                            {/each}
+                          </select>
+                          <div class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 {t.textMuted}">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <path d="m6 9 6 6 6-6"></path>
+                            </svg>
+                          </div>
+                        </div>
                       </label>
                     </div>
                   {/if}
                 </article>
               {:else}
-                <div class="px-1 py-2" data-testid="mesh-builder-lead-empty">
-                  <p class="text-[13px] font-medium {t.textPrimary}">Choose a lead role to anchor the team.</p>
-                  <p class="mt-1 text-[11px] {t.textSecondary}">
-                    Use the + button next to any lead on the left.
-                  </p>
+                <div class="rounded-[20px] border border-dashed px-4 py-4 {invalidDropTone}" data-testid="mesh-builder-lead-empty">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-[13px] font-medium {t.textPrimary}">Choose a lead role to anchor the team.</p>
+                      <p class="mt-1 text-[11px] {t.textSecondary}">
+                        Use the + button next to any lead on the left.
+                      </p>
+                    </div>
+                    <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {dark ? 'border-danger-400/30 text-danger-200' : 'border-danger-300/70 text-danger-700'}">
+                      Required
+                    </span>
+                  </div>
                 </div>
               {/if}
             </section>
+          </section>
+
+          <section class="space-y-3 rounded-[22px] border p-3 {dark ? 'border-white/[0.08] bg-black/15' : 'border-zinc-200/80 bg-white/80'}" data-testid="mesh-builder-team-agents-group">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-[12px] font-semibold {t.textPrimary}">Agent roles</p>
+                <p class="text-[11px] {t.textMuted}">Add specialists from the catalog to round out the team.</p>
+              </div>
+              <span class="rounded-full border px-2 py-0.5 text-[10px] font-medium {presetBadgeTone}">
+                {agents.length} assigned
+              </span>
+            </div>
 
             <section
               class="space-y-2 transition {highlightedRosterSection === 'agents' || highlightedRosterSection === 'all' ? leadDropTone : ''}"
@@ -1376,12 +1443,28 @@
                       </label>
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
-                        <input
-                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
-                          value={agent.projectId ?? ''}
-                          oninput={(event) => onUpdateAgent(agent.id, { projectId: event.currentTarget.value })}
-                          data-testid={`mesh-builder-agent-project-input-${agent.id}`}
-                        />
+                        <div class="relative">
+                          <select
+                            class="h-10 w-full appearance-none rounded-[14px] border px-3 pr-9 text-sm outline-none {inputTone}"
+                            value={agent.projectId ?? ''}
+                            onchange={(event) => onUpdateAgent(agent.id, { projectId: event.currentTarget.value })}
+                            disabled={availableProjectOptions.length === 0}
+                            title={projectSelectLabel(agent.projectId ?? '')}
+                            data-testid={`mesh-builder-agent-project-input-${agent.id}`}
+                          >
+                            <option value="">
+                              {availableProjectOptions.length > 0 ? 'Choose project' : 'No registered projects'}
+                            </option>
+                            {#each availableProjectOptions as project}
+                              <option value={project.id}>{project.label}</option>
+                            {/each}
+                          </select>
+                          <div class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 {t.textMuted}">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                              <path d="m6 9 6 6 6-6"></path>
+                            </svg>
+                          </div>
+                        </div>
                       </label>
                     </div>
                   {/if}
@@ -1389,7 +1472,7 @@
               {/each}
 
               <div
-                class="px-1 py-2"
+                class="rounded-[18px] border border-dashed px-4 py-4 {surfaceTone}"
                 data-testid="mesh-builder-agent-dropzone"
                 data-dropzone-mode={agents.length > 0 ? 'compact' : 'empty'}
               >
@@ -1401,20 +1484,22 @@
                 </p>
               </div>
             </section>
-          </div>
+          </section>
         </div>
 
-        <footer class="space-y-3" data-testid="mesh-action-bar">
-          <button
-            class="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-brand-600 px-4 text-[13px] font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-            type="button"
-            onclick={onInitialize}
-            disabled={!canInitialize}
-            data-testid="mesh-action-initialize"
-          >
-            Initialize Team
-            <span aria-hidden="true">→</span>
-          </button>
+        <footer class="shrink-0 space-y-3 border-t pt-3 {dark ? 'border-white/[0.08]' : 'border-zinc-200/70'}" data-testid="mesh-action-bar">
+          <div class="w-full" title={!canInitialize ? initializeButtonTitle : undefined} data-testid="mesh-action-initialize-hint">
+            <button
+              class="flex h-12 w-full items-center justify-center gap-2 rounded-[18px] bg-brand-600 px-4 text-[13px] font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              onclick={onInitialize}
+              disabled={!canInitialize}
+              data-testid="mesh-action-initialize"
+            >
+              Initialize Team
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
 
           <div class="flex items-center justify-between gap-3">
             <button
