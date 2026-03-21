@@ -730,18 +730,18 @@ fn build_tmux_focus_hook_command(focus_path: &Path) -> String {
     let file = shell_escape(&tmux_shell_path(focus_path));
     let dir = shell_escape(&tmux_shell_parent_path(focus_path));
     let payload = format!(
-        "PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH; mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file}"
+        "[ -d {dir} ] && printf '%s\\n' '{{\\\"session\\\":\\\"#{{session_name}}\\\",\\\"window\\\":\\\"#{{window_index}}\\\",\\\"timestamp\\\":#{{window_activity}}}}' > {file} 2>/dev/null || true"
     );
-    format!("run-shell -b \"/bin/sh -c {}\"", shell_escape(&payload))
+    format!("run-shell -b {}", shell_escape(&payload))
 }
 
 fn build_tmux_focus_detached_hook_command(focus_path: &Path) -> String {
     let file = shell_escape(&tmux_shell_path(focus_path));
     let dir = shell_escape(&tmux_shell_parent_path(focus_path));
     let payload = format!(
-        "PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH; mkdir -p {dir} && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file}"
+        "[ -d {dir} ] && printf '%s\\n' '{{\\\"session\\\":null,\\\"window\\\":null,\\\"timestamp\\\":null}}' > {file} 2>/dev/null || true"
     );
-    format!("run-shell -b \"/bin/sh -c {}\"", shell_escape(&payload))
+    format!("run-shell -b {}", shell_escape(&payload))
 }
 
 fn tmux_shell_parent_path(focus_path: &Path) -> String {
@@ -1129,8 +1129,10 @@ after-new-window[0] display-message "hi"
         let command = build_tmux_focus_hook_command(focus_path);
 
         assert!(command.contains("run-shell -b"));
-        assert!(command.contains("/bin/sh -c"));
-        assert!(command.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"));
+        assert!(!command.contains("/bin/sh -c"));
+        assert!(!command.contains("mkdir -p"));
+        assert!(command.contains("[ -d"));
+        assert!(command.contains("2>/dev/null || true"));
         assert!(command.contains("/tmp/taurhaus data/tmux-focus.json"));
         assert!(command.contains("#{session_name}"));
         assert!(command.contains("#{window_index}"));
@@ -1142,8 +1144,10 @@ after-new-window[0] display-message "hi"
         let focus_path = Path::new("/tmp/taurhaus-data/tmux-focus.json");
         let command = build_tmux_focus_detached_hook_command(focus_path);
 
-        assert!(command.contains("/bin/sh -c"));
-        assert!(command.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"));
+        assert!(!command.contains("/bin/sh -c"));
+        assert!(!command.contains("mkdir -p"));
+        assert!(command.contains("[ -d"));
+        assert!(command.contains("2>/dev/null || true"));
         assert!(command.contains("/tmp/taurhaus-data/tmux-focus.json"));
         assert!(command.contains("\\\"session\\\":null"));
         assert!(command.contains("\\\"window\\\":null"));
