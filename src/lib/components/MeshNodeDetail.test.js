@@ -110,16 +110,16 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByText('Template')).toBeInTheDocument()
   })
 
-  it('keeps the light-theme shell on the shared dark-teal surface with a subtle focus card border', () => {
+  it('uses normal light-theme surfaces instead of forcing the dark shell', () => {
     renderDetail({
       dark: false,
     })
 
-    expect(screen.getByTestId('mesh-node-detail').className).toContain('bg-brand-950/98')
-    expect(screen.getByTestId('mesh-node-detail').className).not.toContain('bg-white/98')
-    expect(screen.getByTestId('mesh-node-detail-header').className).toContain('bg-brand-950/92')
-    expect(screen.getByTestId('mesh-node-detail-focus-card').className).toContain('border-brand-200/45')
-    expect(screen.getByTestId('mesh-node-detail-focus-card').className).not.toContain('border-brand-200/80')
+    expect(screen.getByTestId('mesh-node-detail').className).toContain('bg-white/98')
+    expect(screen.getByTestId('mesh-node-detail').className).not.toContain('bg-brand-950/98')
+    expect(screen.getByTestId('mesh-node-detail-header').className).toContain('bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,244,245,0.96))]')
+    expect(screen.getByTestId('mesh-node-detail-focus-card').className).toContain('bg-brand-50/75')
+    expect(screen.getByTestId('mesh-node-detail-focus-card').className).toContain('border-brand-200/80')
   })
 
   it('renders builder detail management actions when provided', () => {
@@ -182,6 +182,40 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-unsaved-dot')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-add-section')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-node-detail-close')).not.toBeInTheDocument()
+  })
+
+  it('keeps edit mode typography borderless so the document barely changes when editing', () => {
+    renderDetail({
+      mode: 'builder',
+      editing: true,
+      editDraft: {
+        name: 'Engineering Delivery Lead',
+        kind: 'lead',
+        tool: 'claude',
+        model: 'opus',
+        focusArea: 'Team sequencing, delivery coordination, and blocker escalation',
+        contextSummary: 'Maintains delivery flow and unblocks specialists.',
+        behaviorSummary: '- Escalate blockers quickly',
+        instructions: 'Keep the team moving.',
+        showInstructions: true,
+      },
+      actions: {
+        onCancelEdit: vi.fn(),
+        onSaveEdit: vi.fn(),
+        onEditChange: vi.fn(),
+        onAddSection: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('border-0')
+    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('bg-transparent')
+    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('text-[15px]')
+    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('leading-[1.6]')
+    expect(screen.getByTestId('mesh-node-detail-behavior-input').className).toContain('border-0')
+    expect(screen.getByTestId('mesh-node-detail-behavior-input').className).toContain('text-[15px]')
+    expect(screen.getByTestId('mesh-node-detail-instructions-input').className).toContain('border-0')
+    expect(screen.getByTestId('mesh-node-detail-focus-input').className).toContain('border-0')
+    expect(screen.getByTestId('mesh-node-detail-focus-input').className).toContain('text-[17px]')
   })
 
   it('invokes runtime actions and close affordances', async () => {

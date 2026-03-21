@@ -23,8 +23,8 @@
   let closeButtonEl = $state(null)
   let titleInputEl = $state(null)
   let restoreFocusElement = null
-
   const t = $derived(themeTokens(dark))
+
   const normalizedContext = $derived(mode === 'runtime' ? 'runtime' : 'roster')
   const isEditing = $derived(normalizedContext === 'roster' && Boolean(editing))
   const normalizedRole = $derived(String(node?.role ?? '').trim().toLowerCase() === 'lead' ? 'lead' : 'agent')
@@ -75,11 +75,11 @@
   })
   const statusDotTone = $derived.by(() => {
     if (normalizedContext !== 'runtime') {
-      return dark ? 'bg-white/45' : 'bg-white/40'
+      return dark ? 'bg-zinc-400' : 'bg-zinc-400'
     }
     if (status === 'active') return dark ? 'bg-emerald-300' : 'bg-emerald-300'
     if (status === 'idle') return dark ? 'bg-amber-300' : 'bg-amber-300'
-    return dark ? 'bg-zinc-500' : 'bg-white/35'
+    return dark ? 'bg-zinc-500' : 'bg-zinc-300'
   })
   const focusArea = $derived.by(() =>
     isEditing
@@ -124,44 +124,52 @@
 
   const overlayTone = $derived(
     dark
-      ? 'border-white/[0.1] bg-brand-950/98 text-zinc-100 shadow-[0_38px_130px_rgba(0,0,0,0.62),0_10px_28px_rgba(2,10,12,0.4)]'
-      : 'border-white/[0.1] bg-brand-950/98 text-zinc-100 shadow-[0_32px_120px_rgba(2,10,12,0.42),0_10px_28px_rgba(2,10,12,0.24)]'
+      ? 'border-white/[0.09] bg-zinc-950/98 text-zinc-100 shadow-[0_42px_140px_rgba(0,0,0,0.6),0_18px_42px_rgba(2,10,12,0.36)]'
+      : 'border-zinc-200 bg-white/98 text-zinc-900 shadow-[0_36px_110px_rgba(15,23,42,0.18),0_16px_36px_rgba(15,23,42,0.1)]'
   )
   const toolbarTone = $derived(
     dark
-      ? 'border-white/[0.08] bg-brand-950/92 shadow-[0_12px_36px_rgba(0,0,0,0.2)]'
-      : 'border-white/[0.08] bg-brand-950/92 shadow-[0_12px_36px_rgba(0,0,0,0.18)]'
+      ? 'border-white/[0.08] bg-[linear-gradient(180deg,rgba(24,24,27,0.97),rgba(24,24,27,0.92))] shadow-[0_16px_44px_rgba(0,0,0,0.24)]'
+      : 'border-zinc-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,244,245,0.96))] shadow-[0_12px_30px_rgba(15,23,42,0.08)]'
   )
-  const focusCardTone = $derived(
-    dark
-      ? 'border-brand-300/25 bg-brand-500/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_16px_34px_rgba(0,0,0,0.18)]'
-      : 'border-brand-200/45 bg-brand-50/95 shadow-[0_14px_32px_rgba(2,10,12,0.16)]'
+  const focusCardTone = $derived.by(() =>
+    isEditing
+      ? dark
+        ? 'border-white/[0.12] bg-brand-400/[0.13] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_20px_46px_rgba(0,0,0,0.2)]'
+        : 'border-brand-200 bg-brand-50/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_18px_38px_rgba(15,23,42,0.08)]'
+      : dark
+        ? 'border-white/[0.1] bg-brand-400/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_38px_rgba(0,0,0,0.18)]'
+        : 'border-brand-200/80 bg-brand-50/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_14px_30px_rgba(15,23,42,0.07)]'
   )
   const configTone = $derived(
     dark
-      ? 'border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
-      : 'border-zinc-200 bg-zinc-50/85 shadow-[0_10px_26px_rgba(15,23,42,0.05)]'
+      ? 'border-white/[0.08] bg-white/[0.035] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_12px_28px_rgba(0,0,0,0.12)]'
+      : 'border-zinc-200 bg-zinc-50/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_12px_24px_rgba(15,23,42,0.06)]'
   )
-  const sectionTone = $derived(
-    dark
-      ? 'border-white/[0.08] bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_16px_36px_rgba(0,0,0,0.16)]'
-      : 'border-white/60 bg-white shadow-[0_14px_34px_rgba(2,10,12,0.18)]'
+  const sectionTone = $derived.by(() =>
+    isEditing
+      ? dark
+        ? 'border-white/[0.08] bg-white/[0.03] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_20px_44px_rgba(0,0,0,0.18)]'
+        : 'border-zinc-200 bg-zinc-50/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_16px_34px_rgba(15,23,42,0.06)]'
+      : dark
+        ? 'border-white/[0.08] bg-white/[0.022] shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_18px_40px_rgba(0,0,0,0.16)]'
+        : 'border-zinc-200 bg-zinc-50/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_14px_30px_rgba(15,23,42,0.05)]'
   )
   const editableFieldTone = $derived(
     dark
-      ? 'bg-white/[0.02] text-zinc-100 placeholder-zinc-500'
-      : 'bg-white/[0.04] text-zinc-100 placeholder-zinc-400'
+      ? 'bg-transparent text-zinc-100 placeholder-zinc-500 caret-brand-300'
+      : 'bg-transparent text-zinc-900 placeholder-zinc-400 caret-brand-500'
   )
   const selectPillTone = $derived(
     dark
-      ? 'border-white/[0.08] bg-white/[0.04] text-zinc-100'
-      : 'border-white/[0.08] bg-white/[0.06] text-zinc-100'
+      ? 'border-white/[0.08] bg-white/[0.045] text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+      : 'border-zinc-300 bg-white text-zinc-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]'
   )
-  const subtleHintTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
+  const subtleHintTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const secondaryActionTone = $derived(
     dark
       ? 'border-white/[0.1] bg-white/[0.03] text-zinc-100 hover:bg-white/[0.08]'
-      : 'border-white/60 bg-white text-zinc-700 hover:bg-zinc-50'
+      : 'border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50'
   )
   const primaryActionTone = $derived(
     dark
@@ -186,11 +194,13 @@
   const closeTone = $derived(
     dark
       ? 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-100'
-      : 'border-white/[0.12] bg-white/[0.06] text-white/60 hover:bg-white/[0.12] hover:text-white'
+      : 'border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900'
   )
-  const shellMutedTone = $derived(dark ? 'text-zinc-500' : 'text-white/55')
-  const shellSecondaryTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-200')
-  const focusContentTone = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
+  const shellMutedTone = $derived(t.textMuted)
+  const shellSecondaryTone = $derived(t.textSecondary)
+  const focusContentTone = $derived(t.textPrimary)
+  const bodyTone = $derived(t.textBody)
+  const sectionLabelTone = $derived(dark ? 'text-brand-100/80' : 'text-brand-700/85')
   const codeTheme = $derived(dark ? 'github-dark' : 'github-light')
   const breadcrumbLabel = $derived.by(() => {
     if (normalizedContext === 'runtime') return 'Team Roster'
@@ -468,7 +478,7 @@
               </div>
             {:else}
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {shellSecondaryTone}">
-                <span class="inline-flex items-center gap-2">
+                <span class="inline-flex items-center gap-2" data-testid="mesh-node-detail-tool-model">
                   <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
                   {toolLabel}{model ? ` · ${model}` : ''}
                 </span>
@@ -600,7 +610,7 @@
                 <span class="text-[11px] font-medium uppercase tracking-[0.16em] {shellMutedTone}">Focus Area</span>
                 <textarea
                   rows="2"
-                  class="w-full resize-none overflow-hidden bg-transparent text-[18px] leading-[1.45] outline-none {editableFieldTone}"
+                  class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[17px] font-normal leading-[1.5] outline-none {editableFieldTone}"
                   value={focusArea}
                   oninput={(event) => updateDraft({ focusArea: event.currentTarget.value })}
                   data-testid="mesh-node-detail-focus-input"
@@ -616,17 +626,17 @@
 
         {#if isEditing || contextMarkdown}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-context-summary">
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Context Summary</h3>
+            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Context Summary</h3>
             {#if isEditing}
               <textarea
                 rows="4"
-                class="w-full resize-none overflow-hidden bg-transparent text-[14px] leading-[1.6] outline-none {editableFieldTone}"
+                class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.6] outline-none {editableFieldTone}"
                 value={contextSummary}
                 oninput={(event) => updateDraft({ contextSummary: event.currentTarget.value })}
                 data-testid="mesh-node-detail-context-input"
               ></textarea>
             {:else}
-              <div class="{t.textPrimary}">
+              <div class="{bodyTone}">
                 <MarkdownRenderer source={contextMarkdown} {dark} codeTheme={codeTheme} />
               </div>
             {/if}
@@ -635,12 +645,12 @@
 
         {#if isEditing || behaviorMarkdown}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-role-section">
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Behavior Boundaries</h3>
+            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Behavior Boundaries</h3>
             <div class="rounded-[20px] border px-5 py-4 {configTone}" data-testid="mesh-node-detail-behavior-summary">
               {#if isEditing}
                 <textarea
                   rows="4"
-                  class="w-full resize-none overflow-hidden bg-transparent text-[14px] leading-[1.6] outline-none {editableFieldTone}"
+                  class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.6] outline-none {editableFieldTone}"
                   value={behaviorSummary}
                   oninput={(event) => updateDraft({ behaviorSummary: event.currentTarget.value })}
                   data-testid="mesh-node-detail-behavior-input"
@@ -657,19 +667,19 @@
 
         {#if instructionsVisible}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-description">
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">
+            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">
               {normalizedContext === 'runtime' ? 'Operational Notes' : 'Instructions'}
             </h3>
             {#if isEditing}
               <textarea
                 rows="4"
-                class="w-full resize-none overflow-hidden bg-transparent text-[14px] leading-[1.6] outline-none {editableFieldTone}"
+                class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.6] outline-none {editableFieldTone}"
                 value={instructions}
                 oninput={(event) => updateDraft({ instructions: event.currentTarget.value, showInstructions: true })}
                 data-testid="mesh-node-detail-instructions-input"
               ></textarea>
             {:else if instructionsMarkdown}
-              <div class="{t.textPrimary}">
+              <div class="{bodyTone}">
                 <MarkdownRenderer source={instructionsMarkdown} {dark} codeTheme={codeTheme} />
               </div>
             {/if}
@@ -689,13 +699,13 @@
 
         {#if !isEditing && configurationEntries.length > 0}
           <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid={normalizedContext === 'runtime' ? 'mesh-node-detail-runtime' : 'mesh-node-detail-configuration'}>
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {t.textMuted}">Configuration</h3>
+            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Configuration</h3>
             <dl class="rounded-[20px] border px-5 py-4 {configTone}">
               {#each configurationEntries as entry}
                 <div class="grid grid-cols-[116px_minmax(0,1fr)] gap-3 py-1.5 text-[14px]">
-                  <dt class="{t.textMuted}">{entry.label}</dt>
+                  <dt class="{shellMutedTone}">{entry.label}</dt>
                   <dd
-                    class="min-w-0 break-words font-medium {t.textPrimary}"
+                    class="min-w-0 break-words font-medium {bodyTone}"
                     data-testid={entry.testId}
                     title={entry.value}
                   >
