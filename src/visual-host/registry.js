@@ -2,6 +2,9 @@ import HoverCardHost from './hosts/HoverCardHost.svelte'
 import MeshCanvasHost from './hosts/MeshCanvasHost.svelte'
 import MeshNodeDetailHost from './hosts/MeshNodeDetailHost.svelte'
 import MeshTeamBuilderHost from './hosts/MeshTeamBuilderHost.svelte'
+import RosterDesignAHost from './hosts/RosterDesignAHost.svelte'
+import RosterDesignBHost from './hosts/RosterDesignBHost.svelte'
+import RosterDesignCHost from './hosts/RosterDesignCHost.svelte'
 import SidebarHost from './hosts/SidebarHost.svelte'
 import { configureVisualHostState } from './mockState.js'
 
@@ -9,6 +12,7 @@ import { hoverCardScenarios } from '../test/visual/fixtures/hoverCard.fixtures.j
 import { meshCanvasScenarios } from '../test/visual/fixtures/meshCanvas.fixtures.js'
 import { meshNodeDetailScenarios } from '../test/visual/fixtures/meshNodeDetail.fixtures.js'
 import { meshTeamBuilderScenarios } from '../test/visual/fixtures/meshTeamBuilder.fixtures.js'
+import { rosterDesignScenarios } from '../test/visual/fixtures/rosterDesigns.fixtures.js'
 import { sidebarScenarios } from '../test/visual/fixtures/sidebar.fixtures.js'
 
 export const viewportPresets = [
@@ -75,6 +79,27 @@ export const visualRegistry = [
     component: SidebarHost,
     scenarios: sidebarScenarios,
     applyMocks: applySidebarMocks,
+  },
+  {
+    id: 'roster-design-a',
+    label: 'Roster Design A — "The Bench"',
+    component: RosterDesignAHost,
+    scenarios: rosterDesignScenarios,
+    applyMocks: applyNoopMocks,
+  },
+  {
+    id: 'roster-design-b',
+    label: 'Roster Design B — "Spotlight"',
+    component: RosterDesignBHost,
+    scenarios: rosterDesignScenarios,
+    applyMocks: applyNoopMocks,
+  },
+  {
+    id: 'roster-design-c',
+    label: 'Roster Design C — "The Split"',
+    component: RosterDesignCHost,
+    scenarios: rosterDesignScenarios,
+    applyMocks: applyNoopMocks,
   },
 ]
 
