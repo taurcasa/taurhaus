@@ -167,8 +167,11 @@ impl CoordinationOrchestrator {
                 &member.name,
                 lead_name,
                 member.role_id.as_deref(),
+                member.communication_style.as_deref(),
                 member.instructions.as_deref(),
                 member.behavioral_contract.as_ref(),
+                member.quality_gates.as_deref(),
+                member.definition_of_done.as_deref(),
                 member.capabilities.as_deref(),
             )
         } else {
@@ -177,8 +180,11 @@ impl CoordinationOrchestrator {
                 &member.name,
                 lead_name,
                 member.role_id.as_deref(),
+                member.communication_style.as_deref(),
                 member.instructions.as_deref(),
                 member.behavioral_contract.as_ref(),
+                member.quality_gates.as_deref(),
+                member.definition_of_done.as_deref(),
                 member.capabilities.as_deref(),
             )
         };
@@ -316,8 +322,11 @@ impl CoordinationOrchestrator {
                 &request.agent.name,
                 &lead_name,
                 request.agent.role_id.as_deref(),
+                request.agent.communication_style.as_deref(),
                 agent_instructions(&request.agent),
                 request.agent.behavioral_contract.as_ref(),
+                request.agent.quality_gates.as_deref(),
+                request.agent.definition_of_done.as_deref(),
                 request.agent.capabilities.as_deref(),
             )
         } else {
@@ -326,8 +335,11 @@ impl CoordinationOrchestrator {
                 &request.agent.name,
                 &lead_name,
                 request.agent.role_id.as_deref(),
+                request.agent.communication_style.as_deref(),
                 agent_instructions(&request.agent),
                 request.agent.behavioral_contract.as_ref(),
+                request.agent.quality_gates.as_deref(),
+                request.agent.definition_of_done.as_deref(),
                 request.agent.capabilities.as_deref(),
             )
         };

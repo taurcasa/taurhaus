@@ -67,9 +67,16 @@ pub(super) fn map_agent_setup_to_contract(agent: &AgentSetupConfig) -> contracts
         focus_area: agent.focus_area.clone(),
         context_summary: agent.context_summary.clone(),
         behavior_summary: agent.behavior_summary.clone(),
+        communication_style: agent.communication_style.clone(),
         runtime_compact_summary: agent.runtime_compact_summary.clone(),
         instructions: agent.instructions.clone(),
         behavioral_contract: agent.behavioral_contract.clone(),
+        quality_gates: agent.quality_gates.clone(),
+        definition_of_done: agent.definition_of_done.clone(),
+        phase_scope: agent.phase_scope.clone(),
+        mode: agent.mode.clone(),
+        inherits_from: agent.inherits_from.clone(),
+        required_artifacts: agent.required_artifacts.clone(),
         capabilities: agent.capabilities.clone(),
     }
 }

@@ -71,6 +71,8 @@ struct MeshCompatibleMemberWire {
     context_summary: Option<String>,
     #[serde(rename = "behaviorSummary", skip_serializing_if = "Option::is_none")]
     behavior_summary: Option<String>,
+    #[serde(rename = "communicationStyle", skip_serializing_if = "Option::is_none")]
+    communication_style: Option<String>,
     #[serde(
         rename = "runtimeCompactSummary",
         skip_serializing_if = "Option::is_none"
@@ -79,6 +81,18 @@ struct MeshCompatibleMemberWire {
     instructions: Option<String>,
     #[serde(rename = "behavioralContract", skip_serializing_if = "Option::is_none")]
     behavioral_contract: Option<BehavioralContract>,
+    #[serde(rename = "qualityGates", skip_serializing_if = "Option::is_none")]
+    quality_gates: Option<Vec<String>>,
+    #[serde(rename = "definitionOfDone", skip_serializing_if = "Option::is_none")]
+    definition_of_done: Option<Vec<String>>,
+    #[serde(rename = "phaseScope", skip_serializing_if = "Option::is_none")]
+    phase_scope: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+    #[serde(rename = "inheritsFrom", skip_serializing_if = "Option::is_none")]
+    inherits_from: Option<String>,
+    #[serde(rename = "requiredArtifacts", skip_serializing_if = "Option::is_none")]
+    required_artifacts: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     capabilities: Option<Vec<String>>,
     project_path: PathBuf,
@@ -152,10 +166,24 @@ struct MeshMemberWire {
     context_summary: Option<String>,
     #[serde(default, alias = "behaviorSummary")]
     behavior_summary: Option<String>,
+    #[serde(default, alias = "communicationStyle")]
+    communication_style: Option<String>,
     #[serde(default, alias = "runtimeCompactSummary")]
     runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(default, alias = "behavioralContract")]
     behavioral_contract: Option<BehavioralContract>,
+    #[serde(default, alias = "qualityGates")]
+    quality_gates: Option<Vec<String>>,
+    #[serde(default, alias = "definitionOfDone")]
+    definition_of_done: Option<Vec<String>>,
+    #[serde(default, alias = "phaseScope")]
+    phase_scope: Option<Vec<String>>,
+    #[serde(default, alias = "inheritsFrom")]
+    inherits_from: Option<String>,
+    #[serde(default, alias = "requiredArtifacts")]
+    required_artifacts: Option<Vec<String>>,
+    #[serde(default)]
+    mode: Option<String>,
     #[serde(default)]
     capabilities: Option<Vec<String>>,
     #[serde(default)]
@@ -190,11 +218,25 @@ struct NativeMemberWire {
     #[serde(default)]
     behavior_summary: Option<String>,
     #[serde(default)]
+    communication_style: Option<String>,
+    #[serde(default)]
     runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(default)]
     instructions: Option<String>,
     #[serde(default)]
     behavioral_contract: Option<BehavioralContract>,
+    #[serde(default)]
+    quality_gates: Option<Vec<String>>,
+    #[serde(default)]
+    definition_of_done: Option<Vec<String>>,
+    #[serde(default)]
+    phase_scope: Option<Vec<String>>,
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    inherits_from: Option<String>,
+    #[serde(default)]
+    required_artifacts: Option<Vec<String>>,
     #[serde(default)]
     capabilities: Option<Vec<String>>,
     #[serde(default)]
@@ -460,9 +502,16 @@ fn mesh_compatible_wire(
                 focus_area: member.focus_area.clone(),
                 context_summary: member.context_summary.clone(),
                 behavior_summary: member.behavior_summary.clone(),
+                communication_style: member.communication_style.clone(),
                 runtime_compact_summary: member.runtime_compact_summary.clone(),
                 instructions: member.instructions.clone(),
                 behavioral_contract: member.behavioral_contract.clone(),
+                quality_gates: member.quality_gates.clone(),
+                definition_of_done: member.definition_of_done.clone(),
+                phase_scope: member.phase_scope.clone(),
+                mode: member.mode.clone(),
+                inherits_from: member.inherits_from.clone(),
+                required_artifacts: member.required_artifacts.clone(),
                 capabilities: member.capabilities.clone(),
                 project_path: project_path.clone(),
                 cli_tool: member.cli_tool,
@@ -618,9 +667,16 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         focus_area: member.focus_area,
         context_summary: member.context_summary,
         behavior_summary: member.behavior_summary,
+        communication_style: member.communication_style,
         runtime_compact_summary: member.runtime_compact_summary,
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
+        quality_gates: member.quality_gates,
+        definition_of_done: member.definition_of_done,
+        phase_scope: member.phase_scope,
+        mode: member.mode,
+        inherits_from: member.inherits_from,
+        required_artifacts: member.required_artifacts,
         capabilities: member.capabilities,
         project_path,
         cli_tool,
@@ -647,9 +703,16 @@ fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, Coordinat
         focus_area: member.focus_area,
         context_summary: member.context_summary,
         behavior_summary: member.behavior_summary,
+        communication_style: member.communication_style,
         runtime_compact_summary: member.runtime_compact_summary,
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
+        quality_gates: member.quality_gates,
+        definition_of_done: member.definition_of_done,
+        phase_scope: member.phase_scope,
+        mode: member.mode,
+        inherits_from: member.inherits_from,
+        required_artifacts: member.required_artifacts,
         capabilities: member.capabilities,
         project_path,
         cli_tool: member.cli_tool,
@@ -713,9 +776,16 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: Some("Own orchestration".to_string()),
                 behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Claude,
@@ -737,6 +807,7 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: Some("Implement safely".to_string()),
                 behavioral_contract: Some(BehavioralContract {
@@ -744,6 +815,12 @@ mod tests {
                     execution: vec!["ship patches".to_string()],
                     escalation: vec!["raise blockers".to_string()],
                 }),
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
@@ -1388,9 +1465,16 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: None,
                 project_path: PathBuf::from("/tmp/agent-a"),
                 cli_tool: CliTool::Codex,

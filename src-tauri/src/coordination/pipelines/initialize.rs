@@ -514,8 +514,11 @@ impl CoordinationOrchestrator {
                     &member.name,
                     &request.lead.name,
                     member.role_id.as_deref(),
+                    member.communication_style.as_deref(),
                     agent_instructions(member),
                     member.behavioral_contract.as_ref(),
+                    member.quality_gates.as_deref(),
+                    member.definition_of_done.as_deref(),
                     member.capabilities.as_deref(),
                 )
             } else {
@@ -524,8 +527,11 @@ impl CoordinationOrchestrator {
                     &member.name,
                     &request.lead.name,
                     member.role_id.as_deref(),
+                    member.communication_style.as_deref(),
                     agent_instructions(member),
                     member.behavioral_contract.as_ref(),
+                    member.quality_gates.as_deref(),
+                    member.definition_of_done.as_deref(),
                     member.capabilities.as_deref(),
                 )
             };

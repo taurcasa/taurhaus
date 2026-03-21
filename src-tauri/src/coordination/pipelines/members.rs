@@ -584,9 +584,16 @@ impl CoordinationOrchestrator {
             focus_area: None,
             context_summary: None,
             behavior_summary: None,
+            communication_style: None,
             runtime_compact_summary: None,
             instructions: member.instructions.clone(),
             behavioral_contract: member.behavioral_contract.clone(),
+            quality_gates: None,
+            definition_of_done: None,
+            phase_scope: None,
+            mode: None,
+            inherits_from: None,
+            required_artifacts: None,
             capabilities: member.capabilities.clone(),
         };
         let launch_cmd =

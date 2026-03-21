@@ -53,9 +53,16 @@ pub struct AgentSetupConfig {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub communication_style: Option<String>,
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub instructions: Option<String>,
     pub behavioral_contract: Option<BehavioralContract>,
+    pub quality_gates: Option<Vec<String>>,
+    pub definition_of_done: Option<Vec<String>>,
+    pub phase_scope: Option<Vec<String>>,
+    pub mode: Option<String>,
+    pub inherits_from: Option<String>,
+    pub required_artifacts: Option<Vec<String>>,
     pub capabilities: Option<Vec<String>>,
 }
 

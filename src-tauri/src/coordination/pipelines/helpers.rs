@@ -307,6 +307,12 @@ pub(super) fn has_non_empty_capabilities(capabilities: Option<&[String]>) -> boo
         .unwrap_or(false)
 }
 
+fn has_non_empty_list(items: Option<&[String]>) -> bool {
+    items
+        .map(|values| values.iter().any(|value| !value.trim().is_empty()))
+        .unwrap_or(false)
+}
+
 fn pane_launch_diagnostics(runtime: &dyn CoordinationRuntime, pane_id: &str) -> String {
     let exists = bool_diagnostic(runtime.pane_exists(pane_id));
     let dead = bool_diagnostic(runtime.pane_is_dead(pane_id));
@@ -347,6 +353,12 @@ pub(super) fn agent_has_role_context(agent: &AgentSetupConfig) -> bool {
         .filter(|value| !value.is_empty())
         .is_some()
         || agent_instructions(agent).is_some()
+        || agent
+            .communication_style
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
         || agent.runtime_compact_summary.is_some()
         || agent
             .behavioral_contract
@@ -357,6 +369,8 @@ pub(super) fn agent_has_role_context(agent: &AgentSetupConfig) -> bool {
                     || !contract.escalation.is_empty()
             })
             .unwrap_or(false)
+        || has_non_empty_list(agent.quality_gates.as_deref())
+        || has_non_empty_list(agent.definition_of_done.as_deref())
         || has_non_empty_capabilities(agent.capabilities.as_deref())
 }
 
@@ -373,6 +387,12 @@ pub(super) fn member_has_role_context(member: &Member) -> bool {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .is_some()
+        || member
+            .communication_style
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
         || member.runtime_compact_summary.is_some()
         || member
             .behavioral_contract
@@ -383,6 +403,8 @@ pub(super) fn member_has_role_context(member: &Member) -> bool {
                     || !contract.escalation.is_empty()
             })
             .unwrap_or(false)
+        || has_non_empty_list(member.quality_gates.as_deref())
+        || has_non_empty_list(member.definition_of_done.as_deref())
         || has_non_empty_capabilities(member.capabilities.as_deref())
 }
 
@@ -400,12 +422,19 @@ pub(super) fn member_from_agent_setup(
         focus_area: setup.focus_area.clone(),
         context_summary: setup.context_summary.clone(),
         behavior_summary: setup.behavior_summary.clone(),
+        communication_style: setup.communication_style.clone(),
         runtime_compact_summary: setup.runtime_compact_summary.clone(),
         instructions: setup
             .instructions
             .clone()
             .or_else(|| setup.description.clone()),
         behavioral_contract: setup.behavioral_contract.clone(),
+        quality_gates: setup.quality_gates.clone(),
+        definition_of_done: setup.definition_of_done.clone(),
+        phase_scope: setup.phase_scope.clone(),
+        mode: setup.mode.clone(),
+        inherits_from: setup.inherits_from.clone(),
+        required_artifacts: setup.required_artifacts.clone(),
         capabilities: setup.capabilities.clone(),
         project_path: PathBuf::from(&setup.project_id),
         cli_tool: parse_cli_tool(&setup.cli_tool)?,

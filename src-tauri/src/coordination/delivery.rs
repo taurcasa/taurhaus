@@ -16,8 +16,11 @@ impl DeliveryRenderer {
         member_name: &str,
         lead_name: &str,
         role_id: Option<&str>,
+        communication_style: Option<&str>,
         instructions: Option<&str>,
         behavioral_contract: Option<&BehavioralContract>,
+        quality_gates: Option<&[String]>,
+        definition_of_done: Option<&[String]>,
         capabilities: Option<&[String]>,
     ) -> String {
         let mut rendered = format!(
@@ -55,8 +58,11 @@ impl DeliveryRenderer {
         Self::append_role_context_sections(
             &mut rendered,
             role_id,
+            communication_style,
             instructions,
             behavioral_contract,
+            quality_gates,
+            definition_of_done,
             capabilities,
         );
         rendered
@@ -68,8 +74,11 @@ impl DeliveryRenderer {
         member_name: &str,
         lead_name: &str,
         role_id: Option<&str>,
+        communication_style: Option<&str>,
         instructions: Option<&str>,
         behavioral_contract: Option<&BehavioralContract>,
+        quality_gates: Option<&[String]>,
+        definition_of_done: Option<&[String]>,
         capabilities: Option<&[String]>,
     ) -> String {
         let mut rendered = format!(
@@ -79,9 +88,12 @@ impl DeliveryRenderer {
                 "You are \"{member_name}\" on team \"{team_name}\". Your team lead is \"{lead_name}\".\n",
                 "\n",
                 "Use internal team tools (for example TaskList/SendMessage) to coordinate work.\n",
+                "When using SendMessage with string content, always include a non-empty summary.\n",
+                "Example: SendMessage type=\"message\" recipient=\"{lead_name}\" content=\"Status update\" summary=\"Status update\"\n",
                 "\n",
                 "Work contract:\n",
-                "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
+                "Do the assigned work first, then report completion with artifacts and test results.\n",
+                "Do not send a pure acknowledgment before you have either completed the work or identified a real blocker.\n",
                 "\n",
                 "Compaction safety:\n",
                 "If context compaction happens and you have no unread messages or your current task is unclear, immediately message {lead_name} and ask for your current assignment.\n",
@@ -97,8 +109,11 @@ impl DeliveryRenderer {
         Self::append_role_context_sections(
             &mut rendered,
             role_id,
+            communication_style,
             instructions,
             behavioral_contract,
+            quality_gates,
+            definition_of_done,
             capabilities,
         );
         rendered
@@ -140,11 +155,17 @@ impl DeliveryRenderer {
     fn append_role_context_sections(
         rendered: &mut String,
         role_id: Option<&str>,
+        communication_style: Option<&str>,
         instructions: Option<&str>,
         behavioral_contract: Option<&BehavioralContract>,
+        quality_gates: Option<&[String]>,
+        definition_of_done: Option<&[String]>,
         capabilities: Option<&[String]>,
     ) {
         let role_id = role_id.map(str::trim).filter(|value| !value.is_empty());
+        let communication_style = communication_style
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let instructions = instructions
             .map(str::trim)
             .filter(|value| !value.is_empty());
@@ -153,13 +174,20 @@ impl DeliveryRenderer {
                 || !contract.execution.is_empty()
                 || !contract.escalation.is_empty()
         });
-        let has_capabilities = capabilities
-            .map(|items| items.iter().any(|item| !item.trim().is_empty()))
+        let has_quality_gates = quality_gates
+            .map(Self::has_non_empty_items)
             .unwrap_or(false);
+        let has_definition_of_done = definition_of_done
+            .map(Self::has_non_empty_items)
+            .unwrap_or(false);
+        let has_capabilities = capabilities.map(Self::has_non_empty_items).unwrap_or(false);
 
         if role_id.is_none()
+            && communication_style.is_none()
             && instructions.is_none()
             && behavioral_contract.is_none()
+            && !has_quality_gates
+            && !has_definition_of_done
             && !has_capabilities
         {
             return;
@@ -168,6 +196,11 @@ impl DeliveryRenderer {
         if let Some(role_id) = role_id {
             rendered.push_str("\n\nRole: ");
             rendered.push_str(role_id);
+        }
+
+        if let Some(communication_style) = communication_style {
+            rendered.push_str("\n\nCommunication Style:\n");
+            rendered.push_str(communication_style);
         }
 
         if let Some(instructions) = instructions {
@@ -182,12 +215,30 @@ impl DeliveryRenderer {
             Self::append_titled_bullets(rendered, "Escalation", &contract.escalation);
         }
 
+        if let Some(quality_gates) = quality_gates {
+            if has_quality_gates {
+                rendered.push_str("\n\nQuality Gates:\n");
+                Self::append_bullets(rendered, quality_gates);
+            }
+        }
+
+        if let Some(definition_of_done) = definition_of_done {
+            if has_definition_of_done {
+                rendered.push_str("\n\nDefinition of Done:\n");
+                Self::append_bullets(rendered, definition_of_done);
+            }
+        }
+
         if let Some(capabilities) = capabilities {
             if has_capabilities {
-                rendered.push_str("\n\nCapabilities:");
+                rendered.push_str("\n\nCapabilities:\n");
                 Self::append_bullets(rendered, capabilities);
             }
         }
+    }
+
+    fn has_non_empty_items(items: &[String]) -> bool {
+        items.iter().any(|item| !item.trim().is_empty())
     }
 
     fn append_titled_bullets(rendered: &mut String, title: &str, items: &[String]) {
@@ -311,6 +362,9 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
         );
 
         assert!(rendered.contains("You are \"codex-reviewer\" on team \"architecture-final\"."));
@@ -333,6 +387,9 @@ mod tests {
             "architecture-final",
             "codex-reviewer",
             "team-lead",
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -378,23 +435,31 @@ mod tests {
             escalation: vec!["Escalate blockers quickly.".to_string()],
         };
         let capabilities = vec!["code-review".to_string(), "testing".to_string()];
+        let quality_gates = vec!["Run the scoped test lane.".to_string()];
+        let definition_of_done = vec!["Report the exact shipped behavior.".to_string()];
 
         let rendered = DeliveryRenderer::render_onboarding(
             "architecture-final",
             "codex-reviewer",
             "team-lead",
             Some("codex-reviewer"),
+            Some("Brief, evidence-backed updates."),
             Some("Review architecture patches and propose fixes."),
             Some(&contract),
+            Some(&quality_gates),
+            Some(&definition_of_done),
             Some(&capabilities),
         );
 
         assert!(rendered.contains("Role: codex-reviewer"));
+        assert!(rendered.contains("Communication Style:\nBrief, evidence-backed updates."));
         assert!(rendered.contains("Instructions:\nReview architecture patches and propose fixes."));
         assert!(rendered.contains("Behavioral Contract:"));
         assert!(rendered.contains("Communication:\n- Post concise updates."));
         assert!(rendered.contains("Execution:\n- Ship reviewed patches."));
         assert!(rendered.contains("Escalation:\n- Escalate blockers quickly."));
+        assert!(rendered.contains("Quality Gates:\n- Run the scoped test lane."));
+        assert!(rendered.contains("Definition of Done:\n- Report the exact shipped behavior."));
         assert!(rendered.contains("Capabilities:"));
         assert!(rendered.contains("- code-review"));
         assert!(rendered.contains("- testing"));
@@ -411,22 +476,39 @@ mod tests {
             escalation: vec!["Raise blockers immediately.".to_string()],
         };
         let capabilities = vec!["implementation".to_string()];
+        let quality_gates = vec!["Run quick verification.".to_string()];
+        let definition_of_done = vec!["Ship the requested fix.".to_string()];
 
         let rendered = DeliveryRenderer::render_claude_role_context(
             "architecture-final",
             "claude-dev",
             "team-lead",
             Some("claude-developer"),
+            Some("Crisp internal handoffs."),
             Some("Implement role-specific changes."),
             Some(&contract),
+            Some(&quality_gates),
+            Some(&definition_of_done),
             Some(&capabilities),
         );
 
         assert!(rendered.contains("[taurhaus] role_context"));
         assert!(rendered.contains("Use internal team tools"));
+        assert!(rendered.contains(
+            "When using SendMessage with string content, always include a non-empty summary."
+        ));
+        assert!(rendered.contains(
+            "Example: SendMessage type=\"message\" recipient=\"team-lead\" content=\"Status update\" summary=\"Status update\""
+        ));
+        assert!(rendered.contains(
+            "Do not send a pure acknowledgment before you have either completed the work or identified a real blocker."
+        ));
         assert!(rendered.contains("Compaction safety:"));
         assert!(rendered.contains("Do not assume you are done"));
         assert!(rendered.contains("Role: claude-developer"));
+        assert!(rendered.contains("Communication Style:\nCrisp internal handoffs."));
+        assert!(rendered.contains("Quality Gates:\n- Run quick verification."));
+        assert!(rendered.contains("Definition of Done:\n- Ship the requested fix."));
         assert!(rendered.contains("Capabilities:"));
         assert!(rendered.contains("- implementation"));
         assert!(!rendered.contains("mesh read --unread"));

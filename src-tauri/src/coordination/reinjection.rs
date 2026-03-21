@@ -32,8 +32,15 @@ pub struct OperationalReinjectionRole {
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
     pub behavior_summary: Option<String>,
+    pub communication_style: Option<String>,
     pub instructions: Option<String>,
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
+    pub quality_gates: Vec<String>,
+    pub definition_of_done: Vec<String>,
+    pub phase_scope: Vec<String>,
+    pub mode: Option<String>,
+    pub inherits_from: Option<String>,
+    pub required_artifacts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,8 +105,19 @@ impl CompactionReinjectionService {
                 focus_area: normalize_optional(member.focus_area.as_deref()),
                 context_summary: normalize_optional(member.context_summary.as_deref()),
                 behavior_summary: normalize_optional(member.behavior_summary.as_deref()),
+                communication_style: normalize_optional(member.communication_style.as_deref()),
                 instructions: normalize_optional(member.instructions.as_deref()),
                 runtime_compact_summary: member.runtime_compact_summary.clone(),
+                quality_gates: normalize_list(member.quality_gates.as_deref().unwrap_or(&[])),
+                definition_of_done: normalize_list(
+                    member.definition_of_done.as_deref().unwrap_or(&[]),
+                ),
+                phase_scope: normalize_list(member.phase_scope.as_deref().unwrap_or(&[])),
+                mode: normalize_optional(member.mode.as_deref()),
+                inherits_from: normalize_optional(member.inherits_from.as_deref()),
+                required_artifacts: normalize_list(
+                    member.required_artifacts.as_deref().unwrap_or(&[]),
+                ),
             },
             task: OperationalReinjectionTask {
                 id: snapshot.task.id.trim().to_string(),
@@ -183,12 +201,45 @@ impl CompactionReinjectionService {
         if let Some(behavior_summary) = card.role.behavior_summary.as_deref() {
             lines.push(format!("Behavior: {behavior_summary}"));
         }
+        if let Some(communication_style) = card.role.communication_style.as_deref() {
+            lines.push(format!("Communication style: {communication_style}"));
+        }
         if let Some(instructions) = card.role.instructions.as_deref() {
             lines.push(String::new());
             lines.push("Full role instructions:".to_string());
             lines.push(instructions.to_string());
             lines.push(String::new());
         }
+        if let Some(mode) = card.role.mode.as_deref() {
+            lines.push(format!("Mode: {mode}"));
+        }
+        if let Some(inherits_from) = card.role.inherits_from.as_deref() {
+            lines.push(format!("Inherits from: {inherits_from}"));
+        }
+        append_bullet_section(
+            &mut lines,
+            "Quality gates",
+            &card.role.quality_gates,
+            "No explicit quality gates recorded.",
+        );
+        append_bullet_section(
+            &mut lines,
+            "Definition of done",
+            &card.role.definition_of_done,
+            "No explicit definition of done recorded.",
+        );
+        append_bullet_section(
+            &mut lines,
+            "Phase scope",
+            &card.role.phase_scope,
+            "No explicit phase scope recorded.",
+        );
+        append_bullet_section(
+            &mut lines,
+            "Required artifacts",
+            &card.role.required_artifacts,
+            "No explicit required artifacts recorded.",
+        );
         if let Some(summary) = card.role.runtime_compact_summary.as_ref() {
             lines.push(format!("Role purpose: {}", summary.role_purpose));
             append_bullet_section(
@@ -330,6 +381,7 @@ mod tests {
                 "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
                     .to_string(),
             ),
+            communication_style: Some("Short, evidence-backed progress notes.".to_string()),
             runtime_compact_summary: Some(RuntimeCompactSummary {
                 role_purpose:
                     "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
@@ -361,6 +413,21 @@ mod tests {
             }),
             instructions: Some("Review architecture edges".to_string()),
             behavioral_contract: None,
+            quality_gates: Some(vec![
+                "Tie conclusions to concrete repo evidence.".to_string(),
+                "Avoid speculative architecture changes.".to_string(),
+            ]),
+            definition_of_done: Some(vec![
+                "Root cause and impact are explicit.".to_string(),
+                "Residual risk is documented.".to_string(),
+            ]),
+            phase_scope: Some(vec!["investigation".to_string(), "recommendation".to_string()]),
+            mode: Some("analysis".to_string()),
+            inherits_from: Some("taurhaus-architect-base".to_string()),
+            required_artifacts: Some(vec![
+                "root-cause summary".to_string(),
+                "validation notes".to_string(),
+            ]),
             capabilities: None,
             project_path: PathBuf::from("/home/mstie/projects/taurhaus"),
             cli_tool: CliTool::Codex,
@@ -423,9 +490,16 @@ mod tests {
             focus_area: role.focus_area.clone(),
             context_summary: role.context_summary.clone(),
             behavior_summary: role.behavior_summary.clone(),
+            communication_style: role.communication_style.clone(),
             runtime_compact_summary: role.runtime_compact_summary.clone(),
             instructions: Some(role.instructions.clone()),
             behavioral_contract: Some(role.behavioral_contract.clone()),
+            quality_gates: role.quality_gates.clone(),
+            definition_of_done: role.definition_of_done.clone(),
+            phase_scope: role.phase_scope.clone(),
+            mode: role.mode.clone(),
+            inherits_from: role.inherits_from.clone(),
+            required_artifacts: role.required_artifacts.clone(),
             capabilities: Some(role.capabilities.clone()),
             project_path: PathBuf::from("/home/mstie/projects/taurhaus"),
             cli_tool: role.defaults.cli_tool,
@@ -459,8 +533,24 @@ mod tests {
                         "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
                             .to_string()
                     ),
+                    communication_style: Some("Short, evidence-backed progress notes.".to_string()),
                     instructions: Some("Review architecture edges".to_string()),
                     runtime_compact_summary: sample_member().runtime_compact_summary,
+                    quality_gates: vec![
+                        "Tie conclusions to concrete repo evidence.".to_string(),
+                        "Avoid speculative architecture changes.".to_string(),
+                    ],
+                    definition_of_done: vec![
+                        "Root cause and impact are explicit.".to_string(),
+                        "Residual risk is documented.".to_string(),
+                    ],
+                    phase_scope: vec!["investigation".to_string(), "recommendation".to_string(),],
+                    mode: Some("analysis".to_string()),
+                    inherits_from: Some("taurhaus-architect-base".to_string()),
+                    required_artifacts: vec![
+                        "root-cause summary".to_string(),
+                        "validation notes".to_string(),
+                    ],
                 },
                 task: OperationalReinjectionTask {
                     id: "673".to_string(),
@@ -525,7 +615,41 @@ mod tests {
             Some("Keeps architecture context warm.".to_string())
         );
         assert_eq!(card.role.behavior_summary, None);
+        assert_eq!(
+            card.role.communication_style,
+            Some("Short, evidence-backed progress notes.".to_string())
+        );
         assert!(card.role.runtime_compact_summary.is_some());
+        assert_eq!(
+            card.role.quality_gates,
+            vec![
+                "Tie conclusions to concrete repo evidence.".to_string(),
+                "Avoid speculative architecture changes.".to_string(),
+            ]
+        );
+        assert_eq!(
+            card.role.definition_of_done,
+            vec![
+                "Root cause and impact are explicit.".to_string(),
+                "Residual risk is documented.".to_string(),
+            ]
+        );
+        assert_eq!(
+            card.role.phase_scope,
+            vec!["investigation".to_string(), "recommendation".to_string()]
+        );
+        assert_eq!(card.role.mode, Some("analysis".to_string()));
+        assert_eq!(
+            card.role.inherits_from,
+            Some("taurhaus-architect-base".to_string())
+        );
+        assert_eq!(
+            card.role.required_artifacts,
+            vec![
+                "root-cause summary".to_string(),
+                "validation notes".to_string()
+            ]
+        );
         assert_eq!(card.task.execution_mode, "");
         assert_eq!(card.task.validation_expectation, "");
         assert_eq!(card.task.response_expectation, "report-on-completion");
@@ -564,6 +688,7 @@ mod tests {
     "focus_area": "Cross-layer diagnosis",
     "context_summary": "Keeps architecture context warm.",
     "behavior_summary": "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.",
+    "communication_style": "Short, evidence-backed progress notes.",
     "instructions": "Review architecture edges",
     "runtime_compact_summary": {
       "rolePurpose": "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction.",
@@ -583,7 +708,25 @@ mod tests {
       "escalateWhen": [
         "Escalate ownership ambiguity, direction changes, or blocked cross-role boundaries immediately."
       ]
-    }
+    },
+    "quality_gates": [
+      "Tie conclusions to concrete repo evidence.",
+      "Avoid speculative architecture changes."
+    ],
+    "definition_of_done": [
+      "Root cause and impact are explicit.",
+      "Residual risk is documented."
+    ],
+    "phase_scope": [
+      "investigation",
+      "recommendation"
+    ],
+    "mode": "analysis",
+    "inherits_from": "taurhaus-architect-base",
+    "required_artifacts": [
+      "root-cause summary",
+      "validation notes"
+    ]
   },
   "task": {
     "id": "673",
@@ -639,8 +782,16 @@ mod tests {
         assert!(rendered.contains(
             "Behavior: Stay concrete, evidence-backed, and escalate ownership ambiguity quickly."
         ));
+        assert!(rendered.contains("Communication style: Short, evidence-backed progress notes."));
         assert!(rendered.contains("Full role instructions:"));
         assert!(rendered.contains("Review architecture edges"));
+        assert!(rendered.contains("Mode: analysis"));
+        assert!(rendered.contains("Inherits from: taurhaus-architect-base"));
+        assert!(rendered.contains("Quality gates:"));
+        assert!(rendered.contains("- Tie conclusions to concrete repo evidence."));
+        assert!(rendered.contains("Definition of done:"));
+        assert!(rendered.contains("Phase scope:"));
+        assert!(rendered.contains("Required artifacts:"));
         assert!(rendered.contains(
             "Role purpose: Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction."
         ));

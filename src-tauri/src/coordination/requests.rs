@@ -266,11 +266,25 @@ pub struct AgentDefinition {
     #[serde(default)]
     pub behavior_summary: Option<String>,
     #[serde(default)]
+    pub communication_style: Option<String>,
+    #[serde(default)]
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     #[serde(default)]
     pub instructions: Option<String>,
     #[serde(default)]
     pub behavioral_contract: Option<BehavioralContract>,
+    #[serde(default)]
+    pub quality_gates: Option<Vec<String>>,
+    #[serde(default)]
+    pub definition_of_done: Option<Vec<String>>,
+    #[serde(default)]
+    pub phase_scope: Option<Vec<String>>,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub inherits_from: Option<String>,
+    #[serde(default)]
+    pub required_artifacts: Option<Vec<String>>,
     #[serde(default)]
     pub capabilities: Option<Vec<String>>,
 }
@@ -420,9 +434,16 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: Some("Focus on implementation".to_string()),
                 behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
@@ -471,9 +492,16 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: None,
             },
             agents: vec![AgentDefinition {
@@ -487,9 +515,16 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: None,
             }],
         };
@@ -515,9 +550,16 @@ mod tests {
                 focus_area: None,
                 context_summary: None,
                 behavior_summary: None,
+                communication_style: None,
                 runtime_compact_summary: None,
                 instructions: None,
                 behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
                 capabilities: None,
             },
         };
