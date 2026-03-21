@@ -27,6 +27,7 @@
 
   const normalizedContext = $derived(mode === 'runtime' ? 'runtime' : 'roster')
   const isEditing = $derived(normalizedContext === 'roster' && Boolean(editing))
+  const modeOptions = ['implementation', 'review', 'research', 'coordination']
   const normalizedRole = $derived(String(node?.role ?? '').trim().toLowerCase() === 'lead' ? 'lead' : 'agent')
   const name = $derived.by(() => String(node?.name ?? '').trim())
   const roleName = $derived.by(() => String(node?.roleName ?? node?.role_name ?? '').trim())
@@ -100,6 +101,41 @@
     isEditing
       ? String(editDraft?.instructions ?? '').trim()
       : String(node?.instructions ?? node?.description ?? '').trim()
+  )
+  const communicationStyle = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.communicationStyle ?? editDraft?.communication_style ?? '').trim()
+      : String(node?.communicationStyle ?? node?.communication_style ?? '').trim()
+  )
+  const qualityGates = $derived.by(() =>
+    isEditing
+      ? editableStringList(editDraft?.qualityGates ?? editDraft?.quality_gates)
+      : displayStringList(node?.qualityGates ?? node?.quality_gates)
+  )
+  const definitionOfDone = $derived.by(() =>
+    isEditing
+      ? editableStringList(editDraft?.definitionOfDone ?? editDraft?.definition_of_done)
+      : displayStringList(node?.definitionOfDone ?? node?.definition_of_done)
+  )
+  const phaseScope = $derived.by(() =>
+    isEditing
+      ? editableStringList(editDraft?.phaseScope ?? editDraft?.phase_scope)
+      : displayStringList(node?.phaseScope ?? node?.phase_scope)
+  )
+  const modeValue = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.mode ?? '').trim()
+      : String(node?.mode ?? '').trim()
+  )
+  const inheritsFrom = $derived.by(() =>
+    isEditing
+      ? String(editDraft?.inheritsFrom ?? editDraft?.inherits_from ?? '').trim()
+      : String(node?.inheritsFrom ?? node?.inherits_from ?? '').trim()
+  )
+  const requiredArtifacts = $derived.by(() =>
+    isEditing
+      ? editableStringList(editDraft?.requiredArtifacts ?? editDraft?.required_artifacts)
+      : displayStringList(node?.requiredArtifacts ?? node?.required_artifacts)
   )
   const paneId = $derived.by(() => String(node?.paneId ?? node?.pane_id ?? '').trim())
   const sessionId = $derived.by(() => String(node?.sessionId ?? node?.session_id ?? '').trim())
@@ -286,6 +322,22 @@
       .filter(Boolean)
   }
 
+  function editableStringList(value) {
+    if (Array.isArray(value)) {
+      return value.map((entry) => String(entry ?? ''))
+    }
+    if (typeof value === 'string' && value.trim()) {
+      return [value]
+    }
+    return []
+  }
+
+  function displayStringList(value) {
+    return editableStringList(value)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  }
+
   function buildBehaviorMarkdown(contract, fallbackText) {
     const sections = [
       ['Communication', contract.communication],
@@ -350,6 +402,36 @@
 
   function handleSaveEdit() {
     invoke(actions?.onSaveEdit)
+  }
+
+  function updateDraftList(field, index, value) {
+    if (!isEditing || !editDraft) return
+    const nextEntries = editableStringList(editDraft?.[field])
+    nextEntries[index] = value
+    updateDraft({ [field]: nextEntries })
+  }
+
+  function addDraftListItem(field) {
+    if (!isEditing || !editDraft) return
+    updateDraft({
+      [field]: [...editableStringList(editDraft?.[field]), ''],
+    })
+  }
+
+  function removeDraftListItem(field, index) {
+    if (!isEditing || !editDraft) return
+    updateDraft({
+      [field]: editableStringList(editDraft?.[field]).filter((_, entryIndex) => entryIndex !== index),
+    })
+  }
+
+  function updateDraftCommaList(field, value) {
+    updateDraft({
+      [field]: String(value ?? '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    })
   }
 
   function close() {
@@ -468,6 +550,14 @@
               {#if !isEditing && normalizedRole === 'lead'}
                 <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[12px] font-semibold {leadBadgeTone}">
                   Lead
+                </span>
+              {/if}
+              {#if !isEditing && modeValue}
+                <span
+                  class="inline-flex items-center rounded-full border px-2.5 py-1 text-[12px] font-medium {badgeTone}"
+                  data-testid="mesh-node-detail-mode-badge"
+                >
+                  {modeValue.replace(/[_-]+/g, ' ')}
                 </span>
               {/if}
             </div>
@@ -729,6 +819,245 @@
               </div>
             </section>
           {/if}
+        {/if}
+
+        {#if isEditing || communicationStyle}
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-communication-style">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Communication Style</h3>
+              <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+                <textarea
+                  use:autoGrowTextarea={communicationStyle}
+                  rows="3"
+                  class="min-h-[80px] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.65] outline-none {editableFieldTone}"
+                  value={communicationStyle}
+                  oninput={(event) => updateDraft({ communicationStyle: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-communication-style-input"
+                ></textarea>
+              </div>
+            </section>
+          {:else}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-communication-style">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Communication Style</h3>
+              <p class="text-[14px] leading-[1.65] {bodyTone}" data-testid="mesh-node-detail-communication-style-body">
+                {communicationStyle}
+              </p>
+            </section>
+          {/if}
+        {/if}
+
+        {#if isEditing || qualityGates.length > 0}
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-quality-gates">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Quality Gates</h3>
+              <button
+                class="inline-flex h-8 items-center rounded-xl border px-3 text-[12px] font-medium transition {secondaryActionTone}"
+                type="button"
+                onclick={() => addDraftListItem('qualityGates')}
+                data-testid="mesh-node-detail-quality-gates-add"
+              >
+                + Add gate
+              </button>
+            </div>
+            <div class="space-y-2.5 rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+              {#if qualityGates.length > 0}
+                {#each qualityGates as gate, index}
+                  <div class="flex items-start gap-2.5" data-testid={`mesh-node-detail-quality-gates-row-${index}`}>
+                    <span class="mt-3 inline-block h-1.5 w-1.5 rounded-full bg-brand-400/80" aria-hidden="true"></span>
+                    <input
+                      class="min-w-0 flex-1 rounded-xl border px-3 py-2 text-[14px] outline-none {selectPillTone}"
+                      type="text"
+                      value={gate}
+                      oninput={(event) => updateDraftList('qualityGates', index, event.currentTarget.value)}
+                      data-testid={`mesh-node-detail-quality-gates-input-${index}`}
+                    />
+                    <button
+                      class="inline-flex h-9 items-center rounded-xl border px-3 text-[12px] font-medium transition {secondaryActionTone}"
+                      type="button"
+                      onclick={() => removeDraftListItem('qualityGates', index)}
+                      data-testid={`mesh-node-detail-quality-gates-remove-${index}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                {/each}
+              {:else}
+                <p class="text-[12px] {subtleHintTone}">Add the checks this role should pass before handoff.</p>
+              {/if}
+            </div>
+            </section>
+          {:else}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-quality-gates">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Quality Gates</h3>
+              <ul class="space-y-2">
+                {#each qualityGates as gate}
+                  <li class="flex items-start gap-2 text-[14px] leading-[1.55] {bodyTone}">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border {badgeTone}" aria-hidden="true">✓</span>
+                    <span>{gate}</span>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
+        {/if}
+
+        {#if isEditing || definitionOfDone.length > 0}
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-definition-of-done">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Definition of Done</h3>
+              <button
+                class="inline-flex h-8 items-center rounded-xl border px-3 text-[12px] font-medium transition {secondaryActionTone}"
+                type="button"
+                onclick={() => addDraftListItem('definitionOfDone')}
+                data-testid="mesh-node-detail-definition-of-done-add"
+              >
+                + Add item
+              </button>
+            </div>
+            <div class="space-y-2.5 rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+              {#if definitionOfDone.length > 0}
+                {#each definitionOfDone as item, index}
+                  <div class="flex items-start gap-2.5" data-testid={`mesh-node-detail-definition-of-done-row-${index}`}>
+                    <span class="mt-3 inline-block h-1.5 w-1.5 rounded-full bg-brand-400/80" aria-hidden="true"></span>
+                    <input
+                      class="min-w-0 flex-1 rounded-xl border px-3 py-2 text-[14px] outline-none {selectPillTone}"
+                      type="text"
+                      value={item}
+                      oninput={(event) => updateDraftList('definitionOfDone', index, event.currentTarget.value)}
+                      data-testid={`mesh-node-detail-definition-of-done-input-${index}`}
+                    />
+                    <button
+                      class="inline-flex h-9 items-center rounded-xl border px-3 text-[12px] font-medium transition {secondaryActionTone}"
+                      type="button"
+                      onclick={() => removeDraftListItem('definitionOfDone', index)}
+                      data-testid={`mesh-node-detail-definition-of-done-remove-${index}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                {/each}
+              {:else}
+                <p class="text-[12px] {subtleHintTone}">Capture the concrete exit conditions for this role.</p>
+              {/if}
+            </div>
+            </section>
+          {:else}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-definition-of-done">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Definition of Done</h3>
+              <ul class="space-y-2">
+                {#each definitionOfDone as item}
+                  <li class="flex items-start gap-2 text-[14px] leading-[1.55] {bodyTone}">
+                    <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border {badgeTone}" aria-hidden="true">✓</span>
+                    <span>{item}</span>
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
+        {/if}
+
+        {#if isEditing || phaseScope.length > 0}
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-phase-scope">
+            <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Phase Scope</h3>
+            <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+              <input
+                class="w-full rounded-xl border px-3 py-2 text-[14px] outline-none {selectPillTone}"
+                type="text"
+                value={phaseScope.join(', ')}
+                placeholder="implementation, verification, release"
+                oninput={(event) => updateDraftCommaList('phaseScope', event.currentTarget.value)}
+                data-testid="mesh-node-detail-phase-scope-input"
+              />
+            </div>
+            </section>
+          {:else}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-phase-scope">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Phase Scope</h3>
+              <div class="flex flex-wrap gap-2">
+                {#each phaseScope as phase}
+                  <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[12px] font-medium {badgeTone}">
+                    {phase.replace(/[_-]+/g, ' ')}
+                  </span>
+                {/each}
+              </div>
+            </section>
+          {/if}
+        {/if}
+
+        {#if isEditing}
+          <section class="space-y-2.5" data-testid="mesh-node-detail-mode">
+            <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Mode</h3>
+            <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+              <select
+                class="h-10 w-full rounded-xl border px-3 outline-none {selectPillTone}"
+                value={modeValue}
+                onchange={(event) => updateDraft({ mode: event.currentTarget.value })}
+                data-testid="mesh-node-detail-mode-input"
+              >
+                <option value="">None</option>
+                {#each modeOptions as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+          </section>
+
+          <section class="space-y-2.5" data-testid="mesh-node-detail-inherits-from">
+            <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Inherits From</h3>
+            <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+              <input
+                class="w-full rounded-xl border px-3 py-2 text-[14px] outline-none {selectPillTone}"
+                type="text"
+                value={inheritsFrom}
+                placeholder="shared-role-id"
+                oninput={(event) => updateDraft({ inheritsFrom: event.currentTarget.value })}
+                data-testid="mesh-node-detail-inherits-from-input"
+              />
+            </div>
+          </section>
+
+          <section class="space-y-2.5" data-testid="mesh-node-detail-required-artifacts">
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Required Artifacts</h3>
+              <button
+                class="inline-flex h-8 items-center rounded-xl border px-3 text-[12px] font-medium transition {secondaryActionTone}"
+                type="button"
+                onclick={() => addDraftListItem('requiredArtifacts')}
+                data-testid="mesh-node-detail-required-artifacts-add"
+              >
+                + Add artifact
+              </button>
+            </div>
+            <div class="space-y-2.5 rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+              {#if requiredArtifacts.length > 0}
+                {#each requiredArtifacts as artifact, index}
+                  <div class="flex items-start gap-2.5" data-testid={`mesh-node-detail-required-artifacts-row-${index}`}>
+                    <span class="mt-3 inline-block h-1.5 w-1.5 rounded-full bg-brand-400/80" aria-hidden="true"></span>
+                    <input
+                      class="min-w-0 flex-1 rounded-xl border px-3 py-2 text-[14px] outline-none {selectPillTone}"
+                      type="text"
+                      value={artifact}
+                      oninput={(event) => updateDraftList('requiredArtifacts', index, event.currentTarget.value)}
+                      data-testid={`mesh-node-detail-required-artifacts-input-${index}`}
+                    />
+                    <button
+                      class="inline-flex h-9 items-center rounded-xl border px-3 text-[12px] font-medium transition {secondaryActionTone}"
+                      type="button"
+                      onclick={() => removeDraftListItem('requiredArtifacts', index)}
+                      data-testid={`mesh-node-detail-required-artifacts-remove-${index}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                {/each}
+              {:else}
+                <p class="text-[12px] {subtleHintTone}">List the deliverables this role must leave behind.</p>
+              {/if}
+            </div>
+          </section>
         {/if}
 
         {#if instructionsVisible}

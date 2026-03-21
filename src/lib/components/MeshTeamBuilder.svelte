@@ -127,6 +127,7 @@
   let searchQuery = $state('')
   let activeToolFilter = $state('all')
   let activeKindFilter = $state('all')
+  let activeModeFilter = $state('all')
   let showAllRoleVersions = $state(false)
   let pinnedRoleIds = $state([])
   let catalogCollapsed = $state(false)
@@ -185,6 +186,7 @@
           kind: String(role.kind ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent',
           cliTool: tool,
           model,
+          mode: String(role.mode ?? '').trim().toLowerCase(),
           summary: String(
             role.behaviorSummary ??
             role.behavior_summary ??
@@ -210,12 +212,14 @@
     return catalogRoles.filter((role) => {
       if (activeToolFilter !== 'all' && role.cliTool !== activeToolFilter) return false
       if (activeKindFilter !== 'all' && role.kind !== activeKindFilter) return false
+      if (activeModeFilter !== 'all' && role.mode !== activeModeFilter) return false
       if (!query) return true
       return (
         role.name.toLowerCase().includes(query)
         || role.roleId.toLowerCase().includes(query)
         || role.cliTool.toLowerCase().includes(query)
         || role.model.toLowerCase().includes(query)
+        || role.mode.toLowerCase().includes(query)
       )
     })
   })
@@ -250,6 +254,23 @@
     lead: catalogRoles.filter((role) => role.kind === 'lead').length,
     agent: catalogRoles.filter((role) => role.kind === 'agent').length,
   }))
+  const modeFilterOptions = $derived.by(() =>
+    Array.from(
+      new Set(
+        catalogRoles
+          .map((role) => String(role.mode ?? '').trim().toLowerCase())
+          .filter(Boolean)
+      )
+    ).sort()
+  )
+  const modeFilterCounts = $derived.by(() =>
+    Object.fromEntries(
+      modeFilterOptions.map((roleMode) => [
+        roleMode,
+        catalogRoles.filter((role) => role.mode === roleMode).length,
+      ])
+    )
+  )
   const agents = $derived(Array.isArray(normalizedTeam.agents) ? normalizedTeam.agents : [])
   const availableProjectOptions = $derived.by(() =>
     (availableProjects ?? [])
@@ -752,6 +773,14 @@
     activeKindFilter = activeKindFilter === kind ? 'all' : kind
   }
 
+  function toggleModeFilter(nextMode) {
+    activeModeFilter = activeModeFilter === nextMode ? 'all' : nextMode
+  }
+
+  function formatFilterLabel(value) {
+    return String(value ?? '').trim().replace(/[_-]+/g, ' ')
+  }
+
   function toggleRoleVersionVisibility() {
     showAllRoleVersions = !showAllRoleVersions
     try {
@@ -850,6 +879,19 @@
     return String(fallbackText ?? '').trim()
   }
 
+  function normalizeOptionalDraftText(value) {
+    const trimmed = String(value ?? '').trim()
+    return trimmed || null
+  }
+
+  function normalizeDraftStringList(value) {
+    if (!Array.isArray(value)) return null
+    const items = value
+      .map((entry) => String(entry ?? '').trim())
+      .filter(Boolean)
+    return items.length > 0 ? items : null
+  }
+
   function buildRoleDetailDraft(role) {
     const detail = role && typeof role === 'object' ? role : {}
     const tool = normalizeTool(detail.tool ?? detail.cliTool ?? detail.defaults?.cliTool ?? 'codex')
@@ -867,6 +909,21 @@
         detail.behaviorSummary ?? detail.behavior_summary ?? ''
       ),
       instructions: String(detail.instructions ?? '').trim(),
+      communicationStyle: String(detail.communicationStyle ?? detail.communication_style ?? '').trim(),
+      qualityGates: Array.isArray(detail.qualityGates ?? detail.quality_gates)
+        ? (detail.qualityGates ?? detail.quality_gates).map((entry) => String(entry ?? ''))
+        : [],
+      definitionOfDone: Array.isArray(detail.definitionOfDone ?? detail.definition_of_done)
+        ? (detail.definitionOfDone ?? detail.definition_of_done).map((entry) => String(entry ?? ''))
+        : [],
+      phaseScope: Array.isArray(detail.phaseScope ?? detail.phase_scope)
+        ? (detail.phaseScope ?? detail.phase_scope).map((entry) => String(entry ?? ''))
+        : [],
+      mode: String(detail.mode ?? '').trim(),
+      inheritsFrom: String(detail.inheritsFrom ?? detail.inherits_from ?? '').trim(),
+      requiredArtifacts: Array.isArray(detail.requiredArtifacts ?? detail.required_artifacts)
+        ? (detail.requiredArtifacts ?? detail.required_artifacts).map((entry) => String(entry ?? ''))
+        : [],
       showInstructions: String(detail.instructions ?? '').trim().length > 0,
     }
   }
@@ -883,6 +940,13 @@
       contextSummary: String(draft.contextSummary ?? '').trim(),
       behaviorSummary: String(draft.behaviorSummary ?? '').trim(),
       instructions: String(draft.instructions ?? '').trim(),
+      communicationStyle: String(draft.communicationStyle ?? '').trim(),
+      qualityGates: normalizeDraftStringList(draft.qualityGates),
+      definitionOfDone: normalizeDraftStringList(draft.definitionOfDone),
+      phaseScope: normalizeDraftStringList(draft.phaseScope),
+      mode: String(draft.mode ?? '').trim(),
+      inheritsFrom: String(draft.inheritsFrom ?? '').trim(),
+      requiredArtifacts: normalizeDraftStringList(draft.requiredArtifacts),
       showInstructions: Boolean(draft.showInstructions),
     })
   }
@@ -945,7 +1009,12 @@
       contextSummary: role.contextSummary ?? role.context_summary ?? '',
       behaviorSummary: role.behaviorSummary ?? role.behavior_summary ?? '',
       instructions: role.instructions ?? role.description ?? '',
+      communicationStyle: role.communicationStyle ?? role.communication_style ?? '',
       behavioralContract: role.behavioralContract ?? role.behavioral_contract ?? null,
+      qualityGates: role.qualityGates ?? role.quality_gates ?? [],
+      definitionOfDone: role.definitionOfDone ?? role.definition_of_done ?? [],
+      phaseScope: role.phaseScope ?? role.phase_scope ?? [],
+      mode: role.mode ?? '',
       capabilities: Array.isArray(role.capabilities) ? role.capabilities : [],
     }
   }
@@ -1299,7 +1368,14 @@
       focusArea: draft?.focusArea ?? null,
       contextSummary: draft?.contextSummary ?? null,
       behaviorSummary: parsedBehavior.behaviorSummary,
+      communicationStyle: normalizeOptionalDraftText(draft?.communicationStyle),
       behavioralContract: parsedBehavior.behavioralContract,
+      qualityGates: normalizeDraftStringList(draft?.qualityGates),
+      definitionOfDone: normalizeDraftStringList(draft?.definitionOfDone),
+      phaseScope: normalizeDraftStringList(draft?.phaseScope),
+      mode: normalizeOptionalDraftText(draft?.mode),
+      inheritsFrom: normalizeOptionalDraftText(draft?.inheritsFrom),
+      requiredArtifacts: normalizeDraftStringList(draft?.requiredArtifacts),
       capabilities: Array.isArray(source?.capabilities) ? source.capabilities : [],
       provenance: source?.provenance ?? null,
       constraints: {
@@ -1657,6 +1733,33 @@
                 <span class="text-[10px] {t.textMuted}">{kindFilterCounts.agent}</span>
               </button>
             </div>
+
+            {#if modeFilterOptions.length > 0}
+              <div class="flex flex-wrap gap-2" data-testid="mesh-builder-filter-modes">
+                <button
+                  class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeModeFilter === 'all')}"
+                  type="button"
+                  onclick={() => {
+                    activeModeFilter = 'all'
+                  }}
+                  data-testid="mesh-builder-filter-mode-all"
+                >
+                  All Modes
+                  <span class="text-[10px] {t.textMuted}">{catalogRoles.length}</span>
+                </button>
+                {#each modeFilterOptions as roleMode}
+                  <button
+                    class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeModeFilter === roleMode)}"
+                    type="button"
+                    onclick={() => toggleModeFilter(roleMode)}
+                    data-testid={`mesh-builder-filter-mode-${roleMode}`}
+                  >
+                    <span>{formatFilterLabel(roleMode)}</span>
+                    <span class="text-[10px] {t.textMuted}">{modeFilterCounts[roleMode] ?? 0}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
 
             {#if presets.length > 0}
               <section class="space-y-2" data-testid="mesh-builder-preset-section">

@@ -33,6 +33,11 @@ function renderDetail(props = {}) {
     focusArea: 'Architecture decisions and structural review',
     contextSummary: 'Carries long-lived context around module boundaries and reviews.',
     behaviorSummary: 'Escalates direction changes before implementation.\nProtects long-lived system boundaries.',
+    communicationStyle: 'Brief, decisive check-ins with concrete next steps.',
+    qualityGates: ['Run the scoped test lane.', 'Confirm no regressions in the touched flow.'],
+    definitionOfDone: ['Requested change shipped.', 'Reviewer can validate the outcome quickly.'],
+    phaseScope: ['implementation', 'verification'],
+    mode: 'implementation',
     instructions: '## Operating notes\n\nKeep implementation scoped.',
     paneId: '%9',
     sessionId: 'sess-123',
@@ -78,11 +83,23 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-context-summary')).toHaveTextContent(
       'Carries long-lived context around module boundaries and reviews.'
     )
+    expect(screen.getByTestId('mesh-node-detail-mode-badge')).toHaveTextContent('implementation')
+    expect(screen.getByTestId('mesh-node-detail-communication-style')).toHaveTextContent(
+      'Brief, decisive check-ins with concrete next steps.'
+    )
     expect(screen.getByTestId('mesh-node-detail-behavior-summary')).toHaveTextContent(
       'Escalates direction changes before implementation.'
     )
     expect(screen.getByTestId('mesh-node-detail-description')).toHaveTextContent(
       'Keep implementation scoped.'
+    )
+    expect(screen.getByTestId('mesh-node-detail-phase-scope')).toHaveTextContent('implementation')
+    expect(screen.getByTestId('mesh-node-detail-phase-scope')).toHaveTextContent('verification')
+    expect(screen.getByTestId('mesh-node-detail-quality-gates')).toHaveTextContent(
+      'Run the scoped test lane.'
+    )
+    expect(screen.getByTestId('mesh-node-detail-definition-of-done')).toHaveTextContent(
+      'Requested change shipped.'
     )
     expect(screen.getByTestId('mesh-node-detail-pane')).toHaveTextContent('%9')
     expect(screen.getByTestId('mesh-node-detail-session')).toHaveTextContent('sess-123')
@@ -158,6 +175,13 @@ describe('MeshNodeDetail', () => {
         contextSummary: 'Maintains delivery flow and unblocks specialists.',
         behaviorSummary: '- Escalate blockers quickly',
         instructions: '',
+        communicationStyle: 'Short updates with explicit blockers.',
+        qualityGates: ['Tests pass'],
+        definitionOfDone: ['Handoff posted'],
+        phaseScope: ['implementation', 'verification'],
+        mode: 'coordination',
+        inheritsFrom: 'shared-role',
+        requiredArtifacts: ['status.md'],
         showInstructions: false,
       },
       dirty: true,
@@ -176,6 +200,13 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-focus-input')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-context-input')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-behavior-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-communication-style-input')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-quality-gates-input-0')).toHaveValue('Tests pass')
+    expect(screen.getByTestId('mesh-node-detail-definition-of-done-input-0')).toHaveValue('Handoff posted')
+    expect(screen.getByTestId('mesh-node-detail-phase-scope-input')).toHaveValue('implementation, verification')
+    expect(screen.getByTestId('mesh-node-detail-mode-input')).toHaveValue('coordination')
+    expect(screen.getByTestId('mesh-node-detail-inherits-from-input')).toHaveValue('shared-role')
+    expect(screen.getByTestId('mesh-node-detail-required-artifacts-input-0')).toHaveValue('status.md')
     expect(screen.getByTestId('mesh-node-detail-markdown-hint')).toHaveTextContent('Supports markdown')
     expect(screen.getByTestId('mesh-node-detail-cancel')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-save')).toHaveTextContent('Save Changes')
@@ -266,6 +297,84 @@ describe('MeshNodeDetail', () => {
         delete HTMLTextAreaElement.prototype.scrollHeight
       }
     }
+  })
+
+  it('updates the expanded role-schema fields through the shared edit draft', async () => {
+    const onEditChange = vi.fn()
+
+    renderDetail({
+      mode: 'builder',
+      editing: true,
+      editDraft: {
+        name: 'Engineering Delivery Lead',
+        kind: 'lead',
+        tool: 'claude',
+        model: 'opus',
+        focusArea: 'Team sequencing',
+        contextSummary: 'Maintains delivery flow.',
+        behaviorSummary: '- Escalate blockers quickly',
+        instructions: 'Keep the team moving.',
+        communicationStyle: '',
+        qualityGates: [''],
+        definitionOfDone: [],
+        phaseScope: [],
+        mode: '',
+        inheritsFrom: '',
+        requiredArtifacts: [],
+        showInstructions: true,
+      },
+      actions: {
+        onCancelEdit: vi.fn(),
+        onSaveEdit: vi.fn(),
+        onEditChange,
+        onAddSection: vi.fn(),
+      },
+    })
+
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-communication-style-input'), {
+      target: { value: 'Short, direct updates.' },
+    })
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      communicationStyle: 'Short, direct updates.',
+    }))
+
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-quality-gates-input-0'), {
+      target: { value: 'Tests pass cleanly' },
+    })
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      qualityGates: ['Tests pass cleanly'],
+    }))
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-definition-of-done-add'))
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      definitionOfDone: [''],
+    }))
+
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-phase-scope-input'), {
+      target: { value: 'implementation, review' },
+    })
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      phaseScope: ['implementation', 'review'],
+    }))
+
+    await fireEvent.change(screen.getByTestId('mesh-node-detail-mode-input'), {
+      target: { value: 'review' },
+    })
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      mode: 'review',
+    }))
+
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-inherits-from-input'), {
+      target: { value: 'shared-reviewer' },
+    })
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      inheritsFrom: 'shared-reviewer',
+    }))
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-required-artifacts-add'))
+    expect(onEditChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      requiredArtifacts: [''],
+    }))
   })
 
   it('invokes runtime actions and close affordances', async () => {

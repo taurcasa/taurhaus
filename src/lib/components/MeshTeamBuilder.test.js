@@ -46,6 +46,7 @@ function sampleRoles(extraAgentCount = 0) {
       cliTool: 'claude',
       model: 'claude-opus-4.5',
       behaviorSummary: 'Routes the team.',
+      mode: 'coordination',
     },
     {
       roleId: 'lead-codex',
@@ -54,6 +55,7 @@ function sampleRoles(extraAgentCount = 0) {
       cliTool: 'codex',
       model: 'gpt-5.4 high',
       behaviorSummary: 'Owns execution planning.',
+      mode: 'planning',
     },
     {
       roleId: 'agent-codex',
@@ -62,6 +64,11 @@ function sampleRoles(extraAgentCount = 0) {
       cliTool: 'codex',
       model: 'gpt-5.4 high',
       behaviorSummary: 'Implements scoped changes.',
+      communicationStyle: 'Minimal and concrete.',
+      qualityGates: ['Run the scoped test lane.'],
+      definitionOfDone: ['Ready for review.'],
+      phaseScope: ['implementation', 'verification'],
+      mode: 'implementation',
     },
     {
       roleId: 'agent-gemini',
@@ -70,6 +77,7 @@ function sampleRoles(extraAgentCount = 0) {
       cliTool: 'gemini',
       model: 'gemini-2.5-pro',
       behaviorSummary: 'Finds source material.',
+      mode: 'research',
     },
   ]
 
@@ -316,6 +324,23 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-role-section-leads')).toBeInTheDocument()
     expect(screen.queryByTestId('mesh-builder-role-section-agents')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-role-lead-claude')).toBeInTheDocument()
+  })
+
+  it('filters roles by mode pills', async () => {
+    renderBuilder()
+
+    expect(screen.getByTestId('mesh-builder-filter-modes')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-filter-mode-implementation'))
+
+    expect(screen.queryByTestId('mesh-builder-role-lead-claude')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-role-agent-codex')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-role-agent-gemini')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-filter-mode-implementation'))
+
+    expect(screen.getByTestId('mesh-builder-role-lead-claude')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-role-agent-gemini')).toBeInTheDocument()
   })
 
   it('shows an empty-results state when filters remove every role', async () => {
@@ -565,6 +590,13 @@ describe('MeshTeamBuilder', () => {
     getRoleTemplate.mockResolvedValue({
       ...sampleRoles().find((role) => role.roleId === 'agent-codex'),
       instructions: 'Keep implementation scoped.',
+      communicationStyle: 'Short progress updates.',
+      qualityGates: ['Run targeted tests'],
+      definitionOfDone: ['Handoff sent'],
+      phaseScope: ['implementation'],
+      mode: 'implementation',
+      inheritsFrom: 'shared-codex-dev',
+      requiredArtifacts: ['notes.md'],
       defaults: {
         cliTool: 'codex',
         model: 'gpt-5.4 high',
@@ -595,6 +627,24 @@ describe('MeshTeamBuilder', () => {
     await fireEvent.input(screen.getByTestId('mesh-node-detail-context-input'), {
       target: { value: 'Carries implementation context across PR-sized changes.' },
     })
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-communication-style-input'), {
+      target: { value: 'Short updates with exact file paths.' },
+    })
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-quality-gates-input-0'), {
+      target: { value: 'Run targeted tests and typecheck' },
+    })
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-phase-scope-input'), {
+      target: { value: 'implementation, verification' },
+    })
+    await fireEvent.change(screen.getByTestId('mesh-node-detail-mode-input'), {
+      target: { value: 'review' },
+    })
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-inherits-from-input'), {
+      target: { value: 'shared-review-codex' },
+    })
+    await fireEvent.input(screen.getByTestId('mesh-node-detail-required-artifacts-input-0'), {
+      target: { value: 'verification-notes.md' },
+    })
     await fireEvent.click(screen.getByTestId('mesh-node-detail-save'))
 
     await waitFor(() => expect(upsertRoleTemplate).toHaveBeenCalledTimes(1))
@@ -602,6 +652,12 @@ describe('MeshTeamBuilder', () => {
       expect.objectContaining({
         roleId: 'agent-codex',
         contextSummary: 'Carries implementation context across PR-sized changes.',
+        communicationStyle: 'Short updates with exact file paths.',
+        qualityGates: ['Run targeted tests and typecheck'],
+        phaseScope: ['implementation', 'verification'],
+        mode: 'review',
+        inheritsFrom: 'shared-review-codex',
+        requiredArtifacts: ['verification-notes.md'],
         behavioralContract: expect.objectContaining({
           execution: ['Implement the scoped change.'],
         }),

@@ -78,7 +78,20 @@ Role import/export details:
 - import accepts markdown role files and preserves provenance metadata
 - supported imported formats include Claude Code, Copilot custom-agent markdown, `AGENTS.md`, and `GEMINI.md`
 - export writes current taurhaus roles back out to Claude Code or Copilot markdown
+- Taurhaus-authored Claude/Copilot exports preserve the extended role fields through compiled Markdown sections, while instruction-only formats remain intentionally lossy
 - imported roles are visibly marked with provenance badges in the catalog
+
+Role authoring now supports a richer schema than the original focus/context/behavior trio. In addition to `focus_area`, `context_summary`, and `behavior_summary`, roles can carry:
+
+- `communication_style`
+- `quality_gates`
+- `definition_of_done`
+- `phase_scope`
+- `mode`
+- `inherits_from`
+- `required_artifacts`
+
+Use those fields to express how a role should communicate, what checks it must satisfy, which delivery phases it belongs in, whether it is a specialized variant of another role, and what artifacts it is expected to produce.
 
 ### Team customizer
 
@@ -89,6 +102,8 @@ Role import/export details:
 - agent members
 - project assignment per member
 - role binding per member
+
+Role metadata remains visible through setup and runtime so the lead can route work with more than just a name and tool. The richer schema makes it possible to tell, for example, whether a role is meant for planning vs review, what kind of evidence it should return, and what a successful handoff should include.
 
 The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and presets may resolve to Claude, Codex, or Gemini lead roles.
 
@@ -145,7 +160,7 @@ The compaction audit surface shows the last known member, tool, session id, comp
 
 - tool/model and project placement
 - cross-project placement details
-- role details (name, focus area, context, and behavior guidance)
+- role details (name, focus area, context, behavior guidance, communication style, quality gates, definition of done, phase scope, mode, inheritance, and required artifacts when present)
 - runtime details like terminal pane, session ID, and current state
 
 Runtime node actions include:
@@ -155,6 +170,8 @@ Runtime node actions include:
 - remove member
 - capture member as a reusable role template
 - close detail
+
+Captured runtime roles keep the evolved role-schema fields so reviewed runtime members can be promoted back into the catalog without flattening them into generic instructions.
 
 ### Resume flows
 
