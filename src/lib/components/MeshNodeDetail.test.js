@@ -2,78 +2,76 @@ import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
+vi.mock('../MarkdownRenderer.svelte', () => ({
+  default: function MockMarkdownRenderer(target, props) {
+    const element = document.createElement('div')
+    element.setAttribute('data-testid', 'mock-markdown')
+    element.textContent = String(props.source ?? '')
+    target.parentNode?.insertBefore(element, target)
+    return {
+      update(nextProps) {
+        element.textContent = String(nextProps.source ?? '')
+      },
+      destroy() {
+        element.remove()
+      },
+    }
+  },
+}))
+
 import MeshNodeDetail from './MeshNodeDetail.svelte'
 
 function renderDetail(props = {}) {
-  const legacyNode = {}
-  if (props.name !== undefined) legacyNode.name = props.name
-  if (props.role !== undefined) legacyNode.role = props.role
-  if (props.tool !== undefined) legacyNode.tool = props.tool
-  if (props.model !== undefined) legacyNode.model = props.model
-  if (props.status !== undefined) legacyNode.status = props.status
-  if (props.projectId !== undefined) legacyNode.projectId = props.projectId
-  if (props.isCrossProject !== undefined) legacyNode.isCrossProject = props.isCrossProject
-  if (props.projectLabel !== undefined) legacyNode.projectLabel = props.projectLabel
-  if (props.description !== undefined) legacyNode.description = props.description
   const node = {
     name: 'frontend-dev',
+    roleName: 'Codex Architect',
     role: 'agent',
     tool: 'codex',
     model: 'gpt-5.4 high',
-    status: 'active',
+    status: 'idle',
     projectId: 'taurhaus-web',
-    description: 'Implements UI surface details for the mesh canvas.',
-    ...legacyNode,
-    ...(props.node || {}),
+    focusArea: 'Architecture decisions and structural review',
+    contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+    behaviorSummary: 'Escalates direction changes before implementation.\nProtects long-lived system boundaries.',
+    instructions: '## Operating notes\n\nKeep implementation scoped.',
+    paneId: '%9',
+    sessionId: 'sess-123',
+    sessionState: 'warming',
+    capabilities: ['planning', 'review'],
+    ...props.node,
   }
-  const actions = {
-    ...(props.actions || {}),
-  }
-  const passthrough = { ...props }
-  delete passthrough.name
-  delete passthrough.role
-  delete passthrough.tool
-  delete passthrough.model
-  delete passthrough.status
-  delete passthrough.projectId
-  delete passthrough.isCrossProject
-  delete passthrough.projectLabel
-  delete passthrough.description
-  delete passthrough.node
-  delete passthrough.actions
+
   return render(MeshNodeDetail, {
     props: {
       node,
-      mode: 'setup',
+      mode: 'runtime',
       dark: true,
-      actions,
-      ...passthrough,
+      actions: {},
+      ...props,
     },
   })
 }
 
 describe('MeshNodeDetail', () => {
-  it('renders name, tool, model, and status', () => {
-    renderDetail()
-
-    expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('frontend-dev')
-    expect(screen.getByTestId('mesh-node-detail-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
-    expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent('Active')
-    expect(screen.getByTestId('status-badge-active')).toBeInTheDocument()
-  })
-
-  it('renders a compact role section when runtime role metadata is present', () => {
+  it('renders as a full dialog with pinned runtime actions and markdown-backed sections', () => {
     renderDetail({
-      node: {
-        roleName: 'Codex Architect',
-        focusArea: 'Architecture decisions and structural review',
-        contextSummary: 'Carries long-lived context around module boundaries and reviews.',
-        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+      actions: {
+        onResume: vi.fn(),
+        onStop: vi.fn(),
+        onFocusPane: vi.fn(),
+        onCapture: vi.fn(),
+        onClose: vi.fn(),
       },
     })
 
-    expect(screen.getByTestId('mesh-node-detail-role-section')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-role-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByRole('dialog', { name: 'Codex Architect' })).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getAllByText('Idle').length).toBeGreaterThan(0)
+    expect(screen.getByTestId('mesh-node-detail-toolbar')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-stop')).toHaveTextContent('Stop')
+    expect(screen.getByTestId('mesh-node-detail-focus')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-node-detail-focus-area')).toHaveTextContent(
       'Architecture decisions and structural review'
     )
@@ -81,158 +79,51 @@ describe('MeshNodeDetail', () => {
       'Carries long-lived context around module boundaries and reviews.'
     )
     expect(screen.getByTestId('mesh-node-detail-behavior-summary')).toHaveTextContent(
-      'Handles pattern choices and escalates direction changes.'
+      'Escalates direction changes before implementation.'
     )
-  })
-
-  it('renders lead role chip and runtime diagnostics when supplied', () => {
-    renderDetail({
-      mode: 'runtime',
-      role: 'lead',
-      status: 'idle',
-      node: {
-        paneId: '%9',
-        sessionId: 'sess-123',
-        sessionState: 'warming',
-      },
-    })
-
-    expect(screen.getByText('Lead')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-runtime')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-description')).toHaveTextContent(
+      'Keep implementation scoped.'
+    )
     expect(screen.getByTestId('mesh-node-detail-pane')).toHaveTextContent('%9')
     expect(screen.getByTestId('mesh-node-detail-session')).toHaveTextContent('sess-123')
     expect(screen.getByTestId('mesh-node-detail-session-state')).toHaveTextContent('warming')
   })
 
-  it('animates in using mesh-detail-enter keyframe class', () => {
-    renderDetail()
-    const detail = screen.getByTestId('mesh-node-detail')
-    expect(detail.getAttribute('style') || '').toContain('animation: mesh-detail-enter 80ms')
-    expect(detail).toHaveAttribute('data-enter-duration-ms', '80')
-  })
-
-  it('defaults to bottom placement when no anchor is provided', () => {
-    renderDetail()
-    const detail = screen.getByTestId('mesh-node-detail')
-    expect(detail).toHaveAttribute('data-placement', 'bottom')
-    expect(detail.getAttribute('style') || '').toContain('transform: translateX(-50%)')
-  })
-
-  it('uses anchored top/left coordinates when provided', () => {
+  it('renders the roster context with an Add to Team action instead of runtime controls', () => {
     renderDetail({
-      anchor: {
-        left: 88,
-        top: 24,
-        placement: 'top',
-        cardWidth: 220,
-      },
-    })
-
-    const detail = screen.getByTestId('mesh-node-detail')
-    const style = detail.getAttribute('style') || ''
-    expect(detail).toHaveAttribute('data-placement', 'top')
-    expect(style).toContain('left: 88px')
-    expect(style).toContain('top: 24px')
-    expect(style).toContain('width: 220px')
-  })
-
-  it('shows Edit and Remove buttons in setup mode', () => {
-    renderDetail({ mode: 'setup', role: 'agent' })
-    expect(screen.getByTestId('mesh-node-detail-edit')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-remove')).toBeInTheDocument()
-  })
-
-  it("doesn't show Remove for lead nodes in setup mode", () => {
-    renderDetail({ mode: 'setup', role: 'lead' })
-    expect(screen.getByTestId('mesh-node-detail-edit')).toBeInTheDocument()
-    expect(screen.queryByTestId('mesh-node-detail-remove')).not.toBeInTheDocument()
-  })
-
-  it('shows Resume, Remove, and Focus buttons in runtime mode', () => {
-    renderDetail({ mode: 'runtime' })
-    expect(screen.getByTestId('mesh-node-detail-resume')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-stop')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-stop')).toHaveTextContent('Remove')
-    expect(screen.getByTestId('mesh-node-detail-focus')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
-  })
-
-  it('disables Focus button when no focus callback is provided', () => {
-    renderDetail({
-      mode: 'runtime',
-      actions: {
-        onResume: vi.fn(),
-        onStop: vi.fn(),
-        onCapture: vi.fn(),
-      },
-    })
-
-    expect(screen.getByTestId('mesh-node-detail-focus')).toBeDisabled()
-  })
-
-  it('renders contrast-safe surfaces in dark and light modes', () => {
-    const view = renderDetail({ mode: 'runtime', dark: true })
-    expect(screen.getByTestId('mesh-node-detail').className).toContain('text-zinc-100')
-
-    view.rerender({
+      mode: 'builder',
       node: {
-        name: 'frontend-dev',
-        role: 'agent',
-        tool: 'codex',
-        model: 'gpt-5.4 high',
-        status: 'active',
-        projectId: 'taurhaus-web',
-        description: 'Implements UI surface details for the mesh canvas.',
+        status: '',
+        paneId: '',
+        sessionId: '',
+        sessionState: '',
       },
-      mode: 'runtime',
-      dark: false,
-      actions: {},
+      actions: {
+        onAdd: vi.fn(),
+        onClose: vi.fn(),
+      },
     })
-    expect(screen.getByTestId('mesh-node-detail').className).toContain('text-zinc-900')
+
+    expect(screen.getByTestId('mesh-node-detail-add')).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-node-detail-resume')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-node-detail-focus')).not.toBeInTheDocument()
+    expect(screen.getByText('Template')).toBeInTheDocument()
   })
 
-  it('calls action callbacks', async () => {
-    const onEdit = vi.fn()
-    const onRemove = vi.fn()
+  it('invokes runtime actions and close affordances', async () => {
     const onResume = vi.fn()
     const onStop = vi.fn()
     const onFocusPane = vi.fn()
     const onCapture = vi.fn()
     const onClose = vi.fn()
 
-    const view = renderDetail({
-      mode: 'setup',
-      actions: {
-        onEdit,
-        onRemove,
-        onClose,
-      },
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-remove'))
-    await fireEvent.click(screen.getByTestId('mesh-node-detail-close'))
-    expect(onEdit).toHaveBeenCalledTimes(1)
-    expect(onRemove).toHaveBeenCalledTimes(1)
-    expect(onClose).toHaveBeenCalledTimes(1)
-
-    view.rerender({
-      node: {
-        name: 'frontend-dev',
-        role: 'agent',
-        tool: 'codex',
-        model: 'gpt-5.4 high',
-        status: 'active',
-        projectId: 'taurhaus-web',
-        description: 'Implements UI surface details for the mesh canvas.',
-      },
-      mode: 'runtime',
-      dark: true,
+    renderDetail({
       actions: {
         onResume,
         onStop,
         onFocusPane,
         onCapture,
+        onClose,
       },
     })
 
@@ -240,99 +131,45 @@ describe('MeshNodeDetail', () => {
     await fireEvent.click(screen.getByTestId('mesh-node-detail-stop'))
     await fireEvent.click(screen.getByTestId('mesh-node-detail-focus'))
     await fireEvent.click(screen.getByTestId('mesh-node-detail-capture'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-close'))
+
     expect(onResume).toHaveBeenCalledTimes(1)
     expect(onStop).toHaveBeenCalledTimes(1)
     expect(onFocusPane).toHaveBeenCalledTimes(1)
     expect(onCapture).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('shows description when provided and hides when empty', () => {
-    const view = renderDetail({ description: 'Node details for handoff.' })
-    expect(screen.getByTestId('mesh-node-detail-description')).toHaveTextContent('Node details for handoff.')
+  it('closes on Escape and backdrop click', async () => {
+    const onClose = vi.fn()
 
-    view.rerender({
-      node: {
-        name: 'frontend-dev',
-        role: 'agent',
-        tool: 'codex',
-        model: 'gpt-5.4 high',
-        status: 'active',
-        projectId: 'taurhaus-web',
-        description: '',
-      },
-      mode: 'setup',
-      dark: true,
+    renderDetail({
+      actions: { onClose },
     })
 
-    expect(screen.queryByTestId('mesh-node-detail-description')).not.toBeInTheDocument()
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-host'))
+
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 
-  it('shows project label and location for cross-project members only', async () => {
+  it('returns focus to the opener when closed', async () => {
+    const opener = document.createElement('button')
+    opener.textContent = 'Open detail'
+    document.body.appendChild(opener)
+    opener.focus()
+
+    const onClose = vi.fn()
     const view = renderDetail({
-      projectId: '/home/user/projects/mesh',
-      isCrossProject: true,
-      projectLabel: 'mesh',
+      actions: { onClose },
     })
 
-    expect(screen.getByTestId('mesh-node-detail-project-card')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: mesh')
-    expect(screen.getByTestId('mesh-node-detail-project-context')).toHaveTextContent('/home/user/projects/mesh')
-    expect(screen.getByTestId('mesh-node-detail-location')).toHaveTextContent('Location: other project')
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-close'))
 
-    await view.rerender({
-      node: {
-        name: 'frontend-dev',
-        role: 'agent',
-        tool: 'codex',
-        model: 'gpt-5.4 high',
-        status: 'active',
-        projectId: 'taurhaus-web',
-        isCrossProject: false,
-        projectLabel: '',
-        description: 'Implements UI surface details for the mesh canvas.',
-      },
-      mode: 'runtime',
-      dark: true,
-      actions: {},
-    })
+    expect(onClose).toHaveBeenCalledTimes(1)
 
-    expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: taurhaus-web')
-    expect(screen.queryByTestId('mesh-node-detail-project-card')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('mesh-node-detail-project-context')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('mesh-node-detail-location')).not.toBeInTheDocument()
-  })
-
-  it('uses dedicated cross-project styling in dark and light themes', async () => {
-    const view = renderDetail({
-      dark: true,
-      projectId: '/home/user/projects/mesh',
-      isCrossProject: true,
-      projectLabel: 'mesh',
-    })
-
-    expect(screen.getByTestId('mesh-node-detail-project-card').className).toContain('bg-brand-500/[0.08]')
-    expect(screen.getByTestId('mesh-node-detail-project').className).toContain('border-brand-400/35')
-    expect(screen.getByTestId('mesh-node-detail-location').className).toContain('border-white/12')
-
-    await view.rerender({
-      node: {
-        name: 'frontend-dev',
-        role: 'agent',
-        tool: 'codex',
-        model: 'gpt-5.4 high',
-        status: 'active',
-        projectId: '/home/user/projects/mesh',
-        isCrossProject: true,
-        projectLabel: 'mesh',
-        description: 'Implements UI surface details for the mesh canvas.',
-      },
-      mode: 'runtime',
-      dark: false,
-      actions: {},
-    })
-
-    expect(screen.getByTestId('mesh-node-detail-project-card').className).toContain('bg-brand-50/85')
-    expect(screen.getByTestId('mesh-node-detail-project').className).toContain('border-brand-300')
-    expect(screen.getByTestId('mesh-node-detail-location').className).toContain('border-zinc-300')
+    view.unmount()
+    expect(opener).toHaveFocus()
+    opener.remove()
   })
 })

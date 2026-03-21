@@ -14,6 +14,7 @@
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { projectNameFromPath } from './meshTabUtils.js'
+  import MeshNodeDetail from './MeshNodeDetail.svelte'
   import {
     latestRoleVersions,
     ROLE_VERSION_VISIBILITY_STORAGE_KEY,
@@ -136,6 +137,7 @@
   let catalogDensityPreference = $state(null)
   let teamNameInput = $state(null)
   let teamDescriptionInput = $state(null)
+  let selectedRoleDetailId = $state('')
   let rosterFeedbackTimer = null
   let roleFeedbackTimer = null
   let previousRosterMemberIds = []
@@ -201,6 +203,9 @@
   )
   const leadRoles = $derived(catalogListRoles.filter((role) => role.kind === 'lead'))
   const agentRoles = $derived(catalogListRoles.filter((role) => role.kind !== 'lead'))
+  const selectedRoleDetail = $derived.by(() =>
+    normalizedRoles.find((role) => role.roleId === selectedRoleDetailId) ?? null
+  )
   const visibleRoleCount = $derived(filteredRoles.length)
   const catalogDensityMode = $derived(
     catalogDensityPreference ?? (visibleRoleCount > 8 ? 'compact' : 'expanded')
@@ -778,6 +783,39 @@
     onApplyPreset(preset)
   }
 
+  function roleDetailNode(role) {
+    if (!role) return null
+    return {
+      name: role.name,
+      roleName: role.name,
+      role: role.kind,
+      tool: role.cliTool,
+      model: role.model,
+      status: 'available',
+      roleId: role.roleId,
+      focusArea: role.focusArea ?? role.focus_area ?? '',
+      contextSummary: role.contextSummary ?? role.context_summary ?? '',
+      behaviorSummary: role.behaviorSummary ?? role.behavior_summary ?? '',
+      instructions: role.instructions ?? role.description ?? '',
+      behavioralContract: role.behavioralContract ?? role.behavioral_contract ?? null,
+      capabilities: Array.isArray(role.capabilities) ? role.capabilities : [],
+    }
+  }
+
+  function openRoleDetail(role) {
+    selectedRoleDetailId = String(role?.roleId ?? '').trim()
+  }
+
+  function closeRoleDetail() {
+    selectedRoleDetailId = ''
+  }
+
+  function handleRoleDetailAdd() {
+    if (!selectedRoleDetail) return
+    assignRole(selectedRoleDetail)
+    closeRoleDetail()
+  }
+
   function handleRemoveAgent(agentId) {
     if (!agentId || isAgentRemoving(agentId)) return
     removingAgentIds = [...removingAgentIds, agentId]
@@ -1195,6 +1233,15 @@
                         {roleKindLabel(role)}
                       </span>
                       <button
+                        class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label={`View details for ${role.name}`}
+                        onclick={() => openRoleDetail(role)}
+                        data-testid={`mesh-builder-pinned-info-${role.roleId}`}
+                      >
+                        i
+                      </button>
+                      <button
                         class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
@@ -1271,6 +1318,15 @@
                         {roleKindLabel(role)}
                       </span>
                       <button
+                        class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label={`View details for ${role.name}`}
+                        onclick={() => openRoleDetail(role)}
+                        data-testid={`mesh-builder-role-info-${role.roleId}`}
+                      >
+                        i
+                      </button>
+                      <button
                         class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
                         aria-label={isRolePinned(role.roleId) ? `Unpin ${role.name}` : `Pin ${role.name}`}
@@ -1335,6 +1391,15 @@
                       <span class="rounded-full border px-1.5 py-0.5 text-[9px] font-medium leading-none {roleChipTone(role)}">
                         {roleKindLabel(role)}
                       </span>
+                      <button
+                        class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {ghostTone}"
+                        type="button"
+                        aria-label={`View details for ${role.name}`}
+                        onclick={() => openRoleDetail(role)}
+                        data-testid={`mesh-builder-role-info-${role.roleId}`}
+                      >
+                        i
+                      </button>
                       <button
                         class="mesh-builder-row-control inline-flex h-7 w-7 items-center justify-center rounded-full border transition {pinButtonTone(isRolePinned(role.roleId))} {isPinBouncing(role.roleId) ? 'mesh-builder-pin-bounce' : ''}"
                         type="button"
@@ -1779,6 +1844,18 @@
       </section>
     </div>
   </main>
+
+  {#if selectedRoleDetail}
+    <MeshNodeDetail
+      node={roleDetailNode(selectedRoleDetail)}
+      mode="builder"
+      {dark}
+      actions={{
+        onAdd: handleRoleDetailAdd,
+        onClose: closeRoleDetail,
+      }}
+    />
+  {/if}
 </section>
 
 <style>

@@ -4,7 +4,7 @@
   import { themeTokens } from '../themeTokens.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import MeshCanvas from './MeshCanvas.svelte'
-  import MeshNodeDetail from './MeshNodeDetail.svelte'
+import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MeshRuntimeBar from './MeshRuntimeBar.svelte'
   import SlideOver from './SlideOver.svelte'
 
@@ -270,7 +270,7 @@
   $effect(() => {
     const perf = detailOpenPerf
     if (!perf?.startedAt || perf.renderedLogged) return
-    if (!detailNode || !nodeDetailAnchor) return
+    if (!detailNode) return
     logDetailPerf('rendered', perf)
     detailOpenPerf = {
       ...perf,
@@ -338,26 +338,24 @@
         onDismissDetail={onCloseNode}
       />
 
-      {#if detailNode && nodeDetailAnchor}
-        <div class="pointer-events-none absolute inset-0 z-20" data-testid="mesh-node-detail-host">
-          <MeshNodeDetail
-            node={detailNode}
-            mode="runtime"
-            {dark}
-            anchor={nodeDetailAnchor}
-            onVisible={handleDetailVisible}
-            actions={{
-              onResume: onResumeSelected,
-              resumeDisabled: isResumingTeam,
-              onStop: onStopSelected,
-              stopDisabled: isResumingTeam,
-              onFocusPane: canFocusSelectedPane ? onFocusSelectedPane : null,
-              onCapture: onCaptureRole,
-              captureDisabled: isResumingTeam,
-              onClose: onCloseNode,
-            }}
-          />
-        </div>
+      {#if detailNode}
+        <MeshNodeDetail
+          node={detailNode}
+          mode="runtime"
+          {dark}
+          anchor={nodeDetailAnchor}
+          onVisible={handleDetailVisible}
+          actions={{
+            onResume: onResumeSelected,
+            resumeDisabled: isResumingTeam,
+            onStop: onStopSelected,
+            stopDisabled: isResumingTeam,
+            onFocusPane: canFocusSelectedPane ? onFocusSelectedPane : null,
+            onCapture: onCaptureRole,
+            captureDisabled: isResumingTeam,
+            onClose: onCloseNode,
+          }}
+        />
       {/if}
     </div>
   </div>

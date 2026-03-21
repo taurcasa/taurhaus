@@ -2950,7 +2950,8 @@ describe('MeshTab', () => {
     await fireEvent.click(screen.getByTestId('mesh-node-agent'))
 
     expect(screen.getByTestId('mesh-node-detail')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('frontend-dev')
+    expect(screen.getByTestId('mesh-node-detail-name')).toHaveTextContent('Codex Architect')
+    expect(screen.getByTestId('mesh-node-detail-subject')).toHaveTextContent('frontend-dev')
   })
 
   it('keeps runtime node detail fully-visible latency under 120ms after click', async () => {

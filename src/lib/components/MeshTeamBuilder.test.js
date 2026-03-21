@@ -459,6 +459,22 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-pinned-add-agent-codex')).toHaveTextContent('+')
   })
 
+  it('opens the shared role detail overlay from the catalog and adds the selected role from there', async () => {
+    const onAppendAgentRole = vi.fn()
+
+    renderBuilder({ onAppendAgentRole })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
+
+    expect(screen.getByRole('dialog', { name: 'Codex Developer' })).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-node-detail-add')).toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-add'))
+
+    expect(onAppendAgentRole).toHaveBeenCalledWith('agent-codex')
+    expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
+  })
+
   it('keeps the catalog visible for both empty and populated rosters', () => {
     const { unmount } = renderBuilder()
 
