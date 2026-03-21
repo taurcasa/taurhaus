@@ -68,17 +68,6 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     state.runtimeMessage = ''
   }
 
-  function handleStartCustom() {
-    gate.invalidateDiscovery()
-    const projectPath = deps.getProjectPath()
-    state.teamConfig = deps.emptyBuilderConfig()
-    state.teamName = deps.inferTeamName(projectPath)
-    state.selectedNodeId = null
-    state.mode = 'setup'
-    closeSlideOver()
-    state.runtimeMessage = ''
-  }
-
   function handleTeamNameChange(value) {
     if (state.mode === 'empty') gate.invalidateDiscovery()
     state.teamName = String(value ?? '')
@@ -494,7 +483,6 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     handleReset,
     handleRoleChange,
     handleSaveBuilderPreset,
-    handleStartCustom,
     handleTeamDescriptionChange,
     handleTeamNameChange,
     handleUpdateAgent,

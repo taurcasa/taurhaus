@@ -17,7 +17,6 @@
     onGateReady = () => {},
     onApplyPreset = () => {},
     onBrowseCatalog = () => {},
-    onStartCustom = () => {},
     onTeamNameChange = () => {},
     onDescriptionChange = () => {},
     onAssignLeadRole = () => {},
@@ -54,7 +53,6 @@
       roleTemplates={roleTemplates}
       presets={quickPresets}
       {availableProjects}
-      onBuildCustom={onStartCustom}
       onBrowseCatalog={onBrowseCatalog}
       onTeamNameChange={onTeamNameChange}
       onDescriptionChange={onDescriptionChange}
@@ -82,7 +80,6 @@
       roleTemplates={roleTemplates}
       presets={quickPresets}
       {availableProjects}
-      onBuildCustom={onStartCustom}
       onBrowseCatalog={onBrowseCatalog}
       onTeamNameChange={onTeamNameChange}
       onDescriptionChange={onDescriptionChange}

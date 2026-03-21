@@ -267,7 +267,6 @@ export function createMeshTabPublicApi({ state, gate, setup, init, runtime }) {
     ensureGateReady: gate.ensureGateReady,
     closeSlideOver: setup.closeSlideOver,
     handlePresetSelect: setup.handlePresetSelect,
-    handleStartCustom: setup.handleStartCustom,
     handleTeamNameChange: setup.handleTeamNameChange,
     handleTeamDescriptionChange: setup.handleTeamDescriptionChange,
     handleAssignLeadRole: setup.handleAssignLeadRole,

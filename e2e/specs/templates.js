@@ -273,7 +273,7 @@ describe('Templates Workflow', () => {
     expect(await hasTestId('mesh-mode-empty')).toBe(true)
     expect(await hasTestId('mesh-empty-state')).toBe(true)
     expect(await hasTestId('mesh-template-browse-catalog')).toBe(true)
-    expect(await hasTestId('mesh-template-build-custom')).toBe(true)
+    expect(await hasTestId('mesh-template-build-custom')).toBe(false)
   })
 
   it('browses built-in role and preset entries in template browser', async function () {

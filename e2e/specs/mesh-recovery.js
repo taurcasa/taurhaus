@@ -203,7 +203,7 @@ async function ensureSetupMode() {
   if (await hasVisibleTestId('mesh-mode-setup')) return true
 
   if (await hasVisibleTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-template-build-custom')
+    await clickTestId('mesh-builder-team-name-display')
   }
 
   if (await hasVisibleTestId('mesh-availability-blocking')) return false

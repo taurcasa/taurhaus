@@ -177,7 +177,6 @@ function renderBuilder(props = {}) {
       roleTemplates: sampleRoles(),
       presets: [],
       availableProjects: sampleAvailableProjects(),
-      onBuildCustom: vi.fn(),
       onBrowseCatalog: vi.fn(),
       onTeamNameChange: vi.fn(),
       onDescriptionChange: vi.fn(),
@@ -445,6 +444,7 @@ describe('MeshTeamBuilder', () => {
     expect(
       screen.getByText('Search roles, pin favorites, and build the lineup from left to right.')
     ).toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-template-build-custom')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-action-initialize')).toBeDisabled()
     expect(screen.getByTestId('mesh-action-initialize-hint')).toHaveAttribute(
       'title',

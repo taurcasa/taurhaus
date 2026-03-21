@@ -293,12 +293,9 @@ describe('Mesh flow smoke', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
-    })
     await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
     await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
       expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
     })
 

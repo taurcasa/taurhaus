@@ -11,7 +11,6 @@
   const resolvedDark = $derived(dark || theme === 'dark')
   let ready = $state(false)
   const actions = $derived({
-    onBuildCustom: () => {},
     onBrowseCatalog: () => {},
     onTeamNameChange: () => {},
     onDescriptionChange: () => {},
@@ -66,7 +65,6 @@
       roleTemplates={scenario?.roleTemplates ?? []}
       presets={scenario?.presets ?? []}
       availableProjects={scenario?.availableProjects ?? []}
-      onBuildCustom={actions.onBuildCustom}
       onBrowseCatalog={actions.onBrowseCatalog}
       onTeamNameChange={actions.onTeamNameChange}
       onDescriptionChange={actions.onDescriptionChange}

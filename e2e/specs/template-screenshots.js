@@ -209,7 +209,7 @@ async function ensureSetupModeFromCustom() {
 
   if (!(await hasTestId('mesh-mode-setup'))) {
     if (!(await ensureEmptyMode())) return false
-    await clickTestId('mesh-template-build-custom')
+    await clickTestId('mesh-builder-team-name-display')
   }
 
   await waitForMode('mesh-mode-setup')

@@ -99,7 +99,7 @@ async function ensureSetupMode() {
   }
 
   if (await hasTestId('mesh-mode-empty')) {
-    await clickTestId('mesh-template-build-custom')
+    await clickTestId('mesh-builder-team-name-display')
   }
 
   await browser.waitUntil(

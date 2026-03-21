@@ -207,7 +207,6 @@
       onGateReady={controller.ensureGateReady}
       onApplyPreset={controller.handlePresetSelect}
       onBrowseCatalog={controller.openTemplates}
-      onStartCustom={controller.handleStartCustom}
       onTeamNameChange={controller.handleTeamNameChange}
       onDescriptionChange={controller.handleTeamDescriptionChange}
       onAssignLeadRole={controller.handleAssignLeadRole}

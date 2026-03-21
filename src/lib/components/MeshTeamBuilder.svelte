@@ -30,7 +30,6 @@
     roleTemplates = [],
     presets = [],
     availableProjects = [],
-    onBuildCustom = () => {},
     onBrowseCatalog = () => {},
     onTeamNameChange = () => {},
     onDescriptionChange = () => {},
@@ -478,10 +477,6 @@
     editingDescription = false
   }
 
-  function handleBuildCustom() {
-    onBuildCustom()
-  }
-
   function handleReset() {
     editingTeamName = false
     editingDescription = false
@@ -787,26 +782,14 @@
             </p>
           </div>
 
-          <div class="flex items-center gap-2">
-            <button
-              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
-              type="button"
-              onclick={focusCatalogSearch}
-              data-testid="mesh-template-browse-catalog"
-            >
-              Focus search
-            </button>
-            {#if mode === 'empty'}
-              <button
-                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
-                type="button"
-                onclick={handleBuildCustom}
-                data-testid="mesh-template-build-custom"
-              >
-                Start from scratch
-              </button>
-            {/if}
-          </div>
+          <button
+            class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+            type="button"
+            onclick={focusCatalogSearch}
+            data-testid="mesh-template-browse-catalog"
+          >
+            Focus search
+          </button>
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden" data-testid="mesh-builder-catalog-content">

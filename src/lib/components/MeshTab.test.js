@@ -1753,7 +1753,7 @@ describe('MeshTab', () => {
     expect(coordinationPreflightCheck).not.toHaveBeenCalled()
   })
 
-  it('empty -> setup transition via start custom', async () => {
+  it('empty -> setup transition via inline roster edit', async () => {
     render(MeshTab, {
       props: {
         dark: false,
@@ -1765,7 +1765,10 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-team-name-display'))
+    await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
+      target: { value: 'taurhaus-team' },
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
@@ -1799,12 +1802,9 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
-    })
     await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
     await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
       expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
     })
 
@@ -1849,12 +1849,9 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
 
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
-    })
     await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
     await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
       expect(screen.getByTestId('mesh-builder-lead-card')).toBeInTheDocument()
     })
 
@@ -1924,7 +1921,10 @@ describe('MeshTab', () => {
     expect(catalogSearch).toHaveFocus()
     expect(screen.queryByTestId('template-browser-panel')).not.toBeInTheDocument()
 
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-team-name-display'))
+    await fireEvent.input(screen.getByTestId('mesh-builder-team-name-input'), {
+      target: { value: 'taurhaus-team' },
+    })
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
@@ -2041,11 +2041,6 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
-    })
-
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
-    await waitFor(() => {
-      expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
 
     await fireEvent.click(screen.getByTestId('mesh-action-reset'))
@@ -3022,11 +3017,10 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
     })
-    await fireEvent.click(screen.getByTestId('mesh-template-build-custom'))
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-mode-setup')).toBeInTheDocument()
     })
-    await fireEvent.click(screen.getByTestId('mesh-builder-role-lead-default'))
     await fireEvent.click(screen.getByTestId('mesh-builder-role-agent-default'))
     await waitFor(() => {
       expect(screen.getAllByTestId('mesh-node-agent')).toHaveLength(1)
