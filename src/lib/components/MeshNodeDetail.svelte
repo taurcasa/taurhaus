@@ -47,11 +47,11 @@
   })
   const statusDotTone = $derived.by(() => {
     if (normalizedContext !== 'runtime') {
-      return dark ? 'bg-white/45' : 'bg-zinc-400'
+      return dark ? 'bg-white/45' : 'bg-white/40'
     }
-    if (status === 'active') return dark ? 'bg-emerald-300' : 'bg-emerald-500'
-    if (status === 'idle') return dark ? 'bg-amber-300' : 'bg-amber-500'
-    return dark ? 'bg-zinc-500' : 'bg-zinc-400'
+    if (status === 'active') return dark ? 'bg-emerald-300' : 'bg-emerald-300'
+    if (status === 'idle') return dark ? 'bg-amber-300' : 'bg-amber-300'
+    return dark ? 'bg-zinc-500' : 'bg-white/35'
   })
   const focusArea = $derived.by(() => String(node?.focusArea ?? node?.focus_area ?? '').trim())
   const contextSummary = $derived.by(() => String(node?.contextSummary ?? node?.context_summary ?? '').trim())
@@ -71,17 +71,17 @@
   const overlayTone = $derived(
     dark
       ? 'border-white/[0.1] bg-brand-950/98 text-zinc-100 shadow-[0_38px_130px_rgba(0,0,0,0.62),0_10px_28px_rgba(2,10,12,0.4)]'
-      : 'border-brand-200/80 bg-white/98 text-zinc-900 shadow-[0_32px_120px_rgba(15,23,42,0.18),0_10px_28px_rgba(15,23,42,0.08)]'
+      : 'border-white/[0.1] bg-brand-950/98 text-zinc-100 shadow-[0_32px_120px_rgba(2,10,12,0.42),0_10px_28px_rgba(2,10,12,0.24)]'
   )
   const toolbarTone = $derived(
     dark
       ? 'border-white/[0.08] bg-brand-950/92 shadow-[0_12px_36px_rgba(0,0,0,0.2)]'
-      : 'border-brand-200/70 bg-white/95 shadow-[0_10px_26px_rgba(15,23,42,0.08)]'
+      : 'border-white/[0.08] bg-brand-950/92 shadow-[0_12px_36px_rgba(0,0,0,0.18)]'
   )
   const focusCardTone = $derived(
     dark
       ? 'border-brand-300/25 bg-brand-500/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_16px_34px_rgba(0,0,0,0.18)]'
-      : 'border-brand-200/80 bg-brand-50/95 shadow-[0_14px_32px_rgba(15,23,42,0.06)]'
+      : 'border-brand-200/45 bg-brand-50/95 shadow-[0_14px_32px_rgba(2,10,12,0.16)]'
   )
   const configTone = $derived(
     dark
@@ -91,12 +91,12 @@
   const sectionTone = $derived(
     dark
       ? 'border-white/[0.08] bg-white/[0.025] shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_16px_36px_rgba(0,0,0,0.16)]'
-      : 'border-zinc-200/90 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.06)]'
+      : 'border-white/60 bg-white shadow-[0_14px_34px_rgba(2,10,12,0.18)]'
   )
   const secondaryActionTone = $derived(
     dark
       ? 'border-white/[0.1] bg-white/[0.03] text-zinc-100 hover:bg-white/[0.08]'
-      : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
+      : 'border-white/60 bg-white text-zinc-700 hover:bg-zinc-50'
   )
   const primaryActionTone = $derived(
     dark
@@ -121,8 +121,11 @@
   const closeTone = $derived(
     dark
       ? 'border-white/[0.08] bg-white/[0.03] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-100'
-      : 'border-zinc-200 bg-white/90 text-zinc-500 hover:bg-black/5 hover:text-zinc-900'
+      : 'border-white/[0.12] bg-white/[0.06] text-white/60 hover:bg-white/[0.12] hover:text-white'
   )
+  const shellMutedTone = $derived(dark ? 'text-zinc-500' : 'text-white/55')
+  const shellSecondaryTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-200')
+  const focusContentTone = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const codeTheme = $derived(dark ? 'github-dark' : 'github-light')
   const breadcrumbLabel = $derived(normalizedContext === 'runtime' ? 'Team Roster' : 'Role Catalog')
   const canFocusPane = $derived(typeof actions?.onFocusPane === 'function')
@@ -301,11 +304,14 @@
       <span aria-hidden="true" class="text-lg leading-none">×</span>
     </button>
 
-    <div class="sticky top-0 z-10 border-b px-6 pb-5 pt-6 backdrop-blur {toolbarTone}">
+    <div
+      class="sticky top-0 z-10 border-b px-6 pb-5 pt-6 backdrop-blur {toolbarTone}"
+      data-testid="mesh-node-detail-header"
+    >
       <div class="mx-auto w-full max-w-[640px] pr-12">
         <div class="flex items-start gap-4">
           <div class="min-w-0 flex-1 space-y-2">
-            <p class="text-[11px] font-medium uppercase tracking-[0.18em] {t.textMuted}">
+            <p class="text-[11px] font-medium uppercase tracking-[0.18em] {shellMutedTone}">
               {breadcrumbLabel}
             </p>
             <div class="flex min-w-0 flex-wrap items-center gap-3">
@@ -318,7 +324,7 @@
                 </span>
               {/if}
             </div>
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {t.textSecondary}">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {shellSecondaryTone}">
               <span class="inline-flex items-center gap-2">
                 <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
                 {toolLabel}{model ? ` · ${model}` : ''}
@@ -328,7 +334,7 @@
                 <span>{statusLabel}</span>
               </span>
               {#if subjectLabel}
-                <span class="{t.textMuted}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
+                <span class="{shellMutedTone}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
               {/if}
             </div>
           </div>
@@ -418,7 +424,7 @@
       <div class="mx-auto flex w-full max-w-[640px] flex-col gap-6">
         {#if focusArea}
           <section class="rounded-[24px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
-            <div data-testid="mesh-node-detail-focus-area">
+            <div class="{focusContentTone}" data-testid="mesh-node-detail-focus-area">
               <MarkdownRenderer source={focusArea} {dark} codeTheme={codeTheme} />
             </div>
           </section>

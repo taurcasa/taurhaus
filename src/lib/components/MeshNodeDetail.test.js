@@ -110,6 +110,18 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByText('Template')).toBeInTheDocument()
   })
 
+  it('keeps the light-theme shell on the shared dark-teal surface with a subtle focus card border', () => {
+    renderDetail({
+      dark: false,
+    })
+
+    expect(screen.getByTestId('mesh-node-detail').className).toContain('bg-brand-950/98')
+    expect(screen.getByTestId('mesh-node-detail').className).not.toContain('bg-white/98')
+    expect(screen.getByTestId('mesh-node-detail-header').className).toContain('bg-brand-950/92')
+    expect(screen.getByTestId('mesh-node-detail-focus-card').className).toContain('border-brand-200/45')
+    expect(screen.getByTestId('mesh-node-detail-focus-card').className).not.toContain('border-brand-200/80')
+  })
+
   it('renders builder detail management actions when provided', () => {
     renderDetail({
       mode: 'builder',
