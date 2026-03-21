@@ -209,13 +209,63 @@ describe('MeshNodeDetail', () => {
 
     expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('border-0')
     expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('bg-transparent')
+    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('min-h-[80px]')
     expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('text-[15px]')
-    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('leading-[1.6]')
+    expect(screen.getByTestId('mesh-node-detail-context-input').className).toContain('leading-[1.65]')
     expect(screen.getByTestId('mesh-node-detail-behavior-input').className).toContain('border-0')
     expect(screen.getByTestId('mesh-node-detail-behavior-input').className).toContain('text-[15px]')
     expect(screen.getByTestId('mesh-node-detail-instructions-input').className).toContain('border-0')
     expect(screen.getByTestId('mesh-node-detail-focus-input').className).toContain('border-0')
-    expect(screen.getByTestId('mesh-node-detail-focus-input').className).toContain('text-[17px]')
+    expect(screen.getByTestId('mesh-node-detail-focus-input').className).toContain('text-[15px]')
+  })
+
+  it('auto-grows stacked section textareas on mount and input', async () => {
+    let mockScrollHeight = 132
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'scrollHeight')
+
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() {
+        return mockScrollHeight
+      },
+    })
+
+    try {
+      renderDetail({
+        mode: 'builder',
+        editing: true,
+        editDraft: {
+          name: 'Engineering Delivery Lead',
+          kind: 'lead',
+          tool: 'claude',
+          model: 'opus',
+          focusArea: 'Team sequencing, delivery coordination, and blocker escalation',
+          contextSummary: 'Maintains delivery flow and unblocks specialists.',
+          behaviorSummary: '- Escalate blockers quickly',
+          instructions: 'Keep the team moving.',
+          showInstructions: true,
+        },
+        actions: {
+          onCancelEdit: vi.fn(),
+          onSaveEdit: vi.fn(),
+          onEditChange: vi.fn(),
+          onAddSection: vi.fn(),
+        },
+      })
+
+      const contextInput = screen.getByTestId('mesh-node-detail-context-input')
+      expect(contextInput.style.height).toBe('132px')
+
+      mockScrollHeight = 188
+      await fireEvent.input(contextInput, { target: { value: 'Expanded content block' } })
+      expect(contextInput.style.height).toBe('188px')
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', originalScrollHeight)
+      } else {
+        delete HTMLTextAreaElement.prototype.scrollHeight
+      }
+    }
   })
 
   it('invokes runtime actions and close affordances', async () => {

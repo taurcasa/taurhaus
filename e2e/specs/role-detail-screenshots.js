@@ -16,9 +16,24 @@ import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 
 const screenshotDir = resolve(import.meta.dirname, '..', 'screenshots', 'role-detail')
 let mainApp = false
+let uniqueCounter = 0
+const runId = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 
 function selector(testId) {
   return `[data-testid="${testId}"]`
+}
+
+function nextId(prefix) {
+  uniqueCounter += 1
+  return `${prefix}-${runId}-${uniqueCounter}`
+}
+
+function slugify(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 async function hasTestId(testId) {
@@ -95,7 +110,63 @@ async function ensureSetupMode(testContext) {
   return true
 }
 
-async function openCatalogRole(roleId = 'agent-codex') {
+async function invokeTauri(command, args = undefined) {
+  return await browser.executeAsync((payload, done) => {
+    const tauri = window.__TAURI_INTERNALS__
+    if (!tauri || typeof tauri.invoke !== 'function') {
+      done({ ok: false, error: 'Tauri internals unavailable' })
+      return
+    }
+
+    const invokePromise =
+      payload.hasArgs
+        ? tauri.invoke(payload.command, payload.args)
+        : tauri.invoke(payload.command)
+
+    invokePromise
+      .then((result) => done({ ok: true, result }))
+      .catch((error) => done({ ok: false, error: error?.message ?? String(error) }))
+  }, { command, args, hasArgs: typeof args !== 'undefined' })
+}
+
+async function invokeTauriWithTimeout(command, args = undefined, timeoutMs = 2_500) {
+  return await Promise.race([
+    invokeTauri(command, args),
+    new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({ ok: false, error: `Timed out after ${timeoutMs}ms` })
+      }, timeoutMs)
+    }),
+  ])
+}
+
+async function bestEffortDeleteRole(roleId) {
+  if (!roleId) return
+  try {
+    await invokeTauriWithTimeout('templates_delete_role', { roleId }, 1_500)
+  } catch {}
+}
+
+async function bestEffortFlushPending() {
+  try {
+    await invokeTauriWithTimeout('templates_flush_pending', undefined, 1_500)
+  } catch {}
+}
+
+async function setInputValue(testId, value) {
+  const input = await $(selector(testId))
+  await input.waitForExist(WAIT_MEDIUM)
+  await input.click()
+  await input.clearValue()
+  await input.setValue(value)
+}
+
+async function setCatalogSearch(value) {
+  await setInputValue('mesh-builder-role-search', value)
+  await browser.pause(180)
+}
+
+async function openCatalogRole(roleId) {
   const explicitInfoButton = selector(`mesh-builder-role-info-${roleId}`)
   if (await hasTestId(`mesh-builder-role-info-${roleId}`)) {
     const clicked = await fastClick(explicitInfoButton)
@@ -168,6 +239,69 @@ async function openInlineEditMode() {
   return false
 }
 
+async function cancelInlineEditMode() {
+  await clickInsideOverlay('mesh-node-detail-cancel')
+  await browser.waitUntil(
+    async () => !(await hasTestId('mesh-node-detail-name-input')),
+    { ...WAIT_LONG, timeoutMsg: 'Inline role editing did not close' }
+  )
+}
+
+async function closeRoleEditorIfOpen() {
+  if (!(await hasTestId('mesh-role-editor'))) return
+
+  await clickTestId('mesh-role-editor-close')
+  await browser.waitUntil(
+    async () => !(await hasTestId('mesh-role-editor')),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Role editor dialog did not close' }
+  )
+}
+
+async function createEditableCatalogRole() {
+  const roleName = `E2E ${nextId('role-detail-editor')}`
+  const roleId = slugify(roleName)
+
+  await clickTestId('mesh-builder-create-role')
+  await browser.waitUntil(
+    async () => await hasTestId('mesh-role-editor'),
+    { ...WAIT_MEDIUM, timeoutMsg: 'Role editor dialog did not open' }
+  )
+
+  await setInputValue('mesh-role-editor-name-input', roleName)
+  await setInputValue(
+    'mesh-role-editor-context-summary-input',
+    'Owns stacked-section editor verification in the live app.'
+  )
+  await setInputValue(
+    'mesh-role-editor-instructions-input',
+    'Keep the role detail editor readable, calm, and easy to scan.'
+  )
+  await clickTestId('mesh-role-editor-save')
+
+  await browser.waitUntil(
+    async () => !(await hasTestId('mesh-role-editor')),
+    { ...WAIT_LONG, timeoutMsg: 'Role editor dialog did not close after save' }
+  )
+
+  await browser.waitUntil(
+    async () =>
+      (await hasTestId(`mesh-builder-role-info-${roleId}`)) || (await hasTestId('mesh-node-detail')),
+    { ...WAIT_LONG, timeoutMsg: `Custom role ${roleId} did not appear in the builder` }
+  )
+
+  if (await hasTestId('mesh-node-detail')) {
+    await closeRoleDetail()
+  }
+
+  await setCatalogSearch(roleName)
+  await browser.waitUntil(
+    async () => await hasTestId(`mesh-builder-role-info-${roleId}`),
+    { ...WAIT_LONG, timeoutMsg: `Custom role ${roleId} did not become searchable` }
+  )
+
+  return { roleId }
+}
+
 describe('Role detail screenshot verification', () => {
   before(async () => {
     rmSync(screenshotDir, { recursive: true, force: true })
@@ -180,25 +314,52 @@ describe('Role detail screenshot verification', () => {
     await waitForProjectsLoaded()
   })
 
-  it('captures dark read, light read, and dark edit role detail states', async function () {
+  it('captures stacked role detail states in both themes', async function () {
     if (!mainApp) return this.skip()
 
     if (!(await ensureSetupMode(this))) return
 
-    await setTheme('dark')
-    await openCatalogRole('agent-codex')
-    expect(await (await $(selector('mesh-node-detail'))).isExisting()).toBe(true)
-    await shot('01-role-detail-read-dark')
-    await closeRoleDetail()
+    let createdRoleId = ''
 
-    await setTheme('light')
-    await openCatalogRole('agent-codex')
-    await shot('02-role-detail-read-light')
-    await closeRoleDetail()
+    try {
+      const createdRole = await createEditableCatalogRole()
+      createdRoleId = createdRole.roleId
 
-    await setTheme('dark')
-    await openCatalogRole('agent-codex')
-    expect(await openInlineEditMode()).toBe(true)
-    await shot('03-role-detail-edit-dark')
+      await setTheme('dark')
+      await openCatalogRole(createdRoleId)
+      expect(await (await $(selector('mesh-node-detail'))).isExisting()).toBe(true)
+      await shot('01-role-detail-read-dark')
+      await closeRoleDetail()
+
+      await setTheme('light')
+      await openCatalogRole(createdRoleId)
+      await shot('02-role-detail-read-light')
+      await closeRoleDetail()
+
+      await setTheme('dark')
+      await openCatalogRole(createdRoleId)
+      expect(await openInlineEditMode()).toBe(true)
+      await shot('03-role-detail-edit-dark')
+      await cancelInlineEditMode()
+      await closeRoleDetail()
+
+      await setTheme('light')
+      await openCatalogRole(createdRoleId)
+      expect(await openInlineEditMode()).toBe(true)
+      await shot('04-role-detail-edit-light')
+      await cancelInlineEditMode()
+      await closeRoleDetail()
+    } finally {
+      await closeRoleEditorIfOpen().catch(() => {})
+      if (await hasTestId('mesh-node-detail-name-input')) {
+        await cancelInlineEditMode().catch(() => {})
+      }
+      if (await hasTestId('mesh-node-detail')) {
+        await closeRoleDetail().catch(() => {})
+      }
+      await setCatalogSearch('').catch(() => {})
+      await bestEffortDeleteRole(createdRoleId)
+      await bestEffortFlushPending()
+    }
   })
 })

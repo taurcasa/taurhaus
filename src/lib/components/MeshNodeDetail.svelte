@@ -132,6 +132,11 @@
       ? 'border-white/[0.08] bg-[linear-gradient(180deg,rgba(24,24,27,0.97),rgba(24,24,27,0.92))] shadow-[0_16px_44px_rgba(0,0,0,0.24)]'
       : 'border-zinc-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,244,245,0.96))] shadow-[0_12px_30px_rgba(15,23,42,0.08)]'
   )
+  const editorSectionCardTone = $derived(
+    dark
+      ? 'border-white/[0.08] bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_12px_28px_rgba(0,0,0,0.14)]'
+      : 'border-zinc-200 bg-zinc-50/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.96),0_12px_24px_rgba(15,23,42,0.05)]'
+  )
   const focusCardTone = $derived.by(() =>
     isEditing
       ? dark
@@ -200,11 +205,12 @@
   const shellSecondaryTone = $derived(t.textSecondary)
   const focusContentTone = $derived(t.textPrimary)
   const bodyTone = $derived(t.textBody)
-  const sectionLabelTone = $derived(dark ? 'text-brand-100/80' : 'text-brand-700/85')
+  const sectionLabelTone = $derived(dark ? 'text-brand-300/85' : 'text-brand-700/90')
+  const errorTextTone = $derived(dark ? 'text-danger-100' : 'text-danger-700')
   const codeTheme = $derived(dark ? 'github-dark' : 'github-light')
   const breadcrumbLabel = $derived.by(() => {
     if (normalizedContext === 'runtime') return 'Team Roster'
-    if (isEditing) return 'Role Catalog › Edit Role'
+    if (isEditing) return 'Role Catalog › Editing'
     return 'Role Catalog'
   })
   const canFocusPane = $derived(typeof actions?.onFocusPane === 'function')
@@ -299,6 +305,27 @@
     }
 
     return ''
+  }
+
+  function autoGrow(textarea) {
+    if (!(textarea instanceof HTMLTextAreaElement)) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 80)}px`
+  }
+
+  function autoGrowTextarea(node, _value) {
+    const resize = () => autoGrow(node)
+    resize()
+    node.addEventListener('input', resize)
+
+    return {
+      update(_nextValue) {
+        resize()
+      },
+      destroy() {
+        node.removeEventListener('input', resize)
+      },
+    }
   }
 
   function invoke(handler) {
@@ -428,7 +455,7 @@
               {#if isEditing}
                 <input
                   bind:this={titleInputEl}
-                  class="min-w-0 flex-1 bg-transparent text-[36px] font-semibold leading-none outline-none {editableFieldTone}"
+                  class="min-w-0 flex-1 bg-transparent text-[26px] font-bold leading-[1.15] tracking-[-0.02em] outline-none {editableFieldTone}"
                   value={titleLabel}
                   oninput={(event) => updateDraft({ name: event.currentTarget.value })}
                   data-testid="mesh-node-detail-name-input"
@@ -445,36 +472,60 @@
               {/if}
             </div>
             {#if isEditing}
-              <div class="flex flex-wrap items-center gap-2 text-[13px]">
-                <select
-                  class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
-                  value={editTool}
-                  onchange={(event) => handleToolChange(event.currentTarget.value)}
-                  data-testid="mesh-node-detail-tool-input"
-                >
-                  <option value="claude">Claude</option>
-                  <option value="codex">Codex</option>
-                  <option value="gemini">Gemini</option>
-                </select>
-                <select
-                  class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
-                  value={model}
-                  onchange={(event) => updateDraft({ model: event.currentTarget.value })}
-                  data-testid="mesh-node-detail-model-input"
-                >
-                  {#each modelOptions as option}
-                    <option value={option}>{option}</option>
-                  {/each}
-                </select>
-                <select
-                  class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
-                  value={editKind}
-                  onchange={(event) => updateDraft({ kind: event.currentTarget.value })}
-                  data-testid="mesh-node-detail-kind-input"
-                >
-                  <option value="agent">Agent</option>
-                  <option value="lead">Lead</option>
-                </select>
+              <div class="mt-4 flex flex-wrap items-center justify-between gap-3" data-testid="mesh-node-detail-toolbar">
+                <div class="flex flex-wrap items-center gap-2 text-[13px]">
+                  <select
+                    class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
+                    value={editTool}
+                    onchange={(event) => handleToolChange(event.currentTarget.value)}
+                    data-testid="mesh-node-detail-tool-input"
+                  >
+                    <option value="claude">Claude</option>
+                    <option value="codex">Codex</option>
+                    <option value="gemini">Gemini</option>
+                  </select>
+                  <select
+                    class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
+                    value={model}
+                    onchange={(event) => updateDraft({ model: event.currentTarget.value })}
+                    data-testid="mesh-node-detail-model-input"
+                  >
+                    {#each modelOptions as option}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                  <select
+                    class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
+                    value={editKind}
+                    onchange={(event) => updateDraft({ kind: event.currentTarget.value })}
+                    data-testid="mesh-node-detail-kind-input"
+                  >
+                    <option value="agent">Agent</option>
+                    <option value="lead">Lead</option>
+                  </select>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
+                    type="button"
+                    onclick={() => invoke(actions?.onCancelEdit)}
+                    data-testid="mesh-node-detail-cancel"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {primaryActionTone}"
+                    type="button"
+                    onclick={handleSaveEdit}
+                    disabled={saving}
+                    data-testid="mesh-node-detail-save"
+                  >
+                    {#if dirty}
+                      <span class="inline-block h-2 w-2 rounded-full bg-emerald-300" data-testid="mesh-node-detail-unsaved-dot"></span>
+                    {/if}
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
               </div>
             {:else}
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {shellSecondaryTone}">
@@ -490,10 +541,11 @@
                   <span class="{shellMutedTone}" data-testid="mesh-node-detail-subject">{subjectLabel}</span>
                 {/if}
               </div>
-            {/if}
+              {/if}
           </div>
         </div>
 
+        {#if !isEditing}
         <div class="mt-5 flex flex-wrap items-center gap-2" data-testid="mesh-node-detail-toolbar">
           {#if normalizedContext === 'runtime'}
             <button
@@ -592,6 +644,7 @@
             </button>
           {/if}
         </div>
+        {/if}
       </div>
     </div>
 
@@ -599,96 +652,117 @@
       <div class="mx-auto flex w-full max-w-[640px] flex-col gap-6">
         {#if isEditing && errorMessage}
           <section class="rounded-[20px] border px-5 py-4 {sectionTone}" data-testid="mesh-node-detail-error">
-            <p class="text-[13px] font-medium text-danger-100">{errorMessage}</p>
+            <p class="text-[13px] font-medium {errorTextTone}">{errorMessage}</p>
           </section>
         {/if}
 
         {#if isEditing || focusArea}
-          <section class="rounded-[24px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
-            {#if isEditing}
-              <label class="block space-y-2">
-                <span class="text-[11px] font-medium uppercase tracking-[0.16em] {shellMutedTone}">Focus Area</span>
+          {#if isEditing}
+            <label class="block space-y-2.5" data-testid="mesh-node-detail-focus-card">
+              <span class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Focus Area</span>
+              <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
                 <textarea
+                  use:autoGrowTextarea={focusArea}
                   rows="2"
-                  class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[17px] font-normal leading-[1.5] outline-none {editableFieldTone}"
+                  class="min-h-[80px] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.65] outline-none {editableFieldTone}"
                   value={focusArea}
                   oninput={(event) => updateDraft({ focusArea: event.currentTarget.value })}
                   data-testid="mesh-node-detail-focus-input"
                 ></textarea>
-              </label>
+              </div>
+            </label>
             {:else}
+            <section class="rounded-[24px] border px-5 py-4 {focusCardTone}" data-testid="mesh-node-detail-focus-card">
               <div class="{focusContentTone}" data-testid="mesh-node-detail-focus-area">
                 <MarkdownRenderer source={focusArea} {dark} codeTheme={codeTheme} />
               </div>
+            </section>
             {/if}
-          </section>
         {/if}
 
         {#if isEditing || contextMarkdown}
-          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-context-summary">
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Context Summary</h3>
-            {#if isEditing}
-              <textarea
-                rows="4"
-                class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.6] outline-none {editableFieldTone}"
-                value={contextSummary}
-                oninput={(event) => updateDraft({ contextSummary: event.currentTarget.value })}
-                data-testid="mesh-node-detail-context-input"
-              ></textarea>
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-context-summary">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Context Summary</h3>
+              <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+                <textarea
+                  use:autoGrowTextarea={contextSummary}
+                  rows="4"
+                  class="min-h-[80px] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.65] outline-none {editableFieldTone}"
+                  value={contextSummary}
+                  oninput={(event) => updateDraft({ contextSummary: event.currentTarget.value })}
+                  data-testid="mesh-node-detail-context-input"
+                ></textarea>
+              </div>
+            </section>
             {:else}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-context-summary">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Context Summary</h3>
               <div class="{bodyTone}">
                 <MarkdownRenderer source={contextMarkdown} {dark} codeTheme={codeTheme} />
               </div>
+            </section>
             {/if}
-          </section>
         {/if}
 
         {#if isEditing || behaviorMarkdown}
-          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-role-section">
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Behavior Boundaries</h3>
-            <div class="rounded-[20px] border px-5 py-4 {configTone}" data-testid="mesh-node-detail-behavior-summary">
-              {#if isEditing}
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-role-section">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">Behavior Boundaries</h3>
+              <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}" data-testid="mesh-node-detail-behavior-summary">
                 <textarea
+                  use:autoGrowTextarea={behaviorSummary}
                   rows="4"
-                  class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.6] outline-none {editableFieldTone}"
+                  class="min-h-[80px] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.65] outline-none {editableFieldTone}"
                   value={behaviorSummary}
                   oninput={(event) => updateDraft({ behaviorSummary: event.currentTarget.value })}
                   data-testid="mesh-node-detail-behavior-input"
                 ></textarea>
-              {:else}
-                <MarkdownRenderer source={behaviorMarkdown} {dark} codeTheme={codeTheme} />
-              {/if}
-            </div>
-            {#if isEditing}
+              </div>
               <p class="text-[12px] {subtleHintTone}" data-testid="mesh-node-detail-markdown-hint">Supports markdown</p>
-            {/if}
-          </section>
+            </section>
+            {:else}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-role-section">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">Behavior Boundaries</h3>
+              <div class="rounded-[20px] border px-5 py-4 {configTone}" data-testid="mesh-node-detail-behavior-summary">
+                <MarkdownRenderer source={behaviorMarkdown} {dark} codeTheme={codeTheme} />
+              </div>
+            </section>
+          {/if}
         {/if}
 
         {#if instructionsVisible}
-          <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-description">
-            <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">
-              {normalizedContext === 'runtime' ? 'Operational Notes' : 'Instructions'}
-            </h3>
-            {#if isEditing}
-              <textarea
-                rows="4"
-                class="w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.6] outline-none {editableFieldTone}"
-                value={instructions}
-                oninput={(event) => updateDraft({ instructions: event.currentTarget.value, showInstructions: true })}
-                data-testid="mesh-node-detail-instructions-input"
-              ></textarea>
+          {#if isEditing}
+            <section class="space-y-2.5" data-testid="mesh-node-detail-description">
+              <h3 class="text-[11px] font-medium uppercase tracking-[0.16em] {sectionLabelTone}">
+                {normalizedContext === 'runtime' ? 'Operational Notes' : 'Instructions'}
+              </h3>
+              <div class="rounded-[14px] border px-4 py-3 {editorSectionCardTone}">
+                <textarea
+                  use:autoGrowTextarea={instructions}
+                  rows="4"
+                  class="min-h-[80px] w-full resize-none overflow-hidden border-0 bg-transparent p-0 text-[15px] font-normal leading-[1.65] outline-none {editableFieldTone}"
+                  value={instructions}
+                  oninput={(event) => updateDraft({ instructions: event.currentTarget.value, showInstructions: true })}
+                  data-testid="mesh-node-detail-instructions-input"
+                ></textarea>
+              </div>
+            </section>
             {:else if instructionsMarkdown}
+            <section class="space-y-3 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-node-detail-description">
+              <h3 class="text-[12px] font-semibold uppercase tracking-[0.16em] {sectionLabelTone}">
+                {normalizedContext === 'runtime' ? 'Operational Notes' : 'Instructions'}
+              </h3>
               <div class="{bodyTone}">
                 <MarkdownRenderer source={instructionsMarkdown} {dark} codeTheme={codeTheme} />
               </div>
+            </section>
             {/if}
-          </section>
         {/if}
 
         {#if isEditing && !instructionsVisible}
           <button
-            class="inline-flex items-center gap-2 self-start rounded-xl border border-transparent px-1 py-1 text-[13px] {subtleHintTone}"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-[14px] border px-4 py-3 text-[13px] font-medium transition {secondaryActionTone}"
             type="button"
             onclick={() => invoke(actions?.onAddSection)}
             data-testid="mesh-node-detail-add-section"
