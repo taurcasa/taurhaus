@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-21
+
+Mesh team setup and role management overhaul. Roster builder redesigned from the ground up, role detail view with markdown rendering and in-place editing, role CRUD with YAML import/export.
+
+### Roster Builder
+
+- **Two-column "Roster Builder" layout** — roles always visible on the left with search, tool/kind filters, favorites, and presets. Your team builds on the right with compact member cards. Replaces the old side-by-side form-based setup.
+- **Compact role catalog** — single-line role rows with behavioral summaries, tool icons, Lead/Agent badges, and one-click add. Favorites pinned at top.
+- **Version dedup** — only the latest version of each role shown by default. "Show all versions" toggle for legacy access.
+- **Preset → customize flow** — quick presets (Pair, Dev Team, Full Team, Research) load into the editable roster for customization before initialization.
+- **Interaction feedback** — hover highlights, click-to-add flash, card entry/exit animations, star bounce on pin toggle.
+- **Proper member naming** — multiple developers correctly named dev-1, dev-2, dev-3 instead of dev-1-1-2.
+- **Project selector** — dropdown of registered projects instead of manual path entry.
+
+### Role Detail View
+
+- **Full-screen page view overlay** — 640px centered reading column with markdown-rendered content. Controls (Resume, Stop, Focus Pane, Capture) pinned at top, never buried below scroll.
+- **Formatted role descriptions** — Focus Area in a tinted card, Context Summary as proper paragraphs, Behavior Boundaries as styled lists. No more wall of unformatted text.
+- **Compact hover popover** — hovering a mesh node shows a glanceable summary (name, status, one-line focus area, "click for details") instead of the full description.
+- **Dual context** — runtime mesh shows operational controls, roster management shows "Add to Team".
+
+### Role Editing & Management
+
+- **In-place stacked sections editor** — edit roles in a document-like view with auto-growing textareas, borderless fields, and consistent typography across light and dark themes.
+- **Role CRUD** — create new roles, edit existing ones, and delete with confirmation, all from the role detail view.
+- **YAML import/export** — import role definitions from .yml files and export roles as YAML for sharing.
+
+### Fixes
+
+- **Team initialization from roster builder** — preset-derived rosters properly detach to custom mode before initialization, fixing "failed to set up team" errors.
+- **Legacy mesh config compatibility** — team configs without a top-level name field are now accepted during discovery instead of showing undismissable "Skipped team folder" warnings.
+- **CI quality gate** — fixed lint drift (clippy warnings, unused exports) so the GitHub Actions quality gate passes clean.
+- **Light/dark theme parity** — roster builder and role detail view properly follow standard theme logic in both modes.
+
 ## [0.6.0] - 2026-03-20
 
 Major release combining a thorough quality phase with significant Windows/WSL stability improvements and Mesh runtime hardening. 359 commits since v0.5.9 — every user-facing surface was audited for functional honesty, error messaging, accessibility, and documentation accuracy.
