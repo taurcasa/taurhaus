@@ -8,8 +8,6 @@
 import { mkdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { expect } from 'expect-webdriverio'
-
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickTestId, fastClick, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
