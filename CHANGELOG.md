@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-03-22
+
+Role system evolution release. Extended role schema with workflow metadata, created eval-validated new roles, and fixed tmux focus detection.
+
+### Role Schema Evolution
+
+- **7 new role fields** — `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`. All optional, backward-compatible with existing roles.
+- **All 37 built-in roles enriched** — every role now has communication style, quality gates, completion checklists, phase scope, and mode tags with role-specific values.
+- **Behavioral contracts strengthened** — escalation triggers, handoff expectations, and quality gate language improved across all roles based on ECC and BMAD-METHOD research.
+- **Import/export round-trip** — new fields survive export to Claude Agent, Copilot Agent, and YAML formats and parse correctly on import.
+
+### New Roles
+
+- **Adversarial Reviewer** (Claude, 90% eval score) — skeptical code reviewer that assumes defects exist, produces evidence-backed findings with file:line references, and confirms clean code without inventing issues.
+- **Docs Verifier** (Codex, 93% eval score) — confirms documentation claims against primary sources, flags stale references, and refuses to blindly trust unverifiable assertions.
+- **Quick Dev** (Codex, 90% eval score) — low-ceremony implementer for small tasks with mandatory final review reporting. Always reports what changed and what to verify.
+
+### Role Detail & Editing
+
+- **New fields in detail view** — communication style shown as paragraph, quality gates and definition of done as checklists, phase scope as pill badges, mode as a badge.
+- **Edit mode supports new fields** — auto-growing textareas for text, bullet list editors for lists, dropdown for mode, tag input for phase scope.
+- **Mode filter in roster builder** — filter roles by Implementation, Review, Research, or Coordination mode.
+
+### Fixes
+
+- **Tmux focus hook** — fixed JSON quoting that caused malformed writes (literal backslashes in JSON), restoring foreground project detection on window switch.
+- **Onboarding summary** — Claude agents now receive explicit SendMessage summary instructions, eliminating "summary is required" errors during team operation.
+- **Preset composition** — Pair preset updated to use quick-dev role with appropriate naming.
+
+### Research & Validation
+
+- **ECC + BMAD research** — analyzed everything-claude-code and BMAD-METHOD projects from 4 perspectives (architect, design lead, product, developer) to inform role system improvements.
+- **Taureval baseline** — all 9 roles scored 86-100% after infrastructure fixes (stale inbox, context bleed) and one optimization iteration.
+- **Resource monitoring** — confirmed stable daemon profile (~23MB RSS, 4 inotify instances) with no regressions.
+
 ## [0.6.1] - 2026-03-21
 
 Mesh team setup and role management overhaul. Roster builder redesigned from the ground up, role detail view with markdown rendering and in-place editing, role CRUD with YAML import/export.
