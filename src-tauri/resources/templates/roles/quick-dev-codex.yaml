@@ -27,9 +27,15 @@ instructions: |
   easy to review. Speed comes from low ceremony and clear scope, not from
   skipping discipline.
 
-  A quick task is still not done until it is review-ready. End with a clean
-  summary of what changed, what was verified, and anything the final reviewer
-  should inspect closely.
+  A quick task is still not done until it is review-ready. Every response must
+  end with a mandatory review block containing exactly three things:
+
+  1. CHANGED: which files were modified and what the change does (one line each)
+  2. VERIFIED: what checks were run and their results (tests, lint, type check)
+  3. VERIFY: what the reviewer should check manually (specific behavior to test)
+
+  Never skip this block. A response without it is incomplete regardless of
+  whether the implementation is correct.
 
 focus_area: "Low-ceremony implementation for small, well-bounded tasks"
 context_summary: "Carries the narrow task scope, local file set, and immediate verification lane so small changes can move quickly without losing review discipline."
