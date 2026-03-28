@@ -15,6 +15,7 @@ $steps = New-Object System.Collections.Generic.List[object]
 $originalRustcWrapper = $env:RUSTC_WRAPPER
 $sccachePath = $null
 $bunBinDir = Join-Path $env:USERPROFILE ".bun\bin"
+$cargoBinDir = Join-Path $env:USERPROFILE ".cargo\bin"
 $bunFallback = Join-Path $bunBinDir "bun.exe"
 $bunPath = $null
 
@@ -71,11 +72,14 @@ try {
     $steps.Add([pscustomobject]@{ Name = "windows_bun_install"; Seconds = [Math]::Round($elapsed.TotalSeconds, 2) })
 
     $start = Get-Date
-    Write-Host "[windows_cargo_tauri_build] starting..."
+    Write-Host "[windows_tauri_build] starting..."
     $env:PATH = $bunBinDir + ";" + $env:PATH
-    cargo tauri build --bundles nsis
+    if (Test-Path -LiteralPath $cargoBinDir) {
+        $env:PATH = $cargoBinDir + ";" + $env:PATH
+    }
+    & $bunPath run tauri build --bundles nsis
     $elapsed = (Get-Date) - $start
-    $steps.Add([pscustomobject]@{ Name = "windows_cargo_tauri_build"; Seconds = [Math]::Round($elapsed.TotalSeconds, 2) })
+    $steps.Add([pscustomobject]@{ Name = "windows_tauri_build"; Seconds = [Math]::Round($elapsed.TotalSeconds, 2) })
 }
 finally {
     Pop-Location

@@ -164,7 +164,7 @@ Agent/team workflow rule:
 
 | Recipe | What it does |
 |--------|-------------|
-| `just build-windows` | Syncs to `D:\taurhaus_build`, then runs the measured native Windows NSIS build via a PowerShell wrapper. |
+| `just build-windows` | Syncs to `C:\taurhaus_build` by default (override with `TAURHAUS_WINDOWS_BUILD_DIR`), then runs the measured native Windows NSIS build via a PowerShell wrapper. |
 | `just build-windows-sccache` | Same as `just build-windows`, but enables Windows-side `sccache` auto-detection for the native build. |
 | `just install-windows` | Runs the latest Windows NSIS installer silently and verifies the installed exe hash against the built payload. |
 | `just build-macos` | Syncs via rsync to Mac Mini, builds `.app` + `.dmg` natively via SSH. |
@@ -188,7 +188,7 @@ Always use the `just` recipes for releases. Never manually create GitHub release
 
 The `release` recipe enforces: must be on `main`, working tree must be clean, tag must not already exist. Never replace assets on an existing release — if a fix is needed, bump the version and release again.
 
-**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`powershell.exe -File` into the synced Windows workspace). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and native Windows cargo build.
+**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`powershell.exe -File` into the synced Windows workspace). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and the native Windows Tauri build.
 
 **macOS**: The macOS app is built **natively on a Mac Mini** (Scaleway, arm64) via SSH. We do NOT cross-compile from Linux. The `just build-macos` recipe handles everything — rsync sync, Bun install, daemon build + codesign, and `cargo tauri build`. The Mac's PATH requires a login shell (`zsh -ilc`) for bun/cargo/homebrew.
 
@@ -252,7 +252,8 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `scripts/build-windows.sh` | WSL-side Windows build orchestrator with measured step output. |
-| `scripts/build-windows.ps1` | Native Windows build runner for `bun install` + `cargo tauri build --bundles nsis`, with optional `sccache`. |
+| `scripts/build-windows.ps1` | Native Windows build runner for `bun install` + `bun run tauri build --bundles nsis`, with optional `sccache`. |
+| `scripts/windows-build-prereqs.ps1` | Native Windows prerequisite checker/installer for Bun, Rust MSVC, Visual Studio Build Tools, and NSIS. |
 | `scripts/install-windows-silent.ps1` | Silent Windows installer runner with NSIS payload hash verification. |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |

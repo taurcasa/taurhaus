@@ -29,7 +29,8 @@ Core rules:
 
 Project-specific environment assumptions from `justfile`:
 
-- Windows sync/build directory: `D:\taurhaus_build` (WSL path `/mnt/d/taurhaus_build`)
+- Windows sync/build directory defaults to `C:\taurhaus_build` (WSL path `/mnt/c/taurhaus_build`)
+- Override the Windows sync/build directory by setting `TAURHAUS_WINDOWS_BUILD_DIR` to a WSL path such as `/mnt/e/taurhaus_build`
 - macOS build host: `m1@62.210.195.235`
 - macOS remote project path: `~/projects/taurhaus`
 
@@ -47,6 +48,8 @@ Project-specific environment assumptions from `justfile`:
 | `just install-daemon` | Install/update the daemon in `~/.local/bin/`. |
 | `just build-mesh` | Build the mesh CLI from the local mesh workspace. |
 | `just install-mesh` | Install/update mesh in `~/.local/bin/`. |
+| `just check-windows-build-prereqs` | Verify that the native Windows Bun/Rust/Build Tools/NSIS toolchain is ready before a Windows build. |
+| `just install-windows-build-prereqs` | Install the native Windows build prerequisites via WSL interop and an elevated PowerShell runner. |
 | `just build-windows-sccache` | Run the native Windows NSIS build with optional Windows-side `sccache` auto-detection enabled. |
 | `just install-windows` | Run the latest Windows NSIS installer silently and verify the installed exe hash against the built payload. |
 | `just analyze-compaction --team <team> --last <window>` | Analyze recent compaction detection/reinjection events from current and rotated logs. |
@@ -84,13 +87,14 @@ Pipeline summary:
 2. `_install-daemon-from-build` refreshes the installed WSL daemon in `~/.local/bin/`.
 3. `_bundle-daemon-from-build` copies the daemon binary into `src-tauri/resources/`.
 4. `mesh-verify-lock` + `bundle-mesh` verify the pinned mesh build and copy binary/version/manifest into `src-tauri/resources/`.
-5. `sync-windows` mirrors the workspace to `D:\taurhaus_build` while preserving Windows `target/`, `node_modules/`, and `dist/`.
-6. `scripts/build-windows.sh` invokes `scripts/build-windows.ps1` via `powershell.exe -File`.
-7. `build-windows.ps1` runs Windows-native `bun install --frozen-lockfile` and `cargo tauri build --bundles nsis`, then prints a per-step timing summary. `just build-windows-sccache` enables the same path with Windows-side `sccache` auto-detection.
+5. `check-windows-build-prereqs` fails fast if the Windows Bun/Rust/MSVC/NSIS toolchain is missing.
+6. `sync-windows` mirrors the workspace to the configured Windows build directory (default `C:\taurhaus_build`) while preserving Windows `target/`, `node_modules/`, and `dist/`.
+7. `scripts/build-windows.sh` invokes `scripts/build-windows.ps1` via `powershell.exe -File`.
+8. `build-windows.ps1` runs Windows-native `bun install --frozen-lockfile` and `bun run tauri build --bundles nsis`, then prints a per-step timing summary. `just build-windows-sccache` enables the same path with Windows-side `sccache` auto-detection.
 
 Expected artifact location:
 
-- `/mnt/d/taurhaus_build/src-tauri/target/release/bundle/nsis/*.exe`
+- `${TAURHAUS_WINDOWS_BUILD_DIR:-/mnt/c/taurhaus_build}/src-tauri/target/release/bundle/nsis/*.exe`
 
 Troubleshooting:
 
@@ -246,7 +250,7 @@ Artifact upload sources:
 - `builds/macos-universal/*.dmg`
 - `builds/macos-aarch64/*.dmg`
 - `builds/macos-x86_64/*.dmg`
-- `D:\taurhaus_build\src-tauri\target\release\bundle\nsis\*.exe`
+- `${TAURHAUS_WINDOWS_BUILD_DIR:-/mnt/c/taurhaus_build}/src-tauri/target/release/bundle/nsis/*.exe`
 
 Notes:
 

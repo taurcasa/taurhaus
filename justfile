@@ -3,8 +3,8 @@
 
 # Project paths
 project   := justfile_directory()
-win_dir   := "/mnt/d/taurhaus_build"
-win_drive := "D:\\taurhaus_build"
+win_dir   := env_var_or_default("TAURHAUS_WINDOWS_BUILD_DIR", "/mnt/c/taurhaus_build")
+windows_bun_version := `node -p 'require("./package.json").packageManager.split("@").slice(1).join("@")'`
 
 # macOS remote build host (Scaleway Mac mini)
 mac_host  := "m1@62.210.195.235"
@@ -272,7 +272,22 @@ build-linux: bundle-daemon bundle-mesh
 
 # Build the WSL daemon binary (Linux target)
 build-daemon:
-    @mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
+    #!/usr/bin/env bash
+    set -euo pipefail
+    missing=()
+    command -v pkg-config >/dev/null 2>&1 || missing+=("pkg-config")
+    pkg-config --exists glib-2.0 2>/dev/null || missing+=("libglib2.0-dev")
+    pkg-config --exists gtk+-3.0 2>/dev/null || missing+=("libgtk-3-dev")
+    pkg-config --exists webkit2gtk-4.1 2>/dev/null || missing+=("libwebkit2gtk-4.1-dev")
+    pkg-config --exists libsoup-3.0 2>/dev/null || missing+=("libsoup-3.0-dev")
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "✗ Missing system packages required to build the daemon:"
+        echo ""
+        echo "  sudo apt install ${missing[*]}"
+        echo ""
+        exit 1
+    fi
+    mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
     cd src-tauri && cargo build --release --bin taurhaus-daemon
 
 # Build the mesh CLI binary (Linux target, local workspace).
@@ -486,6 +501,27 @@ run-daemon:
     cd src-tauri && cargo run --bin taurhaus-daemon -- --verbose
 
 # ── Windows Build (via WSL2 interop) ─────────────────────────────────────────
+
+# Verify native Windows build prerequisites before starting a release build.
+check-windows-build-prereqs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PS_SCRIPT="$(wslpath -w "{{project}}/scripts/windows-build-prereqs.ps1")"
+    sh -c 'exec powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1" -CheckOnly < /dev/null' sh "$PS_SCRIPT"
+
+# Install native Windows build prerequisites via WSL interop.
+install-windows-build-prereqs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PS_SCRIPT="$(wslpath -w "{{project}}/scripts/windows-build-prereqs.ps1")"
+    sh -c 'exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$1" -Install -BunVersion "$2" < /dev/null' sh "$PS_SCRIPT" "{{windows_bun_version}}"
+
+# Install native Windows build prerequisites and keep the elevated window open on failure.
+install-windows-build-prereqs-visible:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    PS_SCRIPT="$(wslpath -w "{{project}}/scripts/windows-build-prereqs.ps1")"
+    sh -c 'exec powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$1" -Install -BunVersion "$2" -PauseOnError < /dev/null' sh "$PS_SCRIPT" "{{windows_bun_version}}"
 
 # Sync source to Windows build directory
 sync-windows:

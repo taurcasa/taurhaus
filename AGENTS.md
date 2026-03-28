@@ -219,7 +219,7 @@ Agent/team workflow rule:
 
 | Recipe | What it does |
 |--------|-------------|
-| `just build-windows` | Syncs to `D:\taurhaus_build`, builds NSIS installer natively on Windows via `cmd.exe`. |
+| `just build-windows` | Syncs to `C:\taurhaus_build` by default (override with `TAURHAUS_WINDOWS_BUILD_DIR`), then builds the NSIS installer natively on Windows via a PowerShell wrapper. |
 | `just build-macos` | Syncs via rsync to Mac Mini, builds `.app` + `.dmg` natively via SSH. |
 | `just build-macos-universal` | Universal macOS binary (arm64 + x86_64) on remote Mac. |
 | `just sync-macos` | Sync source to remote Mac Mini. |
@@ -241,7 +241,7 @@ Always use the `just` recipes for releases. Never manually create GitHub release
 
 The `release` recipe enforces: must be on `main`, working tree must be clean, tag must not already exist. Never replace assets on an existing release — if a fix is needed, bump the version and release again.
 
-**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`cmd.exe`). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and native Windows cargo build.
+**Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`powershell.exe -File` into the synced Windows workspace). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and the native Windows Tauri build.
 
 **macOS**: The macOS app is built **natively on a Mac Mini** (Scaleway, arm64) via SSH. We do NOT cross-compile from Linux. The `just build-macos` recipe handles everything — rsync sync, Bun install, daemon build + codesign, and `cargo tauri build`. The Mac's PATH requires a login shell (`zsh -ilc`) for bun/cargo/homebrew.
 

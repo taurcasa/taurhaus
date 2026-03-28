@@ -25,6 +25,7 @@ run_step() {
 STEP_NAMES=()
 STEP_SECONDS=()
 
+run_step "check_windows_prereqs" just check-windows-build-prereqs
 run_step "build_daemon" just build-daemon
 run_step "install_daemon" just _install-daemon-from-build
 run_step "bundle_daemon" just _bundle-daemon-from-build
