@@ -26,18 +26,15 @@ export function materializeNsisPayloadBytes(input) {
   const unknownOffsets = findAllMarkerOffsets(buffer, UNKNOWN_MARKER_BYTES)
   const nsisOffsets = findAllMarkerOffsets(buffer, NSIS_MARKER_BYTES)
 
-  if (unknownOffsets.length === 1 && nsisOffsets.length === 0) {
-    NSIS_MARKER_BYTES.copy(buffer, unknownOffsets[0])
-    return buffer
+  if (unknownOffsets.length === 0 && nsisOffsets.length === 0) {
+    throw new Error('expected at least one Tauri bundle marker occurrence')
   }
 
-  if (unknownOffsets.length === 0 && nsisOffsets.length === 1) {
-    return buffer
+  for (const offset of unknownOffsets) {
+    NSIS_MARKER_BYTES.copy(buffer, offset)
   }
 
-  throw new Error(
-    `expected exactly one Tauri bundle marker occurrence, found UNK=${unknownOffsets.length} NSS=${nsisOffsets.length}`,
-  )
+  return buffer
 }
 
 export function hashNsisPayloadBytes(input) {
