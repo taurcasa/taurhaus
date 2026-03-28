@@ -82,6 +82,31 @@
     selectedIndex = -1
   })
 
+  async function runSearch(nextQuery) {
+    const trimmedQuery = nextQuery.trim()
+    searchRequestId += 1
+    const requestId = searchRequestId
+
+    if (!trimmedQuery) {
+      results = []
+      loading = false
+      return
+    }
+
+    loading = true
+    try {
+      const nextResults = await search(nextQuery, 20)
+      if (requestId !== searchRequestId) return
+      results = nextResults
+    } catch {
+      if (requestId !== searchRequestId) return
+      results = []
+    } finally {
+      if (requestId !== searchRequestId) return
+      loading = false
+    }
+  }
+
   function handleInput(e) {
     const nextQuery = e.target.value
     query = nextQuery
@@ -92,29 +117,15 @@
       debounceTimer = null
     }
 
-    searchRequestId += 1
-    const requestId = searchRequestId
-
     if (!nextQuery.trim()) {
       results = []
       loading = false
       return
     }
 
-    loading = true
     debounceTimer = setTimeout(async () => {
       debounceTimer = null
-      try {
-        const nextResults = await search(nextQuery, 20)
-        if (requestId !== searchRequestId) return
-        results = nextResults
-      } catch {
-        if (requestId !== searchRequestId) return
-        results = []
-      } finally {
-        if (requestId !== searchRequestId) return
-        loading = false
-      }
+      await runSearch(nextQuery)
     }, 150)
   }
 
@@ -202,6 +213,37 @@
         restoreFocusElement.focus()
       }
       restoreFocusElement = null
+    }
+  })
+
+  $effect(() => {
+    if (!open || !query.trim()) return
+    const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+    if (!isTauriEnv) return
+
+    let destroyed = false
+    let unlisten = null
+
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      if (destroyed) return
+      listen('search-index-updated', async () => {
+        if (destroyed || document.visibilityState === 'hidden') return
+        await runSearch(query)
+      }).then((dispose) => {
+        if (destroyed) {
+          dispose()
+          return
+        }
+        unlisten = dispose
+      })
+    })
+
+    return () => {
+      destroyed = true
+      if (typeof unlisten === 'function') {
+        unlisten()
+        unlisten = null
+      }
     }
   })
 

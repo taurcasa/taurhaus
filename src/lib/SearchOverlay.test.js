@@ -15,8 +15,29 @@ function createDeferred() {
   return { promise, resolve, reject }
 }
 
+const { eventListenMock, emitSearchIndexUpdated } = vi.hoisted(() => {
+  /** @type {{ event: string, handler: (event: any) => void }[]} */
+  let handlers = []
+  return {
+    eventListenMock: vi.fn(async (event, cb) => {
+      handlers.push({ event, handler: cb })
+      return () => {
+        handlers = handlers.filter((entry) => entry.handler !== cb)
+      }
+    }),
+    emitSearchIndexUpdated: (payload) => {
+      handlers
+        .filter((entry) => entry.event === 'search-index-updated')
+        .forEach((entry) => entry.handler({ payload }))
+    },
+  }
+})
+
 vi.mock('./ipc.js', () => ({
   search: vi.fn(),
+}))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: eventListenMock,
 }))
 
 const { search } = await import('./ipc.js')
@@ -28,6 +49,7 @@ describe('SearchOverlay', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    delete window.__TAURI_INTERNALS__
   })
 
   afterEach(() => {
@@ -289,6 +311,48 @@ describe('SearchOverlay', () => {
       tab: 'files',
       filePath: 'src/main.rs',
       projectId: 'project-1',
+    })
+  })
+
+  it('re-runs the active query when the backend reports a search index update', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    search
+      .mockResolvedValueOnce([
+        {
+          entity_type: 'document',
+          project_id: 'project-1',
+          file_path: 'docs/old.md',
+          title: 'Old Result',
+          snippet: 'old snippet',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          entity_type: 'document',
+          project_id: 'project-1',
+          file_path: 'docs/new.md',
+          title: 'Updated Result',
+          snippet: 'new snippet',
+        },
+      ])
+
+    render(SearchOverlay, {
+      props: { open: true },
+    })
+
+    const input = screen.getByTestId('search-input')
+    await fireEvent.input(input, { target: { value: 'docs' } })
+    await vi.advanceTimersByTimeAsync(150)
+
+    await waitFor(() => {
+      expect(screen.getByText('Old Result')).toBeInTheDocument()
+    })
+
+    emitSearchIndexUpdated({ project_id: 'project-1', reason: 'file_changed' })
+
+    await waitFor(() => {
+      expect(search).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('Updated Result')).toBeInTheDocument()
     })
   })
 

@@ -361,6 +361,7 @@
         }
         if (selectedProject?.id === project_id) {
           selectedProject = { ...selectedProject, branch: payload.branch ?? selectedProject.branch, isDirty: isDirty ?? selectedProject.isDirty }
+          void projectController.loadCommits(project_id, showAllCommits ? 50 : 10)
         }
       },
       onSessionImported: ({ project_id }) => {

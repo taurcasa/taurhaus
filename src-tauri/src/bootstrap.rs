@@ -1,5 +1,4 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -333,10 +332,12 @@ struct TaskScanCycleContext {
     claude_index: ClaudeSourceIndex,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct TaskStatusSignature {
     task_count: usize,
-    status_hash: u64,
+    latest_updated_at: Option<String>,
+    archived_task_count: usize,
+    status_rows_hash: u64,
 }
 
 static TASK_SCAN_CYCLE_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -669,16 +670,30 @@ fn load_active_task_signature(
 }
 
 fn task_status_signature(tasks: &[crate::db::task_queries::PersistedTask]) -> TaskStatusSignature {
+    use std::hash::{Hash, Hasher};
+
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut latest_updated_at: Option<&str> = None;
+    let mut archived_task_count = 0usize;
     for task in tasks {
         task.source.hash(&mut hasher);
         task.source_key.hash(&mut hasher);
         task.source_task_id.hash(&mut hasher);
         task.status.hash(&mut hasher);
+        task.updated_at.hash(&mut hasher);
+        task.archived_at.hash(&mut hasher);
+        if task.archived_at.is_some() {
+            archived_task_count += 1;
+        }
+        latest_updated_at = latest_updated_at
+            .map(|current| current.max(task.updated_at.as_str()))
+            .or(Some(task.updated_at.as_str()));
     }
     TaskStatusSignature {
         task_count: tasks.len(),
-        status_hash: hasher.finish(),
+        latest_updated_at: latest_updated_at.map(ToOwned::to_owned),
+        archived_task_count,
+        status_rows_hash: hasher.finish(),
     }
 }
 
@@ -771,6 +786,18 @@ mod tests {
         assert_ne!(
             task_status_signature(&base),
             task_status_signature(&changed)
+        );
+    }
+
+    #[test]
+    fn task_status_signature_changes_when_task_metadata_changes() {
+        let base = vec![make_task("claude", "s1", "1", "pending")];
+        let mut changed = make_task("claude", "s1", "1", "pending");
+        changed.updated_at = "2026-03-05T00:00:00Z".to_string();
+
+        assert_ne!(
+            task_status_signature(&base),
+            task_status_signature(&[changed])
         );
     }
 }

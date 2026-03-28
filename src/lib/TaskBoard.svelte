@@ -161,7 +161,9 @@
         ) {
           return
         }
-        tasks = result.tasks || []
+        const nextTasks = result.tasks || []
+        tasks = nextTasks
+        syncSelectedTaskState(nextTasks)
         errors = result.errors || []
         if (showLoading) loading = false
       } catch (e) {
@@ -224,6 +226,45 @@
         taskDetail = { task, session: null, commits: [], files_changed: [] }
         taskDetailError = 'Task detail failed to load. Showing basic task info.'
       }
+    }
+  }
+
+  function selectedTaskNeedsDetailRefresh(previousTask, nextTask) {
+    if (!previousTask || !nextTask) return false
+    return (
+      previousTask.status !== nextTask.status
+      || previousTask.updated_at !== nextTask.updated_at
+      || previousTask.archived_at !== nextTask.archived_at
+      || previousTask.description !== nextTask.description
+      || previousTask.active_form !== nextTask.active_form
+    )
+  }
+
+  function syncSelectedTaskState(nextTasks) {
+    if (!selectedTask) return
+
+    const previousSelectedTask = selectedTask
+    const match = nextTasks.find((task) => isSameTaskIdentity(task, previousSelectedTask))
+
+    if (!match) {
+      closeDetail()
+      return
+    }
+
+    selectedTask = match
+
+    if (taskDetail?.task && isSameTaskIdentity(taskDetail.task, match)) {
+      taskDetail = {
+        ...taskDetail,
+        task: {
+          ...taskDetail.task,
+          ...match,
+        },
+      }
+    }
+
+    if (taskDetail && selectedTaskNeedsDetailRefresh(previousSelectedTask, match)) {
+      void fetchDetail(match)
     }
   }
 

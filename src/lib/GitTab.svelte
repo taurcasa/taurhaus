@@ -56,19 +56,14 @@
   const commitFilesGuard = createAsyncGuard()
   const diffGuard = createAsyncGuard()
 
-  // Sync position outward for Shell's per-project position memory
-  $effect(() => {
-    position = { selectedHash, rangeFilter }
-  })
+  async function refreshCommitList({
+    resetView = false,
+    background = false,
+    preservedSelectedHash = null,
+  } = {}) {
+    const commitListSequence = commitListGuard.next()
 
-  // Load commits on mount or projectId change
-  $effect(() => {
-    if (!projectId) return
-    let cancelled = false
-
-    async function load() {
-      const commitListSequence = commitListGuard.next()
-      loading = true
+    if (resetView) {
       selectedHash = null
       commitFiles = []
       rangeFilter = null
@@ -80,25 +75,112 @@
       diffGuard.invalidate()
       currentOffset = 0
       hasMore = true
-      try {
-        const result = await getAllCommits(projectId, PAGE_SIZE, 0)
-        if (!cancelled && commitListGuard.isCurrent(commitListSequence)) {
-          commits = result
-          currentOffset = result.length
-          hasMore = result.length >= PAGE_SIZE
-          loading = false
-        }
-      } catch {
-        if (!cancelled && commitListGuard.isCurrent(commitListSequence)) {
-          commits = []
-          hasMore = false
-          loading = false
-        }
+    }
+
+    if (!background) {
+      loading = true
+    }
+
+    try {
+      const result = await getAllCommits(projectId, PAGE_SIZE, 0)
+      if (!commitListGuard.isCurrent(commitListSequence)) return
+
+      commits = result
+      currentOffset = result.length
+      hasMore = result.length >= PAGE_SIZE
+
+      if (!preservedSelectedHash || resetView) {
+        return
       }
+
+      if (!result.some((commit) => commit.hash === preservedSelectedHash)) {
+        selectedHash = null
+        commitFiles = []
+        selectedFilePath = null
+        diffHunks = []
+        filesLoading = false
+        diffLoading = false
+        commitFilesGuard.invalidate()
+        diffGuard.invalidate()
+        return
+      }
+
+      await selectCommit(preservedSelectedHash)
+    } catch {
+      if (!commitListGuard.isCurrent(commitListSequence)) return
+      if (!background) {
+        commits = []
+        hasMore = false
+        selectedHash = null
+        commitFiles = []
+        selectedFilePath = null
+        diffHunks = []
+        filesLoading = false
+        diffLoading = false
+        commitFilesGuard.invalidate()
+        diffGuard.invalidate()
+      }
+    } finally {
+      if (commitListGuard.isCurrent(commitListSequence)) {
+        loading = false
+      }
+    }
+  }
+
+  // Sync position outward for Shell's per-project position memory
+  $effect(() => {
+    position = { selectedHash, rangeFilter }
+  })
+
+  // Load commits on mount or projectId change
+  $effect(() => {
+    if (!projectId) return
+    let cancelled = false
+
+    async function load() {
+      await refreshCommitList({ resetView: true })
+      if (cancelled) return
     }
 
     load()
     return () => { cancelled = true }
+  })
+
+  $effect(() => {
+    if (!projectId) return
+    const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+    if (!isTauriEnv) return
+
+    let destroyed = false
+    let unlisten = null
+
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      if (destroyed) return
+      listen('project-git-changed', async (event) => {
+        const eventProjectId = event?.payload?.project_id ?? null
+        if (destroyed || rangeFilter || !eventProjectId || eventProjectId !== projectId) {
+          return
+        }
+        await refreshCommitList({
+          background: true,
+          preservedSelectedHash: selectedHash,
+        })
+      }).then((dispose) => {
+        if (destroyed) {
+          dispose()
+          return
+        }
+        unlisten = dispose
+      })
+    })
+
+    return () => {
+      destroyed = true
+      if (typeof unlisten === 'function') {
+        unlisten()
+        unlisten = null
+      }
+    }
   })
 
   // Handle cross-tab navigation target

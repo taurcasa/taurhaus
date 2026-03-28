@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte'
 import { groupTasksByStatus, statusBadgeClass, statusLabel } from './taskHelpers.js'
 
 const { eventListenMock, emitProjectTasksChanged } = vi.hoisted(() => {
@@ -247,6 +247,43 @@ describe('TaskBoard component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Refreshed task')).toBeTruthy()
+    })
+  })
+
+  it('closes an open detail panel when the selected task disappears during a realtime refresh', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    getProjectTasks
+      .mockResolvedValueOnce({
+        tasks: [makeTask({ id: '1', subject: 'Watched task', status: 'pending' })],
+        errors: [],
+      })
+      .mockResolvedValueOnce({
+        tasks: [makeTask({ id: '2', subject: 'Replacement task', status: 'pending' })],
+        errors: [],
+      })
+    getTaskDetail.mockResolvedValue({
+      task: makeTask({ id: '1', subject: 'Watched task', status: 'pending', description: 'detail body' }),
+      session: null,
+      commits: [],
+      files_changed: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', projectId: 'proj-1', dark: false } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Watched task')).toBeTruthy()
+    })
+
+    await fireEvent.click(screen.getByText('Watched task'))
+    await waitFor(() => {
+      expect(screen.getByTestId('task-detail-panel')).toBeTruthy()
+    })
+
+    emitProjectTasksChanged({ project_id: 'proj-1' })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('task-detail-panel')).toBeNull()
+      expect(screen.getByText('Replacement task')).toBeTruthy()
     })
   })
 

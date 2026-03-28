@@ -11,6 +11,24 @@ import '@testing-library/jest-dom/vitest'
 
 let previousIntersectionObserver
 
+const { eventListenMock, emitProjectGitChanged } = vi.hoisted(() => {
+  /** @type {{ event: string, handler: (event: any) => void }[]} */
+  let handlers = []
+  return {
+    eventListenMock: vi.fn(async (event, cb) => {
+      handlers.push({ event, handler: cb })
+      return () => {
+        handlers = handlers.filter((entry) => entry.handler !== cb)
+      }
+    }),
+    emitProjectGitChanged: (payload) => {
+      handlers
+        .filter((entry) => entry.event === 'project-git-changed')
+        .forEach((entry) => entry.handler({ payload }))
+    },
+  }
+})
+
 beforeAll(() => {
   previousIntersectionObserver = globalThis.IntersectionObserver
   globalThis.IntersectionObserver = class IntersectionObserver {
@@ -34,6 +52,9 @@ vi.mock('./ipc.js', () => ({
   getCommitFiles: vi.fn(),
   getCommitsInRange: vi.fn(),
   getCommitDiff: vi.fn(),
+}))
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: eventListenMock,
 }))
 
 const { getAllCommits, getCommitFiles, getCommitsInRange, getCommitDiff } = await import('./ipc.js')
@@ -91,6 +112,7 @@ import GitTab from './GitTab.svelte'
 describe('GitTab component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    delete window.__TAURI_INTERNALS__
     if (!navigator.clipboard) {
       Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
     } else {
@@ -135,6 +157,37 @@ describe('GitTab component', () => {
     render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
     await waitFor(() => {
       expect(screen.getAllByTestId('commit-row')).toHaveLength(3)
+    })
+  })
+
+  it('refreshes the commit list when the selected project receives a git-change event', async () => {
+    window.__TAURI_INTERNALS__ = {}
+    const initialCommits = makeCommits(1)
+    const refreshedCommits = [
+      {
+        ...makeCommits(1)[0],
+        hash: 'def00001',
+        message: 'Fresh watcher commit',
+      },
+    ]
+    getAllCommits
+      .mockResolvedValueOnce(initialCommits)
+      .mockResolvedValueOnce(refreshedCommits)
+
+    render(GitTab, { props: { projectPath: '/test', projectId: 'p1', dark: false } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Commit message 1')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(eventListenMock).toHaveBeenCalledWith('project-git-changed', expect.any(Function))
+    })
+
+    emitProjectGitChanged({ project_id: 'p1' })
+
+    await waitFor(() => {
+      expect(getAllCommits).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('Fresh watcher commit')).toBeInTheDocument()
     })
   })
 
