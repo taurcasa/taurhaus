@@ -654,6 +654,36 @@ fn resolve_signature(repo: &Repository) -> Result<Signature<'_>, TemplateStoreEr
 }
 
 fn default_builtins_dir() -> PathBuf {
+    resolve_packaged_builtins_dir().unwrap_or_else(dev_builtins_dir)
+}
+
+fn resolve_packaged_builtins_dir() -> Option<PathBuf> {
+    let current_exe = std::env::current_exe().ok()?;
+    packaged_builtins_dir_candidates(&current_exe)
+        .into_iter()
+        .find(|path| path.is_dir())
+}
+
+fn packaged_builtins_dir_candidates(current_exe: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(exe_dir) = current_exe.parent() {
+        candidates.push(exe_dir.join("resources").join("templates"));
+
+        if let Some(contents_dir) = exe_dir.parent() {
+            candidates.push(
+                contents_dir
+                    .join("Resources")
+                    .join("resources")
+                    .join("templates"),
+            );
+        }
+    }
+
+    candidates
+}
+
+fn dev_builtins_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("resources")
         .join("templates")

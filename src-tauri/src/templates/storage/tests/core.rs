@@ -117,6 +117,44 @@ fn load_catalog_accepts_repo_builtins_roles_and_presets() {
 }
 
 #[test]
+fn packaged_builtins_dir_candidates_cover_installed_windows_and_macos_layouts() {
+    let windows_exe = PathBuf::from("/installed/taurhaus/taurhaus.exe");
+    let windows_candidates = packaged_builtins_dir_candidates(&windows_exe);
+    assert_eq!(
+        windows_candidates[0],
+        PathBuf::from("/installed/taurhaus/resources/templates")
+    );
+
+    let macos_exe = PathBuf::from("/Applications/taurhaus.app/Contents/MacOS/taurhaus");
+    let macos_candidates = packaged_builtins_dir_candidates(&macos_exe);
+    assert!(macos_candidates.contains(&PathBuf::from(
+        "/Applications/taurhaus.app/Contents/Resources/resources/templates"
+    )));
+}
+
+#[test]
+fn tauri_bundle_resources_include_template_directories() {
+    let raw = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"))
+        .expect("read tauri config");
+    let json: serde_json::Value = serde_json::from_str(&raw).expect("parse tauri config");
+    let resources = json["bundle"]["resources"]
+        .as_object()
+        .expect("bundle.resources object");
+    assert_eq!(
+        resources
+            .get("resources/templates/roles")
+            .and_then(serde_json::Value::as_str),
+        Some("resources/templates/roles")
+    );
+    assert_eq!(
+        resources
+            .get("resources/templates/presets")
+            .and_then(serde_json::Value::as_str),
+        Some("resources/templates/presets")
+    );
+}
+
+#[test]
 fn write_template_file_is_atomic_and_writes_content() {
     let (_root, app_data, builtins) = setup_dirs();
     let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);

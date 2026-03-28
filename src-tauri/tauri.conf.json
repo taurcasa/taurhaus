@@ -35,7 +35,9 @@
       "resources/taurhaus-daemon": "resources/taurhaus-daemon",
       "resources/mesh": "resources/mesh",
       "resources/mesh.version": "resources/mesh.version",
-      "resources/mesh.manifest.json": "resources/mesh.manifest.json"
+      "resources/mesh.manifest.json": "resources/mesh.manifest.json",
+      "resources/templates/roles": "resources/templates/roles",
+      "resources/templates/presets": "resources/templates/presets"
     },
     "icon": [
       "icons/32x32.png",
