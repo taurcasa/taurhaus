@@ -290,25 +290,19 @@ build-daemon:
     mkdir -p src-tauri/resources && touch src-tauri/resources/taurhaus-daemon
     cd src-tauri && cargo build --release --bin taurhaus-daemon
 
-# Build the mesh CLI binary (Linux target, local workspace).
+# Resolve a usable mesh CLI binary, building from the local workspace when available.
 build-mesh:
     #!/usr/bin/env bash
     set -euo pipefail
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
-    if [ ! -d "$MESH_PROJECT" ]; then
-        echo "✗ Mesh project not found at $MESH_PROJECT"
-        exit 1
-    fi
-    echo "▸ Building mesh from $MESH_PROJECT…"
-    cd "$MESH_PROJECT" && cargo build --release --bin mesh
+    MESH_BIN_PATH="$(./scripts/resolve-mesh-binary.sh)"
+    echo "✓ Mesh binary ready at $MESH_BIN_PATH"
 
 # Verify built mesh binary matches the pinned JSON compatibility contract.
-mesh-verify-lock: build-mesh
+mesh-verify-lock:
     #!/usr/bin/env bash
     set -euo pipefail
     LOCK_FILE="src-tauri/resources/mesh.lock.json"
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
-    MESH_BIN="$MESH_PROJECT/target/release/mesh"
+    MESH_BIN="$(./scripts/resolve-mesh-binary.sh)"
     if [ ! -f "$LOCK_FILE" ]; then
         echo "✗ Lock manifest not found at $LOCK_FILE"
         exit 1
@@ -428,15 +422,14 @@ _install-daemon-from-build:
     fi
 
 # Install mesh CLI to ~/.local/bin/ (WSL)
-# Delegates build to build-mesh, then installs alongside the daemon.
-install-mesh: build-mesh
+# Installs a lock-matching mesh binary alongside the daemon.
+install-mesh: mesh-verify-lock
     #!/usr/bin/env bash
     set -euo pipefail
 
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
     INSTALL_DIR="/home/mstie/.local/bin"
     MESH_BIN="mesh"
-    MESH_PATH="$MESH_PROJECT/target/release/$MESH_BIN"
+    MESH_PATH="$(./scripts/resolve-mesh-binary.sh)"
     if [ ! -x "$MESH_PATH" ]; then
         echo "✗ Built mesh binary not found at $MESH_PATH"
         exit 1
@@ -453,9 +446,8 @@ install-mesh: build-mesh
 bundle-mesh: mesh-verify-lock
     #!/usr/bin/env bash
     set -euo pipefail
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
     LOCK_FILE="src-tauri/resources/mesh.lock.json"
-    MESH_BIN="$MESH_PROJECT/target/release/mesh"
+    MESH_BIN="$(./scripts/resolve-mesh-binary.sh)"
     if [ ! -x "$MESH_BIN" ]; then
         echo "✗ Built mesh binary not found at $MESH_BIN"
         exit 1

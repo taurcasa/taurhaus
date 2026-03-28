@@ -46,8 +46,8 @@ Project-specific environment assumptions from `justfile`:
 | `just check` | Full quality gate (`fmt`, lint, typecheck, tests) for team-lead serialized runs or release validation. |
 | `just build-daemon` | Build the WSL/native daemon binary only. |
 | `just install-daemon` | Install/update the daemon in `~/.local/bin/`. |
-| `just build-mesh` | Build the mesh CLI from the local mesh workspace. |
-| `just install-mesh` | Install/update mesh in `~/.local/bin/`. |
+| `just build-mesh` | Resolve a lock-matching mesh CLI, building from the local mesh workspace when available. |
+| `just install-mesh` | Install/update a lock-matching mesh binary in `~/.local/bin/`. |
 | `just check-windows-build-prereqs` | Verify that the native Windows Bun/Rust/Build Tools/NSIS toolchain is ready before a Windows build. |
 | `just install-windows-build-prereqs` | Install the native Windows build prerequisites via WSL interop and an elevated PowerShell runner. |
 | `just build-windows-sccache` | Run the native Windows NSIS build with optional Windows-side `sccache` auto-detection enabled. |
@@ -181,8 +181,8 @@ Daemon signing note:
 The mesh binary is built from a separate project and bundled into `src-tauri/resources/` alongside a version file.
 
 ```bash
-just build-mesh       # Build mesh release binary from $MESH_PROJECT (default: ~/projects/mesh)
-just bundle-mesh      # Build + copy binary and version to src-tauri/resources/
+just build-mesh       # Build from $MESH_PROJECT when available, otherwise reuse MESH_BIN/resources/~/.local/bin
+just bundle-mesh      # Verify the pinned contract, then copy binary and version to src-tauri/resources/
 ```
 
 `bundle-mesh` writes three files:
