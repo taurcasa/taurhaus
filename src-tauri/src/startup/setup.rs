@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn resolve_startup_wsl_distro_prefers_project_path_distro() {
         let resolved = resolve_startup_wsl_distro(
-            [r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus"].into_iter(),
+            [r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus"],
             Some("Debian".to_string()),
         );
 
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn resolve_startup_wsl_distro_falls_back_to_detected_default() {
         let resolved = resolve_startup_wsl_distro(
-            [r"C:\Users\mstie\projects\taurhaus"].into_iter(),
+            [r"C:\Users\mstie\projects\taurhaus"],
             Some("Ubuntu".to_string()),
         );
 

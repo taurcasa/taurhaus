@@ -5,8 +5,12 @@
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.2.20",
+  "engines": {
+    "node": "^20.12.0 || ^22.0.0 || >=24.0.0"
+  },
   "scripts": {
     "preinstall": "node -e \"const ua=process.env.npm_config_user_agent||''; if(!ua.includes('bun/')){console.error('Use bun install (not npm/pnpm/yarn) in taurhaus'); process.exit(1)}\"",
+    "check:node": "node scripts/check-node-version.mjs",
     "dev": "vite",
     "dev:visual": "vite --config vite.visual.config.js",
     "dev:tauri": "tauri dev",
@@ -18,7 +22,7 @@
     "lint": "bun run lint:structure",
     "lint:structure": "bun run lint:knip && bun run lint:deps",
     "lint:knip": "knip",
-    "lint:deps": "dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
+    "lint:deps": "bun run check:node && dependency-cruiser --no-config --include-only '^src' --output-type err-long src",
     "typecheck": "svelte-check",
     "check": "bun run typecheck"
   },
