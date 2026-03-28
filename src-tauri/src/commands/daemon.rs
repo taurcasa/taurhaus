@@ -408,6 +408,23 @@ fn install_bundled_daemon(
         ));
     }
 
+    // Dev builds use a 0-byte marker file to satisfy Tauri resource bundling.
+    // Detect this early instead of copying an empty file into WSL and failing
+    // with a cryptic exec error.
+    let meta = std::fs::metadata(&bundled_binary).map_err(|e| {
+        format!(
+            "Cannot read bundled daemon binary at {}: {e}",
+            bundled_binary.display()
+        )
+    })?;
+    if meta.len() == 0 {
+        return Err(
+            "Bundled daemon binary is a dev-mode placeholder (0 bytes). \
+             Build the daemon first with: just install-daemon"
+                .to_string(),
+        );
+    }
+
     if crate::daemon::launcher::is_native_daemon() {
         install_daemon_native(&bundled_binary)
     } else {
@@ -519,7 +536,15 @@ fn install_daemon_wsl(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!("Failed to install daemon in WSL: {stderr}"));
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("exit code {}", output.status)
+        };
+        return Err(format!("Failed to install daemon in WSL: {detail}"));
     }
 
     let result = parse_wsl_install_output(&output.stdout)?;
@@ -549,6 +574,9 @@ struct WslInstallResult {
 
 fn install_daemon_wsl_script() -> &'static str {
     r#"set -eu
+step="init"
+trap 'echo "INSTALL_FAILED at step=$step src=$source_path" >&2' EXIT
+
 source_path="$1"
 target_dir="$HOME/.local/bin"
 target_path="$target_dir/taurhaus-daemon"
@@ -556,6 +584,7 @@ temp_path="$target_dir/.taurhaus-daemon.new.$$"
 pattern='[t]aurhaus-daemon([[:space:]]|$)'
 was_running=0
 
+step="mkdir"
 mkdir -p "$target_dir"
 
 if pgrep -f "$pattern" >/dev/null 2>&1; then
@@ -575,11 +604,17 @@ if pgrep -f "$pattern" >/dev/null 2>&1; then
   fi
 fi
 
+step="cp"
 cp "$source_path" "$temp_path"
+step="chmod"
 chmod +x "$temp_path"
+step="mv"
 mv -f "$temp_path" "$target_path"
+step="verify"
 "$target_path" --version
 printf '%s%s\n' "${WSL_INSTALL_RESTART_MARKER:-__TAURHAUS_DAEMON_WAS_RUNNING__=}" "$was_running"
+
+trap - EXIT
 "#
 }
 

@@ -316,10 +316,7 @@
               <svg class="w-5 h-5 text-danger-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>
               <div>
                 <p class="text-[13px] font-medium text-danger-500 mb-1">Installation failed</p>
-                <p class="text-[12px] {t.textSecondary} mb-2">{daemonError}</p>
-                <p class="text-[12px] {textTertiary}">
-                  Manual install: run <code class="font-mono text-[11px]">just install-daemon</code>{isWindows ? ' in WSL' : ''}
-                </p>
+                <p class="text-[12px] {t.textSecondary}">{daemonError}</p>
               </div>
             </div>
           </div>

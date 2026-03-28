@@ -15,6 +15,7 @@ use super::SetupContext;
 const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const STARTUP_DAEMON_FAST_PATH_TIMEOUT: Duration = Duration::from_millis(350);
+const STARTUP_WSL_DISTRO_DETECTION_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub(super) struct SetupPaths {
     pub(super) data_dir: PathBuf,
@@ -69,6 +70,10 @@ pub(super) fn determine_daemon_phase(
 }
 
 fn detect_wsl_distro(conn: &rusqlite::Connection) -> Option<String> {
+    if crate::daemon::launcher::is_native_daemon() {
+        return Some("native".to_string());
+    }
+
     let projects = match db::queries::list_projects(conn) {
         Ok(projects) => projects,
         Err(error) => {
@@ -79,13 +84,61 @@ fn detect_wsl_distro(conn: &rusqlite::Connection) -> Option<String> {
             Vec::new()
         }
     };
-    if crate::daemon::launcher::is_native_daemon() {
-        Some("native".to_string())
-    } else {
-        projects
-            .iter()
-            .find_map(|project| provider::path::wsl_distro_from_path(&project.path))
+    let project_distro =
+        resolve_startup_wsl_distro(projects.iter().map(|project| project.path.as_str()), None);
+    if project_distro.is_some() {
+        return project_distro;
     }
+
+    match detect_default_wsl_distro() {
+        Ok(Some(distro)) => {
+            tracing::info!(
+                wsl_distro = %distro,
+                "Using default WSL distro for startup daemon bootstrap"
+            );
+            Some(distro)
+        }
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "Failed to detect default WSL distro during startup"
+            );
+            None
+        }
+    }
+}
+
+fn resolve_startup_wsl_distro<'a>(
+    project_paths: impl IntoIterator<Item = &'a str>,
+    detected_default: Option<String>,
+) -> Option<String> {
+    project_paths
+        .into_iter()
+        .find_map(provider::path::wsl_distro_from_path)
+        .or(detected_default)
+}
+
+fn detect_default_wsl_distro() -> Result<Option<String>, String> {
+    let output = crate::process_utils::run_command_with_timeout(
+        crate::daemon::launcher::wsl_command().args(["--list", "--quiet"]),
+        STARTUP_WSL_DISTRO_DETECTION_TIMEOUT,
+        "wsl --list --quiet",
+    )
+    .map_err(|error| format!("Failed to run wsl.exe: {error}"))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    Ok(parse_distro_from_wsl_output(&output.stdout))
+}
+
+fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(raw);
+    text.lines()
+        .map(|line| line.replace('\0', "").trim().to_string())
+        .find(|line| !line.is_empty())
 }
 
 fn connect_daemon_provider(
@@ -375,6 +428,36 @@ mod tests {
         assert!(!provider.is_connected());
 
         listener_handle.join().expect("listener thread");
+    }
+
+    #[test]
+    fn resolve_startup_wsl_distro_prefers_project_path_distro() {
+        let resolved = resolve_startup_wsl_distro(
+            [r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus"].into_iter(),
+            Some("Debian".to_string()),
+        );
+
+        assert_eq!(resolved.as_deref(), Some("Ubuntu"));
+    }
+
+    #[test]
+    fn resolve_startup_wsl_distro_falls_back_to_detected_default() {
+        let resolved = resolve_startup_wsl_distro(
+            [r"C:\Users\mstie\projects\taurhaus"].into_iter(),
+            Some("Ubuntu".to_string()),
+        );
+
+        assert_eq!(resolved.as_deref(), Some("Ubuntu"));
+    }
+
+    #[test]
+    fn parse_distro_from_wsl_output_handles_utf16le_null_bytes() {
+        let raw = b"U\0b\0u\0n\0t\0u\0\n\0";
+
+        assert_eq!(
+            parse_distro_from_wsl_output(raw),
+            Some("Ubuntu".to_string())
+        );
     }
 
     #[test]

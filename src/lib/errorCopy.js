@@ -72,8 +72,12 @@ export function describeDaemonSetupError(error, { isWindows = false, action = 'c
     return 'Taurhaus could not update the helper service because access was denied. Check permissions and try again.'
   }
 
+  if (detail.includes('dev-mode placeholder')) {
+    return 'This is a development build without a bundled daemon. Build the daemon with: just install-daemon'
+  }
+
   if (action === 'install') {
-    return 'Could not install the helper service. Try again or use the manual install command below.'
+    return 'Could not install the helper service. Try again, or restart the app.'
   }
 
   if (action === 'restart') {
