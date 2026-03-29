@@ -6,6 +6,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-03-29
+
+Pipeline unification release. Unified the initialize, resume, and add-agent member-activation flows into a single shared executor, eliminating a class of divergence bugs. Added live per-member progress during team resume, replacing the previous dead-air experience.
+
+### Pipeline Unification
+
+- **Shared member-activation executor** — initialize, resume, and add-agent now delegate per-member activation through one canonical pipeline with shared stages: acquire pane, launch session, capture identity, join mesh, start daemon, commit runtime, deliver onboarding.
+- **Canonical stage vocabulary** — `MemberActivationStage` enum defines the authoritative stage list used by all wrappers and progress events.
+- **Explicit onboarding delivery policy** — wrappers declare `deferred_barrier` (initialize) or `immediate` (resume, add-agent) instead of relying on incidental helper placement. Structurally eliminates the race class behind the original resume member drop bug.
+- **Unified session launch/capture** — three separate session detection implementations merged into one shared helper for Claude and Codex.
+- **Unified mesh join and daemon start** — shared helpers with policy hooks for resume-specific stale-pid handling.
+- **Shared runtime commit helper** — one path for persisting pane, session, daemon, and metadata state.
+- **Team-daemon ownership consolidated** — each wrapper ensures the team daemon once at the wrapper level, removing duplicate member-level side effects.
+- **Cross-wrapper parity tests** — dedicated test coverage proving shared stage alignment and explicitly asserting legitimate wrapper differences.
+- **Initialize batch-stage adapter** — shared executor powers initialize while preserving the existing `MeshInitProgress` step UI contract.
+
+### Resume Progress UX
+
+- **Streamed per-member progress** — team resume now emits live progress events per member and per stage, replacing the static placeholder list that showed no feedback until completion.
+- **Runtime snapshot freshness** — runtime bar shows "Up to date", "May be slightly outdated", or "Loading latest status…" so users know whether the view is live or stale.
+- **Expanded resume summary** — completion tray now shows partial failures, daemon warnings, no-op resumes, and backend warnings translated to user language. Footer hidden on clean success to reduce noise.
+
+### Fixes
+
+- **Resume member drop** — fixed a race condition where the last member in the roster was not resumed because onboarding was sent before the member's inbox was ready. Added bounded retry delivery as an immediate fix, then structurally resolved via the unified onboarding policy.
+- **Terminal on resume** — terminal now opens when resuming or starting a mesh team.
+- **Compact hook log sink race** — fixed test race condition in compact hook log sink.
+- **Onboarding E2E** — updated fake tmux to handle `list-windows` and `list-panes` commands.
+- **Clippy cleanup** — replaced `map_err` with `inspect_err` for logging-only closures, extracted type aliases for complex callback types.
+
+### Quality & Stability
+
+- **IPC error standardization** — remaining IPC commands migrated to `IpcResult<T>`.
+- **Daemon fail-fast normalization** — unified foreground read behavior when daemon is busy.
+- **WSL distro selection** — coordination bridge now threads WSL distro from startup daemon, fixing split-brain discovery.
+- **Windows Claude dir override** — coordination respects `TAURHAUS_CLAUDE_DIR` override consistently.
+- **UNC team state saves** — hardened for Windows UNC path handling.
+- **Tmux cold-start bootstrap** — more resilient tmux session initialization.
+- **Vitest jsdom worker** — fixed ESM startup issue in frontend test suite.
+
+### Infrastructure
+
+- **Frontend-design developer role** — new role template for Claude agents using the `/frontend-design` skill for production-grade UI work.
+- **Architecture review documents** — resume progress UX assessment, pipeline unification assessment, and phased implementation plan at `docs/reviews/`.
+- **Event processor split proposal** — design document for queue-based event processor refactor.
+- **SQLite pooling proposal** — design document for dual-pool connection strategy.
+
 ## [0.6.2] - 2026-03-22
 
 Role system evolution release. Extended role schema with workflow metadata, created eval-validated new roles, and fixed tmux focus detection.
