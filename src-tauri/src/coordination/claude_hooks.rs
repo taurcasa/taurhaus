@@ -861,8 +861,6 @@ mod tests {
     const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
     struct EnvTestGuard {
         _in_process: MutexGuard<'static, ()>,
         lock_file: std::fs::File,
@@ -1083,7 +1081,7 @@ mod tests {
     #[test]
     fn compact_hook_emits_received_resolved_and_delivered_events() {
         let guard = acquire_env_test_guard();
-        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let claude_dir = tmp.path().join("claude");
         guard.set_override(&claude_dir);
@@ -1231,7 +1229,7 @@ mod tests {
     #[test]
     fn compact_hook_skips_when_snapshot_missing() {
         let guard = acquire_env_test_guard();
-        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let claude_dir = tmp.path().join("claude");
         guard.set_override(&claude_dir);
@@ -1264,7 +1262,7 @@ mod tests {
     #[test]
     fn compact_hook_skips_when_snapshot_task_is_completed() {
         let guard = acquire_env_test_guard();
-        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let claude_dir = tmp.path().join("claude");
         guard.set_override(&claude_dir);
@@ -1307,7 +1305,7 @@ mod tests {
     #[test]
     fn compact_hook_logs_parse_failures() {
         let guard = acquire_env_test_guard();
-        let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let claude_dir = tmp.path().join("claude");
         guard.set_override(&claude_dir);

@@ -50,8 +50,7 @@ pub mod platform;
 
 pub mod templates;
 
-#[cfg(test)]
-mod test_support;
+pub mod test_support;
 
 use std::sync::Mutex;
 use std::{io, process};
