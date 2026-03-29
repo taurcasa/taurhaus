@@ -31,6 +31,16 @@ function normalizeTeamRuntimeState(value) {
   return 'none'
 }
 
+function normalizeRuntimeSnapshotFreshness(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'fresh') return 'fresh'
+  if (normalized === 'cached') return 'cached'
+  if (normalized === 'attachmentsonly' || normalized === 'attachments_only') {
+    return 'attachments_only'
+  }
+  return null
+}
+
 const LEGACY_MEMBER_ACTIVATION_STAGE_ALIASES = {
   validate: 'prepare_member',
   load_member: 'prepare_member',
@@ -183,6 +193,13 @@ export function normalizeLiveTeamStatus(value) {
       : [],
   }
 
+  assignIfDefined(
+    normalized,
+    'runtimeSnapshotFreshness',
+    normalizeRuntimeSnapshotFreshness(
+      value.runtimeSnapshotFreshness ?? value.runtime_snapshot_freshness
+    ) ?? undefined
+  )
   assignIfDefined(normalized, 'description', value.description ?? undefined)
   return normalized
 }
@@ -195,6 +212,11 @@ export function normalizeProjectMeshSnapshot(value) {
       ? {
           teamName: value.teamName ?? value.team_name ?? '',
           leadName: value.teamStatus?.leadName ?? value.teamStatus?.lead_name ?? value.team_status?.leadName ?? value.team_status?.lead_name ?? 'team-lead',
+          runtimeSnapshotFreshness:
+            value.teamStatus?.runtimeSnapshotFreshness ??
+            value.teamStatus?.runtime_snapshot_freshness ??
+            value.team_status?.runtimeSnapshotFreshness ??
+            value.team_status?.runtime_snapshot_freshness,
           members: value.teamStatus?.members ?? value.team_status?.members ?? [],
         }
       : null
@@ -210,6 +232,7 @@ export function normalizeProjectMeshSnapshot(value) {
     teamStatus: normalizedStatus
       ? {
           leadName: normalizedStatus.leadName,
+          runtimeSnapshotFreshness: normalizedStatus.runtimeSnapshotFreshness ?? null,
           members: normalizedStatus.members,
         }
       : null,

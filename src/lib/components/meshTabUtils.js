@@ -322,6 +322,19 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
 }
 
 export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
+  const runtimeSnapshotFreshness = (() => {
+    const normalized = String(
+      status?.runtimeSnapshotFreshness ?? status?.runtime_snapshot_freshness ?? ''
+    )
+      .trim()
+      .toLowerCase()
+    if (normalized === 'fresh') return 'fresh'
+    if (normalized === 'cached') return 'cached'
+    if (normalized === 'attachmentsonly' || normalized === 'attachments_only') {
+      return 'attachments_only'
+    }
+    return null
+  })()
   const members = Array.isArray(status?.members) ? status.members : []
   const normalizedMembers = members.map((member, index) => ({
     ...member,
@@ -405,6 +418,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
 
   return {
     description: String(status?.description ?? ''),
+    runtimeSnapshotFreshness,
     lead,
     agents,
     presetId: '',

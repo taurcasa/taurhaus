@@ -125,4 +125,36 @@ describe('MeshRuntimeBar', () => {
     expect(screen.getByTestId('mesh-runtime-primary-action')).toHaveTextContent('Resume Stopped (1)')
     expect(screen.queryByTestId('mesh-runtime-add-agent')).not.toBeInTheDocument()
   })
+
+  it('shows a subtle freshness indicator for fresh runtime snapshots', () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'active' },
+        agents,
+        teamRuntimeState: 'active',
+        runtimeSnapshotFreshness: 'fresh',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-runtime-freshness')).toHaveTextContent(
+      'Live runtime confirmed'
+    )
+  })
+
+  it('shows attachment-only copy while live status refreshes', () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'active' },
+        agents,
+        teamRuntimeState: 'active',
+        runtimeSnapshotFreshness: 'attachments_only',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-runtime-freshness')).toHaveTextContent(
+      'Showing attachment-only state while live status refreshes'
+    )
+  })
 })

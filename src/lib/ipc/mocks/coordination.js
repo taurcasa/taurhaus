@@ -41,6 +41,7 @@ export function buildMockLiveTeamStatus(teamName, overrides = {}) {
   return {
     teamName,
     leadName: 'team-lead',
+    runtimeSnapshotFreshness: overrides.runtimeSnapshotFreshness ?? 'fresh',
     members: [
       {
         name: 'team-lead',

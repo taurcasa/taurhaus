@@ -108,6 +108,7 @@ export function createMeshTabGate({ state, refs, deps }) {
       teamStatus: normalized.teamName
         ? {
             leadName: report?.leadName ?? 'team-lead',
+            runtimeSnapshotFreshness: report?.runtimeSnapshotFreshness ?? null,
             members,
           }
         : null,
@@ -129,6 +130,7 @@ export function createMeshTabGate({ state, refs, deps }) {
         {
           teamName: normalized.teamName,
           leadName: normalized.teamStatus?.leadName ?? 'team-lead',
+          runtimeSnapshotFreshness: normalized.teamStatus?.runtimeSnapshotFreshness ?? null,
           members: Array.isArray(normalized.teamStatus?.members) ? normalized.teamStatus.members : [],
         },
         projectPath

@@ -2196,13 +2196,56 @@ describe('ipc module', () => {
       const mockModeResult = await ipc.coordinationGetLiveTeamStatus('arch')
       expect(mockModeResult.teamName).toBe('arch')
       expect(mockModeResult).toHaveProperty('leadName')
+      expect(mockModeResult.runtimeSnapshotFreshness).toBe('fresh')
       expect(Array.isArray(mockModeResult.members)).toBe(true)
       expect(mockModeResult.members[0]).toHaveProperty('sessionStatus')
 
       window.__TAURI_INTERNALS__ = {}
-      tauriCore.invoke.mockResolvedValue({ teamName: 'arch', leadName: 'lead', members: [] })
+      tauriCore.invoke.mockResolvedValue({
+        teamName: 'arch',
+        leadName: 'lead',
+        runtimeSnapshotFreshness: 'cached',
+        members: [],
+      })
       await ipc.coordinationGetLiveTeamStatus('arch')
       expect(tauriCore.invoke).toHaveBeenCalledWith('coordination_get_live_team_status', { teamName: 'arch' })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('coordinationGetLiveTeamStatus normalizes snake_case runtime freshness', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValueOnce({
+        team_name: 'arch-team',
+        lead_name: 'team-lead',
+        runtime_snapshot_freshness: 'attachments_only',
+        members: [
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cli_tool: 'codex',
+            session_status: 'idle',
+            pane_id: '%2',
+          },
+        ],
+      })
+
+      const result = await ipc.coordinationGetLiveTeamStatus('arch-team')
+
+      expect(result).toEqual({
+        teamName: 'arch-team',
+        leadName: 'team-lead',
+        runtimeSnapshotFreshness: 'attachments_only',
+        members: [
+          expect.objectContaining({
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            sessionStatus: 'idle',
+            paneId: '%2',
+          }),
+        ],
+      })
+
       delete window.__TAURI_INTERNALS__
     })
 
@@ -2215,6 +2258,7 @@ describe('ipc module', () => {
         teamRuntimeState: 'active',
         teamStatus: {
           leadName: 'team-lead',
+          runtimeSnapshotFreshness: null,
           members: [
             {
               name: 'team-lead',
@@ -2293,6 +2337,7 @@ describe('ipc module', () => {
         teamRuntimeState: 'coldResume',
         teamStatus: {
           leadName: 'team-lead',
+          runtimeSnapshotFreshness: null,
           members: [
             expect.objectContaining({
               name: 'frontend-dev',

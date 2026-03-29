@@ -4,6 +4,7 @@
     lead = null,
     agents = [],
     teamRuntimeState = 'active',
+    runtimeSnapshotFreshness = null,
     dark = false,
     actionsDisabled = false,
     onAddAgent = () => {},
@@ -22,6 +23,30 @@
   const titleTone = $derived(dark ? 'text-zinc-100' : 'text-zinc-900')
   const summaryTone = $derived(dark ? 'text-zinc-300' : 'text-zinc-700')
   const stateTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
+  const freshnessTone = $derived.by(() => {
+    if (runtimeSnapshotFreshness === 'fresh') {
+      return dark ? 'text-emerald-300/90' : 'text-emerald-700'
+    }
+    if (runtimeSnapshotFreshness === 'cached') {
+      return dark ? 'text-amber-300/90' : 'text-amber-700'
+    }
+    if (runtimeSnapshotFreshness === 'attachments_only') {
+      return dark ? 'text-sky-300/90' : 'text-sky-700'
+    }
+    return dark ? 'text-zinc-500' : 'text-zinc-400'
+  })
+  const freshnessDotTone = $derived.by(() => {
+    if (runtimeSnapshotFreshness === 'fresh') {
+      return dark ? 'bg-emerald-400/80' : 'bg-emerald-600'
+    }
+    if (runtimeSnapshotFreshness === 'cached') {
+      return dark ? 'bg-amber-400/80' : 'bg-amber-600'
+    }
+    if (runtimeSnapshotFreshness === 'attachments_only') {
+      return dark ? 'bg-sky-400/80' : 'bg-sky-600'
+    }
+    return dark ? 'bg-zinc-500/60' : 'bg-zinc-400'
+  })
   const primaryTone = $derived(
     actionsDisabled
       ? 'bg-brand-600/60 text-white'
@@ -91,6 +116,14 @@
   const primaryLabel = $derived.by(() => {
     if (!isActive) return isColdResume ? 'Resume Team' : `Resume Stopped (${statusCounts.offline})`
     return 'Add Agent'
+  })
+  const freshnessCopy = $derived.by(() => {
+    if (runtimeSnapshotFreshness === 'fresh') return 'Live runtime confirmed'
+    if (runtimeSnapshotFreshness === 'cached') return 'Using cached runtime snapshot'
+    if (runtimeSnapshotFreshness === 'attachments_only') {
+      return 'Showing attachment-only state while live status refreshes'
+    }
+    return ''
   })
 
   function closeOverflow() {
@@ -227,6 +260,15 @@
       <p class="text-[11px] {stateTone}" data-testid="mesh-runtime-state-copy">
         {stateCopy}
       </p>
+      {#if freshnessCopy}
+        <p
+          class="inline-flex items-center gap-1.5 text-[10px] font-medium {freshnessTone}"
+          data-testid="mesh-runtime-freshness"
+        >
+          <span class="h-1.5 w-1.5 rounded-full {freshnessDotTone}" aria-hidden="true"></span>
+          {freshnessCopy}
+        </p>
+      {/if}
     </div>
 
     <div class="flex shrink-0 items-center gap-2">

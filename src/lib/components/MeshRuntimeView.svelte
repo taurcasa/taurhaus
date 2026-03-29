@@ -286,6 +286,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       lead={teamConfig?.lead ?? null}
       agents={teamConfig?.agents ?? []}
       teamRuntimeState={teamRuntimeState}
+      runtimeSnapshotFreshness={teamConfig?.runtimeSnapshotFreshness ?? null}
       {dark}
       actionsDisabled={isResumingTeam}
       onAddAgent={onOpenAddAgent}

@@ -172,6 +172,24 @@ describe('meshTabUtils cross-project metadata', () => {
     ])
   })
 
+  it('preserves runtime snapshot freshness for runtime-mode team config', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      runtimeSnapshotFreshness: 'attachments_only',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          sessionStatus: 'active',
+        },
+      ],
+    })
+
+    expect(config.runtimeSnapshotFreshness).toBe('attachments_only')
+  })
+
   it('keeps rich role metadata for custom initialization requests', () => {
     const request = buildInitializationRequest({
       initializationMode: 'custom',
