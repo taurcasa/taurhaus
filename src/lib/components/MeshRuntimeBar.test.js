@@ -137,8 +137,22 @@ describe('MeshRuntimeBar', () => {
       },
     })
 
+    expect(screen.getByTestId('mesh-runtime-freshness')).toHaveTextContent('Up to date')
+  })
+
+  it('shows softer warning copy for cached runtime snapshots', () => {
+    render(MeshRuntimeBar, {
+      props: {
+        teamName: 'architecture-final',
+        lead: { id: 'lead', status: 'active' },
+        agents,
+        teamRuntimeState: 'active',
+        runtimeSnapshotFreshness: 'cached',
+      },
+    })
+
     expect(screen.getByTestId('mesh-runtime-freshness')).toHaveTextContent(
-      'Live runtime confirmed'
+      'May be slightly outdated'
     )
   })
 
@@ -154,7 +168,7 @@ describe('MeshRuntimeBar', () => {
     })
 
     expect(screen.getByTestId('mesh-runtime-freshness')).toHaveTextContent(
-      'Showing attachment-only state while live status refreshes'
+      'Loading latest status…'
     )
   })
 })

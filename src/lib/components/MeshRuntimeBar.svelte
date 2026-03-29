@@ -118,11 +118,9 @@
     return 'Add Agent'
   })
   const freshnessCopy = $derived.by(() => {
-    if (runtimeSnapshotFreshness === 'fresh') return 'Live runtime confirmed'
-    if (runtimeSnapshotFreshness === 'cached') return 'Using cached runtime snapshot'
-    if (runtimeSnapshotFreshness === 'attachments_only') {
-      return 'Showing attachment-only state while live status refreshes'
-    }
+    if (runtimeSnapshotFreshness === 'fresh') return 'Up to date'
+    if (runtimeSnapshotFreshness === 'cached') return 'May be slightly outdated'
+    if (runtimeSnapshotFreshness === 'attachments_only') return 'Loading latest status…'
     return ''
   })
 
