@@ -2,6 +2,10 @@
 
 #[cfg(feature = "mesh-bridged-backend")]
 use std::process::Command;
+#[cfg(feature = "mesh-bridged-backend")]
+use std::thread;
+#[cfg(feature = "mesh-bridged-backend")]
+use std::time::Duration;
 
 #[cfg(feature = "mesh-bridged-backend")]
 use std::sync::Arc;
@@ -26,6 +30,9 @@ const COORDINATOR_AGENT_NAME: &str = "taurhaus-orchestrator";
 const FALLBACK_OPERATOR_NAME: &str = "team-lead";
 #[cfg(feature = "mesh-bridged-backend")]
 const NOTICE_SUMMARY: &str = "operator_notice";
+#[cfg(feature = "mesh-bridged-backend")]
+const OPERATOR_NOTICE_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_millis(150), Duration::from_millis(350)];
 pub const MESH_MISSING_ERROR: &str =
     "Mesh CLI not found. Install it to enable multi-agent collaboration.";
 pub const TMUX_MISSING_ERROR: &str = "tmux is required for multi-agent sessions.";
@@ -421,27 +428,37 @@ impl MeshBridgedBackend {
         push_unique_sender(&mut sender_candidates, payload.member_name.as_str());
 
         let mut last_stderr = String::new();
-        for sender_name in &sender_candidates {
-            let out = self.run_mesh(&[
-                "send",
-                &payload.member_name,
-                &payload.message,
-                "--team",
-                &payload.team_name,
-                "--name",
-                sender_name.as_str(),
-                "--summary",
-                NOTICE_SUMMARY,
-            ])?;
-            if out.success {
-                return Ok(DeliveryResult {
-                    delivered: true,
-                    method: crate::coordination::requests::DeliveryMethod::TmuxInjection,
-                });
+        for retry_delay in OPERATOR_NOTICE_RETRY_DELAYS
+            .iter()
+            .copied()
+            .map(Some)
+            .chain(std::iter::once(None))
+        {
+            for sender_name in &sender_candidates {
+                let out = self.run_mesh(&[
+                    "send",
+                    &payload.member_name,
+                    &payload.message,
+                    "--team",
+                    &payload.team_name,
+                    "--name",
+                    sender_name.as_str(),
+                    "--summary",
+                    NOTICE_SUMMARY,
+                ])?;
+                if out.success {
+                    return Ok(DeliveryResult {
+                        delivered: true,
+                        method: crate::coordination::requests::DeliveryMethod::TmuxInjection,
+                    });
+                }
+
+                last_stderr = out.stderr;
             }
 
-            let stderr = out.stderr;
-            last_stderr = stderr;
+            if let Some(delay) = retry_delay {
+                thread::sleep(delay);
+            }
         }
 
         Err(CoordinationError::Backend(format!(
@@ -906,6 +923,99 @@ mod tests {
                     "architecture-final",
                     "--name",
                     FALLBACK_OPERATOR_NAME,
+                    "--summary",
+                    NOTICE_SUMMARY
+                ]
+            ]
+        );
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    #[test]
+    fn operator_notice_retries_full_sender_pass_when_recipient_inbox_is_not_ready_yet() {
+        let runner = MockRunner::with_outcomes(vec![
+            MeshCommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "error: agent 'codex-reviewer' not found (no inbox)".to_string(),
+            },
+            MeshCommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "error: agent 'codex-reviewer' not found (no inbox)".to_string(),
+            },
+            MeshCommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "error: agent 'codex-reviewer' not found (no inbox)".to_string(),
+            },
+            MeshCommandOutput {
+                success: true,
+                stdout: "sent".to_string(),
+                stderr: String::new(),
+            },
+        ]);
+        let backend = MeshBridgedBackend::with_runner(runner.clone());
+
+        let result = backend
+            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                member_name: "codex-reviewer".to_string(),
+                team_name: "architecture-final".to_string(),
+                message: "check in".to_string(),
+                sender_name: None,
+                operational_context: None,
+            }))
+            .expect("delivery should succeed after retry once the inbox is ready");
+
+        assert!(result.delivered);
+        assert_eq!(
+            result.method,
+            crate::coordination::requests::DeliveryMethod::TmuxInjection
+        );
+        assert_eq!(
+            runner.calls(),
+            vec![
+                vec![
+                    "send",
+                    "codex-reviewer",
+                    "check in",
+                    "--team",
+                    "architecture-final",
+                    "--name",
+                    COORDINATOR_AGENT_NAME,
+                    "--summary",
+                    NOTICE_SUMMARY
+                ],
+                vec![
+                    "send",
+                    "codex-reviewer",
+                    "check in",
+                    "--team",
+                    "architecture-final",
+                    "--name",
+                    FALLBACK_OPERATOR_NAME,
+                    "--summary",
+                    NOTICE_SUMMARY
+                ],
+                vec![
+                    "send",
+                    "codex-reviewer",
+                    "check in",
+                    "--team",
+                    "architecture-final",
+                    "--name",
+                    "codex-reviewer",
+                    "--summary",
+                    NOTICE_SUMMARY
+                ],
+                vec![
+                    "send",
+                    "codex-reviewer",
+                    "check in",
+                    "--team",
+                    "architecture-final",
+                    "--name",
+                    COORDINATOR_AGENT_NAME,
                     "--summary",
                     NOTICE_SUMMARY
                 ]
