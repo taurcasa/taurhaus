@@ -15,6 +15,7 @@ import {
   normalizeProjectMeshSnapshot,
   normalizeResumeTeamProgressEvent,
   normalizeResumeTeamReport,
+  normalizeStepProgressEvent,
 } from './coordinationResponses.js'
 
 export function coordinationDisbandTeam(teamName) {
@@ -107,7 +108,12 @@ export function coordinationGetProjectMeshSnapshot(projectPath) {
 }
 
 export function onCoordinationStepProgress(callback) {
-  return listen('coordination-step-progress', callback)
+  return listen('coordination-step-progress', (event) => {
+    callback({
+      ...event,
+      payload: normalizeStepProgressEvent(event?.payload ?? event),
+    })
+  })
 }
 
 export function onCoordinationResumeTeamProgress(callback) {

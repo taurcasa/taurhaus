@@ -2,6 +2,7 @@ use crate::commands::coordination_types::{
     AddAgentReport, InitializeReport, ResumeAgentReport, ResumeTeamProgressEvent, StepProgress,
     StepProgressEvent, StepStatus,
 };
+use crate::coordination::requests::canonical_member_activation_stages;
 use serde_json::{Map, Value};
 
 pub(super) fn emit_progress_events(
@@ -35,6 +36,7 @@ fn progress_events_for_steps(
 ) -> Vec<StepProgressEvent> {
     let mut events = Vec::new();
     for progress in steps {
+        let canonical_stages = canonical_stages_for_operation_step(operation, &progress.step);
         events.push(StepProgressEvent {
             team_name: team_name.to_string(),
             operation: operation.to_string(),
@@ -43,14 +45,29 @@ fn progress_events_for_steps(
                 status: StepStatus::Running,
                 message: None,
             },
+            canonical_stages: canonical_stages.clone(),
         });
         events.push(StepProgressEvent {
             team_name: team_name.to_string(),
             operation: operation.to_string(),
             progress: progress.clone(),
+            canonical_stages,
         });
     }
     events
+}
+
+fn canonical_stages_for_operation_step(
+    operation: &str,
+    legacy_step: &str,
+) -> Vec<crate::coordination::requests::MemberActivationStage> {
+    let wrapper = match operation {
+        "initialize_team" => "initialize",
+        "add_agent" => "add_agent",
+        "resume_member" => "resume",
+        _ => return Vec::new(),
+    };
+    canonical_member_activation_stages(wrapper, legacy_step).to_vec()
 }
 
 fn emit_progress_log_event(event: &StepProgressEvent) {

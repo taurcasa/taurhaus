@@ -2774,12 +2774,41 @@ fn step_progress_event_round_trip() {
             status: StepStatus::Running,
             message: Some("sending to frontend-dev".to_string()),
         },
+        canonical_stages: vec![MemberActivationStage::DeliverOnboarding],
     };
 
     let json = serde_json::to_string(&value).expect("serialize step progress event");
     let decoded: StepProgressEvent =
         serde_json::from_str(&json).expect("deserialize step progress event");
     assert_eq!(decoded, value);
+}
+
+#[test]
+fn initialize_progress_events_include_canonical_stage_metadata() {
+    let report = InitializeReport {
+        team_name: "architecture-final".to_string(),
+        succeeded_steps: vec!["create_panes".to_string()],
+        failed_step: None,
+        retryable: false,
+        message: "ok".to_string(),
+        steps: vec![StepProgress {
+            step: "create_panes".to_string(),
+            status: StepStatus::Succeeded,
+            message: Some("opened panes".to_string()),
+        }],
+    };
+
+    let events = super::progress::initialize_progress_events(&report);
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events[0].canonical_stages,
+        vec![
+            MemberActivationStage::AcquirePane,
+            MemberActivationStage::LaunchSession,
+        ]
+    );
+    assert_eq!(events[1].canonical_stages, events[0].canonical_stages);
 }
 
 #[test]

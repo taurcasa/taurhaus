@@ -283,6 +283,8 @@ pub struct StepProgressEvent {
     pub team_name: String,
     pub operation: String,
     pub progress: StepProgress,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub canonical_stages: Vec<MemberActivationStage>,
 }
 
 /// Streamed team-resume progress event emitted for one member stage.

@@ -453,6 +453,17 @@ pub const LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS: &[LegacyMemberActivationStage
     },
 ];
 
+pub fn canonical_member_activation_stages(
+    wrapper: &str,
+    legacy_stage: &str,
+) -> &'static [MemberActivationStage] {
+    LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS
+        .iter()
+        .find(|entry| entry.wrapper == wrapper && entry.legacy_stage == legacy_stage)
+        .map(|entry| entry.canonical_stages)
+        .unwrap_or(&[])
+}
+
 /// Progress metadata for one operation step.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StepProgress {
@@ -938,5 +949,21 @@ mod tests {
         assert!(LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS
             .iter()
             .any(|entry| entry.wrapper == "add_agent"));
+    }
+
+    #[test]
+    fn canonical_member_activation_stages_look_up_legacy_mapping() {
+        assert_eq!(
+            canonical_member_activation_stages("resume", "update_runtime"),
+            &[MemberActivationStage::CommitRuntime]
+        );
+        assert_eq!(
+            canonical_member_activation_stages("initialize", "create_team"),
+            &[]
+        );
+        assert_eq!(
+            canonical_member_activation_stages("missing", "missing"),
+            &[]
+        );
     }
 }

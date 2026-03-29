@@ -2336,7 +2336,36 @@ describe('ipc module', () => {
 
       const returned = await ipc.onCoordinationStepProgress(callback)
 
-      expect(tauriEvent.listen).toHaveBeenCalledWith('coordination-step-progress', callback)
+      expect(tauriEvent.listen).toHaveBeenCalledTimes(1)
+      const listenCall = tauriEvent.listen.mock.calls.at(-1)
+      expect(listenCall?.[0]).toBe('coordination-step-progress')
+      expect(typeof listenCall?.[1]).toBe('function')
+
+      const handler = listenCall?.[1]
+      handler?.({
+        payload: {
+          teamName: 'arch-team',
+          operation: 'initialize_team',
+          progress: {
+            step: 'create_panes',
+            status: 'running',
+            message: null,
+          },
+        },
+      })
+
+      expect(callback).toHaveBeenCalledWith({
+        payload: {
+          teamName: 'arch-team',
+          operation: 'initialize_team',
+          progress: {
+            step: 'create_panes',
+            status: 'running',
+            message: null,
+            canonicalStages: ['acquire_pane', 'launch_session'],
+          },
+        },
+      })
       expect(returned).toBe(unlisten)
     })
 
@@ -2379,6 +2408,41 @@ describe('ipc module', () => {
         },
       })
       expect(returned).toBe(unlisten)
+    })
+
+    it('normalizes legacy resume stage aliases for streamed team progress', async () => {
+      const callback = vi.fn()
+      const unlisten = vi.fn()
+      tauriEvent.listen.mockResolvedValue(unlisten)
+
+      await ipc.onCoordinationResumeTeamProgress(callback)
+
+      const handler = tauriEvent.listen.mock.calls.at(-1)?.[1]
+      handler?.({
+        payload: {
+          operation: 'resume_team',
+          teamName: 'architecture-final',
+          memberName: 'frontend-dev',
+          memberIndex: 2,
+          memberCount: 3,
+          stage: 'commit_member_runtime',
+          status: 'running',
+          message: 'launching',
+        },
+      })
+
+      expect(callback).toHaveBeenCalledWith({
+        payload: {
+          operation: 'resume_team',
+          teamName: 'architecture-final',
+          memberName: 'frontend-dev',
+          memberIndex: 2,
+          memberCount: 3,
+          stage: 'commit_runtime',
+          status: 'running',
+          message: 'launching',
+        },
+      })
     })
   })
 })

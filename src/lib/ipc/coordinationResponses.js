@@ -31,12 +31,106 @@ function normalizeTeamRuntimeState(value) {
   return 'none'
 }
 
+const LEGACY_MEMBER_ACTIVATION_STAGE_ALIASES = {
+  validate: 'prepare_member',
+  load_member: 'prepare_member',
+  validate_configuration: 'prepare_member',
+  resolve_pane: 'acquire_pane',
+  create_pane: 'acquire_pane',
+  create_panes: 'acquire_pane',
+  launch_sessions: 'capture_session_identity',
+  start_daemon: 'start_member_daemon',
+  start_daemons: 'start_member_daemon',
+  send_onboarding: 'deliver_onboarding',
+  update_runtime: 'commit_runtime',
+  update_roster: 'commit_runtime',
+  commit_member_runtime: 'commit_runtime',
+}
+
+const LEGACY_STEP_CANONICAL_STAGE_MAP = {
+  initialize_team: {
+    validate_configuration: ['prepare_member'],
+    create_team: [],
+    add_lead: [],
+    create_panes: ['acquire_pane', 'launch_session'],
+    launch_sessions: ['capture_session_identity'],
+    join_mesh: ['join_mesh'],
+    start_daemons: ['start_member_daemon'],
+    send_onboarding: ['deliver_onboarding'],
+  },
+  add_agent: {
+    validate: ['prepare_member'],
+    create_pane: ['acquire_pane', 'launch_session'],
+    launch_session: ['capture_session_identity'],
+    join_mesh: ['join_mesh'],
+    start_daemon: ['start_member_daemon'],
+    send_onboarding: ['deliver_onboarding'],
+    update_roster: ['commit_runtime'],
+  },
+  resume_member: {
+    validate: ['prepare_member'],
+    load_member: ['prepare_member'],
+    resolve_pane: ['acquire_pane'],
+    launch_session: ['launch_session', 'capture_session_identity'],
+    join_mesh: ['join_mesh'],
+    start_daemon: ['start_member_daemon'],
+    send_onboarding: ['deliver_onboarding'],
+    update_runtime: ['commit_runtime'],
+  },
+}
+
 function normalizeStepStatus(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
   if (normalized === 'running') return 'running'
   if (normalized === 'succeeded') return 'succeeded'
   if (normalized === 'failed') return 'failed'
   return 'pending'
+}
+
+function normalizeMemberActivationStage(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (!normalized) return null
+  return LEGACY_MEMBER_ACTIVATION_STAGE_ALIASES[normalized] ?? normalized
+}
+
+function normalizeCanonicalStages(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((entry) => normalizeMemberActivationStage(entry))
+    .filter(Boolean)
+}
+
+function deriveCanonicalStages(operation, legacyStep) {
+  const operationKey = String(operation ?? '').trim().toLowerCase()
+  const legacyKey = String(legacyStep ?? '').trim()
+  if (!legacyKey) return []
+  return [...(LEGACY_STEP_CANONICAL_STAGE_MAP[operationKey]?.[legacyKey] ?? [])]
+}
+
+export function normalizeStepProgressEvent(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const progress = value.progress
+  const step = String(progress?.step ?? '').trim()
+  if (!step) return null
+
+  const operation = String(value.operation ?? '').trim()
+  const canonicalStages = normalizeCanonicalStages(
+    value.canonicalStages ?? value.canonical_stages ?? progress?.canonicalStages ?? progress?.canonical_stages
+  )
+  const normalizedCanonicalStages =
+    canonicalStages.length > 0 ? canonicalStages : deriveCanonicalStages(operation, step)
+
+  return {
+    teamName: String(value.teamName ?? value.team_name ?? '').trim(),
+    operation,
+    progress: {
+      step,
+      status: normalizeStepStatus(progress?.status),
+      message: progress?.message == null ? null : String(progress.message),
+      canonicalStages: normalizedCanonicalStages,
+    },
+  }
 }
 
 function normalizeCoordinationMember(value) {
@@ -145,7 +239,7 @@ export function normalizeResumeTeamProgressEvent(value) {
 
   const teamName = String(value.teamName ?? value.team_name ?? '').trim()
   const memberName = String(value.memberName ?? value.member_name ?? '').trim()
-  const stage = String(value.stage ?? '').trim()
+  const stage = normalizeMemberActivationStage(value.stage)
   if (!teamName || !memberName || !stage) return null
 
   return {
