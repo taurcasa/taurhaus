@@ -1,12 +1,13 @@
 use super::*;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
+use crate::coordination::backend::{BackendCapabilities, BackendKind, CoordinationBackend};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
@@ -14,14 +15,220 @@ use crate::coordination::member_activation::{
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
-    ResumeMemberRequest, StepStatus,
+    AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
+    LaunchRequest, LaunchResult, LeadMode, ProbeRequest, ProbeResult, ResumeMemberRequest,
+    StepStatus, TeardownRequest, TeardownResult,
 };
-use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+use crate::coordination::runtime::{
+    CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
+};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::templates::types::BehavioralContract;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DeliveryTimelineEvent {
+    JoinMesh(String),
+    SpawnDaemon(String),
+    Deliver(String),
+}
+
+#[derive(Debug, Clone)]
+struct SequencedBackend {
+    inner: FakeBackend,
+    events: Arc<Mutex<Vec<DeliveryTimelineEvent>>>,
+}
+
+impl SequencedBackend {
+    fn new(events: Arc<Mutex<Vec<DeliveryTimelineEvent>>>) -> Self {
+        Self {
+            inner: FakeBackend::default(),
+            events,
+        }
+    }
+
+    fn push_event(&self, event: DeliveryTimelineEvent) {
+        self.events
+            .lock()
+            .expect("sequenced backend events mutex poisoned")
+            .push(event);
+    }
+}
+
+impl CoordinationBackend for SequencedBackend {
+    fn kind(&self) -> BackendKind {
+        self.inner.kind()
+    }
+
+    fn capabilities(&self) -> BackendCapabilities {
+        self.inner.capabilities()
+    }
+
+    fn launch(&self, req: LaunchRequest) -> Result<LaunchResult, CoordinationError> {
+        self.inner.launch(req)
+    }
+
+    fn deliver(&self, req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
+        if let DeliveryRequest::OperatorNotice(payload) = &req {
+            self.push_event(DeliveryTimelineEvent::Deliver(payload.member_name.clone()));
+        }
+        self.inner.deliver(req)
+    }
+
+    fn probe(&self, req: ProbeRequest) -> Result<ProbeResult, CoordinationError> {
+        self.inner.probe(req)
+    }
+
+    fn teardown(&self, req: TeardownRequest) -> Result<TeardownResult, CoordinationError> {
+        self.inner.teardown(req)
+    }
+}
+
+#[derive(Debug)]
+struct SequencedRuntime {
+    inner: RecordingCoordinationRuntime,
+    events: Arc<Mutex<Vec<DeliveryTimelineEvent>>>,
+}
+
+impl SequencedRuntime {
+    fn new(events: Arc<Mutex<Vec<DeliveryTimelineEvent>>>) -> Self {
+        Self {
+            inner: RecordingCoordinationRuntime::default(),
+            events,
+        }
+    }
+
+    fn push_event(&self, event: DeliveryTimelineEvent) {
+        self.events
+            .lock()
+            .expect("sequenced runtime events mutex poisoned")
+            .push(event);
+    }
+}
+
+impl CoordinationRuntime for SequencedRuntime {
+    fn create_aitx_pane(
+        &self,
+        project_id: &str,
+        tmux_layout: &str,
+    ) -> Result<String, CoordinationError> {
+        self.inner.create_aitx_pane(project_id, tmux_layout)
+    }
+
+    fn send_tmux_keys_with_enter(
+        &self,
+        pane_id: &str,
+        keys: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.send_tmux_keys_with_enter(pane_id, keys)
+    }
+
+    fn detect_session_id(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<Option<String>, CoordinationError> {
+        self.inner.detect_session_id(pane_id, cli_tool)
+    }
+
+    fn detect_runtime_session(
+        &self,
+        pane_id: &str,
+        cli_tool: CliTool,
+    ) -> Result<crate::coordination::runtime::DetectedRuntimeSession, CoordinationError> {
+        self.inner.detect_runtime_session(pane_id, cli_tool)
+    }
+
+    fn join_mesh(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        project_id: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner.join_mesh(team_name, member_name, project_id)?;
+        self.push_event(DeliveryTimelineEvent::JoinMesh(member_name.to_string()));
+        Ok(())
+    }
+
+    fn spawn_mesh_daemon(
+        &self,
+        pane_id: &str,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        let pid = self
+            .inner
+            .spawn_mesh_daemon(pane_id, team_name, member_name)?;
+        self.push_event(DeliveryTimelineEvent::SpawnDaemon(member_name.to_string()));
+        Ok(pid)
+    }
+
+    fn spawn_team_daemon(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<u32, CoordinationError> {
+        self.inner.spawn_team_daemon(team_name, operator_name)
+    }
+
+    fn pane_belongs_to_project(
+        &self,
+        pane_id: &str,
+        project_id: &str,
+    ) -> Result<bool, CoordinationError> {
+        self.inner.pane_belongs_to_project(pane_id, project_id)
+    }
+
+    fn pane_exists(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_exists(pane_id)
+    }
+
+    fn pane_is_dead(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_dead(pane_id)
+    }
+
+    fn pane_is_shell(&self, pane_id: &str) -> Result<bool, CoordinationError> {
+        self.inner.pane_is_shell(pane_id)
+    }
+
+    fn pane_current_command(&self, pane_id: &str) -> Result<Option<String>, CoordinationError> {
+        self.inner.pane_current_command(pane_id)
+    }
+
+    fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
+        self.inner.kill_aitx_pane(pane_id)
+    }
+
+    fn terminate_process_by_pid(&self, pid: u32) -> Result<(), CoordinationError> {
+        self.inner.terminate_process_by_pid(pid)
+    }
+
+    fn is_process_running_by_pid(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.is_process_running_by_pid(pid)
+    }
+
+    fn mesh_daemon_uses_current_binary(&self, pid: u32) -> Result<bool, CoordinationError> {
+        self.inner.mesh_daemon_uses_current_binary(pid)
+    }
+
+    fn team_daemon_uses_current_binary(&self, team_name: &str) -> Result<bool, CoordinationError> {
+        self.inner.team_daemon_uses_current_binary(team_name)
+    }
+
+    fn clear_mesh_daemon_pid_file(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<(), CoordinationError> {
+        self.inner
+            .clear_mesh_daemon_pid_file(team_name, member_name)
+    }
+
+    fn stop_team_daemon(&self, team_name: &str) -> Result<(), CoordinationError> {
+        self.inner.stop_team_daemon(team_name)
+    }
+}
 
 fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Member {
     Member {
@@ -80,6 +287,29 @@ fn new_orchestrator(
     runtime: Arc<RecordingCoordinationRuntime>,
 ) -> CoordinationOrchestrator {
     CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime)
+}
+
+fn timeline_index(events: &[DeliveryTimelineEvent], target: DeliveryTimelineEvent) -> usize {
+    events
+        .iter()
+        .position(|event| *event == target)
+        .expect("timeline event should exist")
+}
+
+fn mark_member_offline(
+    tmp: &TempDir,
+    team_name: &str,
+    member_name: &str,
+    pane_id: &str,
+    daemon_pid: Option<u32>,
+) {
+    let mut runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("member runtime");
+    runtime.pane_id = Some(pane_id.to_string());
+    runtime.daemon_pid = daemon_pid;
+    runtime.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &runtime)
+        .expect("save offline runtime");
 }
 
 #[test]
@@ -621,6 +851,64 @@ fn initialize_onboarding_entries_use_deferred_barrier_policy() {
     assert!(entries
         .iter()
         .all(|entry| { entry.policy == MemberActivationDeliveryPolicy::DeferredBarrier }));
+}
+
+// Regression: commit 3b17397 fixed a race where onboarding could reach a
+// member before Mesh-sidecar activation had completed. Initialize must keep a
+// full barrier: every member joins Mesh and starts its daemon before the first
+// onboarding notice is delivered.
+#[test]
+fn initialize_onboarding_waits_for_member_activation_barrier() {
+    let tmp = TempDir::new().expect("tempdir");
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let backend = Arc::new(SequencedBackend::new(events.clone()));
+    let runtime = Arc::new(SequencedRuntime::new(events.clone()));
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+    };
+
+    let report = orchestrator
+        .initialize_team(&request)
+        .expect("initialize report");
+    assert!(report.failed_step.is_none(), "initialize should succeed");
+
+    let events = events.lock().expect("timeline mutex").clone();
+    let first_delivery = timeline_index(
+        &events,
+        DeliveryTimelineEvent::Deliver("team-lead".to_string()),
+    );
+    let last_activation = events
+        .iter()
+        .rposition(|event| {
+            matches!(
+                event,
+                DeliveryTimelineEvent::JoinMesh(_) | DeliveryTimelineEvent::SpawnDaemon(_)
+            )
+        })
+        .expect("activation events should exist");
+
+    assert!(
+        last_activation < first_delivery,
+        "initialize should defer onboarding until all join/spawn work completes: {events:?}"
+    );
+    assert_eq!(
+        events,
+        vec![
+            DeliveryTimelineEvent::JoinMesh("team-lead".to_string()),
+            DeliveryTimelineEvent::JoinMesh("builder".to_string()),
+            DeliveryTimelineEvent::SpawnDaemon("team-lead".to_string()),
+            DeliveryTimelineEvent::SpawnDaemon("builder".to_string()),
+            DeliveryTimelineEvent::Deliver("team-lead".to_string()),
+            DeliveryTimelineEvent::Deliver("builder".to_string()),
+        ]
+    );
 }
 
 #[test]
@@ -1230,6 +1518,100 @@ fn resume_onboarding_entry_uses_immediate_policy() {
         .expect("resume onboarding entry");
 
     assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
+}
+
+// Regression: commit 3b17397 fixed the resume race by delivering onboarding as
+// soon as each member is individually ready, rather than deferring delivery
+// behind the full-team resume loop.
+#[test]
+fn resume_onboarding_delivers_immediately_per_member() {
+    let tmp = TempDir::new().expect("tempdir");
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let backend = Arc::new(SequencedBackend::new(events.clone()));
+    let runtime = Arc::new(SequencedRuntime::new(events.clone()));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add builder");
+    mark_member_offline(&tmp, "architecture-final", "team-lead", "%11", None);
+    mark_member_offline(&tmp, "architecture-final", "builder", "%12", Some(55));
+
+    let lead_report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "architecture-final".to_string(),
+                member_name: "team-lead".to_string(),
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume lead");
+    assert!(
+        lead_report.resumed,
+        "lead resume should succeed: {lead_report:?}"
+    );
+
+    let builder_report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "architecture-final".to_string(),
+                member_name: "builder".to_string(),
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume builder");
+    assert!(
+        builder_report.resumed,
+        "builder resume should succeed: {builder_report:?}"
+    );
+
+    let events = events.lock().expect("timeline mutex").clone();
+    let lead_delivery = timeline_index(
+        &events,
+        DeliveryTimelineEvent::Deliver("team-lead".to_string()),
+    );
+    let builder_join = timeline_index(
+        &events,
+        DeliveryTimelineEvent::JoinMesh("builder".to_string()),
+    );
+    let builder_spawn = timeline_index(
+        &events,
+        DeliveryTimelineEvent::SpawnDaemon("builder".to_string()),
+    );
+    let builder_delivery = timeline_index(
+        &events,
+        DeliveryTimelineEvent::Deliver("builder".to_string()),
+    );
+
+    assert!(
+        lead_delivery < builder_join,
+        "resume should deliver the first member onboarding before the next member activation starts: {events:?}"
+    );
+    assert!(
+        builder_join < builder_spawn && builder_spawn < builder_delivery,
+        "builder onboarding should follow builder activation, not precede it: {events:?}"
+    );
 }
 
 #[test]

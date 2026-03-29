@@ -931,6 +931,9 @@ mod tests {
     }
 
     #[cfg(feature = "mesh-bridged-backend")]
+    // Regression: commit 3b17397 fixed the resume race where onboarding send
+    // could win the recipient inbox bootstrap and fail with "no inbox". Keep
+    // retrying the full sender pass until the inbox is ready.
     #[test]
     fn operator_notice_retries_full_sender_pass_when_recipient_inbox_is_not_ready_yet() {
         let runner = MockRunner::with_outcomes(vec![
