@@ -40,6 +40,7 @@ use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 #[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::control::TMUX_SESSION_NAME;
 #[cfg(not(test))]
 use crate::ProviderState;
 use live_status::coordination_get_live_team_status_impl;
@@ -73,6 +74,36 @@ fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
 
 #[cfg(test)]
 const DEFAULT_TMUX_LAYOUT: &str = "new_window";
+
+fn ensure_team_terminal_visible(db: &DbState, wsl_distro: Option<String>) {
+    let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
+    let _ = crate::terminal::handle_terminal(crate::terminal::TerminalIntent::EnsureOpen {
+        distro: wsl_distro,
+        tmux_session: TMUX_SESSION_NAME.to_string(),
+        emulator: terminal_settings.emulator,
+        custom_command: terminal_settings.custom_command,
+    });
+}
+
+fn maybe_surface_terminal_after_initialize(
+    db: &DbState,
+    wsl_distro: Option<String>,
+    report: &InitializeReport,
+) {
+    if report.failed_step.is_none() {
+        ensure_team_terminal_visible(db, wsl_distro);
+    }
+}
+
+fn maybe_surface_terminal_after_resume_team(
+    db: &DbState,
+    wsl_distro: Option<String>,
+    report: &ResumeTeamReport,
+) {
+    if report.resumed {
+        ensure_team_terminal_visible(db, wsl_distro);
+    }
+}
 
 #[tauri::command]
 pub async fn coordination_initialize_team(
@@ -115,6 +146,14 @@ pub async fn coordination_initialize_team(
         }
         _ => result,
     };
+    if let Ok(report) = &result {
+        let provider = app.state::<ProviderState>();
+        maybe_surface_terminal_after_initialize(
+            &app.state::<DbState>(),
+            provider.wsl_distro.clone(),
+            report,
+        );
+    }
     emit_initialize_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result
@@ -201,6 +240,10 @@ pub fn coordination_resume_team(
         coordination_resume_team_internal(state.inner(), request, &cli_commands, &tmux_layout).ipc()
     };
     let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
+    if let Ok(report) = &result {
+        let provider = app.state::<ProviderState>();
+        maybe_surface_terminal_after_resume_team(&db, provider.wsl_distro.clone(), report);
+    }
     emit_resume_team_pipeline_result(&requested_team_name, &result);
     span.finish_result(&result);
     result

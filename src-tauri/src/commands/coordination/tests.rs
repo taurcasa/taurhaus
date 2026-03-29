@@ -915,6 +915,122 @@ fn resume_team_ipc_returns_report_shape() {
 }
 
 #[test]
+fn initialize_success_surfaces_terminal_with_taurhaus_tmux_session() {
+    let (db, _db_file) = test_db_state();
+    let expected_emulator =
+        crate::commands::terminal_settings::load_terminal_settings(&db).emulator;
+    let _ = crate::terminal::take_recorded_terminal_intents();
+
+    // Regression: before this fix, successful team initialization returned its
+    // report without surfacing the terminal; no single breaking commit was
+    // identified, but the command layer omitted the shared EnsureOpen path.
+    maybe_surface_terminal_after_initialize(
+        &db,
+        Some("Ubuntu".to_string()),
+        &InitializeReport {
+            team_name: "architecture-final".to_string(),
+            succeeded_steps: vec!["launch_sessions".to_string()],
+            failed_step: None,
+            retryable: false,
+            message: "team initialized".to_string(),
+            steps: Vec::new(),
+        },
+    );
+
+    assert_eq!(
+        crate::terminal::take_recorded_terminal_intents(),
+        vec![crate::terminal::TerminalIntent::EnsureOpen {
+            distro: Some("Ubuntu".to_string()),
+            tmux_session: "taurhaus".to_string(),
+            emulator: expected_emulator,
+            custom_command: String::new(),
+        }]
+    );
+}
+
+#[test]
+fn initialize_failure_does_not_surface_terminal() {
+    let (db, _db_file) = test_db_state();
+    let _ = crate::terminal::take_recorded_terminal_intents();
+
+    maybe_surface_terminal_after_initialize(
+        &db,
+        Some("Ubuntu".to_string()),
+        &InitializeReport {
+            team_name: "architecture-final".to_string(),
+            succeeded_steps: vec!["create_team".to_string()],
+            failed_step: Some("launch_sessions".to_string()),
+            retryable: true,
+            message: "launch failed".to_string(),
+            steps: Vec::new(),
+        },
+    );
+
+    assert!(crate::terminal::take_recorded_terminal_intents().is_empty());
+}
+
+#[test]
+fn resume_team_surfaces_terminal_only_when_members_resumed() {
+    let (db, _db_file) = test_db_state();
+    let expected_emulator =
+        crate::commands::terminal_settings::load_terminal_settings(&db).emulator;
+    let _ = crate::terminal::take_recorded_terminal_intents();
+
+    // Regression: before this fix, successful team resume rebuilt panes and
+    // sessions but left the terminal hidden; no single breaking commit was
+    // identified, but the command layer never called the shared terminal path.
+    maybe_surface_terminal_after_resume_team(
+        &db,
+        Some("Ubuntu".to_string()),
+        &ResumeTeamReport {
+            team_name: "architecture-final".to_string(),
+            resumed: true,
+            total_members: 3,
+            resumed_members: vec![
+                "team-lead".to_string(),
+                "frontend-dev".to_string(),
+                "reviewer".to_string(),
+            ],
+            failed_members: Vec::new(),
+            warnings: Vec::new(),
+            started_team_daemon: true,
+            team_daemon_warning: None,
+        },
+    );
+
+    assert_eq!(
+        crate::terminal::take_recorded_terminal_intents(),
+        vec![crate::terminal::TerminalIntent::EnsureOpen {
+            distro: Some("Ubuntu".to_string()),
+            tmux_session: "taurhaus".to_string(),
+            emulator: expected_emulator,
+            custom_command: String::new(),
+        }]
+    );
+
+    maybe_surface_terminal_after_resume_team(
+        &db,
+        Some("Ubuntu".to_string()),
+        &ResumeTeamReport {
+            team_name: "architecture-final".to_string(),
+            resumed: false,
+            total_members: 3,
+            resumed_members: Vec::new(),
+            failed_members: vec![ResumeTeamMemberFailure {
+                member_name: "team-lead".to_string(),
+                message: "resume failed".to_string(),
+                retryable: true,
+            }],
+            warnings: Vec::new(),
+            started_team_daemon: false,
+            team_daemon_warning: Some("not started".to_string()),
+        },
+    );
+
+    assert!(crate::terminal::take_recorded_terminal_intents().is_empty());
+}
+
+#[test]
 fn create_team_happy_path_persists_team() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());

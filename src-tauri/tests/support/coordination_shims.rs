@@ -63,6 +63,7 @@ pub mod session_scanner {
         use super::cli_tool::CliTool;
         pub use taurhaus_lib::session_scanner::control::{
             launch_command_in_tmux_with_layout, split_command_in_tmux_target_pane,
+            TMUX_SESSION_NAME,
         };
 
         pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {

@@ -13,6 +13,33 @@ mod coordination_shims;
 pub use coordination_shims::provider;
 pub use coordination_shims::{daemon, errors, models, session_scanner, templates, tmux_layout};
 
+pub mod terminal {
+    use std::sync::{Mutex, OnceLock};
+
+    pub use taurhaus_lib::terminal::TerminalIntent;
+
+    fn recorded_terminal_intents() -> &'static Mutex<Vec<TerminalIntent>> {
+        static RECORDED_TERMINAL_INTENTS: OnceLock<Mutex<Vec<TerminalIntent>>> = OnceLock::new();
+        RECORDED_TERMINAL_INTENTS.get_or_init(|| Mutex::new(Vec::new()))
+    }
+
+    pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
+        recorded_terminal_intents()
+            .lock()
+            .expect("terminal intent recorder lock")
+            .push(intent.clone());
+        taurhaus_lib::terminal::handle_terminal(intent)
+    }
+
+    pub fn take_recorded_terminal_intents() -> Vec<TerminalIntent> {
+        std::mem::take(
+            &mut *recorded_terminal_intents()
+                .lock()
+                .expect("terminal intent recorder lock"),
+        )
+    }
+}
+
 #[path = "../src/commands/coordination.rs"]
 pub mod commands_coordination;
 #[path = "../src/commands/coordination_types.rs"]
@@ -137,12 +164,16 @@ mod commands {
     }
 
     pub mod terminal_settings {
-        use crate::models::CliCommandSettings;
+        use crate::models::{CliCommandSettings, TerminalSettings};
 
         use super::projects::DbState;
 
         pub fn load_cli_commands(_db: &DbState) -> CliCommandSettings {
             CliCommandSettings::default()
+        }
+
+        pub fn load_terminal_settings(_db: &DbState) -> TerminalSettings {
+            TerminalSettings::default()
         }
     }
 

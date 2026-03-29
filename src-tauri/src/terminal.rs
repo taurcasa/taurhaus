@@ -16,7 +16,7 @@
 //!   - Linux:   no-op (user manages their own terminal)
 
 /// What the caller wants to do with the terminal.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TerminalIntent {
     /// Just focus the existing terminal window. No-op if not running.
     /// Used by session indicator clicks — quick navigation that shouldn't
@@ -606,8 +606,39 @@ pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
 
 // Linux: no-op — terminal is already in the user's workspace.
 
+#[cfg(test)]
+fn recorded_terminal_intents() -> &'static std::sync::Mutex<Vec<TerminalIntent>> {
+    use std::sync::{Mutex, OnceLock};
+
+    static RECORDED_TERMINAL_INTENTS: OnceLock<Mutex<Vec<TerminalIntent>>> = OnceLock::new();
+    RECORDED_TERMINAL_INTENTS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+#[cfg(test)]
+fn record_terminal_intent(intent: &TerminalIntent) {
+    recorded_terminal_intents()
+        .lock()
+        .expect("terminal intent recorder lock")
+        .push(intent.clone());
+}
+
+#[cfg(test)]
+pub(crate) fn take_recorded_terminal_intents() -> Vec<TerminalIntent> {
+    std::mem::take(
+        &mut *recorded_terminal_intents()
+            .lock()
+            .expect("terminal intent recorder lock"),
+    )
+}
+
 #[cfg(target_os = "linux")]
-pub fn handle_terminal(_intent: TerminalIntent) -> Result<(), String> {
+pub fn handle_terminal(intent: TerminalIntent) -> Result<(), String> {
+    #[cfg(test)]
+    record_terminal_intent(&intent);
+
+    #[cfg(not(test))]
+    let _ = &intent;
+
     Ok(())
 }
 
