@@ -312,6 +312,19 @@ fn mark_member_offline(
         .expect("save offline runtime");
 }
 
+fn config_member_tmux_pane_id(tmp: &TempDir, team_name: &str, member_name: &str) -> Option<String> {
+    let raw_config =
+        fs::read_to_string(tmp.path().join(team_name).join("config.json")).expect("read config");
+    let config: serde_json::Value = serde_json::from_str(&raw_config).expect("parse config");
+    config["members"]
+        .as_array()
+        .expect("members array")
+        .iter()
+        .find(|member| member["name"].as_str() == Some(member_name))
+        .and_then(|member| member["tmuxPaneId"].as_str())
+        .map(str::to_string)
+}
+
 #[test]
 fn staged_runtime_commit_merges_partial_updates_without_syncing_team_metadata() {
     let tmp = TempDir::new().expect("tempdir");
@@ -465,6 +478,607 @@ fn finalized_runtime_commit_syncs_team_metadata() {
         member["tmuxPaneId"].as_str(),
         Some("%21"),
         "finalized runtime commits should refresh config metadata"
+    );
+}
+
+#[test]
+fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
+    let cli_commands = CliCommandSettings::default();
+
+    let initialize_tmp = TempDir::new().expect("tempdir");
+    let initialize_backend = Arc::new(FakeBackend::default());
+    let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    initialize_runtime.set_detected_runtime_session(
+        "test-pane-1",
+        CliTool::Codex,
+        Some("session-initialize"),
+        Some("/tmp/initialize.jsonl"),
+    );
+    let mut initialize_orchestrator =
+        new_orchestrator(&initialize_tmp, initialize_backend, initialize_runtime);
+    let initialize_report = initialize_orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "initialize-team".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                agents: vec![],
+            },
+            &cli_commands,
+            "new_window",
+        )
+        .expect("initialize report");
+    assert!(
+        initialize_report.failed_step.is_none(),
+        "initialize should succeed: {initialize_report:?}"
+    );
+    let initialize_runtime_record =
+        MemberRuntimeStore::load(initialize_tmp.path(), "initialize-team", "team-lead")
+            .expect("initialize runtime");
+    assert_eq!(
+        initialize_runtime_record.session_id.as_deref(),
+        Some("session-initialize")
+    );
+    assert_eq!(
+        initialize_runtime_record.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/initialize.jsonl"))
+    );
+    assert_eq!(initialize_runtime_record.health, HealthState::Healthy);
+
+    let add_agent_tmp = TempDir::new().expect("tempdir");
+    let add_agent_backend = Arc::new(FakeBackend::default());
+    let add_agent_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    add_agent_runtime.set_detected_runtime_session(
+        "test-pane-1",
+        CliTool::Codex,
+        Some("session-add-agent"),
+        Some("/tmp/add-agent.jsonl"),
+    );
+    let mut add_agent_orchestrator =
+        new_orchestrator(&add_agent_tmp, add_agent_backend, add_agent_runtime);
+    add_agent_orchestrator
+        .create_team("add-agent-team", None)
+        .expect("create team");
+    add_agent_orchestrator
+        .add_member(
+            "add-agent-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    let add_agent_report = add_agent_orchestrator
+        .add_agent_to_team_with_cli_commands_and_layout(
+            &AddAgentRequest {
+                team_name: "add-agent-team".to_string(),
+                agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+            },
+            &cli_commands,
+            "new_window",
+        )
+        .expect("add-agent report");
+    assert!(
+        add_agent_report.failed_step.is_none(),
+        "add-agent should succeed: {add_agent_report:?}"
+    );
+    let add_agent_runtime_record =
+        MemberRuntimeStore::load(add_agent_tmp.path(), "add-agent-team", "builder")
+            .expect("add-agent runtime");
+    assert_eq!(
+        add_agent_runtime_record.session_id.as_deref(),
+        Some("session-add-agent")
+    );
+    assert_eq!(
+        add_agent_runtime_record.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/add-agent.jsonl"))
+    );
+    assert_eq!(add_agent_runtime_record.health, HealthState::Healthy);
+
+    let resume_tmp = TempDir::new().expect("tempdir");
+    let resume_backend = Arc::new(FakeBackend::default());
+    let resume_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    resume_runtime.set_detected_runtime_session(
+        "%11",
+        CliTool::Codex,
+        Some("session-resume"),
+        Some("/tmp/resume.jsonl"),
+    );
+    let mut resume_orchestrator = new_orchestrator(&resume_tmp, resume_backend, resume_runtime);
+    resume_orchestrator
+        .create_team("resume-team", None)
+        .expect("create team");
+    resume_orchestrator
+        .add_member(
+            "resume-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    resume_orchestrator
+        .add_member(
+            "resume-team",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add builder");
+    mark_member_offline(&resume_tmp, "resume-team", "builder", "%11", Some(55));
+    let resume_report = resume_orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "resume-team".to_string(),
+                member_name: "builder".to_string(),
+            },
+            &cli_commands,
+        )
+        .expect("resume report");
+    assert!(
+        resume_report.resumed,
+        "resume should succeed: {resume_report:?}"
+    );
+    let resume_runtime_record =
+        MemberRuntimeStore::load(resume_tmp.path(), "resume-team", "builder")
+            .expect("resume runtime");
+    assert_eq!(
+        resume_runtime_record.session_id.as_deref(),
+        Some("session-resume")
+    );
+    assert_eq!(
+        resume_runtime_record.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/resume.jsonl"))
+    );
+    assert_eq!(resume_runtime_record.health, HealthState::Healthy);
+}
+
+#[test]
+fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() {
+    let initialize_tmp = TempDir::new().expect("tempdir");
+    let initialize_backend = Arc::new(FakeBackend::default());
+    let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut initialize_orchestrator = new_orchestrator(
+        &initialize_tmp,
+        initialize_backend,
+        initialize_runtime.clone(),
+    );
+    let initialize_claude_report = initialize_orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "initialize-claude".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+                agents: vec![],
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize claude report");
+    assert!(
+        initialize_claude_report.failed_step.is_none(),
+        "initialize Claude should succeed: {initialize_claude_report:?}"
+    );
+    assert!(
+        initialize_runtime.calls().iter().all(|call| !matches!(
+            call,
+            RuntimeCall::JoinMesh { .. } | RuntimeCall::SpawnDaemon { .. }
+        )),
+        "initialize Claude members should skip mesh join and daemon start"
+    );
+
+    let initialize_sidecar_tmp = TempDir::new().expect("tempdir");
+    let initialize_sidecar_backend = Arc::new(FakeBackend::default());
+    let initialize_sidecar_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut initialize_sidecar_orchestrator = new_orchestrator(
+        &initialize_sidecar_tmp,
+        initialize_sidecar_backend,
+        initialize_sidecar_runtime.clone(),
+    );
+    let initialize_sidecar_report = initialize_sidecar_orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "initialize-sidecar".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                agents: vec![],
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize sidecar report");
+    assert!(
+        initialize_sidecar_report.failed_step.is_none(),
+        "initialize Codex should succeed: {initialize_sidecar_report:?}"
+    );
+    let initialize_sidecar_calls = initialize_sidecar_runtime.calls();
+    assert!(initialize_sidecar_calls.iter().any(
+        |call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")
+    ));
+    assert!(initialize_sidecar_calls.iter().any(
+        |call| matches!(call, RuntimeCall::SpawnDaemon { member_name, .. } if member_name == "team-lead")
+    ));
+    assert!(!initialize_sidecar_calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { .. })));
+
+    let add_agent_tmp = TempDir::new().expect("tempdir");
+    let add_agent_backend = Arc::new(FakeBackend::default());
+    let add_agent_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut add_agent_orchestrator =
+        new_orchestrator(&add_agent_tmp, add_agent_backend, add_agent_runtime.clone());
+    add_agent_orchestrator
+        .create_team("add-agent-team", None)
+        .expect("create team");
+    add_agent_orchestrator
+        .add_member(
+            "add-agent-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    let add_agent_claude_report = add_agent_orchestrator
+        .add_agent_to_team_with_cli_commands_and_layout(
+            &AddAgentRequest {
+                team_name: "add-agent-team".to_string(),
+                agent: setup_config("researcher", "claude", "claude-opus-4-6", "/tmp/research"),
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("add-agent claude report");
+    assert!(
+        add_agent_claude_report.failed_step.is_none(),
+        "add-agent Claude should succeed: {add_agent_claude_report:?}"
+    );
+    assert!(
+        add_agent_runtime.calls().iter().all(|call| !matches!(
+            call,
+            RuntimeCall::JoinMesh { .. } | RuntimeCall::SpawnDaemon { .. }
+        )),
+        "add-agent Claude members should skip mesh join and daemon start"
+    );
+
+    let add_agent_sidecar_tmp = TempDir::new().expect("tempdir");
+    let add_agent_sidecar_backend = Arc::new(FakeBackend::default());
+    let add_agent_sidecar_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut add_agent_sidecar_orchestrator = new_orchestrator(
+        &add_agent_sidecar_tmp,
+        add_agent_sidecar_backend,
+        add_agent_sidecar_runtime.clone(),
+    );
+    add_agent_sidecar_orchestrator
+        .create_team("add-agent-sidecar", None)
+        .expect("create team");
+    add_agent_sidecar_orchestrator
+        .add_member(
+            "add-agent-sidecar",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    let add_agent_sidecar_report = add_agent_sidecar_orchestrator
+        .add_agent_to_team_with_cli_commands_and_layout(
+            &AddAgentRequest {
+                team_name: "add-agent-sidecar".to_string(),
+                agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("add-agent sidecar report");
+    assert!(
+        add_agent_sidecar_report.failed_step.is_none(),
+        "add-agent Codex should succeed: {add_agent_sidecar_report:?}"
+    );
+    let add_agent_sidecar_calls = add_agent_sidecar_runtime.calls();
+    assert!(add_agent_sidecar_calls.iter().any(
+        |call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "builder")
+    ));
+    assert!(add_agent_sidecar_calls.iter().any(
+        |call| matches!(call, RuntimeCall::SpawnDaemon { member_name, .. } if member_name == "builder")
+    ));
+    assert!(!add_agent_sidecar_calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { .. })));
+
+    let resume_tmp = TempDir::new().expect("tempdir");
+    let resume_backend = Arc::new(FakeBackend::default());
+    let resume_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut resume_orchestrator =
+        new_orchestrator(&resume_tmp, resume_backend, resume_runtime.clone());
+    resume_orchestrator
+        .create_team("resume-team", None)
+        .expect("create team");
+    resume_orchestrator
+        .add_member(
+            "resume-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    resume_orchestrator
+        .add_member(
+            "resume-team",
+            member(
+                "researcher",
+                MemberRole::Agent,
+                CliTool::Claude,
+                "/tmp/research",
+            ),
+        )
+        .expect("add member");
+    mark_member_offline(&resume_tmp, "resume-team", "researcher", "%31", None);
+    let resume_claude_report = resume_orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "resume-team".to_string(),
+                member_name: "researcher".to_string(),
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume claude report");
+    assert!(
+        resume_claude_report.resumed,
+        "resume Claude should succeed: {resume_claude_report:?}"
+    );
+    assert!(
+        resume_runtime.calls().iter().all(|call| !matches!(
+            call,
+            RuntimeCall::JoinMesh { .. } | RuntimeCall::SpawnDaemon { .. }
+        )),
+        "resume Claude members should skip mesh join and daemon start"
+    );
+
+    let resume_sidecar_tmp = TempDir::new().expect("tempdir");
+    let resume_sidecar_backend = Arc::new(FakeBackend::default());
+    let resume_sidecar_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut resume_sidecar_orchestrator = new_orchestrator(
+        &resume_sidecar_tmp,
+        resume_sidecar_backend,
+        resume_sidecar_runtime.clone(),
+    );
+    resume_sidecar_orchestrator
+        .create_team("resume-sidecar", None)
+        .expect("create team");
+    resume_sidecar_orchestrator
+        .add_member(
+            "resume-sidecar",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    resume_sidecar_orchestrator
+        .add_member(
+            "resume-sidecar",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add member");
+    mark_member_offline(
+        &resume_sidecar_tmp,
+        "resume-sidecar",
+        "builder",
+        "%41",
+        Some(55),
+    );
+    let resume_sidecar_report = resume_sidecar_orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "resume-sidecar".to_string(),
+                member_name: "builder".to_string(),
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume sidecar report");
+    assert!(
+        resume_sidecar_report.resumed,
+        "resume Codex should succeed: {resume_sidecar_report:?}"
+    );
+    let resume_sidecar_calls = resume_sidecar_runtime.calls();
+    assert!(resume_sidecar_calls.iter().any(
+        |call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "builder")
+    ));
+    assert!(resume_sidecar_calls.iter().any(
+        |call| matches!(call, RuntimeCall::SpawnDaemon { member_name, .. } if member_name == "builder")
+    ));
+    assert!(resume_sidecar_calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 55)));
+}
+
+#[test]
+fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_differences() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    let initialize_request = InitializeTeamRequest {
+        team_name: "initialize-team".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+        agents: vec![setup_config(
+            "init-builder",
+            "codex",
+            "gpt-5.4",
+            "/tmp/init-builder",
+        )],
+    };
+    let initialize_entries = orchestrator
+        .prepare_initialize_onboarding_entries(&initialize_request)
+        .expect("initialize onboarding entries");
+    assert!(initialize_entries
+        .iter()
+        .all(|entry| entry.policy == MemberActivationDeliveryPolicy::DeferredBarrier));
+
+    orchestrator
+        .create_team("parity-team", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "parity-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "parity-team",
+            member(
+                "init-builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/init-builder",
+            ),
+        )
+        .expect("add initialize member");
+    orchestrator
+        .add_member(
+            "parity-team",
+            member(
+                "add-builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/add-builder",
+            ),
+        )
+        .expect("add add-agent member");
+    orchestrator
+        .add_member(
+            "parity-team",
+            member(
+                "resume-builder",
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/resume-builder",
+            ),
+        )
+        .expect("add resume member");
+
+    let add_agent_request = AddAgentRequest {
+        team_name: "parity-team".to_string(),
+        agent: setup_config("add-builder", "codex", "gpt-5.4", "/tmp/add-builder"),
+    };
+    let add_agent_entry = orchestrator
+        .prepare_add_agent_onboarding_entry(&add_agent_request)
+        .expect("add-agent onboarding entry")
+        .expect("add-agent should have onboarding");
+    assert_eq!(
+        add_agent_entry.policy,
+        MemberActivationDeliveryPolicy::Immediate
+    );
+
+    let resume_request = ResumeMemberRequest {
+        team_name: "parity-team".to_string(),
+        member_name: "resume-builder".to_string(),
+    };
+    let (resume_member, _runtime_record, lead_name) = orchestrator
+        .load_resume_member_state(&resume_request)
+        .expect("resume member state");
+    let resume_entry = orchestrator
+        .prepare_resume_onboarding_entry(&resume_request, &resume_member, &lead_name)
+        .expect("resume should have onboarding");
+    assert_eq!(
+        resume_entry.policy,
+        MemberActivationDeliveryPolicy::Immediate
+    );
+
+    let initialize_context = MemberActivationContext::for_initialize_member(
+        "parity-team",
+        "team-lead",
+        &setup_config("init-builder", "codex", "gpt-5.4", "/tmp/init-builder"),
+        MemberRole::Agent,
+    )
+    .expect("initialize context");
+    orchestrator
+        .commit_member_runtime(
+            &initialize_context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%11".to_string())),
+                session_id: Some(Some("session-init".to_string())),
+                jsonl_path: Some(Some(PathBuf::from("/tmp/init.jsonl"))),
+                attached_at: Some(Some(Utc::now())),
+                health: Some(HealthState::Healthy),
+                ..Default::default()
+            },
+        )
+        .expect("initialize commit");
+    assert_eq!(
+        config_member_tmux_pane_id(&tmp, "parity-team", "init-builder"),
+        None,
+        "initialize keeps runtime commits staged until wrapper finalization"
+    );
+
+    let add_context = MemberActivationContext::for_add_agent(
+        "parity-team",
+        "team-lead",
+        &setup_config("add-builder", "codex", "gpt-5.4", "/tmp/add-builder"),
+    )
+    .expect("add-agent context");
+    orchestrator
+        .commit_member_runtime(
+            &add_context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%21".to_string())),
+                session_id: Some(Some("session-add".to_string())),
+                jsonl_path: Some(Some(PathBuf::from("/tmp/add.jsonl"))),
+                attached_at: Some(Some(Utc::now())),
+                health: Some(HealthState::Healthy),
+                ..Default::default()
+            },
+        )
+        .expect("add-agent commit");
+    assert_eq!(
+        config_member_tmux_pane_id(&tmp, "parity-team", "add-builder").as_deref(),
+        Some("%21"),
+        "add-agent finalizes runtime metadata immediately"
+    );
+
+    let resume_context =
+        MemberActivationContext::for_resume_member("parity-team", "team-lead", &resume_member);
+    orchestrator
+        .commit_member_runtime(
+            &resume_context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%31".to_string())),
+                session_id: Some(Some("session-resume".to_string())),
+                jsonl_path: Some(Some(PathBuf::from("/tmp/resume.jsonl"))),
+                attached_at: Some(Some(Utc::now())),
+                health: Some(HealthState::Healthy),
+                ..Default::default()
+            },
+        )
+        .expect("resume commit");
+    assert_eq!(
+        config_member_tmux_pane_id(&tmp, "parity-team", "resume-builder").as_deref(),
+        Some("%31"),
+        "resume finalizes runtime metadata immediately"
     );
 }
 
