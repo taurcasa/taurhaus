@@ -1,15 +1,14 @@
 use super::*;
 
-use std::path::PathBuf;
-
 use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
-use crate::coordination::domain::{HealthState, Member, MemberRole};
+use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
-    MemberActivationContext, MemberActivationDeliveryPolicy,
+    MemberActivationContext, MemberActivationDeliveryPolicy, MemberActivationRosterPolicy,
+    MemberActivationRuntimeCommitPolicy,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
@@ -305,9 +304,14 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
-        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
         let desired_member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
         let mut config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+        let lead_name = config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string());
 
         if let Some(existing) = config
             .members
@@ -321,33 +325,71 @@ impl CoordinationOrchestrator {
             runtime_state.member_added = true;
         }
 
+        let context =
+            MemberActivationContext::for_add_agent(&request.team_name, &lead_name, &request.agent)?;
+        self.commit_member_runtime(
+            &context,
+            RuntimeCommitPatch::from_pending_runtime_state(runtime_state),
+        )
+    }
+
+    pub(super) fn commit_member_runtime(
+        &self,
+        context: &MemberActivationContext,
+        patch: RuntimeCommitPatch,
+    ) -> Result<(), CoordinationError> {
         let mut runtime = match MemberRuntimeStore::load(
             &self.teams_dir,
-            &request.team_name,
-            &request.agent.name,
+            &context.team_name,
+            &context.member.name,
         ) {
             Ok(runtime) => runtime,
-            Err(CoordinationError::NotFound(_)) => default_runtime_record(&request.agent.name),
+            Err(CoordinationError::NotFound(_))
+                if matches!(
+                    context.roster_policy,
+                    MemberActivationRosterPolicy::CreateMember
+                ) =>
+            {
+                default_runtime_record(&context.member.name)
+            }
             Err(err) => return Err(err),
         };
-        runtime.cli_tool.get_or_insert(cli_tool);
-        runtime.project_path = runtime
-            .project_path
-            .take()
-            .or_else(|| Some(PathBuf::from(&request.agent.project_id)));
-        runtime.pane_id = runtime_state.pane_id.clone();
-        runtime.session_id = runtime_state.session_id.clone();
-        runtime.jsonl_path = runtime_state.jsonl_path.clone();
-        runtime.daemon_pid = runtime_state.daemon_pid;
-        runtime.attached_at = runtime_state.attached_at;
-        runtime.health = runtime_state.health.unwrap_or(HealthState::SessionDead);
+
+        runtime.cli_tool.get_or_insert(context.member.cli_tool);
+        if runtime.project_path.is_none() {
+            runtime.project_path = Some(context.member.project_path.clone());
+        }
+        if let Some(pane_id) = patch.pane_id {
+            runtime.pane_id = pane_id;
+        }
+        if let Some(session_id) = patch.session_id {
+            runtime.session_id = session_id;
+        }
+        if let Some(jsonl_path) = patch.jsonl_path {
+            runtime.jsonl_path = jsonl_path;
+        }
+        if let Some(daemon_pid) = patch.daemon_pid {
+            runtime.daemon_pid = daemon_pid;
+        }
+        if let Some(attached_at) = patch.attached_at {
+            runtime.attached_at = attached_at;
+        }
+        if let Some(health) = patch.health {
+            runtime.health = health;
+        }
+
         MemberRuntimeStore::save(
             &self.teams_dir,
-            &request.team_name,
-            &request.agent.name,
+            &context.team_name,
+            &context.member.name,
             &runtime,
         )?;
-        self.sync_team_config_metadata(&request.team_name)?;
+        if matches!(
+            context.runtime_commit_policy,
+            MemberActivationRuntimeCommitPolicy::FinalizeAtEnd
+        ) {
+            self.sync_team_config_metadata(&context.team_name)?;
+        }
         Ok(())
     }
 
@@ -364,7 +406,6 @@ impl CoordinationOrchestrator {
         })
     }
 }
-
 
 fn prepare_agent_onboarding_delivery(
     context: MemberActivationContext,

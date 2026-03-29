@@ -3,12 +3,15 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use chrono::Utc;
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::member_activation::MemberActivationDeliveryPolicy;
+use crate::coordination::member_activation::{
+    MemberActivationContext, MemberActivationDeliveryPolicy,
+};
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
@@ -77,6 +80,247 @@ fn new_orchestrator(
     runtime: Arc<RecordingCoordinationRuntime>,
 ) -> CoordinationOrchestrator {
     CoordinationOrchestrator::new_with_runtime(tmp.path().to_path_buf(), backend, runtime)
+}
+
+#[test]
+fn staged_runtime_commit_merges_partial_updates_without_syncing_team_metadata() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "architecture-final";
+    let member_name = "builder";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_initialize_member(
+        team_name,
+        "team-lead",
+        &member_config,
+        MemberRole::Agent,
+    )
+    .expect("context");
+
+    orchestrator
+        .commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%11".to_string())),
+                session_id: Some(None),
+                jsonl_path: Some(None),
+                daemon_pid: Some(None),
+                attached_at: Some(Some(Utc::now())),
+                health: Some(HealthState::Healthy),
+            },
+        )
+        .expect("commit pane");
+    orchestrator
+        .commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                session_id: Some(Some("session-%11".to_string())),
+                jsonl_path: Some(Some(PathBuf::from("/tmp/builder.jsonl"))),
+                ..Default::default()
+            },
+        )
+        .expect("commit session");
+    orchestrator
+        .commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                daemon_pid: Some(Some(4444)),
+                ..Default::default()
+            },
+        )
+        .expect("commit daemon");
+
+    let runtime = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    assert_eq!(runtime.pane_id.as_deref(), Some("%11"));
+    assert_eq!(runtime.session_id.as_deref(), Some("session-%11"));
+    assert_eq!(
+        runtime.jsonl_path.as_deref(),
+        Some(std::path::Path::new("/tmp/builder.jsonl"))
+    );
+    assert_eq!(runtime.daemon_pid, Some(4444));
+    assert_eq!(runtime.health, HealthState::Healthy);
+
+    let raw_config =
+        fs::read_to_string(tmp.path().join(team_name).join("config.json")).expect("read config");
+    let config: serde_json::Value = serde_json::from_str(&raw_config).expect("parse config");
+    let member = config["members"]
+        .as_array()
+        .expect("members array")
+        .iter()
+        .find(|member| member["name"].as_str() == Some(member_name))
+        .expect("member entry");
+    assert_eq!(
+        member["tmuxPaneId"].as_str(),
+        None,
+        "staged initialize commits should not sync config metadata yet"
+    );
+}
+
+#[test]
+fn finalized_runtime_commit_syncs_team_metadata() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "architecture-final";
+    let member_name = "builder";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_add_agent(team_name, "team-lead", &member_config)
+        .expect("context");
+
+    orchestrator
+        .commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%21".to_string())),
+                session_id: Some(Some("session-%21".to_string())),
+                jsonl_path: Some(Some(PathBuf::from("/tmp/builder-final.jsonl"))),
+                daemon_pid: Some(Some(9001)),
+                attached_at: Some(Some(Utc::now())),
+                health: Some(HealthState::Healthy),
+            },
+        )
+        .expect("commit runtime");
+
+    let runtime = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    assert_eq!(runtime.pane_id.as_deref(), Some("%21"));
+    assert_eq!(runtime.session_id.as_deref(), Some("session-%21"));
+    assert_eq!(runtime.daemon_pid, Some(9001));
+    assert_eq!(runtime.health, HealthState::Healthy);
+
+    let raw_config =
+        fs::read_to_string(tmp.path().join(team_name).join("config.json")).expect("read config");
+    let config: serde_json::Value = serde_json::from_str(&raw_config).expect("parse config");
+    let member = config["members"]
+        .as_array()
+        .expect("members array")
+        .iter()
+        .find(|member| member["name"].as_str() == Some(member_name))
+        .expect("member entry");
+    assert_eq!(
+        member["tmuxPaneId"].as_str(),
+        Some("%21"),
+        "finalized runtime commits should refresh config metadata"
+    );
+}
+
+#[test]
+fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
+    let runtime = RecordingCoordinationRuntime::default();
+
+    let claude_joined = join_mesh_if_required(
+        &runtime,
+        "architecture-final",
+        "team-lead",
+        "/tmp/lead",
+        CliTool::Claude,
+    )
+    .expect("claude join result");
+    let codex_joined = join_mesh_if_required(
+        &runtime,
+        "architecture-final",
+        "builder",
+        "/tmp/builder",
+        CliTool::Codex,
+    )
+    .expect("codex join result");
+
+    assert!(!claude_joined, "Claude should keep the no-op join behavior");
+    assert!(codex_joined, "mesh-sidecar members should still join Mesh");
+
+    let calls = runtime.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::JoinMesh { .. }))
+            .count(),
+        1,
+        "only the mesh-sidecar member should issue join_mesh"
+    );
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::JoinMesh {
+            team_name,
+            member_name,
+            project_id,
+        } if team_name == "architecture-final"
+            && member_name == "builder"
+            && project_id == "/tmp/builder"
+    )));
+}
+
+#[test]
+fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
+    let runtime = RecordingCoordinationRuntime::default();
+    let mut warnings = Vec::new();
+
+    let daemon_pid = start_member_daemon_if_required(
+        &runtime,
+        "architecture-final",
+        "builder",
+        "%11",
+        CliTool::Codex,
+        MemberDaemonStartPolicy::ReplaceStalePid {
+            previous_daemon_pid: Some(55),
+        },
+        Some(&mut warnings),
+    )
+    .expect("daemon start result");
+
+    assert_eq!(daemon_pid, Some(10000));
+    assert!(
+        warnings.is_empty(),
+        "successful stale-pid replacement should stay quiet"
+    );
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 55)));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnDaemon {
+            pane_id,
+            team_name,
+            member_name,
+        } if pane_id == "%11"
+            && team_name == "architecture-final"
+            && member_name == "builder"
+    )));
 }
 
 #[test]
@@ -216,83 +460,6 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
 }
 
 #[test]
-fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
-    let runtime = RecordingCoordinationRuntime::default();
-
-    let claude_joined = join_mesh_if_required(
-        &runtime,
-        "architecture-final",
-        "team-lead",
-        "/tmp/lead",
-        CliTool::Claude,
-    )
-    .expect("claude join result");
-    let codex_joined = join_mesh_if_required(
-        &runtime,
-        "architecture-final",
-        "builder",
-        "/tmp/builder",
-        CliTool::Codex,
-    )
-    .expect("codex join result");
-
-    assert!(!claude_joined, "Claude should keep the no-op join behavior");
-    assert!(codex_joined, "mesh-sidecar members should still join Mesh");
-
-    let calls = runtime.calls();
-    assert_eq!(
-        calls
-            .iter()
-            .filter(|call| matches!(call, RuntimeCall::JoinMesh { .. }))
-            .count(),
-        1,
-        "only the mesh-sidecar member should issue join_mesh"
-    );
-    assert!(calls.iter().any(|call| matches!(
-        call,
-        RuntimeCall::JoinMesh {
-            team_name,
-            member_name,
-            project_id,
-        } if team_name == "architecture-final"
-            && member_name == "builder"
-            && project_id == "/tmp/builder"
-    )));
-}
-
-#[test]
-fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
-    let runtime = RecordingCoordinationRuntime::default();
-    let mut warnings = Vec::new();
-
-    let daemon_pid = start_member_daemon_if_required(
-        &runtime,
-        "architecture-final",
-        "builder",
-        "%11",
-        CliTool::Codex,
-        MemberDaemonStartPolicy::ReplaceStalePid {
-            previous_daemon_pid: Some(55),
-        },
-        Some(&mut warnings),
-    )
-    .expect("daemon start result");
-
-    assert_eq!(daemon_pid, Some(10000));
-    assert!(warnings.is_empty(), "successful stale-pid replacement should stay quiet");
-
-    let calls = runtime.calls();
-    assert!(calls
-        .iter()
-        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 55)));
-    assert!(calls.iter().any(|call| matches!(
-        call,
-        RuntimeCall::SpawnDaemon { pane_id, team_name, member_name }
-            if pane_id == "%11" && team_name == "architecture-final" && member_name == "builder"
-    )));
-}
-
-#[test]
 fn member_from_agent_setup_maps_role_template_context() {
     let mut setup = setup_config("codex-dev", "codex", "gpt-5.3", "/tmp/project");
     setup.description = Some("fallback instructions".to_string());
@@ -429,6 +596,31 @@ fn initialize_pipeline_claude_agent_without_role_context_stays_skipped() {
         }
         other => panic!("unexpected delivery payload: {other:?}"),
     }
+}
+
+#[test]
+fn initialize_onboarding_entries_use_deferred_barrier_policy() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+    };
+
+    let entries = orchestrator
+        .prepare_initialize_onboarding_entries(&request)
+        .expect("initialize onboarding entries");
+
+    assert_eq!(entries.len(), 2);
+    assert!(entries
+        .iter()
+        .all(|entry| { entry.policy == MemberActivationDeliveryPolicy::DeferredBarrier }));
 }
 
 #[test]
@@ -977,6 +1169,70 @@ fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
 }
 
 #[test]
+fn resume_onboarding_entry_uses_immediate_policy() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            Member {
+                name: "researcher".to_string(),
+                role: MemberRole::Agent,
+                role_id: Some("claude-researcher".to_string()),
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                communication_style: None,
+                runtime_compact_summary: None,
+                instructions: Some("Investigate tradeoffs.".to_string()),
+                behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
+                capabilities: None,
+                project_path: PathBuf::from("/tmp/research"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add member");
+
+    let request = ResumeMemberRequest {
+        team_name: "architecture-final".to_string(),
+        member_name: "researcher".to_string(),
+    };
+    let (member, _runtime, lead_name) = orchestrator
+        .load_resume_member_state(&request)
+        .expect("load resume state");
+
+    let entry = orchestrator
+        .prepare_resume_onboarding_entry(&request, &member, &lead_name)
+        .expect("resume onboarding entry");
+
+    assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
+}
+
+#[test]
 fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
@@ -1408,95 +1664,6 @@ fn add_agent_failure_clears_daemon_pid_file() {
         !config.members.iter().any(|entry| entry.name == "builder"),
         "failed hot-add should not leave the member in config"
     );
-}
-
-#[test]
-fn initialize_onboarding_entries_use_deferred_barrier_policy() {
-    let tmp = TempDir::new().expect("tempdir");
-    let backend = Arc::new(FakeBackend::default());
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let orchestrator = new_orchestrator(&tmp, backend, runtime);
-
-    let request = InitializeTeamRequest {
-        team_name: "architecture-final".to_string(),
-        team_description: None,
-        lead_mode: LeadMode::LaunchNew,
-        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
-        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
-    };
-
-    let entries = orchestrator
-        .prepare_initialize_onboarding_entries(&request)
-        .expect("initialize onboarding entries");
-
-    assert_eq!(entries.len(), 2);
-    assert!(entries
-        .iter()
-        .all(|entry| entry.policy == MemberActivationDeliveryPolicy::DeferredBarrier));
-}
-
-#[test]
-fn resume_onboarding_entry_uses_immediate_policy() {
-    let tmp = TempDir::new().expect("tempdir");
-    let backend = Arc::new(FakeBackend::default());
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
-
-    orchestrator
-        .create_team("architecture-final", None)
-        .expect("create team");
-    orchestrator
-        .add_member(
-            "architecture-final",
-            member(
-                "team-lead",
-                MemberRole::Lead,
-                CliTool::Claude,
-                "/tmp/lead-project",
-            ),
-        )
-        .expect("add lead");
-    orchestrator
-        .add_member(
-            "architecture-final",
-            Member {
-                name: "researcher".to_string(),
-                role: MemberRole::Agent,
-                role_id: Some("claude-researcher".to_string()),
-                role_name: None,
-                focus_area: None,
-                context_summary: None,
-                behavior_summary: None,
-                communication_style: None,
-                runtime_compact_summary: None,
-                instructions: Some("Investigate tradeoffs.".to_string()),
-                behavioral_contract: None,
-                quality_gates: None,
-                definition_of_done: None,
-                phase_scope: None,
-                mode: None,
-                inherits_from: None,
-                required_artifacts: None,
-                capabilities: None,
-                project_path: PathBuf::from("/tmp/research"),
-                cli_tool: CliTool::Claude,
-            },
-        )
-        .expect("add member");
-
-    let request = ResumeMemberRequest {
-        team_name: "architecture-final".to_string(),
-        member_name: "researcher".to_string(),
-    };
-    let (member, _runtime, lead_name) = orchestrator
-        .load_resume_member_state(&request)
-        .expect("load resume state");
-
-    let entry = orchestrator
-        .prepare_resume_onboarding_entry(&request, &member, &lead_name)
-        .expect("resume onboarding entry");
-
-    assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
 }
 
 #[test]
