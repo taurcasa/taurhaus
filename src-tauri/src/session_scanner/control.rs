@@ -8,8 +8,9 @@ use crate::models::CliCommandSettings;
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::{self, CliTool};
 use crate::tmux_layout::{
-    derive_window_name, parse_window_records, resolve_layout_allocation, TmuxLayoutAllocation,
-    TmuxLayoutPolicy, DEFAULT_SPLIT_MAX_PANES, LIST_WINDOWS_FORMAT,
+    derive_window_name, parse_pane_records, parse_window_records, resolve_layout_allocation,
+    resolve_split_target_pane, wait_for_tmux_session_ready, TmuxLayoutAllocation, TmuxLayoutPolicy,
+    DEFAULT_SPLIT_MAX_PANES, LIST_PANES_FORMAT, LIST_WINDOWS_FORMAT,
 };
 
 #[cfg(any(target_os = "windows", test))]
@@ -130,7 +131,8 @@ pub fn launch_command_in_tmux_with_layout(
         TmuxLayoutAllocation::NewWindow { .. } => {
             create_new_window_pane(&tmux_session, &window_name, &shell_cmd)?
         }
-        TmuxLayoutAllocation::SplitExisting { target_pane, .. } => {
+        TmuxLayoutAllocation::SplitExisting { window_index, .. } => {
+            let target_pane = resolve_split_target_pane_for_window(&tmux_session, &window_index)?;
             split_pane(&target_pane, &shell_cmd)?
         }
     };
@@ -181,6 +183,58 @@ fn list_tmux_windows(
     Ok(parse_window_records(&String::from_utf8_lossy(
         &output.stdout,
     )))
+}
+
+fn list_tmux_window_panes(
+    tmux_session: &str,
+    window_index: &str,
+) -> Result<Vec<crate::tmux_layout::TmuxPaneRecord>, String> {
+    let target = format!("{tmux_session}:{window_index}");
+    let output = tmux_command()
+        .args(["list-panes", "-t", &target, "-F", LIST_PANES_FORMAT])
+        .output()
+        .map_err(|e| format!("Failed to inspect tmux panes for {target}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("tmux list-panes failed for {target}: {stderr}"));
+    }
+
+    Ok(parse_pane_records(&String::from_utf8_lossy(&output.stdout)))
+}
+
+fn resolve_split_target_pane_for_window(
+    tmux_session: &str,
+    window_index: &str,
+) -> Result<String, String> {
+    let panes = list_tmux_window_panes(tmux_session, window_index)?;
+    let target = resolve_split_target_pane(tmux_session, window_index, &panes)?;
+
+    let validation = tmux_command()
+        .args(["display-message", "-p", "-t", &target, "#{pane_id}"])
+        .output()
+        .map_err(|e| format!("Failed to validate tmux pane target {target}: {e}"))?;
+    if validation.status.success() {
+        return Ok(target);
+    }
+
+    let pane_ids = panes
+        .iter()
+        .map(|pane| pane.pane_id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(format!(
+        "tmux window '{tmux_session}:{window_index}' resolved pane target '{target}' is not addressable; pane_ids=[{pane_ids}]"
+    ))
+}
+
+fn verify_tmux_session_ready(tmux_session: &str) -> Result<(), String> {
+    let windows = list_tmux_windows(tmux_session)?;
+    let first_window = windows
+        .first()
+        .ok_or_else(|| format!("tmux session '{tmux_session}' has no windows yet"))?;
+    let _ = resolve_split_target_pane_for_window(tmux_session, &first_window.index)?;
+    Ok(())
 }
 
 fn create_new_window_pane(
@@ -474,6 +528,8 @@ pub const TMUX_SESSION_NAME: &str = "taurhaus";
 /// panes inherit them — even if the tmux server was started before the user's
 /// shell profile set them.
 fn ensure_taurhaus_session() -> Result<String, String> {
+    let mut created_session = false;
+
     // Check if session already exists
     let check = tmux_command()
         .args(["has-session", "-t", TMUX_SESSION_NAME])
@@ -491,6 +547,12 @@ fn ensure_taurhaus_session() -> Result<String, String> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("tmux new-session failed: {stderr}"));
         }
+
+        created_session = true;
+    }
+
+    if created_session {
+        wait_for_tmux_session_ready(TMUX_SESSION_NAME, verify_tmux_session_ready)?;
     }
 
     // Propagate critical env vars to tmux global environment.

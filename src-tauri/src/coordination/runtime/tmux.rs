@@ -1,8 +1,9 @@
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
 use crate::tmux_layout::{
-    derive_window_name, parse_window_records, resolve_layout_allocation, TmuxLayoutAllocation,
-    TmuxLayoutPolicy, DEFAULT_SPLIT_MAX_PANES, LIST_WINDOWS_FORMAT,
+    derive_window_name, parse_pane_records, parse_window_records, resolve_layout_allocation,
+    resolve_split_target_pane, wait_for_tmux_session_ready, TmuxLayoutAllocation, TmuxLayoutPolicy,
+    DEFAULT_SPLIT_MAX_PANES, LIST_PANES_FORMAT, LIST_WINDOWS_FORMAT,
 };
 
 use super::process::run_system_command;
@@ -51,6 +52,10 @@ fn ensure_taurhaus_tmux_session() -> Result<(), CoordinationError> {
         "-s".to_string(),
         TAURHAUS_TMUX_SESSION_NAME.to_string(),
     ])?;
+
+    wait_for_tmux_session_ready(TAURHAUS_TMUX_SESSION_NAME, verify_tmux_session_ready)
+        .map_err(CoordinationError::Backend)?;
+
     Ok(())
 }
 
@@ -71,7 +76,9 @@ pub(super) fn create_tmux_pane_with_layout(
         TmuxLayoutAllocation::NewWindow { window_name } => {
             create_tmux_new_window_pane(project_id, &window_name)
         }
-        TmuxLayoutAllocation::SplitExisting { target_pane, .. } => {
+        TmuxLayoutAllocation::SplitExisting { window_index, .. } => {
+            let target_pane =
+                resolve_split_target_pane_for_window(TAURHAUS_TMUX_SESSION_NAME, &window_index)?;
             create_tmux_split_pane(project_id, &target_pane)
         }
     }
@@ -139,6 +146,61 @@ fn list_tmux_windows(
     ])?;
 
     Ok(parse_window_records(&out))
+}
+
+fn list_tmux_window_panes(
+    tmux_session: &str,
+    window_index: &str,
+) -> Result<Vec<crate::tmux_layout::TmuxPaneRecord>, CoordinationError> {
+    let target = format!("{tmux_session}:{window_index}");
+    let out = run_tmux(&[
+        "list-panes".to_string(),
+        "-t".to_string(),
+        target,
+        "-F".to_string(),
+        LIST_PANES_FORMAT.to_string(),
+    ])?;
+
+    Ok(parse_pane_records(&out))
+}
+
+fn resolve_split_target_pane_for_window(
+    tmux_session: &str,
+    window_index: &str,
+) -> Result<String, CoordinationError> {
+    let panes = list_tmux_window_panes(tmux_session, window_index)?;
+    let target = resolve_split_target_pane(tmux_session, window_index, &panes)
+        .map_err(CoordinationError::Backend)?;
+
+    let validation = run_tmux_output(&[
+        "display-message".to_string(),
+        "-p".to_string(),
+        "-t".to_string(),
+        target.clone(),
+        "#{pane_id}".to_string(),
+    ])?;
+    if validation.status.success() {
+        return Ok(target);
+    }
+
+    let pane_ids = panes
+        .iter()
+        .map(|pane| pane.pane_id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(CoordinationError::Backend(format!(
+        "tmux window '{tmux_session}:{window_index}' resolved pane target '{target}' is not addressable; pane_ids=[{pane_ids}]"
+    )))
+}
+
+fn verify_tmux_session_ready(tmux_session: &str) -> Result<(), String> {
+    let windows = list_tmux_windows(tmux_session).map_err(|err| err.to_string())?;
+    let first_window = windows
+        .first()
+        .ok_or_else(|| format!("tmux session '{tmux_session}' has no windows yet"))?;
+    let _ = resolve_split_target_pane_for_window(tmux_session, &first_window.index)
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 pub(super) fn tmux_target_for_pane(pane_id: &str) -> String {
