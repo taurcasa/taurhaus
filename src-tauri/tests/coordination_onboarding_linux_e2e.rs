@@ -203,6 +203,25 @@ if [[ "$cmd" == "new-session" ]]; then
   touch "{session_marker}"
   exit 0
 fi
+if [[ "$cmd" == "list-windows" ]]; then
+  if [[ -f "{session_marker}" ]]; then
+    n="$(cat "{counter}")"
+    pane_count="$((n + 1))"
+    printf '0\tbash\t%s\n' "$pane_count"
+  fi
+  exit 0
+fi
+if [[ "$cmd" == "list-panes" ]]; then
+  if [[ -f "{session_marker}" ]]; then
+    n="$(cat "{counter}")"
+    i=0
+    while [[ "$i" -le "$n" ]]; do
+      printf '%%%s\t%s\n' "$i" "$i"
+      i="$((i + 1))"
+    done
+  fi
+  exit 0
+fi
 if [[ "$cmd" == "new-window" || "$cmd" == "split-window" ]]; then
   n="$(cat "{counter}")"
   n="$((n + 1))"
