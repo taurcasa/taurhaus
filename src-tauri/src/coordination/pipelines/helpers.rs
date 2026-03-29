@@ -21,19 +21,7 @@ const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_millis(150), Duration::from_millis(350)];
 
 #[derive(Debug, Default, Clone)]
-pub(super) struct PendingRuntimeState {
-    pub(super) pane_id: Option<String>,
-    pub(super) session_id: Option<String>,
-    pub(super) jsonl_path: Option<PathBuf>,
-    pub(super) daemon_pid: Option<u32>,
-    pub(super) attached_at: Option<chrono::DateTime<Utc>>,
-    pub(super) health: Option<HealthState>,
-    pub(super) mesh_joined: bool,
-    pub(super) member_added: bool,
-}
-
-#[derive(Debug, Default, Clone)]
-pub(super) struct PendingResumeState {
+pub(super) struct MemberActivationRuntimeState {
     pub(super) pane_id: Option<String>,
     pub(super) session_id: Option<String>,
     pub(super) jsonl_path: Option<PathBuf>,
@@ -41,8 +29,14 @@ pub(super) struct PendingResumeState {
     pub(super) new_daemon_pid: Option<u32>,
     pub(super) created_pane_id: Option<String>,
     pub(super) reused_pane: bool,
+    pub(super) attached_at: Option<chrono::DateTime<Utc>>,
+    pub(super) health: Option<HealthState>,
     pub(super) mesh_joined: bool,
+    pub(super) member_added: bool,
 }
+
+pub(super) type PendingRuntimeState = MemberActivationRuntimeState;
+pub(super) type PendingResumeState = MemberActivationRuntimeState;
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct RuntimeCommitPatch {

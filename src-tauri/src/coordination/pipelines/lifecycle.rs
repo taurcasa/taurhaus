@@ -131,23 +131,6 @@ impl CoordinationOrchestrator {
         }
     }
 
-    pub(super) fn resume_join_mesh(
-        &self,
-        request: &ResumeMemberRequest,
-        member: &Member,
-        runtime_state: &mut PendingResumeState,
-    ) -> Result<(), CoordinationError> {
-        let project_id = member.project_path.display().to_string();
-        runtime_state.mesh_joined = join_mesh_if_required(
-            self.runtime.as_ref(),
-            &request.team_name,
-            &request.member_name,
-            project_id.as_str(),
-            member.cli_tool,
-        )?;
-        Ok(())
-    }
-
     pub(super) fn resume_start_daemon(
         &self,
         request: &ResumeMemberRequest,
@@ -171,19 +154,6 @@ impl CoordinationOrchestrator {
             runtime_state.daemon_pid = Some(new_pid);
             runtime_state.new_daemon_pid = Some(new_pid);
         }
-        Ok(())
-    }
-
-    pub(super) fn resume_send_onboarding(
-        &mut self,
-        request: &ResumeMemberRequest,
-        member: &Member,
-        lead_name: &str,
-    ) -> Result<(), CoordinationError> {
-        let Some(entry) = self.prepare_resume_onboarding_entry(request, member, lead_name) else {
-            return Ok(());
-        };
-        self.deliver_onboarding_entries(vec![entry])?;
         Ok(())
     }
 
@@ -242,21 +212,6 @@ impl CoordinationOrchestrator {
                 );
             }
         }
-    }
-
-    pub(super) fn join_mesh_for_agent(
-        &self,
-        request: &AddAgentRequest,
-        runtime_state: &mut PendingRuntimeState,
-    ) -> Result<(), CoordinationError> {
-        runtime_state.mesh_joined = join_mesh_if_required(
-            self.runtime.as_ref(),
-            &request.team_name,
-            &request.agent.name,
-            &request.agent.project_id,
-            parse_cli_tool(&request.agent.cli_tool)?,
-        )?;
-        Ok(())
     }
 
     pub(super) fn start_daemon_for_agent(
