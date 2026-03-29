@@ -81,7 +81,7 @@ describe('MeshConnection', () => {
     expect(className).toContain('mesh-connection-offline')
     expect(style).toContain('stroke-dasharray: 6,4')
     expect(style).toContain('opacity: 0.28')
-    expect(style).toContain('filter: url("#mesh-glow")')
+    expect(style).toMatch(/filter:\s*url\((["'])?#mesh-glow\1?\)/)
   })
 
   it('renders cross-project runtime connections as dashed and slightly dimmed', () => {

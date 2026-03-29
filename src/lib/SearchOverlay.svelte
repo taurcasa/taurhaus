@@ -1,4 +1,5 @@
 <script>
+  import { listen } from '@tauri-apps/api/event'
   import { focusFirstInteractiveElement, getFocusableElements, registerModalLayer } from './a11y.js'
   import { search } from './ipc.js'
   import { themeTokens } from './themeTokens.js'
@@ -217,25 +218,22 @@
   })
 
   $effect(() => {
-    if (!open || !query.trim()) return
+    if (!open) return
     const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
     if (!isTauriEnv) return
 
     let destroyed = false
     let unlisten = null
 
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      if (destroyed) return
-      listen('search-index-updated', async () => {
-        if (destroyed || document.visibilityState === 'hidden') return
-        await runSearch(query)
-      }).then((dispose) => {
-        if (destroyed) {
-          dispose()
-          return
-        }
-        unlisten = dispose
-      })
+    listen('search-index-updated', async () => {
+      if (destroyed || document.visibilityState === 'hidden' || !query.trim()) return
+      await runSearch(query)
+    }).then((dispose) => {
+      if (destroyed) {
+        dispose()
+        return
+      }
+      unlisten = dispose
     })
 
     return () => {
