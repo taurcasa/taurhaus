@@ -211,7 +211,8 @@ mod tests {
 
     #[test]
     fn add_agent_context_uses_create_member_and_finalize_at_end() {
-        let member = sample_agent("backend-dev", "gemini", "/tmp/api");
+        let mut member = sample_agent("backend-dev", "gemini", "/tmp/api");
+        member.model = "gemini-2.5-pro".to_string();
 
         let context =
             MemberActivationContext::for_add_agent("architecture-final", "team-lead", &member)

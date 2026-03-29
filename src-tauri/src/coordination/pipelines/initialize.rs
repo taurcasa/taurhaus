@@ -58,7 +58,7 @@ impl CoordinationOrchestrator {
         request: &InitializeTeamRequest,
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
-        mut emit_progress: Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+        mut emit_progress: Option<InitializeProgressEmitter<'_>>,
     ) -> Result<InitializeReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
@@ -470,6 +470,7 @@ impl CoordinationOrchestrator {
         self.deliver_onboarding_entries(entries)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_initialize_stage_pass<F>(
         &mut self,
         request: &InitializeTeamRequest,
@@ -481,7 +482,7 @@ impl CoordinationOrchestrator {
         per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
         succeeded_steps: &mut Vec<String>,
         steps: &mut Vec<StepProgress>,
-        emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+        emit_progress: &mut Option<InitializeProgressEmitter<'_>>,
         after_stage: F,
     ) -> Result<(), (String, CoordinationError)>
     where
@@ -515,7 +516,7 @@ fn emit_initialize_step_progress(
     step: &str,
     status: StepStatus,
     message: Option<String>,
-    emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+    emit_progress: &mut Option<InitializeProgressEmitter<'_>>,
 ) {
     if let Some(emit) = emit_progress.as_deref_mut() {
         emit(step, status, message);
@@ -527,7 +528,7 @@ fn mark_initialize_step_succeeded(
     message: &str,
     succeeded_steps: &mut Vec<String>,
     steps: &mut Vec<StepProgress>,
-    emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+    emit_progress: &mut Option<InitializeProgressEmitter<'_>>,
 ) {
     mark_step_succeeded(step, message, succeeded_steps, steps);
     emit_initialize_step_progress(
@@ -544,7 +545,7 @@ fn failed_initialize_report_with_progress(
     err: CoordinationError,
     succeeded_steps: Vec<String>,
     steps: &mut Vec<StepProgress>,
-    emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+    emit_progress: &mut Option<InitializeProgressEmitter<'_>>,
 ) -> InitializeReport {
     emit_initialize_step_progress(
         step,

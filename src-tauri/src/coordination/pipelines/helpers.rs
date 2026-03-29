@@ -8,7 +8,8 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::requests::{
-    AddAgentReport, AgentSetupConfig, InitializeReport, ResumeAgentReport, StepProgress, StepStatus,
+    AddAgentReport, AgentSetupConfig, InitializeReport, MemberActivationStage, ResumeAgentReport,
+    StepProgress, StepStatus,
 };
 use crate::coordination::runtime::{CoordinationRuntime, DetectedRuntimeSession};
 use crate::coordination::stores::MemberRuntimeRecord;
@@ -37,6 +38,9 @@ pub(super) struct MemberActivationRuntimeState {
 
 pub(super) type PendingRuntimeState = MemberActivationRuntimeState;
 pub(super) type PendingResumeState = MemberActivationRuntimeState;
+pub(crate) type InitializeProgressEmitter<'a> = &'a mut dyn FnMut(&str, StepStatus, Option<String>);
+pub(crate) type ResumeProgressEmitter<'a> =
+    &'a mut dyn FnMut(&str, usize, usize, MemberActivationStage, StepStatus, Option<String>);
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct RuntimeCommitPatch {
@@ -55,7 +59,7 @@ impl RuntimeCommitPatch {
             session_id: Some(state.session_id.clone()),
             jsonl_path: Some(state.jsonl_path.clone()),
             daemon_pid: Some(state.daemon_pid),
-            attached_at: Some(state.attached_at.clone()),
+            attached_at: Some(state.attached_at),
             health: state.health,
         }
     }

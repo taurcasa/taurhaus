@@ -5,7 +5,7 @@ use crate::coordination::audit::{
 };
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::pipelines::ResumeTeamDaemonOwnership;
+use crate::coordination::pipelines::{ResumeProgressEmitter, ResumeTeamDaemonOwnership};
 use crate::coordination::requests::{
     MemberActivationStage, OperatorNoticeDelivery, ResumeMemberRequest, ResumeTeamMemberFailure,
     ResumeTeamReport, StepStatus,
@@ -333,9 +333,7 @@ impl CoordinationOrchestrator {
         request: &crate::coordination::requests::ResumeTeamRequest,
         cli_commands: &crate::models::CliCommandSettings,
         tmux_layout: &str,
-        mut emit_progress: Option<
-            &mut dyn FnMut(&str, usize, usize, MemberActivationStage, StepStatus, Option<String>),
-        >,
+        mut emit_progress: Option<ResumeProgressEmitter<'_>>,
     ) -> Result<ResumeTeamReport, CoordinationError> {
         validate_team_name(&request.team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;

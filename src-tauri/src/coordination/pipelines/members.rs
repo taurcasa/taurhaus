@@ -113,16 +113,7 @@ impl CoordinationOrchestrator {
         tmux_layout: &'a str,
         member_index: usize,
         member_count: usize,
-        emit_progress: Option<
-            &'a mut dyn FnMut(
-                &str,
-                usize,
-                usize,
-                MemberActivationStage,
-                StepStatus,
-                Option<String>,
-            ),
-        >,
+        emit_progress: Option<ResumeProgressEmitter<'a>>,
     ) -> Result<ResumeAgentReport, CoordinationError> {
         self.resume_member_with_cli_commands_and_layout_and_progress_owned(
             request,
@@ -135,6 +126,7 @@ impl CoordinationOrchestrator {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn resume_member_with_cli_commands_and_layout_and_progress_owned<'a>(
         &mut self,
         request: &'a ResumeMemberRequest,
@@ -142,16 +134,7 @@ impl CoordinationOrchestrator {
         tmux_layout: &'a str,
         member_index: usize,
         member_count: usize,
-        emit_progress: Option<
-            &'a mut dyn FnMut(
-                &str,
-                usize,
-                usize,
-                MemberActivationStage,
-                StepStatus,
-                Option<String>,
-            ),
-        >,
+        emit_progress: Option<ResumeProgressEmitter<'a>>,
         team_daemon_ownership: ResumeTeamDaemonOwnership,
     ) -> Result<ResumeAgentReport, CoordinationError> {
         SharedMemberActivationExecutor::for_resume(
@@ -289,16 +272,7 @@ enum SharedMemberActivationWrapper<'b> {
     Resume {
         request: &'b ResumeMemberRequest,
         team_daemon_ownership: ResumeTeamDaemonOwnership,
-        emit_progress: Option<
-            &'b mut dyn FnMut(
-                &str,
-                usize,
-                usize,
-                MemberActivationStage,
-                StepStatus,
-                Option<String>,
-            ),
-        >,
+        emit_progress: Option<ResumeProgressEmitter<'b>>,
         member_index: usize,
         member_count: usize,
     },
@@ -358,6 +332,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn for_resume(
         orchestrator: &'a mut CoordinationOrchestrator,
         request: &'b ResumeMemberRequest,
@@ -365,16 +340,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         tmux_layout: &'b str,
         member_index: usize,
         member_count: usize,
-        emit_progress: Option<
-            &'b mut dyn FnMut(
-                &str,
-                usize,
-                usize,
-                MemberActivationStage,
-                StepStatus,
-                Option<String>,
-            ),
-        >,
+        emit_progress: Option<ResumeProgressEmitter<'b>>,
         team_daemon_ownership: ResumeTeamDaemonOwnership,
     ) -> Self {
         Self {
