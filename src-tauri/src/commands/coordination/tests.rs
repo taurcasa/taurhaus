@@ -969,7 +969,10 @@ fn resume_team_progress_events_are_emitted_per_member_stage() {
     assert_eq!(
         emitted
             .iter()
-            .filter(|event| event.status == StepStatus::Running && event.stage == "prepare_member")
+            .filter(|event| {
+                event.status == StepStatus::Running
+                    && event.stage == MemberActivationStage::PrepareMember
+            })
             .map(|event| (event.member_name.clone(), event.member_index))
             .collect::<Vec<_>>(),
         vec![
@@ -980,7 +983,7 @@ fn resume_team_progress_events_are_emitted_per_member_stage() {
     );
     assert!(emitted.iter().any(|event| {
         event.member_name == "reviewer"
-            && event.stage == "commit_member_runtime"
+            && event.stage == MemberActivationStage::CommitRuntime
             && event.status == StepStatus::Succeeded
     }));
 }
@@ -2787,7 +2790,7 @@ fn resume_team_progress_event_round_trip() {
         member_name: "frontend-dev".to_string(),
         member_index: 2,
         member_count: 3,
-        stage: "commit_member_runtime".to_string(),
+        stage: MemberActivationStage::CommitRuntime,
         status: StepStatus::Running,
         message: Some("writing runtime state".to_string()),
     };
