@@ -480,17 +480,30 @@ fn coordination_resume_member_internal(
     request: ResumeMemberRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
-    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) -> Result<ResumeAgentReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     validate_non_empty("member_name", &request.member_name)?;
     let contract_request = map_resume_member_request_to_contract(&request);
+    let mut emit_resume_progress = |_: &str,
+                                    _: usize,
+                                    _: usize,
+                                    stage: MemberActivationStage,
+                                    status: StepStatus,
+                                    message: Option<String>| {
+        let event =
+            resume_member_progress_event_for_stage(&request.team_name, stage, status, message);
+        emit_progress_event(event, &mut emit);
+    };
     let report = state
         .with_orchestrator(|orchestrator| {
-            orchestrator.resume_member_with_cli_commands_and_layout(
+            orchestrator.resume_member_with_cli_commands_and_layout_and_progress(
                 &contract_request,
                 cli_commands,
                 tmux_layout,
+                1,
+                1,
+                Some(&mut emit_resume_progress),
             )
         })
         .map(map_resume_agent_report_from_contract)
@@ -501,7 +514,6 @@ fn coordination_resume_member_internal(
     }
     sync_active_team_projects_after_change(state, &report.team_name)
         .map_err(map_coordination_error)?;
-    emit_progress_events(resume_member_progress_events(&report), emit);
     Ok(report)
 }
 
@@ -521,16 +533,15 @@ fn coordination_resume_team_internal(
                                     status: StepStatus,
                                     message: Option<String>| {
         if let Some(emit) = emit.as_deref_mut() {
-            emit(&ResumeTeamProgressEvent {
-                operation: "resume_team".to_string(),
-                team_name: request.team_name.clone(),
-                member_name: member_name.to_string(),
+            emit(&resume_team_progress_event_for_stage(
+                &request.team_name,
+                member_name,
                 member_index,
                 member_count,
                 stage,
                 status,
                 message,
-            });
+            ));
         }
     };
     let report = state

@@ -848,6 +848,69 @@ fn resume_member_ipc_returns_report_shape() {
 }
 
 #[test]
+fn resume_member_progress_events_are_emitted_from_canonical_member_stages() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize");
+
+    let mut runtime = crate::coordination::stores::MemberRuntimeStore::load(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+    )
+    .expect("member runtime");
+    runtime.health = crate::coordination::domain::HealthState::SessionDead;
+    runtime.pane_id = None;
+    runtime.daemon_pid = None;
+    crate::coordination::stores::MemberRuntimeStore::save(
+        tmp.path(),
+        "architecture-final",
+        "frontend-dev",
+        &runtime,
+    )
+    .expect("save runtime");
+
+    let mut emitted = Vec::new();
+    let mut emit = |event: &StepProgressEvent| emitted.push(event.clone());
+    let report = coordination_resume_member_internal(
+        &state,
+        None,
+        ResumeMemberRequest {
+            team_name: "architecture-final".to_string(),
+            member_name: "frontend-dev".to_string(),
+        },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        Some(&mut emit),
+    )
+    .expect("resume should return a report");
+
+    assert!(report.resumed);
+    assert!(!emitted.is_empty());
+    assert!(emitted
+        .iter()
+        .all(|event| event.operation == "resume_member"));
+    assert!(emitted.iter().any(|event| {
+        event.progress.step == "prepare_member"
+            && event.progress.status == StepStatus::Running
+            && event.canonical_stages == vec![MemberActivationStage::PrepareMember]
+    }));
+    assert!(emitted.iter().any(|event| {
+        event.progress.step == "commit_runtime"
+            && event.progress.status == StepStatus::Succeeded
+            && event.canonical_stages == vec![MemberActivationStage::CommitRuntime]
+    }));
+}
+
+#[test]
 fn resume_team_validates_empty_team_name() {
     let tmp = TempDir::new().expect("tempdir");
     let state = test_state(tmp.path().to_path_buf());
@@ -2809,6 +2872,55 @@ fn initialize_progress_events_include_canonical_stage_metadata() {
         ]
     );
     assert_eq!(events[1].canonical_stages, events[0].canonical_stages);
+}
+
+#[test]
+fn initialize_stage_mapping_preserves_existing_batch_steps() {
+    assert_eq!(
+        super::progress::initialize_step_for_member_stage(MemberActivationStage::PrepareMember),
+        Some("validate_configuration")
+    );
+    assert_eq!(
+        super::progress::initialize_step_for_member_stage(MemberActivationStage::AcquirePane),
+        Some("create_panes")
+    );
+    assert_eq!(
+        super::progress::initialize_step_for_member_stage(MemberActivationStage::LaunchSession),
+        Some("create_panes")
+    );
+    assert_eq!(
+        super::progress::initialize_step_for_member_stage(
+            MemberActivationStage::CaptureSessionIdentity
+        ),
+        Some("launch_sessions")
+    );
+    assert_eq!(
+        super::progress::initialize_step_for_member_stage(MemberActivationStage::CommitRuntime),
+        None
+    );
+    assert_eq!(
+        super::progress::initialize_step_for_member_stage(MemberActivationStage::DeliverOnboarding),
+        Some("send_onboarding")
+    );
+}
+
+#[test]
+fn resume_member_progress_event_helper_uses_canonical_stage_step_name() {
+    let event = super::progress::resume_member_progress_event_for_stage(
+        "architecture-final",
+        MemberActivationStage::CommitRuntime,
+        StepStatus::Running,
+        Some("writing runtime".to_string()),
+    );
+
+    assert_eq!(event.team_name, "architecture-final");
+    assert_eq!(event.operation, "resume_member");
+    assert_eq!(event.progress.step, "commit_runtime");
+    assert_eq!(event.progress.status, StepStatus::Running);
+    assert_eq!(
+        event.canonical_stages,
+        vec![MemberActivationStage::CommitRuntime]
+    );
 }
 
 #[test]

@@ -1,19 +1,26 @@
 use crate::commands::coordination_types::{
-    AddAgentReport, InitializeReport, ResumeAgentReport, ResumeTeamProgressEvent, StepProgress,
+    AddAgentReport, InitializeReport, MemberActivationStage, ResumeTeamProgressEvent, StepProgress,
     StepProgressEvent, StepStatus,
 };
 use crate::coordination::requests::canonical_member_activation_stages;
 use serde_json::{Map, Value};
+
+pub(super) fn emit_progress_event(
+    event: StepProgressEvent,
+    emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
+) {
+    emit_progress_log_event(&event);
+    if let Some(emit) = emit.as_deref_mut() {
+        emit(&event);
+    }
+}
 
 pub(super) fn emit_progress_events(
     events: Vec<StepProgressEvent>,
     mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) {
     for event in events {
-        emit_progress_log_event(&event);
-        if let Some(emit) = emit.as_mut() {
-            emit(&event);
-        }
+        emit_progress_event(event, &mut emit);
     }
 }
 
@@ -25,8 +32,59 @@ pub(super) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProg
     progress_events_for_steps(&report.team_name, "add_agent", &report.steps)
 }
 
-pub(super) fn resume_member_progress_events(report: &ResumeAgentReport) -> Vec<StepProgressEvent> {
-    progress_events_for_steps(&report.team_name, "resume_member", &report.steps)
+pub(super) fn resume_member_progress_event_for_stage(
+    team_name: &str,
+    stage: MemberActivationStage,
+    status: StepStatus,
+    message: Option<String>,
+) -> StepProgressEvent {
+    StepProgressEvent {
+        team_name: team_name.to_string(),
+        operation: "resume_member".to_string(),
+        progress: StepProgress {
+            step: resume_member_stream_step_name(stage).to_string(),
+            status,
+            message,
+        },
+        canonical_stages: vec![stage],
+    }
+}
+
+pub(super) fn resume_team_progress_event_for_stage(
+    team_name: &str,
+    member_name: &str,
+    member_index: usize,
+    member_count: usize,
+    stage: MemberActivationStage,
+    status: StepStatus,
+    message: Option<String>,
+) -> ResumeTeamProgressEvent {
+    ResumeTeamProgressEvent {
+        operation: "resume_team".to_string(),
+        team_name: team_name.to_string(),
+        member_name: member_name.to_string(),
+        member_index,
+        member_count,
+        stage,
+        status,
+        message,
+    }
+}
+
+pub(super) fn initialize_step_for_member_stage(
+    stage: MemberActivationStage,
+) -> Option<&'static str> {
+    match stage {
+        MemberActivationStage::PrepareMember => Some("validate_configuration"),
+        MemberActivationStage::AcquirePane | MemberActivationStage::LaunchSession => {
+            Some("create_panes")
+        }
+        MemberActivationStage::CaptureSessionIdentity => Some("launch_sessions"),
+        MemberActivationStage::JoinMesh => Some("join_mesh"),
+        MemberActivationStage::StartMemberDaemon => Some("start_daemons"),
+        MemberActivationStage::CommitRuntime => None,
+        MemberActivationStage::DeliverOnboarding => Some("send_onboarding"),
+    }
 }
 
 fn progress_events_for_steps(
@@ -37,6 +95,15 @@ fn progress_events_for_steps(
     let mut events = Vec::new();
     for progress in steps {
         let canonical_stages = canonical_stages_for_operation_step(operation, &progress.step);
+        debug_assert!(
+            operation != "initialize_team"
+                || canonical_stages
+                    .iter()
+                    .all(|stage| initialize_step_for_member_stage(*stage)
+                        == Some(progress.step.as_str())),
+            "initialize step mapping drifted for '{}'",
+            progress.step
+        );
         events.push(StepProgressEvent {
             team_name: team_name.to_string(),
             operation: operation.to_string(),
@@ -68,6 +135,10 @@ fn canonical_stages_for_operation_step(
         _ => return Vec::new(),
     };
     canonical_member_activation_stages(wrapper, legacy_step).to_vec()
+}
+
+fn resume_member_stream_step_name(stage: MemberActivationStage) -> &'static str {
+    stage.as_str()
 }
 
 fn emit_progress_log_event(event: &StepProgressEvent) {
