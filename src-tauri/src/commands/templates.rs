@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
-use crate::errors::sanitize_error;
+use crate::errors::{sanitize_error, CommandResultExt, IpcResult};
 use crate::templates::adapters::{export_role, RoleExportFormat, RoleExportResult};
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
@@ -143,15 +143,16 @@ pub struct ImportRoleFromFileResult {
 #[tauri::command]
 pub fn templates_list_roles_full(
     state: State<'_, TemplateStoreState>,
-) -> Result<Vec<RoleTemplateFull>, String> {
+) -> IpcResult<Vec<RoleTemplateFull>> {
     let span = IpcCommandSpan::start("templates_list_roles_full");
-    let result = {
+    let result: Result<Vec<RoleTemplateFull>, String> = {
         let store = &state.0;
         store
             .list_roles()
             .map(|roles| roles.into_iter().map(map_role_full).collect())
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_list_roles_full");
     span.finish_result(&result);
     result
 }
@@ -160,15 +161,16 @@ pub fn templates_list_roles_full(
 pub fn templates_get_role(
     state: State<'_, TemplateStoreState>,
     role_id: String,
-) -> Result<RoleTemplate, String> {
+) -> IpcResult<RoleTemplate> {
     let span = IpcCommandSpan::start("templates_get_role");
-    let result = {
+    let result: Result<RoleTemplate, String> = {
         let store = &state.0;
         store
             .get_role(&role_id)
             .map(|record| record.template)
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_get_role");
     span.finish_result(&result);
     result
 }
@@ -177,9 +179,9 @@ pub fn templates_get_role(
 pub fn templates_upsert_role(
     state: State<'_, TemplateStoreState>,
     request: TemplatesUpsertRoleRequest,
-) -> Result<RoleTemplate, String> {
+) -> IpcResult<RoleTemplate> {
     let span = IpcCommandSpan::start("templates_upsert_role");
-    let result = {
+    let result: Result<RoleTemplate, String> = {
         let store = &state.0;
         let role_id = request.template.role_id.clone();
 
@@ -195,6 +197,7 @@ pub fn templates_upsert_role(
             .map(|record| record.template)
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_upsert_role");
     span.finish_result(&result);
     result
 }
@@ -203,13 +206,14 @@ pub fn templates_upsert_role(
 pub fn templates_delete_role(
     state: State<'_, TemplateStoreState>,
     role_id: String,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("templates_delete_role");
-    let result = {
+    let result: Result<(), String> = {
         let store = &state.0;
         store.delete_role(&role_id).map_err(map_template_error)?;
         Ok(())
     };
+    let result = result.ipc_cmd("templates_delete_role");
     span.finish_result(&result);
     result
 }
@@ -218,9 +222,9 @@ pub fn templates_delete_role(
 pub fn import_role_from_file(
     state: State<'_, TemplateStoreState>,
     request: ImportRoleFromFileRequest,
-) -> Result<ImportRoleFromFileResult, String> {
+) -> IpcResult<ImportRoleFromFileResult> {
     let span = IpcCommandSpan::start("import_role_from_file");
-    let result = import_role_from_file_internal(&state.0, request);
+    let result = import_role_from_file_internal(&state.0, request).ipc_cmd("import_role_from_file");
     span.finish_result(&result);
     result
 }
@@ -228,15 +232,16 @@ pub fn import_role_from_file(
 #[tauri::command]
 pub fn templates_list_presets_full(
     state: State<'_, TemplateStoreState>,
-) -> Result<Vec<TeamPresetFull>, String> {
+) -> IpcResult<Vec<TeamPresetFull>> {
     let span = IpcCommandSpan::start("templates_list_presets_full");
-    let result = {
+    let result: Result<Vec<TeamPresetFull>, String> = {
         let store = &state.0;
         store
             .list_presets()
             .map(|presets| presets.into_iter().map(map_preset_full).collect())
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_list_presets_full");
     span.finish_result(&result);
     result
 }
@@ -245,15 +250,16 @@ pub fn templates_list_presets_full(
 pub fn templates_get_preset(
     state: State<'_, TemplateStoreState>,
     preset_id: String,
-) -> Result<TeamPreset, String> {
+) -> IpcResult<TeamPreset> {
     let span = IpcCommandSpan::start("templates_get_preset");
-    let result = {
+    let result: Result<TeamPreset, String> = {
         let store = &state.0;
         store
             .get_preset(&preset_id)
             .map(|record| record.template)
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_get_preset");
     span.finish_result(&result);
     result
 }
@@ -262,9 +268,9 @@ pub fn templates_get_preset(
 pub fn templates_upsert_preset(
     state: State<'_, TemplateStoreState>,
     request: TemplatesUpsertPresetRequest,
-) -> Result<TeamPreset, String> {
+) -> IpcResult<TeamPreset> {
     let span = IpcCommandSpan::start("templates_upsert_preset");
-    let result = {
+    let result: Result<TeamPreset, String> = {
         let store = &state.0;
         let preset_id = request.preset.preset_id.clone();
 
@@ -280,6 +286,7 @@ pub fn templates_upsert_preset(
             .map(|record| record.template)
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_upsert_preset");
     span.finish_result(&result);
     result
 }
@@ -288,15 +295,16 @@ pub fn templates_upsert_preset(
 pub fn templates_delete_preset(
     state: State<'_, TemplateStoreState>,
     preset_id: String,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("templates_delete_preset");
-    let result = {
+    let result: Result<(), String> = {
         let store = &state.0;
         store
             .delete_preset(&preset_id)
             .map_err(map_template_error)?;
         Ok(())
     };
+    let result = result.ipc_cmd("templates_delete_preset");
     span.finish_result(&result);
     result
 }
@@ -305,9 +313,9 @@ pub fn templates_delete_preset(
 pub fn templates_compose_team(
     state: State<'_, TemplateStoreState>,
     request: TemplatesComposeTeamRequest,
-) -> Result<CompositionResult, String> {
+) -> IpcResult<CompositionResult> {
     let span = IpcCommandSpan::start("templates_compose_team");
-    let result = {
+    let result: Result<CompositionResult, String> = {
         let store = &state.0;
         let catalog = store.load_catalog().map_err(map_template_error)?;
         let agent_slots: Vec<AgentSlot> = request.agent_slots.into_iter().map(Into::into).collect();
@@ -318,6 +326,7 @@ pub fn templates_compose_team(
             &request.overrides,
         ))
     };
+    let result = result.ipc_cmd("templates_compose_team");
     span.finish_result(&result);
     result
 }
@@ -325,9 +334,9 @@ pub fn templates_compose_team(
 #[tauri::command]
 pub fn templates_get_storage_status(
     state: State<'_, TemplateStoreState>,
-) -> Result<TemplateStorageStatus, String> {
+) -> IpcResult<TemplateStorageStatus> {
     let span = IpcCommandSpan::start("templates_get_storage_status");
-    let result = {
+    let result: Result<TemplateStorageStatus, String> = {
         let store = &state.0;
         store.ensure_directories().map_err(map_template_error)?;
         let persisted = store.load_state().map_err(map_template_error)?;
@@ -349,6 +358,7 @@ pub fn templates_get_storage_status(
             last_commit: persisted.last_commit_at,
         })
     };
+    let result = result.ipc_cmd("templates_get_storage_status");
     span.finish_result(&result);
     result
 }
@@ -358,12 +368,13 @@ pub fn templates_get_history(
     state: State<'_, TemplateStoreState>,
     limit: Option<usize>,
     cursor: Option<String>,
-) -> Result<TemplateCommitPage, String> {
+) -> IpcResult<TemplateCommitPage> {
     let span = IpcCommandSpan::start("templates_get_history");
-    let result = {
+    let result: Result<TemplateCommitPage, String> = {
         let store = &state.0;
         store.get_history(limit, cursor).map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_get_history");
     span.finish_result(&result);
     result
 }
@@ -372,12 +383,13 @@ pub fn templates_get_history(
 pub fn templates_get_diff(
     state: State<'_, TemplateStoreState>,
     commit_id: String,
-) -> Result<TemplateDiff, String> {
+) -> IpcResult<TemplateDiff> {
     let span = IpcCommandSpan::start("templates_get_diff");
-    let result = {
+    let result: Result<TemplateDiff, String> = {
         let store = &state.0;
         store.get_diff(&commit_id).map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_get_diff");
     span.finish_result(&result);
     result
 }
@@ -386,14 +398,15 @@ pub fn templates_get_diff(
 pub fn templates_revert(
     state: State<'_, TemplateStoreState>,
     request: TemplateRevertRequest,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("templates_revert");
-    let result = {
+    let result: Result<(), String> = {
         let store = &state.0;
         store
             .revert_template(&request.id, &request.commit_hash)
             .map_err(map_template_error)
     };
+    let result = result.ipc_cmd("templates_revert");
     span.finish_result(&result);
     result
 }
@@ -401,9 +414,9 @@ pub fn templates_revert(
 #[tauri::command]
 pub fn templates_flush_pending(
     state: State<'_, TemplateStoreState>,
-) -> Result<TemplateFlushResult, String> {
+) -> IpcResult<TemplateFlushResult> {
     let span = IpcCommandSpan::start("templates_flush_pending");
-    let result = {
+    let result: Result<TemplateFlushResult, String> = {
         let store = &state.0;
         let commit_id = store.flush_pending_commits().map_err(map_template_error)?;
         Ok(TemplateFlushResult {
@@ -411,6 +424,7 @@ pub fn templates_flush_pending(
             commit_id,
         })
     };
+    let result = result.ipc_cmd("templates_flush_pending");
     span.finish_result(&result);
     result
 }
@@ -419,9 +433,9 @@ pub fn templates_flush_pending(
 pub fn export_role_to_file(
     state: State<'_, TemplateStoreState>,
     request: ExportRoleToFileRequest,
-) -> Result<RoleExportResult, String> {
+) -> IpcResult<RoleExportResult> {
     let span = IpcCommandSpan::start("export_role_to_file");
-    let result = export_role_to_file_internal(&state.0, request);
+    let result = export_role_to_file_internal(&state.0, request).ipc_cmd("export_role_to_file");
     span.finish_result(&result);
     result
 }

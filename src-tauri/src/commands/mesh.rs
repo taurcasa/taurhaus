@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{is_native_daemon, validate_wsl_distro, wsl_command};
+use crate::errors::{CommandResultExt, IpcResult};
 use crate::models::{
     MeshCompatibilityContract, MeshCompatibilityIssue, MeshInstallStatus, OperationResult,
 };
@@ -19,17 +20,17 @@ const INSTALL_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
 const INSTALL_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 
 #[tauri::command]
-pub fn check_mesh_install_status(app: tauri::AppHandle) -> Result<MeshInstallStatus, String> {
+pub fn check_mesh_install_status(app: tauri::AppHandle) -> IpcResult<MeshInstallStatus> {
     let span = IpcCommandSpan::start("check_mesh_install_status");
-    let result = read_mesh_install_status(&app);
+    let result = read_mesh_install_status(&app).ipc_cmd("check_mesh_install_status");
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
-pub fn install_mesh(app: tauri::AppHandle) -> Result<OperationResult, String> {
+pub fn install_mesh(app: tauri::AppHandle) -> IpcResult<OperationResult> {
     let span = IpcCommandSpan::start("install_mesh");
-    let result = install_bundled_mesh(&app);
+    let result = install_bundled_mesh(&app).ipc_cmd("install_mesh");
     span.finish_result(&result);
     result
 }

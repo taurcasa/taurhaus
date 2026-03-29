@@ -3,23 +3,20 @@ use tauri::State;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::relationship_queries;
-use crate::errors::SanitizeErr;
+use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::models::Relationship;
 
 #[tauri::command]
 pub fn get_relationships(
     db: State<'_, DbState>,
     project_id: String,
-) -> Result<Vec<Relationship>, String> {
+) -> IpcResult<Vec<Relationship>> {
     get_relationships_with_span(db.inner(), project_id)
 }
 
-fn get_relationships_with_span(
-    db: &DbState,
-    project_id: String,
-) -> Result<Vec<Relationship>, String> {
+fn get_relationships_with_span(db: &DbState, project_id: String) -> IpcResult<Vec<Relationship>> {
     let span = IpcCommandSpan::start("get_relationships");
-    let result = get_relationships_impl(db, project_id);
+    let result = get_relationships_impl(db, project_id).ipc_cmd("get_relationships");
     span.finish_result(&result);
     result
 }
@@ -30,13 +27,13 @@ fn get_relationships_impl(db: &DbState, project_id: String) -> Result<Vec<Relati
 }
 
 #[tauri::command]
-pub fn dismiss_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
+pub fn dismiss_relationship(db: State<'_, DbState>, relationship_id: String) -> IpcResult<()> {
     dismiss_relationship_with_span(db.inner(), relationship_id)
 }
 
-fn dismiss_relationship_with_span(db: &DbState, relationship_id: String) -> Result<(), String> {
+fn dismiss_relationship_with_span(db: &DbState, relationship_id: String) -> IpcResult<()> {
     let span = IpcCommandSpan::start("dismiss_relationship");
-    let result = dismiss_relationship_impl(db, relationship_id);
+    let result = dismiss_relationship_impl(db, relationship_id).ipc_cmd("dismiss_relationship");
     span.finish_result(&result);
     result
 }
@@ -53,7 +50,7 @@ pub fn create_relationship(
     source_id: String,
     target_id: String,
     relationship_type: String,
-) -> Result<Relationship, String> {
+) -> IpcResult<Relationship> {
     create_relationship_with_span(db.inner(), source_id, target_id, relationship_type)
 }
 
@@ -62,9 +59,10 @@ fn create_relationship_with_span(
     source_id: String,
     target_id: String,
     relationship_type: String,
-) -> Result<Relationship, String> {
+) -> IpcResult<Relationship> {
     let span = IpcCommandSpan::start("create_relationship");
-    let result = create_relationship_impl(db, source_id, target_id, relationship_type);
+    let result = create_relationship_impl(db, source_id, target_id, relationship_type)
+        .ipc_cmd("create_relationship");
     span.finish_result(&result);
     result
 }
@@ -94,13 +92,13 @@ fn create_relationship_impl(
 }
 
 #[tauri::command]
-pub fn remove_relationship(db: State<'_, DbState>, relationship_id: String) -> Result<(), String> {
+pub fn remove_relationship(db: State<'_, DbState>, relationship_id: String) -> IpcResult<()> {
     remove_relationship_with_span(db.inner(), relationship_id)
 }
 
-fn remove_relationship_with_span(db: &DbState, relationship_id: String) -> Result<(), String> {
+fn remove_relationship_with_span(db: &DbState, relationship_id: String) -> IpcResult<()> {
     let span = IpcCommandSpan::start("remove_relationship");
-    let result = remove_relationship_impl(db, relationship_id);
+    let result = remove_relationship_impl(db, relationship_id).ipc_cmd("remove_relationship");
     span.finish_result(&result);
     result
 }

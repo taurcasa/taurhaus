@@ -8,7 +8,7 @@ use tauri::{Emitter, State};
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::db::{queries, settings_queries};
-use crate::errors::{sanitize_error, SanitizeErr};
+use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::models::{ProjectDetail, ProjectSummary};
 #[cfg(target_os = "windows")]
 use crate::platform::apply_background_command_settings;
@@ -102,25 +102,27 @@ pub struct DiscoveredProject {
 }
 
 #[tauri::command]
-pub fn list_projects(db: State<'_, DbState>) -> Result<Vec<ProjectSummary>, String> {
+pub fn list_projects(db: State<'_, DbState>) -> IpcResult<Vec<ProjectSummary>> {
     let span = IpcCommandSpan::start("list_projects");
-    let result: Result<Vec<ProjectSummary>, String> = {
+    let result = (|| -> Result<Vec<ProjectSummary>, String> {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         project::list_projects(&conn, &settings.thresholds).sanitize_err()
-    };
+    })()
+    .ipc_cmd("list_projects");
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
-pub fn get_project(db: State<'_, DbState>, project_id: String) -> Result<ProjectDetail, String> {
+pub fn get_project(db: State<'_, DbState>, project_id: String) -> IpcResult<ProjectDetail> {
     let span = IpcCommandSpan::start("get_project");
-    let result: Result<ProjectDetail, String> = {
+    let result = (|| -> Result<ProjectDetail, String> {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         get_project_detail_for_selection(&conn, &project_id, &settings.thresholds)
-    };
+    })()
+    .ipc_cmd("get_project");
     span.finish_result(&result);
     result
 }
@@ -139,11 +141,11 @@ pub fn register_project(
     providers: State<'_, ProviderState>,
     path: String,
     name: Option<String>,
-) -> Result<ProjectDetail, String> {
+) -> IpcResult<ProjectDetail> {
     let span = IpcCommandSpan::start("register_project");
     let requested_path = path.clone();
     let requested_name = name.clone();
-    let result: Result<ProjectDetail, String> = {
+    let result = (|| -> Result<ProjectDetail, String> {
         let expanded = expand_tilde(&path);
         let detail = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -156,7 +158,8 @@ pub fn register_project(
         reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
         Ok(detail)
-    };
+    })()
+    .ipc_cmd("register_project");
     span.finish_result(&result);
     match &result {
         Ok(detail) => {
@@ -181,7 +184,7 @@ pub fn register_project(
             emit_project_failure(
                 "projects.register.failed",
                 "Project registration failed",
-                error,
+                &error.message,
                 fields,
             );
         }
@@ -270,27 +273,30 @@ fn join_project_creation_path(parent_dir: &str, name: &str) -> String {
     }
 }
 
-fn scan_directory_impl(db: &DbState, path: String) -> Result<Vec<DiscoveredProject>, String> {
-    let expanded = expand_tilde(&path);
-    let policy = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::services::scan_policy::ScanIndexPolicy::load(&conn).sanitize_err()?
-    };
+fn scan_directory_impl(db: &DbState, path: String) -> IpcResult<Vec<DiscoveredProject>> {
+    (|| -> Result<Vec<DiscoveredProject>, String> {
+        let expanded = expand_tilde(&path);
+        let policy = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::services::scan_policy::ScanIndexPolicy::load(&conn).sanitize_err()?
+        };
 
-    let results = crate::services::scanner::scan_directory_with_policy(
-        std::path::Path::new(&expanded),
-        2,
-        &policy,
-    )?;
+        let results = crate::services::scanner::scan_directory_with_policy(
+            std::path::Path::new(&expanded),
+            2,
+            &policy,
+        )?;
 
-    Ok(results
-        .into_iter()
-        .map(|d| DiscoveredProject {
-            path: d.path,
-            name: d.name,
-            has_git: d.has_git,
-        })
-        .collect())
+        Ok(results
+            .into_iter()
+            .map(|d| DiscoveredProject {
+                path: d.path,
+                name: d.name,
+                has_git: d.has_git,
+            })
+            .collect())
+    })()
+    .ipc_cmd("scan_directory")
 }
 
 fn initialize_project_repo(
@@ -373,11 +379,11 @@ pub fn create_project(
     providers: State<'_, ProviderState>,
     name: String,
     parent_dir: String,
-) -> Result<ProjectDetail, String> {
+) -> IpcResult<ProjectDetail> {
     let span = IpcCommandSpan::start("create_project");
     let requested_name = name.clone();
     let requested_parent_dir = parent_dir.clone();
-    let result: Result<ProjectDetail, String> = {
+    let result = (|| -> Result<ProjectDetail, String> {
         let expanded_parent = expand_tilde(&parent_dir);
         let detail = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -389,7 +395,8 @@ pub fn create_project(
         reseed_activity_for_project(&db, &providers, &detail.id, &detail.path);
 
         Ok(detail)
-    };
+    })()
+    .ipc_cmd("create_project");
     span.finish_result(&result);
     match &result {
         Ok(detail) => {
@@ -415,7 +422,7 @@ pub fn create_project(
             emit_project_failure(
                 "projects.create.failed",
                 "Project creation failed",
-                error,
+                &error.message,
                 fields,
             );
         }
@@ -428,13 +435,13 @@ pub fn update_project(
     db: State<'_, DbState>,
     project_id: String,
     fields: UpdateProjectFields,
-) -> Result<ProjectDetail, String> {
+) -> IpcResult<ProjectDetail> {
     let span = IpcCommandSpan::start("update_project");
     let requested_project_id = project_id.clone();
     let updated_name = fields.name.is_some();
     let updated_description = fields.description.is_some();
     let updated_hero_preference = fields.hero_preference.is_some();
-    let result = {
+    let result = (|| -> Result<ProjectDetail, String> {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
         let thresholds = settings.thresholds;
@@ -450,7 +457,8 @@ pub fn update_project(
 
         // Return the updated project.
         project::get_project(&conn, &project_id, &thresholds).sanitize_err()
-    };
+    })()
+    .ipc_cmd("update_project");
     span.finish_result(&result);
     match &result {
         Ok(detail) => {
@@ -489,7 +497,7 @@ pub fn update_project(
             emit_project_failure(
                 "projects.update.failed",
                 "Project update failed",
-                error,
+                &error.message,
                 log_fields,
             );
         }
@@ -502,7 +510,7 @@ pub fn remove_project(
     db: State<'_, DbState>,
     search: State<'_, SearchState>,
     project_id: String,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("remove_project");
     struct RemoveProjectOutcome {
         project_name: Option<String>,
@@ -539,10 +547,11 @@ pub fn remove_project(
             search_cleanup_error,
         })
     };
-    let result: Result<(), String> = outcome
+    let result = outcome
         .as_ref()
         .map(|_| ())
-        .map_err(|error: &String| error.clone());
+        .map_err(|error: &String| error.clone())
+        .ipc_cmd("remove_project");
     span.finish_result(&result);
     match outcome {
         Ok(outcome) => {
@@ -588,13 +597,14 @@ pub fn remove_project(
 }
 
 #[tauri::command]
-pub fn is_first_run(db: State<'_, DbState>) -> Result<bool, String> {
+pub fn is_first_run(db: State<'_, DbState>) -> IpcResult<bool> {
     let span = IpcCommandSpan::start("is_first_run");
-    let result: Result<bool, String> = {
+    let result = (|| -> Result<bool, String> {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let count = crate::db::queries::project_count(&conn).sanitize_err()?;
         Ok(count == 0)
-    };
+    })()
+    .ipc_cmd("is_first_run");
     span.finish_result(&result);
     result
 }
@@ -615,10 +625,10 @@ pub fn register_projects_batch(
     providers: State<'_, ProviderState>,
     app: tauri::AppHandle,
     paths: Vec<String>,
-) -> Result<Vec<BatchRegistrationResult>, String> {
+) -> IpcResult<Vec<BatchRegistrationResult>> {
     let span = IpcCommandSpan::start("register_projects_batch");
     let requested_batch_size = paths.len() as u64;
-    let result: Result<Vec<BatchRegistrationResult>, String> = {
+    let result = (|| -> Result<Vec<BatchRegistrationResult>, String> {
         let results = {
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             let settings = settings_queries::get_all_settings(&conn).sanitize_err()?;
@@ -664,7 +674,8 @@ pub fn register_projects_batch(
             }
         }
         Ok(results)
-    };
+    })()
+    .ipc_cmd("register_projects_batch");
     span.finish_result(&result);
     match &result {
         Ok(results) => {
@@ -718,7 +729,7 @@ pub fn register_projects_batch(
             emit_project_failure(
                 "projects.batch_register.failed",
                 "Project batch registration failed",
-                error,
+                &error.message,
                 fields,
             );
         }
@@ -830,10 +841,7 @@ fn reseed_activity_for_project(
 }
 
 #[tauri::command]
-pub fn scan_directory(
-    db: State<'_, DbState>,
-    path: String,
-) -> Result<Vec<DiscoveredProject>, String> {
+pub fn scan_directory(db: State<'_, DbState>, path: String) -> IpcResult<Vec<DiscoveredProject>> {
     let span = IpcCommandSpan::start("scan_directory");
     let result = scan_directory_impl(db.inner(), path);
     span.finish_result(&result);
@@ -852,9 +860,9 @@ pub struct DirectoryEntry {
 /// List subdirectories at a given path (directories only, no files).
 /// Used by the directory tree browser for manual path selection.
 #[tauri::command]
-pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
+pub fn list_directory(path: String) -> IpcResult<Vec<DirectoryEntry>> {
     let span = IpcCommandSpan::start("list_directory");
-    let result = {
+    let result = (|| -> Result<Vec<DirectoryEntry>, String> {
         let expanded = expand_tilde(&path);
         let dir = std::path::Path::new(&expanded);
 
@@ -862,7 +870,7 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
             return Ok(Vec::new());
         }
 
-        let read_dir = std::fs::read_dir(dir).map_err(|e| sanitize_error(&e.to_string()))?;
+        let read_dir = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
         let mut entries: Vec<DirectoryEntry> = Vec::new();
 
         for entry in read_dir {
@@ -904,7 +912,8 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
 
         entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         Ok(entries)
-    };
+    })()
+    .ipc_cmd("list_directory");
     span.finish_result(&result);
     result
 }
@@ -1011,12 +1020,9 @@ fn detect_git_repo_for_validation(raw_path: &str, dir: &std::path::Path) -> bool
 /// Validate whether a path is a valid project directory.
 /// Checks: exists, is a git repo, already registered.
 #[tauri::command]
-pub fn validate_project_path(
-    db: State<'_, DbState>,
-    path: String,
-) -> Result<PathValidation, String> {
+pub fn validate_project_path(db: State<'_, DbState>, path: String) -> IpcResult<PathValidation> {
     let span = IpcCommandSpan::start("validate_project_path");
-    let result = {
+    let result = (|| -> Result<PathValidation, String> {
         let expanded = expand_tilde(&path);
         let dir = std::path::Path::new(&expanded);
 
@@ -1039,7 +1045,8 @@ pub fn validate_project_path(
             is_git_repo,
             is_registered,
         })
-    };
+    })()
+    .ipc_cmd("validate_project_path");
     span.finish_result(&result);
     result
 }

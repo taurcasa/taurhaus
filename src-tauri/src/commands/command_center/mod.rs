@@ -15,7 +15,7 @@ use crate::coordination::requests::ResumeMemberRequest;
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::TeamConfigStore;
 use crate::daemon::protocol::{self, LaunchMode};
-use crate::errors::SanitizeErr;
+use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
@@ -44,9 +44,10 @@ pub fn list_cli_sessions(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
-) -> Result<Vec<DisplaySession>, String> {
+) -> IpcResult<Vec<DisplaySession>> {
     let span = IpcCommandSpan::start("list_cli_sessions");
-    let result = list_cli_sessions_impl(&app, db.inner(), provider.inner());
+    let result =
+        list_cli_sessions_impl(&app, db.inner(), provider.inner()).ipc_cmd("list_cli_sessions");
     span.finish_result(&result);
     result
 }
@@ -60,7 +61,7 @@ pub fn launch_cli_session(
     project_id: String,
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
-) -> Result<protocol::LaunchSessionResult, String> {
+) -> IpcResult<protocol::LaunchSessionResult> {
     let span = IpcCommandSpan::start("launch_cli_session");
     let result = launch_cli_session_impl(
         db.inner(),
@@ -70,7 +71,8 @@ pub fn launch_cli_session(
         project_id,
         mode,
         cli_tool,
-    );
+    )
+    .ipc_cmd("launch_cli_session");
     span.finish_result(&result);
     result
 }
@@ -81,9 +83,10 @@ pub fn stop_cli_session(
     provider: State<'_, ProviderState>,
     tmux_pane: String,
     cli_tool: Option<CliTool>,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("stop_cli_session");
-    let result = stop_cli_session_impl(log_file.inner(), provider.inner(), tmux_pane, cli_tool);
+    let result = stop_cli_session_impl(log_file.inner(), provider.inner(), tmux_pane, cli_tool)
+        .ipc_cmd("stop_cli_session");
     span.finish_result(&result);
     result
 }
@@ -97,7 +100,7 @@ pub fn navigate_to_session(
     tmux_window: String,
     tmux_pane: String,
     open_terminal: Option<bool>,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("navigate_to_session");
     let result = navigate_to_session_impl(
         db.inner(),
@@ -107,7 +110,8 @@ pub fn navigate_to_session(
         tmux_window,
         tmux_pane,
         open_terminal,
-    );
+    )
+    .ipc_cmd("navigate_to_session");
     span.finish_result(&result);
     result
 }
@@ -121,7 +125,7 @@ pub fn record_session_activity(
     ended_at: String,
     active_duration_ms: i64,
     total_duration_ms: i64,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("record_session_activity");
     let result = record_session_activity_impl(
         db.inner(),
@@ -131,7 +135,8 @@ pub fn record_session_activity(
         ended_at,
         active_duration_ms,
         total_duration_ms,
-    );
+    )
+    .ipc_cmd("record_session_activity");
     span.finish_result(&result);
     result
 }
@@ -140,9 +145,9 @@ pub fn record_session_activity(
 pub fn get_project_activity(
     db: State<'_, DbState>,
     project_id: String,
-) -> Result<crate::db::activity_queries::ProjectActivityStats, String> {
+) -> IpcResult<crate::db::activity_queries::ProjectActivityStats> {
     let span = IpcCommandSpan::start("get_project_activity");
-    let result = get_project_activity_impl(db.inner(), &project_id);
+    let result = get_project_activity_impl(db.inner(), &project_id).ipc_cmd("get_project_activity");
     span.finish_result(&result);
     result
 }
@@ -152,9 +157,10 @@ pub fn get_foreground_project(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
-) -> Result<Option<String>, String> {
+) -> IpcResult<Option<String>> {
     let span = IpcCommandSpan::start("get_foreground_project");
-    let result = get_foreground_project_impl(&app, db.inner(), provider.inner());
+    let result = get_foreground_project_impl(&app, db.inner(), provider.inner())
+        .ipc_cmd("get_foreground_project");
     span.finish_result(&result);
     result
 }

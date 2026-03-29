@@ -5,7 +5,7 @@ use tauri::State;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::settings_queries;
-use crate::errors::SanitizeErr;
+use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::models::Settings;
 
 static SETTINGS_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);
@@ -41,13 +41,13 @@ fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str)
 }
 
 #[tauri::command]
-pub fn get_settings(db: State<'_, DbState>) -> Result<Settings, String> {
+pub fn get_settings(db: State<'_, DbState>) -> IpcResult<Settings> {
     get_settings_with_span(db.inner())
 }
 
-fn get_settings_with_span(db: &DbState) -> Result<Settings, String> {
+fn get_settings_with_span(db: &DbState) -> IpcResult<Settings> {
     let span = IpcCommandSpan::start("get_settings");
-    let result = get_settings_impl(db);
+    let result = get_settings_impl(db).ipc_cmd("get_settings");
     span.finish_result(&result);
     result
 }
@@ -64,7 +64,7 @@ pub fn update_settings(
     app: tauri::AppHandle,
     db: State<'_, DbState>,
     settings: Settings,
-) -> Result<Settings, String> {
+) -> IpcResult<Settings> {
     update_settings_with_span(&app, db.inner(), settings)
 }
 
@@ -72,13 +72,14 @@ fn update_settings_with_span(
     app: &tauri::AppHandle,
     db: &DbState,
     settings: Settings,
-) -> Result<Settings, String> {
+) -> IpcResult<Settings> {
     let span = IpcCommandSpan::start("update_settings");
-    let result = {
+    let result = (|| -> Result<Settings, String> {
         let updated = update_settings_impl(db, settings)?;
         enqueue_activity_watch_reconcile(app.clone(), "settings_updated");
         Ok(updated)
-    };
+    })()
+    .ipc_cmd("update_settings");
     span.finish_result(&result);
     result
 }

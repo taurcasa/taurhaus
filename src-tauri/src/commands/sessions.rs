@@ -3,23 +3,23 @@ use tauri::State;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::session_queries;
-use crate::errors::SanitizeErr;
+use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::models::{SessionDetail, SessionSummary};
 
 #[tauri::command]
 pub fn get_latest_session(
     db: State<'_, DbState>,
     project_id: String,
-) -> Result<Option<SessionDetail>, String> {
+) -> IpcResult<Option<SessionDetail>> {
     get_latest_session_with_span(db.inner(), project_id)
 }
 
 fn get_latest_session_with_span(
     db: &DbState,
     project_id: String,
-) -> Result<Option<SessionDetail>, String> {
+) -> IpcResult<Option<SessionDetail>> {
     let span = IpcCommandSpan::start("get_latest_session");
-    let result = get_latest_session_impl(db, project_id);
+    let result = get_latest_session_impl(db, project_id).ipc_cmd("get_latest_session");
     span.finish_result(&result);
     result
 }
@@ -38,7 +38,7 @@ pub fn list_sessions(
     project_id: String,
     limit: Option<usize>,
     offset: Option<usize>,
-) -> Result<Vec<SessionSummary>, String> {
+) -> IpcResult<Vec<SessionSummary>> {
     list_sessions_with_span(db.inner(), project_id, limit, offset)
 }
 
@@ -47,9 +47,9 @@ fn list_sessions_with_span(
     project_id: String,
     limit: Option<usize>,
     offset: Option<usize>,
-) -> Result<Vec<SessionSummary>, String> {
+) -> IpcResult<Vec<SessionSummary>> {
     let span = IpcCommandSpan::start("list_sessions");
-    let result = list_sessions_impl(db, project_id, limit, offset);
+    let result = list_sessions_impl(db, project_id, limit, offset).ipc_cmd("list_sessions");
     span.finish_result(&result);
     result
 }
@@ -71,13 +71,13 @@ fn list_sessions_impl(
 }
 
 #[tauri::command]
-pub fn get_session(db: State<'_, DbState>, session_id: String) -> Result<SessionDetail, String> {
+pub fn get_session(db: State<'_, DbState>, session_id: String) -> IpcResult<SessionDetail> {
     get_session_with_span(db.inner(), session_id)
 }
 
-fn get_session_with_span(db: &DbState, session_id: String) -> Result<SessionDetail, String> {
+fn get_session_with_span(db: &DbState, session_id: String) -> IpcResult<SessionDetail> {
     let span = IpcCommandSpan::start("get_session");
-    let result = get_session_impl(db, session_id);
+    let result = get_session_impl(db, session_id).ipc_cmd("get_session");
     span.finish_result(&result);
     result
 }

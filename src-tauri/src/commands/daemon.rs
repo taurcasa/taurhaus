@@ -6,6 +6,7 @@ use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::daemon::protocol::PROTOCOL_VERSION;
 use crate::daemon::server::DEFAULT_PORT;
+use crate::errors::{CommandResultExt, IpcResult};
 use crate::models::{DaemonInstallStatus, DaemonStatus, OperationResult};
 use crate::ProviderState;
 
@@ -34,13 +35,14 @@ pub fn get_platform() -> String {
 
 /// Get the current daemon connection status.
 #[tauri::command]
-pub fn get_daemon_status(provider: State<'_, ProviderState>) -> Result<DaemonStatus, String> {
+pub fn get_daemon_status(provider: State<'_, ProviderState>) -> IpcResult<DaemonStatus> {
     let span = IpcCommandSpan::start("get_daemon_status");
     // This command is used by splash startup and should never queue behind a
     // long-running shared daemon RPC such as git reseed or runtime snapshot.
     // Report connection state from the provider immediately; richer ping-based
     // metadata can be fetched on non-critical paths if we ever need it.
-    let result = Ok(daemon_status_snapshot(&provider));
+    let result =
+        Ok::<DaemonStatus, String>(daemon_status_snapshot(&provider)).ipc_cmd("get_daemon_status");
     span.finish_result(&result);
     result
 }
@@ -69,54 +71,44 @@ fn daemon_status_snapshot(provider: &ProviderState) -> DaemonStatus {
 pub fn start_daemon(
     provider: State<'_, ProviderState>,
     app: tauri::AppHandle,
-) -> Result<OperationResult, String> {
+) -> IpcResult<OperationResult> {
     let span = IpcCommandSpan::start("start_daemon");
-    let distro = match provider.wsl_distro.as_deref().ok_or_else(|| {
-        if crate::daemon::launcher::is_native_daemon() {
-            "No daemon configuration available".to_string()
-        } else {
-            "No WSL distro configured".to_string()
-        }
-    }) {
-        Ok(distro) => distro,
-        Err(error) => {
-            span.fail_msg(&error);
-            return Err(error);
-        }
-    };
-
-    let port = DEFAULT_PORT;
-
-    if let Err(error) = crate::daemon::launcher::try_restart_daemon(distro, port)
-        .map_err(|e| format!("Failed to start daemon: {e}"))
-    {
-        span.fail_msg(&error);
-        return Err(error);
-    }
-
-    // Wait a moment, then try to reconnect
-    std::thread::sleep(std::time::Duration::from_secs(2));
-
-    if let Some(ref daemon) = provider.daemon {
-        if daemon.reconnect().is_ok() {
-            if let Err(error) = app.emit(
-                "daemon-status",
-                serde_json::json!({ "status": "connected" }),
-            ) {
-                tracing::warn!(
-                    error = %error,
-                    "Failed to emit daemon-status event after reconnect"
-                );
+    let result = (|| -> Result<OperationResult, String> {
+        let distro = provider.wsl_distro.as_deref().ok_or_else(|| {
+            if crate::daemon::launcher::is_native_daemon() {
+                "No daemon configuration available".to_string()
+            } else {
+                "No WSL distro configured".to_string()
             }
-            let result = Ok(OperationResult::success("Daemon started and connected"));
-            span.finish_result(&result);
-            return result;
-        }
-    }
+        })?;
 
-    let result = Ok(OperationResult::success(
-        "Daemon process started (not yet connected)",
-    ));
+        let port = DEFAULT_PORT;
+        crate::daemon::launcher::try_restart_daemon(distro, port)
+            .map_err(|e| format!("Failed to start daemon: {e}"))?;
+
+        // Wait a moment, then try to reconnect
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        if let Some(ref daemon) = provider.daemon {
+            if daemon.reconnect().is_ok() {
+                if let Err(error) = app.emit(
+                    "daemon-status",
+                    serde_json::json!({ "status": "connected" }),
+                ) {
+                    tracing::warn!(
+                        error = %error,
+                        "Failed to emit daemon-status event after reconnect"
+                    );
+                }
+                return Ok(OperationResult::success("Daemon started and connected"));
+            }
+        }
+
+        Ok(OperationResult::success(
+            "Daemon process started (not yet connected)",
+        ))
+    })()
+    .ipc_cmd("start_daemon");
     span.finish_result(&result);
     result
 }
@@ -169,9 +161,10 @@ fn parse_distro_from_wsl_output(raw: &[u8]) -> Option<String> {
 #[tauri::command]
 pub fn check_daemon_install_status(
     provider: State<'_, ProviderState>,
-) -> Result<DaemonInstallStatus, String> {
+) -> IpcResult<DaemonInstallStatus> {
     let span = IpcCommandSpan::start("check_daemon_install_status");
-    let result = read_daemon_install_status(provider.wsl_distro.as_deref());
+    let result = read_daemon_install_status(provider.wsl_distro.as_deref())
+        .ipc_cmd("check_daemon_install_status");
     span.finish_result(&result);
     result
 }
@@ -383,10 +376,11 @@ fn check_daemon_install_wsl(
 /// On macOS/Linux: copies directly to `~/.local/bin/taurhaus-daemon`.
 /// On Windows: copies into the default WSL distro.
 #[tauri::command]
-pub fn install_daemon(app: tauri::AppHandle) -> Result<OperationResult, String> {
+pub fn install_daemon(app: tauri::AppHandle) -> IpcResult<OperationResult> {
     let span = IpcCommandSpan::start("install_daemon");
     let provider = app.state::<ProviderState>();
-    let result = install_bundled_daemon(&app, provider.wsl_distro.as_deref());
+    let result =
+        install_bundled_daemon(&app, provider.wsl_distro.as_deref()).ipc_cmd("install_daemon");
     span.finish_result(&result);
     result
 }

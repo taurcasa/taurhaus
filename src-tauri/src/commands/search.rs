@@ -5,7 +5,7 @@ use tauri::State;
 
 use super::lifecycle::IpcCommandSpan;
 use super::projects::DbState;
-use crate::errors::SanitizeErr;
+use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::search::indexer;
 use crate::search::query::SearchResult;
 use crate::SearchState;
@@ -22,9 +22,9 @@ pub fn search(
     search_state: State<'_, SearchState>,
     query: String,
     limit: Option<usize>,
-) -> Result<Vec<SearchResult>, String> {
+) -> IpcResult<Vec<SearchResult>> {
     let span = IpcCommandSpan::start("search");
-    let result = search_impl(search_state.inner(), query, limit, Some(&span));
+    let result = search_impl(search_state.inner(), query, limit, Some(&span)).ipc_cmd("search");
     span.finish_result(&result);
     result
 }
@@ -45,9 +45,10 @@ fn search_impl(
 }
 
 #[tauri::command]
-pub fn get_index_status(search_state: State<'_, SearchState>) -> Result<IndexStatus, String> {
+pub fn get_index_status(search_state: State<'_, SearchState>) -> IpcResult<IndexStatus> {
     let span = IpcCommandSpan::start("get_index_status");
-    let result = get_index_status_impl(search_state.inner(), Some(&span));
+    let result =
+        get_index_status_impl(search_state.inner(), Some(&span)).ipc_cmd("get_index_status");
     span.finish_result(&result);
     result
 }
@@ -72,9 +73,10 @@ fn get_index_status_impl(
 pub fn rebuild_index(
     search_state: State<'_, SearchState>,
     db: State<'_, DbState>,
-) -> Result<usize, String> {
+) -> IpcResult<usize> {
     let span = IpcCommandSpan::start("rebuild_index");
-    let result = rebuild_index_impl(search_state.inner(), db.inner(), Some(&span));
+    let result =
+        rebuild_index_impl(search_state.inner(), db.inner(), Some(&span)).ipc_cmd("rebuild_index");
     span.finish_result(&result);
     result
 }

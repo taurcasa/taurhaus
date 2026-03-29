@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::commands::lifecycle::IpcCommandSpan;
+use crate::errors::{CommandResultExt, IpcResult};
 
 pub const JSONL_LOG_FILE_NAME: &str = "taurhaus.log.jsonl";
 const ROTATION_BYTES: u64 = 20 * 1024 * 1024;
@@ -335,10 +336,10 @@ pub fn frontend_log(
     level: Option<String>,
     message: Option<String>,
     log_file: tauri::State<LogFileState>,
-) -> Result<(), String> {
+) -> IpcResult<()> {
     let span = IpcCommandSpan::start("frontend_log");
     let payload = payload.unwrap_or_else(|| FrontendLogPayload::from_legacy(level, message));
-    let result = frontend_log_command_impl(payload, log_file.inner());
+    let result = frontend_log_command_impl(payload, log_file.inner()).ipc_cmd("frontend_log");
     span.finish_result(&result);
     result
 }
