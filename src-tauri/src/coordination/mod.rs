@@ -13,6 +13,7 @@ pub mod domain;
 pub mod errors;
 pub mod events;
 pub mod health;
+pub mod member_activation;
 pub mod mesh_cli;
 pub mod operational_context;
 pub mod orchestrator;
