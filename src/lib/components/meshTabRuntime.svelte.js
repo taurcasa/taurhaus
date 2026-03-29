@@ -181,7 +181,7 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
   if (!normalizedReport) return 'Team resume finished.'
   const resumedSummary = normalizedReport.resumedMembers.length
     ? `Resumed: ${normalizedReport.resumedMembers.join(', ')}.`
-    : 'No members were resumed.'
+    : 'No members needed resume.'
   const failedSummary = normalizedReport.failedMembers.length
     ? `Failed: ${normalizedReport.failedMembers
         .map((entry) => `${entry?.memberName ?? 'unknown'}${entry?.message ? ` (${entry.message})` : ''}`)
@@ -190,19 +190,37 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
   if (normalizedReport.failedMembers.length > 0) {
     return `Resume completed with failures. ${resumedSummary} ${failedSummary}`.trim()
   }
+  if (!normalizedReport.resumedMembers.length) {
+    return 'No members needed resume.'
+  }
+  if (normalizedReport.teamDaemonWarning) {
+    return `Resume completed with a background service warning. ${resumedSummary}`.trim()
+  }
+  if (normalizedReport.warnings.length > 0) {
+    return `Resume complete with notes. ${resumedSummary}`.trim()
+  }
   return `Resume complete. ${resumedSummary}`.trim()
 }
 
 function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
   const normalizedReport = normalizeResumeTeamReport(report)
   if (!normalizedReport) return ''
+  const footerParts = []
   if (normalizedReport.teamDaemonWarning) {
-    return `Team background service warning: ${normalizedReport.teamDaemonWarning}`
+    footerParts.push(`Team background service warning: ${normalizedReport.teamDaemonWarning}`)
+  } else if (normalizedReport.startedTeamDaemon) {
+    footerParts.push('Team background service started successfully.')
+  } else {
+    footerParts.push('Team background service was already running.')
   }
-  if (normalizedReport.startedTeamDaemon) {
-    return 'Team background service confirmed.'
+  if (normalizedReport.warnings.length > 0) {
+    const label =
+      normalizedReport.failedMembers.length > 0 || normalizedReport.teamDaemonWarning
+        ? 'Additional notes'
+        : 'Notes'
+    footerParts.push(`${label}: ${normalizedReport.warnings.join(' ')}`)
   }
-  return 'Team background service did not need to restart.'
+  return footerParts.join(' ')
 }
 
 function finalizeResumeProgress(

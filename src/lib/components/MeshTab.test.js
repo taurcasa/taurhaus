@@ -640,9 +640,144 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent(
+        'Resume completed with failures. Resumed: team-lead. Failed: frontend-dev (launch failed).'
+      )
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('team-lead')
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('frontend-dev')
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('launch failed')
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
+        'Team background service was already running.'
+      )
+    })
+  })
+
+  it('shows daemon warnings and backend notes in the final resume summary', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
+      buildRuntimeSnapshot({
+        teamRuntimeState: 'coldResume',
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'claude-orchestrator',
+            roleName: 'Claude Orchestrator',
+            focusArea: 'Team sequencing and escalation',
+            contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+            behaviorSummary: 'Coordinates specialists and escalates blockers.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%2',
+          },
+        ],
+      })
+    )
+    coordinationResumeTeam.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      resumed: true,
+      totalMembers: 2,
+      resumedMembers: ['team-lead', 'frontend-dev'],
+      failedMembers: [],
+      warnings: ['frontend-dev: created a replacement pane'],
+      startedTeamDaemon: false,
+      teamDaemonWarning: 'could not verify the background service state',
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent(
+        'Resume completed with a background service warning. Resumed: team-lead, frontend-dev.'
+      )
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
+        'Team background service warning: could not verify the background service state'
+      )
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
+        'Additional notes: frontend-dev: created a replacement pane'
+      )
+    })
+  })
+
+  it('states clearly when no members needed resume', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
+      buildRuntimeSnapshot({
+        teamRuntimeState: 'coldResume',
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'claude-orchestrator',
+            roleName: 'Claude Orchestrator',
+            focusArea: 'Team sequencing and escalation',
+            contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+            behaviorSummary: 'Coordinates specialists and escalates blockers.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%1',
+          },
+        ],
+      })
+    )
+    coordinationResumeTeam.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      resumed: true,
+      totalMembers: 1,
+      resumedMembers: [],
+      failedMembers: [],
+      warnings: [],
+      startedTeamDaemon: false,
+      teamDaemonWarning: null,
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent(
+        'No members needed resume.'
+      )
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
+        'Team background service was already running.'
+      )
     })
   })
 
@@ -738,7 +873,9 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent('Team background service confirmed.')
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
+        'Team background service started successfully.'
+      )
     })
   })
 
