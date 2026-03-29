@@ -8,6 +8,7 @@ use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
+use crate::coordination::pipelines::members::InitializeMemberActivationStage;
 use crate::coordination::requests::{InitializeReport, InitializeTeamRequest, LeadMode};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 use crate::coordination::validation::{validate_non_empty, validate_team_name};
@@ -123,32 +124,63 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded("add_lead", "lead added", &mut succeeded_steps, &mut steps);
 
-        if let Err(err) = self.create_panes(request, cli_commands, tmux_layout) {
-            self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
-                &request.team_name,
-                "create_panes",
-                err,
-                succeeded_steps,
-                &mut steps,
-            ));
+        let total_members = 1 + request.agents.len();
+        let mut per_project_anchor_panes = std::collections::HashMap::<String, String>::new();
+        let mut initialize_members = Vec::with_capacity(total_members);
+        initialize_members.push((&request.lead, MemberRole::Lead));
+        initialize_members.extend(
+            request
+                .agents
+                .iter()
+                .map(|agent| (agent, MemberRole::Agent)),
+        );
+
+        for (member, role) in &initialize_members {
+            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
+                request,
+                member,
+                *role,
+                InitializeMemberActivationStage::CreatePanes,
+                cli_commands,
+                tmux_layout,
+                &mut per_project_anchor_panes,
+            ) {
+                self.cleanup_initialize_failure(&request.team_name);
+                return Ok(failed_initialize_report(
+                    &request.team_name,
+                    &failed_step,
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                ));
+            }
         }
         mark_step_succeeded(
             "create_panes",
-            "panes opened and sessions started",
+            initialize_stage_success_message("create_panes"),
             &mut succeeded_steps,
             &mut steps,
         );
 
-        if let Err(err) = self.launch_sessions(request, cli_commands) {
-            self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
-                &request.team_name,
-                "launch_sessions",
-                err,
-                succeeded_steps,
-                &mut steps,
-            ));
+        for (member, role) in &initialize_members {
+            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
+                request,
+                member,
+                *role,
+                InitializeMemberActivationStage::LaunchSessions,
+                cli_commands,
+                tmux_layout,
+                &mut per_project_anchor_panes,
+            ) {
+                self.cleanup_initialize_failure(&request.team_name);
+                return Ok(failed_initialize_report(
+                    &request.team_name,
+                    &failed_step,
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                ));
+            }
         }
         if let Err(err) = self.sync_team_config_metadata(&request.team_name) {
             self.cleanup_initialize_failure(&request.team_name);
@@ -162,36 +194,61 @@ impl CoordinationOrchestrator {
         }
         mark_step_succeeded(
             "launch_sessions",
-            "launched sessions verified",
+            initialize_stage_success_message("launch_sessions"),
             &mut succeeded_steps,
             &mut steps,
         );
 
-        if let Err(err) = self.join_mesh(request) {
-            self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
-                &request.team_name,
-                "join_mesh",
-                err,
-                succeeded_steps,
-                &mut steps,
-            ));
+        for (member, role) in &initialize_members {
+            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
+                request,
+                member,
+                *role,
+                InitializeMemberActivationStage::JoinMesh,
+                cli_commands,
+                tmux_layout,
+                &mut per_project_anchor_panes,
+            ) {
+                self.cleanup_initialize_failure(&request.team_name);
+                return Ok(failed_initialize_report(
+                    &request.team_name,
+                    &failed_step,
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                ));
+            }
         }
-        mark_step_succeeded("join_mesh", "mesh joined", &mut succeeded_steps, &mut steps);
+        mark_step_succeeded(
+            "join_mesh",
+            initialize_stage_success_message("join_mesh"),
+            &mut succeeded_steps,
+            &mut steps,
+        );
 
-        if let Err(err) = self.start_daemons(request) {
-            self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
-                &request.team_name,
-                "start_daemons",
-                err,
-                succeeded_steps,
-                &mut steps,
-            ));
+        for (member, role) in &initialize_members {
+            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
+                request,
+                member,
+                *role,
+                InitializeMemberActivationStage::StartDaemons,
+                cli_commands,
+                tmux_layout,
+                &mut per_project_anchor_panes,
+            ) {
+                self.cleanup_initialize_failure(&request.team_name);
+                return Ok(failed_initialize_report(
+                    &request.team_name,
+                    &failed_step,
+                    err,
+                    succeeded_steps,
+                    &mut steps,
+                ));
+            }
         }
         mark_step_succeeded(
             "start_daemons",
-            "mesh daemons started",
+            initialize_stage_success_message("start_daemons"),
             &mut succeeded_steps,
             &mut steps,
         );
@@ -257,82 +314,6 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn create_panes(
-        &mut self,
-        request: &InitializeTeamRequest,
-        cli_commands: &CliCommandSettings,
-        tmux_layout: &str,
-    ) -> Result<(), CoordinationError> {
-        let mut per_project_anchor_panes = std::collections::HashMap::<String, String>::new();
-
-        if request.lead_mode == LeadMode::LaunchNew {
-            let context = MemberActivationContext::for_initialize_member(
-                &request.team_name,
-                &request.lead.name,
-                &request.lead,
-                MemberRole::Lead,
-            )?;
-            let launch_cmd = build_cli_launch_command(
-                &request.lead,
-                &request.team_name,
-                MemberRole::Lead,
-                cli_commands,
-            )?;
-            let pane_id = launch_member_pane(
-                self.runtime.as_ref(),
-                &mut per_project_anchor_panes,
-                tmux_layout,
-                &context.member.project_path.to_string_lossy(),
-                &launch_cmd,
-            )?;
-            self.commit_member_runtime(
-                &context,
-                RuntimeCommitPatch {
-                    pane_id: Some(Some(pane_id)),
-                    session_id: Some(None),
-                    jsonl_path: Some(None),
-                    daemon_pid: Some(None),
-                    attached_at: Some(Some(Utc::now())),
-                    health: Some(HealthState::Healthy),
-                },
-            )?;
-        }
-
-        for agent in &request.agents {
-            let context = MemberActivationContext::for_initialize_member(
-                &request.team_name,
-                &request.lead.name,
-                agent,
-                MemberRole::Agent,
-            )?;
-            let launch_cmd = build_cli_launch_command(
-                agent,
-                &request.team_name,
-                MemberRole::Agent,
-                cli_commands,
-            )?;
-            let pane_id = launch_member_pane(
-                self.runtime.as_ref(),
-                &mut per_project_anchor_panes,
-                tmux_layout,
-                &context.member.project_path.to_string_lossy(),
-                &launch_cmd,
-            )?;
-            self.commit_member_runtime(
-                &context,
-                RuntimeCommitPatch {
-                    pane_id: Some(Some(pane_id)),
-                    session_id: Some(None),
-                    jsonl_path: Some(None),
-                    daemon_pid: Some(None),
-                    attached_at: Some(Some(Utc::now())),
-                    health: Some(HealthState::Healthy),
-                },
-            )?;
-        }
-        Ok(())
-    }
-
     fn seed_initialize_roster(
         &mut self,
         team_name: &str,
@@ -391,53 +372,47 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
-    fn launch_sessions(
+    pub(super) fn acquire_initialize_member_pane(
         &self,
-        request: &InitializeTeamRequest,
-        _cli_commands: &CliCommandSettings,
-    ) -> Result<(), CoordinationError> {
-        if request.lead_mode == LeadMode::LaunchNew {
-            let runtime =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
-            let pane_id = runtime.pane_id.ok_or_else(|| {
-                CoordinationError::Backend(format!(
-                    "missing pane id for member '{}' in team '{}'",
-                    request.lead.name, request.team_name
-                ))
-            })?;
-            let context = MemberActivationContext::for_initialize_member(
-                &request.team_name,
-                &request.lead.name,
-                &request.lead,
-                MemberRole::Lead,
-            )?;
-            self.capture_initialized_member_session_identity(&context, &pane_id)?;
-        }
-
-        for agent in &request.agents {
-            let runtime =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
-            let pane_id = runtime.pane_id.ok_or_else(|| {
-                CoordinationError::Backend(format!(
-                    "missing pane id for member '{}' in team '{}'",
-                    agent.name, request.team_name
-                ))
-            })?;
-            let context = MemberActivationContext::for_initialize_member(
-                &request.team_name,
-                &request.lead.name,
-                agent,
-                MemberRole::Agent,
-            )?;
-            self.capture_initialized_member_session_identity(&context, &pane_id)?;
-        }
-        Ok(())
+        context: &MemberActivationContext,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
+        runtime_state: &mut PendingRuntimeState,
+    ) -> Result<String, CoordinationError> {
+        let launch_cmd = build_member_activation_launch_command(context, cli_commands)?;
+        let pane_id = launch_member_pane(
+            self.runtime.as_ref(),
+            per_project_anchor_panes,
+            tmux_layout,
+            &context.member.project_path.to_string_lossy(),
+            &launch_cmd,
+        )?;
+        runtime_state.pane_id = Some(pane_id.clone());
+        runtime_state.session_id = None;
+        runtime_state.jsonl_path = None;
+        runtime_state.daemon_pid = None;
+        runtime_state.attached_at = Some(Utc::now());
+        runtime_state.health = Some(HealthState::Healthy);
+        self.commit_member_runtime(
+            context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some(pane_id.clone())),
+                session_id: Some(None),
+                jsonl_path: Some(None),
+                daemon_pid: Some(None),
+                attached_at: Some(runtime_state.attached_at),
+                health: Some(HealthState::Healthy),
+            },
+        )?;
+        Ok(pane_id)
     }
 
-    fn capture_initialized_member_session_identity(
+    pub(super) fn capture_initialized_member_session_identity(
         &self,
         context: &MemberActivationContext,
         pane_id: &str,
+        runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
         let detected = run_member_session_phase(
             self.runtime.as_ref(),
@@ -445,6 +420,8 @@ impl CoordinationOrchestrator {
             pane_id,
             MemberSessionPhase::CaptureOnly,
         )?;
+        runtime_state.session_id = detected.session_id.clone();
+        runtime_state.jsonl_path = detected.jsonl_path.clone();
         let Some(session_id) = detected.session_id else {
             return Ok(());
         };
@@ -459,118 +436,22 @@ impl CoordinationOrchestrator {
         )
     }
 
-    fn join_mesh(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
-        join_mesh_if_required(
-            self.runtime.as_ref(),
-            &request.team_name,
-            &request.lead.name,
-            &request.lead.project_id,
-            parse_cli_tool(&request.lead.cli_tool)?,
-        )?;
-        for agent in &request.agents {
-            join_mesh_if_required(
-                self.runtime.as_ref(),
-                &request.team_name,
-                &agent.name,
-                &agent.project_id,
-                parse_cli_tool(&agent.cli_tool)?,
-            )?;
-        }
-        Ok(())
-    }
-
-    fn start_daemons(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
-        if request.lead_mode == LeadMode::LaunchNew {
-            let context = MemberActivationContext::for_initialize_member(
-                &request.team_name,
-                &request.lead.name,
-                &request.lead,
-                MemberRole::Lead,
-            )?;
-            let lead_cli_tool = parse_cli_tool(&request.lead.cli_tool)?;
-            if !should_use_mesh_sidecar_for_cli_tool(lead_cli_tool) {
-                return self.start_agent_daemons(request);
-            }
-            let runtime =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
-            let pane_id = runtime.pane_id.clone().ok_or_else(|| {
-                CoordinationError::Backend(format!(
-                    "missing pane id for member '{}' in team '{}'",
-                    request.lead.name, request.team_name
-                ))
-            })?;
-            if let Some(pid) = start_member_daemon_if_required(
-                self.runtime.as_ref(),
-                &request.team_name,
-                &request.lead.name,
-                &pane_id,
-                lead_cli_tool,
-                MemberDaemonStartPolicy::StartFresh,
-                None,
-            )? {
-                self.commit_member_runtime(
-                    &context,
-                    RuntimeCommitPatch {
-                        daemon_pid: Some(Some(pid)),
-                        ..Default::default()
-                    },
-                )?;
-            }
-        }
-
-        self.start_agent_daemons(request)
-    }
-
-    fn start_agent_daemons(
-        &self,
-        request: &InitializeTeamRequest,
-    ) -> Result<(), CoordinationError> {
-        for agent in &request.agents {
-            let context = MemberActivationContext::for_initialize_member(
-                &request.team_name,
-                &request.lead.name,
-                agent,
-                MemberRole::Agent,
-            )?;
-            let agent_cli_tool = parse_cli_tool(&agent.cli_tool)?;
-            if !should_use_mesh_sidecar_for_cli_tool(agent_cli_tool) {
-                continue;
-            }
-            let runtime =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
-            let pane_id = runtime.pane_id.clone().ok_or_else(|| {
-                CoordinationError::Backend(format!(
-                    "missing pane id for member '{}' in team '{}'",
-                    agent.name, request.team_name
-                ))
-            })?;
-            if let Some(pid) = start_member_daemon_if_required(
-                self.runtime.as_ref(),
-                &request.team_name,
-                &agent.name,
-                &pane_id,
-                agent_cli_tool,
-                MemberDaemonStartPolicy::StartFresh,
-                None,
-            )? {
-                self.commit_member_runtime(
-                    &context,
-                    RuntimeCommitPatch {
-                        daemon_pid: Some(Some(pid)),
-                        ..Default::default()
-                    },
-                )?;
-            }
-        }
-        Ok(())
-    }
-
     fn send_onboarding_messages(
         &mut self,
         request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
         let entries = self.prepare_initialize_onboarding_entries(request)?;
         self.deliver_onboarding_entries(entries)
+    }
+}
+
+fn initialize_stage_success_message(stage: &str) -> &'static str {
+    match stage {
+        "create_panes" => "panes opened and sessions started",
+        "launch_sessions" => "launched sessions verified",
+        "join_mesh" => "mesh joined",
+        "start_daemons" => "mesh daemons started",
+        _ => "step completed",
     }
 }
 

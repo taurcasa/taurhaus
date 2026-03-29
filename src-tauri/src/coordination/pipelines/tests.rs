@@ -1098,6 +1098,10 @@ fn initialize_pipeline_reports_pane_diagnostics_after_send_keys_retries_exhaust(
         )
         .expect("initialize report");
     assert_eq!(report.failed_step.as_deref(), Some("create_panes"));
+    assert_eq!(
+        report.succeeded_steps,
+        vec!["validate_configuration", "create_team", "add_lead",]
+    );
     assert!(report
         .message
         .contains("pane=test-pane-2 exists=true dead=false shell=false command=zsh"));

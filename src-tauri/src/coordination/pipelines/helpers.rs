@@ -361,7 +361,7 @@ pub(super) fn send_launch_command_with_retry(
     )))
 }
 
-fn build_member_activation_launch_command(
+pub(super) fn build_member_activation_launch_command(
     context: &MemberActivationContext,
     cli_commands: &CliCommandSettings,
 ) -> Result<String, CoordinationError> {
