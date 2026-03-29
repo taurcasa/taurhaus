@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
+use taurhaus_lib::logging::emit_global;
 
 use super::runtime::MemberRuntimeStore;
 use crate::coordination::domain::{Member, MemberRole};
@@ -22,9 +23,18 @@ const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_TMP_FILENAME: &str = "config.json.tmp";
 const CONFIG_READBACK_ATTEMPTS: usize = 6;
 const CONFIG_READBACK_DELAY: Duration = Duration::from_millis(25);
+const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+];
 
-fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
-    cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+fn is_transient_lock_error(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(5 | 32))
+}
+
+fn is_atomic_write_fallback_error(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(1 | 5 | 32))
 }
 
 /// Team configuration document persisted at `teams/<team>/config.json`.
@@ -269,14 +279,22 @@ impl TeamConfigStore {
         team_name: &str,
         config: &TeamConfig,
     ) -> Result<(), CoordinationError> {
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name)?;
+        let lock_path = team_dir(teams_dir, team_name).join(".lock");
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).map_err(|err| {
+            log_config_store_error("lock", &lock_path, &err, None);
+            err
+        })?;
 
         let mut normalized = config.clone();
         normalized.schema_version = 1;
         normalized.name = team_name.to_string();
 
         let team_dir = team_dir(teams_dir, team_name);
-        fs::create_dir_all(&team_dir)?;
+        fs::create_dir_all(&team_dir).map_err(|err| {
+            let coordination_err = CoordinationError::Io(err);
+            log_config_store_error("create_dir", &team_dir, &coordination_err, None);
+            coordination_err
+        })?;
 
         let target_path = config_path(teams_dir, team_name);
         let tmp_path = team_dir.join(CONFIG_TMP_FILENAME);
@@ -299,21 +317,42 @@ impl TeamConfigStore {
                     ))
                 })?;
 
-        if let Err(err) = write_file_synced(&tmp_path, &payload) {
-            return Err(CoordinationError::Io(err));
-        }
+        retry_file_operation(
+            "write",
+            &tmp_path,
+            None,
+            &SAVE_RETRY_BACKOFFS,
+            || write_file_synced(&tmp_path, &payload),
+            |err| log_config_store_io_error("write", &tmp_path, err, None),
+        )
+        .map_err(CoordinationError::Io)?;
 
-        if let Err(err) = fs::rename(&tmp_path, &target_path) {
-            if is_windows_unsupported_rename_error(&err) {
+        if let Err(err) = retry_file_operation(
+            "rename",
+            &target_path,
+            Some(&tmp_path),
+            &SAVE_RETRY_BACKOFFS,
+            || fs::rename(&tmp_path, &target_path),
+            |rename_err| {
+                log_config_store_io_error("rename", &target_path, rename_err, Some(&tmp_path))
+            },
+        ) {
+            if is_atomic_write_fallback_error(&err) {
                 tracing::warn!(
                     team_name = team_name,
                     target = %target_path.display(),
-                    "atomic rename is unsupported for this Windows path; falling back to direct write"
+                    raw_os_error = ?err.raw_os_error(),
+                    "atomic rename failed for team config save; falling back to direct write"
                 );
-                if let Err(write_err) = write_file_synced(&target_path, &payload) {
-                    let _ = fs::remove_file(&tmp_path);
-                    return Err(CoordinationError::Io(write_err));
-                }
+                retry_file_operation(
+                    "write",
+                    &target_path,
+                    None,
+                    &SAVE_RETRY_BACKOFFS,
+                    || write_file_synced(&target_path, &payload),
+                    |write_err| log_config_store_io_error("write", &target_path, write_err, None),
+                )
+                .map_err(CoordinationError::Io)?;
                 let _ = fs::remove_file(&tmp_path);
                 return ensure_saved_config_visible(teams_dir, team_name, &target_path, &payload);
             }
@@ -411,6 +450,148 @@ impl TeamConfigStore {
 
 fn mesh_agent_id(team_name: &str, member_name: &str) -> String {
     format!("{member_name}@{team_name}")
+}
+
+fn config_store_error_fields(
+    operation: &str,
+    path: &Path,
+    err: &CoordinationError,
+    from_path: Option<&Path>,
+) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert(
+        "operation".to_string(),
+        Value::String(operation.to_string()),
+    );
+    fields.insert(
+        "path".to_string(),
+        Value::String(path.display().to_string()),
+    );
+    fields.insert("error".to_string(), Value::String(err.to_string()));
+    fields.insert(
+        "raw_os_error".to_string(),
+        err.raw_os_error()
+            .map(|code| Value::Number(code.into()))
+            .unwrap_or(Value::Null),
+    );
+    if let Some(from_path) = from_path {
+        fields.insert(
+            "from_path".to_string(),
+            Value::String(from_path.display().to_string()),
+        );
+    }
+    fields
+}
+
+fn log_config_store_error(
+    operation: &str,
+    path: &Path,
+    err: &CoordinationError,
+    from_path: Option<&Path>,
+) {
+    let fields = config_store_error_fields(operation, path, err, from_path);
+    let from_path_display = from_path.map(|value| value.display().to_string());
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.config_store.io_failed",
+        Some("Team config store file operation failed".to_string()),
+        fields,
+    );
+    tracing::warn!(
+        operation,
+        path = %path.display(),
+        from_path = from_path_display.as_deref(),
+        error = %err,
+        raw_os_error = ?err.raw_os_error(),
+        "team config store file operation failed"
+    );
+}
+
+fn clone_io_error(err: &std::io::Error) -> std::io::Error {
+    err.raw_os_error()
+        .map(std::io::Error::from_raw_os_error)
+        .unwrap_or_else(|| std::io::Error::new(err.kind(), err.to_string()))
+}
+
+fn log_config_store_io_error(
+    operation: &str,
+    path: &Path,
+    err: &std::io::Error,
+    from_path: Option<&Path>,
+) {
+    let coordination_err = CoordinationError::Io(clone_io_error(err));
+    log_config_store_error(operation, path, &coordination_err, from_path);
+}
+
+fn retry_file_operation<F, Log>(
+    operation: &str,
+    path: &Path,
+    from_path: Option<&Path>,
+    backoffs: &[Duration],
+    mut work: F,
+    mut log_failure: Log,
+) -> std::io::Result<()>
+where
+    F: FnMut() -> std::io::Result<()>,
+    Log: FnMut(&std::io::Error),
+{
+    retry_file_operation_with_sleep(
+        operation,
+        path,
+        from_path,
+        backoffs,
+        &mut work,
+        &mut log_failure,
+        thread::sleep,
+    )
+}
+
+fn retry_file_operation_with_sleep<F, Log, Sleep>(
+    operation: &str,
+    path: &Path,
+    from_path: Option<&Path>,
+    backoffs: &[Duration],
+    work: &mut F,
+    log_failure: &mut Log,
+    mut sleep: Sleep,
+) -> std::io::Result<()>
+where
+    F: FnMut() -> std::io::Result<()>,
+    Log: FnMut(&std::io::Error),
+    Sleep: FnMut(Duration),
+{
+    let total_attempts = backoffs.len() + 1;
+    let from_path_display = from_path.map(|value| value.display().to_string());
+
+    for attempt in 0..total_attempts {
+        match work() {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                log_failure(&err);
+
+                if is_transient_lock_error(&err) && attempt < backoffs.len() {
+                    let delay = backoffs[attempt];
+                    tracing::warn!(
+                        operation,
+                        path = %path.display(),
+                        from_path = from_path_display.as_deref(),
+                        attempt = attempt + 1,
+                        max_attempts = total_attempts,
+                        retry_in_ms = delay.as_millis() as u64,
+                        raw_os_error = ?err.raw_os_error(),
+                        "transient team config file lock detected; retrying save operation"
+                    );
+                    sleep(delay);
+                    continue;
+                }
+
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
@@ -829,18 +1010,73 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_rename_error_detection_is_platform_aware() {
-        let err = std::io::Error::from_raw_os_error(1);
-        assert_eq!(
-            is_windows_unsupported_rename_error(&err),
-            cfg!(target_os = "windows")
-        );
+    fn atomic_write_fallback_error_detection_includes_unc_locking_codes() {
+        assert!(is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(1)
+        ));
+        assert!(is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(5)
+        ));
+        assert!(is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(32)
+        ));
     }
 
     #[test]
-    fn non_unsupported_rename_error_is_rejected() {
+    fn non_fallback_rename_error_is_rejected() {
         let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-        assert!(!is_windows_unsupported_rename_error(&err));
+        assert!(!is_atomic_write_fallback_error(&err));
+    }
+
+    #[test]
+    fn retry_file_operation_retries_transient_lock_errors_until_success() {
+        let mut attempts = 0;
+        let mut slept = Vec::new();
+
+        let result = retry_file_operation_with_sleep(
+            "rename",
+            Path::new("/tmp/config.json"),
+            Some(Path::new("/tmp/config.json.tmp")),
+            &SAVE_RETRY_BACKOFFS,
+            &mut || {
+                attempts += 1;
+                if attempts < 4 {
+                    Err(std::io::Error::from_raw_os_error(32))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut |_| {},
+            |delay| slept.push(delay),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(attempts, 4);
+        assert_eq!(slept, SAVE_RETRY_BACKOFFS);
+    }
+
+    #[test]
+    fn retry_file_operation_stops_after_retry_budget_is_exhausted() {
+        let mut attempts = 0;
+        let mut slept = Vec::new();
+
+        let err = retry_file_operation_with_sleep(
+            "rename",
+            Path::new("/tmp/config.json"),
+            Some(Path::new("/tmp/config.json.tmp")),
+            &SAVE_RETRY_BACKOFFS,
+            &mut || {
+                attempts += 1;
+                Err(std::io::Error::from_raw_os_error(5))
+            },
+            &mut |_| {},
+            |delay| slept.push(delay),
+        )
+        .expect_err("retry budget should eventually surface the error");
+
+        assert_eq!(err.raw_os_error(), Some(5));
+        assert_eq!(attempts, SAVE_RETRY_BACKOFFS.len() + 1);
+        assert_eq!(slept, SAVE_RETRY_BACKOFFS);
     }
 
     #[test]

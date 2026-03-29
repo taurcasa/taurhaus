@@ -1,11 +1,15 @@
 //! Member runtime state store.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use taurhaus_lib::logging::emit_global;
 
 use super::compaction::prune_state_if_session_mismatch;
 use crate::coordination::domain::{DeliveryLease, HealthState};
@@ -14,6 +18,11 @@ use crate::session_scanner::cli_tool::CliTool;
 
 const RUNTIME_DIRNAME: &str = "runtime";
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
+const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+];
 
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,14 +70,22 @@ impl MemberRuntimeStore {
         member_name: &str,
         record: &MemberRuntimeRecord,
     ) -> Result<(), CoordinationError> {
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name)?;
+        let lock_path = team_dir(teams_dir, team_name).join(".lock");
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).map_err(|err| {
+            log_runtime_store_error("lock", &lock_path, &err, None);
+            err
+        })?;
 
         let mut normalized = record.clone();
         normalized.schema_version = RUNTIME_SCHEMA_VERSION;
         normalized.member_name = member_name.to_string();
 
         let runtime_dir = runtime_dir_path(teams_dir, team_name);
-        fs::create_dir_all(&runtime_dir)?;
+        fs::create_dir_all(&runtime_dir).map_err(|err| {
+            let coordination_err = CoordinationError::Io(err);
+            log_runtime_store_error("create_dir", &runtime_dir, &coordination_err, None);
+            coordination_err
+        })?;
 
         let target_path = runtime_record_path(teams_dir, team_name, member_name);
         let tmp_path = runtime_tmp_path(teams_dir, team_name, member_name);
@@ -78,10 +95,46 @@ impl MemberRuntimeStore {
             ))
         })?;
 
-        fs::write(&tmp_path, payload)?;
-        if let Err(err) = fs::rename(&tmp_path, &target_path) {
-            let _ = fs::remove_file(&tmp_path);
-            return Err(CoordinationError::Io(err));
+        retry_file_operation(
+            "write",
+            &tmp_path,
+            None,
+            &SAVE_RETRY_BACKOFFS,
+            || write_file_synced(&tmp_path, &payload),
+            |err| log_runtime_store_io_error("write", &tmp_path, err, None),
+        )
+        .map_err(CoordinationError::Io)?;
+
+        if let Err(err) = retry_file_operation(
+            "rename",
+            &target_path,
+            Some(&tmp_path),
+            &SAVE_RETRY_BACKOFFS,
+            || fs::rename(&tmp_path, &target_path),
+            |err| log_runtime_store_io_error("rename", &target_path, err, Some(&tmp_path)),
+        ) {
+            if is_atomic_write_fallback_error(&err) {
+                tracing::warn!(
+                    member_name,
+                    team_name,
+                    target = %target_path.display(),
+                    raw_os_error = ?err.raw_os_error(),
+                    "atomic runtime rename failed on team state save; falling back to direct write"
+                );
+                retry_file_operation(
+                    "write",
+                    &target_path,
+                    None,
+                    &SAVE_RETRY_BACKOFFS,
+                    || write_file_synced(&target_path, &payload),
+                    |write_err| log_runtime_store_io_error("write", &target_path, write_err, None),
+                )
+                .map_err(CoordinationError::Io)?;
+                let _ = fs::remove_file(&tmp_path);
+            } else {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(CoordinationError::Io(err));
+            }
         }
 
         prune_state_if_session_mismatch(
@@ -310,6 +363,163 @@ fn runtime_record_path(teams_dir: &Path, team_name: &str, member_name: &str) -> 
 
 fn runtime_tmp_path(teams_dir: &Path, team_name: &str, member_name: &str) -> PathBuf {
     runtime_dir_path(teams_dir, team_name).join(format!("{member_name}.json.tmp"))
+}
+
+fn is_transient_lock_error(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(5 | 32))
+}
+
+fn is_atomic_write_fallback_error(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(1 | 5 | 32))
+}
+
+fn clone_io_error(err: &std::io::Error) -> std::io::Error {
+    err.raw_os_error()
+        .map(std::io::Error::from_raw_os_error)
+        .unwrap_or_else(|| std::io::Error::new(err.kind(), err.to_string()))
+}
+
+fn log_runtime_store_io_error(
+    operation: &str,
+    path: &Path,
+    err: &std::io::Error,
+    from_path: Option<&Path>,
+) {
+    let coordination_err = CoordinationError::Io(clone_io_error(err));
+    log_runtime_store_error(operation, path, &coordination_err, from_path);
+}
+
+fn retry_file_operation<F, Log>(
+    operation: &str,
+    path: &Path,
+    from_path: Option<&Path>,
+    backoffs: &[Duration],
+    mut work: F,
+    mut log_failure: Log,
+) -> std::io::Result<()>
+where
+    F: FnMut() -> std::io::Result<()>,
+    Log: FnMut(&std::io::Error),
+{
+    retry_file_operation_with_sleep(
+        operation,
+        path,
+        from_path,
+        backoffs,
+        &mut work,
+        &mut log_failure,
+        thread::sleep,
+    )
+}
+
+fn retry_file_operation_with_sleep<F, Log, Sleep>(
+    operation: &str,
+    path: &Path,
+    from_path: Option<&Path>,
+    backoffs: &[Duration],
+    work: &mut F,
+    log_failure: &mut Log,
+    mut sleep: Sleep,
+) -> std::io::Result<()>
+where
+    F: FnMut() -> std::io::Result<()>,
+    Log: FnMut(&std::io::Error),
+    Sleep: FnMut(Duration),
+{
+    let total_attempts = backoffs.len() + 1;
+    let from_path_display = from_path.map(|value| value.display().to_string());
+
+    for attempt in 0..total_attempts {
+        match work() {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                log_failure(&err);
+
+                if is_transient_lock_error(&err) && attempt < backoffs.len() {
+                    let delay = backoffs[attempt];
+                    tracing::warn!(
+                        operation,
+                        path = %path.display(),
+                        from_path = from_path_display.as_deref(),
+                        attempt = attempt + 1,
+                        max_attempts = total_attempts,
+                        retry_in_ms = delay.as_millis() as u64,
+                        raw_os_error = ?err.raw_os_error(),
+                        "transient team state file lock detected; retrying save operation"
+                    );
+                    sleep(delay);
+                    continue;
+                }
+
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn write_file_synced(path: &Path, payload: &str) -> std::io::Result<()> {
+    let mut file = fs::File::create(path)?;
+    file.write_all(payload.as_bytes())?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn runtime_store_error_fields(
+    operation: &str,
+    path: &Path,
+    err: &CoordinationError,
+    from_path: Option<&Path>,
+) -> Map<String, Value> {
+    let mut fields = Map::new();
+    fields.insert(
+        "operation".to_string(),
+        Value::String(operation.to_string()),
+    );
+    fields.insert(
+        "path".to_string(),
+        Value::String(path.display().to_string()),
+    );
+    fields.insert("error".to_string(), Value::String(err.to_string()));
+    fields.insert(
+        "raw_os_error".to_string(),
+        err.raw_os_error()
+            .map(|code| Value::Number(code.into()))
+            .unwrap_or(Value::Null),
+    );
+    if let Some(from_path) = from_path {
+        fields.insert(
+            "from_path".to_string(),
+            Value::String(from_path.display().to_string()),
+        );
+    }
+    fields
+}
+
+fn log_runtime_store_error(
+    operation: &str,
+    path: &Path,
+    err: &CoordinationError,
+    from_path: Option<&Path>,
+) {
+    let fields = runtime_store_error_fields(operation, path, err, from_path);
+    let from_path_display = from_path.map(|value| value.display().to_string());
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.runtime_store.io_failed",
+        Some("Member runtime store file operation failed".to_string()),
+        fields,
+    );
+    tracing::warn!(
+        operation,
+        path = %path.display(),
+        from_path = from_path_display.as_deref(),
+        error = %err,
+        raw_os_error = ?err.raw_os_error(),
+        "member runtime store file operation failed"
+    );
 }
 
 const fn schema_version_one() -> u32 {
@@ -580,6 +790,73 @@ mod tests {
         let loaded = MemberRuntimeStore::load(teams_dir, team_name, member_name)
             .expect("load after double save");
         assert_eq!(loaded, record);
+    }
+
+    #[test]
+    fn retry_file_operation_retries_transient_lock_errors_until_success() {
+        let mut attempts = 0;
+        let mut slept = Vec::new();
+
+        let result = retry_file_operation_with_sleep(
+            "rename",
+            Path::new("/tmp/runtime.json"),
+            Some(Path::new("/tmp/runtime.json.tmp")),
+            &SAVE_RETRY_BACKOFFS,
+            &mut || {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(std::io::Error::from_raw_os_error(5))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut |_| {},
+            |delay| slept.push(delay),
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(attempts, 3);
+        assert_eq!(slept, vec![SAVE_RETRY_BACKOFFS[0], SAVE_RETRY_BACKOFFS[1]]);
+    }
+
+    #[test]
+    fn retry_file_operation_does_not_retry_non_transient_errors() {
+        let mut attempts = 0;
+        let mut slept = Vec::new();
+
+        let err = retry_file_operation_with_sleep(
+            "rename",
+            Path::new("/tmp/runtime.json"),
+            Some(Path::new("/tmp/runtime.json.tmp")),
+            &SAVE_RETRY_BACKOFFS,
+            &mut || {
+                attempts += 1;
+                Err(std::io::Error::from_raw_os_error(13))
+            },
+            &mut |_| {},
+            |delay| slept.push(delay),
+        )
+        .expect_err("non-transient error should surface immediately");
+
+        assert_eq!(err.raw_os_error(), Some(13));
+        assert_eq!(attempts, 1);
+        assert!(slept.is_empty());
+    }
+
+    #[test]
+    fn atomic_write_fallback_error_detection_includes_unc_locking_codes() {
+        assert!(is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(1)
+        ));
+        assert!(is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(5)
+        ));
+        assert!(is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(32)
+        ));
+        assert!(!is_atomic_write_fallback_error(
+            &std::io::Error::from_raw_os_error(13)
+        ));
     }
 
     #[test]
