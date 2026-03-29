@@ -239,6 +239,220 @@ pub enum StepStatus {
     Failed,
 }
 
+/// Canonical member-activation stages shared by initialize, resume, and add-agent.
+///
+/// These stages intentionally describe member-scoped activation work only.
+/// Wrapper-scoped steps such as `create_team` and `add_lead` remain outside this
+/// vocabulary and map to an empty canonical stage set in the legacy mapping
+/// table below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberActivationStage {
+    PrepareMember,
+    AcquirePane,
+    LaunchSession,
+    CaptureSessionIdentity,
+    JoinMesh,
+    StartMemberDaemon,
+    CommitRuntime,
+    DeliverOnboarding,
+}
+
+impl MemberActivationStage {
+    pub const ALL: [Self; 8] = [
+        Self::PrepareMember,
+        Self::AcquirePane,
+        Self::LaunchSession,
+        Self::CaptureSessionIdentity,
+        Self::JoinMesh,
+        Self::StartMemberDaemon,
+        Self::CommitRuntime,
+        Self::DeliverOnboarding,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PrepareMember => "prepare_member",
+            Self::AcquirePane => "acquire_pane",
+            Self::LaunchSession => "launch_session",
+            Self::CaptureSessionIdentity => "capture_session_identity",
+            Self::JoinMesh => "join_mesh",
+            Self::StartMemberDaemon => "start_member_daemon",
+            Self::CommitRuntime => "commit_runtime",
+            Self::DeliverOnboarding => "deliver_onboarding",
+        }
+    }
+}
+
+impl std::fmt::Display for MemberActivationStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Maps existing wrapper-local stage names onto the canonical member-activation
+/// vocabulary.
+///
+/// An empty `canonical_stages` slice means the legacy step is wrapper-scoped
+/// and intentionally remains outside the shared member-activation stages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LegacyMemberActivationStageMapping {
+    pub wrapper: &'static str,
+    pub legacy_stage: &'static str,
+    pub canonical_stages: &'static [MemberActivationStage],
+    pub note: &'static str,
+}
+
+pub const LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS: &[LegacyMemberActivationStageMapping] = &[
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "validate_configuration",
+        canonical_stages: &[MemberActivationStage::PrepareMember],
+        note: "Team-wide/member-wide preparation before activation begins.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "create_team",
+        canonical_stages: &[],
+        note: "Wrapper-scoped team creation; not part of member activation.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "add_lead",
+        canonical_stages: &[],
+        note: "Wrapper-scoped roster seeding; not part of member activation.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "create_panes",
+        canonical_stages: &[
+            MemberActivationStage::AcquirePane,
+            MemberActivationStage::LaunchSession,
+        ],
+        note: "Initialize currently opens panes and launches sessions in one batch stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "launch_sessions",
+        canonical_stages: &[MemberActivationStage::CaptureSessionIdentity],
+        note: "Initialize captures runtime session identity after launch.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "join_mesh",
+        canonical_stages: &[MemberActivationStage::JoinMesh],
+        note: "Canonical member mesh-join stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "start_daemons",
+        canonical_stages: &[MemberActivationStage::StartMemberDaemon],
+        note: "Canonical member daemon-start stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "initialize",
+        legacy_stage: "send_onboarding",
+        canonical_stages: &[MemberActivationStage::DeliverOnboarding],
+        note: "Canonical onboarding delivery stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "validate",
+        canonical_stages: &[MemberActivationStage::PrepareMember],
+        note: "Part of resume member preparation.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "load_member",
+        canonical_stages: &[MemberActivationStage::PrepareMember],
+        note: "Part of resume member preparation.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "resolve_pane",
+        canonical_stages: &[MemberActivationStage::AcquirePane],
+        note: "Canonical pane acquisition stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "launch_session",
+        canonical_stages: &[
+            MemberActivationStage::LaunchSession,
+            MemberActivationStage::CaptureSessionIdentity,
+        ],
+        note: "Legacy resume step spans both launch and runtime session capture.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "join_mesh",
+        canonical_stages: &[MemberActivationStage::JoinMesh],
+        note: "Canonical member mesh-join stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "start_daemon",
+        canonical_stages: &[MemberActivationStage::StartMemberDaemon],
+        note: "Canonical member daemon-start stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "send_onboarding",
+        canonical_stages: &[MemberActivationStage::DeliverOnboarding],
+        note: "Canonical onboarding delivery stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "resume",
+        legacy_stage: "update_runtime",
+        canonical_stages: &[MemberActivationStage::CommitRuntime],
+        note: "Canonical runtime commit stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "validate",
+        canonical_stages: &[MemberActivationStage::PrepareMember],
+        note: "Part of add-agent member preparation.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "create_pane",
+        canonical_stages: &[
+            MemberActivationStage::AcquirePane,
+            MemberActivationStage::LaunchSession,
+        ],
+        note: "Add-agent currently opens the pane and launches the CLI in one step.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "launch_session",
+        canonical_stages: &[MemberActivationStage::CaptureSessionIdentity],
+        note: "Add-agent uses this step for runtime session identity capture.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "join_mesh",
+        canonical_stages: &[MemberActivationStage::JoinMesh],
+        note: "Canonical member mesh-join stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "start_daemon",
+        canonical_stages: &[MemberActivationStage::StartMemberDaemon],
+        note: "Canonical member daemon-start stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "send_onboarding",
+        canonical_stages: &[MemberActivationStage::DeliverOnboarding],
+        note: "Canonical onboarding delivery stage.",
+    },
+    LegacyMemberActivationStageMapping {
+        wrapper: "add_agent",
+        legacy_stage: "update_roster",
+        canonical_stages: &[MemberActivationStage::CommitRuntime],
+        note: "Add-agent commits member/runtime state into team metadata here.",
+    },
+];
+
 /// Progress metadata for one operation step.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StepProgress {
@@ -699,5 +913,30 @@ mod tests {
         let event_decoded: StepProgressEvent =
             serde_json::from_str(&event_json).expect("deserialize event");
         assert_eq!(event_decoded, event);
+    }
+
+    #[test]
+    fn member_activation_stage_round_trip() {
+        let stage = MemberActivationStage::CommitRuntime;
+        let json = serde_json::to_string(&stage).expect("serialize member activation stage");
+        assert_eq!(json, "\"commit_runtime\"");
+
+        let decoded: MemberActivationStage =
+            serde_json::from_str(&json).expect("deserialize member activation stage");
+        assert_eq!(decoded, stage);
+        assert_eq!(stage.to_string(), "commit_runtime");
+    }
+
+    #[test]
+    fn legacy_member_activation_stage_mapping_covers_all_wrappers() {
+        assert!(LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS
+            .iter()
+            .any(|entry| entry.wrapper == "initialize"));
+        assert!(LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS
+            .iter()
+            .any(|entry| entry.wrapper == "resume"));
+        assert!(LEGACY_MEMBER_ACTIVATION_STAGE_MAPPINGS
+            .iter()
+            .any(|entry| entry.wrapper == "add_agent"));
     }
 }

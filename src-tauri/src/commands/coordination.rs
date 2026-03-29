@@ -237,7 +237,18 @@ pub fn coordination_resume_team(
     let requested_team_name = request.team_name.clone();
     let result = {
         let (cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        coordination_resume_team_internal(state.inner(), request, &cli_commands, &tmux_layout).ipc()
+        let mut emit = |event: &ResumeTeamProgressEvent| {
+            emit_resume_team_progress_log_event(event);
+            let _ = app.emit("coordination-resume-team-progress", event);
+        };
+        coordination_resume_team_internal(
+            state.inner(),
+            request,
+            &cli_commands,
+            &tmux_layout,
+            Some(&mut emit),
+        )
+        .ipc()
     };
     let result = maybe_ensure_claude_compact_hook_for_team(&app, &requested_team_name, result);
     if let Ok(report) = &result {
@@ -499,15 +510,36 @@ fn coordination_resume_team_internal(
     request: ResumeTeamRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
+    mut emit: Option<&mut dyn FnMut(&ResumeTeamProgressEvent)>,
 ) -> Result<ResumeTeamReport, String> {
     validate_non_empty("team_name", &request.team_name)?;
     let contract_request = map_resume_team_request_to_contract(&request);
+    let mut emit_resume_progress = |member_name: &str,
+                                    member_index: usize,
+                                    member_count: usize,
+                                    stage: MemberActivationStage,
+                                    status: StepStatus,
+                                    message: Option<String>| {
+        if let Some(emit) = emit.as_deref_mut() {
+            emit(&ResumeTeamProgressEvent {
+                operation: "resume_team".to_string(),
+                team_name: request.team_name.clone(),
+                member_name: member_name.to_string(),
+                member_index,
+                member_count,
+                stage,
+                status,
+                message,
+            });
+        }
+    };
     let report = state
         .with_orchestrator(|orchestrator| {
-            orchestrator.resume_team_with_cli_commands_and_layout(
+            orchestrator.resume_team_with_cli_commands_and_layout_and_progress(
                 &contract_request,
                 cli_commands,
                 tmux_layout,
+                Some(&mut emit_resume_progress),
             )
         })
         .map(map_resume_team_report_from_contract)

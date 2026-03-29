@@ -8,6 +8,7 @@ import {
   coordinationRemoveMember,
   coordinationResumeMember,
   coordinationResumeTeam,
+  onCoordinationResumeTeamProgress,
   getTeamPreset,
   listRoleTemplates,
   listTeamPresets,
@@ -16,6 +17,7 @@ import {
 } from '../ipc.js'
 import {
   normalizeProjectMeshSnapshot,
+  normalizeResumeTeamProgressEvent,
   normalizeResumeTeamReport,
 } from '../ipc/coordinationResponses.js'
 import { clearMeshCache, getMeshCacheEntry, setMeshCache } from '../meshCache.svelte.js'
@@ -142,9 +144,11 @@ export function createMeshTabController({
       coordinationRemoveMember,
       coordinationResumeMember,
       coordinationResumeTeam,
+      onCoordinationResumeTeamProgress,
       getBackgroundWorkEnabled,
       getIsVisible,
       getProjectPath,
+      normalizeResumeTeamProgressEvent,
       normalizeResumeTeamReport,
       onDisband,
       onFocusPane,
@@ -255,6 +259,7 @@ export function createMeshTabController({
   })
 
   $effect(() => runtime.createRuntimePollingEffect())
+  $effect(() => runtime.createResumeTeamProgressEffect())
 
   return createMeshTabPublicApi({ state, gate, setup, init, runtime })
 }

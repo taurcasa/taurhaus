@@ -31,6 +31,14 @@ function normalizeTeamRuntimeState(value) {
   return 'none'
 }
 
+function normalizeStepStatus(value) {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'running') return 'running'
+  if (normalized === 'succeeded') return 'succeeded'
+  if (normalized === 'failed') return 'failed'
+  return 'pending'
+}
+
 function normalizeCoordinationMember(value) {
   if (!value || typeof value !== 'object') return null
 
@@ -129,6 +137,26 @@ export function normalizeResumeTeamReport(value) {
     warnings: normalizeStringList(value.warnings),
     startedTeamDaemon: Boolean(value.startedTeamDaemon ?? value.started_team_daemon),
     teamDaemonWarning: value.teamDaemonWarning ?? value.team_daemon_warning ?? null,
+  }
+}
+
+export function normalizeResumeTeamProgressEvent(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const teamName = String(value.teamName ?? value.team_name ?? '').trim()
+  const memberName = String(value.memberName ?? value.member_name ?? '').trim()
+  const stage = String(value.stage ?? '').trim()
+  if (!teamName || !memberName || !stage) return null
+
+  return {
+    operation: String(value.operation ?? 'resume_team').trim() || 'resume_team',
+    teamName,
+    memberName,
+    memberIndex: Number(value.memberIndex ?? value.member_index ?? 0),
+    memberCount: Number(value.memberCount ?? value.member_count ?? 0),
+    stage,
+    status: normalizeStepStatus(value.status),
+    message: value.message == null ? null : String(value.message),
   }
 }
 

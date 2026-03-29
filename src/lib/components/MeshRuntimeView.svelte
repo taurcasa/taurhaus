@@ -299,9 +299,24 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
         data-testid="mesh-runtime-resume-progress"
       >
         <div class="mb-2 flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold {dark ? 'text-zinc-100' : 'text-zinc-900'}">
-            {isResumingTeam ? 'Resuming team members' : 'Latest resume result'}
-          </h3>
+          <div class="min-w-0">
+            <h3 class="text-sm font-semibold {dark ? 'text-zinc-100' : 'text-zinc-900'}" data-testid="mesh-runtime-resume-header">
+              {#if isResumingTeam}
+                Resuming {resumeProgress?.currentIndex || 0} of {resumeProgress?.memberCount || resumeProgress?.items?.length || 0} members
+              {:else}
+                Latest resume result
+              {/if}
+            </h3>
+            {#if resumeProgress?.activeMemberName}
+              <p class="mt-0.5 text-[11px] {dark ? 'text-zinc-400' : 'text-zinc-500'}" data-testid="mesh-runtime-resume-subtitle">
+                {resumeProgress.activeMemberName} · {resumeProgress.activeStageLabel || 'Working'}
+              </p>
+            {:else if resumeProgress?.summaryMessage}
+              <p class="mt-0.5 text-[11px] {dark ? 'text-zinc-400' : 'text-zinc-500'}" data-testid="mesh-runtime-resume-subtitle">
+                {resumeProgress.summaryMessage}
+              </p>
+            {/if}
+          </div>
           <span class="text-[11px] uppercase tracking-wide {dark ? 'text-zinc-400' : 'text-zinc-500'}">
             {isResumingTeam ? 'In progress' : 'Completed'}
           </span>
@@ -316,12 +331,18 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
                 </span>
                 <span class="truncate {dark ? 'text-zinc-100' : 'text-zinc-900'}">{item.memberName}</span>
               </div>
-              <span class="shrink-0 text-right {item.status === 'failed' ? (dark ? 'text-danger-300' : 'text-danger-700') : dark ? 'text-zinc-400' : 'text-zinc-500'}">
+              <span class="shrink-0 text-right {item.status === 'failed' ? (dark ? 'text-danger-300' : 'text-danger-700') : item.status === 'running' ? (dark ? 'text-brand-300' : 'text-brand-700') : dark ? 'text-zinc-400' : 'text-zinc-500'}">
                 {item.message}
               </span>
             </li>
           {/each}
         </ul>
+
+        {#if resumeProgress?.footerMessage}
+          <p class="mt-3 border-t pt-2 text-[11px] {dark ? 'border-white/8 text-zinc-400' : 'border-brand-100 text-zinc-500'}" data-testid="mesh-runtime-resume-footer">
+            {resumeProgress.footerMessage}
+          </p>
+        {/if}
       </section>
     {/if}
 

@@ -6,7 +6,8 @@ use crate::coordination::audit::{
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
-    OperatorNoticeDelivery, ResumeMemberRequest, ResumeTeamMemberFailure, ResumeTeamReport,
+    MemberActivationStage, OperatorNoticeDelivery, ResumeMemberRequest,
+    ResumeTeamMemberFailure, ResumeTeamReport, StepStatus,
 };
 use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::stores::{
@@ -317,6 +318,31 @@ impl CoordinationOrchestrator {
         cli_commands: &crate::models::CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<ResumeTeamReport, CoordinationError> {
+        self.resume_team_with_cli_commands_and_layout_and_progress(
+            request,
+            cli_commands,
+            tmux_layout,
+            None,
+        )
+    }
+
+    /// Resume all persisted members in a team by reusing the per-member resume flow.
+    pub fn resume_team_with_cli_commands_and_layout_and_progress(
+        &mut self,
+        request: &crate::coordination::requests::ResumeTeamRequest,
+        cli_commands: &crate::models::CliCommandSettings,
+        tmux_layout: &str,
+        mut emit_progress: Option<
+            &mut dyn FnMut(
+                &str,
+                usize,
+                usize,
+                MemberActivationStage,
+                StepStatus,
+                Option<String>,
+            ),
+        >,
+    ) -> Result<ResumeTeamReport, CoordinationError> {
         validate_team_name(&request.team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
         self.reconcile_team_liveness(&request.team_name)?;
@@ -326,16 +352,37 @@ impl CoordinationOrchestrator {
         let mut resumed_members = Vec::new();
         let mut failed_members = Vec::new();
         let mut warnings = Vec::new();
+        let mut forward_member_progress =
+            |member_name: &str,
+             member_index: usize,
+             member_count: usize,
+             stage: MemberActivationStage,
+             status: StepStatus,
+             message: Option<String>| {
+                if let Some(emit) = emit_progress.as_deref_mut() {
+                    emit(
+                        member_name,
+                        member_index,
+                        member_count,
+                        stage,
+                        status,
+                        message,
+                    );
+                }
+            };
 
-        for member in ordered_members {
+        for (index, member) in ordered_members.into_iter().enumerate() {
             let member_request = ResumeMemberRequest {
                 team_name: request.team_name.clone(),
                 member_name: member.name.clone(),
             };
-            let report = self.resume_member_with_cli_commands_and_layout(
+            let report = self.resume_member_with_cli_commands_and_layout_and_progress(
                 &member_request,
                 cli_commands,
                 tmux_layout,
+                index + 1,
+                total_members,
+                Some(&mut forward_member_progress),
             )?;
 
             warnings.extend(

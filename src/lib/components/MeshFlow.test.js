@@ -20,6 +20,7 @@ vi.mock('../ipc.js', () => ({
   installMesh: vi.fn(),
   listRoleTemplates: vi.fn(),
   listTeamPresets: vi.fn(),
+  onCoordinationResumeTeamProgress: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
   upsertRoleTemplate: vi.fn(),
   upsertTeamPreset: vi.fn(),
@@ -43,6 +44,7 @@ const {
   installMesh,
   listRoleTemplates,
   listTeamPresets,
+  onCoordinationResumeTeamProgress,
   onCoordinationStepProgress,
   upsertRoleTemplate,
   upsertTeamPreset,
@@ -268,6 +270,7 @@ describe('Mesh flow smoke', () => {
     })
 
     onCoordinationStepProgress.mockResolvedValue(() => {})
+    onCoordinationResumeTeamProgress.mockResolvedValue(() => {})
   })
 
   it('setup -> initialize progress -> runtime canvas -> hot-add -> disband', async () => {

@@ -8,7 +8,8 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, AgentSetupConfig, ResumeAgentReport, ResumeMemberRequest,
+    AddAgentReport, AddAgentRequest, AgentSetupConfig, MemberActivationStage, ResumeAgentReport,
+    ResumeMemberRequest, StepStatus,
 };
 use crate::coordination::runtime::{resolve_or_create_pane_for_member, PaneResolution};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
@@ -215,12 +216,62 @@ impl CoordinationOrchestrator {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<ResumeAgentReport, CoordinationError> {
+        self.resume_member_with_cli_commands_and_layout_and_progress(
+            request,
+            cli_commands,
+            tmux_layout,
+            1,
+            1,
+            None,
+        )
+    }
+
+    /// Resume a member session in an existing team.
+    pub fn resume_member_with_cli_commands_and_layout_and_progress(
+        &mut self,
+        request: &ResumeMemberRequest,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        member_index: usize,
+        member_count: usize,
+        mut emit_progress: Option<
+            &mut dyn FnMut(
+                &str,
+                usize,
+                usize,
+                MemberActivationStage,
+                StepStatus,
+                Option<String>,
+            ),
+        >,
+    ) -> Result<ResumeAgentReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
         let mut warnings = Vec::new();
         let mut runtime_state = PendingResumeState::default();
+        let member_name = request.member_name.as_str();
 
+        let mut emit_stage =
+            |stage: MemberActivationStage, status: StepStatus, message: Option<String>| {
+            if let Some(emit) = emit_progress.as_deref_mut() {
+                emit(
+                    member_name,
+                    member_index,
+                    member_count,
+                    stage,
+                    status,
+                    message,
+                );
+            }
+        };
+
+        emit_stage(MemberActivationStage::PrepareMember, StepStatus::Running, None);
         if let Err(err) = self.validate_resume_request(request) {
+            emit_stage(
+                MemberActivationStage::PrepareMember,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -243,6 +294,11 @@ impl CoordinationOrchestrator {
         let (member, mut runtime_record, lead_name) = match self.load_resume_member_state(request) {
             Ok(value) => value,
             Err(err) => {
+                emit_stage(
+                    MemberActivationStage::PrepareMember,
+                    StepStatus::Failed,
+                    Some(err.to_string()),
+                );
                 return Ok(failed_resume_report(
                     &request.team_name,
                     &request.member_name,
@@ -253,7 +309,7 @@ impl CoordinationOrchestrator {
                     warnings,
                     runtime_state.pane_id.clone(),
                     runtime_state.reused_pane,
-                ))
+                ));
             }
         };
         mark_step_succeeded(
@@ -262,12 +318,23 @@ impl CoordinationOrchestrator {
             &mut succeeded_steps,
             &mut steps,
         );
+        emit_stage(
+            MemberActivationStage::PrepareMember,
+            StepStatus::Succeeded,
+            Some("member request and runtime state prepared".to_string()),
+        );
 
+        emit_stage(MemberActivationStage::AcquirePane, StepStatus::Running, None);
         let pane_resolution =
             match self.resolve_resume_pane(&member, Some(&runtime_record), tmux_layout) {
                 Ok(resolution) => resolution,
                 Err(err) => {
                     self.cleanup_resume_failure(request, &runtime_state);
+                    emit_stage(
+                        MemberActivationStage::AcquirePane,
+                        StepStatus::Failed,
+                        Some(err.to_string()),
+                    );
                     return Ok(failed_resume_report(
                         &request.team_name,
                         &request.member_name,
@@ -303,12 +370,23 @@ impl CoordinationOrchestrator {
             &mut succeeded_steps,
             &mut steps,
         );
+        emit_stage(
+            MemberActivationStage::AcquirePane,
+            StepStatus::Succeeded,
+            Some(resolve_message.clone()),
+        );
 
         let pane_id = pane_resolution.pane_id;
+        emit_stage(MemberActivationStage::LaunchSession, StepStatus::Running, None);
         if let Err(err) =
             self.launch_resume_session(request, &member, &pane_id, cli_commands, &mut runtime_state)
         {
             self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::LaunchSession,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -327,8 +405,46 @@ impl CoordinationOrchestrator {
             &mut succeeded_steps,
             &mut steps,
         );
+        emit_stage(
+            MemberActivationStage::LaunchSession,
+            StepStatus::Succeeded,
+            Some("cli session launched".to_string()),
+        );
+
+        emit_stage(
+            MemberActivationStage::CaptureSessionIdentity,
+            StepStatus::Running,
+            None,
+        );
+        if let Err(err) =
+            self.capture_resume_session_identity(&member, &pane_id, &mut runtime_state)
+        {
+            self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::CaptureSessionIdentity,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
+            return Ok(failed_resume_report(
+                &request.team_name,
+                &request.member_name,
+                "launch_session",
+                err,
+                succeeded_steps,
+                &mut steps,
+                warnings,
+                Some(pane_id.clone()),
+                runtime_state.reused_pane,
+            ));
+        }
+        emit_stage(
+            MemberActivationStage::CaptureSessionIdentity,
+            StepStatus::Succeeded,
+            Some(capture_session_identity_message(&member, &runtime_state)),
+        );
 
         let is_claude = member.cli_tool == CliTool::Claude;
+        emit_stage(MemberActivationStage::JoinMesh, StepStatus::Running, None);
         if is_claude {
             mark_step_succeeded(
                 "join_mesh",
@@ -336,8 +452,18 @@ impl CoordinationOrchestrator {
                 &mut succeeded_steps,
                 &mut steps,
             );
+            emit_stage(
+                MemberActivationStage::JoinMesh,
+                StepStatus::Succeeded,
+                Some("not required for claude".to_string()),
+            );
         } else if let Err(err) = self.resume_join_mesh(request, &member, &mut runtime_state) {
             self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::JoinMesh,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -351,14 +477,29 @@ impl CoordinationOrchestrator {
             ));
         } else {
             mark_step_succeeded("join_mesh", "mesh joined", &mut succeeded_steps, &mut steps);
+            emit_stage(
+                MemberActivationStage::JoinMesh,
+                StepStatus::Succeeded,
+                Some("mesh joined".to_string()),
+            );
         }
 
+        emit_stage(
+            MemberActivationStage::StartMemberDaemon,
+            StepStatus::Running,
+            None,
+        );
         if is_claude {
             mark_step_succeeded(
                 "start_daemon",
                 "not required for claude",
                 &mut succeeded_steps,
                 &mut steps,
+            );
+            emit_stage(
+                MemberActivationStage::StartMemberDaemon,
+                StepStatus::Succeeded,
+                Some("not required for claude".to_string()),
             );
         } else if let Err(err) = self.resume_start_daemon(
             request,
@@ -369,6 +510,11 @@ impl CoordinationOrchestrator {
             &mut warnings,
         ) {
             self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::StartMemberDaemon,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -387,10 +533,25 @@ impl CoordinationOrchestrator {
                 &mut succeeded_steps,
                 &mut steps,
             );
+            emit_stage(
+                MemberActivationStage::StartMemberDaemon,
+                StepStatus::Succeeded,
+                Some("mesh daemon started".to_string()),
+            );
         }
 
+        emit_stage(
+            MemberActivationStage::DeliverOnboarding,
+            StepStatus::Running,
+            None,
+        );
         if let Err(err) = self.resume_send_onboarding(request, &member, &lead_name) {
             self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::DeliverOnboarding,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -409,6 +570,11 @@ impl CoordinationOrchestrator {
                 &mut succeeded_steps,
                 &mut steps,
             );
+            emit_stage(
+                MemberActivationStage::DeliverOnboarding,
+                StepStatus::Succeeded,
+                Some("onboarding delivered".to_string()),
+            );
         }
 
         runtime_record.pane_id = Some(pane_id.clone());
@@ -421,6 +587,7 @@ impl CoordinationOrchestrator {
         runtime_record.daemon_pid = runtime_state.daemon_pid;
         runtime_record.attached_at = Some(Utc::now());
         runtime_record.health = HealthState::Healthy;
+        emit_stage(MemberActivationStage::CommitRuntime, StepStatus::Running, None);
         if let Err(err) = MemberRuntimeStore::save(
             &self.teams_dir,
             &request.team_name,
@@ -428,6 +595,11 @@ impl CoordinationOrchestrator {
             &runtime_record,
         ) {
             self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::CommitRuntime,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -442,6 +614,11 @@ impl CoordinationOrchestrator {
         }
         if let Err(err) = self.sync_team_config_metadata(&request.team_name) {
             self.cleanup_resume_failure(request, &runtime_state);
+            emit_stage(
+                MemberActivationStage::CommitRuntime,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
             return Ok(failed_resume_report(
                 &request.team_name,
                 &request.member_name,
@@ -459,6 +636,11 @@ impl CoordinationOrchestrator {
             "runtime state updated",
             &mut succeeded_steps,
             &mut steps,
+        );
+        emit_stage(
+            MemberActivationStage::CommitRuntime,
+            StepStatus::Succeeded,
+            Some("runtime state updated".to_string()),
         );
 
         self.ensure_team_daemon_running_best_effort(&request.team_name);
@@ -571,7 +753,7 @@ impl CoordinationOrchestrator {
         member: &Member,
         pane_id: &str,
         cli_commands: &CliCommandSettings,
-        runtime_state: &mut PendingResumeState,
+        _runtime_state: &mut PendingResumeState,
     ) -> Result<(), CoordinationError> {
         let agent = AgentSetupConfig {
             name: member.name.clone(),
@@ -600,6 +782,15 @@ impl CoordinationOrchestrator {
             build_resume_cli_launch_command(&agent, &request.team_name, member.role, cli_commands)?;
         send_launch_command_with_retry(self.runtime.as_ref(), pane_id, launch_cmd.as_str())?;
 
+        Ok(())
+    }
+
+    fn capture_resume_session_identity(
+        &self,
+        member: &Member,
+        pane_id: &str,
+        runtime_state: &mut PendingResumeState,
+    ) -> Result<(), CoordinationError> {
         if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
             let detected = self
                 .runtime
@@ -692,4 +883,14 @@ impl CoordinationOrchestrator {
         MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)?;
         Ok(())
     }
+}
+
+fn capture_session_identity_message(member: &Member, runtime_state: &PendingResumeState) -> String {
+    if !matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
+        return "session identity not required".to_string();
+    }
+    if runtime_state.session_id.is_some() || runtime_state.jsonl_path.is_some() {
+        return "session identity captured".to_string();
+    }
+    "session identity unavailable".to_string()
 }

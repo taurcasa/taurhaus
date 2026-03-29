@@ -1,6 +1,6 @@
 use crate::commands::coordination_types::{
-    AddAgentReport, InitializeReport, ResumeAgentReport, StepProgress, StepProgressEvent,
-    StepStatus,
+    AddAgentReport, InitializeReport, ResumeAgentReport, ResumeTeamProgressEvent, StepProgress,
+    StepProgressEvent, StepStatus,
 };
 use serde_json::{Map, Value};
 
@@ -85,6 +85,51 @@ fn emit_progress_log_event(event: &StepProgressEvent) {
         "backend",
         event_name,
         Some("Coordination step lifecycle event".to_string()),
+        fields,
+    );
+}
+
+pub(super) fn emit_resume_team_progress_log_event(event: &ResumeTeamProgressEvent) {
+    let (level, event_name) = match event.status {
+        StepStatus::Pending => ("debug", "coordination.resume_team.member.pending"),
+        StepStatus::Running => ("info", "coordination.resume_team.member.started"),
+        StepStatus::Succeeded => ("info", "coordination.resume_team.member.completed"),
+        StepStatus::Failed => ("warn", "coordination.resume_team.member.failed"),
+    };
+    let mut fields = Map::new();
+    fields.insert(
+        "team_name".to_string(),
+        Value::String(event.team_name.clone()),
+    );
+    fields.insert(
+        "operation".to_string(),
+        Value::String(event.operation.clone()),
+    );
+    fields.insert(
+        "member_name".to_string(),
+        Value::String(event.member_name.clone()),
+    );
+    fields.insert(
+        "member_index".to_string(),
+        Value::Number(event.member_index.into()),
+    );
+    fields.insert(
+        "member_count".to_string(),
+        Value::Number(event.member_count.into()),
+    );
+    fields.insert("stage".to_string(), Value::String(event.stage.to_string()));
+    fields.insert(
+        "status".to_string(),
+        Value::String(step_status_name(&event.status).to_string()),
+    );
+    if let Some(message) = event.message.as_ref() {
+        fields.insert("message".to_string(), Value::String(message.clone()));
+    }
+    taurhaus_lib::logging::emit_global(
+        level,
+        "backend",
+        event_name,
+        Some("Resume-team member stage lifecycle event".to_string()),
         fields,
     );
 }

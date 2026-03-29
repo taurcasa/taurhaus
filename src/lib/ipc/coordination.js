@@ -13,6 +13,7 @@ import {
   normalizeLiveTeamStatus,
   normalizeMemberActionReport,
   normalizeProjectMeshSnapshot,
+  normalizeResumeTeamProgressEvent,
   normalizeResumeTeamReport,
 } from './coordinationResponses.js'
 
@@ -107,4 +108,13 @@ export function coordinationGetProjectMeshSnapshot(projectPath) {
 
 export function onCoordinationStepProgress(callback) {
   return listen('coordination-step-progress', callback)
+}
+
+export function onCoordinationResumeTeamProgress(callback) {
+  return listen('coordination-resume-team-progress', (event) => {
+    callback({
+      ...event,
+      payload: normalizeResumeTeamProgressEvent(event?.payload ?? event),
+    })
+  })
 }

@@ -3,56 +3,176 @@ import {
   RUNTIME_STATUS_POLL_MS,
 } from './meshTabGate.svelte.js'
 
+const RESUME_STAGE_LABELS = {
+  prepare_member: 'Preparing member',
+  acquire_pane: 'Acquiring pane',
+  launch_session: 'Launching session',
+  capture_session_identity: 'Capturing session identity',
+  join_mesh: 'Joining mesh',
+  start_member_daemon: 'Starting member daemon',
+  commit_runtime: 'Saving runtime state',
+  deliver_onboarding: 'Delivering onboarding',
+}
+
+function uniqueMemberNames(names) {
+  return [...new Set((names ?? []).map((value) => String(value ?? '').trim()).filter(Boolean))]
+}
+
 function buildResumeTargetNames(config) {
   const members = [config?.lead, ...(config?.agents ?? [])].filter(Boolean)
   const offlineMembers = members
     .filter((member) => String(member?.status ?? '').trim().toLowerCase() === 'offline')
     .map((member) => String(member?.name ?? '').trim())
     .filter(Boolean)
-  if (offlineMembers.length > 0) return offlineMembers
-  return members.map((member) => String(member?.name ?? '').trim()).filter(Boolean)
+  if (offlineMembers.length > 0) return uniqueMemberNames(offlineMembers)
+  return uniqueMemberNames(members.map((member) => String(member?.name ?? '').trim()))
 }
 
-function buildResumeProgressItems(targetNames, normalizeResumeTeamReport, report = null, fallbackError = '') {
-  const normalizedReport = normalizeResumeTeamReport(report)
-  const names = Array.isArray(targetNames) ? [...targetNames] : []
-  const resumedMembers = new Set(normalizedReport?.resumedMembers ?? [])
-  const failedEntries = normalizedReport?.failedMembers ?? []
-  const failedMap = new Map(
-    failedEntries
-      .map((entry) => ({
-        memberName: entry?.memberName ?? '',
-        message: entry?.message ?? 'Failed',
-      }))
-      .filter((entry) => entry.memberName)
-      .map((entry) => [entry.memberName, entry])
+function formatResumeStage(stage) {
+  const normalized = String(stage ?? '').trim()
+  if (!normalized) return 'Waiting'
+  return (
+    RESUME_STAGE_LABELS[normalized] ??
+    normalized
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
   )
+}
 
-  for (const memberName of resumedMembers) {
-    if (!names.includes(memberName)) names.push(memberName)
-  }
-  for (const memberName of failedMap.keys()) {
-    if (!names.includes(memberName)) names.push(memberName)
-  }
+function defaultResumeMessage(stage, status) {
+  const label = formatResumeStage(stage)
+  if (status === 'running') return `${label}...`
+  if (status === 'succeeded') return label
+  if (status === 'failed') return `${label} failed`
+  return 'Waiting to resume'
+}
 
-  return names.map((memberName) => {
-    if (!normalizedReport && !fallbackError) {
-      return { memberName, status: 'pending', message: 'Waiting to resume' }
-    }
-    if (resumedMembers.has(memberName)) {
-      return { memberName, status: 'succeeded', message: 'Resumed' }
-    }
-    if (failedMap.has(memberName)) {
-      return {
-        memberName,
-        status: 'failed',
-        message: failedMap.get(memberName)?.message ?? 'Failed',
+function createResumeProgressItem(memberName, memberIndex = 0) {
+  return {
+    memberName,
+    memberIndex,
+    status: 'pending',
+    stage: '',
+    stageLabel: '',
+    message: 'Waiting to resume',
+    locked: false,
+  }
+}
+
+function sortResumeItems(items) {
+  return [...items].sort((left, right) => {
+    const leftIndex = Number(left?.memberIndex ?? 0)
+    const rightIndex = Number(right?.memberIndex ?? 0)
+    if (leftIndex !== rightIndex) return leftIndex - rightIndex
+    return String(left?.memberName ?? '').localeCompare(String(right?.memberName ?? ''))
+  })
+}
+
+function createResumeProgressState(targetNames) {
+  const names = uniqueMemberNames(targetNames)
+  const items = names.map((memberName, index) => createResumeProgressItem(memberName, index + 1))
+  return {
+    inFlight: true,
+    memberCount: items.length,
+    completedCount: 0,
+    currentIndex: items.length > 0 ? 1 : 0,
+    activeMemberName: items[0]?.memberName ?? '',
+    activeStage: '',
+    activeStageLabel: '',
+    items,
+    summaryMessage: '',
+    footerMessage: '',
+  }
+}
+
+function updateResumeProgressMeta(progress) {
+  const items = sortResumeItems(progress?.items ?? [])
+  const memberCount = Math.max(
+    Number(progress?.memberCount ?? 0),
+    items.length
+  )
+  const completedCount = items.filter(
+    (item) => item.status === 'succeeded' || item.status === 'failed'
+  ).length
+  const activeItem = items.find((item) => item.status === 'running') ?? null
+  const currentIndex = activeItem
+    ? Number(activeItem.memberIndex ?? 0)
+    : progress?.inFlight
+      ? Math.min(memberCount, completedCount + (memberCount > 0 ? 1 : 0))
+      : completedCount
+
+  return {
+    ...progress,
+    items,
+    memberCount,
+    completedCount,
+    currentIndex,
+    activeMemberName: activeItem?.memberName ?? '',
+    activeStage: activeItem?.stage ?? '',
+    activeStageLabel: activeItem?.stageLabel ?? '',
+  }
+}
+
+function applyResumeProgressEvent(progress, normalizedEvent) {
+  if (!normalizedEvent) return progress
+
+  const current = progress
+    ? {
+        ...progress,
+        items: [...(progress.items ?? [])],
       }
+    : createResumeProgressState([normalizedEvent.memberName])
+
+  const items = current.items.map((item) => {
+    if (item.status !== 'running' || item.locked || item.memberName === normalizedEvent.memberName) {
+      return item
     }
-    if (fallbackError) {
-      return { memberName, status: 'failed', message: fallbackError }
+    return {
+      ...item,
+      status: 'pending',
+      message: 'Waiting to resume',
     }
-    return { memberName, status: 'pending', message: 'Pending' }
+  })
+
+  let index = items.findIndex((item) => item.memberName === normalizedEvent.memberName)
+  if (index === -1) {
+    items.push(
+      createResumeProgressItem(
+        normalizedEvent.memberName,
+        normalizedEvent.memberIndex || items.length + 1
+      )
+    )
+    index = items.length - 1
+  }
+
+  const existing = items[index]
+  if (!existing.locked) {
+    items[index] = {
+      ...existing,
+      memberIndex: normalizedEvent.memberIndex || existing.memberIndex,
+      status: normalizedEvent.status,
+      stage: normalizedEvent.stage,
+      stageLabel: formatResumeStage(normalizedEvent.stage),
+      message:
+        normalizedEvent.message ||
+        defaultResumeMessage(normalizedEvent.stage, normalizedEvent.status),
+      locked:
+        normalizedEvent.status === 'succeeded' || normalizedEvent.status === 'failed',
+    }
+  }
+
+  return updateResumeProgressMeta({
+    ...current,
+    inFlight: true,
+    memberCount: Math.max(
+      Number(current.memberCount ?? 0),
+      Number(normalizedEvent.memberCount ?? 0),
+      items.length
+    ),
+    items,
+    summaryMessage: '',
+    footerMessage: '',
   })
 }
 
@@ -71,6 +191,101 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
     return `Resume completed with failures. ${resumedSummary} ${failedSummary}`.trim()
   }
   return `Resume complete. ${resumedSummary}`.trim()
+}
+
+function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
+  const normalizedReport = normalizeResumeTeamReport(report)
+  if (!normalizedReport) return ''
+  if (normalizedReport.teamDaemonWarning) {
+    return `Team background service warning: ${normalizedReport.teamDaemonWarning}`
+  }
+  if (normalizedReport.startedTeamDaemon) {
+    return 'Team background service confirmed.'
+  }
+  return 'Team background service did not need to restart.'
+}
+
+function finalizeResumeProgress(
+  progress,
+  targetNames,
+  normalizeResumeTeamReport,
+  report = null,
+  fallbackError = ''
+) {
+  const normalizedReport = normalizeResumeTeamReport(report)
+  const failedEntries = normalizedReport?.failedMembers ?? []
+  const failedMap = new Map(
+    failedEntries
+      .map((entry) => ({
+        memberName: entry?.memberName ?? '',
+        message: entry?.message ?? 'Failed',
+      }))
+      .filter((entry) => entry.memberName)
+      .map((entry) => [entry.memberName, entry.message])
+  )
+  const resumedMembers = new Set(normalizedReport?.resumedMembers ?? [])
+  const names = uniqueMemberNames([
+    ...targetNames,
+    ...((progress?.items ?? []).map((item) => item.memberName)),
+    ...(normalizedReport?.resumedMembers ?? []),
+    ...failedMap.keys(),
+  ])
+
+  const existingByName = new Map((progress?.items ?? []).map((item) => [item.memberName, item]))
+  const items = names.map((memberName, index) => {
+    const existing = existingByName.get(memberName) ?? createResumeProgressItem(memberName, index + 1)
+    const memberIndex = Number(existing.memberIndex ?? index + 1) || index + 1
+    if (resumedMembers.has(memberName)) {
+      return {
+        ...existing,
+        memberIndex,
+        status: 'succeeded',
+        message: existing.status === 'running' ? existing.message : 'Resumed',
+        locked: true,
+      }
+    }
+    if (failedMap.has(memberName)) {
+      return {
+        ...existing,
+        memberIndex,
+        status: 'failed',
+        message: failedMap.get(memberName) ?? 'Failed',
+        locked: true,
+      }
+    }
+    if (fallbackError) {
+      return {
+        ...existing,
+        memberIndex,
+        status: 'failed',
+        message: fallbackError,
+        locked: true,
+      }
+    }
+    return {
+      ...existing,
+      memberIndex,
+      status: existing.status === 'running' ? 'pending' : existing.status,
+      message:
+        existing.status === 'succeeded' || existing.status === 'failed'
+          ? existing.message
+          : 'Pending',
+      locked: existing.locked,
+    }
+  })
+
+  return updateResumeProgressMeta({
+    inFlight: false,
+    memberCount: Math.max(Number(normalizedReport?.totalMembers ?? 0), items.length),
+    items,
+    summaryMessage: normalizedReport
+      ? buildResumeTeamMessage(normalizeResumeTeamReport, normalizedReport)
+      : '',
+    footerMessage:
+      fallbackError || !normalizedReport
+        ? ''
+        : buildResumeFooterMessage(normalizeResumeTeamReport, normalizedReport),
+  })
 }
 
 export function createMeshTabRuntime({ state, refs, deps, gate }) {
@@ -163,36 +378,66 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
     if (!state.teamName || !state.canResumeTeam || state.isResumingTeam) return
 
     const targetNames = buildResumeTargetNames(state.teamConfig)
-    state.teamResumeProgress = {
-      inFlight: true,
-      items: buildResumeProgressItems(targetNames, deps.normalizeResumeTeamReport),
-    }
+    state.teamResumeProgress = createResumeProgressState(targetNames)
     state.errorMessage = ''
     state.runtimeMessage = ''
 
     try {
       const report = await deps.coordinationResumeTeam(state.teamName)
-      state.teamResumeProgress = {
-        inFlight: false,
-        items: buildResumeProgressItems(targetNames, deps.normalizeResumeTeamReport, report),
-      }
-
+      state.teamResumeProgress = finalizeResumeProgress(
+        state.teamResumeProgress,
+        targetNames,
+        deps.normalizeResumeTeamReport,
+        report
+      )
       state.runtimeMessage = buildResumeTeamMessage(deps.normalizeResumeTeamReport, report)
 
       const sequence = ++refs.discoverySequence
       await gate.refreshProjectMeshSnapshot(sequence, { preserveNotices: true })
     } catch (error) {
       const message = error?.message || 'Failed to resume team.'
-      state.teamResumeProgress = {
-        inFlight: false,
-        items: buildResumeProgressItems(targetNames, deps.normalizeResumeTeamReport, null, message),
-      }
+      state.teamResumeProgress = finalizeResumeProgress(
+        state.teamResumeProgress,
+        targetNames,
+        deps.normalizeResumeTeamReport,
+        null,
+        message
+      )
       state.errorMessage = message
     }
   }
 
   function cancelConfirm() {
     state.confirmContext = null
+  }
+
+  function createResumeTeamProgressEffect() {
+    let cancelled = false
+    let unlisten = null
+
+    deps.onCoordinationResumeTeamProgress((event) => {
+      const payload = deps.normalizeResumeTeamProgressEvent(event?.payload ?? event)
+      if (!payload) return
+      if (payload.operation !== 'resume_team') return
+      if (!state.teamResumeProgress?.inFlight) return
+      if (state.teamName && payload.teamName !== state.teamName) return
+      state.teamResumeProgress = applyResumeProgressEvent(state.teamResumeProgress, payload)
+    })
+      .then((dispose) => {
+        if (cancelled) {
+          if (typeof dispose === 'function') dispose()
+          return
+        }
+        unlisten = dispose
+      })
+      .catch((error) => {
+        console.warn('[meshTab] failed to subscribe to resume progress:', error)
+      })
+
+    return () => {
+      cancelled = true
+      if (typeof unlisten === 'function') unlisten()
+    }
   }
 
   function createRuntimePollingEffect() {
@@ -243,6 +488,7 @@ export function createMeshTabRuntime({ state, refs, deps, gate }) {
   return {
     cancelConfirm,
     clearSelectedNode,
+    createResumeTeamProgressEffect,
     createRuntimePollingEffect,
     focusSelectedPane,
     handleConfirmAction,

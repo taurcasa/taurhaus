@@ -859,6 +859,7 @@ fn resume_team_validates_empty_team_name() {
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect_err("empty team_name should fail");
     assert!(err.contains("team_name"));
@@ -904,6 +905,7 @@ fn resume_team_ipc_returns_report_shape() {
         },
         &crate::models::CliCommandSettings::default(),
         DEFAULT_TMUX_LAYOUT,
+        None,
     )
     .expect("resume should return a report");
 
@@ -912,6 +914,75 @@ fn resume_team_ipc_returns_report_shape() {
     assert_eq!(report.total_members, 3);
     assert_eq!(report.resumed_members.len(), 3);
     assert!(report.failed_members.is_empty());
+}
+
+#[test]
+fn resume_team_progress_events_are_emitted_per_member_stage() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize");
+
+    for member_name in ["team-lead", "frontend-dev", "reviewer"] {
+        let mut runtime = crate::coordination::stores::MemberRuntimeStore::load(
+            tmp.path(),
+            "architecture-final",
+            member_name,
+        )
+        .expect("member runtime");
+        runtime.health = crate::coordination::domain::HealthState::SessionDead;
+        runtime.pane_id = None;
+        runtime.daemon_pid = None;
+        crate::coordination::stores::MemberRuntimeStore::save(
+            tmp.path(),
+            "architecture-final",
+            member_name,
+            &runtime,
+        )
+        .expect("save runtime");
+    }
+
+    let mut emitted = Vec::new();
+    let mut emit = |event: &ResumeTeamProgressEvent| emitted.push(event.clone());
+    let report = coordination_resume_team_internal(
+        &state,
+        ResumeTeamRequest {
+            team_name: "architecture-final".to_string(),
+        },
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        Some(&mut emit),
+    )
+    .expect("resume should return a report");
+
+    assert!(report.resumed);
+    assert!(!emitted.is_empty());
+    assert!(emitted.iter().all(|event| event.operation == "resume_team"));
+    assert!(emitted.iter().all(|event| event.member_count == 3));
+    assert_eq!(
+        emitted
+            .iter()
+            .filter(|event| event.status == StepStatus::Running && event.stage == "prepare_member")
+            .map(|event| (event.member_name.clone(), event.member_index))
+            .collect::<Vec<_>>(),
+        vec![
+            ("team-lead".to_string(), 1),
+            ("frontend-dev".to_string(), 2),
+            ("reviewer".to_string(), 3),
+        ]
+    );
+    assert!(emitted.iter().any(|event| {
+        event.member_name == "reviewer"
+            && event.stage == "commit_member_runtime"
+            && event.status == StepStatus::Succeeded
+    }));
 }
 
 #[test]
@@ -2705,6 +2776,25 @@ fn step_progress_event_round_trip() {
     let json = serde_json::to_string(&value).expect("serialize step progress event");
     let decoded: StepProgressEvent =
         serde_json::from_str(&json).expect("deserialize step progress event");
+    assert_eq!(decoded, value);
+}
+
+#[test]
+fn resume_team_progress_event_round_trip() {
+    let value = ResumeTeamProgressEvent {
+        operation: "resume_team".to_string(),
+        team_name: "architecture-final".to_string(),
+        member_name: "frontend-dev".to_string(),
+        member_index: 2,
+        member_count: 3,
+        stage: "commit_member_runtime".to_string(),
+        status: StepStatus::Running,
+        message: Some("writing runtime state".to_string()),
+    };
+
+    let json = serde_json::to_string(&value).expect("serialize resume-team progress event");
+    let decoded: ResumeTeamProgressEvent =
+        serde_json::from_str(&json).expect("deserialize resume-team progress event");
     assert_eq!(decoded, value);
 }
 

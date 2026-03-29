@@ -21,6 +21,7 @@ vi.mock('../ipc.js', () => ({
   installMesh: vi.fn(),
   listRoleTemplates: vi.fn(),
   listTeamPresets: vi.fn(),
+  onCoordinationResumeTeamProgress: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
   upsertRoleTemplate: vi.fn(),
   upsertTeamPreset: vi.fn(),
@@ -43,6 +44,7 @@ const {
   installMesh,
   listRoleTemplates,
   listTeamPresets,
+  onCoordinationResumeTeamProgress,
   onCoordinationStepProgress,
   upsertRoleTemplate,
   upsertTeamPreset,
@@ -270,6 +272,7 @@ describe('MeshTab', () => {
     })
 
     onCoordinationStepProgress.mockResolvedValue(() => {})
+    onCoordinationResumeTeamProgress.mockResolvedValue(() => {})
     upsertRoleTemplate.mockResolvedValue({
       roleId: 'frontend-dev',
       name: 'frontend-dev',
@@ -640,6 +643,102 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('team-lead')
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('frontend-dev')
       expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('launch failed')
+    })
+  })
+
+  it('updates the resume panel live from streamed member progress events', async () => {
+    const resumeRequest = deferred()
+    let resumeProgressHandler = null
+    onCoordinationResumeTeamProgress.mockImplementationOnce(async (callback) => {
+      resumeProgressHandler = callback
+      return () => {}
+    })
+    coordinationResumeTeam.mockReturnValueOnce(resumeRequest.promise)
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
+      buildRuntimeSnapshot({
+        teamRuntimeState: 'coldResume',
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'claude-orchestrator',
+            roleName: 'Claude Orchestrator',
+            focusArea: 'Team sequencing and escalation',
+            contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+            behaviorSummary: 'Coordinates specialists and escalates blockers.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%2',
+          },
+        ],
+      })
+    )
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+
+    expect(resumeProgressHandler).toBeTypeOf('function')
+
+    resumeProgressHandler({
+      payload: {
+        operation: 'resume_team',
+        teamName: 'architecture-final',
+        memberName: 'team-lead',
+        memberIndex: 1,
+        memberCount: 2,
+        stage: 'launch_session',
+        status: 'running',
+        message: 'Launching session...',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-resume-progress')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-runtime-resume-header')).toHaveTextContent('Resuming 1 of 2 members')
+      expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent('team-lead')
+      expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent('Launching session')
+      expect(screen.getByTestId('mesh-runtime-resume-progress')).toHaveTextContent('Launching session...')
+    })
+
+    resumeRequest.resolve({
+      teamName: 'architecture-final',
+      resumed: true,
+      totalMembers: 2,
+      resumedMembers: ['team-lead', 'frontend-dev'],
+      failedMembers: [],
+      warnings: [],
+      startedTeamDaemon: true,
+      teamDaemonWarning: null,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent('Team background service confirmed.')
     })
   })
 

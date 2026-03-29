@@ -20,6 +20,7 @@ vi.mock('../ipc.js', () => ({
   installMesh: vi.fn(),
   listRoleTemplates: vi.fn(),
   listTeamPresets: vi.fn(),
+  onCoordinationResumeTeamProgress: vi.fn(),
   onCoordinationStepProgress: vi.fn(),
   upsertRoleTemplate: vi.fn(),
   upsertTeamPreset: vi.fn(),
@@ -43,6 +44,7 @@ const {
   installMesh,
   listRoleTemplates,
   listTeamPresets,
+  onCoordinationResumeTeamProgress,
   onCoordinationStepProgress,
   upsertRoleTemplate,
   upsertTeamPreset,
@@ -243,6 +245,7 @@ describe('Mesh vertical slice smoke', () => {
     })
 
     onCoordinationStepProgress.mockResolvedValue(() => {})
+    onCoordinationResumeTeamProgress.mockResolvedValue(() => {})
   })
 
   it('normalizes snake_case team metadata for runtime discovery and disband', async () => {

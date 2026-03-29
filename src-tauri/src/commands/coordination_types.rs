@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::coordination::requests::{
-    AgentRole, LeadMode, SessionStatus, StepProgress, StepStatus,
+    AgentRole, LeadMode, MemberActivationStage, SessionStatus, StepProgress, StepStatus,
 };
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
@@ -283,6 +283,20 @@ pub struct StepProgressEvent {
     pub team_name: String,
     pub operation: String,
     pub progress: StepProgress,
+}
+
+/// Streamed team-resume progress event emitted for one member stage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeTeamProgressEvent {
+    pub operation: String,
+    pub team_name: String,
+    pub member_name: String,
+    pub member_index: usize,
+    pub member_count: usize,
+    pub stage: MemberActivationStage,
+    pub status: StepStatus,
+    pub message: Option<String>,
 }
 
 /// Agent-scoped warning from the environment preflight check.

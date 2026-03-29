@@ -2339,5 +2339,46 @@ describe('ipc module', () => {
       expect(tauriEvent.listen).toHaveBeenCalledWith('coordination-step-progress', callback)
       expect(returned).toBe(unlisten)
     })
+
+    it('onCoordinationResumeTeamProgress listens to coordination-resume-team-progress', async () => {
+      const callback = vi.fn()
+      const unlisten = vi.fn()
+      tauriEvent.listen.mockResolvedValue(unlisten)
+
+      const returned = await ipc.onCoordinationResumeTeamProgress(callback)
+
+      expect(tauriEvent.listen).toHaveBeenCalledWith(
+        'coordination-resume-team-progress',
+        expect.any(Function)
+      )
+
+      const handler = tauriEvent.listen.mock.calls.at(-1)?.[1]
+      handler?.({
+        payload: {
+          operation: 'resume_team',
+          teamName: 'architecture-final',
+          memberName: 'frontend-dev',
+          memberIndex: 2,
+          memberCount: 3,
+          stage: 'launch_session',
+          status: 'running',
+          message: 'launching',
+        },
+      })
+
+      expect(callback).toHaveBeenCalledWith({
+        payload: {
+          operation: 'resume_team',
+          teamName: 'architecture-final',
+          memberName: 'frontend-dev',
+          memberIndex: 2,
+          memberCount: 3,
+          stage: 'launch_session',
+          status: 'running',
+          message: 'launching',
+        },
+      })
+      expect(returned).toBe(unlisten)
+    })
   })
 })
