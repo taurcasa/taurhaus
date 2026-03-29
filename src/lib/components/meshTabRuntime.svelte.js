@@ -181,7 +181,7 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
   if (!normalizedReport) return 'Team resume finished.'
   const resumedSummary = normalizedReport.resumedMembers.length
     ? `Resumed: ${normalizedReport.resumedMembers.join(', ')}.`
-    : 'No members needed resume.'
+    : 'All members were already running.'
   const failedSummary = normalizedReport.failedMembers.length
     ? `Failed: ${normalizedReport.failedMembers
         .map((entry) => `${entry?.memberName ?? 'unknown'}${entry?.message ? ` (${entry.message})` : ''}`)
@@ -191,20 +191,36 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
     return `Resume completed with failures. ${resumedSummary} ${failedSummary}`.trim()
   }
   if (!normalizedReport.resumedMembers.length) {
-    return 'No members needed resume.'
+    return 'All members were already running.'
   }
   if (normalizedReport.teamDaemonWarning) {
     return `Resume completed with a background service warning. ${resumedSummary}`.trim()
   }
-  if (normalizedReport.warnings.length > 0) {
-    return `Resume complete with notes. ${resumedSummary}`.trim()
-  }
   return `Resume complete. ${resumedSummary}`.trim()
+}
+
+function formatResumeWarning(warning) {
+  if (!warning) return ''
+  if (warning.includes(': created a replacement pane')) {
+    const [memberName] = warning.split(':', 1)
+    return `${memberName}: started a replacement terminal session.`
+  }
+  return warning.replaceAll('pane', 'terminal session')
 }
 
 function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
   const normalizedReport = normalizeResumeTeamReport(report)
   if (!normalizedReport) return ''
+  const formattedWarnings = normalizedReport.warnings
+    .map((warning) => formatResumeWarning(warning))
+    .filter(Boolean)
+  if (
+    normalizedReport.failedMembers.length === 0 &&
+    formattedWarnings.length === 0 &&
+    !normalizedReport.teamDaemonWarning
+  ) {
+    return ''
+  }
   const footerParts = []
   if (normalizedReport.teamDaemonWarning) {
     footerParts.push(`Team background service warning: ${normalizedReport.teamDaemonWarning}`)
@@ -213,12 +229,12 @@ function buildResumeFooterMessage(normalizeResumeTeamReport, report) {
   } else {
     footerParts.push('Team background service was already running.')
   }
-  if (normalizedReport.warnings.length > 0) {
+  if (formattedWarnings.length > 0) {
     const label =
       normalizedReport.failedMembers.length > 0 || normalizedReport.teamDaemonWarning
         ? 'Additional notes'
         : 'Notes'
-    footerParts.push(`${label}: ${normalizedReport.warnings.join(' ')}`)
+    footerParts.push(`${label}: ${formattedWarnings.join(' ')}`)
   }
   return footerParts.join(' ')
 }

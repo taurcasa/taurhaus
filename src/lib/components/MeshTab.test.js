@@ -720,12 +720,82 @@ describe('MeshTab', () => {
         'Team background service warning: could not verify the background service state'
       )
       expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
-        'Additional notes: frontend-dev: created a replacement pane'
+        'Additional notes: frontend-dev: started a replacement terminal session.'
       )
     })
   })
 
-  it('states clearly when no members needed resume', async () => {
+  it('shows clean success copy without a footer when only backend notes remain', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
+      buildRuntimeSnapshot({
+        teamRuntimeState: 'coldResume',
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            roleId: 'claude-orchestrator',
+            roleName: 'Claude Orchestrator',
+            focusArea: 'Team sequencing and escalation',
+            contextSummary: 'Keeps the full delivery plan and blocker state in view.',
+            behaviorSummary: 'Coordinates specialists and escalates blockers.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.4 high',
+            roleId: 'codex-architect',
+            roleName: 'Codex Architect',
+            focusArea: 'Architecture decisions and structural review',
+            contextSummary: 'Carries long-lived context around module boundaries and reviews.',
+            behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'offline',
+            paneId: '%2',
+          },
+        ],
+      })
+    )
+    coordinationResumeTeam.mockResolvedValueOnce({
+      teamName: 'architecture-final',
+      resumed: true,
+      totalMembers: 2,
+      resumedMembers: ['team-lead', 'frontend-dev'],
+      failedMembers: [],
+      warnings: ['frontend-dev: created a replacement pane'],
+      startedTeamDaemon: false,
+      teamDaemonWarning: null,
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-primary-action')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent(
+        'Resume complete. Resumed: team-lead, frontend-dev.'
+      )
+      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
+        'Notes: frontend-dev: started a replacement terminal session.'
+      )
+    })
+  })
+
+  it('states clearly when all members were already running', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
       buildRuntimeSnapshot({
         teamRuntimeState: 'coldResume',
@@ -773,11 +843,9 @@ describe('MeshTab', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mesh-runtime-resume-subtitle')).toHaveTextContent(
-        'No members needed resume.'
+        'All members were already running.'
       )
-      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
-        'Team background service was already running.'
-      )
+      expect(screen.queryByTestId('mesh-runtime-resume-footer')).not.toBeInTheDocument()
     })
   })
 
@@ -873,9 +941,7 @@ describe('MeshTab', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('mesh-runtime-resume-footer')).toHaveTextContent(
-        'Team background service started successfully.'
-      )
+      expect(screen.queryByTestId('mesh-runtime-resume-footer')).not.toBeInTheDocument()
     })
   })
 
