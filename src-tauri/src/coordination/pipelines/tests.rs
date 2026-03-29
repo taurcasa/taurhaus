@@ -215,6 +215,83 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
 }
 
 #[test]
+fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
+    let runtime = RecordingCoordinationRuntime::default();
+
+    let claude_joined = join_mesh_if_required(
+        &runtime,
+        "architecture-final",
+        "team-lead",
+        "/tmp/lead",
+        CliTool::Claude,
+    )
+    .expect("claude join result");
+    let codex_joined = join_mesh_if_required(
+        &runtime,
+        "architecture-final",
+        "builder",
+        "/tmp/builder",
+        CliTool::Codex,
+    )
+    .expect("codex join result");
+
+    assert!(!claude_joined, "Claude should keep the no-op join behavior");
+    assert!(codex_joined, "mesh-sidecar members should still join Mesh");
+
+    let calls = runtime.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::JoinMesh { .. }))
+            .count(),
+        1,
+        "only the mesh-sidecar member should issue join_mesh"
+    );
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::JoinMesh {
+            team_name,
+            member_name,
+            project_id,
+        } if team_name == "architecture-final"
+            && member_name == "builder"
+            && project_id == "/tmp/builder"
+    )));
+}
+
+#[test]
+fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
+    let runtime = RecordingCoordinationRuntime::default();
+    let mut warnings = Vec::new();
+
+    let daemon_pid = start_member_daemon_if_required(
+        &runtime,
+        "architecture-final",
+        "builder",
+        "%11",
+        CliTool::Codex,
+        MemberDaemonStartPolicy::ReplaceStalePid {
+            previous_daemon_pid: Some(55),
+        },
+        Some(&mut warnings),
+    )
+    .expect("daemon start result");
+
+    assert_eq!(daemon_pid, Some(10000));
+    assert!(warnings.is_empty(), "successful stale-pid replacement should stay quiet");
+
+    let calls = runtime.calls();
+    assert!(calls
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid } if *pid == 55)));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnDaemon { pane_id, team_name, member_name }
+            if pane_id == "%11" && team_name == "architecture-final" && member_name == "builder"
+    )));
+}
+
+#[test]
 fn member_from_agent_setup_maps_role_template_context() {
     let mut setup = setup_config("codex-dev", "codex", "gpt-5.3", "/tmp/project");
     setup.description = Some("fallback instructions".to_string());

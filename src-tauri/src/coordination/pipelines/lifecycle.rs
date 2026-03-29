@@ -127,12 +127,13 @@ impl CoordinationOrchestrator {
         runtime_state: &mut PendingResumeState,
     ) -> Result<(), CoordinationError> {
         let project_id = member.project_path.display().to_string();
-        self.runtime.join_mesh(
+        runtime_state.mesh_joined = join_mesh_if_required(
+            self.runtime.as_ref(),
             &request.team_name,
             &request.member_name,
             project_id.as_str(),
+            member.cli_tool,
         )?;
-        runtime_state.mesh_joined = true;
         Ok(())
     }
 
@@ -145,16 +146,20 @@ impl CoordinationOrchestrator {
         runtime_state: &mut PendingResumeState,
         warnings: &mut Vec<String>,
     ) -> Result<(), CoordinationError> {
-        if let Some(pid) = previous_daemon_pid {
-            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                warnings.push(format!("failed to terminate stale daemon pid {pid}: {err}"));
-            }
+        if let Some(new_pid) = start_member_daemon_if_required(
+            self.runtime.as_ref(),
+            &request.team_name,
+            &member.name,
+            pane_id,
+            member.cli_tool,
+            MemberDaemonStartPolicy::ReplaceStalePid {
+                previous_daemon_pid,
+            },
+            Some(warnings),
+        )? {
+            runtime_state.daemon_pid = Some(new_pid);
+            runtime_state.new_daemon_pid = Some(new_pid);
         }
-        let new_pid = self
-            .runtime
-            .spawn_mesh_daemon(pane_id, &request.team_name, &member.name)?;
-        runtime_state.daemon_pid = Some(new_pid);
-        runtime_state.new_daemon_pid = Some(new_pid);
         Ok(())
     }
 
@@ -267,15 +272,13 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
-        if !should_use_mesh_sidecar(&request.agent)? {
-            return Ok(());
-        }
-        self.runtime.join_mesh(
+        runtime_state.mesh_joined = join_mesh_if_required(
+            self.runtime.as_ref(),
             &request.team_name,
             &request.agent.name,
             &request.agent.project_id,
+            parse_cli_tool(&request.agent.cli_tool)?,
         )?;
-        runtime_state.mesh_joined = true;
         Ok(())
     }
 
@@ -284,7 +287,8 @@ impl CoordinationOrchestrator {
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
     ) -> Result<(), CoordinationError> {
-        if !should_use_mesh_sidecar(&request.agent)? {
+        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
+        if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
             return Ok(());
         }
         let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
@@ -293,17 +297,17 @@ impl CoordinationOrchestrator {
                 request.agent.name, request.team_name
             ))
         })?;
-        let pid =
-            self.runtime
-                .spawn_mesh_daemon(pane_id, &request.team_name, &request.agent.name)?;
-        runtime_state.daemon_pid = Some(pid);
-        tracing::info!(
-            team = %request.team_name,
-            member = %request.agent.name,
-            pane_id = %pane_id,
-            pid = pid,
-            "mesh daemon started"
-        );
+        if let Some(pid) = start_member_daemon_if_required(
+            self.runtime.as_ref(),
+            &request.team_name,
+            &request.agent.name,
+            pane_id,
+            cli_tool,
+            MemberDaemonStartPolicy::StartFresh,
+            None,
+        )? {
+            runtime_state.daemon_pid = Some(pid);
+        }
         Ok(())
     }
 
