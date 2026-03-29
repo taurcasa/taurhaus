@@ -1,5 +1,7 @@
+#[cfg(test)]
+use crate::commands::coordination_types::InitializeReport;
 use crate::commands::coordination_types::{
-    AddAgentReport, InitializeReport, MemberActivationStage, ResumeTeamProgressEvent, StepProgress,
+    AddAgentReport, MemberActivationStage, ResumeTeamProgressEvent, StepProgress,
     StepProgressEvent, StepStatus,
 };
 use crate::coordination::requests::canonical_member_activation_stages;
@@ -24,8 +26,10 @@ pub(super) fn emit_progress_events(
     }
 }
 
+#[cfg(test)]
 pub(super) fn initialize_progress_events(report: &InitializeReport) -> Vec<StepProgressEvent> {
-    progress_events_for_steps(&report.team_name, "initialize_team", &report.steps)
+    let adapter = InitializeBatchStageProgressAdapter::new(&report.team_name);
+    progress_events_for_steps_with_adapter(&adapter, &report.steps)
 }
 
 pub(super) fn add_agent_progress_events(report: &AddAgentReport) -> Vec<StepProgressEvent> {
@@ -87,6 +91,44 @@ pub(super) fn initialize_step_for_member_stage(
     }
 }
 
+pub(super) struct InitializeBatchStageProgressAdapter<'a> {
+    team_name: &'a str,
+}
+
+impl<'a> InitializeBatchStageProgressAdapter<'a> {
+    pub(super) fn new(team_name: &'a str) -> Self {
+        Self { team_name }
+    }
+
+    pub(super) fn event(
+        &self,
+        step: &str,
+        status: StepStatus,
+        message: Option<String>,
+    ) -> StepProgressEvent {
+        StepProgressEvent {
+            team_name: self.team_name.to_string(),
+            operation: "initialize_team".to_string(),
+            progress: StepProgress {
+                step: step.to_string(),
+                status,
+                message,
+            },
+            canonical_stages: canonical_stages_for_operation_step("initialize_team", step),
+        }
+    }
+
+    pub(super) fn emit(
+        &self,
+        step: &str,
+        status: StepStatus,
+        message: Option<String>,
+        emit: &mut Option<&mut dyn FnMut(&StepProgressEvent)>,
+    ) {
+        emit_progress_event(self.event(step, status, message), emit);
+    }
+}
+
 fn progress_events_for_steps(
     team_name: &str,
     operation: &str,
@@ -120,6 +162,19 @@ fn progress_events_for_steps(
             progress: progress.clone(),
             canonical_stages,
         });
+    }
+    events
+}
+
+#[cfg(test)]
+fn progress_events_for_steps_with_adapter(
+    adapter: &InitializeBatchStageProgressAdapter<'_>,
+    steps: &[StepProgress],
+) -> Vec<StepProgressEvent> {
+    let mut events = Vec::new();
+    for progress in steps {
+        events.push(adapter.event(&progress.step, StepStatus::Running, None));
+        events.push(adapter.event(&progress.step, progress.status, progress.message.clone()));
     }
     events
 }

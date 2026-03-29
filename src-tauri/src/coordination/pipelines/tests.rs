@@ -1830,6 +1830,51 @@ fn initialize_pipeline_seeds_full_roster_before_reload_dependent_steps() {
 }
 
 #[test]
+fn initialize_pipeline_progress_callback_preserves_batch_step_order() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+        agents: vec![setup_config(
+            "builder",
+            "claude",
+            "claude-opus-4-6",
+            "/tmp/builder",
+        )],
+    };
+
+    let mut emitted = Vec::new();
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout_and_progress(
+            &request,
+            &CliCommandSettings::default(),
+            "new_window",
+            Some(&mut |step, status, message| {
+                emitted.push((step.to_string(), status, message));
+            }),
+        )
+        .expect("initialize report");
+
+    assert_eq!(emitted.len(), report.steps.len() * 2);
+    for (idx, step) in report.steps.iter().enumerate() {
+        let running = &emitted[idx * 2];
+        let completed = &emitted[idx * 2 + 1];
+        assert_eq!(running.0, step.step);
+        assert_eq!(running.1, StepStatus::Running);
+        assert_eq!(running.2, None);
+        assert_eq!(completed.0, step.step);
+        assert_eq!(completed.1, step.status);
+        assert_eq!(completed.2.as_deref(), step.message.as_deref());
+    }
+}
+
+#[test]
 fn load_resume_member_state_preserves_role_template_context() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

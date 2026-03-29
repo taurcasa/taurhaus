@@ -403,17 +403,21 @@ fn coordination_initialize_team_internal(
     request: InitializeTeamRequest,
     cli_commands: &CliCommandSettings,
     tmux_layout: &str,
-    emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
+    mut emit: Option<&mut dyn FnMut(&StepProgressEvent)>,
 ) -> Result<InitializeReport, String> {
     let request = hydrate_initialize_request_role_metadata(state, request)?;
     validate_initialize_request_fields(&request)?;
     let contract_request = map_initialize_request_to_contract(&request);
     let report = state
         .with_orchestrator(|orchestrator| {
-            orchestrator.initialize_team_with_cli_commands_and_layout(
+            orchestrator.initialize_team_with_cli_commands_and_layout_and_progress(
                 &contract_request,
                 cli_commands,
                 tmux_layout,
+                Some(&mut |step, status, message| {
+                    let adapter = InitializeBatchStageProgressAdapter::new(&request.team_name);
+                    adapter.emit(step, status, message, &mut emit);
+                }),
             )
         })
         .map(map_initialize_report_from_contract)
@@ -431,7 +435,6 @@ fn coordination_initialize_team_internal(
         sync_active_team_projects_after_change(state, &report.team_name)
             .map_err(map_coordination_error)?;
     }
-    emit_progress_events(initialize_progress_events(&report), emit);
     Ok(report)
 }
 

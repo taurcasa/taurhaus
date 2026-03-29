@@ -9,7 +9,9 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::pipelines::members::InitializeMemberActivationStage;
-use crate::coordination::requests::{InitializeReport, InitializeTeamRequest, LeadMode};
+use crate::coordination::requests::{
+    InitializeReport, InitializeTeamRequest, LeadMode, StepProgress, StepStatus,
+};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 use crate::coordination::validation::{validate_non_empty, validate_team_name};
 use crate::models::CliCommandSettings;
@@ -41,51 +43,79 @@ impl CoordinationOrchestrator {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<InitializeReport, CoordinationError> {
+        self.initialize_team_with_cli_commands_and_layout_and_progress(
+            request,
+            cli_commands,
+            tmux_layout,
+            None,
+        )
+    }
+
+    pub fn initialize_team_with_cli_commands_and_layout_and_progress(
+        &mut self,
+        request: &InitializeTeamRequest,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        mut emit_progress: Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+    ) -> Result<InitializeReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
 
+        emit_initialize_step_progress(
+            "validate_configuration",
+            StepStatus::Running,
+            None,
+            &mut emit_progress,
+        );
         if let Err(err) = self.validate_initialize_configuration(request) {
-            return Ok(failed_initialize_report(
+            return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
                 "validate_configuration",
                 err,
                 succeeded_steps,
                 &mut steps,
+                &mut emit_progress,
             ));
         }
-        mark_step_succeeded(
+        mark_initialize_step_succeeded(
             "validate_configuration",
             "configuration validated",
             &mut succeeded_steps,
             &mut steps,
+            &mut emit_progress,
         );
 
+        emit_initialize_step_progress("create_team", StepStatus::Running, None, &mut emit_progress);
         if let Err(err) = self.create_team(&request.team_name, request.team_description.clone()) {
-            return Ok(failed_initialize_report(
+            return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
                 "create_team",
                 err,
                 succeeded_steps,
                 &mut steps,
+                &mut emit_progress,
             ));
         }
-        mark_step_succeeded(
+        mark_initialize_step_succeeded(
             "create_team",
             "team created",
             &mut succeeded_steps,
             &mut steps,
+            &mut emit_progress,
         );
 
+        emit_initialize_step_progress("add_lead", StepStatus::Running, None, &mut emit_progress);
         let lead_member = match member_from_agent_setup(&request.lead, MemberRole::Lead) {
             Ok(member) => member,
             Err(err) => {
                 self.cleanup_initialize_failure(&request.team_name);
-                return Ok(failed_initialize_report(
+                return Ok(failed_initialize_report_with_progress(
                     &request.team_name,
                     "add_lead",
                     err,
                     succeeded_steps,
                     &mut steps,
+                    &mut emit_progress,
                 ));
             }
         };
@@ -98,12 +128,13 @@ impl CoordinationOrchestrator {
             Ok(members) => members,
             Err(err) => {
                 self.cleanup_initialize_failure(&request.team_name);
-                return Ok(failed_initialize_report(
+                return Ok(failed_initialize_report_with_progress(
                     &request.team_name,
                     "add_lead",
                     err,
                     succeeded_steps,
                     &mut steps,
+                    &mut emit_progress,
                 ));
             }
         };
@@ -114,15 +145,22 @@ impl CoordinationOrchestrator {
             &agent_members,
         ) {
             self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
+            return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
                 "add_lead",
                 err,
                 succeeded_steps,
                 &mut steps,
+                &mut emit_progress,
             ));
         }
-        mark_step_succeeded("add_lead", "lead added", &mut succeeded_steps, &mut steps);
+        mark_initialize_step_succeeded(
+            "add_lead",
+            "lead added",
+            &mut succeeded_steps,
+            &mut steps,
+            &mut emit_progress,
+        );
 
         let total_members = 1 + request.agents.len();
         let mut per_project_anchor_panes = std::collections::HashMap::<String, String>::new();
@@ -135,139 +173,125 @@ impl CoordinationOrchestrator {
                 .map(|agent| (agent, MemberRole::Agent)),
         );
 
-        for (member, role) in &initialize_members {
-            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
-                request,
-                member,
-                *role,
-                InitializeMemberActivationStage::CreatePanes,
-                cli_commands,
-                tmux_layout,
-                &mut per_project_anchor_panes,
-            ) {
-                self.cleanup_initialize_failure(&request.team_name);
-                return Ok(failed_initialize_report(
-                    &request.team_name,
-                    &failed_step,
-                    err,
-                    succeeded_steps,
-                    &mut steps,
-                ));
-            }
-        }
-        mark_step_succeeded(
+        if let Err((failed_step, err)) = self.run_initialize_stage_pass(
+            request,
+            &initialize_members,
             "create_panes",
-            initialize_stage_success_message("create_panes"),
+            InitializeMemberActivationStage::CreatePanes,
+            cli_commands,
+            tmux_layout,
+            &mut per_project_anchor_panes,
             &mut succeeded_steps,
             &mut steps,
-        );
-
-        for (member, role) in &initialize_members {
-            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
-                request,
-                member,
-                *role,
-                InitializeMemberActivationStage::LaunchSessions,
-                cli_commands,
-                tmux_layout,
-                &mut per_project_anchor_panes,
-            ) {
-                self.cleanup_initialize_failure(&request.team_name);
-                return Ok(failed_initialize_report(
-                    &request.team_name,
-                    &failed_step,
-                    err,
-                    succeeded_steps,
-                    &mut steps,
-                ));
-            }
-        }
-        if let Err(err) = self.sync_team_config_metadata(&request.team_name) {
+            &mut emit_progress,
+            |_| Ok(()),
+        ) {
             self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
+            return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
-                "launch_sessions",
+                &failed_step,
                 err,
                 succeeded_steps,
                 &mut steps,
+                &mut emit_progress,
             ));
         }
-        mark_step_succeeded(
+
+        if let Err((failed_step, err)) = self.run_initialize_stage_pass(
+            request,
+            &initialize_members,
             "launch_sessions",
-            initialize_stage_success_message("launch_sessions"),
+            InitializeMemberActivationStage::LaunchSessions,
+            cli_commands,
+            tmux_layout,
+            &mut per_project_anchor_panes,
             &mut succeeded_steps,
             &mut steps,
-        );
-
-        for (member, role) in &initialize_members {
-            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
-                request,
-                member,
-                *role,
-                InitializeMemberActivationStage::JoinMesh,
-                cli_commands,
-                tmux_layout,
-                &mut per_project_anchor_panes,
-            ) {
-                self.cleanup_initialize_failure(&request.team_name);
-                return Ok(failed_initialize_report(
-                    &request.team_name,
-                    &failed_step,
-                    err,
-                    succeeded_steps,
-                    &mut steps,
-                ));
-            }
+            &mut emit_progress,
+            |orchestrator| orchestrator.sync_team_config_metadata(&request.team_name),
+        ) {
+            self.cleanup_initialize_failure(&request.team_name);
+            return Ok(failed_initialize_report_with_progress(
+                &request.team_name,
+                &failed_step,
+                err,
+                succeeded_steps,
+                &mut steps,
+                &mut emit_progress,
+            ));
         }
-        mark_step_succeeded(
+
+        if let Err((failed_step, err)) = self.run_initialize_stage_pass(
+            request,
+            &initialize_members,
             "join_mesh",
-            initialize_stage_success_message("join_mesh"),
+            InitializeMemberActivationStage::JoinMesh,
+            cli_commands,
+            tmux_layout,
+            &mut per_project_anchor_panes,
             &mut succeeded_steps,
             &mut steps,
-        );
-
-        for (member, role) in &initialize_members {
-            if let Err((failed_step, err)) = self.activate_initialize_member_stage(
-                request,
-                member,
-                *role,
-                InitializeMemberActivationStage::StartDaemons,
-                cli_commands,
-                tmux_layout,
-                &mut per_project_anchor_panes,
-            ) {
-                self.cleanup_initialize_failure(&request.team_name);
-                return Ok(failed_initialize_report(
-                    &request.team_name,
-                    &failed_step,
-                    err,
-                    succeeded_steps,
-                    &mut steps,
-                ));
-            }
+            &mut emit_progress,
+            |_| Ok(()),
+        ) {
+            self.cleanup_initialize_failure(&request.team_name);
+            return Ok(failed_initialize_report_with_progress(
+                &request.team_name,
+                &failed_step,
+                err,
+                succeeded_steps,
+                &mut steps,
+                &mut emit_progress,
+            ));
         }
-        mark_step_succeeded(
+
+        if let Err((failed_step, err)) = self.run_initialize_stage_pass(
+            request,
+            &initialize_members,
             "start_daemons",
-            initialize_stage_success_message("start_daemons"),
+            InitializeMemberActivationStage::StartDaemons,
+            cli_commands,
+            tmux_layout,
+            &mut per_project_anchor_panes,
             &mut succeeded_steps,
             &mut steps,
-        );
+            &mut emit_progress,
+            |_| Ok(()),
+        ) {
+            self.cleanup_initialize_failure(&request.team_name);
+            return Ok(failed_initialize_report_with_progress(
+                &request.team_name,
+                &failed_step,
+                err,
+                succeeded_steps,
+                &mut steps,
+                &mut emit_progress,
+            ));
+        }
 
+        emit_initialize_step_progress(
+            "send_onboarding",
+            StepStatus::Running,
+            None,
+            &mut emit_progress,
+        );
         if let Err(err) = self.send_onboarding_messages(request) {
             self.cleanup_initialize_failure(&request.team_name);
-            return Ok(failed_initialize_report(
+            return Ok(failed_initialize_report_with_progress(
                 &request.team_name,
                 "send_onboarding",
                 err,
                 succeeded_steps,
                 &mut steps,
+                &mut emit_progress,
             ));
         }
-        mark_step_succeeded(
+        mark_initialize_step_succeeded(
             "send_onboarding",
             "onboarding messages sent",
             &mut succeeded_steps,
             &mut steps,
+            &mut emit_progress,
         );
 
         self.ensure_team_daemon_after_initialize(request);
@@ -443,6 +467,90 @@ impl CoordinationOrchestrator {
         let entries = self.prepare_initialize_onboarding_entries(request)?;
         self.deliver_onboarding_entries(entries)
     }
+
+    fn run_initialize_stage_pass<F>(
+        &mut self,
+        request: &InitializeTeamRequest,
+        initialize_members: &[(&crate::coordination::requests::AgentSetupConfig, MemberRole)],
+        step: &str,
+        activation_stage: InitializeMemberActivationStage,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
+        succeeded_steps: &mut Vec<String>,
+        steps: &mut Vec<StepProgress>,
+        emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+        after_stage: F,
+    ) -> Result<(), (String, CoordinationError)>
+    where
+        F: FnOnce(&mut CoordinationOrchestrator) -> Result<(), CoordinationError>,
+    {
+        emit_initialize_step_progress(step, StepStatus::Running, None, emit_progress);
+        for (member, role) in initialize_members {
+            self.activate_initialize_member_stage(
+                request,
+                member,
+                *role,
+                activation_stage,
+                cli_commands,
+                tmux_layout,
+                per_project_anchor_panes,
+            )?;
+        }
+        after_stage(self).map_err(|err| (step.to_string(), err))?;
+        mark_initialize_step_succeeded(
+            step,
+            initialize_stage_success_message(step),
+            succeeded_steps,
+            steps,
+            emit_progress,
+        );
+        Ok(())
+    }
+}
+
+fn emit_initialize_step_progress(
+    step: &str,
+    status: StepStatus,
+    message: Option<String>,
+    emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+) {
+    if let Some(emit) = emit_progress.as_deref_mut() {
+        emit(step, status, message);
+    }
+}
+
+fn mark_initialize_step_succeeded(
+    step: &str,
+    message: &str,
+    succeeded_steps: &mut Vec<String>,
+    steps: &mut Vec<StepProgress>,
+    emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+) {
+    mark_step_succeeded(step, message, succeeded_steps, steps);
+    emit_initialize_step_progress(
+        step,
+        StepStatus::Succeeded,
+        Some(message.to_string()),
+        emit_progress,
+    );
+}
+
+fn failed_initialize_report_with_progress(
+    team_name: &str,
+    step: &str,
+    err: CoordinationError,
+    succeeded_steps: Vec<String>,
+    steps: &mut Vec<StepProgress>,
+    emit_progress: &mut Option<&mut dyn FnMut(&str, StepStatus, Option<String>)>,
+) -> InitializeReport {
+    emit_initialize_step_progress(
+        step,
+        StepStatus::Failed,
+        Some(err.to_string()),
+        emit_progress,
+    );
+    failed_initialize_report(team_name, step, err, succeeded_steps, steps)
 }
 
 fn initialize_stage_success_message(stage: &str) -> &'static str {
