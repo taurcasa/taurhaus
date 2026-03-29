@@ -18,6 +18,12 @@ use crate::coordination::validation::{
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResumeTeamDaemonOwnership {
+    Wrapper,
+    Caller,
+}
+
 impl CoordinationOrchestrator {
     pub fn add_agent_to_team(
         &mut self,
@@ -175,7 +181,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        self.ensure_team_daemon_running_best_effort(&request.team_name);
+        self.ensure_team_daemon_after_add_agent(request);
 
         Ok(AddAgentReport {
             team_name: request.team_name.clone(),
@@ -238,9 +244,32 @@ impl CoordinationOrchestrator {
         tmux_layout: &str,
         member_index: usize,
         member_count: usize,
+        emit_progress: Option<
+            &mut dyn FnMut(&str, usize, usize, MemberActivationStage, StepStatus, Option<String>),
+        >,
+    ) -> Result<ResumeAgentReport, CoordinationError> {
+        self.resume_member_with_cli_commands_and_layout_and_progress_owned(
+            request,
+            cli_commands,
+            tmux_layout,
+            member_index,
+            member_count,
+            emit_progress,
+            ResumeTeamDaemonOwnership::Wrapper,
+        )
+    }
+
+    pub(crate) fn resume_member_with_cli_commands_and_layout_and_progress_owned(
+        &mut self,
+        request: &ResumeMemberRequest,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        member_index: usize,
+        member_count: usize,
         mut emit_progress: Option<
             &mut dyn FnMut(&str, usize, usize, MemberActivationStage, StepStatus, Option<String>),
         >,
+        team_daemon_ownership: ResumeTeamDaemonOwnership,
     ) -> Result<ResumeAgentReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
         let mut steps = Vec::new();
@@ -631,7 +660,9 @@ impl CoordinationOrchestrator {
             Some("runtime state updated".to_string()),
         );
 
-        self.ensure_team_daemon_running_best_effort(&request.team_name);
+        if team_daemon_ownership == ResumeTeamDaemonOwnership::Wrapper {
+            self.ensure_team_daemon_after_resume_member(request);
+        }
 
         Ok(ResumeAgentReport {
             team_name: request.team_name.clone(),

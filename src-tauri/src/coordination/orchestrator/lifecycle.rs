@@ -5,9 +5,10 @@ use crate::coordination::audit::{
 };
 use crate::coordination::domain::{HealthState, Member, MemberRole, Team};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::pipelines::ResumeTeamDaemonOwnership;
 use crate::coordination::requests::{
-    MemberActivationStage, OperatorNoticeDelivery, ResumeMemberRequest,
-    ResumeTeamMemberFailure, ResumeTeamReport, StepStatus,
+    MemberActivationStage, OperatorNoticeDelivery, ResumeMemberRequest, ResumeTeamMemberFailure,
+    ResumeTeamReport, StepStatus,
 };
 use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::stores::{
@@ -333,14 +334,7 @@ impl CoordinationOrchestrator {
         cli_commands: &crate::models::CliCommandSettings,
         tmux_layout: &str,
         mut emit_progress: Option<
-            &mut dyn FnMut(
-                &str,
-                usize,
-                usize,
-                MemberActivationStage,
-                StepStatus,
-                Option<String>,
-            ),
+            &mut dyn FnMut(&str, usize, usize, MemberActivationStage, StepStatus, Option<String>),
         >,
     ) -> Result<ResumeTeamReport, CoordinationError> {
         validate_team_name(&request.team_name)?;
@@ -376,13 +370,14 @@ impl CoordinationOrchestrator {
                 team_name: request.team_name.clone(),
                 member_name: member.name.clone(),
             };
-            let report = self.resume_member_with_cli_commands_and_layout_and_progress(
+            let report = self.resume_member_with_cli_commands_and_layout_and_progress_owned(
                 &member_request,
                 cli_commands,
                 tmux_layout,
                 index + 1,
                 total_members,
                 Some(&mut forward_member_progress),
+                ResumeTeamDaemonOwnership::Caller,
             )?;
 
             warnings.extend(
@@ -403,30 +398,8 @@ impl CoordinationOrchestrator {
             }
         }
 
-        let operator_name = self.team_daemon_operator_name(&request.team_name)?;
-        let (started_team_daemon, team_daemon_warning) = match self
-            .runtime
-            .spawn_team_daemon(&request.team_name, &operator_name)
-        {
-            Ok(pid) => {
-                tracing::info!(
-                    team = %request.team_name,
-                    operator = %operator_name,
-                    pid = pid,
-                    "team daemon ensured running after team resume"
-                );
-                (true, None)
-            }
-            Err(err) => {
-                tracing::warn!(
-                    team = %request.team_name,
-                    operator = %operator_name,
-                    error = %err,
-                    "failed to ensure team daemon is running after team resume"
-                );
-                (false, Some(err.to_string()))
-            }
-        };
+        let (started_team_daemon, team_daemon_warning) =
+            self.ensure_team_daemon_after_resume_team(request)?;
 
         Ok(ResumeTeamReport {
             team_name: request.team_name.clone(),

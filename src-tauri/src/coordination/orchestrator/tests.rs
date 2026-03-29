@@ -1001,13 +1001,19 @@ fn resume_team_lead_first_then_same_project_then_cross_project() {
         join_order,
         vec!["builder".to_string(), "reviewer".to_string()]
     );
-    assert!(calls.iter().any(|call| matches!(
-        call,
-        RuntimeCall::SpawnTeamDaemon {
-            team_name,
-            operator_name,
-        } if team_name == "architecture-final" && operator_name == "team-lead"
-    )));
+    let team_daemon_spawns = calls
+        .iter()
+        .filter(|call| {
+            matches!(
+                call,
+                RuntimeCall::SpawnTeamDaemon {
+                    team_name,
+                    operator_name,
+                } if team_name == "architecture-final" && operator_name == "team-lead"
+            )
+        })
+        .count();
+    assert_eq!(team_daemon_spawns, 1);
 }
 
 #[test]
@@ -3853,7 +3859,7 @@ fn initialize_team_steps_are_ordered() {
 #[test]
 fn add_agent_to_team_full_success() {
     let tmp = TempDir::new().expect("tempdir");
-    let mut orchestrator = new_orchestrator(&tmp);
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
     let team_name = "architecture-final-hot-add";
     create_running_team(&mut orchestrator, team_name);
     let request = add_agent_request(team_name, "new-agent", "codex");
@@ -3885,6 +3891,13 @@ fn add_agent_to_team_full_success() {
         .members
         .iter()
         .any(|member| member.name == "new-agent"));
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnTeamDaemon {
+            team_name,
+            operator_name,
+        } if team_name == "architecture-final-hot-add" && operator_name == "team-lead"
+    )));
 }
 
 #[test]

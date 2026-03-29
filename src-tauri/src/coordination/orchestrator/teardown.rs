@@ -2,7 +2,10 @@ use std::path::Path;
 
 use crate::coordination::domain::MemberRole;
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::requests::{TeardownMode, TeardownRequest};
+use crate::coordination::requests::{
+    AddAgentRequest, InitializeTeamRequest, ResumeMemberRequest, ResumeTeamRequest, TeardownMode,
+    TeardownRequest,
+};
 use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
 
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
@@ -309,7 +312,63 @@ impl CoordinationOrchestrator {
         }
     }
 
-    pub(super) fn team_daemon_operator_name(
+    pub(crate) fn ensure_team_daemon_for_wrapper(
+        &self,
+        team_name: &str,
+    ) -> Result<(bool, Option<String>), CoordinationError> {
+        let operator_name = self.team_daemon_operator_name(team_name)?;
+        match self.runtime.spawn_team_daemon(team_name, &operator_name) {
+            Ok(pid) => {
+                tracing::info!(
+                    team = %team_name,
+                    operator = %operator_name,
+                    pid = pid,
+                    "team daemon ensured running after coordination wrapper"
+                );
+                Ok((true, None))
+            }
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    operator = %operator_name,
+                    error = %err,
+                    "failed to ensure team daemon is running after coordination wrapper"
+                );
+                Ok((false, Some(err.to_string())))
+            }
+        }
+    }
+
+    pub(crate) fn ensure_team_daemon_for_wrapper_best_effort(&self, team_name: &str) {
+        if let Err(err) = self.ensure_team_daemon_for_wrapper(team_name) {
+            tracing::warn!(
+                team = %team_name,
+                error = %err,
+                "failed to resolve team daemon operator after coordination wrapper"
+            );
+        }
+    }
+
+    pub(crate) fn ensure_team_daemon_after_initialize(&self, request: &InitializeTeamRequest) {
+        self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
+    }
+
+    pub(crate) fn ensure_team_daemon_after_add_agent(&self, request: &AddAgentRequest) {
+        self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
+    }
+
+    pub(crate) fn ensure_team_daemon_after_resume_member(&self, request: &ResumeMemberRequest) {
+        self.ensure_team_daemon_for_wrapper_best_effort(&request.team_name);
+    }
+
+    pub(crate) fn ensure_team_daemon_after_resume_team(
+        &self,
+        request: &ResumeTeamRequest,
+    ) -> Result<(bool, Option<String>), CoordinationError> {
+        self.ensure_team_daemon_for_wrapper(&request.team_name)
+    }
+
+    pub(crate) fn team_daemon_operator_name(
         &self,
         team_name: &str,
     ) -> Result<String, CoordinationError> {
