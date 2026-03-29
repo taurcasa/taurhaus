@@ -280,9 +280,8 @@ impl TeamConfigStore {
         config: &TeamConfig,
     ) -> Result<(), CoordinationError> {
         let lock_path = team_dir(teams_dir, team_name).join(".lock");
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).map_err(|err| {
-            log_config_store_error("lock", &lock_path, &err, None);
-            err
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
+            log_config_store_error("lock", &lock_path, err, None);
         })?;
 
         let mut normalized = config.clone();

@@ -420,13 +420,11 @@ impl CoordinationOrchestrator {
         team_name: &str,
     ) -> Result<(), CoordinationError> {
         let config_path = self.teams_dir.join(team_name).join("config.json");
-        let config = TeamConfigStore::load(&self.teams_dir, team_name).map_err(|err| {
-            log_team_config_sync_error(team_name, "load", &config_path, &err);
-            err
+        let config = TeamConfigStore::load(&self.teams_dir, team_name).inspect_err(|err| {
+            log_team_config_sync_error(team_name, "load", &config_path, err);
         })?;
-        TeamConfigStore::save(&self.teams_dir, team_name, &config).map_err(|err| {
-            log_team_config_sync_error(team_name, "save", &config_path, &err);
-            err
+        TeamConfigStore::save(&self.teams_dir, team_name, &config).inspect_err(|err| {
+            log_team_config_sync_error(team_name, "save", &config_path, err);
         })
     }
 }
