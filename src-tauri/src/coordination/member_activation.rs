@@ -48,6 +48,7 @@ pub struct MemberIdentity {
     pub name: String,
     pub role: MemberRole,
     pub cli_tool: CliTool,
+    pub model: String,
     pub project_path: PathBuf,
 }
 
@@ -115,6 +116,7 @@ impl MemberActivationContext {
                 name: member.name.clone(),
                 role: member.role,
                 cli_tool: member.cli_tool,
+                model: String::new(),
                 project_path: member.project_path.clone(),
             },
             pane_policy: MemberActivationPanePolicy::ReuseOrCreate,
@@ -135,6 +137,7 @@ fn member_identity_from_agent_setup(
         name: member.name.clone(),
         role,
         cli_tool,
+        model: member.model.clone(),
         project_path: PathBuf::from(&member.project_id),
     })
 }
@@ -189,6 +192,7 @@ mod tests {
         assert_eq!(context.member.name, "frontend-dev");
         assert_eq!(context.member.role, MemberRole::Agent);
         assert_eq!(context.member.cli_tool, CliTool::Codex);
+        assert_eq!(context.member.model, "gpt-5.4");
         assert_eq!(context.member.project_path, PathBuf::from("/tmp/taurhaus"));
         assert_eq!(context.pane_policy, MemberActivationPanePolicy::CreateNew);
         assert_eq!(
@@ -216,6 +220,7 @@ mod tests {
         assert_eq!(context.operation, MemberActivationOperationKind::AddAgent);
         assert_eq!(context.member.role, MemberRole::Agent);
         assert_eq!(context.member.cli_tool, CliTool::Gemini);
+        assert_eq!(context.member.model, "gemini-2.5-pro");
         assert_eq!(context.pane_policy, MemberActivationPanePolicy::CreateNew);
         assert_eq!(
             context.delivery_policy,
@@ -264,6 +269,7 @@ mod tests {
         assert_eq!(context.member.name, "reviewer");
         assert_eq!(context.member.role, MemberRole::Agent);
         assert_eq!(context.member.cli_tool, CliTool::Claude);
+        assert_eq!(context.member.model, "");
         assert_eq!(context.member.project_path, PathBuf::from("/tmp/review"));
         assert_eq!(
             context.pane_policy,

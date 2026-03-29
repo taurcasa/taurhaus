@@ -1,15 +1,14 @@
 use super::*;
 
-use std::path::PathBuf;
-
 use chrono::Utc;
 
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, AgentSetupConfig, MemberActivationStage, ResumeAgentReport,
-    ResumeMemberRequest, StepStatus,
+    AddAgentReport, AddAgentRequest, MemberActivationStage, ResumeAgentReport, ResumeMemberRequest,
+    StepStatus,
 };
 use crate::coordination::runtime::{resolve_or_create_pane_for_member, PaneResolution};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
@@ -65,6 +64,9 @@ impl CoordinationOrchestrator {
             &mut succeeded_steps,
             &mut steps,
         );
+        let lead_name = self.load_team_lead_name(&request.team_name)?;
+        let activation_context =
+            MemberActivationContext::for_add_agent(&request.team_name, &lead_name, &request.agent)?;
 
         if let Err(err) =
             self.create_pane_for_agent(request, &mut runtime_state, cli_commands, tmux_layout)
@@ -86,7 +88,9 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        if let Err(err) = self.launch_session_for_agent(request, &mut runtime_state, cli_commands) {
+        if let Err(err) =
+            self.launch_session_for_agent(&activation_context, request, &mut runtime_state)
+        {
             self.cleanup_add_agent_failure(request, &runtime_state);
             return Ok(failed_add_agent_report(
                 &request.team_name,
@@ -235,14 +239,7 @@ impl CoordinationOrchestrator {
         member_index: usize,
         member_count: usize,
         mut emit_progress: Option<
-            &mut dyn FnMut(
-                &str,
-                usize,
-                usize,
-                MemberActivationStage,
-                StepStatus,
-                Option<String>,
-            ),
+            &mut dyn FnMut(&str, usize, usize, MemberActivationStage, StepStatus, Option<String>),
         >,
     ) -> Result<ResumeAgentReport, CoordinationError> {
         let mut succeeded_steps = Vec::new();
@@ -253,19 +250,23 @@ impl CoordinationOrchestrator {
 
         let mut emit_stage =
             |stage: MemberActivationStage, status: StepStatus, message: Option<String>| {
-            if let Some(emit) = emit_progress.as_deref_mut() {
-                emit(
-                    member_name,
-                    member_index,
-                    member_count,
-                    stage,
-                    status,
-                    message,
-                );
-            }
-        };
+                if let Some(emit) = emit_progress.as_deref_mut() {
+                    emit(
+                        member_name,
+                        member_index,
+                        member_count,
+                        stage,
+                        status,
+                        message,
+                    );
+                }
+            };
 
-        emit_stage(MemberActivationStage::PrepareMember, StepStatus::Running, None);
+        emit_stage(
+            MemberActivationStage::PrepareMember,
+            StepStatus::Running,
+            None,
+        );
         if let Err(err) = self.validate_resume_request(request) {
             emit_stage(
                 MemberActivationStage::PrepareMember,
@@ -291,7 +292,7 @@ impl CoordinationOrchestrator {
             &mut steps,
         );
 
-        let (member, mut runtime_record, lead_name) = match self.load_resume_member_state(request) {
+        let (member, runtime_record, lead_name) = match self.load_resume_member_state(request) {
             Ok(value) => value,
             Err(err) => {
                 emit_stage(
@@ -323,8 +324,14 @@ impl CoordinationOrchestrator {
             StepStatus::Succeeded,
             Some("member request and runtime state prepared".to_string()),
         );
+        let activation_context =
+            MemberActivationContext::for_resume_member(&request.team_name, &lead_name, &member);
 
-        emit_stage(MemberActivationStage::AcquirePane, StepStatus::Running, None);
+        emit_stage(
+            MemberActivationStage::AcquirePane,
+            StepStatus::Running,
+            None,
+        );
         let pane_resolution =
             match self.resolve_resume_pane(&member, Some(&runtime_record), tmux_layout) {
                 Ok(resolution) => resolution,
@@ -377,10 +384,12 @@ impl CoordinationOrchestrator {
         );
 
         let pane_id = pane_resolution.pane_id;
-        emit_stage(MemberActivationStage::LaunchSession, StepStatus::Running, None);
-        if let Err(err) =
-            self.launch_resume_session(request, &member, &pane_id, cli_commands, &mut runtime_state)
-        {
+        emit_stage(
+            MemberActivationStage::LaunchSession,
+            StepStatus::Running,
+            None,
+        );
+        if let Err(err) = self.launch_resume_session(&activation_context, &pane_id, cli_commands) {
             self.cleanup_resume_failure(request, &runtime_state);
             emit_stage(
                 MemberActivationStage::LaunchSession,
@@ -417,7 +426,7 @@ impl CoordinationOrchestrator {
             None,
         );
         if let Err(err) =
-            self.capture_resume_session_identity(&member, &pane_id, &mut runtime_state)
+            self.capture_resume_session_identity(&activation_context, &pane_id, &mut runtime_state)
         {
             self.cleanup_resume_failure(request, &runtime_state);
             emit_stage(
@@ -577,42 +586,21 @@ impl CoordinationOrchestrator {
             );
         }
 
-        runtime_record.pane_id = Some(pane_id.clone());
-        runtime_record.cli_tool.get_or_insert(member.cli_tool);
-        if runtime_record.project_path.is_none() {
-            runtime_record.project_path = Some(member.project_path.clone());
-        }
-        runtime_record.session_id = runtime_state.session_id.clone();
-        runtime_record.jsonl_path = runtime_state.jsonl_path.clone();
-        runtime_record.daemon_pid = runtime_state.daemon_pid;
-        runtime_record.attached_at = Some(Utc::now());
-        runtime_record.health = HealthState::Healthy;
-        emit_stage(MemberActivationStage::CommitRuntime, StepStatus::Running, None);
-        if let Err(err) = MemberRuntimeStore::save(
-            &self.teams_dir,
-            &request.team_name,
-            &request.member_name,
-            &runtime_record,
+        let context =
+            MemberActivationContext::for_resume_member(&request.team_name, &lead_name, &member);
+        emit_stage(
+            MemberActivationStage::CommitRuntime,
+            StepStatus::Running,
+            None,
+        );
+        if let Err(err) = self.commit_member_runtime(
+            &context,
+            RuntimeCommitPatch::from_pending_resume_state(
+                &runtime_state,
+                Utc::now(),
+                HealthState::Healthy,
+            ),
         ) {
-            self.cleanup_resume_failure(request, &runtime_state);
-            emit_stage(
-                MemberActivationStage::CommitRuntime,
-                StepStatus::Failed,
-                Some(err.to_string()),
-            );
-            return Ok(failed_resume_report(
-                &request.team_name,
-                &request.member_name,
-                "update_runtime",
-                err,
-                succeeded_steps,
-                &mut steps,
-                warnings,
-                Some(pane_id.clone()),
-                runtime_state.reused_pane,
-            ));
-        }
-        if let Err(err) = self.sync_team_config_metadata(&request.team_name) {
             self.cleanup_resume_failure(request, &runtime_state);
             emit_stage(
                 MemberActivationStage::CommitRuntime,
@@ -691,17 +679,22 @@ impl CoordinationOrchestrator {
         Ok(())
     }
 
+    fn load_team_lead_name(&self, team_name: &str) -> Result<String, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        Ok(config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string()))
+    }
+
     pub(super) fn load_resume_member_state(
         &self,
         request: &ResumeMemberRequest,
     ) -> Result<(Member, MemberRuntimeRecord, String), CoordinationError> {
         let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
-        let lead_name = config
-            .members
-            .iter()
-            .find(|member| member.role == MemberRole::Lead)
-            .map(|member| member.name.clone())
-            .unwrap_or_else(|| "team-lead".to_string());
+        let lead_name = self.load_team_lead_name(&request.team_name)?;
         let member = config
             .members
             .iter()
@@ -749,59 +742,33 @@ impl CoordinationOrchestrator {
 
     fn launch_resume_session(
         &self,
-        request: &ResumeMemberRequest,
-        member: &Member,
+        activation_context: &MemberActivationContext,
         pane_id: &str,
         cli_commands: &CliCommandSettings,
-        _runtime_state: &mut PendingResumeState,
     ) -> Result<(), CoordinationError> {
-        let agent = AgentSetupConfig {
-            name: member.name.clone(),
-            cli_tool: member.cli_tool.to_string(),
-            model: String::new(),
-            project_id: member.project_path.display().to_string(),
-            description: member.instructions.clone(),
-            role_id: member.role_id.clone(),
-            role_name: None,
-            focus_area: None,
-            context_summary: None,
-            behavior_summary: None,
-            communication_style: None,
-            runtime_compact_summary: None,
-            instructions: member.instructions.clone(),
-            behavioral_contract: member.behavioral_contract.clone(),
-            quality_gates: None,
-            definition_of_done: None,
-            phase_scope: None,
-            mode: None,
-            inherits_from: None,
-            required_artifacts: None,
-            capabilities: member.capabilities.clone(),
-        };
-        let launch_cmd =
-            build_resume_cli_launch_command(&agent, &request.team_name, member.role, cli_commands)?;
-        send_launch_command_with_retry(self.runtime.as_ref(), pane_id, launch_cmd.as_str())?;
-
+        run_member_session_phase(
+            self.runtime.as_ref(),
+            activation_context,
+            pane_id,
+            MemberSessionPhase::LaunchOnly(cli_commands),
+        )?;
         Ok(())
     }
 
     fn capture_resume_session_identity(
         &self,
-        member: &Member,
+        activation_context: &MemberActivationContext,
         pane_id: &str,
         runtime_state: &mut PendingResumeState,
     ) -> Result<(), CoordinationError> {
-        if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
-            let detected = self
-                .runtime
-                .detect_runtime_session(pane_id, member.cli_tool)?;
-            runtime_state.session_id = detected.session_id;
-            runtime_state.jsonl_path = detected.jsonl_path;
-        } else {
-            runtime_state.session_id = None;
-            runtime_state.jsonl_path = None;
-        }
-
+        let detected = run_member_session_phase(
+            self.runtime.as_ref(),
+            activation_context,
+            pane_id,
+            MemberSessionPhase::CaptureOnly,
+        )?;
+        runtime_state.session_id = detected.session_id;
+        runtime_state.jsonl_path = detected.jsonl_path;
         Ok(())
     }
 
@@ -837,9 +804,9 @@ impl CoordinationOrchestrator {
 
     fn launch_session_for_agent(
         &self,
+        activation_context: &MemberActivationContext,
         request: &AddAgentRequest,
         runtime_state: &mut PendingRuntimeState,
-        _cli_commands: &CliCommandSettings,
     ) -> Result<(), CoordinationError> {
         let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
             CoordinationError::Backend(format!(
@@ -847,40 +814,14 @@ impl CoordinationOrchestrator {
                 request.agent.name, request.team_name
             ))
         })?;
-        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
-        if matches!(cli_tool, CliTool::Claude | CliTool::Codex) {
-            let detected = self.runtime.detect_runtime_session(pane_id, cli_tool)?;
-            runtime_state.session_id = detected.session_id;
-            runtime_state.jsonl_path = detected.jsonl_path;
-        }
-        Ok(())
-    }
-
-    pub(super) fn capture_session_id_for_member(
-        &self,
-        team_name: &str,
-        member_name: &str,
-        pane_id: &str,
-        agent: &AgentSetupConfig,
-    ) -> Result<(), CoordinationError> {
-        let cli_tool = parse_cli_tool(&agent.cli_tool)?;
-        if !matches!(cli_tool, CliTool::Claude | CliTool::Codex) {
-            return Ok(());
-        }
-
-        let detected = self.runtime.detect_runtime_session(pane_id, cli_tool)?;
-        let Some(session_id) = detected.session_id else {
-            return Ok(());
-        };
-
-        let mut runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)?;
-        runtime.cli_tool.get_or_insert(cli_tool);
-        if runtime.project_path.is_none() {
-            runtime.project_path = Some(PathBuf::from(&agent.project_id));
-        }
-        runtime.session_id = Some(session_id);
-        runtime.jsonl_path = detected.jsonl_path;
-        MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)?;
+        let detected = run_member_session_phase(
+            self.runtime.as_ref(),
+            activation_context,
+            pane_id,
+            MemberSessionPhase::CaptureOnly,
+        )?;
+        runtime_state.session_id = detected.session_id;
+        runtime_state.jsonl_path = detected.jsonl_path;
         Ok(())
     }
 }

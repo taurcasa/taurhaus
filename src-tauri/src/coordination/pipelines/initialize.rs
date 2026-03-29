@@ -4,13 +4,11 @@ use chrono::Utc;
 
 use crate::coordination::audit::{AuditEvent, MemberAddedEvent};
 use crate::coordination::backend::BackendKind;
-use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::requests::{
-    DeliveryRequest, InitializeReport, InitializeTeamRequest, LeadMode, OperatorNoticeDelivery,
-};
+use crate::coordination::requests::{InitializeReport, InitializeTeamRequest, LeadMode};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 use crate::coordination::validation::{validate_non_empty, validate_team_name};
 use crate::models::CliCommandSettings;
@@ -268,7 +266,12 @@ impl CoordinationOrchestrator {
         let mut per_project_anchor_panes = std::collections::HashMap::<String, String>::new();
 
         if request.lead_mode == LeadMode::LaunchNew {
-            let lead_member = member_from_agent_setup(&request.lead, MemberRole::Lead)?;
+            let context = MemberActivationContext::for_initialize_member(
+                &request.team_name,
+                &request.lead.name,
+                &request.lead,
+                MemberRole::Lead,
+            )?;
             let launch_cmd = build_cli_launch_command(
                 &request.lead,
                 &request.team_name,
@@ -279,28 +282,29 @@ impl CoordinationOrchestrator {
                 self.runtime.as_ref(),
                 &mut per_project_anchor_panes,
                 tmux_layout,
-                &lead_member.project_path.to_string_lossy(),
+                &context.member.project_path.to_string_lossy(),
                 &launch_cmd,
             )?;
-            let mut runtime =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
-            runtime.cli_tool = Some(lead_member.cli_tool);
-            runtime.project_path = Some(lead_member.project_path);
-            runtime.pane_id = Some(pane_id);
-            runtime.session_id = None;
-            runtime.daemon_pid = None;
-            runtime.attached_at = Some(Utc::now());
-            runtime.health = HealthState::Healthy;
-            MemberRuntimeStore::save(
-                &self.teams_dir,
-                &request.team_name,
-                &request.lead.name,
-                &runtime,
+            self.commit_member_runtime(
+                &context,
+                RuntimeCommitPatch {
+                    pane_id: Some(Some(pane_id)),
+                    session_id: Some(None),
+                    jsonl_path: Some(None),
+                    daemon_pid: Some(None),
+                    attached_at: Some(Some(Utc::now())),
+                    health: Some(HealthState::Healthy),
+                },
             )?;
         }
 
         for agent in &request.agents {
-            let member = member_from_agent_setup(agent, MemberRole::Agent)?;
+            let context = MemberActivationContext::for_initialize_member(
+                &request.team_name,
+                &request.lead.name,
+                agent,
+                MemberRole::Agent,
+            )?;
             let launch_cmd = build_cli_launch_command(
                 agent,
                 &request.team_name,
@@ -311,20 +315,20 @@ impl CoordinationOrchestrator {
                 self.runtime.as_ref(),
                 &mut per_project_anchor_panes,
                 tmux_layout,
-                &member.project_path.to_string_lossy(),
+                &context.member.project_path.to_string_lossy(),
                 &launch_cmd,
             )?;
-
-            let mut runtime =
-                MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &member.name)?;
-            runtime.cli_tool = Some(member.cli_tool);
-            runtime.project_path = Some(member.project_path.clone());
-            runtime.pane_id = Some(pane_id);
-            runtime.session_id = None;
-            runtime.daemon_pid = None;
-            runtime.attached_at = Some(Utc::now());
-            runtime.health = HealthState::Healthy;
-            MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &member.name, &runtime)?;
+            self.commit_member_runtime(
+                &context,
+                RuntimeCommitPatch {
+                    pane_id: Some(Some(pane_id)),
+                    session_id: Some(None),
+                    jsonl_path: Some(None),
+                    daemon_pid: Some(None),
+                    attached_at: Some(Some(Utc::now())),
+                    health: Some(HealthState::Healthy),
+                },
+            )?;
         }
         Ok(())
     }
@@ -401,12 +405,13 @@ impl CoordinationOrchestrator {
                     request.lead.name, request.team_name
                 ))
             })?;
-            self.capture_session_id_for_member(
+            let context = MemberActivationContext::for_initialize_member(
                 &request.team_name,
                 &request.lead.name,
-                &pane_id,
                 &request.lead,
+                MemberRole::Lead,
             )?;
+            self.capture_initialized_member_session_identity(&context, &pane_id)?;
         }
 
         for agent in &request.agents {
@@ -418,31 +423,75 @@ impl CoordinationOrchestrator {
                     agent.name, request.team_name
                 ))
             })?;
-            self.capture_session_id_for_member(&request.team_name, &agent.name, &pane_id, agent)?;
+            let context = MemberActivationContext::for_initialize_member(
+                &request.team_name,
+                &request.lead.name,
+                agent,
+                MemberRole::Agent,
+            )?;
+            self.capture_initialized_member_session_identity(&context, &pane_id)?;
         }
         Ok(())
     }
 
+    fn capture_initialized_member_session_identity(
+        &self,
+        context: &MemberActivationContext,
+        pane_id: &str,
+    ) -> Result<(), CoordinationError> {
+        let detected = run_member_session_phase(
+            self.runtime.as_ref(),
+            context,
+            pane_id,
+            MemberSessionPhase::CaptureOnly,
+        )?;
+        let Some(session_id) = detected.session_id else {
+            return Ok(());
+        };
+
+        self.commit_member_runtime(
+            context,
+            RuntimeCommitPatch {
+                session_id: Some(Some(session_id)),
+                jsonl_path: Some(detected.jsonl_path),
+                ..Default::default()
+            },
+        )
+    }
+
     fn join_mesh(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
-        if should_use_mesh_sidecar(&request.lead)? {
-            self.runtime.join_mesh(
-                &request.team_name,
-                &request.lead.name,
-                &request.lead.project_id,
-            )?;
-        }
+        join_mesh_if_required(
+            self.runtime.as_ref(),
+            &request.team_name,
+            &request.lead.name,
+            &request.lead.project_id,
+            parse_cli_tool(&request.lead.cli_tool)?,
+        )?;
         for agent in &request.agents {
-            if should_use_mesh_sidecar(agent)? {
-                self.runtime
-                    .join_mesh(&request.team_name, &agent.name, &agent.project_id)?;
-            }
+            join_mesh_if_required(
+                self.runtime.as_ref(),
+                &request.team_name,
+                &agent.name,
+                &agent.project_id,
+                parse_cli_tool(&agent.cli_tool)?,
+            )?;
         }
         Ok(())
     }
 
     fn start_daemons(&self, request: &InitializeTeamRequest) -> Result<(), CoordinationError> {
-        if request.lead_mode == LeadMode::LaunchNew && should_use_mesh_sidecar(&request.lead)? {
-            let mut runtime =
+        if request.lead_mode == LeadMode::LaunchNew {
+            let context = MemberActivationContext::for_initialize_member(
+                &request.team_name,
+                &request.lead.name,
+                &request.lead,
+                MemberRole::Lead,
+            )?;
+            let lead_cli_tool = parse_cli_tool(&request.lead.cli_tool)?;
+            if !should_use_mesh_sidecar_for_cli_tool(lead_cli_tool) {
+                return self.start_agent_daemons(request);
+            }
+            let runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &request.lead.name)?;
             let pane_id = runtime.pane_id.clone().ok_or_else(|| {
                 CoordinationError::Backend(format!(
@@ -450,30 +499,44 @@ impl CoordinationOrchestrator {
                     request.lead.name, request.team_name
                 ))
             })?;
-            let pid =
-                self.runtime
-                    .spawn_mesh_daemon(&pane_id, &request.team_name, &request.lead.name)?;
-            runtime.daemon_pid = Some(pid);
-            MemberRuntimeStore::save(
-                &self.teams_dir,
+            if let Some(pid) = start_member_daemon_if_required(
+                self.runtime.as_ref(),
                 &request.team_name,
                 &request.lead.name,
-                &runtime,
-            )?;
-            tracing::info!(
-                team = %request.team_name,
-                member = %request.lead.name,
-                pane_id = %pane_id,
-                pid = pid,
-                "mesh daemon started"
-            );
+                &pane_id,
+                lead_cli_tool,
+                MemberDaemonStartPolicy::StartFresh,
+                None,
+            )? {
+                self.commit_member_runtime(
+                    &context,
+                    RuntimeCommitPatch {
+                        daemon_pid: Some(Some(pid)),
+                        ..Default::default()
+                    },
+                )?;
+            }
         }
 
+        self.start_agent_daemons(request)
+    }
+
+    fn start_agent_daemons(
+        &self,
+        request: &InitializeTeamRequest,
+    ) -> Result<(), CoordinationError> {
         for agent in &request.agents {
-            if !should_use_mesh_sidecar(agent)? {
+            let context = MemberActivationContext::for_initialize_member(
+                &request.team_name,
+                &request.lead.name,
+                agent,
+                MemberRole::Agent,
+            )?;
+            let agent_cli_tool = parse_cli_tool(&agent.cli_tool)?;
+            if !should_use_mesh_sidecar_for_cli_tool(agent_cli_tool) {
                 continue;
             }
-            let mut runtime =
+            let runtime =
                 MemberRuntimeStore::load(&self.teams_dir, &request.team_name, &agent.name)?;
             let pane_id = runtime.pane_id.clone().ok_or_else(|| {
                 CoordinationError::Backend(format!(
@@ -481,18 +544,23 @@ impl CoordinationOrchestrator {
                     agent.name, request.team_name
                 ))
             })?;
-            let pid = self
-                .runtime
-                .spawn_mesh_daemon(&pane_id, &request.team_name, &agent.name)?;
-            runtime.daemon_pid = Some(pid);
-            MemberRuntimeStore::save(&self.teams_dir, &request.team_name, &agent.name, &runtime)?;
-            tracing::info!(
-                team = %request.team_name,
-                member = %agent.name,
-                pane_id = %pane_id,
-                pid = pid,
-                "mesh daemon started"
-            );
+            if let Some(pid) = start_member_daemon_if_required(
+                self.runtime.as_ref(),
+                &request.team_name,
+                &agent.name,
+                &pane_id,
+                agent_cli_tool,
+                MemberDaemonStartPolicy::StartFresh,
+                None,
+            )? {
+                self.commit_member_runtime(
+                    &context,
+                    RuntimeCommitPatch {
+                        daemon_pid: Some(Some(pid)),
+                        ..Default::default()
+                    },
+                )?;
+            }
         }
         Ok(())
     }
@@ -501,53 +569,8 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &InitializeTeamRequest,
     ) -> Result<(), CoordinationError> {
-        // Deliver to lead + all agents — the lead is a CLI agent too.
-        let all_members = std::iter::once(&request.lead).chain(request.agents.iter());
-        for member in all_members {
-            let cli_tool = parse_cli_tool(&member.cli_tool)?;
-            let onboarding = if cli_tool == CliTool::Claude {
-                if !agent_has_role_context(member) {
-                    continue;
-                }
-                DeliveryRenderer::render_claude_role_context(
-                    &request.team_name,
-                    &member.name,
-                    &request.lead.name,
-                    RoleContext {
-                        role_id: member.role_id.as_deref(),
-                        communication_style: member.communication_style.as_deref(),
-                        instructions: agent_instructions(member),
-                        behavioral_contract: member.behavioral_contract.as_ref(),
-                        quality_gates: member.quality_gates.as_deref(),
-                        definition_of_done: member.definition_of_done.as_deref(),
-                        capabilities: member.capabilities.as_deref(),
-                    },
-                )
-            } else {
-                DeliveryRenderer::render_onboarding(
-                    &request.team_name,
-                    &member.name,
-                    &request.lead.name,
-                    RoleContext {
-                        role_id: member.role_id.as_deref(),
-                        communication_style: member.communication_style.as_deref(),
-                        instructions: agent_instructions(member),
-                        behavioral_contract: member.behavioral_contract.as_ref(),
-                        quality_gates: member.quality_gates.as_deref(),
-                        definition_of_done: member.definition_of_done.as_deref(),
-                        capabilities: member.capabilities.as_deref(),
-                    },
-                )
-            };
-            self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: member.name.clone(),
-                team_name: request.team_name.clone(),
-                message: onboarding,
-                sender_name: Some(request.lead.name.clone()),
-                operational_context: None,
-            }))?;
-        }
-        Ok(())
+        let entries = self.prepare_initialize_onboarding_entries(request)?;
+        self.deliver_onboarding_entries(entries)
     }
 }
 

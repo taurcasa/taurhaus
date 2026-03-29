@@ -6,10 +6,11 @@ use chrono::Utc;
 
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::requests::{
     AddAgentReport, AgentSetupConfig, InitializeReport, ResumeAgentReport, StepProgress, StepStatus,
 };
-use crate::coordination::runtime::CoordinationRuntime;
+use crate::coordination::runtime::{CoordinationRuntime, DetectedRuntimeSession};
 use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::models::CliCommandSettings;
@@ -41,6 +42,55 @@ pub(super) struct PendingResumeState {
     pub(super) created_pane_id: Option<String>,
     pub(super) reused_pane: bool,
     pub(super) mesh_joined: bool,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(super) struct RuntimeCommitPatch {
+    pub(super) pane_id: Option<Option<String>>,
+    pub(super) session_id: Option<Option<String>>,
+    pub(super) jsonl_path: Option<Option<PathBuf>>,
+    pub(super) daemon_pid: Option<Option<u32>>,
+    pub(super) attached_at: Option<Option<chrono::DateTime<Utc>>>,
+    pub(super) health: Option<HealthState>,
+}
+
+impl RuntimeCommitPatch {
+    pub(super) fn from_pending_runtime_state(state: &PendingRuntimeState) -> Self {
+        Self {
+            pane_id: Some(state.pane_id.clone()),
+            session_id: Some(state.session_id.clone()),
+            jsonl_path: Some(state.jsonl_path.clone()),
+            daemon_pid: Some(state.daemon_pid),
+            attached_at: Some(state.attached_at.clone()),
+            health: state.health,
+        }
+    }
+
+    pub(super) fn from_pending_resume_state(
+        state: &PendingResumeState,
+        attached_at: chrono::DateTime<Utc>,
+        health: HealthState,
+    ) -> Self {
+        Self {
+            pane_id: Some(state.pane_id.clone()),
+            session_id: Some(state.session_id.clone()),
+            jsonl_path: Some(state.jsonl_path.clone()),
+            daemon_pid: Some(state.daemon_pid),
+            attached_at: Some(Some(attached_at)),
+            health: Some(health),
+        }
+    }
+}
+
+pub(super) enum MemberSessionPhase<'a> {
+    LaunchOnly(&'a CliCommandSettings),
+    CaptureOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum MemberDaemonStartPolicy {
+    StartFresh,
+    ReplaceStalePid { previous_daemon_pid: Option<u32> },
 }
 
 pub(super) fn mark_step_succeeded(
@@ -189,6 +239,7 @@ pub(super) fn build_cli_launch_command(
 /// Always starts a fresh session — never uses `--continue` or `resume --last`.
 /// Multiple agents share the same project, so checkpoint-based resume would
 /// pick up another agent's checkpoint and cause confusion.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn build_resume_cli_launch_command(
     agent: &AgentSetupConfig,
     team_name: &str,
@@ -198,8 +249,82 @@ pub(super) fn build_resume_cli_launch_command(
     build_cli_launch_command(agent, team_name, role, cli_commands)
 }
 
+pub(super) fn run_member_session_phase(
+    runtime: &dyn CoordinationRuntime,
+    context: &MemberActivationContext,
+    pane_id: &str,
+    phase: MemberSessionPhase<'_>,
+) -> Result<DetectedRuntimeSession, CoordinationError> {
+    match phase {
+        MemberSessionPhase::LaunchOnly(cli_commands) => {
+            let launch_cmd = build_member_activation_launch_command(context, cli_commands)?;
+            send_launch_command_with_retry(runtime, pane_id, launch_cmd.as_str())?;
+            Ok(DetectedRuntimeSession::default())
+        }
+        MemberSessionPhase::CaptureOnly => {
+            detect_member_session_identity(runtime, context, pane_id)
+        }
+    }
+}
+
+pub(super) fn should_use_mesh_sidecar_for_cli_tool(cli_tool: CliTool) -> bool {
+    cli_tool != CliTool::Claude
+}
+
 pub(super) fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, CoordinationError> {
-    Ok(parse_cli_tool(&agent.cli_tool)? != CliTool::Claude)
+    Ok(should_use_mesh_sidecar_for_cli_tool(parse_cli_tool(
+        &agent.cli_tool,
+    )?))
+}
+
+pub(super) fn join_mesh_if_required(
+    runtime: &dyn CoordinationRuntime,
+    team_name: &str,
+    member_name: &str,
+    project_id: &str,
+    cli_tool: CliTool,
+) -> Result<bool, CoordinationError> {
+    if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
+        return Ok(false);
+    }
+
+    runtime.join_mesh(team_name, member_name, project_id)?;
+    Ok(true)
+}
+
+pub(super) fn start_member_daemon_if_required(
+    runtime: &dyn CoordinationRuntime,
+    team_name: &str,
+    member_name: &str,
+    pane_id: &str,
+    cli_tool: CliTool,
+    policy: MemberDaemonStartPolicy,
+    warnings: Option<&mut Vec<String>>,
+) -> Result<Option<u32>, CoordinationError> {
+    if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
+        return Ok(None);
+    }
+
+    if let MemberDaemonStartPolicy::ReplaceStalePid {
+        previous_daemon_pid: Some(pid),
+    } = policy
+    {
+        if let Err(err) = runtime.terminate_process_by_pid(pid) {
+            if let Some(warnings) = warnings {
+                warnings.push(format!("failed to terminate stale daemon pid {pid}: {err}"));
+            }
+        }
+    }
+
+    let pid = runtime.spawn_mesh_daemon(pane_id, team_name, member_name)?;
+    tracing::info!(
+        team = %team_name,
+        member = %member_name,
+        pane_id = %pane_id,
+        pid = pid,
+        "mesh daemon started"
+    );
+    Ok(Some(pid))
 }
 
 pub(super) fn send_launch_command_with_retry(
@@ -240,6 +365,44 @@ pub(super) fn send_launch_command_with_retry(
         "{err}; pane diagnostics: {}",
         pane_launch_diagnostics(runtime, pane_id)
     )))
+}
+
+fn build_member_activation_launch_command(
+    context: &MemberActivationContext,
+    cli_commands: &CliCommandSettings,
+) -> Result<String, CoordinationError> {
+    let command =
+        build_team_launch_command(cli_commands, context.member.cli_tool, &context.member.model);
+    if command.trim().is_empty() {
+        return Err(CoordinationError::Validation(format!(
+            "configured launch command is empty for '{}'",
+            context.member.cli_tool
+        )));
+    }
+    validate_command_override(&command).map_err(CoordinationError::Validation)?;
+
+    if context.member.cli_tool != CliTool::Claude {
+        return Ok(command);
+    }
+
+    Ok(with_claude_team_context(
+        command,
+        &context.team_name,
+        &context.member.name,
+        context.member.role,
+    ))
+}
+
+fn detect_member_session_identity(
+    runtime: &dyn CoordinationRuntime,
+    context: &MemberActivationContext,
+    pane_id: &str,
+) -> Result<DetectedRuntimeSession, CoordinationError> {
+    if !matches!(context.member.cli_tool, CliTool::Claude | CliTool::Codex) {
+        return Ok(DetectedRuntimeSession::default());
+    }
+
+    runtime.detect_runtime_session(pane_id, context.member.cli_tool)
 }
 
 pub(super) fn with_claude_team_context(
