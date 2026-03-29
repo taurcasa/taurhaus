@@ -2,6 +2,9 @@ use super::*;
 
 use std::path::PathBuf;
 
+use serde_json::{Map, Value};
+use taurhaus_lib::logging::emit_global;
+
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -416,7 +419,57 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
     ) -> Result<(), CoordinationError> {
-        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
-        TeamConfigStore::save(&self.teams_dir, team_name, &config)
+        let config_path = self.teams_dir.join(team_name).join("config.json");
+        let config = TeamConfigStore::load(&self.teams_dir, team_name).map_err(|err| {
+            log_team_config_sync_error(team_name, "load", &config_path, &err);
+            err
+        })?;
+        TeamConfigStore::save(&self.teams_dir, team_name, &config).map_err(|err| {
+            log_team_config_sync_error(team_name, "save", &config_path, &err);
+            err
+        })
     }
+}
+
+fn log_team_config_sync_error(
+    team_name: &str,
+    operation: &str,
+    path: &std::path::Path,
+    err: &CoordinationError,
+) {
+    let mut fields = Map::new();
+    fields.insert(
+        "team_name".to_string(),
+        Value::String(team_name.to_string()),
+    );
+    fields.insert(
+        "operation".to_string(),
+        Value::String(operation.to_string()),
+    );
+    fields.insert(
+        "path".to_string(),
+        Value::String(path.display().to_string()),
+    );
+    fields.insert("error".to_string(), Value::String(err.to_string()));
+    fields.insert(
+        "raw_os_error".to_string(),
+        err.raw_os_error()
+            .map(|code| Value::Number(code.into()))
+            .unwrap_or(Value::Null),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.team_config.sync_failed",
+        Some("Team config metadata sync failed".to_string()),
+        fields,
+    );
+    tracing::warn!(
+        team = %team_name,
+        operation,
+        path = %path.display(),
+        error = %err,
+        raw_os_error = ?err.raw_os_error(),
+        "team config metadata sync failed"
+    );
 }

@@ -49,6 +49,15 @@ impl From<AppError> for CoordinationError {
     }
 }
 
+impl CoordinationError {
+    pub fn raw_os_error(&self) -> Option<i32> {
+        match self {
+            Self::Io(err) => err.raw_os_error(),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
