@@ -649,13 +649,16 @@ fn list_process_ids_via_ps() -> Result<Vec<u32>, CoordinationError> {
 fn wsl_file_identity(path: &str) -> Result<Option<FileIdentity>, CoordinationError> {
     let invocation = CommandInvocation {
         program: "wsl".to_string(),
-        args: vec![
-            "--".to_string(),
-            "stat".to_string(),
-            "-Lc".to_string(),
-            "%d:%i".to_string(),
-            path.to_string(),
-        ],
+        args: mesh_cli::wrap_wsl_args_for_coordination(
+            vec![
+                "--".to_string(),
+                "stat".to_string(),
+                "-Lc".to_string(),
+                "%d:%i".to_string(),
+                path.to_string(),
+            ],
+            None,
+        ),
     };
     let output = run_system_command(&invocation)?;
     if !output.status.success() {
@@ -727,12 +730,15 @@ fn validate_coordination_pid(pid: u32) -> Result<String, CoordinationError> {
 fn wsl_kill_invocation(signal: &str, pid_arg: &str) -> CommandInvocation {
     CommandInvocation {
         program: "wsl".to_string(),
-        args: vec![
-            "--".to_string(),
-            "kill".to_string(),
-            signal.to_string(),
-            pid_arg.to_string(),
-        ],
+        args: mesh_cli::wrap_wsl_args_for_coordination(
+            vec![
+                "--".to_string(),
+                "kill".to_string(),
+                signal.to_string(),
+                pid_arg.to_string(),
+            ],
+            None,
+        ),
     }
 }
 
@@ -740,11 +746,14 @@ fn wsl_kill_invocation(signal: &str, pid_arg: &str) -> CommandInvocation {
 fn wsl_cat_proc_cmdline_invocation(pid: u32) -> CommandInvocation {
     CommandInvocation {
         program: "wsl".to_string(),
-        args: vec![
-            "--".to_string(),
-            "cat".to_string(),
-            format!("/proc/{pid}/cmdline"),
-        ],
+        args: mesh_cli::wrap_wsl_args_for_coordination(
+            vec![
+                "--".to_string(),
+                "cat".to_string(),
+                format!("/proc/{pid}/cmdline"),
+            ],
+            None,
+        ),
     }
 }
 

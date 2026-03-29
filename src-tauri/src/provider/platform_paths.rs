@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::commands::logging::JSONL_LOG_FILE_NAME;
 use crate::coordination::mesh_cli;
-use crate::provider::path::{linux_to_wsl_unc, wsl_distro_from_path};
+use crate::provider::path::linux_to_wsl_unc;
 use crate::session_scanner::cli_tool::{config_for, CliTool};
 
 const APP_BUNDLE_ID: &str = "com.taurhaus.dev";
@@ -119,9 +119,8 @@ fn windows_unc_home_subdir(subdir: &str) -> Option<PathBuf> {
         return None;
     }
 
-    let teams_dir = mesh_cli::resolve_windows_mesh_teams_dir()?;
-    let distro = wsl_distro_from_path(&teams_dir.display().to_string())?;
-    let home = mesh_cli::resolve_wsl_home_for_coordination()?;
+    let distro = mesh_cli::resolve_wsl_distro_for_coordination(None)?;
+    let home = mesh_cli::resolve_wsl_home_for_coordination_in_distro(Some(&distro))?;
     let subdir = subdir.trim_start_matches('/');
     let linux_path = format!("{home}/{subdir}");
     Some(unc_path_for_linux_path(&distro, &linux_path))

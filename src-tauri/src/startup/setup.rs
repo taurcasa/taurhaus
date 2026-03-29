@@ -60,6 +60,7 @@ pub(super) fn determine_daemon_phase(
     log_path: &std::path::Path,
 ) -> DaemonPhase {
     let wsl_distro = detect_wsl_distro(conn);
+    crate::coordination::mesh_cli::set_preferred_wsl_distro_for_coordination(wsl_distro.as_deref());
     let (daemon_provider, daemon_connected_at_startup) =
         connect_daemon_provider(&wsl_distro, log_path);
     DaemonPhase {

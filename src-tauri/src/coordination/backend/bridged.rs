@@ -90,7 +90,10 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
             return if cfg!(target_os = "windows") {
                 CommandInvocation {
                     program: "wsl".into(),
-                    args: vec!["-e".into(), "test".into(), "-x".into(), mesh_path],
+                    args: mesh_cli::wrap_wsl_args_for_coordination(
+                        vec!["-e".into(), "test".into(), "-x".into(), mesh_path],
+                        None,
+                    ),
                 }
             } else {
                 CommandInvocation {
@@ -105,7 +108,10 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
     if cfg!(target_os = "windows") {
         CommandInvocation {
             program: "wsl".into(),
-            args: vec!["-e".into(), "which".into(), binary_name.into()],
+            args: mesh_cli::wrap_wsl_args_for_coordination(
+                vec!["-e".into(), "which".into(), binary_name.into()],
+                None,
+            ),
         }
     } else {
         CommandInvocation {
