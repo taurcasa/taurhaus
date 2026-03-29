@@ -131,32 +131,6 @@ impl CoordinationOrchestrator {
         }
     }
 
-    pub(super) fn resume_start_daemon(
-        &self,
-        request: &ResumeMemberRequest,
-        member: &Member,
-        pane_id: &str,
-        previous_daemon_pid: Option<u32>,
-        runtime_state: &mut PendingResumeState,
-        warnings: &mut Vec<String>,
-    ) -> Result<(), CoordinationError> {
-        if let Some(new_pid) = start_member_daemon_if_required(
-            self.runtime.as_ref(),
-            &request.team_name,
-            &member.name,
-            pane_id,
-            member.cli_tool,
-            MemberDaemonStartPolicy::ReplaceStalePid {
-                previous_daemon_pid,
-            },
-            Some(warnings),
-        )? {
-            runtime_state.daemon_pid = Some(new_pid);
-            runtime_state.new_daemon_pid = Some(new_pid);
-        }
-        Ok(())
-    }
-
     pub(super) fn cleanup_resume_failure(
         &mut self,
         request: &ResumeMemberRequest,
@@ -212,46 +186,6 @@ impl CoordinationOrchestrator {
                 );
             }
         }
-    }
-
-    pub(super) fn start_daemon_for_agent(
-        &self,
-        request: &AddAgentRequest,
-        runtime_state: &mut PendingRuntimeState,
-    ) -> Result<(), CoordinationError> {
-        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
-        if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
-            return Ok(());
-        }
-        let pane_id = runtime_state.pane_id.as_deref().ok_or_else(|| {
-            CoordinationError::Backend(format!(
-                "missing pane id for member '{}' in team '{}'",
-                request.agent.name, request.team_name
-            ))
-        })?;
-        if let Some(pid) = start_member_daemon_if_required(
-            self.runtime.as_ref(),
-            &request.team_name,
-            &request.agent.name,
-            pane_id,
-            cli_tool,
-            MemberDaemonStartPolicy::StartFresh,
-            None,
-        )? {
-            runtime_state.daemon_pid = Some(pid);
-        }
-        Ok(())
-    }
-
-    pub(super) fn send_onboarding_for_agent(
-        &mut self,
-        request: &AddAgentRequest,
-    ) -> Result<(), CoordinationError> {
-        let Some(entry) = self.prepare_add_agent_onboarding_entry(request)? else {
-            return Ok(());
-        };
-        self.deliver_onboarding_entries(vec![entry])?;
-        Ok(())
     }
 
     pub(super) fn update_roster_with_agent(

@@ -8,7 +8,9 @@ use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::MemberActivationContext;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
-use crate::coordination::pipelines::members::InitializeMemberActivationStage;
+use crate::coordination::pipelines::members::{
+    InitializeMemberActivationStage, SharedMemberActivationExecutor,
+};
 use crate::coordination::requests::{
     InitializeReport, InitializeTeamRequest, LeadMode, StepProgress, StepStatus,
 };
@@ -487,15 +489,15 @@ impl CoordinationOrchestrator {
     {
         emit_initialize_step_progress(step, StepStatus::Running, None, emit_progress);
         for (member, role) in initialize_members {
-            self.activate_initialize_member_stage(
+            SharedMemberActivationExecutor::for_initialize(
+                self,
                 request,
                 member,
                 *role,
-                activation_stage,
                 cli_commands,
                 tmux_layout,
-                per_project_anchor_panes,
-            )?;
+            )
+            .run_initialize_stage(activation_stage, per_project_anchor_panes)?;
         }
         after_stage(self).map_err(|err| (step.to_string(), err))?;
         mark_initialize_step_succeeded(

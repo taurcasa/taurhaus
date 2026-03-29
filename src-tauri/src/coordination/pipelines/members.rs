@@ -34,27 +34,6 @@ pub(super) enum InitializeMemberActivationStage {
 }
 
 impl CoordinationOrchestrator {
-    pub(super) fn activate_initialize_member_stage(
-        &mut self,
-        request: &InitializeTeamRequest,
-        member: &crate::coordination::requests::AgentSetupConfig,
-        role: MemberRole,
-        stage: InitializeMemberActivationStage,
-        cli_commands: &CliCommandSettings,
-        tmux_layout: &str,
-        per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
-    ) -> Result<(), (String, CoordinationError)> {
-        SharedMemberActivationExecutor::for_initialize(
-            self,
-            request,
-            member,
-            role,
-            cli_commands,
-            tmux_layout,
-        )
-        .run_initialize_stage(stage, per_project_anchor_panes)
-    }
-
     pub fn add_agent_to_team(
         &mut self,
         request: &AddAgentRequest,
@@ -279,90 +258,6 @@ impl CoordinationOrchestrator {
             tmux_layout,
         )
     }
-
-    fn capture_resume_session_identity(
-        &self,
-        activation_context: &MemberActivationContext,
-        pane_id: &str,
-        runtime_state: &mut PendingResumeState,
-    ) -> Result<(), CoordinationError> {
-        let detected = run_member_session_phase(
-            self.runtime.as_ref(),
-            activation_context,
-            pane_id,
-            MemberSessionPhase::CaptureOnly,
-        )?;
-        runtime_state.session_id = detected.session_id;
-        runtime_state.jsonl_path = detected.jsonl_path;
-        Ok(())
-    }
-
-    fn resume_send_onboarding_with_fallback(
-        &mut self,
-        request: &ResumeMemberRequest,
-        member: &Member,
-        lead_name: &str,
-    ) -> Result<(), CoordinationError> {
-        if let Some(entry) = self.prepare_resume_onboarding_entry(request, member, lead_name) {
-            self.deliver_onboarding_entries(vec![entry])?;
-            return Ok(());
-        }
-
-        if member.cli_tool != CliTool::Claude {
-            return Ok(());
-        }
-
-        let message = DeliveryRenderer::render_onboarding(
-            &request.team_name,
-            &member.name,
-            lead_name,
-            RoleContext {
-                role_id: member.role_id.as_deref(),
-                communication_style: member.communication_style.as_deref(),
-                instructions: member.instructions.as_deref(),
-                behavioral_contract: member.behavioral_contract.as_ref(),
-                quality_gates: member.quality_gates.as_deref(),
-                definition_of_done: member.definition_of_done.as_deref(),
-                capabilities: member.capabilities.as_deref(),
-            },
-        );
-        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: member.name.clone(),
-            team_name: request.team_name.clone(),
-            message,
-            sender_name: Some(lead_name.to_string()),
-            operational_context: None,
-        }))?;
-        Ok(())
-    }
-
-    fn prepare_add_agent_member(
-        &mut self,
-        request: &AddAgentRequest,
-        runtime_state: &mut PendingRuntimeState,
-    ) -> Result<Member, CoordinationError> {
-        let member = member_from_agent_setup(&request.agent, MemberRole::Agent)?;
-        self.add_member(&request.team_name, member.clone())?;
-        runtime_state.member_added = true;
-        Ok(member)
-    }
-
-    fn acquire_add_agent_pane(
-        &self,
-        member: &Member,
-        tmux_layout: &str,
-        runtime_state: &mut PendingRuntimeState,
-    ) -> Result<String, CoordinationError> {
-        let pane_id = self
-            .runtime
-            .create_aitx_pane(member.project_path.to_string_lossy().as_ref(), tmux_layout)?;
-        runtime_state.pane_id = Some(pane_id.clone());
-        runtime_state.session_id = None;
-        runtime_state.jsonl_path = None;
-        runtime_state.attached_at = Some(Utc::now());
-        runtime_state.health = Some(HealthState::Healthy);
-        Ok(pane_id)
-    }
 }
 
 fn capture_session_identity_message(member: &Member, runtime_state: &PendingResumeState) -> String {
@@ -409,7 +304,7 @@ enum SharedMemberActivationWrapper<'b> {
     },
 }
 
-struct SharedMemberActivationExecutor<'a, 'b> {
+pub(super) struct SharedMemberActivationExecutor<'a, 'b> {
     orchestrator: &'a mut CoordinationOrchestrator,
     wrapper: SharedMemberActivationWrapper<'b>,
     cli_commands: &'b CliCommandSettings,
@@ -421,7 +316,7 @@ struct SharedMemberActivationExecutor<'a, 'b> {
 }
 
 impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
-    fn for_initialize(
+    pub(super) fn for_initialize(
         orchestrator: &'a mut CoordinationOrchestrator,
         request: &'b InitializeTeamRequest,
         member: &'b crate::coordination::requests::AgentSetupConfig,
@@ -598,7 +493,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         })
     }
 
-    fn run_initialize_stage(
+    pub(super) fn run_initialize_stage(
         mut self,
         stage: InitializeMemberActivationStage,
         per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
@@ -727,13 +622,19 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             SharedMemberActivationWrapper::AddAgent { request } => {
                 if let Err(err) = self
                     .orchestrator
-                    .prepare_add_agent_member(request, &mut self.runtime_state)
+                    .add_member(&request.team_name, prepared.member.clone())
                     .and_then(|_| {
-                        self.orchestrator.acquire_add_agent_pane(
-                            &prepared.member,
+                        self.runtime_state.member_added = true;
+                        let pane_id = self.orchestrator.runtime.create_aitx_pane(
+                            prepared.member.project_path.to_string_lossy().as_ref(),
                             self.tmux_layout,
-                            &mut self.runtime_state,
-                        )
+                        )?;
+                        self.runtime_state.pane_id = Some(pane_id.clone());
+                        self.runtime_state.session_id = None;
+                        self.runtime_state.jsonl_path = None;
+                        self.runtime_state.attached_at = Some(Utc::now());
+                        self.runtime_state.health = Some(HealthState::Healthy);
+                        Ok::<(), CoordinationError>(())
                     })
                 {
                     self.cleanup_failure();
@@ -750,7 +651,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     .runtime_state
                     .pane_id
                     .clone()
-                    .expect("acquire_add_agent_pane should set pane_id");
+                    .expect("add-agent pane acquisition should set pane_id");
                 self.emit_stage(
                     MemberActivationStage::AcquirePane,
                     StepStatus::Succeeded,
@@ -861,11 +762,16 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             StepStatus::Running,
             None,
         );
-        if let Err(err) = self.orchestrator.capture_resume_session_identity(
+        if let Err(err) = run_member_session_phase(
+            self.orchestrator.runtime.as_ref(),
             &prepared.activation_context,
             pane_id,
-            &mut self.runtime_state,
-        ) {
+            MemberSessionPhase::CaptureOnly,
+        )
+        .map(|detected| {
+            self.runtime_state.session_id = detected.session_id;
+            self.runtime_state.jsonl_path = detected.jsonl_path;
+        }) {
             self.cleanup_failure();
             self.emit_stage(
                 MemberActivationStage::CaptureSessionIdentity,
@@ -1027,21 +933,26 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 self.runtime_state.daemon_pid = pid;
             }),
             SharedMemberActivationWrapper::AddAgent { request } => self
-                .orchestrator
-                .start_daemon_for_agent(request, &mut self.runtime_state),
-            SharedMemberActivationWrapper::Resume { request, .. } => {
-                self.orchestrator.resume_start_daemon(
-                    request,
-                    &prepared.member,
+                .start_member_daemon_for_wrapper(
+                    &request.team_name,
+                    &request.agent.name,
+                    prepared.member.cli_tool,
                     pane_id,
-                    prepared
-                        .previous_runtime
-                        .as_ref()
-                        .and_then(|runtime| runtime.daemon_pid),
-                    &mut self.runtime_state,
-                    &mut self.warnings,
-                )
-            }
+                    MemberDaemonStartPolicy::StartFresh,
+                ),
+            SharedMemberActivationWrapper::Resume { request, .. } => self
+                .start_member_daemon_for_wrapper(
+                    &request.team_name,
+                    &prepared.member.name,
+                    prepared.member.cli_tool,
+                    pane_id,
+                    MemberDaemonStartPolicy::ReplaceStalePid {
+                        previous_daemon_pid: prepared
+                            .previous_runtime
+                            .as_ref()
+                            .and_then(|runtime| runtime.daemon_pid),
+                    },
+                ),
         };
 
         match daemon_result {
@@ -1079,15 +990,15 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             SharedMemberActivationWrapper::Initialize { .. } => {
                 unreachable!("initialize onboarding is deferred at the wrapper level")
             }
-            SharedMemberActivationWrapper::AddAgent { request } => {
-                self.orchestrator.send_onboarding_for_agent(request)
-            }
+            SharedMemberActivationWrapper::AddAgent { request } => self
+                .orchestrator
+                .prepare_add_agent_onboarding_entry(request)
+                .and_then(|entry| {
+                    self.orchestrator
+                        .deliver_onboarding_entries(entry.into_iter().collect())
+                }),
             SharedMemberActivationWrapper::Resume { request, .. } => {
-                self.orchestrator.resume_send_onboarding_with_fallback(
-                    request,
-                    &prepared.member,
-                    &prepared.lead_name,
-                )
+                self.deliver_resume_onboarding(request, prepared)
             }
         };
 
@@ -1220,6 +1131,74 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
 
     fn record_step_success(&mut self, step: &str, message: &str) {
         mark_step_succeeded(step, message, &mut self.succeeded_steps, &mut self.steps);
+    }
+
+    fn start_member_daemon_for_wrapper(
+        &mut self,
+        team_name: &str,
+        member_name: &str,
+        cli_tool: CliTool,
+        pane_id: &str,
+        policy: MemberDaemonStartPolicy,
+    ) -> Result<(), CoordinationError> {
+        if let Some(new_pid) = start_member_daemon_if_required(
+            self.orchestrator.runtime.as_ref(),
+            team_name,
+            member_name,
+            pane_id,
+            cli_tool,
+            policy,
+            Some(&mut self.warnings),
+        )? {
+            self.runtime_state.daemon_pid = Some(new_pid);
+            if matches!(&self.wrapper, SharedMemberActivationWrapper::Resume { .. }) {
+                self.runtime_state.new_daemon_pid = Some(new_pid);
+            }
+        }
+        Ok(())
+    }
+
+    fn deliver_resume_onboarding(
+        &mut self,
+        request: &ResumeMemberRequest,
+        prepared: &PreparedMemberActivation,
+    ) -> Result<(), CoordinationError> {
+        if let Some(entry) = self.orchestrator.prepare_resume_onboarding_entry(
+            request,
+            &prepared.member,
+            &prepared.lead_name,
+        ) {
+            self.orchestrator.deliver_onboarding_entries(vec![entry])?;
+            return Ok(());
+        }
+
+        if prepared.member.cli_tool != CliTool::Claude {
+            return Ok(());
+        }
+
+        let message = DeliveryRenderer::render_onboarding(
+            &request.team_name,
+            &prepared.member.name,
+            &prepared.lead_name,
+            RoleContext {
+                role_id: prepared.member.role_id.as_deref(),
+                communication_style: prepared.member.communication_style.as_deref(),
+                instructions: prepared.member.instructions.as_deref(),
+                behavioral_contract: prepared.member.behavioral_contract.as_ref(),
+                quality_gates: prepared.member.quality_gates.as_deref(),
+                definition_of_done: prepared.member.definition_of_done.as_deref(),
+                capabilities: prepared.member.capabilities.as_deref(),
+            },
+        );
+        self.orchestrator
+            .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                member_name: prepared.member.name.clone(),
+                team_name: request.team_name.clone(),
+                message,
+                sender_name: Some(prepared.lead_name.clone()),
+                operational_context: None,
+            }))
+            .map(|_| ())
     }
 
     fn add_agent_request(&self) -> &'b AddAgentRequest {
