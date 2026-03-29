@@ -6,12 +6,10 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
+use super::{DAEMON_START_ATTEMPTS, DAEMON_START_INTERVAL, MESH_CONTROL_TOKEN_ENV};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::mesh_cli::{self, CommandInvocation};
-
-#[cfg(not(target_os = "windows"))]
-use super::CLAUDE_DIR_OVERRIDE_ENV;
-use super::{DAEMON_START_ATTEMPTS, DAEMON_START_INTERVAL, MESH_CONTROL_TOKEN_ENV};
+use crate::provider::platform_paths::PlatformPaths;
 
 pub(crate) fn apply_background_command_settings(cmd: &mut Command) -> &mut Command {
     #[cfg(target_os = "windows")]
@@ -323,30 +321,22 @@ pub(crate) fn resolve_mesh_control_token(team_name: &str, member_name: &str) -> 
 }
 
 fn resolve_host_claude_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        mesh_cli::resolve_windows_mesh_teams_dir()
-            .and_then(|teams_dir| teams_dir.parent().map(Path::to_path_buf))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
-            if !path.is_empty() {
-                return Some(PathBuf::from(path));
-            }
-        }
-        dirs::home_dir().map(|home| home.join(".claude"))
-    }
+    Some(PlatformPaths::claude_dir())
 }
 
 pub(super) fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
+    resolve_host_claude_dir().map(|path| mesh_cli_claude_dir_arg_from_path(&path))
+}
+
+fn mesh_cli_claude_dir_arg_from_path(path: &Path) -> String {
+    let raw = path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     {
-        mesh_cli::resolve_wsl_home_for_coordination().map(|home| format!("{home}/.claude"))
+        crate::provider::path::to_linux(&raw).unwrap_or(raw)
     }
     #[cfg(not(target_os = "windows"))]
     {
-        resolve_host_claude_dir().map(|path| path.to_string_lossy().to_string())
+        raw
     }
 }
 
@@ -834,4 +824,95 @@ pub(super) fn validate_unix_pid(pid: u32) -> Result<String, CoordinationError> {
         )));
     }
     Ok(pid.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::sync::{LazyLock, Mutex, MutexGuard};
+
+    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+
+    struct EnvGuard {
+        _guard: MutexGuard<'static, ()>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            Self {
+                _guard: ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner()),
+            }
+        }
+    }
+
+    #[test]
+    fn claude_override_drives_runtime_host_paths() {
+        let _guard = EnvGuard::new();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let override_dir = temp.path().join("custom-claude-root");
+        std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, &override_dir);
+
+        let host_claude_dir = resolve_host_claude_dir().expect("claude dir should resolve");
+        let mesh_pid_path =
+            resolve_mesh_daemon_pid_path("taurhaus-team", "dev-3").expect("mesh pid path");
+        let team_pid_path = resolve_team_daemon_pid_path("taurhaus-team").expect("team pid path");
+        let control_path = resolve_mesh_control_credential_path("taurhaus-team", "dev-3")
+            .expect("control credential path");
+        let mesh_arg = resolve_mesh_cli_claude_dir_arg().expect("mesh claude dir arg");
+
+        std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
+
+        assert_eq!(host_claude_dir, override_dir);
+        assert_eq!(
+            mesh_pid_path,
+            override_dir
+                .join("teams")
+                .join("taurhaus-team")
+                .join("daemons")
+                .join("dev-3.pid")
+        );
+        assert_eq!(
+            team_pid_path,
+            override_dir
+                .join("teams")
+                .join("taurhaus-team")
+                .join("daemons")
+                .join("team.pid")
+        );
+        assert_eq!(
+            control_path,
+            override_dir
+                .join("teams")
+                .join("taurhaus-team")
+                .join("state")
+                .join("control_auth")
+                .join("dev-3.json")
+        );
+        assert_eq!(mesh_arg, override_dir.to_string_lossy());
+    }
+
+    #[test]
+    fn mesh_cli_claude_dir_arg_translation_keeps_runtime_accessible_paths() {
+        let native = Path::new("/tmp/custom-claude");
+        assert_eq!(
+            mesh_cli_claude_dir_arg_from_path(native),
+            "/tmp/custom-claude"
+        );
+
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(
+                mesh_cli_claude_dir_arg_from_path(Path::new(r"C:\Users\dev\custom-claude")),
+                "/mnt/c/Users/dev/custom-claude"
+            );
+            assert_eq!(
+                mesh_cli_claude_dir_arg_from_path(Path::new(
+                    r"\\wsl.localhost\Ubuntu\home\dev\.claude"
+                )),
+                "/home/dev/.claude"
+            );
+        }
+    }
 }

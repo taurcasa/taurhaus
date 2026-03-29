@@ -28,6 +28,10 @@ pub mod provider {
     pub mod path {
         pub use taurhaus_lib::provider::path::*;
     }
+
+    pub mod platform_paths {
+        pub use taurhaus_lib::provider::platform_paths::*;
+    }
 }
 
 pub mod tmux_layout {

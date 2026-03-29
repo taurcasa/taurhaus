@@ -30,8 +30,6 @@ const SESSION_DETECT_INTERVAL: Duration = Duration::from_millis(200);
 const DAEMON_START_ATTEMPTS: usize = 30;
 const DAEMON_START_INTERVAL: Duration = Duration::from_millis(100);
 const TAURHAUS_TMUX_SESSION_NAME: &str = "taurhaus";
-#[cfg(not(target_os = "windows"))]
-const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 pub(crate) const MESH_CONTROL_TOKEN_ENV: &str = "MESH_CONTROL_TOKEN";
 
 pub trait CoordinationRuntime: Send + Sync {
