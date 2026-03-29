@@ -1,9 +1,10 @@
 use tauri::State;
 
+use crate::commands::foreground_reads::fail_fast_if_daemon_lane_is_busy;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::queries;
-use crate::errors::sanitize_error;
+use crate::errors::{sanitize_error, CommandResultExt, IpcResult};
 use crate::models::{Commit, GitStatus};
 use crate::ProviderState;
 
@@ -15,25 +16,6 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
     Ok(project.path)
     // conn (MutexGuard) drops here — lock released before any git work
-}
-
-fn fail_fast_if_foreground_daemon_lane_is_busy(
-    providers: &ProviderState,
-    project_path: &str,
-    operation: &str,
-) -> Result<(), String> {
-    if crate::provider::path::is_wsl_path(project_path)
-        && providers
-            .daemon
-            .as_ref()
-            .is_some_and(|daemon| daemon.is_connected() && daemon.is_busy())
-    {
-        return Err(sanitize_error(&format!(
-            "Daemon transport error: foreground {operation} skipped because the shared daemon connection is busy"
-        )));
-    }
-
-    Ok(())
 }
 
 fn get_remote_fetch_url(repo: &git2::Repository) -> Option<String> {
@@ -131,16 +113,13 @@ pub fn get_recent_commits(
     providers: State<'_, ProviderState>,
     project_id: String,
     limit: Option<usize>,
-) -> Result<Vec<Commit>, String> {
+) -> IpcResult<Vec<Commit>> {
     let span = IpcCommandSpan::start("get_recent_commits");
-    let result = {
+    let result = (|| -> Result<Vec<Commit>, String> {
         let path = resolve_project_path(&db, &project_id)?;
-        fail_fast_if_foreground_daemon_lane_is_busy(&providers, &path, "recent commits load")?;
-        let provider = providers.resolve(&path);
-        provider
-            .recent_commits(&path, limit.unwrap_or(10).min(500))
-            .map_err(|e| sanitize_error(&e.to_string()))
-    };
+        get_recent_commits_impl(&providers, &path, limit)
+    })()
+    .ipc_cmd("get_recent_commits");
     span.finish_result(&result);
     result
 }
@@ -152,15 +131,13 @@ pub fn get_all_commits(
     project_id: String,
     limit: Option<usize>,
     offset: Option<usize>,
-) -> Result<Vec<Commit>, String> {
+) -> IpcResult<Vec<Commit>> {
     let span = IpcCommandSpan::start("get_all_commits");
-    let result = {
+    let result = (|| -> Result<Vec<Commit>, String> {
         let path = resolve_project_path(&db, &project_id)?;
-        let provider = providers.resolve(&path);
-        provider
-            .all_commits(&path, limit.unwrap_or(50).min(500), offset.unwrap_or(0))
-            .map_err(|e| sanitize_error(&e.to_string()))
-    };
+        get_all_commits_impl(&providers, &path, limit, offset)
+    })()
+    .ipc_cmd("get_all_commits");
     span.finish_result(&result);
     result
 }
@@ -170,33 +147,66 @@ pub fn get_git_status(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
     project_id: String,
-) -> Result<GitStatus, String> {
+) -> IpcResult<GitStatus> {
     let span = IpcCommandSpan::start("get_git_status");
-    let result = {
+    let result = (|| -> Result<GitStatus, String> {
         let path = resolve_project_path(&db, &project_id)?;
-        let provider = providers.resolve(&path);
-        provider
-            .git_status(&path)
-            .map_err(|e| sanitize_error(&e.to_string()))
-    };
+        get_git_status_impl(&providers, &path)
+    })()
+    .ipc_cmd("get_git_status");
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
-pub fn get_remote_url(
-    db: State<'_, DbState>,
-    project_id: String,
-) -> Result<Option<String>, String> {
+pub fn get_remote_url(db: State<'_, DbState>, project_id: String) -> IpcResult<Option<String>> {
     let span = IpcCommandSpan::start("get_remote_url");
-    let result = {
+    let result = (|| -> Result<Option<String>, String> {
         let path = resolve_project_path(&db, &project_id)?;
         reject_wsl_unc_remote_url_lookup(&path)?;
         let repo = git2::Repository::open(&path).map_err(|e| sanitize_error(&e.to_string()))?;
         Ok(resolve_normalized_remote_url(&repo))
-    };
+    })()
+    .ipc_cmd("get_remote_url");
     span.finish_result(&result);
     result
+}
+
+fn get_recent_commits_impl(
+    providers: &ProviderState,
+    project_path: &str,
+    limit: Option<usize>,
+) -> Result<Vec<Commit>, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "recent commits load")?;
+    let provider = providers.resolve(project_path);
+    provider
+        .recent_commits(project_path, limit.unwrap_or(10).min(500))
+        .map_err(|e| sanitize_error(&e.to_string()))
+}
+
+fn get_all_commits_impl(
+    providers: &ProviderState,
+    project_path: &str,
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<Vec<Commit>, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "commit history load")?;
+    let provider = providers.resolve(project_path);
+    provider
+        .all_commits(
+            project_path,
+            limit.unwrap_or(50).min(500),
+            offset.unwrap_or(0),
+        )
+        .map_err(|e| sanitize_error(&e.to_string()))
+}
+
+fn get_git_status_impl(providers: &ProviderState, project_path: &str) -> Result<GitStatus, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "git status load")?;
+    let provider = providers.resolve(project_path);
+    provider
+        .git_status(project_path)
+        .map_err(|e| sanitize_error(&e.to_string()))
 }
 
 #[cfg(test)]
@@ -324,14 +334,18 @@ mod tests {
                 "all daemon status pool slots should be occupied"
             );
 
-            let err = fail_fast_if_foreground_daemon_lane_is_busy(
-                &providers,
-                r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus",
-                "recent commits load",
-            )
-            .expect_err("busy WSL foreground load should fail fast");
-            assert!(err.to_lowercase().contains("daemon transport error"));
-            assert!(err.to_lowercase().contains("busy"));
+            let project_path = r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus";
+            for err in [
+                get_recent_commits_impl(&providers, project_path, Some(10))
+                    .expect_err("recent commits should fail fast"),
+                get_all_commits_impl(&providers, project_path, Some(10), Some(0))
+                    .expect_err("all commits should fail fast"),
+                get_git_status_impl(&providers, project_path)
+                    .expect_err("git status should fail fast"),
+            ] {
+                assert!(err.to_lowercase().contains("daemon transport error"));
+                assert!(err.to_lowercase().contains("busy"));
+            }
         });
         accept_thread.join().expect("accept thread joined");
     }

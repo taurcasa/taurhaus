@@ -5,6 +5,7 @@ pub mod coordination;
 pub mod coordination_types;
 pub mod daemon;
 pub mod files;
+pub(crate) mod foreground_reads;
 pub mod git;
 pub mod lifecycle;
 pub mod logging;

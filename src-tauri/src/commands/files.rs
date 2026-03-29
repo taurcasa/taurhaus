@@ -3,10 +3,11 @@ use std::path::{Component, Path};
 use base64::Engine as _;
 use tauri::State;
 
+use crate::commands::foreground_reads::fail_fast_if_daemon_lane_is_busy;
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::commands::projects::DbState;
 use crate::db::queries;
-use crate::errors::sanitize_error;
+use crate::errors::{sanitize_error, CommandResultExt, IpcResult};
 use crate::models::{FileContent, FileTreeNode};
 use crate::ProviderState;
 
@@ -23,39 +24,18 @@ fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String
     Ok(project.path)
 }
 
-fn fail_fast_if_foreground_daemon_lane_is_busy(
-    providers: &ProviderState,
-    project_path: &str,
-    operation: &str,
-) -> Result<(), String> {
-    if crate::provider::path::is_wsl_path(project_path)
-        && providers
-            .daemon
-            .as_ref()
-            .is_some_and(|daemon| daemon.is_connected() && daemon.is_busy())
-    {
-        return Err(sanitize_error(&format!(
-            "Daemon transport error: foreground {operation} skipped because the shared daemon connection is busy"
-        )));
-    }
-
-    Ok(())
-}
-
 #[tauri::command]
 pub fn get_file_tree(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
     project_id: String,
-) -> Result<Vec<FileTreeNode>, String> {
+) -> IpcResult<Vec<FileTreeNode>> {
     let span = IpcCommandSpan::start("get_file_tree");
-    let result = {
+    let result = (|| -> Result<Vec<FileTreeNode>, String> {
         let path = resolve_project_path(&db, &project_id)?;
-        let provider = providers.resolve(&path);
-        provider
-            .file_tree(&path)
-            .map_err(|e| sanitize_error(&e.to_string()))
-    };
+        get_file_tree_impl(&providers, &path)
+    })()
+    .ipc_cmd("get_file_tree");
     span.finish_result(&result);
     result
 }
@@ -120,19 +100,17 @@ pub fn read_file(
     providers: State<'_, ProviderState>,
     project_id: String,
     relative_path: String,
-) -> Result<FileContent, String> {
+) -> IpcResult<FileContent> {
     let span = IpcCommandSpan::start("read_file");
-    let result = {
+    let result = (|| -> Result<FileContent, String> {
         let path = resolve_project_path(&db, &project_id)?;
         // Normalize backslashes — search index on Windows may store paths with
         // backslashes (e.g. "tests\test_integration.py") that the Linux daemon
         // can't resolve. Belt-and-suspenders with the indexer normalization.
         let relative_path = relative_path.replace('\\', "/");
-        let provider = providers.resolve(&path);
-        provider
-            .read_file(&path, &relative_path)
-            .map_err(|e| sanitize_error(&e.to_string()))
-    };
+        read_file_impl(&providers, &path, &relative_path)
+    })()
+    .ipc_cmd("read_file");
     span.finish_result(&result);
     result
 }
@@ -142,14 +120,15 @@ pub fn check_path_type(
     db: State<'_, DbState>,
     project_id: String,
     relative_path: String,
-) -> Result<String, String> {
+) -> IpcResult<String> {
     let span = IpcCommandSpan::start("check_path_type");
-    let result = {
+    let result = (|| -> Result<String, String> {
         let path = resolve_project_path(&db, &project_id)?;
         classify_path_type(Path::new(&path), &relative_path)
             .map(|kind| kind.to_string())
             .map_err(|e| sanitize_error(&e))
-    };
+    })()
+    .ipc_cmd("check_path_type");
     span.finish_result(&result);
     result
 }
@@ -159,39 +138,13 @@ pub fn get_readme(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
     project_id: String,
-) -> Result<Option<FileContent>, String> {
+) -> IpcResult<Option<FileContent>> {
     let span = IpcCommandSpan::start("get_readme");
-    let result = {
+    let result = (|| -> Result<Option<FileContent>, String> {
         let path = resolve_project_path(&db, &project_id)?;
-        fail_fast_if_foreground_daemon_lane_is_busy(&providers, &path, "README load")?;
-        let is_wsl = crate::provider::path::is_wsl_path(&path);
-        let has_daemon = providers.daemon.as_ref().is_some_and(|d| d.is_connected());
-        let using_daemon = is_wsl && has_daemon;
-        tracing::debug!(
-            project_id,
-            path,
-            is_wsl,
-            has_daemon,
-            using_daemon,
-            "get_readme: resolving provider"
-        );
-        let provider = providers.resolve(&path);
-        let result = provider
-            .read_readme(&path)
-            .map_err(|e| sanitize_error(&e.to_string()))?;
-        if let Some(ref content) = result {
-            tracing::debug!(
-                project_id,
-                readme_path = content.path,
-                content_len = content.content.len(),
-                content_preview = &content.content[..content.content.len().min(80)],
-                "get_readme: returning content"
-            );
-        } else {
-            tracing::debug!(project_id, "get_readme: no README found");
-        }
-        Ok(result)
-    };
+        get_readme_impl(&providers, &project_id, &path)
+    })()
+    .ipc_cmd("get_readme");
     span.finish_result(&result);
     result
 }
@@ -204,22 +157,90 @@ pub fn read_project_asset(
     providers: State<'_, ProviderState>,
     project_id: String,
     relative_path: String,
-) -> Result<String, String> {
+) -> IpcResult<String> {
     let span = IpcCommandSpan::start("read_project_asset");
-    let result = {
+    let result = (|| -> Result<String, String> {
         let path = resolve_project_path(&db, &project_id)?;
         let relative_path = relative_path.replace('\\', "/");
-        let provider = providers.resolve(&path);
-        let bytes = provider
-            .read_asset(&path, &relative_path)
-            .map_err(|e| sanitize_error(&e.to_string()))?;
-
-        let mime = mime_from_extension(&relative_path);
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        Ok(format!("data:{mime};base64,{b64}"))
-    };
+        read_project_asset_impl(&providers, &path, &relative_path)
+    })()
+    .ipc_cmd("read_project_asset");
     span.finish_result(&result);
     result
+}
+
+fn get_file_tree_impl(
+    providers: &ProviderState,
+    project_path: &str,
+) -> Result<Vec<FileTreeNode>, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "file tree load")?;
+    let provider = providers.resolve(project_path);
+    provider
+        .file_tree(project_path)
+        .map_err(|e| sanitize_error(&e.to_string()))
+}
+
+fn read_file_impl(
+    providers: &ProviderState,
+    project_path: &str,
+    relative_path: &str,
+) -> Result<FileContent, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "file read")?;
+    let provider = providers.resolve(project_path);
+    provider
+        .read_file(project_path, relative_path)
+        .map_err(|e| sanitize_error(&e.to_string()))
+}
+
+fn get_readme_impl(
+    providers: &ProviderState,
+    project_id: &str,
+    project_path: &str,
+) -> Result<Option<FileContent>, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "README load")?;
+    let is_wsl = crate::provider::path::is_wsl_path(project_path);
+    let has_daemon = providers.daemon.as_ref().is_some_and(|d| d.is_connected());
+    let using_daemon = is_wsl && has_daemon;
+    tracing::debug!(
+        project_id,
+        path = project_path,
+        is_wsl,
+        has_daemon,
+        using_daemon,
+        "get_readme: resolving provider"
+    );
+    let provider = providers.resolve(project_path);
+    let result = provider
+        .read_readme(project_path)
+        .map_err(|e| sanitize_error(&e.to_string()))?;
+    if let Some(ref content) = result {
+        tracing::debug!(
+            project_id,
+            readme_path = content.path,
+            content_len = content.content.len(),
+            content_preview = &content.content[..content.content.len().min(80)],
+            "get_readme: returning content"
+        );
+    } else {
+        tracing::debug!(project_id, "get_readme: no README found");
+    }
+    Ok(result)
+}
+
+fn read_project_asset_impl(
+    providers: &ProviderState,
+    project_path: &str,
+    relative_path: &str,
+) -> Result<String, String> {
+    fail_fast_if_daemon_lane_is_busy(providers, project_path, "asset read")?;
+    let provider = providers.resolve(project_path);
+    let bytes = provider
+        .read_asset(project_path, relative_path)
+        .map_err(|e| sanitize_error(&e.to_string()))?;
+
+    let mime = mime_from_extension(relative_path);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{b64}"))
 }
 
 fn mime_from_extension(path: &str) -> &'static str {
@@ -330,14 +351,20 @@ mod tests {
                 "all daemon status pool slots should be occupied"
             );
 
-            let err = fail_fast_if_foreground_daemon_lane_is_busy(
-                &providers,
-                r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus",
-                "README load",
-            )
-            .expect_err("busy WSL foreground README load should fail fast");
-            assert!(err.to_lowercase().contains("daemon transport error"));
-            assert!(err.to_lowercase().contains("busy"));
+            let project_path = r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus";
+            for err in [
+                get_file_tree_impl(&providers, project_path)
+                    .expect_err("file tree should fail fast"),
+                read_file_impl(&providers, project_path, "README.md")
+                    .expect_err("read file should fail fast"),
+                get_readme_impl(&providers, "project-1", project_path)
+                    .expect_err("readme should fail fast"),
+                read_project_asset_impl(&providers, project_path, "docs/logo.png")
+                    .expect_err("asset read should fail fast"),
+            ] {
+                assert!(err.to_lowercase().contains("daemon transport error"));
+                assert!(err.to_lowercase().contains("busy"));
+            }
         });
         accept_thread.join().expect("accept thread joined");
     }
