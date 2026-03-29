@@ -8,13 +8,25 @@ use taurhaus_lib::logging::emit_global;
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::member_activation::{
+    MemberActivationContext, MemberActivationDeliveryPolicy,
+};
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentRequest, DeliveryRequest, OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode,
-    TeardownRequest,
+    AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest,
+    OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::session_scanner::cli_tool::CliTool;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PreparedOnboardingDelivery {
+    pub(super) policy: MemberActivationDeliveryPolicy,
+    pub(super) member_name: String,
+    pub(super) team_name: String,
+    pub(super) sender_name: String,
+    pub(super) message: String,
+}
 
 impl CoordinationOrchestrator {
     pub(super) fn cleanup_initialize_failure(&mut self, team_name: &str) {
@@ -169,44 +181,10 @@ impl CoordinationOrchestrator {
         member: &Member,
         lead_name: &str,
     ) -> Result<(), CoordinationError> {
-        let onboarding = if member.cli_tool == CliTool::Claude && member_has_role_context(member) {
-            DeliveryRenderer::render_claude_role_context(
-                &request.team_name,
-                &member.name,
-                lead_name,
-                RoleContext {
-                    role_id: member.role_id.as_deref(),
-                    communication_style: member.communication_style.as_deref(),
-                    instructions: member.instructions.as_deref(),
-                    behavioral_contract: member.behavioral_contract.as_ref(),
-                    quality_gates: member.quality_gates.as_deref(),
-                    definition_of_done: member.definition_of_done.as_deref(),
-                    capabilities: member.capabilities.as_deref(),
-                },
-            )
-        } else {
-            DeliveryRenderer::render_onboarding(
-                &request.team_name,
-                &member.name,
-                lead_name,
-                RoleContext {
-                    role_id: member.role_id.as_deref(),
-                    communication_style: member.communication_style.as_deref(),
-                    instructions: member.instructions.as_deref(),
-                    behavioral_contract: member.behavioral_contract.as_ref(),
-                    quality_gates: member.quality_gates.as_deref(),
-                    definition_of_done: member.definition_of_done.as_deref(),
-                    capabilities: member.capabilities.as_deref(),
-                },
-            )
+        let Some(entry) = self.prepare_resume_onboarding_entry(request, member, lead_name) else {
+            return Ok(());
         };
-        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: member.name.clone(),
-            team_name: request.team_name.clone(),
-            message: onboarding,
-            sender_name: Some(lead_name.to_string()),
-            operational_context: None,
-        }))?;
+        self.deliver_onboarding_entries(vec![entry])?;
         Ok(())
     }
 
@@ -315,56 +293,10 @@ impl CoordinationOrchestrator {
         &mut self,
         request: &AddAgentRequest,
     ) -> Result<(), CoordinationError> {
-        let cli_tool = parse_cli_tool(&request.agent.cli_tool)?;
-        let team = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
-        let lead_name = team
-            .members
-            .iter()
-            .find(|member| member.role == MemberRole::Lead)
-            .map(|member| member.name.clone())
-            .unwrap_or_else(|| "team-lead".to_string());
-
-        let onboarding = if cli_tool == CliTool::Claude {
-            if !agent_has_role_context(&request.agent) {
-                return Ok(());
-            }
-            DeliveryRenderer::render_claude_role_context(
-                &request.team_name,
-                &request.agent.name,
-                &lead_name,
-                RoleContext {
-                    role_id: request.agent.role_id.as_deref(),
-                    communication_style: request.agent.communication_style.as_deref(),
-                    instructions: agent_instructions(&request.agent),
-                    behavioral_contract: request.agent.behavioral_contract.as_ref(),
-                    quality_gates: request.agent.quality_gates.as_deref(),
-                    definition_of_done: request.agent.definition_of_done.as_deref(),
-                    capabilities: request.agent.capabilities.as_deref(),
-                },
-            )
-        } else {
-            DeliveryRenderer::render_onboarding(
-                &request.team_name,
-                &request.agent.name,
-                &lead_name,
-                RoleContext {
-                    role_id: request.agent.role_id.as_deref(),
-                    communication_style: request.agent.communication_style.as_deref(),
-                    instructions: agent_instructions(&request.agent),
-                    behavioral_contract: request.agent.behavioral_contract.as_ref(),
-                    quality_gates: request.agent.quality_gates.as_deref(),
-                    definition_of_done: request.agent.definition_of_done.as_deref(),
-                    capabilities: request.agent.capabilities.as_deref(),
-                },
-            )
+        let Some(entry) = self.prepare_add_agent_onboarding_entry(request)? else {
+            return Ok(());
         };
-        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-            member_name: request.agent.name.clone(),
-            team_name: request.team_name.clone(),
-            message: onboarding,
-            sender_name: Some(lead_name),
-            operational_context: None,
-        }))?;
+        self.deliver_onboarding_entries(vec![entry])?;
         Ok(())
     }
 
@@ -433,6 +365,98 @@ impl CoordinationOrchestrator {
     }
 }
 
+
+fn prepare_agent_onboarding_delivery(
+    context: MemberActivationContext,
+    member: &AgentSetupConfig,
+) -> Option<PreparedOnboardingDelivery> {
+    let role_context = RoleContext {
+        role_id: member.role_id.as_deref(),
+        communication_style: member.communication_style.as_deref(),
+        instructions: agent_instructions(member),
+        behavioral_contract: member.behavioral_contract.as_ref(),
+        quality_gates: member.quality_gates.as_deref(),
+        definition_of_done: member.definition_of_done.as_deref(),
+        capabilities: member.capabilities.as_deref(),
+    };
+    let has_role_context = agent_has_role_context(member);
+    prepare_onboarding_delivery(context, has_role_context, role_context)
+}
+
+fn prepare_member_onboarding_delivery(
+    context: MemberActivationContext,
+    member: &Member,
+) -> Option<PreparedOnboardingDelivery> {
+    let role_context = RoleContext {
+        role_id: member.role_id.as_deref(),
+        communication_style: member.communication_style.as_deref(),
+        instructions: member.instructions.as_deref(),
+        behavioral_contract: member.behavioral_contract.as_ref(),
+        quality_gates: member.quality_gates.as_deref(),
+        definition_of_done: member.definition_of_done.as_deref(),
+        capabilities: member.capabilities.as_deref(),
+    };
+    let has_role_context = member_has_role_context(member);
+    prepare_onboarding_delivery(context, has_role_context, role_context)
+}
+
+fn prepare_onboarding_delivery(
+    context: MemberActivationContext,
+    has_role_context: bool,
+    role_context: RoleContext<'_>,
+) -> Option<PreparedOnboardingDelivery> {
+    let MemberActivationContext {
+        team_name,
+        lead,
+        member,
+        delivery_policy,
+        ..
+    } = context;
+    let message = render_onboarding_message(
+        &team_name,
+        &member.name,
+        &lead.name,
+        member.cli_tool,
+        has_role_context,
+        role_context,
+    )?;
+    Some(PreparedOnboardingDelivery {
+        policy: delivery_policy,
+        member_name: member.name,
+        team_name,
+        sender_name: lead.name,
+        message,
+    })
+}
+
+fn render_onboarding_message(
+    team_name: &str,
+    member_name: &str,
+    lead_name: &str,
+    cli_tool: CliTool,
+    has_role_context: bool,
+    role_context: RoleContext<'_>,
+) -> Option<String> {
+    if cli_tool == CliTool::Claude {
+        if !has_role_context {
+            return None;
+        }
+        return Some(DeliveryRenderer::render_claude_role_context(
+            team_name,
+            member_name,
+            lead_name,
+            role_context,
+        ));
+    }
+
+    Some(DeliveryRenderer::render_onboarding(
+        team_name,
+        member_name,
+        lead_name,
+        role_context,
+    ))
+}
+
 fn log_team_config_sync_error(
     team_name: &str,
     operation: &str,
@@ -474,4 +498,100 @@ fn log_team_config_sync_error(
         raw_os_error = ?err.raw_os_error(),
         "team config metadata sync failed"
     );
+}
+
+impl CoordinationOrchestrator {
+    pub(super) fn deliver_onboarding_entries(
+        &mut self,
+        entries: Vec<PreparedOnboardingDelivery>,
+    ) -> Result<(), CoordinationError> {
+        let mut deferred_entries = Vec::new();
+
+        for entry in entries {
+            match entry.policy {
+                MemberActivationDeliveryPolicy::Immediate => {
+                    self.deliver_prepared_onboarding(entry)?;
+                }
+                MemberActivationDeliveryPolicy::DeferredBarrier => deferred_entries.push(entry),
+            }
+        }
+
+        for entry in deferred_entries {
+            self.deliver_prepared_onboarding(entry)?;
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn prepare_initialize_onboarding_entries(
+        &self,
+        request: &InitializeTeamRequest,
+    ) -> Result<Vec<PreparedOnboardingDelivery>, CoordinationError> {
+        let mut entries = Vec::with_capacity(1 + request.agents.len());
+
+        let lead_context = MemberActivationContext::for_initialize_member(
+            &request.team_name,
+            &request.lead.name,
+            &request.lead,
+            MemberRole::Lead,
+        )?;
+        if let Some(entry) = prepare_agent_onboarding_delivery(lead_context, &request.lead) {
+            entries.push(entry);
+        }
+
+        for agent in &request.agents {
+            let context = MemberActivationContext::for_initialize_member(
+                &request.team_name,
+                &request.lead.name,
+                agent,
+                MemberRole::Agent,
+            )?;
+            if let Some(entry) = prepare_agent_onboarding_delivery(context, agent) {
+                entries.push(entry);
+            }
+        }
+
+        Ok(entries)
+    }
+
+    pub(super) fn prepare_resume_onboarding_entry(
+        &self,
+        request: &ResumeMemberRequest,
+        member: &Member,
+        lead_name: &str,
+    ) -> Option<PreparedOnboardingDelivery> {
+        let context =
+            MemberActivationContext::for_resume_member(&request.team_name, lead_name, member);
+        prepare_member_onboarding_delivery(context, member)
+    }
+
+    pub(super) fn prepare_add_agent_onboarding_entry(
+        &self,
+        request: &AddAgentRequest,
+    ) -> Result<Option<PreparedOnboardingDelivery>, CoordinationError> {
+        let team = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
+        let lead_name = team
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone())
+            .unwrap_or_else(|| "team-lead".to_string());
+        let context =
+            MemberActivationContext::for_add_agent(&request.team_name, &lead_name, &request.agent)?;
+        Ok(prepare_agent_onboarding_delivery(context, &request.agent))
+    }
+
+    fn deliver_prepared_onboarding(
+        &mut self,
+        entry: PreparedOnboardingDelivery,
+    ) -> Result<(), CoordinationError> {
+        self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: entry.member_name,
+            team_name: entry.team_name,
+            message: entry.message,
+            sender_name: Some(entry.sender_name),
+            operational_context: None,
+        }))?;
+        Ok(())
+    }
 }

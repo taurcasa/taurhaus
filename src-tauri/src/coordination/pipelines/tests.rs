@@ -8,6 +8,7 @@ use tempfile::TempDir;
 use crate::coordination::backend::fake::FakeBackend;
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::member_activation::MemberActivationDeliveryPolicy;
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode,
@@ -1407,4 +1408,126 @@ fn add_agent_failure_clears_daemon_pid_file() {
         !config.members.iter().any(|entry| entry.name == "builder"),
         "failed hot-add should not leave the member in config"
     );
+}
+
+#[test]
+fn initialize_onboarding_entries_use_deferred_barrier_policy() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    let request = InitializeTeamRequest {
+        team_name: "architecture-final".to_string(),
+        team_description: None,
+        lead_mode: LeadMode::LaunchNew,
+        lead: setup_config("team-lead", "codex", "gpt-5.3", "/tmp/lead"),
+        agents: vec![setup_config("builder", "codex", "gpt-5.4", "/tmp/builder")],
+    };
+
+    let entries = orchestrator
+        .prepare_initialize_onboarding_entries(&request)
+        .expect("initialize onboarding entries");
+
+    assert_eq!(entries.len(), 2);
+    assert!(entries
+        .iter()
+        .all(|entry| entry.policy == MemberActivationDeliveryPolicy::DeferredBarrier));
+}
+
+#[test]
+fn resume_onboarding_entry_uses_immediate_policy() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            Member {
+                name: "researcher".to_string(),
+                role: MemberRole::Agent,
+                role_id: Some("claude-researcher".to_string()),
+                role_name: None,
+                focus_area: None,
+                context_summary: None,
+                behavior_summary: None,
+                communication_style: None,
+                runtime_compact_summary: None,
+                instructions: Some("Investigate tradeoffs.".to_string()),
+                behavioral_contract: None,
+                quality_gates: None,
+                definition_of_done: None,
+                phase_scope: None,
+                mode: None,
+                inherits_from: None,
+                required_artifacts: None,
+                capabilities: None,
+                project_path: PathBuf::from("/tmp/research"),
+                cli_tool: CliTool::Claude,
+            },
+        )
+        .expect("add member");
+
+    let request = ResumeMemberRequest {
+        team_name: "architecture-final".to_string(),
+        member_name: "researcher".to_string(),
+    };
+    let (member, _runtime, lead_name) = orchestrator
+        .load_resume_member_state(&request)
+        .expect("load resume state");
+
+    let entry = orchestrator
+        .prepare_resume_onboarding_entry(&request, &member, &lead_name)
+        .expect("resume onboarding entry");
+
+    assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
+}
+
+#[test]
+fn add_agent_onboarding_entry_uses_immediate_policy() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+
+    let entry = orchestrator
+        .prepare_add_agent_onboarding_entry(&AddAgentRequest {
+            team_name: "architecture-final".to_string(),
+            agent: setup_config("builder", "codex", "gpt-5.4", "/tmp/builder"),
+        })
+        .expect("prepare add-agent onboarding")
+        .expect("add-agent onboarding entry");
+
+    assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
 }
