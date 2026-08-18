@@ -3,13 +3,13 @@
 Primary data source: `/tmp/taurhaus-resource-monitor-v2.csv`
 
 Supporting references:
-- [inotify-instance-audit-2026-03-10.md](/home/mstie/projects/taurhaus/docs/analysis/inotify-instance-audit-2026-03-10.md)
-- [daemon/watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs)
-- [daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
-- [session_scanner/compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
-- [session_scanner/compaction_extractor.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
-- [startup/watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs)
-- [fs/watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs)
+- [inotify-instance-audit-2026-03-10.md](/home/user/projects/taurhaus/docs/analysis/inotify-instance-audit-2026-03-10.md)
+- [daemon/watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs)
+- [daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+- [session_scanner/compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
+- [session_scanner/compaction_extractor.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
+- [startup/watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs)
+- [fs/watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs)
 
 ## Executive summary
 
@@ -121,7 +121,7 @@ The first daemon in the capture, PID `726119`, still shows the old pathological 
 - `66` inotify instances
 - `3,284` watches
 
-That is the pre-fix duplicated-listener era described in [inotify-instance-audit-2026-03-10.md](/home/mstie/projects/taurhaus/docs/analysis/inotify-instance-audit-2026-03-10.md).
+That is the pre-fix duplicated-listener era described in [inotify-instance-audit-2026-03-10.md](/home/user/projects/taurhaus/docs/analysis/inotify-instance-audit-2026-03-10.md).
 
 The current steady state is:
 

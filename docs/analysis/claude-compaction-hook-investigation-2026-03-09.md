@@ -48,27 +48,27 @@ Claude Code version:
 
 - `2.1.71 (Claude Code)`
 
-Installed hook registration in [settings.json](/home/mstie/.claude/settings.json):
+Installed hook registration in [settings.json](/home/user/.claude/settings.json):
 
 - event: `SessionStart`
 - matcher: `compact`
 - command:
-  - `"\\\\wsl.localhost\\Ubuntu\\home\\mstie\\.claude\\hooks\\taurhaus-session-start-compact.cmd"`
+  - `"\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude\\hooks\\taurhaus-session-start-compact.cmd"`
 
 Installed wrapper:
 
-- [taurhaus-session-start-compact.cmd](/home/mstie/.claude/hooks/taurhaus-session-start-compact.cmd)
+- [taurhaus-session-start-compact.cmd](/home/user/.claude/hooks/taurhaus-session-start-compact.cmd)
 
 Content:
 
 ```bat
 @echo off
-"C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe" --claude-compact-hook
+"C:\Users\user\AppData\Local\taurhaus\taurhaus.exe" --claude-compact-hook
 ```
 
 Installed app binary exists:
 
-- [taurhaus.exe](/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe)
+- [taurhaus.exe](/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe)
 
 ## Manual smoke tests
 
@@ -81,13 +81,13 @@ Using the installed Windows binary directly with a synthetic Claude payload:
   "hookEventName": "SessionStart",
   "sessionId": "47fb0840-8a3e-4877-b512-72d133d44386",
   "source": "compact",
-  "cwd": "/home/mstie/projects/taurhaus"
+  "cwd": "/home/user/projects/taurhaus"
 }
 ```
 
 Command path that worked:
 
-- `cmd.exe /c C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe --claude-compact-hook`
+- `cmd.exe /c C:\Users\user\AppData\Local\taurhaus\taurhaus.exe --claude-compact-hook`
 
 Result:
 
@@ -104,7 +104,7 @@ So the **hook bridge code path itself works**.
 
 Manual invocation of the exact registered UNC wrapper path failed:
 
-- `cmd.exe /c \\wsl.localhost\Ubuntu\home\mstie\.claude\hooks\taurhaus-session-start-compact.cmd`
+- `cmd.exe /c \\wsl.localhost\Ubuntu\home\user\.claude\hooks\taurhaus-session-start-compact.cmd`
 
 Observed result:
 
@@ -116,7 +116,7 @@ This is important because the hook registration currently points at that UNC wra
 
 Transcript inspected:
 
-- [47fb0840-8a3e-4877-b512-72d133d44386.jsonl](/home/mstie/.claude/projects/-home-mstie-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl)
+- [47fb0840-8a3e-4877-b512-72d133d44386.jsonl](/home/user/.claude/projects/-home-user-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl)
 
 Observed recent compaction count:
 
@@ -176,7 +176,7 @@ But there is also a likely latent registration issue:
 
 1. Re-register the Claude compact hook to a Windows-local command target.
    - Best candidate: point the settings command directly at a Windows-local wrapper or directly at:
-     - `C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe --claude-compact-hook`
+     - `C:\Users\user\AppData\Local\taurhaus\taurhaus.exe --claude-compact-hook`
 2. Keep the matcher as `compact`.
 3. Trigger a real Claude `/compact` on the `team-lead` session and then verify:
    - `compaction.claude_hook.received`

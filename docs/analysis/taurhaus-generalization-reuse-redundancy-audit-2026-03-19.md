@@ -2,7 +2,7 @@
 
 Date: 2026-03-19
 Auditor: `code-quality-auditor`
-Scope: targeted structural audit of `/home/mstie/projects/taurhaus`
+Scope: targeted structural audit of `/home/user/projects/taurhaus`
 
 ## Goal
 

@@ -17,21 +17,21 @@ This is separate from the Mesh `0.2.17` rollout itself. The bundled Mesh resourc
 
 - Taurhaus app version: `0.5.10`
 - Installed Windows bundle resources show Mesh `0.2.17` / commit `9b5303acd73d03b86b26515cedff88d2400a1bba`
-- Installed WSL daemon binary exists at `/home/mstie/.local/bin/taurhaus-daemon`
-- Installed daemon token exists at `/home/mstie/.local/share/taurhaus/daemon.token`
+- Installed WSL daemon binary exists at `/home/user/.local/bin/taurhaus-daemon`
+- Installed daemon token exists at `/home/user/.local/share/taurhaus/daemon.token`
 
 ## Reproduction
 
 1. Install Taurhaus on Windows.
 2. Launch the Windows app.
-3. Open a WSL-backed project such as `\\wsl$\Ubuntu\home\mstie\projects\taurhaus`.
+3. Open a WSL-backed project such as `\\wsl$\Ubuntu\home\user\projects\taurhaus`.
 4. Observe that daemon-backed sections do not recover and the app remains disconnected from the daemon.
 
 ## Evidence
 
 ### Windows app log
 
-From `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`:
+From `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`:
 
 - `startup.daemon_phase.started`
 - `startup.daemon_connect.deferred` with reason `daemon_unavailable_at_startup`
@@ -83,14 +83,14 @@ These recent commits do not touch Windows install/launch scripts:
 
 Verified:
 
-- `/home/mstie/.local/bin/taurhaus-daemon` exists
+- `/home/user/.local/bin/taurhaus-daemon` exists
 - `taurhaus-daemon --help` works
 
 ### Not a missing daemon token
 
 Verified:
 
-- `/home/mstie/.local/share/taurhaus/daemon.token` exists
+- `/home/user/.local/share/taurhaus/daemon.token` exists
 
 ## Related But Separate Issue Already Fixed
 
@@ -121,9 +121,9 @@ Given that manual WSL launch works, the most likely suspects are:
 
 ## Relevant Code
 
-- [src-tauri/src/daemon/launcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/launcher.rs)
-- [src-tauri/src/startup/daemon.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/daemon.rs)
-- [src-tauri/src/commands/daemon.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/daemon.rs)
+- [src-tauri/src/daemon/launcher.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/launcher.rs)
+- [src-tauri/src/startup/daemon.rs](/home/user/projects/taurhaus/src-tauri/src/startup/daemon.rs)
+- [src-tauri/src/commands/daemon.rs](/home/user/projects/taurhaus/src-tauri/src/commands/daemon.rs)
 
 Most relevant functions:
 

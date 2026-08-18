@@ -429,7 +429,7 @@ mod tests {
                 "validation notes".to_string(),
             ]),
             capabilities: None,
-            project_path: PathBuf::from("/home/mstie/projects/taurhaus"),
+            project_path: PathBuf::from("/home/user/projects/taurhaus"),
             cli_tool: CliTool::Codex,
         }
     }
@@ -461,7 +461,7 @@ mod tests {
                 active_override_reason: None,
             },
             working_set: OperationalWorkingSetSnapshot {
-                project_path: "/home/mstie/projects/taurhaus".to_string(),
+                project_path: "/home/user/projects/taurhaus".to_string(),
                 focal_files: vec!["docs/architecture/post-compaction-reinjection.md".to_string()],
             },
         }
@@ -501,7 +501,7 @@ mod tests {
             inherits_from: role.inherits_from.clone(),
             required_artifacts: role.required_artifacts.clone(),
             capabilities: Some(role.capabilities.clone()),
-            project_path: PathBuf::from("/home/mstie/projects/taurhaus"),
+            project_path: PathBuf::from("/home/user/projects/taurhaus"),
             cli_tool: role.defaults.cli_tool,
         }
     }
@@ -568,7 +568,7 @@ mod tests {
                     active_override_reason: None,
                 },
                 working_set: OperationalReinjectionWorkingSet {
-                    project_path: "/home/mstie/projects/taurhaus".to_string(),
+                    project_path: "/home/user/projects/taurhaus".to_string(),
                     focal_files: vec![
                         "docs/architecture/post-compaction-reinjection.md".to_string(),
                     ],
@@ -744,7 +744,7 @@ mod tests {
     "active_override_reason": null
   },
   "working_set": {
-    "project_path": "/home/mstie/projects/taurhaus",
+    "project_path": "/home/user/projects/taurhaus",
     "focal_files": [
       "docs/architecture/post-compaction-reinjection.md"
     ]
@@ -799,7 +799,7 @@ mod tests {
         assert!(rendered.contains("Workflow sequence:"));
         assert!(rendered.contains("Avoid:"));
         assert!(rendered.contains("Escalate when:"));
-        assert!(rendered.contains("Project: /home/mstie/projects/taurhaus"));
+        assert!(rendered.contains("Project: /home/user/projects/taurhaus"));
         assert!(rendered.contains("Focal files:"));
         assert!(rendered.contains("- docs/architecture/post-compaction-reinjection.md"));
         assert!(rendered.contains("File ownership boundary:"));

@@ -9,10 +9,10 @@ Baseline assessed: current workspace version of `src/lib/components/MeshCanvas.s
 The current Mesh canvas is a hand-built SVG/HTML hybrid:
 
 - Layout is deterministic and topology-specific. `MeshCanvas.svelte` computes one lead node, one or two centered agent rows, and manual lead-side anchor fan-out for connections.
-- Edges are custom cubic Bezier paths in [`src/lib/components/MeshConnection.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshConnection.svelte).
-- Nodes are regular HTML buttons in [`src/lib/components/MeshNode.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshNode.svelte), layered over an SVG connection plane.
-- Detail popovers are not part of the canvas scene. They are positioned by DOM measurement plus clamped anchor math and rendered by the runtime host in [`src/lib/components/MeshRuntimeView.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshRuntimeView.svelte).
-- Tests in [`src/lib/components/MeshCanvas.test.js`](/home/mstie/projects/taurhaus/src/lib/components/MeshCanvas.test.js) focus on row packing, connection count, lead anchor fan-out, and detail-anchor clamping.
+- Edges are custom cubic Bezier paths in [`src/lib/components/MeshConnection.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshConnection.svelte).
+- Nodes are regular HTML buttons in [`src/lib/components/MeshNode.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshNode.svelte), layered over an SVG connection plane.
+- Detail popovers are not part of the canvas scene. They are positioned by DOM measurement plus clamped anchor math and rendered by the runtime host in [`src/lib/components/MeshRuntimeView.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshRuntimeView.svelte).
+- Tests in [`src/lib/components/MeshCanvas.test.js`](/home/user/projects/taurhaus/src/lib/components/MeshCanvas.test.js) focus on row packing, connection count, lead anchor fan-out, and detail-anchor clamping.
 
 This matters because taurhaus is not solving a general graph editor today. It is solving a branded, small-cardinality, lead-to-agents orchestration view with tightly controlled visual composition.
 
@@ -232,12 +232,12 @@ If the product evolves into a true interactive graph surface, re-open the decisi
 ## Sources
 
 - Current implementation:
-  - [`src/lib/components/MeshCanvas.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshCanvas.svelte)
-  - [`src/lib/components/MeshConnection.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshConnection.svelte)
-  - [`src/lib/components/MeshNode.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshNode.svelte)
-  - [`src/lib/components/MeshRuntimeView.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshRuntimeView.svelte)
-  - [`src/lib/components/MeshCanvas.test.js`](/home/mstie/projects/taurhaus/src/lib/components/MeshCanvas.test.js)
-  - [`docs/screenshots/mesh-missing-connection-after-removal.png`](/home/mstie/projects/taurhaus/docs/screenshots/mesh-missing-connection-after-removal.png)
+  - [`src/lib/components/MeshCanvas.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshCanvas.svelte)
+  - [`src/lib/components/MeshConnection.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshConnection.svelte)
+  - [`src/lib/components/MeshNode.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshNode.svelte)
+  - [`src/lib/components/MeshRuntimeView.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshRuntimeView.svelte)
+  - [`src/lib/components/MeshCanvas.test.js`](/home/user/projects/taurhaus/src/lib/components/MeshCanvas.test.js)
+  - [`docs/screenshots/mesh-missing-connection-after-removal.png`](/home/user/projects/taurhaus/docs/screenshots/mesh-missing-connection-after-removal.png)
 - Library references:
   - Cytoscape.js docs: https://js.cytoscape.org/
   - Cytoscape npm: https://www.npmjs.com/package/cytoscape

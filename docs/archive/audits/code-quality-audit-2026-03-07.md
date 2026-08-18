@@ -1,6 +1,6 @@
 # Audit #571: taurhaus Full Code Quality Audit
 
-Scope: `/home/mstie/projects/taurhaus`
+Scope: `/home/user/projects/taurhaus`
 
 Automated checks run:
 - `cargo fmt -- --check` -> passed
@@ -17,7 +17,7 @@ Automated checks run:
 **Location**: justfile:28
 **Reachability**: Developer change -> local-only `just check` gate -> merge/release without server-side enforcement
 **Description**: The repository defines a strong local quality gate, but there is no repo-local CI configuration to enforce it on every branch or release. That means formatting, lint, tests, and resource-prep assumptions are optional in practice, even though the project just shipped `v0.5.4`.
-**Evidence**: `justfile:28-45` defines the full gate (`fmt`, `lint`, `typecheck`, `test`), but `find /home/mstie/projects/taurhaus -maxdepth 2` found no `.github/workflows`, `.gitlab-ci.yml`, `.circleci`, Buildkite, or Azure pipeline files.
+**Evidence**: `justfile:28-45` defines the full gate (`fmt`, `lint`, `typecheck`, `test`), but `find /home/user/projects/taurhaus -maxdepth 2` found no `.github/workflows`, `.gitlab-ci.yml`, `.circleci`, Buildkite, or Azure pipeline files.
 **Fix Effort**: Moderate
 **Fix**: Add a CI workflow that runs `ensure-tauri-resources`, Rust fmt/clippy/test, frontend check/test, and at least one smoke/E2E lane on pull requests. Treat the local `just check` contract as the CI source of truth instead of a manual convention.
 **Verify**: Open a PR with an intentional fmt or test failure and confirm CI blocks the merge.

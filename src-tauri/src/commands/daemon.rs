@@ -718,11 +718,11 @@ mod tests {
     #[test]
     fn windows_path_translation() {
         let win = std::path::PathBuf::from(
-            "C:\\Users\\mstie\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon",
+            "C:\\Users\\user\\AppData\\Local\\com.taurhaus.dev\\resources\\taurhaus-daemon",
         );
         assert_eq!(
             canonical_linux_path(&win),
-            "/mnt/c/Users/mstie/AppData/Local/com.taurhaus.dev/resources/taurhaus-daemon"
+            "/mnt/c/Users/user/AppData/Local/com.taurhaus.dev/resources/taurhaus-daemon"
         );
     }
 
@@ -746,9 +746,9 @@ mod tests {
 
     #[test]
     fn unix_path_passthrough() {
-        let unix = std::path::PathBuf::from("/home/mstie/.local/bin/taurhaus-daemon");
+        let unix = std::path::PathBuf::from("/home/user/.local/bin/taurhaus-daemon");
         let result = canonical_linux_path(&unix);
-        assert_eq!(result, "/home/mstie/.local/bin/taurhaus-daemon");
+        assert_eq!(result, "/home/user/.local/bin/taurhaus-daemon");
     }
 
     #[test]

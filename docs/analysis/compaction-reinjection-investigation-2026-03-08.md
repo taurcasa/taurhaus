@@ -21,7 +21,7 @@ Team: `taurhaus-team`
 
 ## Windows host app data
 
-Observed under `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev`:
+Observed under `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev`:
 
 - present:
   - `taurhaus.db`
@@ -103,13 +103,13 @@ Important contents:
 
 Conclusion:
 - The state files actually used for compaction audit and operational context are in `~/.claude/teams/...`.
-- On Windows, the code resolves the same root via UNC (`\\wsl.localhost\\<distro>\\home\\mstie\\.claude\\teams`), not via `%APPDATA%`.
+- On Windows, the code resolves the same root via UNC (`\\wsl.localhost\\<distro>\\home\\user\\.claude\\teams`), not via `%APPDATA%`.
 
 Relevant code:
-- [state.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/state.rs)
-- [operational.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/operational.rs)
-- [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/compaction.rs)
-- [mesh_cli.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs)
+- [state.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/state.rs)
+- [operational.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/operational.rs)
+- [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/compaction.rs)
+- [mesh_cli.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs)
 
 ## Root Cause: False "Skipped" Trigger
 
@@ -123,7 +123,7 @@ Evidence:
 4. `coordination_get_compaction_audit_impl(...)` simply loads `MemberCompactionStore::load_all(...)` and returns those rows sorted by timestamp. It does not filter by app run, live session, or freshness.
 
 Relevant code:
-- [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+- [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
 
 Behavior:
 - The audit UI is a persisted "last known compaction delivery record per member" view.
@@ -156,7 +156,7 @@ The strongest supported explanation remains the same as in #692:
 - so delivery fails closed and records `skipped`
 
 Relevant code:
-- [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
+- [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
 
 One unresolved detail:
 - I could not reconstruct the exact originating Codex JSONL record for `sess-123` from the current `~/.codex/sessions` corpus.
@@ -185,8 +185,8 @@ Observed live state:
 - `~/.claude/hooks/` does not exist
 
 Relevant implementation exists:
-- hook handler: [claude_hooks.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
-- CLI registration: [lib.rs](/home/mstie/projects/taurhaus/src-tauri/src/lib.rs)
+- hook handler: [claude_hooks.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
+- CLI registration: [lib.rs](/home/user/projects/taurhaus/src-tauri/src/lib.rs)
 
 But installation is only invoked from lifecycle operations:
 - initialize team
@@ -195,7 +195,7 @@ But installation is only invoked from lifecycle operations:
 - resume team
 
 Relevant call sites:
-- [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+- [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
 
 There is no observed startup self-heal / startup install for already-existing managed Claude teams.
 
@@ -223,7 +223,7 @@ Designed path:
   - pane foreground still Codex
 
 Code status:
-- implemented end to end in [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
+- implemented end to end in [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
 
 Live runtime status observed during this investigation:
 - current installed app reports `session_count: 0` in repeated `session_scanner.scan.completed` log entries
@@ -243,8 +243,8 @@ Designed path:
 - returns `hookSpecificOutput.additionalContext`
 
 Code status:
-- implemented end to end in [claude_hooks.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
-- CLI mode registered in [lib.rs](/home/mstie/projects/taurhaus/src-tauri/src/lib.rs)
+- implemented end to end in [claude_hooks.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
+- CLI mode registered in [lib.rs](/home/user/projects/taurhaus/src-tauri/src/lib.rs)
 
 Live runtime status observed during this investigation:
 - not installed in the live Claude config
@@ -278,8 +278,8 @@ It also means that, at the time of this investigation, I cannot verify a success
 
 1. Make the compaction audit explicitly persisted-state aware.
 Path:
-- [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
-- [coordination_types.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination_types.rs)
+- [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+- [coordination_types.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination_types.rs)
 
 Change:
 - either rename/relabel the UI as "Last persisted compaction delivery"
@@ -289,7 +289,7 @@ Change:
 
 2. Add freshness or session relevance filtering to compaction audit rows.
 Path:
-- [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+- [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
 
 Options:
 - filter out rows older than a small window for the "live" audit widget
@@ -300,7 +300,7 @@ Options:
 
 3. Install Claude compact hooks on startup self-heal, not only on lifecycle mutation.
 Path:
-- [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+- [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
 - likely startup coordination/bootstrap path under `src-tauri/src/startup/` or coordination state bootstrap
 
 Change:
@@ -310,7 +310,7 @@ Change:
 4. Keep the Codex delivery guard strict, but fix runtime session-id population everywhere.
 Path:
 - runtime/session tracking follow-up already identified outside this task
-- related current guard is in [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
+- related current guard is in [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
 
 Reason:
 - the fail-closed behavior is correct
@@ -318,9 +318,9 @@ Reason:
 
 5. Add explicit logging for compaction audit provenance.
 Path:
-- [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
-- [claude_hooks.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
-- [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+- [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
+- [claude_hooks.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
+- [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
 
 Change:
 - log when a UI audit row comes purely from persisted state
@@ -329,7 +329,7 @@ Change:
 
 6. Investigate why the installed Windows app is currently scanning `session_count: 0`.
 Path:
-- [session_scanner/mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
+- [session_scanner/mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
 - process/tmux discovery code beneath `src-tauri/src/session_scanner/`
 
 Reason:

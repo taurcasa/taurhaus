@@ -13,8 +13,8 @@ It asks:
 - if we started from a green field with the real workflow and product requirements of Taurhaus and our AI-only team operating model, what would the best Mesh architecture be?
 
 Inputs:
-- [mesh-joint-architecture-proposal-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-joint-architecture-proposal-2026-03-11.md)
-- [mesh-architecture-tradeoff-analysis-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-architecture-tradeoff-analysis-2026-03-11.md)
+- [mesh-joint-architecture-proposal-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-joint-architecture-proposal-2026-03-11.md)
+- [mesh-architecture-tradeoff-analysis-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-architecture-tradeoff-analysis-2026-03-11.md)
 - direct alignment between `mesh-architect` and `architect-1` on the actual functional requirements and failure modes
 
 ## Executive Summary

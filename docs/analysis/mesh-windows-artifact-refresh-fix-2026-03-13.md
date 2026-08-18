@@ -85,7 +85,7 @@ Re-ran:
 
 Installed app verification:
 
-- installed exe: `C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe`
+- installed exe: `C:\Users\user\AppData\Local\taurhaus\taurhaus.exe`
 - installed exe timestamp: `2026-03-13 14:04:34`
 - installed `resources/mesh.version`: `0.2.12`
 - installed bundled Mesh JSON identity:

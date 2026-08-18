@@ -6,8 +6,8 @@ Investigate the Windows production startup freeze reported after the recent inst
 
 ## Evidence Used
 
-- Screenshot: `/home/mstie/projects/taurhaus/Screenshot 2026-03-13 134513.png`
-- Production Windows log: `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+- Screenshot: `/home/user/projects/taurhaus/Screenshot 2026-03-13 134513.png`
+- Production Windows log: `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
 - Resource monitor capture: `/tmp/taurhaus-resource-monitor-v2.csv`
 
 ## What The Screenshot Shows

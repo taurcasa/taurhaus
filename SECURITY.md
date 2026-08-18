@@ -18,8 +18,8 @@ taurhaus is a local desktop application that manages AI CLI tool sessions and pr
 │  - SQLite, tantivy, libgit2                         │
 │  - Platform abstraction for process inspection      │
 ├─────────────────── TCP ────────────────────────────┤
-│  Daemon (localhost:9000)                            │
-│  - File watching, session scanning, tmux management │
+│  Daemon (127.0.0.1:17233 by default)                │
+│  - Session scanning, tmux, Windows/WSL watch bridge │
 │  - Token-authenticated, localhost-only              │
 ├────────────────────────────────────────────────────┤
 │  tmux / CLI tools (Claude, Codex, Gemini)           │
@@ -37,6 +37,7 @@ taurhaus is a local desktop application that manages AI CLI tool sessions and pr
 
 **Daemon (app ↔ daemon TCP)**:
 - Localhost-only binding (no network exposure)
+- The default endpoint is `127.0.0.1:17233`, defined by [`daemon::server::DEFAULT_PORT`](src-tauri/src/daemon/server.rs); the daemon CLI can override the port
 - Token authentication: daemon generates a 32-byte random token on startup, written to a file with `0600` permissions. The app reads this token and includes it in every request.
 - WSL distro names validated against a safe character set (alphanumeric, hyphens, underscores, dots)
 - Protocol version checking on connect
@@ -60,7 +61,7 @@ Accepted risks are tracked in the [risk register](docs/security/risk-register.md
 
 ### Dependency auditing
 
-Rust dependencies are audited via `cargo-deny`. Known advisories for transitive dependencies (primarily from Tauri's GTK3 stack) are documented with rationale in `src-tauri/.cargo/audit.toml`.
+The repository includes `cargo-deny` supply-chain policy and a `cargo audit` configuration. Known advisories for transitive dependencies (primarily from Tauri's GTK3 stack) are documented with rationale in `src-tauri/.cargo/audit.toml`.
 
 Direct dependencies are chosen conservatively:
 - `rusqlite` with bundled SQLite (no system library dependency)
@@ -71,9 +72,9 @@ Direct dependencies are chosen conservatively:
 
 | Date | Scope | Findings | Report |
 |------|-------|----------|--------|
-| 2026-02-27 | Full audit v0.3.2 | 0 Critical, 0 High, 2 Medium, 8 Low | [Report](docs/security/audit-2026-02-27.md) |
-| 2026-03-03 | Directed (IPC, files, search) | 1 Medium, 2 Low | [Report](docs/security/sec-auditor-audit-2026-03-03.md) |
-| 2026-03-03 | TaurSec framework audit | 0 Critical, 1 High, 4 Medium, 4 Low | [Report](docs/security/team-lead-audit-2026-03-03.md) |
+| 2026-02-27 | Full audit v0.3.2 | 0 Critical, 0 High, 2 Medium, 8 Low | [Report](docs/archive/security/audit-2026-02-27.md) |
+| 2026-03-03 | Directed (IPC, files, search) | 1 Medium, 2 Low | [Report](docs/archive/security/sec-auditor-audit-2026-03-03.md) |
+| 2026-03-03 | TaurSec framework audit | 0 Critical, 1 High, 4 Medium, 4 Low | [Report](docs/archive/security/team-lead-audit-2026-03-03.md) |
 
 ## Reporting a Vulnerability
 
@@ -83,26 +84,17 @@ If you discover a security vulnerability in taurhaus, please report it responsib
 
 Instead, please email: **dev@taurcasa.dev**
 
+taurhaus is experimental and is not currently under active development. Reports are welcome, but monitoring, response, remediation, and release timelines cannot be guaranteed.
+
 Include:
 - Description of the vulnerability
 - Steps to reproduce
 - Potential impact
 - Suggested fix (if you have one)
 
-## Response Timeline
-
-- **Acknowledgment**: Within 48 hours
-- **Initial assessment**: Within 1 week
-- **Fix or mitigation**: Depends on severity, but we aim for critical fixes within 2 weeks
-
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| Latest  | Yes       |
-| Older   | No        |
-
-Only the latest release receives security updates.
+No release currently receives guaranteed security updates. Existing releases remain available as experimental artifacts, not as supported production software. If development resumes, this section should be revised before making any support commitment.
 
 ## Scope
 
@@ -112,7 +104,7 @@ The following are in scope for security reports:
 - Path traversal in file operations
 - Unauthorized access to project data
 - WSL distro parameter injection
-- Daemon protocol vulnerabilities (TCP localhost:9000)
+- Vulnerabilities in the authenticated [localhost daemon protocol](docs/architecture/daemon-protocol.md)
 
 The following are generally out of scope:
 

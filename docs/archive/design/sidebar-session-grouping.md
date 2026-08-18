@@ -18,14 +18,14 @@ Preferred row rule:
 
 ## Current Constraints
 
-The current sidebar row in [SidebarProjectList.svelte](/home/mstie/projects/taurhaus/src/lib/SidebarProjectList.svelte) is fixed at `36px` high and renders:
+The current sidebar row in [SidebarProjectList.svelte](/home/user/projects/taurhaus/src/lib/SidebarProjectList.svelte) is fixed at `36px` high and renders:
 
 - project name
 - `14px` tool indicators for each live session
 - optional branch chip
 - optional dirty marker
 
-The current indicator logic in [sessionIndicator.js](/home/mstie/projects/taurhaus/src/lib/sessionIndicator.js) is intentionally session-level:
+The current indicator logic in [sessionIndicator.js](/home/user/projects/taurhaus/src/lib/sessionIndicator.js) is intentionally session-level:
 
 - one icon per live session
 - per-session active vs idle tint
@@ -273,7 +273,7 @@ After
 
 ## HoverCard Role
 
-The existing HoverCard in [HoverCard.svelte](/home/mstie/projects/taurhaus/src/lib/HoverCard.svelte) already prioritizes live-session summary. It should absorb the lost per-member detail rather than the row trying to do both summary and roster work.
+The existing HoverCard in [HoverCard.svelte](/home/user/projects/taurhaus/src/lib/HoverCard.svelte) already prioritizes live-session summary. It should absorb the lost per-member detail rather than the row trying to do both summary and roster work.
 
 Recommended addition when a grouped token is present:
 

@@ -6,8 +6,8 @@ Date: 2026-03-09
 
 Data sources:
 - Resource monitor CSV: `/tmp/taurhaus-resource-monitor-v2.csv`
-- Code-level review of `/home/mstie/projects/mesh`
-- Targeted local CLI timings against `/home/mstie/projects/mesh/target/release/mesh`
+- Code-level review of `/home/user/projects/mesh`
+- Targeted local CLI timings against `/home/user/projects/mesh/target/release/mesh`
 
 Method notes:
 - The CSV contains `194,764` rows total, with `172,284` rows for `mesh` across `65` unique PIDs.

@@ -102,7 +102,7 @@ Current shape in mesh:
 
 Current implementation evidence:
 
-- [inbox.rs](/home/mstie/projects/mesh/src/inbox.rs) parses the whole array on read
+- [inbox.rs](/home/user/projects/mesh/src/inbox.rs) parses the whole array on read
 - `append_message`, `mark_all_read`, `mark_messages_read`, `mark_read_since`, and `ack_message` all rewrite the whole file
 
 This is exactly the workload where `JSONL` is attractive:
@@ -284,7 +284,7 @@ Taurhaus already uses JSONL for the structured log sink:
 
 Evidence:
 
-- [logging.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/logging.rs)
+- [logging.rs](/home/user/projects/taurhaus/src-tauri/src/commands/logging.rs)
 
 Lessons that carry over:
 

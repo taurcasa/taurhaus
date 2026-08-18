@@ -2,7 +2,7 @@
 
 Date: 2026-03-07
 Task: #596
-Input: [readme-gap-analysis.md](/home/mstie/projects/taurhaus/docs/readme-gap-analysis.md)
+Input: [readme-gap-analysis.md](/home/user/projects/taurhaus/docs/readme-gap-analysis.md)
 
 ## 1. Section outline
 
@@ -147,8 +147,8 @@ Cut:
 Condense:
 
 - architecture detail in the main README
-- repetitive installation prose that is already covered in [docs/getting-started.md](/home/mstie/projects/taurhaus/docs/getting-started.md)
-- development commands that are better explained in [CONTRIBUTING.md](/home/mstie/projects/taurhaus/CONTRIBUTING.md)
+- repetitive installation prose that is already covered in [docs/getting-started.md](/home/user/projects/taurhaus/docs/getting-started.md)
+- development commands that are better explained in [CONTRIBUTING.md](/home/user/projects/taurhaus/CONTRIBUTING.md)
 
 Keep, but rewrite:
 

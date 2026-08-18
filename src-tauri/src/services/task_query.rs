@@ -786,11 +786,11 @@ mod tests {
         insert_project(
             &db,
             "proj-taurhaus",
-            r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus",
+            r"\\wsl.localhost\Ubuntu\home\user\projects\taurhaus",
         );
         insert_task(
             &db,
-            "/home/mstie/projects/taurhaus",
+            "/home/user/projects/taurhaus",
             "taurhaus-team",
             "914",
             "completed",
@@ -804,7 +804,7 @@ mod tests {
             &db,
             &providers,
             &generation_state,
-            r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus".to_string(),
+            r"\\wsl.localhost\Ubuntu\home\user\projects\taurhaus".to_string(),
         )
         .expect("project task query");
 

@@ -11,7 +11,7 @@ Owner: architect
 Contributors: architect + mesh-expert (feasibility review)
 
 Inputs:
-- [`docs/ai-agent-characteristics.md`](/home/mstie/projects/taurhaus/docs/ai-agent-characteristics.md)
+- [`docs/ai-agent-characteristics.md`](/home/user/projects/taurhaus/docs/ai-agent-characteristics.md)
 - team-lead complete signal/data inventory (2026-03-06)
 - mesh-expert feasibility guidance on current mesh constraints
 

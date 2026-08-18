@@ -6,10 +6,10 @@ Run one idle baseline and one controlled load experiment against the current WSL
 
 ## Setup
 
-- Binary under test: `/home/mstie/.local/bin/taurhaus-daemon`
+- Binary under test: `/home/user/.local/bin/taurhaus-daemon`
 - Binary version: `0.5.10`
 - Experiment daemon address: `127.0.0.1:17299`
-- Auth: current token from `/home/mstie/.local/share/taurhaus/daemon.token`
+- Auth: current token from `/home/user/.local/share/taurhaus/daemon.token`
 - Reason for isolated port: keep the live `17233` daemon lane undisturbed while still testing the exact installed binary and protocol
 - Heavy-load repo: `/tmp/daemon-load-measure/repo`
   - initialized as a normal git repo

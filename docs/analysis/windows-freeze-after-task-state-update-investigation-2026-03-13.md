@@ -7,7 +7,7 @@ Task `#1279`: investigate the Windows freeze reported shortly after task state c
 ## Live evidence reviewed
 
 - Windows production log:
-  `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+  `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
 - Resource monitor sample:
   `/tmp/taurhaus-resource-monitor-v2.csv`
 

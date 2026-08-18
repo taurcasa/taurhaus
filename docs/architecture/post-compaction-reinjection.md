@@ -84,7 +84,7 @@ Taurhaus already owns the relevant hard parts:
 
 Relevant existing boundaries:
 
-- Codex session resolution already lives in [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs)
+- Codex session resolution already lives in [codex.rs](../../src-tauri/src/session_scanner/idle/codex.rs)
 - Taurhaus already persists per-member role context on `Member`
 - Taurhaus already routes operator delivery through the coordination backend and renderer
 
@@ -199,7 +199,7 @@ This snapshot is updated whenever Taurhaus knows the member’s active operation
     "active_override_reason": null
   },
   "working_set": {
-    "project_path": "/home/mstie/projects/taurhaus",
+    "project_path": "/home/user/projects/taurhaus",
     "focal_files": [
       "docs/architecture/post-compaction-reinjection.md"
     ]
@@ -245,7 +245,7 @@ This is the rendered logical payload, not necessarily the persisted raw snapshot
     "override_allowed": false
   },
   "working_set": {
-    "project_path": "/home/mstie/projects/taurhaus",
+    "project_path": "/home/user/projects/taurhaus",
     "focal_files": [
       "docs/architecture/post-compaction-reinjection.md"
     ]
@@ -299,7 +299,7 @@ This avoids waiting for the placeholder Claude native backend to become fully im
 
 Important local reality:
 
-- [claude.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/backend/claude.rs) is still a placeholder
+- [claude.rs](../../src-tauri/src/coordination/backend/claude.rs) is still a placeholder
 - phase 1 should therefore use the hook bridge directly, not depend on a complete Claude-native coordination backend
 
 ## Codex

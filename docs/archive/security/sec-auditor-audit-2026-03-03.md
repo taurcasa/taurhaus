@@ -4,7 +4,7 @@
 **Audit Type**: Deep Audit (Rust/Tauri desktop app, frontend, SQLite, daemon, coordination)
 **Date**: 2026-03-03
 **Auditor**: taurhaus-sec-auditor
-**Scope**: `/home/mstie/projects/taurhaus/src-tauri/src`, `/home/mstie/projects/taurhaus/src`, Tauri config/capabilities, dependency/tooling checks
+**Scope**: `/home/user/projects/taurhaus/src-tauri/src`, `/home/user/projects/taurhaus/src`, Tauri config/capabilities, dependency/tooling checks
 **Status**: Final
 
 ---
@@ -138,7 +138,7 @@ unmaintained = "warn"
 ```text
 $ cargo deny check
 error[unexpected-value]: expected '["all", "workspace", "transitive", "none"]'
-  ┌─ /home/mstie/projects/taurhaus/src-tauri/deny.toml:6:17
+  ┌─ /home/user/projects/taurhaus/src-tauri/deny.toml:6:17
 6 │ unmaintained = "warn"
 ```
 

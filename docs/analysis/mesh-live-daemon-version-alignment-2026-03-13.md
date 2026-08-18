@@ -36,7 +36,7 @@ Installed Mesh contract from `~/.local/bin/mesh version --json`:
 
 Installed executable identity:
 
-- path: `/home/mstie/.local/bin/mesh`
+- path: `/home/user/.local/bin/mesh`
 - device: `830`
 - inode: `254283`
 - size: `4419608`
@@ -62,7 +62,7 @@ Per-team summary:
 
 Every inspected daemon process resolved to:
 
-- executable path: `/home/mstie/.local/bin/mesh`
+- executable path: `/home/user/.local/bin/mesh`
 - executable identity: device `830`, inode `254283`
 
 That exactly matches the installed Mesh CLI identity for all running daemons.
@@ -71,25 +71,25 @@ Detailed inventory:
 
 | PID | Type | Team | Name | Start time | Executable | Inode | Aligned |
 |-----|------|------|------|------------|------------|-------|---------|
-| `863100` | member | `taurhaus-team` | `dev-2` | `Thu Mar 12 22:49:09` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `864569` | member | `taurmuse-team` | `dev-1` | `Thu Mar 12 22:49:51` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `864841` | member | `taurmuse-team` | `dev-2` | `Thu Mar 12 22:49:53` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `864928` | member | `taurmuse-team` | `team-lead` | `Thu Mar 12 22:49:55` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865500` | member | `taurhaus-team` | `architect-1` | `Thu Mar 12 22:50:33` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865562` | member | `taurhaus-team` | `code-quality-auditor` | `Thu Mar 12 22:50:35` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865639` | member | `taurhaus-team` | `dev-1` | `Thu Mar 12 22:50:38` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865745` | member | `taurhaus-team` | `dev-3` | `Thu Mar 12 22:50:41` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865810` | member | `taurhaus-team` | `mesh-architect` | `Thu Mar 12 22:50:43` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865906` | member | `taurhaus-team` | `security-auditor` | `Thu Mar 12 22:50:46` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `865975` | member | `taurhaus-team` | `team-lead` | `Thu Mar 12 22:50:48` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3187839` | member | `taurhealth-team` | `team-lead` | `Fri Mar 13 10:54:58` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3188311` | member | `taurhealth-team` | `dev-1` | `Fri Mar 13 10:54:59` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3188915` | member | `taurhealth-team` | `dev-2` | `Fri Mar 13 10:55:00` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3189352` | member | `taurhealth-team` | `architect-1` | `Fri Mar 13 10:55:02` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3836505` | team | `taurmuse-team` | `team-lead` | `Fri Mar 13 12:35:46` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3842772` | team | `taurhaus-team` | `team-lead` | `Fri Mar 13 12:36:52` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3844760` | team | `taurhealth-team` | `team-lead` | `Fri Mar 13 12:37:13` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
-| `3845447` | member | `taurmuse-team` | `architect-1` | `Fri Mar 13 12:37:15` | `/home/mstie/.local/bin/mesh` | `830:254283` | yes |
+| `863100` | member | `taurhaus-team` | `dev-2` | `Thu Mar 12 22:49:09` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `864569` | member | `taurmuse-team` | `dev-1` | `Thu Mar 12 22:49:51` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `864841` | member | `taurmuse-team` | `dev-2` | `Thu Mar 12 22:49:53` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `864928` | member | `taurmuse-team` | `team-lead` | `Thu Mar 12 22:49:55` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865500` | member | `taurhaus-team` | `architect-1` | `Thu Mar 12 22:50:33` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865562` | member | `taurhaus-team` | `code-quality-auditor` | `Thu Mar 12 22:50:35` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865639` | member | `taurhaus-team` | `dev-1` | `Thu Mar 12 22:50:38` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865745` | member | `taurhaus-team` | `dev-3` | `Thu Mar 12 22:50:41` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865810` | member | `taurhaus-team` | `mesh-architect` | `Thu Mar 12 22:50:43` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865906` | member | `taurhaus-team` | `security-auditor` | `Thu Mar 12 22:50:46` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `865975` | member | `taurhaus-team` | `team-lead` | `Thu Mar 12 22:50:48` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3187839` | member | `taurhealth-team` | `team-lead` | `Fri Mar 13 10:54:58` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3188311` | member | `taurhealth-team` | `dev-1` | `Fri Mar 13 10:54:59` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3188915` | member | `taurhealth-team` | `dev-2` | `Fri Mar 13 10:55:00` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3189352` | member | `taurhealth-team` | `architect-1` | `Fri Mar 13 10:55:02` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3836505` | team | `taurmuse-team` | `team-lead` | `Fri Mar 13 12:35:46` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3842772` | team | `taurhaus-team` | `team-lead` | `Fri Mar 13 12:36:52` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3844760` | team | `taurhealth-team` | `team-lead` | `Fri Mar 13 12:37:13` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
+| `3845447` | member | `taurmuse-team` | `architect-1` | `Fri Mar 13 12:37:15` | `/home/user/.local/bin/mesh` | `830:254283` | yes |
 
 ## Interpretation
 

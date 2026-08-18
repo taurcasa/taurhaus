@@ -180,14 +180,14 @@ Passed:
 ### Real Windows dataset verification
 
 Using the live Windows app DB at:
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.db`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.db`
 
 Observed task volume:
-- project `/home/mstie/projects/taurhaus`
+- project `/home/user/projects/taurhaus`
   - total rows: `1175`
   - active rows: `897`
   - archived rows: `278`
-- project `/home/mstie/projects/mesh`
+- project `/home/user/projects/mesh`
   - total rows: `986`
   - active rows: `825`
   - archived rows: `161`

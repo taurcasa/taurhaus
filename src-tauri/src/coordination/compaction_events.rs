@@ -353,7 +353,7 @@ mod tests {
             member_name: Some("developer2".to_string()),
             session_id: Some("session-1".to_string()),
             pane_id: Some("%7".to_string()),
-            project_path: Some("/home/mstie/projects/taurhaus".to_string()),
+            project_path: Some("/home/user/projects/taurhaus".to_string()),
             jsonl_path: Some("/tmp/session.jsonl".to_string()),
             compaction_timestamp: Some(
                 DateTime::parse_from_rfc3339("2026-03-08T20:00:00Z")
@@ -387,7 +387,7 @@ mod tests {
             tool: CliTool::Codex,
             session_id: Some("session-2".to_string()),
             pane_id: None,
-            project_path: "/home/mstie/projects/2ksim".to_string(),
+            project_path: "/home/user/projects/2ksim".to_string(),
             jsonl_path: Some("/tmp/codex.jsonl".to_string()),
             compaction_timestamp: DateTime::parse_from_rfc3339("2026-03-08T20:01:00Z")
                 .expect("timestamp")
@@ -408,7 +408,7 @@ mod tests {
         );
         assert_eq!(
             fields.get("project_path"),
-            Some(&Value::String("/home/mstie/projects/2ksim".to_string()))
+            Some(&Value::String("/home/user/projects/2ksim".to_string()))
         );
     }
 
@@ -437,7 +437,7 @@ mod tests {
             tool: CliTool::Codex,
             session_id: Some("session-3".to_string()),
             pane_id: Some("%9".to_string()),
-            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            project_path: "/home/user/projects/taurhaus".to_string(),
             jsonl_path: Some("/tmp/codex.jsonl".to_string()),
             compaction_timestamp: DateTime::parse_from_rfc3339("2026-03-08T20:05:00Z")
                 .expect("timestamp")

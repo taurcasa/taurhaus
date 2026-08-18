@@ -1398,13 +1398,13 @@ mod tests {
       "name": "team-lead",
       "agentType": "team-lead",
       "model": "claude-opus-4-6",
-      "cwd": "/home/mstie/projects/taurhaus"
+      "cwd": "/home/user/projects/taurhaus"
     },
     {
       "name": "codex-reviewer",
       "agentType": "general-purpose",
       "model": "gpt-5.2-codex",
-      "cwd": "/home/mstie/projects/taurhaus"
+      "cwd": "/home/user/projects/taurhaus"
     }
   ]
 }"#;
@@ -1444,13 +1444,13 @@ mod tests {
       "name": "evaluator",
       "agentType": "orchestrator",
       "model": "claude-opus-4-6",
-      "cwd": "/home/mstie/projects/taureval"
+      "cwd": "/home/user/projects/taureval"
     },
     {
       "name": "agent-under-test",
       "agentType": "general-purpose",
       "model": "claude-opus-4-6",
-      "cwd": "/home/mstie/projects/taureval"
+      "cwd": "/home/user/projects/taureval"
     }
   ]
 }"#;
@@ -1462,7 +1462,7 @@ mod tests {
         assert_eq!(config.members[0].role, MemberRole::Lead);
         assert_eq!(
             config.members[0].project_path,
-            PathBuf::from("/home/mstie/projects/taureval")
+            PathBuf::from("/home/user/projects/taureval")
         );
         assert_eq!(config.members[1].cli_tool, CliTool::Claude);
     }
@@ -1485,7 +1485,7 @@ mod tests {
       "agentId": "lead@orchestrator-team",
       "agentType": "orchestrator",
       "model": "claude-opus-4-6",
-      "cwd": "/home/mstie/projects/taurhaus"
+      "cwd": "/home/user/projects/taurhaus"
     }
   ]
 }"#;
@@ -1511,7 +1511,7 @@ mod tests {
       "name": "codex-dev",
       "agentType": "general-purpose",
       "model": "gpt-5.4 high",
-      "cwd": "/home/mstie/projects/taurhaus",
+      "cwd": "/home/user/projects/taurhaus",
       "roleId": "codex-developer",
       "instructions": "Implement safely",
       "behavioralContract": {

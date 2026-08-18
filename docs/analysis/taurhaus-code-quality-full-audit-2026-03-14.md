@@ -1,7 +1,7 @@
 # Taurhaus Full Code Quality Audit
 
 Date: March 14, 2026
-Repository: `/home/mstie/projects/taurhaus`
+Repository: `/home/user/projects/taurhaus`
 Auditor: `code-quality-auditor`
 
 ## Scope

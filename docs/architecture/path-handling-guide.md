@@ -49,8 +49,8 @@ Use Linux-native paths for anything executed inside WSL/Linux or compared as pro
 - backend storage keys derived from project identity
 
 Examples:
-- `/home/mstie/projects/taurhaus`
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/...`
+- `/home/user/projects/taurhaus`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/...`
 
 ### Windows-native allowed
 
@@ -61,8 +61,8 @@ Windows-native paths are fine when the consumer is Windows/UI-facing and no cros
 - external Windows shell / Explorer integration
 
 Examples:
-- `C:\Users\mstie\project`
-- `\\wsl.localhost\Ubuntu\home\mstie\project`
+- `C:\Users\user\project`
+- `\\wsl.localhost\Ubuntu\home\user\project`
 
 Rule:
 - if the path is about execution or identity, normalize it

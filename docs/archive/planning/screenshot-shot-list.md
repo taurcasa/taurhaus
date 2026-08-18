@@ -2,7 +2,7 @@
 
 Date: 2026-03-07
 Task: #597
-Input: [readme-content-plan.md](/home/mstie/projects/taurhaus/docs/readme-content-plan.md)
+Input: [readme-content-plan.md](/home/user/projects/taurhaus/docs/readme-content-plan.md)
 
 ## Guidance
 

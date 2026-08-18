@@ -1,7 +1,7 @@
 # Retro 2026-03-08 Decisions
 
 Inputs:
-- [retro-2026-03-08-survey-findings.md](/home/mstie/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md)
+- [retro-2026-03-08-survey-findings.md](/home/user/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md)
 - team discussion / consensus captured by `team-lead`
 
 Purpose:

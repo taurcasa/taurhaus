@@ -297,11 +297,11 @@ That directly targets the repeated bug class without over-solving the problem.
 ## Sources
 
 - Current implementation:
-  - [`MeshCanvas.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshCanvas.svelte)
-  - [`MeshConnection.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshConnection.svelte)
-  - [`MeshCanvas.test.js`](/home/mstie/projects/taurhaus/src/lib/components/MeshCanvas.test.js)
+  - [`MeshCanvas.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshCanvas.svelte)
+  - [`MeshConnection.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshConnection.svelte)
+  - [`MeshCanvas.test.js`](/home/user/projects/taurhaus/src/lib/components/MeshCanvas.test.js)
 - Prior assessment:
-  - [`mesh-canvas-library-assessment.md`](/home/mstie/projects/taurhaus/docs/architecture/mesh-canvas-library-assessment.md)
+  - [`mesh-canvas-library-assessment.md`](/home/user/projects/taurhaus/docs/architecture/mesh-canvas-library-assessment.md)
 - Official library references reviewed on 2026-03-06:
   - Dagre: https://github.com/dagrejs/dagre
   - ELK: https://eclipse.dev/elk/

@@ -85,8 +85,8 @@ What it does **not** answer well:
 ### 3. Mesh config view: shared `config.json`
 
 Files:
-- `/home/mstie/projects/mesh/src/types.rs`
-- `/home/mstie/projects/mesh/src/config.rs`
+- `/home/user/projects/mesh/src/types.rs`
+- `/home/user/projects/mesh/src/config.rs`
 
 Mesh reads the same `teams/<team>/config.json`, but through its own schema:
 - `TeamConfig.lead_agent_id`

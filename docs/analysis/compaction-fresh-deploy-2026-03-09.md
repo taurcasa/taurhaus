@@ -53,7 +53,7 @@ The pipeline is healthy at the checkpoint level:
 
 Key outputs:
 
-- selected log: `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- selected log: `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 - parsed lines: `325522/325537`
 - invalid JSON lines: `15`
 - latest scanner run: `run_6127a4a0ba9d4284921f312b23b19368`
@@ -91,7 +91,7 @@ Current state:
 - compact matcher present: `true`
 - hook script exists: `true`
 - configured command:
-  - `\\wsl.localhost\Ubuntu\home\mstie\.claude\hooks\taurhaus-session-start-compact.cmd`
+  - `\\wsl.localhost\Ubuntu\home\user\.claude\hooks\taurhaus-session-start-compact.cmd`
 
 But:
 
@@ -104,8 +104,8 @@ So Claude hook installation looks correct, but this check did not observe a real
 Live daemon:
 
 - PID: `2139214`
-- command: `/home/mstie/.local/bin/taurhaus-daemon --port 17233`
-- `/proc/2139214/exe -> /home/mstie/.local/bin/taurhaus-daemon`
+- command: `/home/user/.local/bin/taurhaus-daemon --port 17233`
+- `/proc/2139214/exe -> /home/user/.local/bin/taurhaus-daemon`
 
 Important:
 
@@ -139,7 +139,7 @@ Raw JSONL inspection for the active `architect` transcript shows the same patter
 
 Concrete examples from:
 
-- [rollout-2026-03-05T12-56-33-019cbddb-5527-77a0-a457-7908cf7d790b.jsonl](/home/mstie/.codex/sessions/2026/03/05/rollout-2026-03-05T12-56-33-019cbddb-5527-77a0-a457-7908cf7d790b.jsonl)
+- [rollout-2026-03-05T12-56-33-019cbddb-5527-77a0-a457-7908cf7d790b.jsonl](/home/user/.codex/sessions/2026/03/05/rollout-2026-03-05T12-56-33-019cbddb-5527-77a0-a457-7908cf7d790b.jsonl)
 
 Observed pairs:
 

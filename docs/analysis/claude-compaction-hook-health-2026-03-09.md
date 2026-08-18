@@ -18,8 +18,8 @@ Validate the separate Claude Code compaction path for `SessionStart(source=compa
 - `~/.claude/teams/taurhaus-team/.lock`
 - `~/.claude/teams/taurhaus-team/daemons/team.pid.lock`
 - `~/.local/share/com.taurhaus.dev/taurhaus.log.jsonl`
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
-- `~/.claude/projects/-home-mstie-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- `~/.claude/projects/-home-user-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
 - `scripts/analyze-compaction.py`
 - `src-tauri/src/coordination/claude_hooks.rs`
 - `src-tauri/src/lib.rs`
@@ -36,14 +36,14 @@ Content:
 
 ```bat
 @echo off
-"C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe" --claude-compact-hook
+"C:\Users\user\AppData\Local\taurhaus\taurhaus.exe" --claude-compact-hook
 ```
 
 Hook registration in `~/.claude/settings.json` is present under:
 
 - `hooks.SessionStart`
 - matcher: `"compact"`
-- command: `"\\\\wsl.localhost\\Ubuntu\\home\\mstie\\.claude\\hooks\\taurhaus-session-start-compact.cmd"`
+- command: `"\\\\wsl.localhost\\Ubuntu\\home\\user\\.claude\\hooks\\taurhaus-session-start-compact.cmd"`
 
 This matches the intended bridge design in code:
 
@@ -112,7 +112,7 @@ That is the correct classification from the current evidence.
 Searched both:
 
 - `~/.local/share/com.taurhaus.dev/taurhaus.log.jsonl`
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 
 No matches for:
 
@@ -135,7 +135,7 @@ This exposes an observability gap: the current bridge logs failures, but there i
 
 Active managed Claude session file:
 
-- `~/.claude/projects/-home-mstie-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
+- `~/.claude/projects/-home-user-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
 
 Search results:
 

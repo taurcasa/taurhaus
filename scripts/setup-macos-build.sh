@@ -172,13 +172,13 @@ else
     echo "Cloning taurhaus..."
     mkdir -p "$HOME/projects"
     cd "$HOME/projects"
-    git clone https://github.com/mstie/taurhaus.git
+    git clone https://github.com/taurcasa/taurhaus.git
     cd taurhaus
 fi
 
 echo ""
-echo "Installing npm dependencies..."
-npm install
+echo "Installing Bun dependencies..."
+bun install --frozen-lockfile
 
 echo ""
 echo "Creating dev resource placeholder..."

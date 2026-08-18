@@ -932,7 +932,7 @@ mod tests {
             member_name: "architect".to_string(),
             session_id: "sess-123".to_string(),
             pane_id: "%217".to_string(),
-            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            project_path: "/home/user/projects/taurhaus".to_string(),
             jsonl_path: jsonl_path.to_path_buf(),
             cli_tool: CliTool::Codex,
         }
@@ -1326,7 +1326,7 @@ mod tests {
             &teams_dir,
             "taurhaus-team",
             "%217",
-            "/home/mstie/projects/taurhaus",
+            "/home/user/projects/taurhaus",
         );
         write_jsonl(
             &jsonl_path,
@@ -1335,7 +1335,7 @@ mod tests {
 
         let session = RuntimeSession {
             pid: 42,
-            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            project_path: "/home/user/projects/taurhaus".to_string(),
             tty: "/dev/pts/7".to_string(),
             args: "codex".to_string(),
             cli_tool: CliTool::Codex,
@@ -1400,7 +1400,7 @@ mod tests {
             &teams_dir,
             "taurhaus-team",
             "%217",
-            "/home/mstie/projects/taurhaus",
+            "/home/user/projects/taurhaus",
         );
         write_jsonl(
             &tracked_jsonl_path,
@@ -1413,7 +1413,7 @@ mod tests {
 
         let tracked_session = RuntimeSession {
             pid: 42,
-            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            project_path: "/home/user/projects/taurhaus".to_string(),
             tty: "/dev/pts/7".to_string(),
             args: "codex".to_string(),
             cli_tool: CliTool::Codex,
@@ -1436,7 +1436,7 @@ mod tests {
         };
         let stray_session = RuntimeSession {
             pid: 99,
-            project_path: "/home/mstie/projects/taurhaus".to_string(),
+            project_path: "/home/user/projects/taurhaus".to_string(),
             tty: "/dev/pts/8".to_string(),
             args: "codex".to_string(),
             cli_tool: CliTool::Codex,

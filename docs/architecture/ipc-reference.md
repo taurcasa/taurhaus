@@ -102,6 +102,7 @@ Session update behavior:
 | `templates_get_role` | `roleId: string` | `Result<RoleTemplate, String>` | `templates.rs` | Returns one role template by id. |
 | `templates_upsert_role` | `request: TemplatesUpsertRoleRequest` | `Result<RoleTemplate, String>` | `templates.rs` | Creates or updates a role template. |
 | `templates_delete_role` | `roleId: string` | `Result<(), String>` | `templates.rs` | Deletes a user-defined role template. |
+| `import_role_from_file` | `request: ImportRoleFromFileRequest` | `Result<ImportRoleFromFileResult, String>` | `templates.rs` | Imports an external role file, preserving provenance and returning conflict details without overwriting an existing role. |
 | `templates_list_presets_full` | none | `Result<Vec<TeamPresetFull>, String>` | `templates.rs` | Lists team presets with source/read-only metadata. |
 | `templates_get_preset` | `presetId: string` | `Result<TeamPreset, String>` | `templates.rs` | Returns one team preset by id. |
 | `templates_upsert_preset` | `request: TemplatesUpsertPresetRequest` | `Result<TeamPreset, String>` | `templates.rs` | Creates or updates a team preset. |
@@ -166,7 +167,6 @@ These commands are feature-gated behind `mesh-bridged-backend` (enabled by defau
 | `coordination_resume_team` | `request: ResumeTeamRequest` | `Result<ResumeTeamReport, String>` | `coordination.rs` | Resumes the lead first, then same-project and cross-project members, with partial-success reporting. |
 | `coordination_reonboard` | `request: ReonboardRequest` | `Result<DeliveryResult, String>` | `coordination.rs` | Re-sends onboarding guidance to one member. |
 | `coordination_get_live_team_status` | `teamName: string` | `Result<LiveTeamStatus, String>` | `coordination.rs` | Returns runtime/live roster state (session status + pane IDs). |
-| `coordination_get_compaction_audit` | `teamName: string` | `Result<Vec<CompactionAuditEntry>, String>` | `coordination.rs` | Returns current-run compaction audit entries for the Mesh runtime panel. |
 | `coordination_preflight_check` | `request: InitializeTeamRequest` | `Result<PreflightReport, String>` | `coordination.rs` | Validates prerequisites before initialization. |
 | `coordination_get_feature_availability` | none | `Result<FeatureAvailabilityReport, String>` | `coordination.rs` | Reports mesh/tmux feature availability for UI gating. |
 | `coordination_get_project_mesh_snapshot` | `projectId: string` | `Result<ProjectMeshSnapshot, String>` | `coordination.rs` | Returns the project-scoped mesh snapshot used for runtime canvas hydration. |

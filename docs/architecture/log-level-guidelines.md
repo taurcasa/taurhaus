@@ -5,8 +5,8 @@ Owner: architect
 Scope: Backend, frontend, daemon, and E2E instrumentation policy.
 
 Reference docs:
-- [`logging-design.md`](/home/mstie/projects/taurhaus/docs/architecture/logging-design.md)
-- [`logging-integration-point-inventory.md`](/home/mstie/projects/taurhaus/docs/architecture/logging-integration-point-inventory.md)
+- [`logging-design.md`](logging-design.md)
+- [`logging-integration-point-inventory.md`](../archive/architecture/logging-integration-point-inventory.md) (historical inventory)
 
 ## 1. Core Rules
 
@@ -52,9 +52,9 @@ Use INFO for:
 
 Good examples from current code:
 
-- `tracing::info!("taurhaus starting")` in [`startup/mod.rs`](/home/mstie/projects/taurhaus/src-tauri/src/startup/mod.rs:42)
-- `tracing::info!("Connected to existing daemon (fast path)")` in [`startup/mod.rs`](/home/mstie/projects/taurhaus/src-tauri/src/startup/mod.rs:116)
-- `tracing::info!(watched, unwatched, reason, ...)` in [`startup/watchers.rs`](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs:237)
+- `tracing::info!("taurhaus starting")` in [`startup/mod.rs`](../../src-tauri/src/startup/mod.rs#L27)
+- `tracing::info!("Background bootstrap: daemon connected")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L142)
+- `tracing::info!(watched, unwatched, reason, ...)` in [`startup/watchers.rs`](../../src-tauri/src/startup/watchers.rs#L317)
 
 Do not use INFO for:
 
@@ -76,9 +76,9 @@ Use WARN for:
 
 Good examples from current code:
 
-- `tracing::warn!(error = %e, "Daemon health check failed")` in [`daemon_lifecycle.rs`](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs:537)
-- `tracing::warn!(..., "dropping daemon event")` in [`daemon/event_listener.rs`](/home/mstie/projects/taurhaus/src-tauri/src/daemon/event_listener.rs:356)
-- `tracing::warn!(..., "git status refresh failed ... scheduling one retry")` in [`event_processor.rs`](/home/mstie/projects/taurhaus/src-tauri/src/event_processor.rs:432)
+- `tracing::warn!(..., "Daemon health check failed")` in [`daemon_lifecycle.rs`](../../src-tauri/src/daemon_lifecycle.rs#L672)
+- `tracing::warn!(..., "dropping daemon event ...")` in [`daemon/event_listener.rs`](../../src-tauri/src/daemon/event_listener.rs#L361)
+- `tracing::warn!(..., "git status refresh failed ... scheduling one retry")` in [`event_processor.rs`](../../src-tauri/src/event_processor.rs#L611)
 
 Do not use WARN for:
 
@@ -99,9 +99,9 @@ Use ERROR for:
 
 Good examples from current code:
 
-- `tracing::error!("Failed to lock DB for activity reseed: ...")` in [`bootstrap.rs`](/home/mstie/projects/taurhaus/src-tauri/src/bootstrap.rs:27)
-- `tracing::error!(..., "DAEMON IS OUTDATED ...")` in [`startup/daemon.rs`](/home/mstie/projects/taurhaus/src-tauri/src/startup/daemon.rs:43)
-- `tracing::error!(..., "Daemon server error")` in [`bin/taurhaus-daemon.rs`](/home/mstie/projects/taurhaus/src-tauri/src/bin/taurhaus-daemon.rs:85)
+- `tracing::error!("Failed to lock DB for activity reseed: ...")` in [`bootstrap.rs`](../../src-tauri/src/bootstrap.rs#L26)
+- `tracing::error!(..., "DAEMON IS OUTDATED ...")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L227)
+- `tracing::error!(..., "Daemon server error")` in [`bin/taurhaus-daemon.rs`](../../src-tauri/src/bin/taurhaus-daemon.rs#L93)
 
 Do not use ERROR for:
 
@@ -122,9 +122,9 @@ Use DEBUG for:
 
 Good examples from current code:
 
-- `tracing::debug!(..., "session_scanner metrics")` in [`session_scanner/mod.rs`](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:485)
-- `tracing::debug!(..., "flushing watch event batch")` in [`event_processor.rs`](/home/mstie/projects/taurhaus/src-tauri/src/event_processor.rs:392)
-- `tracing::debug!(..., "Received request")` in [`daemon/handlers.rs`](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:53)
+- `tracing::debug!(..., "session_scanner metrics")` in [`session_scanner/scans.rs`](../../src-tauri/src/session_scanner/scans.rs#L86)
+- `tracing::debug!(..., "flushing watch event batch")` in [`event_processor.rs`](../../src-tauri/src/event_processor.rs#L552)
+- `tracing::debug!(..., "Received request")` in [`daemon/handlers.rs`](../../src-tauri/src/daemon/handlers.rs#L33)
 
 Do not use DEBUG for:
 
@@ -224,4 +224,3 @@ When instrumenting a new flow:
 6. Ensure field names match canonical list and `snake_case`.
 
 This checklist is the minimum bar before opening a PR that adds instrumentation.
-

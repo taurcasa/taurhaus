@@ -40,7 +40,7 @@ Memory, threads, and watches were stable; this is a loop/cadence problem, not ch
 
 From the current daemon log run in:
 
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 - run id: `run_45f18923c307478e860aa8293b29e3d5`
 
 `session_scanner.scan.completed` stats for that run:

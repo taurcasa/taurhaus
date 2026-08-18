@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document translates the approved HoverCard vision from [project-hovercard-vision.md](/home/mstie/projects/taurhaus/docs/ui/project-hovercard-vision.md) into an implementation-ready UI concept.
+This document translates the approved HoverCard vision from [project-hovercard-vision.md](/home/user/projects/taurhaus/docs/ui/project-hovercard-vision.md) into an implementation-ready UI concept.
 
 The core rule stays the same:
 
@@ -485,8 +485,8 @@ This ensures the card still works even if some IPC calls fail or are still loadi
 
 ## Implementation Notes For Phase 3
 
-- Reuse existing sidebar trigger architecture in [Sidebar.svelte](/home/mstie/projects/taurhaus/src/lib/Sidebar.svelte), but allow separate enter and exit timing constants.
-- Replace the current commit-list and session-metadata layout in [HoverCard.svelte](/home/mstie/projects/taurhaus/src/lib/HoverCard.svelte) with a verdict-first stack.
+- Reuse existing sidebar trigger architecture in [Sidebar.svelte](/home/user/projects/taurhaus/src/lib/Sidebar.svelte), but allow separate enter and exit timing constants.
+- Replace the current commit-list and session-metadata layout in [HoverCard.svelte](/home/user/projects/taurhaus/src/lib/HoverCard.svelte) with a verdict-first stack.
 - Prefer latest-session narrative over historical project-activity totals.
 - Keep the card strictly presentational and non-interactive.
 

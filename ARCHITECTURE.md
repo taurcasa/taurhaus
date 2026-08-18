@@ -9,7 +9,7 @@ This document is the system-level overview.
 
 ## System Overview
 
-taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles WSL-side process scanning, tmux session management, and WSL file watching only when the app is bridging into Linux workspaces, communicating with the app over TCP (JSON-line protocol on localhost:17233).
+taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles process scanning, tmux session management, activity detection, and WSL file watching only when the app is bridging into Linux workspaces. The app and daemon communicate using an authenticated JSON-line protocol over TCP; [`daemon::server::DEFAULT_PORT`](src-tauri/src/daemon/server.rs) defines the default endpoint as `127.0.0.1:17233`.
 
 The daemon can run on all supported platforms, but it is only responsible for watch/process work that the app cannot do directly:
 
@@ -17,8 +17,6 @@ The daemon can run on all supported platforms, but it is only responsible for wa
 - **macOS / Linux**: The daemon runs natively as a subprocess (launched from `~/.local/bin/taurhaus-daemon`) for session scanning / terminal control, while the app keeps ownership of native project file watchers.
 
 ![System Architecture](docs/images/system-architecture.jpg)
-
-_Note: this infographic is stale and needs regeneration. The current codebase uses 85 IPC commands, and native/local file watching is app-owned rather than daemon-owned on all platforms._
 
 ## Platform Abstraction
 
@@ -142,9 +140,9 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 See [data model reference](docs/architecture/data-model.md) for schema details.
 
-### IPC Commands (85)
+### IPC Commands
 
-Fine-grained, one command per operation. Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the full command catalog.
+Fine-grained, one command per operation. The default build currently registers 85 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L169). Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
 
 Grouped by command module:
 - **Projects** (12): includes `create_project`, registration flows, path/directory helpers, and first-run checks
@@ -207,7 +205,7 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Compaction reinjection**: When a managed agent loses context (compaction), taurhaus detects this, resolves which team member was affected, and re-delivers their working context to the team inbox. The pipeline has three stages: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox only when the operational snapshot still has resumable task context. Claude uses a `SessionStart(source=compact)` hook bridge that installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, returns `hookSpecificOutput.additionalContext`, and logs standalone hook execution into the canonical JSONL sink.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model. `MeshRuntimeBar` is also the shipped cold-restart/degraded recovery surface for team resume.
-- **Current recovery status**: shipped resume/recovery flows are live and covered by dedicated E2E specs. Broader degraded-path polish noted in tasks `#1344-#1346` is still in flight.
+- **Recovery status at the final active-development snapshot**: shipped resume/recovery flows are covered by dedicated E2E specs. Known degraded-path edge cases remain recorded in the task and commit history rather than presented as an active roadmap.
 
 See [coordination architecture](docs/coordination-architecture.md) for deeper design details and decision history.
 
@@ -292,7 +290,7 @@ The watch ownership model is now:
 
 ### Daemon Protocol
 
-JSON-line protocol over TCP (localhost:17233). Same protocol on both platforms — only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS). See [daemon protocol reference](docs/architecture/daemon-protocol.md) for the full command catalog.
+The app uses the same authenticated JSON-line protocol on both platforms; only the daemon launch mechanism differs (WSL on Windows, native subprocess on macOS). The default endpoint comes from [`daemon::server::DEFAULT_PORT`](src-tauri/src/daemon/server.rs), and the CLI can override it with `--port`. See the [daemon protocol reference](docs/architecture/daemon-protocol.md) for the full method catalog.
 
 **Events (daemon → app):**
 - `file_changed` — watched file modified (triggers search re-index)
@@ -307,10 +305,6 @@ JSON-line protocol over TCP (localhost:17233). Same protocol on both platforms �
 - `get_project_tasks` (supports optional `scan_cycle_id` in protocol v6)
 
 ## Startup Sequence
-
-![Startup Sequence](docs/images/startup-sequence.jpg)
-
-_Note: this infographic predates the current activity-based watch reconciliation and should be regenerated._
 
 The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`):
 
@@ -327,10 +321,6 @@ Steps 3–7 run in background threads — the UI is interactive as soon as the d
 Claude task-directory watching follows the same override rules: default `~/.claude/tasks`, or `<TAURHAUS_CLAUDE_DIR>/tasks` when `TAURHAUS_CLAUDE_DIR` is set.
 
 ## Data Flow
-
-![Data Flow](docs/images/data-flow.jpg)
-
-_Note: this infographic predates the current local-vs-daemon watcher split and should be regenerated._
 
 ```
 User clicks project

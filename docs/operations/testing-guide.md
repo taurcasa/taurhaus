@@ -41,7 +41,7 @@ just test-frontend        # Run all frontend Vitest tests
 just test-visual          # Run browser-mode visual screenshot tests
 ```
 
-**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), not from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this automatically.
+**Vitest cwd gotcha**: Vitest must run from the project root (`/home/user/projects/taurhaus`), not from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this automatically.
 
 Test files follow the pattern `*.test.js` alongside the source they test (e.g., `src/lib/format.test.js`).
 

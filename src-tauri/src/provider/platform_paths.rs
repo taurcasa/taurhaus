@@ -318,10 +318,10 @@ mod tests {
 
     #[test]
     fn unc_path_for_linux_path_builds_wsl_unc_path() {
-        let resolved = unc_path_for_linux_path("Ubuntu", "/home/mstie/.codex/sessions");
+        let resolved = unc_path_for_linux_path("Ubuntu", "/home/user/.codex/sessions");
         assert_eq!(
             resolved.to_string_lossy(),
-            r"\\wsl.localhost\Ubuntu\home\mstie\.codex\sessions"
+            r"\\wsl.localhost\Ubuntu\home\user\.codex\sessions"
         );
     }
 

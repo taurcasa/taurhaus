@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn command_matches_team_daemon_requires_expected_team() {
         let args = vec![
-            "/home/mstie/.local/bin/mesh".to_string(),
+            "/home/user/.local/bin/mesh".to_string(),
             "team-daemon".to_string(),
             "start".to_string(),
             "--team".to_string(),

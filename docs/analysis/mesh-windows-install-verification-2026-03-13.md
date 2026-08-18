@@ -20,17 +20,17 @@ Ran:
 The expected silent-install target from `scripts/install-windows-silent.ps1` is:
 
 - `%LOCALAPPDATA%\taurhaus\taurhaus.exe`
-- resolved WSL path: `/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe`
+- resolved WSL path: `/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe`
 
 The installed executable exists at:
 
-- `/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe`
+- `/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe`
 
 ## Installed executable verification
 
 Installed executable path:
 
-- `/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe`
+- `/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe`
 
 Installed executable timestamp and size:
 
@@ -39,8 +39,8 @@ Installed executable timestamp and size:
 
 Installed bundled Mesh files:
 
-- `/mnt/c/Users/mstie/AppData/Local/taurhaus/resources/mesh`
-- `/mnt/c/Users/mstie/AppData/Local/taurhaus/resources/mesh.version`
+- `/mnt/c/Users/user/AppData/Local/taurhaus/resources/mesh`
+- `/mnt/c/Users/user/AppData/Local/taurhaus/resources/mesh.version`
 
 Installed bundled Mesh identity:
 

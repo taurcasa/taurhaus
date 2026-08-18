@@ -10,6 +10,7 @@ These references match the current shipped behavior. Start here for the docs tha
 |--------------|-------|
 | Install and set up taurhaus | [Getting Started](getting-started.md) |
 | Understand the system architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) |
+| Read what the experiment taught | [Project retrospective](RETROSPECTIVE.md) |
 | Understand Mesh runtime and recovery | [Mesh feature guide](features/mesh.md) |
 | Understand current testing lanes | [Testing guide](operations/testing-guide.md) |
 | Configure settings and preferences | [First run and settings](features/first-run-and-settings.md) |

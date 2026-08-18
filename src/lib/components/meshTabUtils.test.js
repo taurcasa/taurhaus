@@ -10,7 +10,7 @@ import {
 
 describe('meshTabUtils cross-project metadata', () => {
   it('extracts a stable project basename from WSL UNC paths', () => {
-    expect(projectNameFromPath('\\\\wsl.localhost\\Ubuntu\\home\\mstie\\projects\\2ksim')).toBe(
+    expect(projectNameFromPath('\\\\wsl.localhost\\Ubuntu\\home\\user\\projects\\2ksim')).toBe(
       '2ksim'
     )
   })

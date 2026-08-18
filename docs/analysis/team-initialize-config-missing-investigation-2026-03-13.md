@@ -12,20 +12,20 @@ Investigate the failed team initialization for `espn_fantasy-team`, using:
 
 The relevant production log is:
 
-- `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
-- WSL path: `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+- WSL path: `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 
 Relevant events:
 
 - `2026-03-13T17:16:07.980Z`
   - `coordination_get_live_team_status`
-  - error: `team config not found for 'espn_fantasy-team' at \\wsl.localhost\Ubuntu\home\mstie\.claude\teams\espn_fantasy-team\config.json`
+  - error: `team config not found for 'espn_fantasy-team' at \\wsl.localhost\Ubuntu\home\user\.claude\teams\espn_fantasy-team\config.json`
 - `2026-03-13T17:17:16.286Z`
   - `coordination_initialize_team` received
 - `2026-03-13T17:17:23.117Z`
   - `coordination_initialize_team` failed
   - same error string:
-    - `team config not found for 'espn_fantasy-team' at \\wsl.localhost\Ubuntu\home\mstie\.claude\teams\espn_fantasy-team\config.json`
+    - `team config not found for 'espn_fantasy-team' at \\wsl.localhost\Ubuntu\home\user\.claude\teams\espn_fantasy-team\config.json`
 
 ## Team directory state
 
@@ -44,7 +44,7 @@ So the failure is not caused by a corrupt leftover `espn_fantasy-team/config.jso
 
 The team-state root is consistently resolved to the Windows UNC path on Windows:
 
-- `\\wsl.localhost\Ubuntu\home\mstie\.claude\teams`
+- `\\wsl.localhost\Ubuntu\home\user\.claude\teams`
 
 That comes from `resolve_windows_mesh_teams_dir()` and is used by `CoordinationState::default_teams_dir()`.
 

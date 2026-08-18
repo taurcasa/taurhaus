@@ -32,10 +32,10 @@ Key conclusions:
 
 ### 1. App-local project watcher
 
-- Module: [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs)
+- Module: [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs)
 - Registration path: `ProjectWatcher::watch_project(...)`
 - Setup callers:
-  - [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs) via `reconcile_activity_watches(...)`
+  - [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs) via `reconcile_activity_watches(...)`
   - same file via `ensure_task_directory_watch(...)`
 - Paths watched:
   - active/recent local project roots selected by activity thresholds
@@ -59,10 +59,10 @@ Notes:
 
 ### 2. App-local single-file watch for tmux focus
 
-- Module: [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs)
+- Module: [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs)
 - Registration path: `ProjectWatcher::watch_file(...)`
 - Setup caller:
-  - [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs) via `ensure_tmux_focus_watch(...)`
+  - [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs) via `ensure_tmux_focus_watch(...)`
 - Path watched:
   - `tmux-focus.json` under app data dir
 - Watch mode:
@@ -76,12 +76,12 @@ Notes:
 
 ### 3. Daemon-owned recursive project watches
 
-- Module: [watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs)
+- Module: [watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs)
 - Registration path:
   - `handle_watch(...)`
 - Call chain:
-  - [daemon_lifecycle.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs) builds a daemon watch plan
-  - [event_listener.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/event_listener.rs) sends `WATCH` RPCs to the daemon
+  - [daemon_lifecycle.rs](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs) builds a daemon watch plan
+  - [event_listener.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/event_listener.rs) sends `WATCH` RPCs to the daemon
   - daemon dispatches to `handle_watch(...)`
 - Paths watched:
   - WSL/Linux project roots selected by activity thresholds
@@ -103,7 +103,7 @@ Notes:
 
 ### 4. Daemon event-listener watch registration bridge
 
-- Module: [event_listener.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/event_listener.rs)
+- Module: [event_listener.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/event_listener.rs)
 - Registration path:
   - `DaemonEventListener::watch(...)`
 - Paths watched:
@@ -121,7 +121,7 @@ This is not a `notify` constructor, but it is part of the live watch creation pa
 
 ### 5. Daemon compaction topology watcher on `~/.claude/teams/`
 
-- Module: [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+- Module: [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
 - Registration path:
   - `start_team_topology_watcher(...)`
 - Paths watched:
@@ -145,13 +145,13 @@ Notes:
 
 ### 6. Per-team compaction signal watchers
 
-- Module: [compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
+- Module: [compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
 - Registration paths:
   - `CompactionSignalWatcher::start_at(...)`
   - `run_watcher_loop(...)`
 - Setup callers:
-  - app path: [startup/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/compaction.rs)
-  - daemon path: [daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+  - app path: [startup/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/startup/compaction.rs)
+  - daemon path: [daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
 - Paths watched:
   - per team signal directory (non-recursive)
   - optionally the concrete `codex-compaction-signals.jsonl` file itself (non-recursive) when present
@@ -174,12 +174,12 @@ Notes:
 
 ### 7. Compaction transcript extractor watchers
 
-- Module: [compaction_extractor.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
+- Module: [compaction_extractor.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
 - Registration path:
   - `reconcile_watched_transcripts(...)`
 - Setup callers:
-  - app path: [startup/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/compaction.rs)
-  - daemon path: [daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+  - app path: [startup/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/startup/compaction.rs)
+  - daemon path: [daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
 - Paths watched:
   - active Codex transcript JSONL files, one watch per file
 - Watch mode:
@@ -200,7 +200,7 @@ Notes:
 
 ### 8. App startup compaction watcher bootstrap
 
-- Module: [startup/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/compaction.rs)
+- Module: [startup/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/startup/compaction.rs)
 - Role:
   - not itself a `notify` constructor, but a startup owner of the compaction extractor + per-team signal watchers on non-Windows platforms
 - Runtime relevance:
@@ -211,7 +211,7 @@ Notes:
 
 ### 9. Daemon compaction runtime bootstrap
 
-- Module: [daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+- Module: [daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
 - Role:
   - not itself a single watch site, but the owner of:
     - topology watcher
@@ -224,7 +224,7 @@ Notes:
 
 ### 10. Event processor
 
-- Module: [event_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/event_processor.rs)
+- Module: [event_processor.rs](/home/user/projects/taurhaus/src-tauri/src/event_processor.rs)
 - Watch creation:
   - none
 - Role:

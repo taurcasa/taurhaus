@@ -626,10 +626,10 @@ mod tests {
     #[cfg(feature = "mesh-bridged-backend")]
     #[test]
     fn parse_wsl_unix_path_from_stdout_handles_clean_output() {
-        let stdout = b"/home/mstie\n";
+        let stdout = b"/home/user\n";
         assert_eq!(
             mesh_cli::parse_wsl_unix_path_from_stdout(stdout),
-            Some("/home/mstie".to_string())
+            Some("/home/user".to_string())
         );
     }
 
@@ -637,10 +637,10 @@ mod tests {
     #[test]
     fn parse_wsl_unix_path_from_stdout_ignores_banner_noise() {
         let stdout =
-            b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie\n";
+            b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/user\n";
         assert_eq!(
             mesh_cli::parse_wsl_unix_path_from_stdout(stdout),
-            Some("/home/mstie".to_string())
+            Some("/home/user".to_string())
         );
     }
 

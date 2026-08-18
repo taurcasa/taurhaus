@@ -421,14 +421,14 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
         let team_name = "taurhaus-team";
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(&teams_dir, team_name, &member);
 
         let jsonl_path = tmp.path().join("session.jsonl");
         std::fs::write(
             &jsonl_path,
-            "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/mstie/projects/taurhaus\"}}\n",
+            "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/user/projects/taurhaus\"}}\n",
         )
         .expect("write baseline jsonl");
 
@@ -491,7 +491,7 @@ mod tests {
         let teams_dir = tmp.path().join("teams");
         std::fs::create_dir_all(teams_dir.join("default")).expect("create orphaned team dir");
 
-        let member = sample_member("developer2", "/home/mstie/projects/taurhaus");
+        let member = sample_member("developer2", "/home/user/projects/taurhaus");
         save_team_fixture(&teams_dir, "taurhaus-team", &member);
 
         let runtime = DaemonCompactionRuntime::start_with_processor(
@@ -526,12 +526,12 @@ mod tests {
         save_team_fixture(
             &teams_dir,
             "codex-team",
-            &sample_member("developer2", "/home/mstie/projects/taurhaus"),
+            &sample_member("developer2", "/home/user/projects/taurhaus"),
         );
 
         let claude_member = Member {
             cli_tool: CliTool::Claude,
-            ..sample_member("reviewer", "/home/mstie/projects/taurhaus")
+            ..sample_member("reviewer", "/home/user/projects/taurhaus")
         };
         save_team_fixture(&teams_dir, "claude-team", &claude_member);
 
@@ -550,7 +550,7 @@ mod tests {
         save_team_fixture(
             &teams_dir,
             "alpha",
-            &sample_member("developer2", "/home/mstie/projects/taurhaus"),
+            &sample_member("developer2", "/home/user/projects/taurhaus"),
         );
 
         let runtime = DaemonCompactionRuntime::start_with_processor(
@@ -575,7 +575,7 @@ mod tests {
         save_team_fixture(
             &teams_dir,
             "beta",
-            &sample_member("developer3", "/home/mstie/projects/taurhaus"),
+            &sample_member("developer3", "/home/user/projects/taurhaus"),
         );
         wait_until(Duration::from_secs(1), || {
             runtime

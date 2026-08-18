@@ -66,7 +66,7 @@ Immediate follow-up candidates:
 ## G1. Inbox corruption fallback hides real delivered messages
 
 Location:
-- [inbox.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/inbox.rs)
+- [inbox.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/inbox.rs)
 
 What it checks:
 - on JSON parse failure, `MeshInboxStore::load()` logs a warning and returns `Ok(Vec::new())`
@@ -86,7 +86,7 @@ Recommendation:
 ## G2. Legacy poll-based compaction module is still compiled and still encodes superseded assumptions
 
 Location:
-- [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
+- [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction.rs)
 
 What it checks:
 - old scanner-integrated transcript tailing and delayed pending-delivery flow
@@ -111,8 +111,8 @@ Recommendation:
 ## G3. `EmptyAdditionalContext` is dead defensive logic
 
 Location:
-- [claude_hooks.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
-- [reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
+- [claude_hooks.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
+- [reinjection.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
 
 What it checks:
 - after composing a card and serializing it with `render_claude_additional_context()`, skip if the result trims to empty
@@ -132,8 +132,8 @@ Recommendation:
 ## G4. Idempotency skip is valid
 
 Location:
-- [compaction_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
-- [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/compaction.rs)
+- [compaction_processor.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
+- [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/compaction.rs)
 
 What it checks:
 - same `(member, session_id, compaction_timestamp)` should not be handled twice
@@ -148,8 +148,8 @@ Recommendation:
 ## G5. Staleness window is valid
 
 Location:
-- [compaction_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
-- [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/compaction.rs)
+- [compaction_processor.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
+- [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/compaction.rs)
 
 What it checks:
 - skip or mark stale when the compaction timestamp is older than the freshness window
@@ -167,7 +167,7 @@ Recommendation:
 ## G6. `member_not_attached` is valid, but its wording should stay tied to attachment validity
 
 Location:
-- [compaction_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
+- [compaction_processor.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
 
 What it checks:
 - current managed member still exists in roster attachment view
@@ -192,7 +192,7 @@ Recommendation:
 ## G7. Do not recreate compaction state after disband/remove
 
 Location:
-- [compaction_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
+- [compaction_processor.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
 
 What it checks:
 - `should_persist_delivery_state(...)` verifies the team and member still exist before saving state
@@ -207,7 +207,7 @@ Recommendation:
 ## G8-G10. Claude hook skips are mostly correct for the current mechanism
 
 Location:
-- [claude_hooks.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
+- [claude_hooks.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
 
 ### NonCompactSessionStart
 
@@ -232,7 +232,7 @@ Recommendation:
 ## G11. Claude hook CLI fallback to `{}` on error is valid compatibility behavior
 
 Location:
-- [lib.rs](/home/mstie/projects/taurhaus/src-tauri/src/lib.rs)
+- [lib.rs](/home/user/projects/taurhaus/src-tauri/src/lib.rs)
 
 What it checks:
 - if the hook bridge errors, print `{}` instead of propagating a non-JSON failure to Claude
@@ -252,7 +252,7 @@ Recommendation:
 ### Non-Claude sidecar only
 
 Location:
-- [helpers.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/helpers.rs)
+- [helpers.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/helpers.rs)
 
 Assessment:
 - valid capability boundary, not outdated delivery logic
@@ -260,8 +260,8 @@ Assessment:
 ### Skip Claude onboarding when Taurhaus has no extra role context
 
 Location:
-- [initialize.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/initialize.rs)
-- [members.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
+- [initialize.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/initialize.rs)
+- [members.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
 
 Assessment:
 - valid product policy
@@ -270,7 +270,7 @@ Assessment:
 ### Run daemon compaction runtime only in WSL
 
 Location:
-- [daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+- [daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
 
 Assessment:
 - valid platform boundary
@@ -282,7 +282,7 @@ Recommendation:
 ## G15. Codex transcript discovery heuristics are acceptable for discovery, not for authority
 
 Location:
-- [idle/codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs)
+- [idle/codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs)
 
 What it checks:
 - find Codex transcript candidates by date-window scan and first-line `session_meta.payload.cwd`

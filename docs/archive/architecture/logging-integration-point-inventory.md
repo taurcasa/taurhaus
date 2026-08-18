@@ -4,7 +4,7 @@ Date: 2026-03-06
 Owner: architect  
 Scope: Codebase-wide inventory of critical flows for structured, AI-optimized observability.
 
-Reference architecture: [`logging-design.md`](/home/mstie/projects/taurhaus/docs/architecture/logging-design.md)
+Reference architecture: [`logging-design.md`](/home/user/projects/taurhaus/docs/architecture/logging-design.md)
 
 ## Conventions Used In This Inventory
 

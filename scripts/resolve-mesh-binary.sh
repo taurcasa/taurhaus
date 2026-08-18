@@ -9,7 +9,7 @@ if [ -n "${MESH_BIN:-}" ] && [ -x "${MESH_BIN}" ] && [ -s "${MESH_BIN}" ]; then
     exit 0
 fi
 
-MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
+MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
 PROJECT_BINARY="$MESH_PROJECT/target/release/mesh"
 
 if [ -d "$MESH_PROJECT" ]; then

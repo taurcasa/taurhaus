@@ -34,7 +34,7 @@ So the break is in **message presentation / read-state timing**, not in the comp
 
 Inbox file:
 
-- [dev-2.json](/home/mstie/.claude/teams/2ksim-team/inboxes/dev-2.json)
+- [dev-2.json](/home/user/.claude/teams/2ksim-team/inboxes/dev-2.json)
 
 Relevant entries:
 
@@ -58,7 +58,7 @@ These are real Taurhaus reinjection cards, not placeholders. They contain:
   - `id: 72`
   - `subject: Add browser smoke coverage for Scenario Challenge and reproducibility bundle launch paths`
 - working set:
-  - `project_path: /home/mstie/projects/2ksim`
+  - `project_path: /home/user/projects/2ksim`
 
 So the compaction card was definitely written.
 
@@ -66,7 +66,7 @@ So the compaction card was definitely written.
 
 From the active Windows app log:
 
-- [taurhaus.log.jsonl](/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl)
+- [taurhaus.log.jsonl](/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl)
 
 For `session_id = 019ccd25-b718-7313-b64a-f2ded2b54ca9`:
 
@@ -85,7 +85,7 @@ So the app believed the write succeeded, and the inbox file confirms that it did
 
 Signal log:
 
-- [codex-compaction-signals.jsonl](/home/mstie/.claude/teams/2ksim-team/state/compaction/signals/codex-compaction-signals.jsonl)
+- [codex-compaction-signals.jsonl](/home/user/.claude/teams/2ksim-team/state/compaction/signals/codex-compaction-signals.jsonl)
 
 Matching records for `dev-2` / pane `%263` / session `019ccd25-b718-7313-b64a-f2ded2b54ca9`:
 
@@ -100,7 +100,7 @@ So the pipeline is complete all the way up to canonical signal emission.
 
 `mesh read --unread --mark-read` behavior in the mesh CLI:
 
-- [main.rs](/home/mstie/projects/mesh/src/main.rs)
+- [main.rs](/home/user/projects/mesh/src/main.rs)
 
 Relevant logic:
 

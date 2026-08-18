@@ -202,8 +202,8 @@ Rationale:
   "tool": "codex",
   "session_id": "sess-123",
   "pane_id": "%217",
-  "project_path": "/home/mstie/projects/taurhaus",
-  "jsonl_path": "/home/mstie/.codex/sessions/2026/03/08/rollout-...jsonl",
+  "project_path": "/home/user/projects/taurhaus",
+  "jsonl_path": "/home/user/.codex/sessions/2026/03/08/rollout-...jsonl",
   "jsonl_offset": 18423,
   "transcript_timestamp": "2026-03-08T19:59:59.987Z",
   "signal_kind": "context_compacted"

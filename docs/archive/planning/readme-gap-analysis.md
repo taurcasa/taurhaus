@@ -6,7 +6,7 @@ Task: #593
 
 ## Executive summary
 
-The current [README.md](/home/mstie/projects/taurhaus/README.md) is not wrong, but it reads like a smaller and earlier product than taurhaus actually is in `v0.5.5`.
+The current [README.md](/home/user/projects/taurhaus/README.md) is not wrong, but it reads like a smaller and earlier product than taurhaus actually is in `v0.5.5`.
 
 The main problem is not factual breakage. The main problem is that the README still presents taurhaus as a clever side-panel for juggling AI sessions, while the shipped product is now a broader operations surface for:
 
@@ -38,8 +38,8 @@ What is missing:
 
 Source of truth:
 
-- [docs/features/command-center.md](/home/mstie/projects/taurhaus/docs/features/command-center.md)
-- [ARCHITECTURE.md](/home/mstie/projects/taurhaus/ARCHITECTURE.md)
+- [docs/features/command-center.md](/home/user/projects/taurhaus/docs/features/command-center.md)
+- [ARCHITECTURE.md](/home/user/projects/taurhaus/ARCHITECTURE.md)
 
 Why this matters:
 
@@ -57,8 +57,8 @@ The README mentions session handoffs and live activity detection, but it does no
 
 Source of truth:
 
-- [docs/features/session-management.md](/home/mstie/projects/taurhaus/docs/features/session-management.md)
-- [docs/features/task-board.md](/home/mstie/projects/taurhaus/docs/features/task-board.md)
+- [docs/features/session-management.md](/home/user/projects/taurhaus/docs/features/session-management.md)
+- [docs/features/task-board.md](/home/user/projects/taurhaus/docs/features/task-board.md)
 
 Why this matters:
 
@@ -82,9 +82,9 @@ What is missing:
 
 Source of truth:
 
-- [docs/features/mesh.md](/home/mstie/projects/taurhaus/docs/features/mesh.md)
-- [docs/coordination-architecture.md](/home/mstie/projects/taurhaus/docs/coordination-architecture.md)
-- [CHANGELOG.md](/home/mstie/projects/taurhaus/CHANGELOG.md)
+- [docs/features/mesh.md](/home/user/projects/taurhaus/docs/features/mesh.md)
+- [docs/coordination-architecture.md](/home/user/projects/taurhaus/docs/coordination-architecture.md)
+- [CHANGELOG.md](/home/user/projects/taurhaus/CHANGELOG.md)
 
 Why this matters:
 
@@ -101,9 +101,9 @@ The current README mentions built-in role/preset catalog and composition flow, b
 
 Source of truth:
 
-- [docs/team-templates.md](/home/mstie/projects/taurhaus/docs/team-templates.md)
-- [docs/design/role-context-steering-review.md](/home/mstie/projects/taurhaus/docs/design/role-context-steering-review.md)
-- [ARCHITECTURE.md](/home/mstie/projects/taurhaus/ARCHITECTURE.md)
+- [docs/team-templates.md](/home/user/projects/taurhaus/docs/team-templates.md)
+- [docs/design/role-context-steering-review.md](/home/user/projects/taurhaus/docs/design/role-context-steering-review.md)
+- [ARCHITECTURE.md](/home/user/projects/taurhaus/ARCHITECTURE.md)
 
 Why this matters:
 
@@ -123,7 +123,7 @@ What is missing:
 
 Source of truth:
 
-- [docs/features/task-board.md](/home/mstie/projects/taurhaus/docs/features/task-board.md)
+- [docs/features/task-board.md](/home/user/projects/taurhaus/docs/features/task-board.md)
 
 Why this matters:
 
@@ -142,7 +142,7 @@ What is missing:
 
 Source of truth:
 
-- [docs/features/search.md](/home/mstie/projects/taurhaus/docs/features/search.md)
+- [docs/features/search.md](/home/user/projects/taurhaus/docs/features/search.md)
 
 ### G. Project management and onboarding are more complete than the README shows
 
@@ -157,8 +157,8 @@ What is missing:
 
 Source of truth:
 
-- [docs/features/project-management.md](/home/mstie/projects/taurhaus/docs/features/project-management.md)
-- [docs/features/first-run-and-settings.md](/home/mstie/projects/taurhaus/docs/features/first-run-and-settings.md)
+- [docs/features/project-management.md](/home/user/projects/taurhaus/docs/features/project-management.md)
+- [docs/features/first-run-and-settings.md](/home/user/projects/taurhaus/docs/features/first-run-and-settings.md)
 
 ## 2. Outdated or misleading content
 
@@ -196,8 +196,8 @@ The current Development section is usable, but it misses important current reali
 
 Source of truth:
 
-- [CLAUDE.md](/home/mstie/projects/taurhaus/CLAUDE.md)
-- [CONTRIBUTING.md](/home/mstie/projects/taurhaus/CONTRIBUTING.md)
+- [CLAUDE.md](/home/user/projects/taurhaus/CLAUDE.md)
+- [CONTRIBUTING.md](/home/user/projects/taurhaus/CONTRIBUTING.md)
 
 ### D. Mesh recovery and resilience are absent from product framing
 

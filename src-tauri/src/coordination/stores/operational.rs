@@ -219,7 +219,7 @@ mod tests {
                 active_override_reason: None,
             },
             working_set: OperationalWorkingSetSnapshot {
-                project_path: "/home/mstie/projects/taurhaus".to_string(),
+                project_path: "/home/user/projects/taurhaus".to_string(),
                 focal_files: vec![
                     "src-tauri/src/coordination/stores/operational.rs".to_string(),
                     "src-tauri/src/coordination/stores/mod.rs".to_string(),

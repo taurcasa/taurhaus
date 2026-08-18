@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn local_watch_skips_wsl_paths_when_daemon_is_connected() {
         assert!(!should_watch_locally(
-            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            r"\\wsl$\Ubuntu\home\user\projects\taurhaus",
             true,
             true
         ));
@@ -474,7 +474,7 @@ mod tests {
     #[test]
     fn local_watch_skips_wsl_paths_while_waiting_for_wsl_daemon() {
         assert!(!should_watch_locally(
-            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            r"\\wsl$\Ubuntu\home\user\projects\taurhaus",
             false,
             true
         ));
@@ -483,7 +483,7 @@ mod tests {
     #[test]
     fn local_watch_allows_wsl_paths_only_when_no_daemon_path_exists() {
         assert!(should_watch_locally(
-            r"\\wsl$\Ubuntu\home\mstie\projects\taurhaus",
+            r"\\wsl$\Ubuntu\home\user\projects\taurhaus",
             false,
             false
         ));
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn local_watch_allows_normal_local_projects() {
         assert!(should_watch_locally(
-            r"C:\Users\mstie\projects\taurhaus",
+            r"C:\Users\user\projects\taurhaus",
             false,
             true
         ));

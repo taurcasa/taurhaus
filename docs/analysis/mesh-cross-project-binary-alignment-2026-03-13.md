@@ -31,14 +31,14 @@ The feature gap that prompted this task is resolved at the shell level:
 
 Active project environments checked:
 
-- `/home/mstie/projects/taurhaus`
-- `/home/mstie/projects/mesh`
-- `/home/mstie/projects/taursec`
-- `/home/mstie/projects/taurcraft`
+- `/home/user/projects/taurhaus`
+- `/home/user/projects/mesh`
+- `/home/user/projects/taursec`
+- `/home/user/projects/taurcraft`
 
 In all four environments:
 
-- `which mesh` -> `/home/mstie/.local/bin/mesh`
+- `which mesh` -> `/home/user/.local/bin/mesh`
 - `mesh version --json` -> version `0.2.12`, commit `fabb518681d6f4336e715ae2a22ed2f3166b4db9`
 
 ## Before State
@@ -80,7 +80,7 @@ The installed Mesh CLI now reports:
 
 Installed executable identity after the upgrade:
 
-- path: `/home/mstie/.local/bin/mesh`
+- path: `/home/user/.local/bin/mesh`
 - device/inode: `2096:263862`
 - mtime: `2026-03-13 15:01:22 +0100`
 

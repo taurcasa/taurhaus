@@ -17,7 +17,7 @@ I chose `0.2.12` because the rollout carries forward the machine-safe `task crea
 
 ## Mesh-first update
 
-The shared `/home/mstie/projects/mesh` checkout was dirty in many unrelated files, so I created a clean rollout worktree at `/tmp/mesh-1255` from committed Mesh `HEAD` and applied only the intended task-create safety change there.
+The shared `/home/user/projects/mesh` checkout was dirty in many unrelated files, so I created a clean rollout worktree at `/tmp/mesh-1255` from committed Mesh `HEAD` and applied only the intended task-create safety change there.
 
 Changes included in the clean Mesh rollout build:
 

@@ -64,13 +64,13 @@ These fields over-index on taxonomy rather than context steering.
 
 ### Specific mismatches
 
-In [types.rs](/home/mstie/projects/taurhaus/src-tauri/src/templates/types.rs):
+In [types.rs](/home/user/projects/taurhaus/src-tauri/src/templates/types.rs):
 
 - `RoleTemplate` requires `capabilities: Vec<String>`
 - validation fails when capabilities are empty
 - slot overrides allow mutating capabilities instead of context summaries
 
-In [composition.rs](/home/mstie/projects/taurhaus/src-tauri/src/templates/composition.rs):
+In [composition.rs](/home/user/projects/taurhaus/src-tauri/src/templates/composition.rs):
 
 - `ResolvedFields` and `ResolvedMember` carry `capabilities`
 - override resolution mutates capabilities via add/remove logic
@@ -100,25 +100,25 @@ That is exactly what context steering needs.
 
 Examples:
 
-- [claude-orchestrator.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/claude-orchestrator.yaml)
+- [claude-orchestrator.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/claude-orchestrator.yaml)
   Strong context-steering language: delegation, routing, unblock behavior, direction-vs-implementation boundary.
 
-- [codex-architect.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/codex-architect.yaml)
+- [codex-architect.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/codex-architect.yaml)
   Strong lane definition: structural decisions, design review, documentation, escalation boundary.
 
-- [claude-reviewer.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/claude-reviewer.yaml)
+- [claude-reviewer.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/claude-reviewer.yaml)
   Strong review-focused operating context and review closure rules.
 
-- [gemini-ui-specialist.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/gemini-ui-specialist.yaml)
+- [gemini-ui-specialist.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/gemini-ui-specialist.yaml)
   Strong domain ownership and scope limits, though verbose.
 
 The preset layer is also generally aligned because it mostly appends lane-specific instructions rather than toggling abstract traits.
 
 Examples:
 
-- [standard-team.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/presets/standard-team.yaml)
-- [research-dev.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/presets/research-dev.yaml)
-- [review-team.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/presets/review-team.yaml)
+- [standard-team.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/presets/standard-team.yaml)
+- [research-dev.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/presets/research-dev.yaml)
+- [review-team.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/presets/review-team.yaml)
 
 ### What is misaligned
 
@@ -148,31 +148,31 @@ It teaches users to think in capability terms even though the underlying role va
 
 ### Specific mismatches
 
-In [RoleCatalog.svelte](/home/mstie/projects/taurhaus/src/lib/components/RoleCatalog.svelte):
+In [RoleCatalog.svelte](/home/user/projects/taurhaus/src/lib/components/RoleCatalog.svelte):
 
 - capability chips are rendered directly on role cards
 - capability chip helpers are core presentation utilities
 - role detail primarily shows raw instructions, but summary metadata is still tool/model/capabilities based
 
-In [templateBrowserUtils.js](/home/mstie/projects/taurhaus/src/lib/components/templateBrowserUtils.js):
+In [templateBrowserUtils.js](/home/user/projects/taurhaus/src/lib/components/templateBrowserUtils.js):
 
 - normalization exposes `capabilities` as a standard role field
 - there is no `focus area`, `context summary`, or `behavior summary` field
 - helper naming such as `capabilityChipTone` and `capabilityTestId` bakes the concept into the UI vocabulary
 
-In [RoleEditor.svelte](/home/mstie/projects/taurhaus/src/lib/components/RoleEditor.svelte):
+In [RoleEditor.svelte](/home/user/projects/taurhaus/src/lib/components/RoleEditor.svelte):
 
 - there is a full dedicated `Capabilities` section
 - prompt text is `Add capability tag...`
 - empty state says `No custom capabilities defined.`
 - behavioral contract is edited as a loose checklist, but there is no dedicated field for context domain or focus area
 
-In [templates.js](/home/mstie/projects/taurhaus/src/lib/ipc/templates.js) and [templatePayloads.js](/home/mstie/projects/taurhaus/src/lib/ipc/templatePayloads.js):
+In [templates.js](/home/user/projects/taurhaus/src/lib/ipc/templates.js) and [templatePayloads.js](/home/user/projects/taurhaus/src/lib/ipc/templatePayloads.js):
 
 - normalized roles default missing capabilities to `orchestration` or `implementation`
 - mock composition payloads return capabilities as if they are the core resolved meaning
 
-In [TeamCustomizerPanel.svelte](/home/mstie/projects/taurhaus/src/lib/components/TeamCustomizerPanel.svelte):
+In [TeamCustomizerPanel.svelte](/home/user/projects/taurhaus/src/lib/components/TeamCustomizerPanel.svelte):
 
 - the save-as-preset flow maps chosen members back to role IDs but does not help the user articulate context domain
 - the flow is structurally sound, but not pedagogically aligned
@@ -196,7 +196,7 @@ Why:
 
 ### What is aligned
 
-In [composition.rs](/home/mstie/projects/taurhaus/src-tauri/src/templates/composition.rs):
+In [composition.rs](/home/user/projects/taurhaus/src-tauri/src/templates/composition.rs):
 
 - `instructions_replace` / `instructions_append` are strong context-steering primitives
 - `behavioral_contract_append` is also aligned
@@ -219,7 +219,7 @@ The composition engine needs **schema cleanup**, not a redesign.
 
 Documentation is incomplete on the “why” of roles.
 
-[team-templates.md](/home/mstie/projects/taurhaus/docs/team-templates.md) explains:
+[team-templates.md](/home/user/projects/taurhaus/docs/team-templates.md) explains:
 
 - what a role template is structurally
 - what a team preset is
@@ -233,7 +233,7 @@ But it does **not** explain the mental model:
 
 ### Specific mismatches
 
-In [team-templates.md](/home/mstie/projects/taurhaus/docs/team-templates.md):
+In [team-templates.md](/home/user/projects/taurhaus/docs/team-templates.md):
 
 - `Role template` is described as `tool, model, instructions, constraints`
 - no section explains context steering or domain memory
