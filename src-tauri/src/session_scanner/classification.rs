@@ -227,7 +227,7 @@ where
 }
 
 pub(crate) fn deduplicate_runtime_sessions(sessions: &mut Vec<RuntimeSession>) {
-    sessions.sort_by(|left, right| right.pid.cmp(&left.pid));
+    sessions.sort_by_key(|session| std::cmp::Reverse(session.pid));
     let mut seen = HashSet::<(String, CliTool)>::new();
     sessions.retain(|session| seen.insert((session.tty.clone(), session.cli_tool)));
 }
