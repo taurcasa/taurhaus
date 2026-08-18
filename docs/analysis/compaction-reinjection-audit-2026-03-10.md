@@ -12,7 +12,7 @@ This audit uses live production data only. It traces the current compaction rein
 
 Evidence sources used:
 
-- Windows app log: `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus*.jsonl`
+- Windows app log: `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus*.jsonl`
 - Codex signal logs:
   - `~/.claude/teams/taurhaus-team/state/compaction/signals/codex-compaction-signals.jsonl`
   - `~/.claude/teams/2ksim-team/state/compaction/signals/codex-compaction-signals.jsonl`
@@ -307,7 +307,7 @@ Current hook configuration is present and points to the Linux/WSL wrapper:
 
 - `~/.claude/settings.json`
   - `matcher: "compact"`
-  - `command: bash '/home/mstie/.claude/hooks/taurhaus-session-start-compact.sh'`
+  - `command: bash '/home/user/.claude/hooks/taurhaus-session-start-compact.sh'`
 - wrapper files present:
   - `~/.claude/hooks/taurhaus-session-start-compact.sh`
   - `~/.claude/hooks/taurhaus-session-start-compact.cmd`
@@ -331,7 +331,7 @@ Claude debug log:
 
 Matching session file evidence:
 
-- `~/.claude/projects/-home-mstie-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
+- `~/.claude/projects/-home-user-projects-taurhaus/47fb0840-8a3e-4877-b512-72d133d44386.jsonl`
   - `2026-03-09T20:23:31.674Z` hook progress
   - `2026-03-09T20:23:31.936Z` `compact_boundary`
   - `2026-03-09T23:03:13.695Z` hook progress
@@ -343,7 +343,7 @@ Matching session file evidence:
 
 Session file:
 
-- `~/.claude/projects/-home-mstie-projects-2ksim/63f01756-fb15-4ba7-9d26-fb6cdf39f614.jsonl`
+- `~/.claude/projects/-home-user-projects-2ksim/63f01756-fb15-4ba7-9d26-fb6cdf39f614.jsonl`
   - `2026-03-10T13:57:19.457Z` hook progress
   - `2026-03-10T13:57:19.670Z` `compact_boundary`
 
@@ -351,7 +351,7 @@ Session file:
 
 Session file:
 
-- `~/.claude/projects/-home-mstie-projects-2ksim/40b23d64-5b86-4eae-ac97-0f98d3ef3b87.jsonl`
+- `~/.claude/projects/-home-user-projects-2ksim/40b23d64-5b86-4eae-ac97-0f98d3ef3b87.jsonl`
   - `2026-03-10T13:47:26.864Z` hook progress
   - `2026-03-10T13:47:27.088Z` `compact_boundary`
 

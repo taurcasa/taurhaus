@@ -315,7 +315,7 @@ mod tests {
             // Only check resolution if we're on the right machine
             if let Some(project_dir) = resolve_project_dir(taurhaus_path) {
                 assert!(project_dir.exists());
-                assert!(project_dir.ends_with("-home-mstie-projects-taurhaus"));
+                assert!(project_dir.ends_with("-home-user-projects-taurhaus"));
             }
         }
     }

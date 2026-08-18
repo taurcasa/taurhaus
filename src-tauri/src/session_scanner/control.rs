@@ -1224,7 +1224,7 @@ after-new-window[0] display-message "hi"
     #[test]
     fn tmux_path_looks_windows_style_rejects_semicolon_lists() {
         assert!(tmux_path_looks_windows_style(
-            r"C:\Windows\system32;C:\Users\mstie\.bun\bin"
+            r"C:\Windows\system32;C:\Users\user\.bun\bin"
         ));
         assert!(!tmux_path_looks_windows_style(
             "/usr/local/bin:/usr/bin:/bin"

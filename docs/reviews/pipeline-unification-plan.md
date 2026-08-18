@@ -33,7 +33,7 @@ Scope: half-day
 
 Inputs:
 
-- [pipeline-unification-assessment.md](/home/mstie/projects/taurhaus/docs/reviews/pipeline-unification-assessment.md)
+- [pipeline-unification-assessment.md](/home/user/projects/taurhaus/docs/reviews/pipeline-unification-assessment.md)
 - task `#27` current streamed resume event work
 - existing initialize/resume/add-agent stage names
 

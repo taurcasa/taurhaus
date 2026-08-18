@@ -1,7 +1,7 @@
 # Performance Implementation Plan — 2026-03-09
 
 Task: `#811`
-Input document reviewed: [performance-improvement-possibilities-2026-03-09.md](/home/mstie/projects/taurhaus/docs/analysis/performance-improvement-possibilities-2026-03-09.md)
+Input document reviewed: [performance-improvement-possibilities-2026-03-09.md](/home/user/projects/taurhaus/docs/analysis/performance-improvement-possibilities-2026-03-09.md)
 
 ## Review outcome
 
@@ -25,9 +25,9 @@ The main filtering result is that some findings are observations, not implementa
 
 | Finding | Verdict | Notes |
 |---|---|---|
-| Inbox read/append is full-file parse + rewrite | Valid | Confirmed in [inbox.rs](/home/mstie/projects/mesh/src/inbox.rs:43) and [inbox.rs](/home/mstie/projects/mesh/src/inbox.rs:63). Recent read-state race fix did not change the storage model. |
-| Task-directory changes trigger full task rescans | Valid | `check_tasks()` still relies on [list_tasks()](/home/mstie/projects/mesh/src/tasks.rs:18) and daemon wake flow in [daemon.rs](/home/mstie/projects/mesh/src/daemon.rs:647). |
-| Team-daemon uses fixed 1 Hz wake loop and periodic full idle passes | Valid | Confirmed in [team_daemon.rs](/home/mstie/projects/mesh/src/team_daemon.rs:48) and [team_daemon.rs](/home/mstie/projects/mesh/src/team_daemon.rs:80). |
+| Inbox read/append is full-file parse + rewrite | Valid | Confirmed in [inbox.rs](/home/user/projects/mesh/src/inbox.rs:43) and [inbox.rs](/home/user/projects/mesh/src/inbox.rs:63). Recent read-state race fix did not change the storage model. |
+| Task-directory changes trigger full task rescans | Valid | `check_tasks()` still relies on [list_tasks()](/home/user/projects/mesh/src/tasks.rs:18) and daemon wake flow in [daemon.rs](/home/user/projects/mesh/src/daemon.rs:647). |
+| Team-daemon uses fixed 1 Hz wake loop and periodic full idle passes | Valid | Confirmed in [team_daemon.rs](/home/user/projects/mesh/src/team_daemon.rs:48) and [team_daemon.rs](/home/user/projects/mesh/src/team_daemon.rs:80). |
 | Read-oriented CLI commands still cause config writes | Valid but lower priority | Still structurally true in `mesh`, but not the highest-value current performance item. |
 | Team-config reads are cheap today | Valid | No evidence this area should be optimized now. |
 
@@ -35,12 +35,12 @@ The main filtering result is that some findings are observations, not implementa
 
 | Finding | Verdict | Notes |
 |---|---|---|
-| Display-session scanning is the dominant steady-state CPU cost | Valid | Confirmed by metrics and by [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:16), [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:85), [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:194). |
-| Per-session idle classification dominates scan time | Valid | Confirmed by metrics and by [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:661), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:688), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:731), [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:191). |
+| Display-session scanning is the dominant steady-state CPU cost | Valid | Confirmed by metrics and by [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:16), [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:85), [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:194). |
+| Per-session idle classification dominates scan time | Valid | Confirmed by metrics and by [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:661), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:688), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:731), [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:191). |
 | Tmux mapping still causes burst cost | Valid secondary | Real, but not first-order. |
 | Thread count is high but stable | Valid observation | Not enough evidence to make this a first-wave task. |
 | Inotify/watch footprint is large | Valid observation | Capacity/footprint concern; defer until after CPU fixes. |
-| Compaction runtime is still a main CPU problem | Invalid / already fixed | Current code no longer has the old duplicate compaction scan; see [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs:36). |
+| Compaction runtime is still a main CPU problem | Invalid / already fixed | Current code no longer has the old duplicate compaction scan; see [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs:36). |
 | TCP accept loop / long-poll delivery are hotspots | Invalid as a primary optimization target | They exist but do not match measured hot metrics. |
 
 ### App backend
@@ -48,23 +48,23 @@ The main filtering result is that some findings are observations, not implementa
 | Finding | Verdict | Notes |
 |---|---|---|
 | App process is not the main sustained resource problem | Valid | Consistent with the source audit and current architecture. |
-| Startup still burns ~2s in daemon bootstrap/reconnect | Valid | Hardcoded reconnect delay still exists in [daemon.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/daemon.rs:80). |
-| Live mesh status does synchronous repair/reconcile on request path | Valid | [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs:548). |
-| Foreground project lookup composes focus read + session listing + project scan | Valid | [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs:177), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs:184). |
-| `list_cli_sessions` fallback can do full scanner work on app thread | Valid | [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs:55). |
-| Watcher init/reconcile still does whole-project DB work every 60s | Valid | [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs:89), [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs:97), [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs:118). |
+| Startup still burns ~2s in daemon bootstrap/reconnect | Valid | Hardcoded reconnect delay still exists in [daemon.rs](/home/user/projects/taurhaus/src-tauri/src/startup/daemon.rs:80). |
+| Live mesh status does synchronous repair/reconcile on request path | Valid | [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs:548). |
+| Foreground project lookup composes focus read + session listing + project scan | Valid | [mod.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs:177), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs:184). |
+| `list_cli_sessions` fallback can do full scanner work on app thread | Valid | [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs:55). |
+| Watcher init/reconcile still does whole-project DB work every 60s | Valid | [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs:89), [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs:97), [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs:118). |
 | Single SQLite mutex, search writer budget, large command surface | Valid but not first-wave | Real architectural debt, not top-impact performance work right now. |
 
 ### Frontend
 
 | Finding | Verdict | Notes |
 |---|---|---|
-| Markdown/Shiki/Mermaid path is the biggest frontend performance risk | Valid | Current code still uses Shiki highlighter + per-render fenced-language loading in [markdown.js](/home/mstie/projects/taurhaus/src/lib/markdown.js:74), [markdown.js](/home/mstie/projects/taurhaus/src/lib/markdown.js:161), plus lazy Mermaid rendering in [MarkdownRenderer.svelte](/home/mstie/projects/taurhaus/src/lib/MarkdownRenderer.svelte:94). Dependencies remain in [package.json](/home/mstie/projects/taurhaus/package.json:55). |
-| Initial project bootstrap schedules a second full load after 1.5s | Valid | [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:620). |
-| Project switch still fans out six IPC calls | Valid | [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:641), [projectSelection.js](/home/mstie/projects/taurhaus/src/lib/projectSelection.js:63). |
-| Git history lacks virtualization | Valid | `GitTab` mounts all loaded rows via `{#each commits ...}` in [GitTab.svelte](/home/mstie/projects/taurhaus/src/lib/GitTab.svelte:604). |
-| Code/file open still does full-content highlight/render | Valid | [CodeViewer.svelte](/home/mstie/projects/taurhaus/src/lib/CodeViewer.svelte:24) and markdown pipeline above. |
-| Frontend logger forwards production console traffic over IPC | Valid | [logger.js](/home/mstie/projects/taurhaus/src/lib/logger.js:140), [logger.js](/home/mstie/projects/taurhaus/src/lib/logger.js:203). |
+| Markdown/Shiki/Mermaid path is the biggest frontend performance risk | Valid | Current code still uses Shiki highlighter + per-render fenced-language loading in [markdown.js](/home/user/projects/taurhaus/src/lib/markdown.js:74), [markdown.js](/home/user/projects/taurhaus/src/lib/markdown.js:161), plus lazy Mermaid rendering in [MarkdownRenderer.svelte](/home/user/projects/taurhaus/src/lib/MarkdownRenderer.svelte:94). Dependencies remain in [package.json](/home/user/projects/taurhaus/package.json:55). |
+| Initial project bootstrap schedules a second full load after 1.5s | Valid | [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:620). |
+| Project switch still fans out six IPC calls | Valid | [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:641), [projectSelection.js](/home/user/projects/taurhaus/src/lib/projectSelection.js:63). |
+| Git history lacks virtualization | Valid | `GitTab` mounts all loaded rows via `{#each commits ...}` in [GitTab.svelte](/home/user/projects/taurhaus/src/lib/GitTab.svelte:604). |
+| Code/file open still does full-content highlight/render | Valid | [CodeViewer.svelte](/home/user/projects/taurhaus/src/lib/CodeViewer.svelte:24) and markdown pipeline above. |
+| Frontend logger forwards production console traffic over IPC | Valid | [logger.js](/home/user/projects/taurhaus/src/lib/logger.js:140), [logger.js](/home/user/projects/taurhaus/src/lib/logger.js:203). |
 | File-tree flatten recompute / mesh-canvas layout reads / sidebar row derivation | Plausible but lower priority | Worth a second wave after heavier hotspots. |
 
 ## Filtered findings
@@ -101,10 +101,10 @@ Ordered by expected impact.
   - make `SessionActivityHub` back off more aggressively than the current `30` stable-idle cycle gate
   - preserve correctness for transitions and active sessions
 - Affected files:
-  - [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs)
-  - [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
-  - [process.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/process.rs)
-  - [proc_io.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/proc_io.rs)
+  - [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs)
+  - [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
+  - [process.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/process.rs)
+  - [proc_io.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/proc_io.rs)
 - Complexity: `L`
 - Expected impact: `Very high` — this is the clearest route to cutting the daemon’s `~24%` steady-state CPU load.
 
@@ -116,9 +116,9 @@ Ordered by expected impact.
   - bias classifier inputs toward authoritative member attachment / persisted transcript binding
   - reserve broad transcript search for recovery or uncertainty paths only
 - Affected files:
-  - [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs)
-  - [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
-  - [compaction_extractor.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
+  - [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs)
+  - [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
+  - [compaction_extractor.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
   - runtime attachment code under `src-tauri/src/coordination/`
 - Complexity: `L`
 - Expected impact: `High` — this attacks the heaviest classifier path directly and complements task 1.
@@ -131,8 +131,8 @@ Ordered by expected impact.
   - reconnect as soon as the daemon is actually ready
   - retain protocol/version verification and watch respawn behavior
 - Affected files:
-  - [daemon.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/daemon.rs)
-  - [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/mod.rs)
+  - [daemon.rs](/home/user/projects/taurhaus/src-tauri/src/startup/daemon.rs)
+  - [mod.rs](/home/user/projects/taurhaus/src-tauri/src/startup/mod.rs)
   - daemon launcher/client readiness helpers
 - Complexity: `M`
 - Expected impact: `High` for startup latency — straightforward win with bounded scope.
@@ -145,7 +145,7 @@ Ordered by expected impact.
   - serve fast snapshot/status immediately
   - trigger bounded repair asynchronously or on a slower maintenance path
 - Affected files:
-  - [coordination.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+  - [coordination.rs](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
   - orchestrator implementation under `src-tauri/src/coordination/orchestrator.rs`
 - Complexity: `M`
 - Expected impact: `High` for mesh/runtime UI refresh responsiveness.
@@ -157,8 +157,8 @@ Ordered by expected impact.
   - remove or replace the `1500ms` delayed second `selectProject(...)`
   - preserve the “sidebar first, details later” intent without a duplicate full detail load
 - Affected files:
-  - [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte)
-  - [projectSelection.js](/home/mstie/projects/taurhaus/src/lib/projectSelection.js)
+  - [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte)
+  - [projectSelection.js](/home/user/projects/taurhaus/src/lib/projectSelection.js)
 - Complexity: `S`
 - Expected impact: `High` relative to effort — easy, user-visible startup churn reduction.
 
@@ -171,8 +171,8 @@ Ordered by expected impact.
   - defer README, relationships, and lower-value sections until after the core switch lands
   - keep degraded fallback behavior
 - Affected files:
-  - [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte)
-  - [projectSelection.js](/home/mstie/projects/taurhaus/src/lib/projectSelection.js)
+  - [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte)
+  - [projectSelection.js](/home/user/projects/taurhaus/src/lib/projectSelection.js)
   - any dependent overview components
 - Complexity: `M`
 - Expected impact: `High` for perceived project-switch latency and render stability.
@@ -186,10 +186,10 @@ Ordered by expected impact.
   - ensure Mermaid only loads when a mermaid block is actually present
   - review the current assumption in `markdown.js` that bundle size is irrelevant
 - Affected files:
-  - [markdown.js](/home/mstie/projects/taurhaus/src/lib/markdown.js)
-  - [MarkdownRenderer.svelte](/home/mstie/projects/taurhaus/src/lib/MarkdownRenderer.svelte)
-  - [CodeViewer.svelte](/home/mstie/projects/taurhaus/src/lib/CodeViewer.svelte)
-  - [package.json](/home/mstie/projects/taurhaus/package.json)
+  - [markdown.js](/home/user/projects/taurhaus/src/lib/markdown.js)
+  - [MarkdownRenderer.svelte](/home/user/projects/taurhaus/src/lib/MarkdownRenderer.svelte)
+  - [CodeViewer.svelte](/home/user/projects/taurhaus/src/lib/CodeViewer.svelte)
+  - [package.json](/home/user/projects/taurhaus/package.json)
 - Complexity: `L`
 - Expected impact: `High` on frontend startup and large-document interaction.
 
@@ -201,9 +201,9 @@ Ordered by expected impact.
   - preserve locking, corrupt-file handling, and read filtering behavior
   - keep the recently fixed “mark only displayed messages” semantics intact
 - Affected files:
-  - [inbox.rs](/home/mstie/projects/mesh/src/inbox.rs)
-  - [main.rs](/home/mstie/projects/mesh/src/main.rs)
-  - [daemon.rs](/home/mstie/projects/mesh/src/daemon.rs)
+  - [inbox.rs](/home/user/projects/mesh/src/inbox.rs)
+  - [main.rs](/home/user/projects/mesh/src/main.rs)
+  - [daemon.rs](/home/user/projects/mesh/src/daemon.rs)
   - any inbox tests affected by storage format
 - Complexity: `L`
 - Expected impact: `High` for mesh scaling and write amplification reduction.
@@ -215,9 +215,9 @@ Ordered by expected impact.
   - stop reparsing every task JSON file on every relevant directory event
   - use task journal / targeted reads / cached ownership state to detect assignment changes incrementally
 - Affected files:
-  - [daemon.rs](/home/mstie/projects/mesh/src/daemon.rs)
-  - [tasks.rs](/home/mstie/projects/mesh/src/tasks.rs)
-  - [task_journal.rs](/home/mstie/projects/mesh/src/task_journal.rs)
+  - [daemon.rs](/home/user/projects/mesh/src/daemon.rs)
+  - [tasks.rs](/home/user/projects/mesh/src/tasks.rs)
+  - [task_journal.rs](/home/user/projects/mesh/src/task_journal.rs)
 - Complexity: `L`
 - Expected impact: `Medium-high`, especially as task counts and daemon counts grow.
 
@@ -228,9 +228,9 @@ Ordered by expected impact.
   - reduce `get_foreground_project` dependence on full `list_cli_sessions` + DB project scan where possible
   - reduce `startup/watchers` periodic reconcile cost by caching watch-target inputs and avoiding unconditional full reconcile every 60s
 - Affected files:
-  - [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs)
-  - [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
-  - [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs)
+  - [mod.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs)
+  - [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
+  - [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs)
 - Complexity: `M`
 - Expected impact: `Medium-high` — improves tails and removes avoidable request-path work.
 

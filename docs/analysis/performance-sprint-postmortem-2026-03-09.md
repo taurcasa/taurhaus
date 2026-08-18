@@ -3,7 +3,7 @@
 Task: `#827`
 
 Related review:
-- [performance-deterioration-review-2026-03-09.md](/home/mstie/projects/taurhaus/docs/analysis/performance-deterioration-review-2026-03-09.md)
+- [performance-deterioration-review-2026-03-09.md](/home/user/projects/taurhaus/docs/analysis/performance-deterioration-review-2026-03-09.md)
 
 ## Outcome
 
@@ -98,7 +98,7 @@ Failed because:
 - foreground and session state could lag reality
 
 Detailed per-commit reasoning for all 8 reviewed changes is captured in:
-- [performance-deterioration-review-2026-03-09.md](/home/mstie/projects/taurhaus/docs/analysis/performance-deterioration-review-2026-03-09.md)
+- [performance-deterioration-review-2026-03-09.md](/home/user/projects/taurhaus/docs/analysis/performance-deterioration-review-2026-03-09.md)
 
 ## Why The Sprint Failed
 

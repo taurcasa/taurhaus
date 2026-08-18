@@ -6,7 +6,7 @@ Fix the macOS build path so the bundled Mesh binary carries the pinned Mesh 0.2.
 
 ## Root Cause
 
-The macOS build recipes synced `/home/mstie/projects/mesh` to the remote Mac with `.git` excluded:
+The macOS build recipes synced `/home/user/projects/mesh` to the remote Mac with `.git` excluded:
 
 - `build-macos`
 - `build-macos-intel`
@@ -39,7 +39,7 @@ Final packaged macOS outputs:
 
 - remote app: `/Users/m1/projects/taurhaus/src-tauri/target/release/bundle/macos/taurhaus.app`
 - remote dmg: `/Users/m1/projects/taurhaus/src-tauri/target/release/bundle/dmg/taurhaus_0.5.10_aarch64.dmg`
-- local copied dmg: `/home/mstie/projects/taurhaus/builds/macos-aarch64/taurhaus_0.5.10_aarch64.dmg`
+- local copied dmg: `/home/user/projects/taurhaus/builds/macos-aarch64/taurhaus_0.5.10_aarch64.dmg`
 
 ## Exact Bundled Mesh Identity
 

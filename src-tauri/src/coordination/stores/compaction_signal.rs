@@ -275,8 +275,8 @@ mod tests {
             tool: CliTool::Codex,
             session_id: "sess-123".to_string(),
             pane_id: "%217".to_string(),
-            project_path: "/home/mstie/projects/taurhaus".to_string(),
-            jsonl_path: "/home/mstie/.codex/sessions/2026/03/08/rollout.jsonl".to_string(),
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            jsonl_path: "/home/user/.codex/sessions/2026/03/08/rollout.jsonl".to_string(),
             jsonl_offset: 18_423,
             transcript_timestamp: Utc
                 .with_ymd_and_hms(2026, 3, 8, 19, 59, 59)

@@ -23,7 +23,7 @@ Main conclusion:
 - most remaining polling either observes sources with no reliable native signal (`/proc`, file mtimes, process liveness), or is low-frequency and already appropriately scoped
 
 Top recommendations:
-1. Replace poll-based **compaction triggering** with the dedicated event-driven signal pipeline already designed in [event-driven-compaction-detection.md](/home/mstie/projects/taurhaus/docs/architecture/event-driven-compaction-detection.md)
+1. Replace poll-based **compaction triggering** with the dedicated event-driven signal pipeline already designed in [event-driven-compaction-detection.md](/home/user/projects/taurhaus/docs/architecture/event-driven-compaction-detection.md)
 2. Replace the **30s coordination self-heal monitor** with explicit lifecycle triggers plus a narrower fallback sweep
 3. Keep **session/activity polling**, **stall detection polling**, and **daemon health polling** for now
 4. Treat file watching as **already event-driven**, with periodic reconcile kept only as a safety net
@@ -455,7 +455,7 @@ Why first:
 
 Status:
 - already identified and architected separately
-- see [event-driven-compaction-detection.md](/home/mstie/projects/taurhaus/docs/architecture/event-driven-compaction-detection.md)
+- see [event-driven-compaction-detection.md](/home/user/projects/taurhaus/docs/architecture/event-driven-compaction-detection.md)
 
 Why second:
 - highest correctness payoff overall

@@ -284,10 +284,10 @@ That is the key distinction:
 - OpenAI Codex official repo discussions index: https://github.com/openai/codex/discussions
 - OpenAI Codex discussion: "Hook would be a great feature" #2150: https://github.com/openai/codex/discussions/2150
 - OpenAI Codex issue: fork/backtrack API request #4972: https://github.com/openai/codex/issues/4972
-- [CHANGELOG.md](/home/mstie/projects/taurhaus/CHANGELOG.md)
-- [compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
-- [compaction_events.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_events.rs)
-- [reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
+- [CHANGELOG.md](/home/user/projects/taurhaus/CHANGELOG.md)
+- [compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
+- [compaction_events.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_events.rs)
+- [reinjection.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
 
 ## Local Evidence Used
 

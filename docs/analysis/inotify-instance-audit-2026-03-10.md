@@ -6,18 +6,18 @@ Urgent assessment of `fs.inotify.max_user_instances` exhaustion on WSL2. This is
 
 Relevant code paths:
 
-- [src-tauri/src/daemon/watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs)
-- [src-tauri/src/daemon/server.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs)
-- [src-tauri/src/daemon_lifecycle.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
-- [src-tauri/src/daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
-- [src-tauri/src/session_scanner/compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
-- [src-tauri/src/session_scanner/compaction_extractor.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
-- [src-tauri/src/fs/watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs)
-- [src-tauri/src/startup/watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs)
+- [src-tauri/src/daemon/watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs)
+- [src-tauri/src/daemon/server.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs)
+- [src-tauri/src/daemon_lifecycle.rs](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
+- [src-tauri/src/daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+- [src-tauri/src/session_scanner/compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
+- [src-tauri/src/session_scanner/compaction_extractor.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs)
+- [src-tauri/src/fs/watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs)
+- [src-tauri/src/startup/watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs)
 
 Reference context:
 
-- [inotify-watch-audit-2026-03-09.md](/home/mstie/projects/taurhaus/docs/analysis/inotify-watch-audit-2026-03-09.md)
+- [inotify-watch-audit-2026-03-09.md](/home/user/projects/taurhaus/docs/analysis/inotify-watch-audit-2026-03-09.md)
 
 ## Live evidence
 
@@ -49,7 +49,7 @@ There were not multiple visible Windows app instances. So the daemon-side duplic
 
 ### Current watch plan
 
-The live Windows DB at `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.db` currently holds:
+The live Windows DB at `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.db` currently holds:
 
 - `20` projects
 - thresholds `active=4`, `recent=12`, `stale=30`
@@ -71,9 +71,9 @@ That split is:
 
 The current daemon compaction architecture uses:
 
-- `1` `RecommendedWatcher` for the transcript extractor service in [compaction_extractor.rs:257](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs#L257)
-- `1` `RecommendedWatcher` per team signal watcher in [compaction_watcher.rs:372](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs#L372)
-- `1` recursive teams-topology watcher in [compaction.rs:181](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs#L181)
+- `1` `RecommendedWatcher` for the transcript extractor service in [compaction_extractor.rs:257](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs#L257)
+- `1` `RecommendedWatcher` per team signal watcher in [compaction_watcher.rs:372](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs#L372)
+- `1` recursive teams-topology watcher in [compaction.rs:181](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs#L181)
 
 Current live state has:
 
@@ -87,19 +87,19 @@ This corrects a common misread: transcript count affects watch descriptors insid
 
 ### Why ordinary daemon project watching dominates
 
-The real offender is [handle_watch()](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs#L27).
+The real offender is [handle_watch()](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs#L27).
 
 Every successful daemon `watch` request creates a fresh `notify::RecommendedWatcher`:
 
-- creation in [watch.rs:74](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs#L74)
-- dedupe key lives only in the per-connection `active_watches` map passed from [server.rs:248](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs#L248)
+- creation in [watch.rs:74](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs#L74)
+- dedupe key lives only in the per-connection `active_watches` map passed from [server.rs:248](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs#L248)
 
 That means dedupe is **connection-scoped**, not daemon-global.
 
-Each TCP connection handled by [handle_connection()](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs#L234) gets its own `WatchRuntime`:
+Each TCP connection handled by [handle_connection()](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs#L234) gets its own `WatchRuntime`:
 
-- `let mut watch_runtime = WatchRuntime::new();` at [server.rs:248](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs#L248)
-- the watches are only dropped when that specific connection exits, at [server.rs:319](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs#L319)
+- `let mut watch_runtime = WatchRuntime::new();` at [server.rs:248](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs#L248)
+- the watches are only dropped when that specific connection exits, at [server.rs:319](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs#L319)
 
 So if the same Linux project path is watched on three or four separate event-listener connections, the daemon allocates three or four separate inotify instances for the same tree.
 
@@ -107,14 +107,14 @@ So if the same Linux project path is watched on three or four separate event-lis
 
 The app-side daemon watch lifecycle has a race-prone design:
 
-1. startup bootstrap spawns `start_daemon_watches(...)` in a background thread from [watchers.rs:76](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs#L76)
-2. startup also immediately spawns a separate `reconcile_activity_watches(..., "startup")` thread from [watchers.rs:97](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs#L97)
+1. startup bootstrap spawns `start_daemon_watches(...)` in a background thread from [watchers.rs:76](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs#L76)
+2. startup also immediately spawns a separate `reconcile_activity_watches(..., "startup")` thread from [watchers.rs:97](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs#L97)
 3. later periodic/settings/project reconcilers can also call `apply_daemon_watch_plan(...)`
 
 `apply_daemon_watch_plan(...)` only treats a plan as unchanged once `runtime.plan` has already been stored:
 
-- unchanged check in [daemon_lifecycle.rs:184](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L184)
-- `runtime.plan = Some(...)` is not stored until after the daemon listener has connected and all `watch()` calls have been issued at [daemon_lifecycle.rs:257](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L257)
+- unchanged check in [daemon_lifecycle.rs:184](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L184)
+- `runtime.plan = Some(...)` is not stored until after the daemon listener has connected and all `watch()` calls have been issued at [daemon_lifecycle.rs:257](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L257)
 
 That leaves a race window where multiple callers can all decide "no plan is active yet" and each open their own daemon event-listener connection.
 
@@ -165,9 +165,9 @@ For this incident, the app-side local watcher is not the main contributor becaus
 
 But the same architectural issue exists outside this exact path:
 
-- local `ProjectWatcher::watch_project()` creates one `RecommendedWatcher` per watched project in [fs/watcher.rs:571](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs#L571)
-- local `watch_file()` creates a separate `RecommendedWatcher` per watched file in [fs/watcher.rs:632](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs#L632)
-- on non-Windows app startup, local compaction adds one extractor watcher plus one watcher per team in [startup/compaction.rs:23](/home/mstie/projects/taurhaus/src-tauri/src/startup/compaction.rs#L23)
+- local `ProjectWatcher::watch_project()` creates one `RecommendedWatcher` per watched project in [fs/watcher.rs:571](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs#L571)
+- local `watch_file()` creates a separate `RecommendedWatcher` per watched file in [fs/watcher.rs:632](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs#L632)
+- on non-Windows app startup, local compaction adds one extractor watcher plus one watcher per team in [startup/compaction.rs:23](/home/user/projects/taurhaus/src-tauri/src/startup/compaction.rs#L23)
 
 So the app process can hit the same kernel limit on Linux/macOS dev setups even after the daemon issue is fixed.
 
@@ -341,9 +341,9 @@ The immediate band-aid of raising `fs.inotify.max_user_instances` to `512` was j
 
 The real root cause is architectural:
 
-1. ordinary daemon watchers are created per `watch` request in [watch.rs:27](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs#L27)
-2. dedupe is scoped to a single connection in [server.rs:248](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs#L248)
-3. the app can create duplicate listener connections during startup/reconcile windows from [watchers.rs:46](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs#L46) and [daemon_lifecycle.rs:176](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L176)
+1. ordinary daemon watchers are created per `watch` request in [watch.rs:27](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs#L27)
+2. dedupe is scoped to a single connection in [server.rs:248](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs#L248)
+3. the app can create duplicate listener connections during startup/reconcile windows from [watchers.rs:46](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs#L46) and [daemon_lifecycle.rs:176](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs#L176)
 
 That combination multiplies inotify instances silently. The current live `66` daemon instances are the result.
 

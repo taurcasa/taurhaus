@@ -2,7 +2,7 @@
 
 Date: 2026-03-19
 Auditor: `code-quality-auditor`
-Scope: delta full-audit of `/home/mstie/projects/taurhaus` after the quality-phase fixes and refactors
+Scope: delta full-audit of `/home/user/projects/taurhaus` after the quality-phase fixes and refactors
 Baselines:
 - `docs/analysis/taurhaus-code-quality-full-audit-2026-03-19.md`
 - `docs/analysis/taurhaus-generalization-reuse-redundancy-audit-2026-03-19.md`

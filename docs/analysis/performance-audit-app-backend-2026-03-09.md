@@ -26,7 +26,7 @@ The dominant app-side costs are:
 ## Data Sources
 
 - Resource monitor: `/tmp/taurhaus-resource-monitor-v2.csv`
-- Structured app logs: `C:\\Users\\mstie\\AppData\\Roaming\\com.taurhaus.dev\\taurhaus.log.jsonl` and rotated siblings
+- Structured app logs: `C:\\Users\\user\\AppData\\Roaming\\com.taurhaus.dev\\taurhaus.log.jsonl` and rotated siblings
 - Current backend source tree under `src-tauri/src/`
 
 ## Measured Baselines

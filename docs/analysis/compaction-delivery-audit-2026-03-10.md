@@ -29,7 +29,7 @@ Claude diagnostics:
 
 Taurhaus app logs:
 - Windows canonical app log root:
-  - `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log*.jsonl`
+  - `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log*.jsonl`
 - WSL/local root exists too:
   - `~/.local/share/com.taurhaus.dev/taurhaus.log*.jsonl`
 
@@ -39,8 +39,8 @@ Code paths reviewed:
 - `src-tauri/src/coordination/claude_hooks.rs`
 - `src-tauri/src/session_scanner/compaction_extractor.rs`
 - `scripts/analyze-compaction.py`
-- `/home/mstie/projects/mesh/src/daemon.rs`
-- `/home/mstie/projects/mesh/src/main.rs`
+- `/home/user/projects/mesh/src/daemon.rs`
+- `/home/user/projects/mesh/src/main.rs`
 
 ## Executive Summary
 
@@ -110,7 +110,7 @@ Conclusion:
 Confidence: high
 
 Evidence from the Windows app log:
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 - architect examples:
   - `2026-03-09T22:37:10.850Z` `compaction.detected`
   - `2026-03-09T22:37:10.860Z` `compaction.injected`
@@ -157,7 +157,7 @@ Conclusion:
 Confidence: medium-high
 
 Code path:
-- `/home/mstie/projects/mesh/src/daemon.rs`
+- `/home/user/projects/mesh/src/daemon.rs`
 - `check_inbox(...)` compares inbox length
 - if new non-empty, non-low-priority messages arrived, it calls:
   - `format_notification(...)`
@@ -229,7 +229,7 @@ Conclusion:
 Confidence: high
 
 Windows app log evidence around the live team-lead hook run:
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.20260309T220416Z.jsonl`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.20260309T220416Z.jsonl`
 
 Observed sequence:
 - `2026-03-09T20:58:00.079Z` `compaction.claude_hook.received`
@@ -298,7 +298,7 @@ Impact:
 `mesh daemon` currently has the mechanics, but not durable per-delivery evidence.
 
 What exists:
-- code path in `/home/mstie/projects/mesh/src/daemon.rs`
+- code path in `/home/user/projects/mesh/src/daemon.rs`
 - tmux injection happens through `deliver_to_tmux(...)`
 
 What is missing:
@@ -320,7 +320,7 @@ The default analyzer run selected:
 That produced an incomplete picture.
 
 The real operational evidence was in:
-- `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log*.jsonl`
+- `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log*.jsonl`
 
 Impact:
 - a default run can under-report compaction success/failure unless `--log` is explicitly set

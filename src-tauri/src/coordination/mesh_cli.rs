@@ -328,19 +328,19 @@ mod tests {
 
     #[test]
     fn parse_wsl_unix_path_from_stdout_handles_clean_output() {
-        let stdout = b"/home/mstie\n";
+        let stdout = b"/home/user\n";
         assert_eq!(
             parse_wsl_unix_path_from_stdout(stdout),
-            Some("/home/mstie".to_string())
+            Some("/home/user".to_string())
         );
     }
 
     #[test]
     fn parse_wsl_unix_path_from_stdout_ignores_banner_noise() {
-        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/mstie/.local/bin/mesh\n";
+        let stdout = b"Welcome to Ubuntu 22.04.5 LTS\nThis message is shown once a day.\n/home/user/.local/bin/mesh\n";
         assert_eq!(
             parse_wsl_unix_path_from_stdout(stdout),
-            Some("/home/mstie/.local/bin/mesh".to_string())
+            Some("/home/user/.local/bin/mesh".to_string())
         );
     }
 
@@ -369,10 +369,10 @@ mod tests {
 
     #[test]
     fn windows_mesh_teams_dir_builder_uses_unc_path() {
-        let actual = windows_mesh_teams_dir_from_parts("Ubuntu", "/home/mstie");
+        let actual = windows_mesh_teams_dir_from_parts("Ubuntu", "/home/user");
         assert_eq!(
             actual.to_string_lossy(),
-            r"\\wsl.localhost\Ubuntu\home\mstie\.claude\teams"
+            r"\\wsl.localhost\Ubuntu\home\user\.claude\teams"
         );
     }
 
@@ -398,13 +398,13 @@ mod tests {
         set_preferred_wsl_distro_for_coordination(Some("Debian"));
 
         let teams_dir = resolve_windows_mesh_teams_dir_for_distro(Some("Debian"))
-            .unwrap_or_else(|| windows_mesh_teams_dir_from_parts("Debian", "/home/mstie"));
+            .unwrap_or_else(|| windows_mesh_teams_dir_from_parts("Debian", "/home/user"));
 
         set_preferred_wsl_distro_for_coordination(None);
 
         assert_eq!(
             teams_dir.to_string_lossy(),
-            r"\\wsl.localhost\Debian\home\mstie\.claude\teams"
+            r"\\wsl.localhost\Debian\home\user\.claude\teams"
         );
     }
 

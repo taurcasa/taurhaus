@@ -8,8 +8,8 @@ Task: `#1417`
 
 Synthesized four research inputs:
 
-- [everything-claude-code-role-research-2026-03-21.md](/home/mstie/projects/taurhaus/docs/analysis/everything-claude-code-role-research-2026-03-21.md)
-- [bmad-method-dev-perspective-2026-03-21.md](/home/mstie/projects/taurhaus/docs/analysis/bmad-method-dev-perspective-2026-03-21.md)
+- [everything-claude-code-role-research-2026-03-21.md](/home/user/projects/taurhaus/docs/analysis/everything-claude-code-role-research-2026-03-21.md)
+- [bmad-method-dev-perspective-2026-03-21.md](/home/user/projects/taurhaus/docs/analysis/bmad-method-dev-perspective-2026-03-21.md)
 - design-lead message findings on ECC: graduated severity, role variants, confidence thresholds
 - product-check-1 message findings on BMAD: communication style, quality gates, phase structure, shared skills
 

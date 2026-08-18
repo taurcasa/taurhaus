@@ -17,9 +17,7 @@ const isMac = process.platform === 'darwin'
  */
 export const MOD_KEY = isMac ? 'Meta' : 'Control'
 
-const defaultTaurhausProjectPath = isMac
-  ? resolve(homedir(), 'projects', 'taurhaus')
-  : '/home/mstie/projects/taurhaus'
+const defaultTaurhausProjectPath = resolve(homedir(), 'projects', 'taurhaus')
 
 /**
  * The taurhaus project's own path — guaranteed to be a git repo on dev machines.

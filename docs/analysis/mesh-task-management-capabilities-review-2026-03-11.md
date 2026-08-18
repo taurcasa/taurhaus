@@ -6,7 +6,7 @@ Task `#938` asked for an end-to-end review of Mesh task management for AI-only t
 
 This review covers:
 
-- native Mesh task-management capabilities in `/home/mstie/projects/mesh`
+- native Mesh task-management capabilities in `/home/user/projects/mesh`
 - the current task, message, ack, idle-monitor, and daemon flows
 - the task-domain architecture that Mesh effectively has today
 - the architectural gaps that make team-lead coordination weaker than it should be

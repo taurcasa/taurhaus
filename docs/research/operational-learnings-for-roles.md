@@ -8,18 +8,18 @@ Purpose:
 - separate what is directly observed from what is inferred for future roles
 
 Sources reviewed:
-- [CLAUDE.md](/home/mstie/projects/taurhaus/CLAUDE.md)
-- [retro-2026-03-08-survey-findings.md](/home/mstie/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md)
-- [retro-2026-03-08-decisions.md](/home/mstie/projects/taurhaus/docs/retro/retro-2026-03-08-decisions.md)
-- [retro-quality-sprint-2026-03-05.md](/home/mstie/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md)
-- [visual-testing-pipeline-lessons.md](/home/mstie/projects/taurhaus/docs/archive/retros/visual-testing-pipeline-lessons.md)
-- [layout-engine-pipeline-retro.md](/home/mstie/projects/taurhaus/docs/archive/retros/layout-engine-pipeline-retro.md)
-- [ai-agent-characteristics.md](/home/mstie/projects/taurhaus/docs/archive/ai-agent-characteristics.md)
-- [design-workflow.md](/home/mstie/projects/taurhaus/docs/archive/design-workflow.md)
-- [agent-role-visibility.md](/home/mstie/projects/taurhaus/docs/archive/design/agent-role-visibility.md)
-- [role-context-steering-review.md](/home/mstie/projects/taurhaus/docs/archive/design/role-context-steering-review.md)
-- [ai-friendliness-audit-codex.md](/home/mstie/projects/taurhaus/docs/archive/audits/ai-friendliness-audit-codex.md)
-- [ai-friendliness-audit-claude.md](/home/mstie/projects/taurhaus/docs/archive/audits/ai-friendliness-audit-claude.md)
+- [CLAUDE.md](/home/user/projects/taurhaus/CLAUDE.md)
+- [retro-2026-03-08-survey-findings.md](/home/user/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md)
+- [retro-2026-03-08-decisions.md](/home/user/projects/taurhaus/docs/retro/retro-2026-03-08-decisions.md)
+- [retro-quality-sprint-2026-03-05.md](/home/user/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md)
+- [visual-testing-pipeline-lessons.md](/home/user/projects/taurhaus/docs/archive/retros/visual-testing-pipeline-lessons.md)
+- [layout-engine-pipeline-retro.md](/home/user/projects/taurhaus/docs/archive/retros/layout-engine-pipeline-retro.md)
+- [ai-agent-characteristics.md](/home/user/projects/taurhaus/docs/archive/ai-agent-characteristics.md)
+- [design-workflow.md](/home/user/projects/taurhaus/docs/archive/design-workflow.md)
+- [agent-role-visibility.md](/home/user/projects/taurhaus/docs/archive/design/agent-role-visibility.md)
+- [role-context-steering-review.md](/home/user/projects/taurhaus/docs/archive/design/role-context-steering-review.md)
+- [ai-friendliness-audit-codex.md](/home/user/projects/taurhaus/docs/archive/audits/ai-friendliness-audit-codex.md)
+- [ai-friendliness-audit-claude.md](/home/user/projects/taurhaus/docs/archive/audits/ai-friendliness-audit-claude.md)
 
 Notable doc-state finding:
 - `MEMORY.md` was referenced in the assignment but is not present in this workspace

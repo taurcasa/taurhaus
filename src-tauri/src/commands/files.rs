@@ -351,7 +351,7 @@ mod tests {
                 "all daemon status pool slots should be occupied"
             );
 
-            let project_path = r"\\wsl.localhost\Ubuntu\home\mstie\projects\taurhaus";
+            let project_path = r"\\wsl.localhost\Ubuntu\home\user\projects\taurhaus";
             for err in [
                 get_file_tree_impl(&providers, project_path)
                     .expect_err("file tree should fail fast"),

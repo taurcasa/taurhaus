@@ -27,10 +27,10 @@ Affected platforms:
 - Especially test/dev isolation or any non-default Claude root
 
 Evidence:
-- `PlatformPaths::claude_dir()` honors `TAURHAUS_CLAUDE_DIR` at [src-tauri/src/provider/platform_paths.rs:36](/home/mstie/projects/taurhaus/src-tauri/src/provider/platform_paths.rs#L36).
-- Coordination stores also honor the override at [src-tauri/src/coordination/state.rs:264](/home/mstie/projects/taurhaus/src-tauri/src/coordination/state.rs#L264), [src-tauri/src/coordination/stores/operational.rs:160](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/operational.rs#L160), and [src-tauri/src/coordination/stall_detector/paths.rs:7](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stall_detector/paths.rs#L7).
-- But the runtime/process path used for daemon pid files, control credentials, and `--claude-dir` resolution hardcodes `mesh_cli::resolve_windows_mesh_teams_dir()` on Windows at [src-tauri/src/coordination/runtime/process.rs:325](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime/process.rs#L325) and [src-tauri/src/coordination/runtime/process.rs:342](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime/process.rs#L342).
-- Those values are then fed into mesh daemon launch arguments at [src-tauri/src/coordination/runtime/system.rs:174](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime/system.rs#L174) and [src-tauri/src/coordination/runtime/system.rs:228](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime/system.rs#L228).
+- `PlatformPaths::claude_dir()` honors `TAURHAUS_CLAUDE_DIR` at [src-tauri/src/provider/platform_paths.rs:36](/home/user/projects/taurhaus/src-tauri/src/provider/platform_paths.rs#L36).
+- Coordination stores also honor the override at [src-tauri/src/coordination/state.rs:264](/home/user/projects/taurhaus/src-tauri/src/coordination/state.rs#L264), [src-tauri/src/coordination/stores/operational.rs:160](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/operational.rs#L160), and [src-tauri/src/coordination/stall_detector/paths.rs:7](/home/user/projects/taurhaus/src-tauri/src/coordination/stall_detector/paths.rs#L7).
+- But the runtime/process path used for daemon pid files, control credentials, and `--claude-dir` resolution hardcodes `mesh_cli::resolve_windows_mesh_teams_dir()` on Windows at [src-tauri/src/coordination/runtime/process.rs:325](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime/process.rs#L325) and [src-tauri/src/coordination/runtime/process.rs:342](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime/process.rs#L342).
+- Those values are then fed into mesh daemon launch arguments at [src-tauri/src/coordination/runtime/system.rs:174](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime/system.rs#L174) and [src-tauri/src/coordination/runtime/system.rs:228](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime/system.rs#L228).
 
 Why this is a bug:
 - On Windows, different subsystems disagree about where `~/.claude` lives.
@@ -47,8 +47,8 @@ Affected platforms:
 - Windows host with more than one WSL distro
 
 Evidence:
-- Startup daemon bootstrap prefers the distro embedded in registered project paths at [src-tauri/src/startup/setup.rs:72](/home/mstie/projects/taurhaus/src-tauri/src/startup/setup.rs#L72) through [src-tauri/src/startup/setup.rs:119](/home/mstie/projects/taurhaus/src-tauri/src/startup/setup.rs#L119).
-- Coordination bridge helpers discover WSL home and teams roots by running `wsl` with no explicit distro at [src-tauri/src/coordination/mesh_cli.rs:77](/home/mstie/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs#L77), [src-tauri/src/coordination/mesh_cli.rs:148](/home/mstie/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs#L148), and [src-tauri/src/coordination/mesh_cli.rs:171](/home/mstie/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs#L171).
+- Startup daemon bootstrap prefers the distro embedded in registered project paths at [src-tauri/src/startup/setup.rs:72](/home/user/projects/taurhaus/src-tauri/src/startup/setup.rs#L72) through [src-tauri/src/startup/setup.rs:119](/home/user/projects/taurhaus/src-tauri/src/startup/setup.rs#L119).
+- Coordination bridge helpers discover WSL home and teams roots by running `wsl` with no explicit distro at [src-tauri/src/coordination/mesh_cli.rs:77](/home/user/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs#L77), [src-tauri/src/coordination/mesh_cli.rs:148](/home/user/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs#L148), and [src-tauri/src/coordination/mesh_cli.rs:171](/home/user/projects/taurhaus/src-tauri/src/coordination/mesh_cli.rs#L171).
 
 Why this is a bug:
 - The app already has logic to choose a runtime distro from actual project paths.
@@ -68,8 +68,8 @@ Affected platforms:
 - Linux/macOS when trailing slash or separator normalization differs
 
 Evidence:
-- Daemon-side project task scan filters sessions with `s.project_path == params.path` at [src-tauri/src/daemon/handlers.rs:410](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs#L410).
-- Local task sync does the same with `s.project_path == project_path` at [src-tauri/src/services/task_sync.rs:377](/home/mstie/projects/taurhaus/src-tauri/src/services/task_sync.rs#L377).
+- Daemon-side project task scan filters sessions with `s.project_path == params.path` at [src-tauri/src/daemon/handlers.rs:410](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs#L410).
+- Local task sync does the same with `s.project_path == project_path` at [src-tauri/src/services/task_sync.rs:377](/home/user/projects/taurhaus/src-tauri/src/services/task_sync.rs#L377).
 - The codebase otherwise treats project matching as a normalized identity problem via `normalize_project_path()` in many neighboring flows.
 
 Why this is a bug:
@@ -91,7 +91,7 @@ Affected platforms:
 - Linux processes running inside WSL
 
 Evidence:
-- `running_under_wsl()` is only `cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()` at [src-tauri/src/daemon/compaction.rs:137](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs#L137).
+- `running_under_wsl()` is only `cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()` at [src-tauri/src/daemon/compaction.rs:137](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs#L137).
 
 Why this is fragile:
 - This works for normal interactive WSL shells, but it assumes that environment variable is always preserved.
@@ -112,8 +112,8 @@ Affected platforms:
 - macOS remote build lane
 
 Evidence:
-- Windows packaging installs and restarts the live daemon as part of `build-windows.sh` at [scripts/build-windows.sh:28](/home/mstie/projects/taurhaus/scripts/build-windows.sh#L28).
-- macOS build steps assume remote `ssh`, `rsync`, login-shell PATH wiring, codesign availability, and a sibling Mesh checkout at [justfile:592](/home/mstie/projects/taurhaus/justfile#L592) and [justfile:720](/home/mstie/projects/taurhaus/justfile#L720).
+- Windows packaging installs and restarts the live daemon as part of `build-windows.sh` at [scripts/build-windows.sh:28](/home/user/projects/taurhaus/scripts/build-windows.sh#L28).
+- macOS build steps assume remote `ssh`, `rsync`, login-shell PATH wiring, codesign availability, and a sibling Mesh checkout at [justfile:592](/home/user/projects/taurhaus/justfile#L592) and [justfile:720](/home/user/projects/taurhaus/justfile#L720).
 
 Why this matters:
 - I did not find a clear correctness bug in the scripts themselves.

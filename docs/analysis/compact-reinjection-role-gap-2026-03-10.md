@@ -26,7 +26,7 @@ that with the existing operational task/footer/working-set context.
 
 Role templates already carry the information needed for richer reinjection.
 The active schema in
-[types.rs](/home/mstie/projects/taurhaus/src-tauri/src/templates/types.rs)
+[types.rs](/home/user/projects/taurhaus/src-tauri/src/templates/types.rs)
 includes:
 
 - `instructions`
@@ -37,16 +37,16 @@ includes:
 - `capabilities`
 
 Those fields propagate into managed members through the coordination domain in
-[domain.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/domain.rs)
+[domain.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/domain.rs)
 and the roster join in
-[roster.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/roster.rs).
+[roster.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/roster.rs).
 
 ### What agents get at startup
 
 Initial role delivery is materially richer than compaction reinjection.
 
 The renderer in
-[delivery.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/delivery.rs)
+[delivery.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/delivery.rs)
 includes:
 
 - role id
@@ -64,7 +64,7 @@ So the system already has a concept of a richer role contract at runtime.
 ### What operational snapshots keep
 
 The operational snapshot model in
-[operational.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/operational.rs)
+[operational.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/operational.rs)
 stores only:
 
 - task id / subject / status
@@ -89,12 +89,12 @@ the reinjection composer chooses to pull from `Member`, not from the snapshot.
 The compaction paths are:
 
 - Codex:
-  [compaction_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
+  [compaction_processor.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
 - Claude:
-  [claude_hooks.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
+  [claude_hooks.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/claude_hooks.rs)
 
 Both paths call the same composer in
-[reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs):
+[reinjection.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/reinjection.rs):
 
 - `CompactionReinjectionService::compose(...)`
 
@@ -143,9 +143,9 @@ presentation format.
 I compared the current reinjection contract against these current Taurhaus role
 templates:
 
-- [taurhaus-lead-codex.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/taurhaus-lead-codex.yaml)
-- [taurhaus-developer.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/taurhaus-developer.yaml)
-- [taurhaus-architect.yaml](/home/mstie/projects/taurhaus/src-tauri/resources/templates/roles/taurhaus-architect.yaml)
+- [taurhaus-lead-codex.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/taurhaus-lead-codex.yaml)
+- [taurhaus-developer.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/taurhaus-developer.yaml)
+- [taurhaus-architect.yaml](/home/user/projects/taurhaus/src-tauri/resources/templates/roles/taurhaus-architect.yaml)
 
 ### What survives today
 
@@ -416,7 +416,7 @@ Then compaction reinjection should carry:
 ### Recommended implementation steps
 
 1. Extend the role template schema in
-   [types.rs](/home/mstie/projects/taurhaus/src-tauri/src/templates/types.rs)
+   [types.rs](/home/user/projects/taurhaus/src-tauri/src/templates/types.rs)
    with a structured `runtime_compact_summary` field and validation limits.
 
 2. Propagate that field through template composition, member/config storage, and
@@ -424,7 +424,7 @@ Then compaction reinjection should carry:
    time.
 
 3. Expand
-   [reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
+   [reinjection.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
    so compaction cards include:
    - bounded role compact summary sections
    - `context_summary`

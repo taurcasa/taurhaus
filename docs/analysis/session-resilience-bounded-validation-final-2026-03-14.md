@@ -27,7 +27,7 @@ not the full matrix from `#1281`.
 
 Report:
 
-- [session-stale-presence-implementation-2026-03-14.md](/home/mstie/projects/taurhaus/docs/analysis/session-stale-presence-implementation-2026-03-14.md)
+- [session-stale-presence-implementation-2026-03-14.md](/home/user/projects/taurhaus/docs/analysis/session-stale-presence-implementation-2026-03-14.md)
 
 Pinned implementation commit:
 
@@ -37,7 +37,7 @@ Pinned implementation commit:
 
 Report:
 
-- [daemon-busy-versus-disconnected-implementation-2026-03-14.md](/home/mstie/projects/taurhaus/docs/analysis/daemon-busy-versus-disconnected-implementation-2026-03-14.md)
+- [daemon-busy-versus-disconnected-implementation-2026-03-14.md](/home/user/projects/taurhaus/docs/analysis/daemon-busy-versus-disconnected-implementation-2026-03-14.md)
 
 Commit note:
 
@@ -45,11 +45,11 @@ Commit note:
   deliverable path, but not a standalone commit hash
 - the final busy-versus-disconnected slice is present in the current worktree
   files below and was validated as live combined state:
-  - [src-tauri/src/commands/daemon.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/daemon.rs)
-  - [src-tauri/src/models/mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/models/mod.rs)
-  - [src-tauri/src/provider/daemon_client.rs](/home/mstie/projects/taurhaus/src-tauri/src/provider/daemon_client.rs)
-  - [src/lib/Sidebar.svelte](/home/mstie/projects/taurhaus/src/lib/Sidebar.svelte)
-  - [src/lib/ipc/system.js](/home/mstie/projects/taurhaus/src/lib/ipc/system.js)
+  - [src-tauri/src/commands/daemon.rs](/home/user/projects/taurhaus/src-tauri/src/commands/daemon.rs)
+  - [src-tauri/src/models/mod.rs](/home/user/projects/taurhaus/src-tauri/src/models/mod.rs)
+  - [src-tauri/src/provider/daemon_client.rs](/home/user/projects/taurhaus/src-tauri/src/provider/daemon_client.rs)
+  - [src/lib/Sidebar.svelte](/home/user/projects/taurhaus/src/lib/Sidebar.svelte)
+  - [src/lib/ipc/system.js](/home/user/projects/taurhaus/src/lib/ipc/system.js)
 
 Relevant earlier busy-lane foundation still visible in history:
 
@@ -59,7 +59,7 @@ Relevant earlier busy-lane foundation still visible in history:
 
 Report:
 
-- [session-resilience-bounded-validation-2026-03-14.md](/home/mstie/projects/taurhaus/docs/analysis/session-resilience-bounded-validation-2026-03-14.md)
+- [session-resilience-bounded-validation-2026-03-14.md](/home/user/projects/taurhaus/docs/analysis/session-resilience-bounded-validation-2026-03-14.md)
 
 Pinned implementation/report commit:
 
@@ -81,7 +81,7 @@ currently present in source.
 ## Matrix Scope
 
 This final bounded validation still maps only to the narrowed parts of the
-matrix from [session-activity-daemon-stability-experiment-matrix-2026-03-14.md](/home/mstie/projects/taurhaus/docs/analysis/session-activity-daemon-stability-experiment-matrix-2026-03-14.md):
+matrix from [session-activity-daemon-stability-experiment-matrix-2026-03-14.md](/home/user/projects/taurhaus/docs/analysis/session-activity-daemon-stability-experiment-matrix-2026-03-14.md):
 
 - `D4` live reconnect and long-poll recovery
 - `D5` failure degradation, but only for the bounded transport/cache/UI cases

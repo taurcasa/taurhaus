@@ -6,7 +6,7 @@ Investigate the recurring Windows stall where `taurhaus.exe` becomes unresponsiv
 
 ## Evidence Used
 
-- Windows app log: `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+- Windows app log: `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
 - Resource monitor capture: `/tmp/taurhaus-resource-monitor-v2.csv`
 - Relevant code paths:
   - `src-tauri/src/session_scanner/process.rs`
@@ -245,7 +245,7 @@ Reason:
 
 - Confirmed both required artifacts existed and were current:
   - `/tmp/taurhaus-resource-monitor-v2.csv`
-  - `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+  - `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
 - Summarized daemon/UI resource peaks from the monitor capture.
 - Summarized IPC and daemon RPC durations from the JSONL log.
 - Pulled specific slow windows and matched them to code paths.

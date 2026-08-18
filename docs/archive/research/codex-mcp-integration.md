@@ -44,7 +44,7 @@ Test command:
 ```bash
 tmp_home=$(mktemp -d)
 HOME="$tmp_home" codex mcp add taursult -- \
-  fastmcp run /home/mstie/projects/taursult/src/mcp_server/server.py
+  fastmcp run /home/user/projects/taursult/src/mcp_server/server.py
 ```
 
 That succeeded.
@@ -56,7 +56,7 @@ Persisted Codex config format:
 ```toml
 [mcp_servers.taursult]
 command = "fastmcp"
-args = ["run", "/home/mstie/projects/taursult/src/mcp_server/server.py"]
+args = ["run", "/home/user/projects/taursult/src/mcp_server/server.py"]
 ```
 
 If environment variables are needed, Codex stores them under a nested env table:
@@ -64,7 +64,7 @@ If environment variables are needed, Codex stores them under a nested env table:
 ```toml
 [mcp_servers.taursult]
 command = "fastmcp"
-args = ["run", "/home/mstie/projects/taursult/src/mcp_server/server.py"]
+args = ["run", "/home/user/projects/taursult/src/mcp_server/server.py"]
 
 [mcp_servers.taursult.env]
 PYTHONUNBUFFERED = "1"
@@ -74,7 +74,7 @@ Equivalent CLI form:
 
 ```bash
 codex mcp add taursult --env PYTHONUNBUFFERED=1 -- \
-  fastmcp run /home/mstie/projects/taursult/src/mcp_server/server.py
+  fastmcp run /home/user/projects/taursult/src/mcp_server/server.py
 ```
 
 ### 3. taursult starts cleanly as a stdio MCP server
@@ -82,7 +82,7 @@ codex mcp add taursult --env PYTHONUNBUFFERED=1 -- \
 I validated the taursult server entrypoint directly:
 
 ```bash
-timeout 5s fastmcp run /home/mstie/projects/taursult/src/mcp_server/server.py
+timeout 5s fastmcp run /home/user/projects/taursult/src/mcp_server/server.py
 ```
 
 Observed result:
@@ -101,7 +101,7 @@ Add taursult once to the Codex config:
 
 ```bash
 codex mcp add taursult -- \
-  fastmcp run /home/mstie/projects/taursult/src/mcp_server/server.py
+  fastmcp run /home/user/projects/taursult/src/mcp_server/server.py
 ```
 
 Verify:
@@ -120,7 +120,7 @@ Expected persisted entry:
 ```toml
 [mcp_servers.taursult]
 command = "fastmcp"
-args = ["run", "/home/mstie/projects/taursult/src/mcp_server/server.py"]
+args = ["run", "/home/user/projects/taursult/src/mcp_server/server.py"]
 ```
 
 ### If taursult needs environment variables later
@@ -131,7 +131,7 @@ Add them at registration time:
 codex mcp add taursult \
   --env OPENAI_API_KEY=$OPENAI_API_KEY \
   --env GOOGLE_API_KEY=$GOOGLE_API_KEY \
-  -- fastmcp run /home/mstie/projects/taursult/src/mcp_server/server.py
+  -- fastmcp run /home/user/projects/taursult/src/mcp_server/server.py
 ```
 
 Or edit `~/.codex/config.toml` directly:
@@ -139,7 +139,7 @@ Or edit `~/.codex/config.toml` directly:
 ```toml
 [mcp_servers.taursult]
 command = "fastmcp"
-args = ["run", "/home/mstie/projects/taursult/src/mcp_server/server.py"]
+args = ["run", "/home/user/projects/taursult/src/mcp_server/server.py"]
 
 [mcp_servers.taursult.env]
 OPENAI_API_KEY = "..."
@@ -191,7 +191,7 @@ Suggested machine-level command:
 
 ```bash
 codex mcp add taursult -- \
-  fastmcp run /home/mstie/projects/taursult/src/mcp_server/server.py
+  fastmcp run /home/user/projects/taursult/src/mcp_server/server.py
 ```
 
 Then validate locally with:

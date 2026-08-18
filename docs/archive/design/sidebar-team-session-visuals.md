@@ -6,7 +6,7 @@
 
 Recommendation: keep the current `14px` standalone tool-logo treatment, but change grouped mesh-team indicators so they still read as "tool runtime" rather than "generic badge".
 
-This supersedes the earlier `T<count>` fallback from [sidebar-session-grouping.md](/home/mstie/projects/taurhaus/docs/archive/design/sidebar-session-grouping.md).
+This supersedes the earlier `T<count>` fallback from [sidebar-session-grouping.md](/home/user/projects/taurhaus/docs/archive/design/sidebar-session-grouping.md).
 
 Two visual states:
 
@@ -17,7 +17,7 @@ The row should still feel secondary to the project name. The right visual metaph
 
 ## Current Baseline
 
-Current implementation in [sessionIndicator.js](/home/mstie/projects/taurhaus/src/lib/sessionIndicator.js) and [SidebarProjectList.svelte](/home/mstie/projects/taurhaus/src/lib/SidebarProjectList.svelte):
+Current implementation in [sessionIndicator.js](/home/user/projects/taurhaus/src/lib/sessionIndicator.js) and [SidebarProjectList.svelte](/home/user/projects/taurhaus/src/lib/SidebarProjectList.svelte):
 
 - standalone session icon: `14px` box, `12px` SVG
 - grouped team token: rounded pill with `T` + count
@@ -243,7 +243,7 @@ line-height: 1;
 
 ## Theme Tokens
 
-Reuse the existing activity palette from [app.css](/home/mstie/projects/taurhaus/src/app.css). The grouped treatment should not introduce a new color system.
+Reuse the existing activity palette from [app.css](/home/user/projects/taurhaus/src/app.css). The grouped treatment should not introduce a new color system.
 
 ### Dark Theme
 
@@ -287,7 +287,7 @@ Idle team:
 
 ## Activity Semantics
 
-Keep the current aggregate logic from [sessionIndicator.js](/home/mstie/projects/taurhaus/src/lib/sessionIndicator.js):
+Keep the current aggregate logic from [sessionIndicator.js](/home/user/projects/taurhaus/src/lib/sessionIndicator.js):
 
 - any grouped member active -> whole team indicator reads active
 - all grouped members idle -> whole team indicator reads idle
@@ -385,9 +385,9 @@ The grouped indicator data already carries `members`. Frontend can derive:
 
 Minimal frontend adjustments:
 
-1. extend grouped indicator shape in [sessionIndicator.js](/home/mstie/projects/taurhaus/src/lib/sessionIndicator.js) with `uniqueTools`
-2. replace `T + count` rendering in [SidebarProjectList.svelte](/home/mstie/projects/taurhaus/src/lib/SidebarProjectList.svelte)
-3. add a small CSS block for connector rail and stacked overlap styling in [app.css](/home/mstie/projects/taurhaus/src/app.css)
+1. extend grouped indicator shape in [sessionIndicator.js](/home/user/projects/taurhaus/src/lib/sessionIndicator.js) with `uniqueTools`
+2. replace `T + count` rendering in [SidebarProjectList.svelte](/home/user/projects/taurhaus/src/lib/SidebarProjectList.svelte)
+3. add a small CSS block for connector rail and stacked overlap styling in [app.css](/home/user/projects/taurhaus/src/app.css)
 4. add visual fixtures for `2-member team`, `3-member team`, `5-member mixed tools`, and `team + standalone`
 
 ## Final Call

@@ -12,9 +12,9 @@ It answers:
 - whether the same adapter boundary can support other CLI tools later
 
 Inputs:
-- [mesh-greenfield-functional-architecture-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-greenfield-functional-architecture-2026-03-11.md)
+- [mesh-greenfield-functional-architecture-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-greenfield-functional-architecture-2026-03-11.md)
 - observed Claude task files under `~/.claude/tasks/{source-key}/{id}.json`
-- prior evidence from [task-system-unification.md](/home/mstie/projects/mesh/docs/architecture/task-system-unification.md)
+- prior evidence from [task-system-unification.md](/home/user/projects/mesh/docs/architecture/task-system-unification.md)
 - direct collaboration between `mesh-architect` and `architect-1`
 
 ## Executive Summary

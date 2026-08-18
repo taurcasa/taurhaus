@@ -33,7 +33,7 @@ That makes the feasible path a manual directory walk plus non-recursive per-dire
 
 ### Candidate pre-prune directories
 
-The existing hardcoded post-filter exclusions in [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs) are:
+The existing hardcoded post-filter exclusions in [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs) are:
 
 - `node_modules`
 - `target`
@@ -125,12 +125,12 @@ Pre-pruning is feasible without correctness regression.
 
 The concrete implementation tasks are:
 
-1. Add shared watch-planning helpers in [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs):
+1. Add shared watch-planning helpers in [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs):
    - determine whether a directory should be watched
    - build the desired per-root watched-directory set
    - reconcile a live watcher against that desired set
 2. Replace app-local `watch_project(...)` whole-tree recursive registration with per-directory non-recursive registration.
-3. Mirror the same logic in daemon-owned WSL watches in [watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs).
+3. Mirror the same logic in daemon-owned WSL watches in [watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs).
 4. Reconcile the watched-directory set on:
    - directory topology changes
    - `.gitignore` / `.taurhausignore` changes

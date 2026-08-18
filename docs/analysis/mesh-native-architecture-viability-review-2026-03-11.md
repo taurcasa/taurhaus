@@ -2,10 +2,10 @@
 
 ## Scope
 
-This document reviews [mesh-task-communication-architecture-draft-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-task-communication-architecture-draft-2026-03-11.md) from the perspective of native Mesh architecture and runtime constraints.
+This document reviews [mesh-task-communication-architecture-draft-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-task-communication-architecture-draft-2026-03-11.md) from the perspective of native Mesh architecture and runtime constraints.
 
 Primary system under evaluation:
-- `/home/mstie/projects/mesh`
+- `/home/user/projects/mesh`
 
 Secondary consumer context:
 - Taurhaus, as a downstream consumer and orchestration layer

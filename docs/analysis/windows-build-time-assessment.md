@@ -23,7 +23,7 @@ Bun/frontend optimization is a low-priority lane here. The frontend build is too
 
 ## What `just build-windows` does today
 
-Current build flow from [justfile](/home/mstie/projects/taurhaus/justfile):
+Current build flow from [justfile](/home/user/projects/taurhaus/justfile):
 
 1. `install-daemon`
 2. `bundle-daemon`
@@ -38,10 +38,10 @@ Important detail: `bundle-daemon` depends on `build-daemon`, while `install-daem
 ## Evidence Base
 
 I used:
-- [justfile](/home/mstie/projects/taurhaus/justfile)
-- [Cargo.toml](/home/mstie/projects/taurhaus/src-tauri/Cargo.toml)
-- [tauri.conf.json](/home/mstie/projects/taurhaus/src-tauri/tauri.conf.json)
-- recent local task outputs under `/tmp/claude-1000/-home-mstie-projects-taurhaus/tasks/*.output`
+- [justfile](/home/user/projects/taurhaus/justfile)
+- [Cargo.toml](/home/user/projects/taurhaus/src-tauri/Cargo.toml)
+- [tauri.conf.json](/home/user/projects/taurhaus/src-tauri/tauri.conf.json)
+- recent local task outputs under `/tmp/claude-1000/-home-user-projects-taurhaus/tasks/*.output`
 
 Observed environment:
 - CPU: `AMD Ryzen 9 5950X`
@@ -49,7 +49,7 @@ Observed environment:
 - Windows build drive: local `NTFS` `D:` volume
 - Windows Defender real-time monitoring appears enabled
 
-Notable dependency/build characteristics from [Cargo.toml](/home/mstie/projects/taurhaus/src-tauri/Cargo.toml):
+Notable dependency/build characteristics from [Cargo.toml](/home/user/projects/taurhaus/src-tauri/Cargo.toml):
 - `rusqlite` with `bundled`
 - `git2` with `vendored-openssl`
 - `tantivy`
@@ -215,7 +215,7 @@ This should be documented as an opt-in local build-machine optimization, not for
 ### 6. Release profile tuning (`codegen-units`, `lto`, stripping policy)
 
 Current state:
-- no custom `[profile.release]` tuning is visible in [Cargo.toml](/home/mstie/projects/taurhaus/src-tauri/Cargo.toml)
+- no custom `[profile.release]` tuning is visible in [Cargo.toml](/home/user/projects/taurhaus/src-tauri/Cargo.toml)
 
 Estimated savings:
 - possible, but not guaranteed

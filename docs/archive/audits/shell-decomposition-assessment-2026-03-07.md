@@ -6,12 +6,12 @@ Finding: Q-AI-02
 
 ## Current state
 
-- [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte) is 1302 lines.
+- [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte) is 1302 lines.
 - It already delegates the main feature tabs to child components (`Sidebar`, `OverviewTab`, `FilesTab`, `TaskBoard`, `MeshTab`, `GitTab`).
 - Some supporting logic has already been extracted:
-  - project selection hydrate helper: [projectSelection.js](/home/mstie/projects/taurhaus/src/lib/projectSelection.js)
-  - theme preference loader: [themePreferences.js](/home/mstie/projects/taurhaus/src/lib/shell/themePreferences.js)
-  - shared contexts: [ProjectContext.js](/home/mstie/projects/taurhaus/src/lib/context/ProjectContext.js), [SessionContext.js](/home/mstie/projects/taurhaus/src/lib/context/SessionContext.js)
+  - project selection hydrate helper: [projectSelection.js](/home/user/projects/taurhaus/src/lib/projectSelection.js)
+  - theme preference loader: [themePreferences.js](/home/user/projects/taurhaus/src/lib/shell/themePreferences.js)
+  - shared contexts: [ProjectContext.js](/home/user/projects/taurhaus/src/lib/context/ProjectContext.js), [SessionContext.js](/home/user/projects/taurhaus/src/lib/context/SessionContext.js)
 
 ## What is actually hurting
 
@@ -24,16 +24,16 @@ The real issues are:
    - Recent churn is concentrated here, which makes it a likely conflict and regression surface even if merge conflicts are not yet the primary failure mode.
 
 2. Multiple unrelated responsibilities still live in one script block.
-   - startup / wizard / viewport bootstrap: [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:237)
-   - daemon banner / update state: [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:304)
-   - polling and Tauri event bridge wiring: [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:365)
-   - project selection / hydrate / restore state: [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:510)
-   - navigation and markdown routing: [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:763), [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte:849)
+   - startup / wizard / viewport bootstrap: [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:237)
+   - daemon banner / update state: [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:304)
+   - polling and Tauri event bridge wiring: [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:365)
+   - project selection / hydrate / restore state: [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:510)
+   - navigation and markdown routing: [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:763), [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte:849)
 
 3. Testability is weaker than it should be.
-   - [shell.test.js](/home/mstie/projects/taurhaus/src/lib/shell.test.js) is 1303 lines and many tests re-implement Shell logic instead of importing extracted helpers or exercising the component boundary.
-   - Example: the `applyNavEntry` tests reconstruct the function locally instead of testing a shared module: [shell.test.js](/home/mstie/projects/taurhaus/src/lib/shell.test.js:768)
-   - Example: one test verifies string presence in the source file rather than behavior: [shell.test.js](/home/mstie/projects/taurhaus/src/lib/shell.test.js:1292)
+   - [shell.test.js](/home/user/projects/taurhaus/src/lib/shell.test.js) is 1303 lines and many tests re-implement Shell logic instead of importing extracted helpers or exercising the component boundary.
+   - Example: the `applyNavEntry` tests reconstruct the function locally instead of testing a shared module: [shell.test.js](/home/user/projects/taurhaus/src/lib/shell.test.js:768)
+   - Example: one test verifies string presence in the source file rather than behavior: [shell.test.js](/home/user/projects/taurhaus/src/lib/shell.test.js:1292)
 
 ## What is not hurting enough to justify a big rewrite
 

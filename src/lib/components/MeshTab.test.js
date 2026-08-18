@@ -2315,7 +2315,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
-        projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\mstie\\projects\\2ksim',
+        projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\user\\projects\\2ksim',
       },
     })
 

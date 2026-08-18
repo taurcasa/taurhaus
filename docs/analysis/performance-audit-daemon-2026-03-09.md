@@ -3,7 +3,7 @@
 Task: `#807`
 Scope: `taurhaus-daemon` steady-state performance on Linux/WSL after the recent event-driven compaction migration.
 Primary data source: `/tmp/taurhaus-resource-monitor-v2.csv`
-Supporting telemetry: `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+Supporting telemetry: `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 
 ## Executive summary
 
@@ -97,7 +97,7 @@ Interpretation:
 
 ### High: Session activity scanning is still the dominant steady-state CPU cost
 
-The daemon starts `SessionActivityHub` at startup and keeps a single background scanner thread alive. That thread still calls `scan_sessions_for_display()` every cycle, then sleeps according to the adaptive cadence logic. See [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:16), [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:85), [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:194).
+The daemon starts `SessionActivityHub` at startup and keeps a single background scanner thread alive. That thread still calls `scan_sessions_for_display()` every cycle, then sleeps according to the adaptive cadence logic. See [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:16), [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:85), [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:194).
 
 The current cadence rules are:
 
@@ -108,7 +108,7 @@ That means any active session, any churn in display metadata, or any classificat
 
 ### High: Per-session idle classification dominates scan time
 
-The display scan path still performs full classification for each detected process. See [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:661), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:688), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:731), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:749).
+The display scan path still performs full classification for each detected process. See [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:661), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:688), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:731), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:749).
 
 The log timings show `idle_ms` and `classify_ms` are the dominant cycle cost. Process scanning and ownership logic are effectively negligible in comparison.
 
@@ -119,13 +119,13 @@ The most expensive resolver is still Codex. On cache miss or ambiguity, Codex re
 - open candidate files and parse the first line for `session_meta.payload.cwd`
 - in multi-session cases, probe whether the PID has the file open
 
-See [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:60), [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:81), [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:128), [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:176), [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:191), [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:246).
+See [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:60), [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:81), [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:128), [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:176), [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:191), [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:246).
 
 This is defensible for correctness, but too expensive at current polling frequency.
 
 ### Medium: Tmux mapping still creates burst cost, but not baseline cost
 
-The scanner uses a short-lived tmux pane cache with max age `2s`. If the process fingerprint is stable and tmux metadata is fresh, the cache is reused. Otherwise, the scanner refreshes pane metadata. See [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:213), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:442), [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:480).
+The scanner uses a short-lived tmux pane cache with max age `2s`. If the process fingerprint is stable and tmux metadata is fresh, the cache is reused. Otherwise, the scanner refreshes pane metadata. See [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:213), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:442), [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:480).
 
 The logs support this split:
 
@@ -136,13 +136,13 @@ So tmux is a spiky secondary contributor, not the main sustained burn.
 
 ### Medium: Thread count is high but stable
 
-The daemon stabilizes around `77` threads. The main daemon server accepts TCP connections in a nonblocking loop and spawns per-connection handlers. See [server.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs:55), [server.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs:93), [server.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs:107).
+The daemon stabilizes around `77` threads. The main daemon server accepts TCP connections in a nonblocking loop and spawns per-connection handlers. See [server.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs:55), [server.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs:93), [server.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs:107).
 
 This is not showing runaway churn in the monitor capture, so it looks more like accumulated service/watcher/background infrastructure footprint than an active bug. It is still worth tightening over time, but it is not the primary reason for the `~24%` steady-state CPU.
 
 ### Medium: Inotify/watch footprint is large, but the evidence points to memory/FD pressure more than CPU
 
-The daemon sits around `75k` inotify watches and occasionally reaches `88k`. File watching is recursive and project-wide, with `.gitignore`-aware filtering. See [watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs:16), [watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs:62), [watch.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/watch.rs:85), [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs:77), [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs:128), [watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/fs/watcher.rs:192).
+The daemon sits around `75k` inotify watches and occasionally reaches `88k`. File watching is recursive and project-wide, with `.gitignore`-aware filtering. See [watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs:16), [watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs:62), [watch.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/watch.rs:85), [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs:77), [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs:128), [watcher.rs](/home/user/projects/taurhaus/src-tauri/src/fs/watcher.rs:192).
 
 There is no evidence in this capture that notify watchers themselves are the main CPU burn. The current evidence points to scanner cadence and idle classification first. The watch count is still a real systems concern because it drives:
 
@@ -158,15 +158,15 @@ The current daemon compaction runtime no longer contains the previously removed 
 - watches team topology for watcher creation/removal
 - reconciles watcher topology on the reconciliation interval
 
-See [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs:36), [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs:67), [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs:82), [compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs:107).
+See [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs:36), [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs:67), [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs:82), [compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs:107).
 
-The extractor and watcher are also now event-oriented, with `5s` reconciliation loops rather than hot transcript rescans in the daemon path. See [compaction_extractor.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs:33), [compaction_extractor.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs:249), [compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs:28), [compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs:157).
+The extractor and watcher are also now event-oriented, with `5s` reconciliation loops rather than hot transcript rescans in the daemon path. See [compaction_extractor.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs:33), [compaction_extractor.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_extractor.rs:249), [compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs:28), [compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs:157).
 
 So the older deep-dive conclusion about duplicate compaction polling is now historical, not current.
 
 ### Low: TCP accept loop and long-poll delivery are not current hotspots
 
-The daemon server accept loop sleeps `50ms` on `WouldBlock`, and the session update API itself is Condvar-based long-polling rather than active polling. See [server.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/server.rs:120), [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:145), [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320), [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:332).
+The daemon server accept loop sleeps `50ms` on `WouldBlock`, and the session update API itself is Condvar-based long-polling rather than active polling. See [server.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/server.rs:120), [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:145), [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320), [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:332).
 
 These paths may add incidental overhead, but they do not align with the measured hot metrics.
 

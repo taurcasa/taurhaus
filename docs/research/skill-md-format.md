@@ -153,7 +153,7 @@ Why:
   - instruction-only `AGENTS.md`
   - instruction-only `GEMINI.md`
 - `SKILL.md` is a better semantic fit for procedural role/workflow content than instruction-only files are
-- Taurhaus already has adapter infrastructure in [adapters.rs](/home/mstie/projects/taurhaus/src-tauri/src/templates/adapters.rs)
+- Taurhaus already has adapter infrastructure in [adapters.rs](/home/user/projects/taurhaus/src-tauri/src/templates/adapters.rs)
 
 Recommended export scope:
 - export Taurhaus role/workflow content into:

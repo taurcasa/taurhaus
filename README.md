@@ -8,6 +8,8 @@ A desktop app for developers who run Claude Code, Codex, Gemini CLI, and multi-a
 
 Instead of flipping between terminal tabs to check what's running, what changed, and what broke, taurhaus puts it all in one window — live sessions, project history, task boards, and team coordination.
 
+> **Project status:** Experimental and currently not under active development. taurhaus was built as a hands-on exploration of persistent multi-agent software engineering. The ecosystem has since adopted parts of this problem space; this repository remains public because its architecture, experiments, operational history, and [lessons learned](docs/RETROSPECTIVE.md) are still useful.
+
 ![taurhaus hero overview](docs/screenshots/readme-hero-overview.png)
 
 ## Why taurhaus
@@ -81,7 +83,7 @@ The runtime view also shows when agents lost context and had it restored, and tr
 
 ### Recover when things break
 
-Restarts happen. Agents crash. taurhaus detects these situations and gives you clear options to resume individual members or restart the whole team, instead of leaving you to sort it out manually. Some edge cases in recovery are still being polished, but the core resume and recovery features are shipped and tested.
+Restarts happen. Agents crash. taurhaus detects these situations and gives you clear options to resume individual members or restart the whole team, instead of leaving you to sort it out manually. The core resume and recovery features are shipped and tested; known edge cases remain documented in the project history.
 
 ![Mesh recovery and resume](docs/screenshots/readme-mesh-recovery-resume.png)
 
@@ -94,7 +96,7 @@ For more on Mesh:
 
 For the full setup walkthrough and troubleshooting, see the [Getting Started guide](docs/getting-started.md).
 
-### Supported platforms
+### Release platforms
 
 - **Windows** — primary release target, with CLI tools running inside WSL2
 - **macOS** — native app with a native daemon
@@ -151,8 +153,8 @@ On macOS:
 
 ### Install taurhaus
 
-- **Windows**: download `taurhaus_x.x.x_x64-setup.exe` from [Releases](../../releases) and run the installer.
-- **macOS**: download the DMG from [Releases](../../releases), move taurhaus to Applications, and launch it.
+- **Windows**: download `taurhaus_x.x.x_x64-setup.exe` from [Releases](https://github.com/taurcasa/taurhaus/releases) and run the installer.
+- **macOS**: download the DMG from [Releases](https://github.com/taurcasa/taurhaus/releases), move taurhaus to Applications, and launch it.
 
 On first launch, taurhaus checks whether its helper service needs to be installed or updated, walks you through project discovery, and transitions you into the main app once registration finishes.
 
@@ -268,6 +270,7 @@ For more detail:
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
+- [Project retrospective](docs/RETROSPECTIVE.md)
 - [Project management](docs/features/project-management.md)
 - [Session management](docs/features/session-management.md)
 - [Task board](docs/features/task-board.md)

@@ -129,7 +129,7 @@ This prevents oh-my-zsh from blocking headless terminal sessions with update pro
 
 ### Windows
 
-1. Download the latest `taurhaus_x.x.x_x64-setup.exe` from the [Releases page](../../releases)
+1. Download the latest `taurhaus_x.x.x_x64-setup.exe` from the [Releases page](https://github.com/taurcasa/taurhaus/releases)
 2. Run the installer — it's a standard Windows setup wizard
 3. Launch taurhaus from the Start menu
 
@@ -140,7 +140,7 @@ On first launch, taurhaus will:
 
 ### macOS
 
-1. Download the latest `taurhaus_x.x.x_aarch64.dmg` from the [Releases page](../../releases)
+1. Download the latest `taurhaus_x.x.x_aarch64.dmg` from the [Releases page](https://github.com/taurcasa/taurhaus/releases)
 2. Open the DMG and drag taurhaus to your Applications folder
 3. Launch taurhaus from Applications (or Spotlight)
 

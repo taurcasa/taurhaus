@@ -27,9 +27,9 @@ Recommended shape:
 
 The existing individual resume pipeline already handles the hard parts:
 
-- pane reuse vs replacement in [`members.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
-- mesh rejoin and per-agent daemon restart in [`lifecycle.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/lifecycle.rs)
-- generic resume delegation from command-center in [`command_center.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center.rs)
+- pane reuse vs replacement in [`members.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
+- mesh rejoin and per-agent daemon restart in [`lifecycle.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/lifecycle.rs)
+- generic resume delegation from command-center in [`command_center.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/command_center.rs)
 
 The missing capability is orchestration across all persisted members after tmux, daemons, and live panes were wiped out by a WSL reboot.
 
@@ -52,8 +52,8 @@ The missing capability is orchestration across all persisted members after tmux,
 Existing building blocks:
 
 - Persisted team config + runtime files survive under `teams/<team>/...`.
-- `coordination_get_project_mesh_snapshot` restores Mesh tab context from disk in [`coordination.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs).
-- `reconcile_team_liveness()` marks members offline when panes are missing/dead/shell in [`orchestrator.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs).
+- `coordination_get_project_mesh_snapshot` restores Mesh tab context from disk in [`coordination.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs).
+- `reconcile_team_liveness()` marks members offline when panes are missing/dead/shell in [`orchestrator.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs).
 - `coordination_resume_member` already performs pane resolution, CLI launch, mesh join, daemon start, onboarding, and runtime update.
 
 Current gap:
@@ -259,13 +259,13 @@ This is the core architectural rule: team resume is a loop over `resume_member`,
 ### Reuse Points
 
 - request validation and member loading:
-  - [`members.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
+  - [`members.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
 - pane reuse / recreation:
-  - [`runtime.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime.rs)
+  - [`runtime.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime.rs)
 - mesh rejoin / daemon restart / onboarding:
-  - [`lifecycle.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/lifecycle.rs)
+  - [`lifecycle.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/lifecycle.rs)
 - generic resume delegation pattern:
-  - [`command_center.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center.rs)
+  - [`command_center.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/command_center.rs)
 
 ### New Orchestrator Method
 
@@ -394,25 +394,25 @@ Resuming team...
 ### Backend
 
 1. Add `ResumeTeamRequest` / `ResumeTeamReport` to:
-   - [`coordination_types.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination_types.rs)
-   - [`coordination/requests.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/requests.rs)
+   - [`coordination_types.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/coordination_types.rs)
+   - [`coordination/requests.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/requests.rs)
 2. Add `coordination_resume_team` command in:
-   - [`coordination.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
-   - register in [`lib.rs`](/home/mstie/projects/taurhaus/src-tauri/src/lib.rs)
+   - [`coordination.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+   - register in [`lib.rs`](/home/user/projects/taurhaus/src-tauri/src/lib.rs)
 3. Add orchestrator method in:
-   - [`orchestrator.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs)
-   - pipeline implementation in [`members.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
+   - [`orchestrator.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs)
+   - pipeline implementation in [`members.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs)
 4. Extend project snapshot response with `teamRuntimeState` so the frontend can detect cold-restart state on first render.
 5. Before building snapshot for a discovered team, run liveness reconciliation when `tmuxAvailable` is true.
 
 ### Frontend
 
 1. Add `coordinationResumeTeam()` IPC wrapper in:
-   - [`coordination.js`](/home/mstie/projects/taurhaus/src/lib/ipc/coordination.js)
+   - [`coordination.js`](/home/user/projects/taurhaus/src/lib/ipc/coordination.js)
 2. Extend snapshot normalization and controller state in:
-   - [`meshTabController.svelte.js`](/home/mstie/projects/taurhaus/src/lib/components/meshTabController.svelte.js)
+   - [`meshTabController.svelte.js`](/home/user/projects/taurhaus/src/lib/components/meshTabController.svelte.js)
 3. Add runtime banner + CTA in:
-   - [`MeshTab.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshTab.svelte)
+   - [`MeshTab.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshTab.svelte)
    - or the current runtime header component if extracted later
 4. Reuse the existing node detail resume action for per-member retries after partial failure.
 

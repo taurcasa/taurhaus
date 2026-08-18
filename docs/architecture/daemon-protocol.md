@@ -16,7 +16,7 @@ The app and the daemon exist as separate processes because of platform boundarie
 | Property | Value |
 |----------|-------|
 | Transport | TCP |
-| Address | `localhost:17233` |
+| Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
 | Protocol version | 7 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
@@ -31,7 +31,7 @@ On startup, the daemon generates a random 32-byte token, writes it to a well-kno
 | macOS | `~/Library/Application Support/taurhaus/daemon.token` |
 | Windows | `{FOLDERID_LocalAppData}/taurhaus/daemon.token` |
 
-The app reads this token on connect and includes it in the `auth` field of every request. Old clients without auth support send `null` (backward compatible).
+The app reads this token on connect and includes it in the `auth` field of every request. A normal daemon run rejects missing or incorrect tokens. Authentication can be disabled only with a debug-build flag or in an explicitly unauthenticated test configuration.
 
 ### Connection lifecycle
 
@@ -68,7 +68,7 @@ The app reads this token on connect and includes it in the `auth` field of every
 | `id` | string | Yes | Unique request ID for response matching |
 | `method` | string | Yes | Method name (see command catalog below) |
 | `params` | object | Yes | Method-specific parameters (may be `null`) |
-| `auth` | string | No | Auth token (omitted by old clients) |
+| `auth` | string | Yes in normal runs | Shared auth token; the wire type remains optional for debug/test configurations |
 
 ### Response (daemon → app)
 

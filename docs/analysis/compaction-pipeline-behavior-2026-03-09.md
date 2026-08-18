@@ -11,7 +11,7 @@ This analysis checked current live compaction behavior using:
 - `python3 scripts/analyze-compaction.py --team taurhaus-team --last 2h`
 - app logs at:
   - `~/.local/share/com.taurhaus.dev/taurhaus.log.jsonl`
-  - `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+  - `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 
 The running binary/daemon is not the latest source tree. Team-lead explicitly noted the deployed runtime is still from commit `aa7c50d` and does not yet include the newest audit cleanup fixes.
 
@@ -33,7 +33,7 @@ python3 scripts/analyze-compaction.py --team taurhaus-team --last 2h
 
 Key output:
 
-- selected log: `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- selected log: `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 - parsed lines: `296286/296295`
 - health summary:
   - `Compaction pipeline: compactions detected but none injected`
@@ -87,7 +87,7 @@ Observed terminal outcome:
 
 - `compaction.injected` is happening
 
-Evidence in `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`:
+Evidence in `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`:
 
 - `2026-03-09T00:13:27.384Z` `compaction.injected`
 - `2026-03-09T00:13:27.391Z` `compaction.injected`

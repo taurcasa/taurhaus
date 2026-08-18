@@ -47,13 +47,13 @@ Implementation note:
 
 ## Current Boundary
 
-Current display-safe behavior lives in [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:528), where `scan_sessions()` conditionally strips `session_id` and `jsonl_path` when activity attribution is ambiguous.
+Current display-safe behavior lives in [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:528), where `scan_sessions()` conditionally strips `session_id` and `jsonl_path` when activity attribution is ambiguous.
 
-Current runtime path lives in [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:653), where `scan_sessions_for_runtime()` preserves metadata explicitly.
+Current runtime path lives in [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:653), where `scan_sessions_for_runtime()` preserves metadata explicitly.
 
-Current daemon display handler is [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320).
+Current daemon display handler is [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320).
 
-Current daemon runtime handler is [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:327).
+Current daemon runtime handler is [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:327).
 
 ## Consumer Audit
 
@@ -61,33 +61,33 @@ Current daemon runtime handler is [handlers.rs](/home/mstie/projects/taurhaus/sr
 
 These are correct as written:
 
-- [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs:12)
+- [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs:12)
   - Uses daemon `LIST_CLAUDE_SESSIONS` and local fallback `scan_sessions()`
   - Purpose is session list UI / hover / activity promotion
   - Does not require `session_id` or `jsonl_path`
 
-- [session_activity.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:199)
+- [session_activity.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/session_activity.rs:199)
   - Populates `SessionActivityHub` from `scan_sessions()`
   - Purpose is UI polling / event stream
   - Correct place for the display-safe view
 
-- [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320)
+- [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320)
   - `handle_list_claude_sessions()` returns `SessionActivityHub` snapshot
   - Correct for display consumers, but the method name is misleading
 
-- [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:338)
+- [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:338)
   - `WAIT_SESSION_UPDATES` returns `SessionActivityHub` updates
   - Correct for display/event consumers
 
-- [stall_detector.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stall_detector.rs:1807)
+- [stall_detector.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/stall_detector.rs:1807)
   - Uses `scan_sessions()` only for pane/project/activity signals
   - Does not depend on transcript metadata
 
-- [claude_index.rs](/home/mstie/projects/taurhaus/src-tauri/src/task_scanner/claude_index.rs:28)
+- [claude_index.rs](/home/user/projects/taurhaus/src-tauri/src/task_scanner/claude_index.rs:28)
   - Uses `scan_sessions()` only to enrich live Claude task source mapping
   - Also merges offline filesystem session data, so it is not relying exclusively on live transcript metadata
 
-- [bootstrap.rs](/home/mstie/projects/taurhaus/src-tauri/src/bootstrap.rs:262)
+- [bootstrap.rs](/home/user/projects/taurhaus/src-tauri/src/bootstrap.rs:262)
   - Same task-scan context path as above
   - Not a runtime coordination consumer
 
@@ -95,19 +95,19 @@ These are correct as written:
 
 These are correct after `#703`:
 
-- [runtime.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime.rs:268)
+- [runtime.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime.rs:268)
   - `detect_session_id()` uses `collect_runtime_sessions()`
 
-- [runtime.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/runtime.rs:558)
+- [runtime.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/runtime.rs:558)
   - `collect_runtime_sessions()` uses `scan_sessions_for_runtime()`
 
-- [orchestrator.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs:844)
+- [orchestrator.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs:844)
   - Liveness reconciliation calls runtime `detect_session_id()`
   - This is the correct runtime path
 
-- [members.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs:604)
-- [members.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs:653)
-- [members.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs:683)
+- [members.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs:604)
+- [members.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs:653)
+- [members.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/pipelines/members.rs:683)
   - Member add/resume flows call runtime `detect_session_id()`
   - Correct
 
@@ -115,11 +115,11 @@ These are correct after `#703`:
 
 Current state after `#703`:
 
-- [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:216)
+- [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:216)
   - `scan_sessions_via_daemon_snapshot()` still uses the display-safe daemon method
   - Correct for UI-facing `scan_sessions()`
 
-- [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:221)
+- [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:221)
   - `scan_runtime_sessions_via_daemon()` uses the runtime daemon method
   - Correct for `scan_sessions_for_runtime()`
 
@@ -143,9 +143,9 @@ Problem:
 
 Evidence:
 
-- constant name: [protocol.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/protocol.rs:86)
-- handler implementation: [handlers.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320)
-- UI session listing consumer: [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs:17)
+- constant name: [protocol.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/protocol.rs:86)
+- handler implementation: [handlers.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/handlers.rs:320)
+- UI session listing consumer: [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs:17)
 
 Fix needed:
 
@@ -163,9 +163,9 @@ Problem:
 
 Evidence:
 
-- shared type: [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:66)
-- display path strips metadata in-place: [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:528)
-- runtime path returns the same struct shape: [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:653)
+- shared type: [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:66)
+- display path strips metadata in-place: [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:528)
+- runtime path returns the same struct shape: [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:653)
 
 Fix needed:
 
@@ -184,9 +184,9 @@ Problem:
 
 Evidence:
 
-- resolver matches by project `cwd`: [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:146)
-- file match predicate is project-only: [codex.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:200)
-- runtime test currently encodes shared metadata in multi-session Codex projects: [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:1047)
+- resolver matches by project `cwd`: [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:146)
+- file match predicate is project-only: [codex.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/idle/codex.rs:200)
+- runtime test currently encodes shared metadata in multi-session Codex projects: [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:1047)
 
 Fix needed:
 
@@ -208,8 +208,8 @@ Problem:
 
 Evidence:
 
-- UI-safe stripping logic sits inside the function itself: [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:528)
-- runtime-safe alternative exists separately: [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:653)
+- UI-safe stripping logic sits inside the function itself: [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:528)
+- runtime-safe alternative exists separately: [mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs:653)
 
 Fix needed:
 

@@ -427,7 +427,7 @@ install-mesh: mesh-verify-lock
     #!/usr/bin/env bash
     set -euo pipefail
 
-    INSTALL_DIR="/home/mstie/.local/bin"
+    INSTALL_DIR="${MESH_INSTALL_DIR:-$HOME/.local/bin}"
     MESH_BIN="mesh"
     MESH_PATH="$(./scripts/resolve-mesh-binary.sh)"
     if [ ! -x "$MESH_PATH" ]; then
@@ -592,7 +592,7 @@ test-macos: sync-macos
 build-macos: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
     LOCK_FILE="{{project}}/src-tauri/resources/mesh.lock.json"
     if [ ! -d "$MESH_PROJECT" ]; then
         echo "✗ Mesh project not found at $MESH_PROJECT"
@@ -711,7 +711,7 @@ test-macos-e2e: sync-macos
 build-macos-intel: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
     LOCK_FILE="{{project}}/src-tauri/resources/mesh.lock.json"
     if [ ! -d "$MESH_PROJECT" ]; then
         echo "✗ Mesh project not found at $MESH_PROJECT"
@@ -818,7 +818,7 @@ build-macos-intel: sync-macos
 build-macos-universal: sync-macos
     #!/usr/bin/env bash
     set -euo pipefail
-    MESH_PROJECT="${MESH_PROJECT:-/home/mstie/projects/mesh}"
+    MESH_PROJECT="${MESH_PROJECT:-$HOME/projects/mesh}"
     LOCK_FILE="{{project}}/src-tauri/resources/mesh.lock.json"
     if [ ! -d "$MESH_PROJECT" ]; then
         echo "✗ Mesh project not found at $MESH_PROJECT"

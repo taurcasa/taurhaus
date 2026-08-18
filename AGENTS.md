@@ -247,7 +247,7 @@ The `release` recipe enforces: must be on `main`, working tree must be clean, ta
 
 If the build fails with "Access is denied" on the exe, the app is still running — close it first, then rebuild.
 
-**Vitest cwd gotcha**: Vitest must run from the project root (`/home/mstie/projects/taurhaus`), NOT from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the project root first.
+**Vitest cwd gotcha**: Vitest must run from the project root, NOT from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the checkout root first.
 
 **Manual visual review host**: `bun run dev:visual` starts the Vite visual fixture host for mocked component states. Use it for rapid layout iteration; use `just test-visual` for automated screenshot coverage.
 
@@ -312,7 +312,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
 | `docs/images/file-rendering-pipeline.jpg` | File rendering pipeline infographic |
 | `CHANGELOG.md` | Shipped milestones and release history |
-| `docs/design-workflow.md` | Design-first loop for UI specialist collaboration |
+| `docs/archive/design-workflow.md` | Archived v0.5.x design-first loop; its broad collaboration pattern remains relevant |
 
 ## First File To Read By Task
 
@@ -361,7 +361,7 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 - E2E at milestones.
 - Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
 - Visual dual review: self-review + Gemini Pro 3 cross-review. Lower score wins, Claude is final arbiter with justified override.
-- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See [`docs/design-workflow.md`](docs/design-workflow.md). The UI specialist (Gemini) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.
+- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See the archived v0.5.x process note at [`docs/archive/design-workflow.md`](docs/archive/design-workflow.md). The UI specialist (Gemini) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.
 
 ### Tasks
 - Claude Code native task format (subject, description, status, blocks/blockedBy, metadata)

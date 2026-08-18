@@ -12,7 +12,7 @@ This document is the authoritative active reference for:
 
 Neighboring docs have narrower jobs:
 
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md): top-level system overview and module map
+- [`ARCHITECTURE.md`](../../ARCHITECTURE.md): top-level system overview and module map
 - [`../coordination-architecture.md`](../coordination-architecture.md): coordination design decisions, invariants, and runtime behavior
 - [`data-model.md`](./data-model.md): SQLite schema and search-index structure
 

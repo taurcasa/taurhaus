@@ -53,12 +53,12 @@ As of March 9, 2026, Taurhaus has already shipped the hard part of the pipeline:
 
 Relevant references:
 
-- [CHANGELOG.md](/home/mstie/projects/taurhaus/CHANGELOG.md)
-- [compaction_watcher.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
-- [compaction_events.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_events.rs)
-- [reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
-- [session_scanner/mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
-- [daemon/compaction.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
+- [CHANGELOG.md](/home/user/projects/taurhaus/CHANGELOG.md)
+- [compaction_watcher.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/compaction_watcher.rs)
+- [compaction_events.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_events.rs)
+- [reinjection.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
+- [session_scanner/mod.rs](/home/user/projects/taurhaus/src-tauri/src/session_scanner/mod.rs)
+- [daemon/compaction.rs](/home/user/projects/taurhaus/src-tauri/src/daemon/compaction.rs)
 
 ## What is still incomplete
 

@@ -265,14 +265,14 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
         let team_name = "taurhaus-team";
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(&teams_dir, team_name, &member);
 
         let jsonl_path = tmp.path().join("session.jsonl");
         std::fs::write(
             &jsonl_path,
-            "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/mstie/projects/taurhaus\"}}\n",
+            "{\"timestamp\":\"2026-03-08T13:46:00.000Z\",\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/user/projects/taurhaus\"}}\n",
         )
         .expect("write baseline jsonl");
 
@@ -345,7 +345,7 @@ mod tests {
         let teams_dir = tmp.path().join("teams");
         std::fs::create_dir_all(teams_dir.join("default")).expect("create orphaned team dir");
 
-        let member = sample_member("developer2", "/home/mstie/projects/taurhaus");
+        let member = sample_member("developer2", "/home/user/projects/taurhaus");
         save_team_fixture(&teams_dir, "taurhaus-team", &member);
 
         let _watcher_service =

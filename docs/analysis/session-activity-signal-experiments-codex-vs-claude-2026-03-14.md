@@ -8,7 +8,7 @@
 This experiment compares one live Codex session and one live Claude session
 attached to the same project:
 
-- project: `/home/mstie/projects/taurhaus`
+- project: `/home/user/projects/taurhaus`
 - Codex PID: `4078018`
 - Claude PID: `4080053`
 
@@ -21,28 +21,28 @@ change by tool.
 ### Codex sample
 
 - PID: `4078018`
-- cwd: `/home/mstie/projects/taurhaus`
+- cwd: `/home/user/projects/taurhaus`
 - tty: `/dev/pts/7`
 - command:
   - `codex --yolo -m gpt-5.4`
 - directly open transcript fd:
-  - `/home/mstie/.codex/sessions/2026/03/13/rollout-2026-03-13T00-14-38-019ce454-a61a-7740-9740-ebc847ae4666.jsonl`
+  - `/home/user/.codex/sessions/2026/03/13/rollout-2026-03-13T00-14-38-019ce454-a61a-7740-9740-ebc847ae4666.jsonl`
 - transcript session metadata:
   - session id `019ce454-a61a-7740-9740-ebc847ae4666`
-  - cwd `/home/mstie/projects/taurhaus`
+  - cwd `/home/user/projects/taurhaus`
   - cli version `0.113.0`
 
 ### Claude sample
 
 - PID: `4080053`
-- cwd: `/home/mstie/projects/taurhaus`
+- cwd: `/home/user/projects/taurhaus`
 - tty: `/dev/pts/10`
 - command:
   - `claude --dangerously-skip-permissions --team-name taurhaus-team --agent-name design-taurhaus --agent-id design-taurhaus@taurhaus-team --agent-type general-purpose`
 - directly open transcript fd:
   - none for a project-scoped transcript
 - open history fd:
-  - `/home/mstie/.claude/history.jsonl`
+  - `/home/user/.claude/history.jsonl`
 
 ## Candidate Observable Signals
 
@@ -98,28 +98,28 @@ Interpretation:
 Codex transcript:
 
 - path:
-  - `/home/mstie/.codex/sessions/2026/03/13/rollout-2026-03-13T00-14-38-019ce454-a61a-7740-9740-ebc847ae4666.jsonl`
+  - `/home/user/.codex/sessions/2026/03/13/rollout-2026-03-13T00-14-38-019ce454-a61a-7740-9740-ebc847ae4666.jsonl`
 - age at observation:
   - about `0.09s`
 
 Claude shared history:
 
 - path:
-  - `/home/mstie/.claude/history.jsonl`
+  - `/home/user/.claude/history.jsonl`
 - age at observation:
   - about `168s`
 
 Claude latest Taurhaus project transcript:
 
 - path:
-  - `/home/mstie/.claude/projects/-home-mstie-projects-taurhaus/a395eb67-a7a8-4403-aebb-4443400c21d0.jsonl`
+  - `/home/user/.claude/projects/-home-user-projects-taurhaus/a395eb67-a7a8-4403-aebb-4443400c21d0.jsonl`
 - age at observation:
   - about `43565s`
 
 Claude latest Taurhaus subagent transcript:
 
 - path:
-  - `/home/mstie/.claude/projects/-home-mstie-projects-taurhaus/a395eb67-a7a8-4403-aebb-4443400c21d0/subagents/agent-a8d9801efee880a4a.jsonl`
+  - `/home/user/.claude/projects/-home-user-projects-taurhaus/a395eb67-a7a8-4403-aebb-4443400c21d0/subagents/agent-a8d9801efee880a4a.jsonl`
 - age at observation:
   - about `46344s`
 

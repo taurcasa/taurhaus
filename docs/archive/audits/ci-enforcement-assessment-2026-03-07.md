@@ -9,9 +9,9 @@ Finding: Q-PRD-01
 - There is no repo-local CI configuration: no `.github/workflows/` and no checked-in CI pipeline file.
 - There is also no active repo-managed git hook; `.git/hooks/` only contains the default sample hooks.
 - The repo already has a clear local quality-gate split:
-  - `just check-quick` for per-task iteration in [justfile](/home/mstie/projects/taurhaus/justfile:53)
-  - `just check` as the full serialized gate in [justfile](/home/mstie/projects/taurhaus/justfile:30)
-- Team workflow docs explicitly say agents should use `just check-quick` and team-lead owns serialized `just check`: [CLAUDE.md](/home/mstie/projects/taurhaus/CLAUDE.md:159), [CONTRIBUTING.md](/home/mstie/projects/taurhaus/CONTRIBUTING.md:76)
+  - `just check-quick` for per-task iteration in [justfile](/home/user/projects/taurhaus/justfile:53)
+  - `just check` as the full serialized gate in [justfile](/home/user/projects/taurhaus/justfile:30)
+- Team workflow docs explicitly say agents should use `just check-quick` and team-lead owns serialized `just check`: [CLAUDE.md](/home/user/projects/taurhaus/CLAUDE.md:159), [CONTRIBUTING.md](/home/user/projects/taurhaus/CONTRIBUTING.md:76)
 
 ## Assessment
 

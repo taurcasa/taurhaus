@@ -32,7 +32,7 @@ Validated the current macOS terminal and tmux management path for Taurhaus and m
 - `src-tauri/src/commands/command_center/launching.rs`
 - `src-tauri/src/commands/command_center/navigation.rs`
 - `src-tauri/src/commands/terminal_settings.rs`
-- `/home/mstie/projects/mesh/src/daemon.rs`
+- `/home/user/projects/mesh/src/daemon.rs`
 
 ## Findings
 
@@ -109,7 +109,7 @@ Validation:
 
 File:
 
-- `/home/mstie/projects/mesh/src/daemon.rs`
+- `/home/user/projects/mesh/src/daemon.rs`
 
 Change:
 

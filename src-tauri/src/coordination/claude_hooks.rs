@@ -996,7 +996,7 @@ mod tests {
                     active_override_reason: None,
                 },
                 working_set: OperationalWorkingSetSnapshot {
-                    project_path: "/home/mstie/projects/taurhaus".to_string(),
+                    project_path: "/home/user/projects/taurhaus".to_string(),
                     focal_files: vec!["src-tauri/src/coordination/claude_hooks.rs".to_string()],
                 },
             },
@@ -1205,7 +1205,7 @@ mod tests {
         );
         assert_eq!(
             parsed["working_set"]["project_path"],
-            "/home/mstie/projects/taurhaus"
+            "/home/user/projects/taurhaus"
         );
     }
 
@@ -1540,7 +1540,7 @@ mod tests {
     #[test]
     fn detect_claude_hook_runtime_treats_wsl_unc_paths_as_posix() {
         assert_eq!(
-            detect_claude_hook_runtime(Path::new(r"\\wsl.localhost\Ubuntu\home\mstie\.claude")),
+            detect_claude_hook_runtime(Path::new(r"\\wsl.localhost\Ubuntu\home\user\.claude")),
             ClaudeHookRuntime::Posix
         );
     }
@@ -1548,38 +1548,40 @@ mod tests {
     #[test]
     fn runtime_path_string_converts_windows_exe_for_posix_runtime() {
         let converted = runtime_path_string(
-            Path::new(r"C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe"),
+            Path::new(r"C:\Users\user\AppData\Local\taurhaus\taurhaus.exe"),
             ClaudeHookRuntime::Posix,
         )
         .expect("convert to linux path");
         assert_eq!(
             converted,
-            "/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe"
+            "/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe"
         );
     }
 
     #[test]
     fn settings_command_for_wsl_claude_uses_bash_and_linux_path() {
         let command = settings_command_for_script(
-            Path::new(r"\\wsl.localhost\Ubuntu\home\mstie\.claude\hooks\taurhaus-session-start-compact.sh"),
+            Path::new(
+                r"\\wsl.localhost\Ubuntu\home\user\.claude\hooks\taurhaus-session-start-compact.sh",
+            ),
             ClaudeHookRuntime::Posix,
         )
         .expect("settings command");
         assert_eq!(
             command,
-            "bash '/home/mstie/.claude/hooks/taurhaus-session-start-compact.sh'"
+            "bash '/home/user/.claude/hooks/taurhaus-session-start-compact.sh'"
         );
     }
 
     #[test]
     fn render_hook_script_for_posix_runtime_execs_linux_mapped_windows_exe() {
         let script = render_hook_script(
-            Path::new(r"C:\Users\mstie\AppData\Local\taurhaus\taurhaus.exe"),
+            Path::new(r"C:\Users\user\AppData\Local\taurhaus\taurhaus.exe"),
             ClaudeHookRuntime::Posix,
         )
         .expect("render script");
         assert!(script.contains(
-            "exec '/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe' --claude-compact-hook"
+            "exec '/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe' --claude-compact-hook"
         ));
     }
 

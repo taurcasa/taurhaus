@@ -702,7 +702,7 @@ mod tests {
     fn process_signal_injects_for_attached_live_member() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(
             &teams_dir,
@@ -750,7 +750,7 @@ mod tests {
         let jsonl_path = tmp.path().join("session.jsonl");
         std::fs::write(&jsonl_path, "{\"line\":1}\n").expect("jsonl");
         let signal = sample_signal(
-            "/home/mstie/projects/taurhaus",
+            "/home/user/projects/taurhaus",
             &jsonl_path,
             "session-1",
             "%7",
@@ -776,7 +776,7 @@ mod tests {
     fn process_signal_injects_even_when_jsonl_grows_after_compaction() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(
             &teams_dir,
@@ -813,7 +813,7 @@ mod tests {
     fn process_signal_resolves_shared_session_by_matching_pane() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let pane_match = sample_member("pane-match", project_path);
         let other_match = sample_member("other-match", project_path);
         TeamConfigStore::save(
@@ -878,7 +878,7 @@ mod tests {
     fn process_signal_marks_duplicate_as_skipped() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(
             &teams_dir,
@@ -925,7 +925,7 @@ mod tests {
     fn process_signal_injects_when_pane_is_alive_but_foreground_command_is_not_codex() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(
             &teams_dir,
@@ -963,7 +963,7 @@ mod tests {
     fn process_signal_skips_when_snapshot_task_is_completed() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
-        let project_path = "/home/mstie/projects/taurhaus";
+        let project_path = "/home/user/projects/taurhaus";
         let member = sample_member("developer2", project_path);
         save_team_fixture(
             &teams_dir,

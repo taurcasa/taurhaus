@@ -3,8 +3,8 @@
 ## Scope
 
 This document compares two Mesh task and communication architecture options:
-- the approved linked-journal Mesh architecture from [mesh-joint-architecture-proposal-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-joint-architecture-proposal-2026-03-11.md)
-- the earlier storage-heavy task-centric workflow model from [mesh-task-communication-architecture-draft-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-task-communication-architecture-draft-2026-03-11.md)
+- the approved linked-journal Mesh architecture from [mesh-joint-architecture-proposal-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-joint-architecture-proposal-2026-03-11.md)
+- the earlier storage-heavy task-centric workflow model from [mesh-task-communication-architecture-draft-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-task-communication-architecture-draft-2026-03-11.md)
 
 The goal is not to re-argue whether Mesh needs richer workflow semantics. Both approaches agree that it does.
 

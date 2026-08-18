@@ -5,9 +5,9 @@
 This document is the joint architecture proposal for Mesh task and communication workflow, produced for task `#944`.
 
 Inputs:
-- [mesh-task-communication-architecture-draft-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-task-communication-architecture-draft-2026-03-11.md)
-- [mesh-native-architecture-viability-review-2026-03-11.md](/home/mstie/projects/taurhaus/docs/analysis/mesh-native-architecture-viability-review-2026-03-11.md)
-- native Mesh runtime and CLI in `/home/mstie/projects/mesh`
+- [mesh-task-communication-architecture-draft-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-task-communication-architecture-draft-2026-03-11.md)
+- [mesh-native-architecture-viability-review-2026-03-11.md](/home/user/projects/taurhaus/docs/analysis/mesh-native-architecture-viability-review-2026-03-11.md)
+- native Mesh runtime and CLI in `/home/user/projects/mesh`
 
 This proposal is Mesh-first. Taurhaus remains a downstream consumer and orchestration layer, not the owner of Mesh workflow semantics.
 

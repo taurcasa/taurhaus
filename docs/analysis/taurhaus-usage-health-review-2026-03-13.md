@@ -7,8 +7,8 @@
 ## Evidence Reviewed
 
 - Current resource monitor output: `/tmp/taurhaus-resource-monitor-v2.csv`
-- Current Windows production log: `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
-  - WSL path: `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+- Current Windows production log: `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+  - WSL path: `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 
 ## Current Resource Snapshot
 

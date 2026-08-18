@@ -303,15 +303,15 @@ To make Mesh feel as fast as Overview/Files/Tasks/Git, taurhaus should stop trea
 ## Sources
 
 - Frontend:
-  - [`MeshTab.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshTab.svelte)
-  - [`meshTabController.svelte.js`](/home/mstie/projects/taurhaus/src/lib/components/meshTabController.svelte.js)
-  - [`MeshSetupView.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshSetupView.svelte)
-  - [`MeshAvailabilityGate.svelte`](/home/mstie/projects/taurhaus/src/lib/components/MeshAvailabilityGate.svelte)
-  - [`projectSelection.js`](/home/mstie/projects/taurhaus/src/lib/projectSelection.js)
-  - [`Shell.svelte`](/home/mstie/projects/taurhaus/src/Shell.svelte)
+  - [`MeshTab.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshTab.svelte)
+  - [`meshTabController.svelte.js`](/home/user/projects/taurhaus/src/lib/components/meshTabController.svelte.js)
+  - [`MeshSetupView.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshSetupView.svelte)
+  - [`MeshAvailabilityGate.svelte`](/home/user/projects/taurhaus/src/lib/components/MeshAvailabilityGate.svelte)
+  - [`projectSelection.js`](/home/user/projects/taurhaus/src/lib/projectSelection.js)
+  - [`Shell.svelte`](/home/user/projects/taurhaus/src/Shell.svelte)
 - Backend:
-  - [`commands/mesh.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/mesh.rs)
-  - [`commands/coordination.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/coordination.rs)
-  - [`backend/bridged.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/backend/bridged.rs)
-  - [`orchestrator.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs)
-  - [`config.rs`](/home/mstie/projects/taurhaus/src-tauri/src/coordination/stores/config.rs)
+  - [`commands/mesh.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/mesh.rs)
+  - [`commands/coordination.rs`](/home/user/projects/taurhaus/src-tauri/src/commands/coordination.rs)
+  - [`backend/bridged.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/backend/bridged.rs)
+  - [`orchestrator.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/orchestrator.rs)
+  - [`config.rs`](/home/user/projects/taurhaus/src-tauri/src/coordination/stores/config.rs)

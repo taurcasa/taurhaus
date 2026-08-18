@@ -2,7 +2,7 @@
 
 Date: 2026-03-19
 Auditor: `code-quality-auditor`
-Scope: full-repo, non-delta audit of `/home/mstie/projects/taurhaus`
+Scope: full-repo, non-delta audit of `/home/user/projects/taurhaus`
 
 ## Automated checks
 
@@ -54,7 +54,7 @@ Scope: full-repo, non-delta audit of `/home/mstie/projects/taurhaus`
 1. Most copyable bad pattern: user-facing settings that persist successfully while backend behavior ignores them.
 2. Easiest boundary to violate accidentally: frontend/backend platform contracts, especially terminal and session/runtime behavior split across JS and Rust defaults.
 3. Smallest refactor that would reduce entropy now: introduce shared backend-owned config contracts for scanner policy and terminal-emulator capabilities, then consume those contracts from the UI instead of duplicating defaults.
-4. Most expensive component to modify safely today: [`src/Shell.svelte`](/home/mstie/projects/taurhaus/src/Shell.svelte), because it remains the main orchestration surface for daemon state, project loading, navigation, tab routing, and session lifecycle in a single 1503-line component.
+4. Most expensive component to modify safely today: [`src/Shell.svelte`](/home/user/projects/taurhaus/src/Shell.svelte), because it remains the main orchestration surface for daemon state, project loading, navigation, tab routing, and session lifecycle in a single 1503-line component.
 
 ## Residual risks not elevated to findings
 

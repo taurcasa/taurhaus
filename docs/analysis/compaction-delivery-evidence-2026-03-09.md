@@ -22,10 +22,10 @@ So:
 
 Code path:
 
-- [compaction_processor.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
+- [compaction_processor.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/compaction_processor.rs)
   - `append_codex_inbox_message(...)`
   - `MeshInboxStore::append(...)`
-- [reinjection.rs](/home/mstie/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
+- [reinjection.rs](/home/user/projects/taurhaus/src-tauri/src/coordination/reinjection.rs)
   - `render_codex_inbox_text(...)`
   - serializes the reinjection card as pretty JSON
 
@@ -40,24 +40,24 @@ Current confirmed injected members from the fresh-deploy evidence:
 - `architect`
   - pane: `%217`
   - session: `019cbddb-5527-77a0-a457-7908cf7d790b`
-  - runtime: [architect.json](/home/mstie/.claude/teams/taurhaus-team/runtime/architect.json)
+  - runtime: [architect.json](/home/user/.claude/teams/taurhaus-team/runtime/architect.json)
 
 ### `2ksim-team`
 
 - `developer3`
   - pane: `%266`
   - session: `019ccf84-1fc0-7b72-ab25-e5dab689619b`
-  - runtime: [developer3.json](/home/mstie/.claude/teams/2ksim-team/runtime/developer3.json)
+  - runtime: [developer3.json](/home/user/.claude/teams/2ksim-team/runtime/developer3.json)
 
 - `dev-2`
   - pane: `%263`
   - session: `019ccd25-b718-7313-b64a-f2ded2b54ca9`
-  - runtime: [dev-2.json](/home/mstie/.claude/teams/2ksim-team/runtime/dev-2.json)
+  - runtime: [dev-2.json](/home/user/.claude/teams/2ksim-team/runtime/dev-2.json)
 
 - `dev-1`
   - pane: `%262`
   - session: `019ccd25-b110-7f70-9172-d93f7e165f9b`
-  - runtime: [dev-1.json](/home/mstie/.claude/teams/2ksim-team/runtime/dev-1.json)
+  - runtime: [dev-1.json](/home/user/.claude/teams/2ksim-team/runtime/dev-1.json)
 
 ## Actual Injected Content
 
@@ -65,7 +65,7 @@ Current confirmed injected members from the fresh-deploy evidence:
 
 Inbox file:
 
-- [architect.json](/home/mstie/.claude/teams/taurhaus-team/inboxes/architect.json)
+- [architect.json](/home/user/.claude/teams/taurhaus-team/inboxes/architect.json)
 
 Recent injected entries are real JSON cards, for example the `2026-03-09T01:14:54.767Z` entry:
 
@@ -74,7 +74,7 @@ Recent injected entries are real JSON cards, for example the `2026-03-09T01:14:5
 - `member_name`: `architect`
 - `task.id`: `761`
 - `task.subject`: `Audit and fix ALL polling loops in daemon — replace with event-driven or diff-based`
-- `working_set.project_path`: `/home/mstie/projects/taurhaus`
+- `working_set.project_path`: `/home/user/projects/taurhaus`
 
 But the payload is under-populated:
 
@@ -93,9 +93,9 @@ So `architect` received a real reinjection card, but it is mostly placeholder-le
 
 Inbox files:
 
-- [dev-1.json](/home/mstie/.claude/teams/2ksim-team/inboxes/dev-1.json)
-- [dev-2.json](/home/mstie/.claude/teams/2ksim-team/inboxes/dev-2.json)
-- [developer3.json](/home/mstie/.claude/teams/2ksim-team/inboxes/developer3.json)
+- [dev-1.json](/home/user/.claude/teams/2ksim-team/inboxes/dev-1.json)
+- [dev-2.json](/home/user/.claude/teams/2ksim-team/inboxes/dev-2.json)
+- [developer3.json](/home/user/.claude/teams/2ksim-team/inboxes/developer3.json)
 
 These contain materially better cards. Example fields present in recent entries:
 

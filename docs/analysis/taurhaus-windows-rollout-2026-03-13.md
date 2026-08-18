@@ -9,7 +9,7 @@
 
 ## Commands Run
 
-From `/home/mstie/projects/taurhaus`:
+From `/home/user/projects/taurhaus`:
 
 1. `just check`
 2. `MESH_PROJECT=/tmp/mesh-1255 just build-windows`
@@ -42,13 +42,13 @@ NSIS installer:
 
 Installed executable:
 
-- path: `/mnt/c/Users/mstie/AppData/Local/taurhaus/taurhaus.exe`
+- path: `/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe`
 - size: `29343232`
 - timestamp: `2026-03-13 16:42:20 +0100`
 
 Installed bundled Mesh version file:
 
-- path: `/mnt/c/Users/mstie/AppData/Local/taurhaus/resources/mesh.version`
+- path: `/mnt/c/Users/user/AppData/Local/taurhaus/resources/mesh.version`
 - value: `0.2.12`
 
 ## Mesh Rollout Status

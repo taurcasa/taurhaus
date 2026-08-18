@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn derives_window_name_from_project_path() {
         assert_eq!(
-            derive_window_name("/home/mstie/projects/taurhaus", "fallback"),
+            derive_window_name("/home/user/projects/taurhaus", "fallback"),
             "taurhaus"
         );
     }

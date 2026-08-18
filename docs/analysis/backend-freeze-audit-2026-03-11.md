@@ -45,14 +45,14 @@ There were two coupled bugs.
 
 When the daemon provider became disconnected, these request paths could still trigger local Windows fallback work against WSL session state:
 
-- [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
-- [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs)
+- [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
+- [mod.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs)
 
 That fallback is relatively expensive on Windows/WSL and is acceptable only as an exceptional path. Under bridge churn it became effectively continuous.
 
 ### 2. The daemon health logic conflated connection health with daemon process health
 
-The real architectural bug was in [daemon_lifecycle.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs).
+The real architectural bug was in [daemon_lifecycle.rs](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs).
 
 Old behavior in the disconnected branch:
 
@@ -71,8 +71,8 @@ That restart churn amplified the original fault and kept the frontend stuck in f
 
 The frontend Tauri fallback polling path was too aggressive during bridge loss:
 
-- [sessionStore.svelte.js](/home/mstie/projects/taurhaus/src/lib/sessionStore.svelte.js)
-- [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte)
+- [sessionStore.svelte.js](/home/user/projects/taurhaus/src/lib/sessionStore.svelte.js)
+- [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte)
 
 Issues:
 
@@ -86,9 +86,9 @@ Issues:
 
 Changed:
 
-- [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
-- [mod.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs)
-- new cache: [session_snapshot_cache.rs](/home/mstie/projects/taurhaus/src-tauri/src/session_snapshot_cache.rs)
+- [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
+- [mod.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/mod.rs)
+- new cache: [session_snapshot_cache.rs](/home/user/projects/taurhaus/src-tauri/src/session_snapshot_cache.rs)
 
 Behavior now:
 
@@ -104,7 +104,7 @@ This removes the expensive Windows fallback from the hot request path during dae
 
 Changed:
 
-- [daemon_lifecycle.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
+- [daemon_lifecycle.rs](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
 
 Behavior now:
 
@@ -116,8 +116,8 @@ This is important because otherwise the frontend can stay in fallback mode waiti
 
 Changed:
 
-- [sessionStore.svelte.js](/home/mstie/projects/taurhaus/src/lib/sessionStore.svelte.js)
-- [Shell.svelte](/home/mstie/projects/taurhaus/src/Shell.svelte)
+- [sessionStore.svelte.js](/home/user/projects/taurhaus/src/lib/sessionStore.svelte.js)
+- [Shell.svelte](/home/user/projects/taurhaus/src/Shell.svelte)
 
 Behavior now:
 
@@ -131,7 +131,7 @@ This turns a bridge-loss episode from a near-continuous request storm into a bou
 
 Changed:
 
-- [daemon_lifecycle.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
+- [daemon_lifecycle.rs](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
 
 Behavior now:
 

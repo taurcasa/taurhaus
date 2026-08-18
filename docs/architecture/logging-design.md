@@ -2,7 +2,7 @@
 
 Date: 2026-03-06  
 Owner: architect  
-Scope: app logging architecture, implementation status, and remaining roadmap.
+Scope: app logging architecture, implementation snapshot, and known gaps.
 
 ## Current Architecture
 
@@ -16,7 +16,7 @@ taurhaus now uses structured JSON Lines as the canonical application log format.
   - `interaction_id`, `request_id`, `daemon_request_id`
 
 The sink is implemented as a single-writer async pipeline in
-[`src-tauri/src/commands/logging.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/logging.rs):
+[`src-tauri/src/commands/logging.rs`](../../src-tauri/src/commands/logging.rs):
 
 - frontend/backend producers enqueue structured records
 - one writer thread owns the file handle
@@ -43,7 +43,7 @@ The sink is implemented as a single-writer async pipeline in
 | Log rotation and retention | Implemented | 20 MB rotation threshold, 7-day retention policy for rotated segments. |
 | E2E failure artifact capture | Implemented | Failure artifacts include app-log tails and test metadata in per-failure bundles. |
 
-### Remaining items (post-P0)
+### Known gaps at the final active-development snapshot
 
 - Extend event coverage for watcher and reconcile pipelines (`watch.*`, background task lifecycles).
 - Add dedicated daemon reconnect lifecycle vocabulary (`daemon.reconnect.*`) where missing.
@@ -61,18 +61,18 @@ This model enables cross-layer reconstruction from UI action -> IPC -> backend -
 ## Source Files
 
 - Frontend bridge:
-  - [`src/lib/logger.js`](/home/mstie/projects/taurhaus/src/lib/logger.js)
+  - [`src/lib/logger.js`](../../src/lib/logger.js)
 - Sink and global structured emitter:
-  - [`src-tauri/src/commands/logging.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/logging.rs)
+  - [`src-tauri/src/commands/logging.rs`](../../src-tauri/src/commands/logging.rs)
 - IPC lifecycle:
-  - [`src-tauri/src/commands/lifecycle.rs`](/home/mstie/projects/taurhaus/src-tauri/src/commands/lifecycle.rs)
+  - [`src-tauri/src/commands/lifecycle.rs`](../../src-tauri/src/commands/lifecycle.rs)
 - Startup lifecycle:
-  - [`src-tauri/src/startup/mod.rs`](/home/mstie/projects/taurhaus/src-tauri/src/startup/mod.rs)
+  - [`src-tauri/src/startup/mod.rs`](../../src-tauri/src/startup/mod.rs)
 - Daemon RPC lifecycle:
-  - [`src-tauri/src/daemon_api.rs`](/home/mstie/projects/taurhaus/src-tauri/src/daemon_api.rs)
-  - [`src-tauri/src/provider/daemon_client.rs`](/home/mstie/projects/taurhaus/src-tauri/src/provider/daemon_client.rs)
+  - [`src-tauri/src/daemon_api.rs`](../../src-tauri/src/daemon_api.rs)
+  - [`src-tauri/src/provider/daemon_client.rs`](../../src-tauri/src/provider/daemon_client.rs)
 
 ## Level Policy
 
 See the canonical level/event policy in
-[`docs/architecture/log-level-guidelines.md`](/home/mstie/projects/taurhaus/docs/architecture/log-level-guidelines.md).
+[`docs/architecture/log-level-guidelines.md`](log-level-guidelines.md).

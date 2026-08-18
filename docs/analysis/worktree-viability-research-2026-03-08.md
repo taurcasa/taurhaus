@@ -25,9 +25,9 @@ Short version:
 The friction is real.
 
 Evidence from prior retros:
-- [retro-quality-sprint-2026-03-05.md](/home/mstie/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:43) recorded shared-worktree contention as a universal pain point during a 14-task sprint.
-- The same retro logged `3/4` agents independently recommending worktree isolation, but still concluded `D5: Worktree isolation (DECIDED — not pursuing)` because task cycles were too short and merge/setup overhead was likely to exceed the saved contention time ([retro-quality-sprint-2026-03-05.md](/home/mstie/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:96), [retro-quality-sprint-2026-03-05.md](/home/mstie/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:132)).
-- The more recent consolidated retro still lists `worktree overlap / concurrent file ownership ambiguity` as one of the three strongest common friction points across respondents ([retro-2026-03-08-survey-findings.md](/home/mstie/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md:17), [retro-2026-03-08-survey-findings.md](/home/mstie/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md:80)).
+- [retro-quality-sprint-2026-03-05.md](/home/user/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:43) recorded shared-worktree contention as a universal pain point during a 14-task sprint.
+- The same retro logged `3/4` agents independently recommending worktree isolation, but still concluded `D5: Worktree isolation (DECIDED — not pursuing)` because task cycles were too short and merge/setup overhead was likely to exceed the saved contention time ([retro-quality-sprint-2026-03-05.md](/home/user/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:96), [retro-quality-sprint-2026-03-05.md](/home/user/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:132)).
+- The more recent consolidated retro still lists `worktree overlap / concurrent file ownership ambiguity` as one of the three strongest common friction points across respondents ([retro-2026-03-08-survey-findings.md](/home/user/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md:17), [retro-2026-03-08-survey-findings.md](/home/user/projects/taurhaus/docs/retro/retro-2026-03-08-survey-findings.md:80)).
 
 What we do **not** have yet:
 - a direct metric for "unexpected file changes caused a stop" as a percentage of total tasks
@@ -98,7 +98,7 @@ Current answer: **real but not quantified enough**.
 What we can support with evidence:
 - the friction is universal enough to show up repeatedly in retros
 - the strongest overlap pain is concentrated in hotspot files and shared validation surfaces, not every task
-- the team already reduced a large part of the pain by changing verification policy from `just check` to `just check-quick` ([retro-quality-sprint-2026-03-05.md](/home/mstie/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:43))
+- the team already reduced a large part of the pain by changing verification policy from `just check` to `just check-quick` ([retro-quality-sprint-2026-03-05.md](/home/user/projects/taurhaus/docs/archive/retro-quality-sprint-2026-03-05.md:43))
 
 What we cannot honestly claim yet:
 - exact stop rate caused by unrelated file edits
@@ -151,10 +151,10 @@ That is much cheaper than:
 Taurhaus can technically watch multiple roots, but the architecture is not naturally optimized around spinning up one isolated app/runtime per agent worktree.
 
 Relevant current behavior:
-- native project watchers are managed by the app in [watchers.rs](/home/mstie/projects/taurhaus/src-tauri/src/startup/watchers.rs:28)
+- native project watchers are managed by the app in [watchers.rs](/home/user/projects/taurhaus/src-tauri/src/startup/watchers.rs:28)
 - watchers are activity-based and keyed to discovered project paths
 - coordination/runtime state is managed separately under the Claude teams directory, not inside the repo
-- team discovery and resume are built around shared `~/.claude/teams/...` state ([ARCHITECTURE.md](/home/mstie/projects/taurhaus/ARCHITECTURE.md:165), [docs/features/mesh.md](/home/mstie/projects/taurhaus/docs/features/mesh.md:45))
+- team discovery and resume are built around shared `~/.claude/teams/...` state ([ARCHITECTURE.md](/home/user/projects/taurhaus/ARCHITECTURE.md:165), [docs/features/mesh.md](/home/user/projects/taurhaus/docs/features/mesh.md:45))
 
 What multiple worktrees would imply:
 - each worktree path is a distinct project root from the watcher's point of view
@@ -178,9 +178,9 @@ Taurhaus multi-agent coordination relies heavily on shared filesystem state outs
 - mesh inboxes and runtime state under the same team root
 
 Relevant references:
-- [ARCHITECTURE.md](/home/mstie/projects/taurhaus/ARCHITECTURE.md:165)
-- [coordination-architecture.md](/home/mstie/projects/taurhaus/docs/coordination-architecture.md:24)
-- [compaction-reinjection-investigation-2026-03-08.md](/home/mstie/projects/taurhaus/docs/analysis/compaction-reinjection-investigation-2026-03-08.md:15)
+- [ARCHITECTURE.md](/home/user/projects/taurhaus/ARCHITECTURE.md:165)
+- [coordination-architecture.md](/home/user/projects/taurhaus/docs/coordination-architecture.md:24)
+- [compaction-reinjection-investigation-2026-03-08.md](/home/user/projects/taurhaus/docs/analysis/compaction-reinjection-investigation-2026-03-08.md:15)
 
 Meaning:
 - worktrees isolate tracked source files

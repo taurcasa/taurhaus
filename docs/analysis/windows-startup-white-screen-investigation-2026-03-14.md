@@ -23,9 +23,9 @@ Required investigation angles:
 ## Required evidence
 
 - Canonical Windows log path:
-  - `C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
+  - `C:\Users\user\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl`
 - WSL-visible equivalent:
-  - `/mnt/c/Users/mstie/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
+  - `/mnt/c/Users/user/AppData/Roaming/com.taurhaus.dev/taurhaus.log.jsonl`
 - Resource monitor output if current:
   - `/tmp/taurhaus-resource-monitor-v2.csv`
 

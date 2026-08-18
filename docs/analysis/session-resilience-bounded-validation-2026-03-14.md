@@ -47,7 +47,7 @@ behavioral boundary:
 
 ## Relevant Matrix Cases
 
-From [session-activity-daemon-stability-experiment-matrix-2026-03-14.md](/home/mstie/projects/taurhaus/docs/analysis/session-activity-daemon-stability-experiment-matrix-2026-03-14.md), the bounded implementation slice maps to these cases:
+From [session-activity-daemon-stability-experiment-matrix-2026-03-14.md](/home/user/projects/taurhaus/docs/analysis/session-activity-daemon-stability-experiment-matrix-2026-03-14.md), the bounded implementation slice maps to these cases:
 
 - `D4` live reconnect and long-poll recovery
 - `D5` snapshot and probe failure degradation
@@ -124,10 +124,10 @@ Evidence:
 - `359265f` already changed daemon-status recovery so the UI can clear stale
   offline state when connectivity returns
 - `663fd27` added cached runtime snapshot fallback in
-  [session_listing.rs](/home/mstie/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
+  [session_listing.rs](/home/user/projects/taurhaus/src-tauri/src/commands/command_center/session_listing.rs)
 - `0638772` added the bridge recovery timer and
   `daemon.session_updates_bridge.recovered` measurement in
-  [daemon_lifecycle.rs](/home/mstie/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
+  [daemon_lifecycle.rs](/home/user/projects/taurhaus/src-tauri/src/daemon_lifecycle.rs)
 - targeted backend and frontend tests passed
 
 Why this is only a bounded pass:

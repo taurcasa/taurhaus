@@ -60,14 +60,14 @@ actually project-local.
 
 Checked project environments:
 
-- `/home/mstie/projects/taurhaus`
-- `/home/mstie/projects/mesh`
-- `/home/mstie/projects/taursec`
-- `/home/mstie/projects/taurcraft`
+- `/home/user/projects/taurhaus`
+- `/home/user/projects/mesh`
+- `/home/user/projects/taursec`
+- `/home/user/projects/taurcraft`
 
 Before the fix, all four resolved:
 
-- `which mesh` -> `/home/mstie/.local/bin/mesh`
+- `which mesh` -> `/home/user/.local/bin/mesh`
 - `mesh version --json` -> `0.2.10`
 - commit `f127eaead49e57679873b817d089929b5f5706b3`
 

@@ -8,7 +8,7 @@ It is based on the findings from task `#938`, but it is not another review. It i
 
 Primary system under design:
 
-- native Mesh CLI and runtime in `/home/mstie/projects/mesh`
+- native Mesh CLI and runtime in `/home/user/projects/mesh`
 
 Secondary integration consumer:
 

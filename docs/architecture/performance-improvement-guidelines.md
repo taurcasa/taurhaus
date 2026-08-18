@@ -2,8 +2,8 @@
 
 Companion references:
 
-- [performance-sprint-postmortem-2026-03-09.md](/home/mstie/projects/taurhaus/docs/analysis/performance-sprint-postmortem-2026-03-09.md)
-- [performance-deterioration-review-2026-03-09.md](/home/mstie/projects/taurhaus/docs/analysis/performance-deterioration-review-2026-03-09.md)
+- [performance-sprint-postmortem-2026-03-09.md](../analysis/performance-sprint-postmortem-2026-03-09.md)
+- [performance-deterioration-review-2026-03-09.md](../analysis/performance-deterioration-review-2026-03-09.md)
 
 ## Standard
 
