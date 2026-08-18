@@ -507,13 +507,8 @@ pub(crate) fn process_watch_events(
         }
     }
 
-    // Main event loop.
-    loop {
-        // Block until the first event arrives.
-        let Ok(first) = rx.recv() else {
-            break; // channel closed
-        };
-
+    // Main event loop. Block until the first event arrives or the channel closes.
+    while let Ok(first) = rx.recv() {
         // Fast-path: internal watch events (task directory) bypass batching.
         if handle_internal_event(&app, &task_trigger_tx, &first, "first_event") {
             continue;

@@ -1129,10 +1129,8 @@ fn synthesized_fields_for_import(
                 fields.push("context_summary".to_string());
             }
         }
-        RoleExportFormat::CopilotAgent => {
-            if parsed_body.capabilities.is_none() {
-                fields.push("capabilities".to_string());
-            }
+        RoleExportFormat::CopilotAgent if parsed_body.capabilities.is_none() => {
+            fields.push("capabilities".to_string());
         }
         _ => {}
     }
