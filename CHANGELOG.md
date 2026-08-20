@@ -6,9 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-20
+
+Patch release: CLI launch commands configured in Settings are now free-form, fixing launches for users with aliased or alternate Claude/Codex/Gemini installs.
+
 ### Fixed
 
-- **CLI launch commands are free-form** — the commands configured in Settings → CLI commands (Claude/Codex/Gemini × fresh/continue/resume) are no longer restricted to an exact `claude`/`codex`/`gemini` binary name or filtered for shell syntax. Aliases, alternate installs (`claude2`), environment prefixes (`CLAUDE_CONFIG_DIR=… claude`), wrappers, and ordinary shell syntax now launch exactly as they would in your terminal. Previously such commands failed with "Could not start Claude. Please try again." Only empty or multi-line commands are rejected. Requires a rebuilt daemon (`just install-daemon`).
+- **CLI launch commands are free-form** — the commands configured in Settings → CLI commands (Claude/Codex/Gemini × fresh/continue/resume) are no longer restricted to an exact `claude`/`codex`/`gemini` binary name or filtered for shell syntax. Aliases, alternate installs (`claude2`), environment prefixes (`CLAUDE_CONFIG_DIR=… claude`), wrappers, and ordinary shell syntax now launch exactly as they would in your terminal. Previously such commands failed with "Could not start Claude. Please try again." Only empty or multi-line commands are rejected. The validation runs in the daemon, which this release bundles and auto-updates on startup.
 
 ## [0.6.3] - 2026-03-29
 
