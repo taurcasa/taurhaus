@@ -410,14 +410,23 @@ pub fn navigate_to_pane(
 
 /// Validate a user-supplied command override for safety.
 ///
-/// Ensures the command starts with a known CLI tool name and contains no
-/// shell metacharacters that could enable command injection.
+/// Ensures the command starts with a known CLI tool name (optionally followed
+/// by a safe suffix such as `claude2`, `claude-work`, or `claude.cmd`, so
+/// alternate installs/aliases are usable) and contains no shell
+/// metacharacters that could enable command injection.
 pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
     let first_token = cmd.split_whitespace().next().unwrap_or("");
     let base_name = first_token.rsplit('/').next().unwrap_or(first_token);
 
     const ALLOWED_TOOLS: &[&str] = &["claude", "codex", "gemini"];
-    if !ALLOWED_TOOLS.contains(&base_name) {
+    let is_allowed_tool = ALLOWED_TOOLS.iter().any(|tool| {
+        base_name.strip_prefix(tool).is_some_and(|suffix| {
+            suffix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        })
+    });
+    if !is_allowed_tool {
         return Err(format!(
             "Command override must start with claude/codex/gemini, got: {base_name}"
         ));
@@ -975,11 +984,32 @@ mod tests {
         assert!(validate_command_override("/home/user/.local/bin/codex --yolo").is_ok());
     }
 
+    // Regression: configuring a CLI command such as `claude2` (a second
+    // Claude install/alias) in Settings made every launch fail with
+    // "Could not start Claude" because the validator required the basename
+    // to be *exactly* claude/codex/gemini. Tool-name prefixes with a safe
+    // suffix (digits, `-`, `_`, `.`) must be accepted.
+    #[test]
+    fn validate_command_override_accepts_tool_name_variants() {
+        assert!(validate_command_override("claude2 --dangerously-skip-permissions").is_ok());
+        assert!(validate_command_override("claude-work --continue").is_ok());
+        assert!(validate_command_override("claude_alt").is_ok());
+        assert!(validate_command_override("claude.cmd --resume").is_ok());
+        assert!(validate_command_override("/home/user/.local/bin/claude2 --flag").is_ok());
+        assert!(validate_command_override("codex2 --yolo").is_ok());
+        assert!(validate_command_override("gemini-beta --yolo").is_ok());
+    }
+
     #[test]
     fn validate_command_override_rejects_unknown_tools() {
         assert!(validate_command_override("bash -c 'evil'").is_err());
         assert!(validate_command_override("python3 script.py").is_err());
         assert!(validate_command_override("rm -rf /").is_err());
+        // Prefix match must not accept arbitrary names that merely contain a tool name.
+        assert!(validate_command_override("notclaude --flag").is_err());
+        assert!(validate_command_override("claudeX/evil").is_err());
+        assert!(validate_command_override("claude2;rm -rf /").is_err());
+        assert!(validate_command_override("claude~").is_err());
     }
 
     #[test]
