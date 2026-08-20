@@ -408,39 +408,30 @@ pub fn navigate_to_pane(
     Ok(())
 }
 
-/// Validate a user-supplied command override for safety.
+/// Validate a user-supplied command override.
 ///
-/// Ensures the command starts with a known CLI tool name (optionally followed
-/// by a safe suffix such as `claude2`, `claude-work`, or `claude.cmd`, so
-/// alternate installs/aliases are usable) and contains no shell
-/// metacharacters that could enable command injection.
+/// The override is whatever the user typed into Settings → CLI commands and is
+/// executed as that same user through their interactive shell
+/// (`exec "$SHELL" -ic ...`). It is deliberately free-form so aliases,
+/// alternate binaries (`claude2`), environment prefixes
+/// (`CLAUDE_CONFIG_DIR=~/.x claude`), and ordinary shell syntax all work the
+/// way they would in a terminal. The daemon only accepts launch requests over
+/// a token-authenticated localhost connection, and any such request already
+/// implies local code execution, so a tool-name allowlist adds no meaningful
+/// protection — it only blocks legitimate configurations.
+///
+/// The single invariant enforced here is that the command is a non-empty,
+/// single-line string: empty commands produce confusing "shell exited"
+/// windows and embedded line breaks can split the tmux launch command.
 pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
-    let first_token = cmd.split_whitespace().next().unwrap_or("");
-    let base_name = first_token.rsplit('/').next().unwrap_or(first_token);
-
-    const ALLOWED_TOOLS: &[&str] = &["claude", "codex", "gemini"];
-    let is_allowed_tool = ALLOWED_TOOLS.iter().any(|tool| {
-        base_name.strip_prefix(tool).is_some_and(|suffix| {
-            suffix
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-        })
-    });
-    if !is_allowed_tool {
+    if cmd.trim().is_empty() {
+        return Err("Command override is empty".to_string());
+    }
+    if let Some(c) = cmd.chars().find(|c| matches!(c, '\n' | '\r' | '\0')) {
         return Err(format!(
-            "Command override must start with claude/codex/gemini, got: {base_name}"
+            "Command override must be a single line without control characters, found: {c:?}"
         ));
     }
-
-    const FORBIDDEN: &[char] = &[
-        ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\\', '\n', '\r',
-    ];
-    if let Some(c) = cmd.chars().find(|c| FORBIDDEN.contains(c)) {
-        return Err(format!(
-            "Command override contains forbidden character: {c:?}"
-        ));
-    }
-
     Ok(())
 }
 
@@ -976,49 +967,34 @@ mod tests {
         assert!(validate_command_override("claude --dangerously-skip-permissions").is_ok());
         assert!(validate_command_override("codex --yolo").is_ok());
         assert!(validate_command_override("gemini --yolo --resume").is_ok());
-    }
-
-    #[test]
-    fn validate_command_override_accepts_absolute_paths() {
         assert!(validate_command_override("/usr/local/bin/claude --flag").is_ok());
-        assert!(validate_command_override("/home/user/.local/bin/codex --yolo").is_ok());
     }
 
     // Regression: configuring a CLI command such as `claude2` (a second
     // Claude install/alias) in Settings made every launch fail with
     // "Could not start Claude" because the validator required the basename
-    // to be *exactly* claude/codex/gemini. Tool-name prefixes with a safe
-    // suffix (digits, `-`, `_`, `.`) must be accepted.
+    // to be *exactly* claude/codex/gemini. The Settings UI offers a free-text
+    // field, so whatever works in the user's terminal must work here too:
+    // aliases, alternate binaries, env-var prefixes, wrappers, shell syntax.
     #[test]
-    fn validate_command_override_accepts_tool_name_variants() {
+    fn validate_command_override_accepts_free_form_shell_commands() {
         assert!(validate_command_override("claude2 --dangerously-skip-permissions").is_ok());
-        assert!(validate_command_override("claude-work --continue").is_ok());
-        assert!(validate_command_override("claude_alt").is_ok());
-        assert!(validate_command_override("claude.cmd --resume").is_ok());
-        assert!(validate_command_override("/home/user/.local/bin/claude2 --flag").is_ok());
-        assert!(validate_command_override("codex2 --yolo").is_ok());
-        assert!(validate_command_override("gemini-beta --yolo").is_ok());
+        assert!(validate_command_override("CLAUDE_CONFIG_DIR=~/.claude-account2 claude").is_ok());
+        assert!(validate_command_override("env FOO=bar claude --model opus").is_ok());
+        assert!(validate_command_override("npx @anthropic-ai/claude-code --resume").is_ok());
+        assert!(validate_command_override("~/bin/my-claude-wrapper.sh --flag").is_ok());
+        assert!(validate_command_override("claude --add-dir \"$HOME/notes\"").is_ok());
+        assert!(validate_command_override("source ~/.profile && claude").is_ok());
+        assert!(validate_command_override("claude 2>&1 | tee ~/claude.log").is_ok());
     }
 
     #[test]
-    fn validate_command_override_rejects_unknown_tools() {
-        assert!(validate_command_override("bash -c 'evil'").is_err());
-        assert!(validate_command_override("python3 script.py").is_err());
-        assert!(validate_command_override("rm -rf /").is_err());
-        // Prefix match must not accept arbitrary names that merely contain a tool name.
-        assert!(validate_command_override("notclaude --flag").is_err());
-        assert!(validate_command_override("claudeX/evil").is_err());
-        assert!(validate_command_override("claude2;rm -rf /").is_err());
-        assert!(validate_command_override("claude~").is_err());
-    }
-
-    #[test]
-    fn validate_command_override_rejects_shell_injection() {
-        assert!(validate_command_override("claude; rm -rf /").is_err());
-        assert!(validate_command_override("claude && evil").is_err());
-        assert!(validate_command_override("claude | cat /etc/passwd").is_err());
-        assert!(validate_command_override("claude $(whoami)").is_err());
-        assert!(validate_command_override("claude `id`").is_err());
+    fn validate_command_override_rejects_empty_and_multiline() {
+        assert!(validate_command_override("").is_err());
+        assert!(validate_command_override("   ").is_err());
+        assert!(validate_command_override("claude\nrm -rf /").is_err());
+        assert!(validate_command_override("claude\r").is_err());
+        assert!(validate_command_override("claude\0").is_err());
     }
 
     #[test]

@@ -66,13 +66,15 @@ pub mod session_scanner {
             TMUX_SESSION_NAME,
         };
 
+        // Mirrors `session_scanner::control::validate_command_override`:
+        // commands are free-form; only empty/multi-line input is rejected.
         pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
-            let first_token = cmd.split_whitespace().next().unwrap_or("");
-            let base_name = first_token.rsplit('/').next().unwrap_or(first_token);
-            const ALLOWED_TOOLS: &[&str] = &["claude", "codex", "gemini"];
-            if !ALLOWED_TOOLS.contains(&base_name) {
+            if cmd.trim().is_empty() {
+                return Err("Command override is empty".to_string());
+            }
+            if let Some(c) = cmd.chars().find(|c| matches!(c, '\n' | '\r' | '\0')) {
                 return Err(format!(
-                    "Command override must start with claude/codex/gemini, got: {base_name}"
+                    "Command override must be a single line without control characters, found: {c:?}"
                 ));
             }
             Ok(())
