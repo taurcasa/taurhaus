@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CLI launch commands are free-form** — the commands configured in Settings → CLI commands (Claude/Codex/Gemini × fresh/continue/resume) are no longer restricted to an exact `claude`/`codex`/`gemini` binary name or filtered for shell syntax. Aliases, alternate installs (`claude2`), environment prefixes (`CLAUDE_CONFIG_DIR=… claude`), wrappers, and ordinary shell syntax now launch exactly as they would in your terminal. Previously such commands failed with "Could not start Claude. Please try again." Only empty or multi-line commands are rejected. Requires a rebuilt daemon (`just install-daemon`).
+
 ## [0.6.3] - 2026-03-29
 
 Pipeline unification release. Unified the initialize, resume, and add-agent member-activation flows into a single shared executor, eliminating a class of divergence bugs. Added live per-member progress during team resume, replacing the previous dead-air experience.
