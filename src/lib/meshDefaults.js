@@ -2,7 +2,7 @@ export const TOOL_OPTIONS = ['claude', 'codex', 'gemini']
 
 export const MODEL_OPTIONS_BY_TOOL = {
   claude: ['opus', 'sonnet', 'haiku'],
-  codex: ['gpt-5.4 high', 'gpt-5.3-codex', 'gpt-5-mini'],
+  codex: ['gpt-5.4', 'gpt-5-mini'],
   gemini: ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'],
 }
 

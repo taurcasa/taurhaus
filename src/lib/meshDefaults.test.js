@@ -18,7 +18,7 @@ describe('meshDefaults', () => {
   it('exposes canonical tool/model defaults', () => {
     expect(TOOL_OPTIONS).toEqual(['claude', 'codex', 'gemini'])
     expect(MODEL_OPTIONS_BY_TOOL.claude).toEqual(['opus', 'sonnet', 'haiku'])
-    expect(MODEL_OPTIONS_BY_TOOL.codex).toEqual(['gpt-5.4 high', 'gpt-5.3-codex', 'gpt-5-mini'])
+    expect(MODEL_OPTIONS_BY_TOOL.codex).toEqual(['gpt-5.4', 'gpt-5-mini'])
     expect(MODEL_OPTIONS_BY_TOOL.gemini).toEqual(['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'])
   })
 
@@ -29,7 +29,7 @@ describe('meshDefaults', () => {
 
     expect(modelsForTool('gemini')).toEqual(['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'])
     expect(modelsForTool('wat')).toEqual(['opus', 'sonnet', 'haiku'])
-    expect(defaultModelForTool('codex')).toBe('gpt-5.4 high')
+    expect(defaultModelForTool('codex')).toBe('gpt-5.4')
     expect(defaultModelForTool('wat')).toBe('opus')
   })
 
@@ -51,7 +51,7 @@ describe('meshDefaults', () => {
     expect(resolveRoleTool({}, 'codex')).toBe('codex')
     expect(resolveRoleModel({ model: 'gemini-2.5-pro' }, 'gemini')).toBe('gemini-2.5-pro')
     expect(resolveRoleModel({ model: '' }, 'gemini')).toBe('gemini-3.1-pro')
-    expect(resolveRoleModel({}, 'codex')).toBe('gpt-5.4 high')
+    expect(resolveRoleModel({}, 'codex')).toBe('gpt-5.4')
   })
 
   it('applies deterministic member naming', () => {

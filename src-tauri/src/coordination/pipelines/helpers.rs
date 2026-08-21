@@ -3,6 +3,8 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::Utc;
+use serde_json::{Map, Value};
+use taurhaus_lib::logging::emit_global;
 
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -14,9 +16,13 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{CoordinationRuntime, DetectedRuntimeSession};
 use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
+use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::control::{build_team_launch_command, validate_command_override};
+use crate::session_scanner::control::validate_command_override;
+use crate::session_scanner::launch::{
+    base_command, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+};
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_millis(150), Duration::from_millis(350)];
@@ -211,25 +217,14 @@ pub(super) fn build_cli_launch_command(
     cli_commands: &CliCommandSettings,
 ) -> Result<String, CoordinationError> {
     let cli_tool = parse_cli_tool(&agent.cli_tool)?;
-    let command = build_team_launch_command(cli_commands, cli_tool, &agent.model);
-    if command.trim().is_empty() {
-        return Err(CoordinationError::Validation(format!(
-            "configured launch command is empty for '{}'",
-            agent.cli_tool
-        )));
-    }
-    validate_command_override(&command).map_err(CoordinationError::Validation)?;
-
-    if cli_tool != CliTool::Claude {
-        return Ok(command);
-    }
-
-    Ok(with_claude_team_context(
-        command,
+    render_team_launch_command(
+        cli_commands,
+        cli_tool,
+        &agent.model,
         team_name,
         &agent.name,
         role,
-    ))
+    )
 }
 
 /// Build the CLI launch command for a resumed member session.
@@ -369,26 +364,111 @@ pub(super) fn build_member_activation_launch_command(
     context: &MemberActivationContext,
     cli_commands: &CliCommandSettings,
 ) -> Result<String, CoordinationError> {
-    let command =
-        build_team_launch_command(cli_commands, context.member.cli_tool, &context.member.model);
-    if command.trim().is_empty() {
-        return Err(CoordinationError::Validation(format!(
-            "configured launch command is empty for '{}'",
-            context.member.cli_tool
-        )));
-    }
-    validate_command_override(&command).map_err(CoordinationError::Validation)?;
-
-    if context.member.cli_tool != CliTool::Claude {
-        return Ok(command);
-    }
-
-    Ok(with_claude_team_context(
-        command,
+    render_team_launch_command(
+        cli_commands,
+        context.member.cli_tool,
+        &context.member.model,
         &context.team_name,
         &context.member.name,
         context.member.role,
-    ))
+    )
+}
+
+fn render_team_launch_command(
+    cli_commands: &CliCommandSettings,
+    cli_tool: CliTool,
+    legacy_model: &str,
+    team_name: &str,
+    agent_name: &str,
+    role: MemberRole,
+) -> Result<String, CoordinationError> {
+    let base = base_command(cli_commands, cli_tool, LaunchMode::Fresh);
+    if base.trim().is_empty() {
+        return Err(CoordinationError::Validation(format!(
+            "configured launch command is empty for '{}'",
+            cli_tool
+        )));
+    }
+
+    let model = ModelSpec::parse_legacy(legacy_model);
+    let rendered = LaunchSpec {
+        tool: cli_tool,
+        mode: LaunchMode::Fresh,
+        base,
+        model: model.clone(),
+        team: (cli_tool == CliTool::Claude).then_some(TeamContext {
+            team_name,
+            agent_name,
+            role,
+        }),
+    }
+    .render();
+    validate_command_override(&rendered.command).map_err(CoordinationError::Validation)?;
+
+    let mut fields = Map::new();
+    fields.insert("team".to_string(), Value::String(team_name.to_string()));
+    fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+    fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+    fields.insert("mode".to_string(), Value::String("fresh".to_string()));
+    fields.insert(
+        "model".to_string(),
+        model.model.map(Value::String).unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "reasoning_effort".to_string(),
+        model
+            .reasoning_effort
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    fields.insert(
+        "command".to_string(),
+        Value::String(rendered.command.clone()),
+    );
+    emit_global(
+        "info",
+        "coordination",
+        "launch.command.rendered",
+        Some("Rendered team member launch command".to_string()),
+        fields,
+    );
+
+    for note in rendered.notes {
+        let (event, field, value, message) = match note {
+            LaunchNote::DeprecatedFlag { flag } => (
+                "launch.deprecated_flag",
+                "flag",
+                flag,
+                "Configured launch base contains a deprecated flag",
+            ),
+            LaunchNote::ModelIgnored { found } => (
+                "launch.model_ignored",
+                "found",
+                found,
+                "Configured launch base overrides the role model",
+            ),
+            LaunchNote::EffortIgnored { found } => (
+                "launch.effort_ignored",
+                "found",
+                found,
+                "Configured launch base overrides the role reasoning effort",
+            ),
+        };
+        let mut fields = Map::new();
+        fields.insert("team".to_string(), Value::String(team_name.to_string()));
+        fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+        fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+        fields.insert(field.to_string(), Value::String(value));
+        emit_global(
+            "warn",
+            "coordination",
+            event,
+            Some(message.to_string()),
+            fields,
+        );
+    }
+
+    Ok(rendered.command)
 }
 
 fn detect_member_session_identity(
@@ -401,65 +481,6 @@ fn detect_member_session_identity(
     }
 
     runtime.detect_runtime_session(pane_id, context.member.cli_tool)
-}
-
-pub(super) fn with_claude_team_context(
-    mut command: String,
-    team_name: &str,
-    agent_name: &str,
-    role: MemberRole,
-) -> String {
-    if !command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
-        command = format!("CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 {command}");
-    }
-
-    if !command_contains_flag(&command, "--team-name") {
-        command.push_str(" --team-name ");
-        command.push_str(&shell_escape_for_cmd(team_name));
-    }
-    if !command_contains_flag(&command, "--agent-name") {
-        command.push_str(" --agent-name ");
-        command.push_str(&shell_escape_for_cmd(agent_name));
-    }
-    if !command_contains_flag(&command, "--agent-id") {
-        command.push_str(" --agent-id ");
-        command.push_str(&shell_escape_for_cmd(&format!("{agent_name}@{team_name}")));
-    }
-    if !command_contains_flag(&command, "--agent-type") {
-        let agent_type = if role == MemberRole::Lead {
-            "orchestrator"
-        } else {
-            "general-purpose"
-        };
-        command.push_str(" --agent-type ");
-        command.push_str(&shell_escape_for_cmd(agent_type));
-    }
-
-    command
-}
-
-pub(super) fn command_contains_flag(command: &str, flag: &str) -> bool {
-    command.split_whitespace().any(|token| {
-        token == flag
-            || token
-                .strip_prefix(flag)
-                .is_some_and(|suffix| suffix.starts_with('='))
-    })
-}
-
-pub(super) fn shell_escape_for_cmd(value: &str) -> String {
-    if value.is_empty() {
-        return "''".to_string();
-    }
-    if value
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | '@'))
-    {
-        return value.to_string();
-    }
-
-    let escaped = value.replace('\'', "'\\''");
-    format!("'{escaped}'")
 }
 
 pub(super) fn has_non_empty_capabilities(capabilities: Option<&[String]>) -> bool {

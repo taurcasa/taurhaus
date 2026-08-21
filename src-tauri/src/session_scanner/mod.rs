@@ -26,6 +26,7 @@ pub mod compaction_extractor;
 pub mod compaction_watcher;
 pub mod control;
 pub mod idle;
+pub mod launch;
 pub mod proc_io;
 pub mod process;
 pub mod tmux;

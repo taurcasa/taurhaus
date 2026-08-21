@@ -732,7 +732,7 @@ mod tests {
             agents: vec![AgentDefinition {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 project_id: "proj-web".to_string(),
                 description: None,
                 role_id: None,
@@ -767,7 +767,7 @@ mod tests {
             agent: AgentDefinition {
                 name: "backend-dev".to_string(),
                 cli_tool: "codex".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 project_id: "proj-api".to_string(),
                 description: Some("Own API work".to_string()),
                 role_id: None,
@@ -898,7 +898,7 @@ mod tests {
                     name: "frontend-dev".to_string(),
                     role: AgentRole::Member,
                     cli_tool: CliTool::Codex,
-                    model: "gpt-5.3".to_string(),
+                    model: "gpt-5.4".to_string(),
                     project_id: "proj-web".to_string(),
                     description: None,
                     session_status: SessionStatus::Idle,

@@ -739,7 +739,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             AgentSetupConfig {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 project_id: "/tmp/frontend".to_string(),
                 description: Some("frontend".to_string()),
                 role_id: None,

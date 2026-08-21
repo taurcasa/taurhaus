@@ -1,5 +1,6 @@
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::session_scanner::launch::{base_command, LaunchNote, LaunchSpec, ModelSpec};
 use serde_json::{Map, Value};
 
 use super::*;
@@ -92,16 +93,66 @@ pub(super) fn launch_cli_session_impl(
         }
     }
 
+    let terminal_settings = load_terminal_settings(db);
+    let rendered = LaunchSpec {
+        tool,
+        mode,
+        base: base_command(&terminal_settings.cli_commands, tool, mode),
+        model: ModelSpec::default(),
+        team: None,
+    }
+    .render();
+    let tool_cmd = rendered.command;
+    let mode_name = format!("{mode:?}").to_ascii_lowercase();
+    let mut rendered_fields = Map::new();
+    rendered_fields.insert("tool".to_string(), Value::String(tool.to_string()));
+    rendered_fields.insert("mode".to_string(), Value::String(mode_name.clone()));
+    rendered_fields.insert("command".to_string(), Value::String(tool_cmd.clone()));
+    crate::commands::logging::emit_global(
+        "info",
+        "command_center",
+        "launch.command.rendered",
+        Some("Rendered CLI launch command".to_string()),
+        rendered_fields,
+    );
+    for note in rendered.notes {
+        let (event, field, value, message) = match note {
+            LaunchNote::DeprecatedFlag { flag } => (
+                "launch.deprecated_flag",
+                "flag",
+                flag,
+                "Configured launch base contains a deprecated flag",
+            ),
+            LaunchNote::ModelIgnored { found } => (
+                "launch.model_ignored",
+                "found",
+                found,
+                "Configured launch base overrides the requested model",
+            ),
+            LaunchNote::EffortIgnored { found } => (
+                "launch.effort_ignored",
+                "found",
+                found,
+                "Configured launch base overrides the requested reasoning effort",
+            ),
+        };
+        let mut fields = Map::new();
+        fields.insert("tool".to_string(), Value::String(tool.to_string()));
+        fields.insert("mode".to_string(), Value::String(mode_name.clone()));
+        fields.insert(field.to_string(), Value::String(value));
+        crate::commands::logging::emit_global(
+            "warn",
+            "command_center",
+            event,
+            Some(message.to_string()),
+            fields,
+        );
+    }
+
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "launch-session";
             let daemon_method = protocol::method::LAUNCH_SESSION;
-            let ts = load_terminal_settings(db);
-            let tool_cmd = crate::session_scanner::control::resolve_configured_tool_command(
-                &ts.cli_commands,
-                tool,
-                mode,
-            );
             let request = protocol::DaemonRequest::new(
                 id,
                 daemon_method,
@@ -109,8 +160,8 @@ pub(super) fn launch_cli_session_impl(
                     project_path: linux_path.clone(),
                     mode,
                     cli_tool: tool,
-                    tmux_layout: ts.tmux_layout.clone(),
-                    command_override: Some(tool_cmd),
+                    tmux_layout: terminal_settings.tmux_layout.clone(),
+                    command_override: Some(tool_cmd.clone()),
                 },
             );
             let mut daemon_request_fields = Map::new();
@@ -187,13 +238,12 @@ pub(super) fn launch_cli_session_impl(
                     );
 
                     let tmux_session = result.tmux_session.as_deref().unwrap_or(TMUX_SESSION_NAME);
-                    let ts = load_terminal_settings(db);
                     let _ = crate::terminal::handle_terminal(
                         crate::terminal::TerminalIntent::EnsureOpen {
                             distro: provider.wsl_distro.clone(),
                             tmux_session: tmux_session.to_string(),
-                            emulator: ts.emulator,
-                            custom_command: ts.custom_command,
+                            emulator: terminal_settings.emulator,
+                            custom_command: terminal_settings.custom_command,
                         },
                     );
                     return Ok(result);
@@ -292,17 +342,11 @@ pub(super) fn launch_cli_session_impl(
             fields
         },
     );
-    let ts = load_terminal_settings(db);
-    let tool_cmd = crate::session_scanner::control::resolve_configured_tool_command(
-        &ts.cli_commands,
-        tool,
-        mode,
-    );
     let (session, window, pane) = crate::session_scanner::control::launch_in_tmux_with_layout(
         &linux_path,
         mode,
         tool,
-        &ts.tmux_layout,
+        &terminal_settings.tmux_layout,
         Some(&tool_cmd),
     )
     .map_err(|e| format!("Failed to launch session: {e}"))?;
@@ -312,8 +356,8 @@ pub(super) fn launch_cli_session_impl(
         let _ = crate::terminal::handle_terminal(crate::terminal::TerminalIntent::EnsureOpen {
             distro: None,
             tmux_session: session.clone(),
-            emulator: ts.emulator,
-            custom_command: ts.custom_command,
+            emulator: terminal_settings.emulator,
+            custom_command: terminal_settings.custom_command,
         });
     }
 
