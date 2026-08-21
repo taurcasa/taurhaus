@@ -23,6 +23,9 @@ fn main() {
             std::process::exit(1);
         }
     };
+    if let Some(data_dir) = args.data_dir.as_ref() {
+        std::env::set_var("TAURHAUS_DATA_DIR", data_dir);
+    }
 
     let filter = if args.verbose { "debug" } else { "info" };
     tracing_subscriber::fmt()
@@ -66,6 +69,7 @@ fn main() {
         port = args.port,
         bind = %args.bind_addr,
         idle_timeout = ?args.idle_timeout_secs,
+        data_root = %PlatformPaths::app_data_root().display(),
         auth = auth_token.is_some(),
         "taurhaus-daemon starting"
     );
@@ -101,6 +105,7 @@ struct Args {
     port: u16,
     bind_addr: String,
     idle_timeout_secs: Option<u64>,
+    data_dir: Option<std::path::PathBuf>,
     verbose: bool,
     no_auth: bool,
 }
@@ -111,33 +116,45 @@ enum ParseOutcome {
 }
 
 fn parse_args() -> Result<ParseOutcome, String> {
+    let raw: Vec<String> = std::env::args().collect();
+    parse_args_from(&raw)
+}
+
+fn parse_args_from(raw: &[String]) -> Result<ParseOutcome, String> {
     let mut args = Args {
         port: DEFAULT_PORT,
         bind_addr: "127.0.0.1".to_string(),
         idle_timeout_secs: Some(600),
+        data_dir: None,
         verbose: false,
         no_auth: false,
     };
 
-    let raw: Vec<String> = std::env::args().collect();
     let mut i = 1;
     while i < raw.len() {
         match raw[i].as_str() {
             "--port" | "-p" => {
-                let value = require_flag_value(&raw, &mut i, "--port")?;
+                let value = require_flag_value(raw, &mut i, "--port")?;
                 args.port = value
                     .parse()
                     .map_err(|_| "--port requires a valid port number".to_string())?;
             }
             "--bind" | "-b" => {
-                args.bind_addr = require_flag_value(&raw, &mut i, "--bind")?;
+                args.bind_addr = require_flag_value(raw, &mut i, "--bind")?;
             }
             "--idle-timeout" => {
-                let value = require_flag_value(&raw, &mut i, "--idle-timeout")?;
+                let value = require_flag_value(raw, &mut i, "--idle-timeout")?;
                 let secs: u64 = value
                     .parse()
                     .map_err(|_| "--idle-timeout requires seconds".to_string())?;
                 args.idle_timeout_secs = if secs == 0 { None } else { Some(secs) };
+            }
+            "--data-dir" => {
+                let value = require_flag_value(raw, &mut i, "--data-dir")?;
+                if value.trim().is_empty() {
+                    return Err("--data-dir requires a non-empty path".to_string());
+                }
+                args.data_dir = Some(std::path::PathBuf::from(value));
             }
             "--verbose" | "-v" => {
                 args.verbose = true;
@@ -194,6 +211,7 @@ fn print_help() {
     eprintln!(
         "      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)"
     );
+    eprintln!("      --data-dir <PATH>     App data root for daemon state and identity");
     eprintln!("      --no-auth              Disable auth token (debug builds only)");
     eprintln!("  -v, --verbose              Enable debug logging");
     eprintln!("  -V, --version              Print version and exit");
@@ -239,7 +257,27 @@ where
 mod tests {
     use std::io;
 
-    use super::resolve_auth_token_with;
+    use super::{parse_args_from, resolve_auth_token_with, ParseOutcome};
+
+    #[test]
+    fn data_dir_and_port_flags_are_parsed() {
+        let raw = [
+            "taurhaus-daemon".to_string(),
+            "--data-dir".to_string(),
+            "/tmp/taurhaus-data".to_string(),
+            "--port".to_string(),
+            "17299".to_string(),
+        ];
+
+        let ParseOutcome::Run(args) = parse_args_from(&raw).expect("parse args") else {
+            panic!("expected daemon run args");
+        };
+        assert_eq!(args.port, 17299);
+        assert_eq!(
+            args.data_dir.as_deref(),
+            Some(std::path::Path::new("/tmp/taurhaus-data"))
+        );
+    }
 
     #[test]
     fn refuses_to_start_without_auth_unless_no_auth_flag() {

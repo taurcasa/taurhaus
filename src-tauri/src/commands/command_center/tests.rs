@@ -424,6 +424,41 @@ fn foreground_project_resolution_returns_none_without_attached_client() {
 }
 
 #[test]
+fn get_foreground_project_impl_falls_back_to_local_file_when_daemon_snapshot_focus_none() {
+    // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
+    // made a missing daemon focus suppress the app-owned local focus signal.
+    let data_dir = TempDir::new().expect("temp data dir");
+    let focus_path = crate::session_scanner::tmux::focus_file_path(data_dir.path());
+    crate::session_scanner::tmux::write_focus_state(
+        &focus_path,
+        &attached_focus("taurhaus", "work"),
+    )
+    .expect("write local focus state");
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::new_disconnected("127.0.0.1:1"),
+        ),
+        wsl_distro: None,
+    };
+    let snapshot = crate::daemon::protocol::RuntimeSessionSnapshotResult {
+        version: 1,
+        display_sessions: vec![active_session_for("/tmp/project")],
+        runtime_sessions: Vec::new(),
+        focus: None,
+        foreground_project_path: None,
+        degraded: false,
+    };
+
+    let project_id =
+        resolve_foreground_project_from_daemon_snapshot(data_dir.path(), &db, &provider, snapshot)
+            .expect("resolve local focus fallback");
+
+    assert_eq!(project_id, Some("p1".to_string()));
+}
+
+#[test]
 fn daemon_runtime_session_snapshot_uses_snapshot_method_and_returns_payload() {
     let daemon = start_stub_daemon(serde_json::json!({
         "result": {

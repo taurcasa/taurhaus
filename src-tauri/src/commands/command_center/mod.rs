@@ -171,7 +171,7 @@ pub(crate) fn get_foreground_project_impl(
     provider: &ProviderState,
 ) -> Result<Option<String>, String> {
     if let Some(snapshot) = daemon_runtime_session_snapshot(provider)?.snapshot {
-        if let Some(mut project_path) = snapshot.foreground_project_path {
+        if let Some(mut project_path) = snapshot.foreground_project_path.clone() {
             if !crate::daemon::launcher::is_native_daemon() && project_path.starts_with('/') {
                 if let Some(ref distro) = provider.wsl_distro {
                     project_path = crate::provider::path::to_windows(&project_path, distro);
@@ -179,7 +179,14 @@ pub(crate) fn get_foreground_project_impl(
             }
             return resolve_project_id_from_path(db, &project_path);
         }
-        return Ok(None);
+        if snapshot.focus.is_some() {
+            return Ok(None);
+        }
+
+        let data_dir = crate::startup::resolve_app_data_dir(app.clone()).map_err(|error| {
+            format!("Failed to resolve app data dir for tmux focus lookup: {error}")
+        })?;
+        return resolve_foreground_project_from_daemon_snapshot(&data_dir, db, provider, snapshot);
     }
 
     if provider.daemon.is_some() {
@@ -195,6 +202,29 @@ pub(crate) fn get_foreground_project_impl(
 
     let sessions = list_cli_sessions_impl(app, db, provider)?;
     resolve_foreground_project_id_from_sessions(db, &focus, &sessions)
+}
+
+fn resolve_foreground_project_from_daemon_snapshot(
+    data_dir: &Path,
+    db: &DbState,
+    provider: &ProviderState,
+    mut snapshot: protocol::RuntimeSessionSnapshotResult,
+) -> Result<Option<String>, String> {
+    let Some(focus) = crate::session_scanner::tmux::read_focus_state(data_dir) else {
+        return Ok(None);
+    };
+    if !crate::daemon::launcher::is_native_daemon() {
+        if let Some(ref distro) = provider.wsl_distro {
+            for session in &mut snapshot.display_sessions {
+                if session.project_path.starts_with('/') {
+                    session.project_path =
+                        crate::provider::path::to_windows(&session.project_path, distro);
+                }
+            }
+        }
+    }
+
+    resolve_foreground_project_id_from_sessions(db, &focus, &snapshot.display_sessions)
 }
 
 fn resolve_project_id_from_path(

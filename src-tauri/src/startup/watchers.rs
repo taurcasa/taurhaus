@@ -67,7 +67,6 @@ pub(crate) fn initialize(
     });
     spawn_auxiliary_watch_bootstrap(
         app.handle().clone(),
-        context.data_dir.clone(),
         context.daemon_connected_at_startup,
         context.wsl_distro.is_none() || crate::daemon::launcher::is_native_daemon(),
     );
@@ -76,6 +75,7 @@ pub(crate) fn initialize(
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(60));
         reconcile_activity_watches(&periodic_handle, "periodic");
+        repair_tmux_focus_hooks();
     });
 
     Ok(())
@@ -83,14 +83,12 @@ pub(crate) fn initialize(
 
 fn spawn_auxiliary_watch_bootstrap(
     app: tauri::AppHandle,
-    data_dir: std::path::PathBuf,
     has_daemon: bool,
     allow_disconnected_windows_fallback: bool,
 ) {
     spawn_auxiliary_watch_bootstrap_task(move || {
         refresh_auxiliary_watches(
             &app,
-            &data_dir,
             has_daemon,
             allow_disconnected_windows_fallback,
             "startup",
@@ -100,7 +98,6 @@ fn spawn_auxiliary_watch_bootstrap(
 
 pub(crate) fn refresh_auxiliary_watches(
     app: &tauri::AppHandle,
-    data_dir: &std::path::Path,
     has_daemon: bool,
     allow_disconnected_windows_fallback: bool,
     reason: &'static str,
@@ -117,7 +114,7 @@ pub(crate) fn refresh_auxiliary_watches(
         },
     );
     ensure_task_directory_watch(app, has_daemon, allow_disconnected_windows_fallback);
-    ensure_tmux_focus_watch(app, data_dir);
+    ensure_tmux_focus_watch(app);
 
     let mut fields = Map::new();
     fields.insert("reason".to_string(), Value::String(reason.to_string()));
@@ -394,11 +391,14 @@ fn ensure_task_directory_watch<T, R>(
     }
 }
 
-fn ensure_tmux_focus_watch<T, R>(app: &T, data_dir: &std::path::Path)
+fn ensure_tmux_focus_watch<T, R>(app: &T)
 where
     R: tauri::Runtime,
     T: Manager<R>,
 {
+    let focus_path = crate::session_scanner::control::default_tmux_focus_path();
+    repair_tmux_focus_hooks_for_path(&focus_path);
+
     let watcher_state = app.state::<WatcherState>();
     let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
         tracing::warn!(
@@ -407,20 +407,6 @@ where
         );
         error.into_inner()
     });
-    let focus_path = crate::session_scanner::tmux::focus_file_path(data_dir);
-    if let Err(error) = crate::session_scanner::tmux::write_focus_state(
-        &focus_path,
-        &crate::session_scanner::tmux::TmuxFocusState::detached(),
-    ) {
-        tracing::warn!(
-            error = %error,
-            path = %focus_path.display(),
-            "Failed to initialize tmux focus file before watch registration"
-        );
-        return;
-    }
-    crate::session_scanner::control::remove_legacy_tmux_focus_hooks();
-    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(&focus_path);
     if let Err(error) =
         watcher_guard.watch_file(TMUX_FOCUS_PROJECT_ID.to_string(), focus_path.clone())
     {
@@ -435,6 +421,16 @@ where
             "Watching tmux focus file"
         );
     }
+}
+
+pub(crate) fn repair_tmux_focus_hooks() {
+    let focus_path = crate::session_scanner::control::default_tmux_focus_path();
+    repair_tmux_focus_hooks_for_path(&focus_path);
+}
+
+fn repair_tmux_focus_hooks_for_path(focus_path: &std::path::Path) {
+    crate::session_scanner::control::remove_stale_tmux_focus_hooks(Some(focus_path));
+    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(focus_path);
 }
 
 fn emit_watch_bootstrap_event(

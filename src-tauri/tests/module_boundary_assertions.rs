@@ -109,3 +109,30 @@ fn mutable_scan_caches_are_not_global_statics() {
         "daemon project task scan cache must not be a mutable static"
     );
 }
+
+#[test]
+fn ensure_taurhaus_session_does_not_manage_tmux_focus_hooks() {
+    // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
+    // let an env-less daemon launch path remove every app-owned focus hook.
+    let source = read_source("src/session_scanner/control.rs");
+    let ensure_body = source
+        .split("fn ensure_taurhaus_session()")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("/// Propagate important environment variables")
+                .next()
+        })
+        .expect("ensure_taurhaus_session source body");
+
+    for hook_fn in [
+        "remove_legacy_tmux_focus_hooks",
+        "remove_stale_tmux_focus_hooks",
+        "install_tmux_focus_hooks",
+        "ensure_tmux_focus_hooks_for_path",
+    ] {
+        assert!(
+            !ensure_body.contains(hook_fn),
+            "daemon launch boundary must not reference app-owned hook function {hook_fn}"
+        );
+    }
+}

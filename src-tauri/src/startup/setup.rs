@@ -176,6 +176,7 @@ fn validate_startup_daemon_fast_path(
     let ping = provider
         .ping_info_with_timeout(STARTUP_DAEMON_FAST_PATH_TIMEOUT)
         .map_err(|error| std::io::Error::other(format!("startup daemon ping failed: {error}")))?;
+    super::daemon::log_daemon_data_root_mismatch(&ping);
 
     if ping.protocol_version != crate::daemon::protocol::PROTOCOL_VERSION {
         return Err(std::io::Error::other(format!(

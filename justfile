@@ -385,15 +385,17 @@ _install-daemon-from-build:
     WAS_RUNNING=false
     PRESERVED_ENV=()
     PRESERVED_ARGS=()
+    RESTART_DATA_DIR="${TAURHAUS_DATA_DIR:-$HOME/.local/share/com.taurhaus.dev}"
+    RESTART_PORT=17233
 
     # Check if daemon is currently running. Capture its TAURHAUS_*/RUST_LOG env
-    # and CLI args first so the restart is identical — an env-less restart makes
-    # the daemon strip the tmux focus hooks (dead sidebar tmux indicator).
+    # and CLI args first so the restart retains the same data/path authority.
     OLD_PID="$(pgrep -x "$DAEMON_BIN" | head -1 || true)"
     if [ -n "$OLD_PID" ]; then
         if [ -r "/proc/$OLD_PID/environ" ]; then
             while IFS= read -r -d '' kv; do
                 case "$kv" in
+                    TAURHAUS_DATA_DIR=*) RESTART_DATA_DIR="${kv#*=}" ;;
                     TAURHAUS_*=*|RUST_LOG=*) PRESERVED_ENV+=("$kv") ;;
                 esac
             done < "/proc/$OLD_PID/environ"
@@ -402,6 +404,26 @@ _install-daemon-from-build:
             mapfile -d '' -t CMD < "/proc/$OLD_PID/cmdline"
             PRESERVED_ARGS=("${CMD[@]:1}")
         fi
+
+        # Normalize identity flags so repeated installs do not accumulate
+        # duplicate --data-dir/--port arguments. The rebuilt daemon supports both.
+        EXTRA_ARGS=()
+        for ((i=0; i<${#PRESERVED_ARGS[@]}; i++)); do
+            case "${PRESERVED_ARGS[$i]}" in
+                --data-dir)
+                    i=$((i + 1))
+                    RESTART_DATA_DIR="${PRESERVED_ARGS[$i]:-$RESTART_DATA_DIR}"
+                    ;;
+                --port|-p)
+                    i=$((i + 1))
+                    RESTART_PORT="${PRESERVED_ARGS[$i]:-$RESTART_PORT}"
+                    ;;
+                *) EXTRA_ARGS+=("${PRESERVED_ARGS[$i]}") ;;
+            esac
+        done
+        [ -n "$RESTART_DATA_DIR" ] || RESTART_DATA_DIR="$HOME/.local/share/com.taurhaus.dev"
+        PRESERVED_ARGS=(--data-dir "$RESTART_DATA_DIR" --port "$RESTART_PORT" "${EXTRA_ARGS[@]}")
+        PRESERVED_ENV+=("TAURHAUS_DATA_DIR=$RESTART_DATA_DIR")
         echo "▸ Stopping running $DAEMON_BIN (PID $OLD_PID)…"
         pkill -x "$DAEMON_BIN" || true
         # Wait for it to actually exit (up to 5s)

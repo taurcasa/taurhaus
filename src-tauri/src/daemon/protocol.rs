@@ -128,6 +128,12 @@ pub struct PingResult {
     #[serde(default)]
     pub protocol_version: u32,
     pub uptime_secs: u64,
+    /// Canonical app-data root used by the daemon. Additive for older daemons.
+    #[serde(default)]
+    pub data_root: String,
+    /// Tmux focus file derived from `data_root`. Additive for older daemons.
+    #[serde(default)]
+    pub focus_path: String,
 }
 
 /// `git_status` params
@@ -535,14 +541,19 @@ mod tests {
 
     #[test]
     fn ping_result_roundtrip() {
-        let r = PingResult {
+        // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
+        // exposed that daemon pings did not identify their data/focus path authority.
+        let ping = PingResult {
             version: "0.1.0".to_string(),
             protocol_version: PROTOCOL_VERSION,
             uptime_secs: 120,
+            data_root: "/tmp/taurhaus-data".to_string(),
+            focus_path: "/tmp/taurhaus-data/tmux-focus.json".to_string(),
         };
-        let json = serde_json::to_string(&r).unwrap();
-        let back: PingResult = serde_json::from_str(&json).unwrap();
-        assert_eq!(r, back);
+        let json = serde_json::to_string(&ping).unwrap();
+        let roundtrip: PingResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(roundtrip, ping);
     }
 
     #[test]
@@ -551,6 +562,8 @@ mod tests {
         let json = r#"{"version":"0.1.0","uptime_secs":60}"#;
         let r: PingResult = serde_json::from_str(json).unwrap();
         assert_eq!(r.protocol_version, 0);
+        assert!(r.data_root.is_empty());
+        assert!(r.focus_path.is_empty());
     }
 
     #[test]

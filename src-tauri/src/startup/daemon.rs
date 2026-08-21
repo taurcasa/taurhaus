@@ -17,7 +17,6 @@ pub(crate) fn spawn_background_bootstrap(
     bootstrap_complete: Arc<AtomicBool>,
 ) {
     let boot_distro = context.wsl_distro.clone();
-    let boot_data_dir = context.data_dir.clone();
     let boot_log_path = context.log_path.clone();
     let boot_connected = context.daemon_connected_at_startup;
     let daemon_addr = context.daemon_addr.clone();
@@ -63,7 +62,6 @@ pub(crate) fn spawn_background_bootstrap(
                 let Some(ref daemon) = provider_state.daemon else {
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
-                        &boot_data_dir,
                         false,
                         true,
                         "daemon_provider_missing_local_fallback",
@@ -101,7 +99,6 @@ pub(crate) fn spawn_background_bootstrap(
                     tracing::warn!(error = %error, "Failed to ensure bundled daemon install during startup");
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
-                        &boot_data_dir,
                         false,
                         true,
                         "daemon_install_failed_local_fallback",
@@ -142,7 +139,6 @@ pub(crate) fn spawn_background_bootstrap(
                     tracing::info!("Background bootstrap: daemon connected");
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
-                        &boot_data_dir,
                         true,
                         false,
                         "daemon_connected",
@@ -176,7 +172,6 @@ pub(crate) fn spawn_background_bootstrap(
                 } else {
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
-                        &boot_data_dir,
                         false,
                         true,
                         "daemon_failed_local_fallback",
@@ -380,6 +375,8 @@ fn validate_connected_daemon_runtime(
 fn ensure_expected_daemon_runtime(
     ping: &crate::daemon::protocol::PingResult,
 ) -> Result<(), String> {
+    log_daemon_data_root_mismatch(ping);
+
     if ping.protocol_version != crate::daemon::protocol::PROTOCOL_VERSION {
         return Err(format!(
             "daemon protocol mismatch: running={}, expected={}",
@@ -397,6 +394,54 @@ fn ensure_expected_daemon_runtime(
     }
 
     Ok(())
+}
+
+pub(super) fn log_daemon_data_root_mismatch(ping: &crate::daemon::protocol::PingResult) {
+    if ping.data_root.trim().is_empty() {
+        return;
+    }
+
+    let app_data_root = crate::provider::platform_paths::PlatformPaths::app_data_root();
+    let app_data_root_text = app_data_root.display().to_string();
+    if crate::provider::path::normalize_project_path(&ping.data_root)
+        == crate::provider::path::normalize_project_path(&app_data_root_text)
+    {
+        return;
+    }
+
+    tracing::warn!(
+        daemon_data_root = %ping.data_root,
+        app_data_root = %app_data_root.display(),
+        daemon_focus_path = %ping.focus_path,
+        "Daemon data root differs from the app data root"
+    );
+    let mut fields = Map::new();
+    fields.insert(
+        "daemon_data_root".to_string(),
+        Value::String(ping.data_root.clone()),
+    );
+    fields.insert(
+        "app_data_root".to_string(),
+        Value::String(app_data_root_text),
+    );
+    fields.insert(
+        "daemon_focus_path".to_string(),
+        Value::String(ping.focus_path.clone()),
+    );
+    fields.insert(
+        "app_focus_path".to_string(),
+        Value::String(
+            crate::session_scanner::control::default_tmux_focus_path()
+                .display()
+                .to_string(),
+        ),
+    );
+    emit_startup_event(
+        "warn",
+        "daemon.data_root.mismatch",
+        "Daemon data root differs from the app data root",
+        fields,
+    );
 }
 
 pub(crate) fn start_runtime_monitors(
@@ -432,6 +477,23 @@ fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde
 #[cfg(test)]
 mod tests {
     use super::ensure_expected_daemon_runtime;
+    use crate::commands::logging::{install_global_sink, LogFileState};
+    use std::time::Duration;
+
+    fn wait_for_event(path: &std::path::Path, event: &str) -> Option<serde_json::Value> {
+        for _ in 0..100 {
+            let content = std::fs::read_to_string(path).unwrap_or_default();
+            if let Some(value) = content
+                .lines()
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .find(|value| value["event"] == event)
+            {
+                return Some(value);
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
 
     #[test]
     fn ensure_expected_daemon_runtime_accepts_matching_contract() {
@@ -439,6 +501,12 @@ mod tests {
             version: env!("CARGO_PKG_VERSION").to_string(),
             protocol_version: crate::daemon::protocol::PROTOCOL_VERSION,
             uptime_secs: 1,
+            data_root: crate::provider::platform_paths::PlatformPaths::app_data_root()
+                .display()
+                .to_string(),
+            focus_path: crate::session_scanner::control::default_tmux_focus_path()
+                .display()
+                .to_string(),
         };
 
         assert!(ensure_expected_daemon_runtime(&ping).is_ok());
@@ -450,6 +518,8 @@ mod tests {
             version: "0.0.1".to_string(),
             protocol_version: crate::daemon::protocol::PROTOCOL_VERSION,
             uptime_secs: 1,
+            data_root: String::new(),
+            focus_path: String::new(),
         };
 
         let error = ensure_expected_daemon_runtime(&ping).expect_err("mismatch should fail");
@@ -462,9 +532,40 @@ mod tests {
             version: env!("CARGO_PKG_VERSION").to_string(),
             protocol_version: crate::daemon::protocol::PROTOCOL_VERSION.saturating_sub(1),
             uptime_secs: 1,
+            data_root: String::new(),
+            focus_path: String::new(),
         };
 
         let error = ensure_expected_daemon_runtime(&ping).expect_err("mismatch should fail");
         assert!(error.contains("daemon protocol mismatch"));
+    }
+
+    #[test]
+    fn startup_logs_daemon_data_root_mismatch() {
+        // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
+        // left the app unable to diagnose a daemon using a different focus file.
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let log_path = dir.path().join("startup-daemon.log.jsonl");
+        let state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&state);
+        let ping: crate::daemon::protocol::PingResult = serde_json::from_value(serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "protocol_version": crate::daemon::protocol::PROTOCOL_VERSION,
+            "uptime_secs": 1,
+            "data_root": "/definitely/not/the/app/data/root",
+            "focus_path": "/definitely/not/the/app/data/root/tmux-focus.json"
+        }))
+        .expect("ping payload");
+
+        ensure_expected_daemon_runtime(&ping).expect("runtime contract remains compatible");
+
+        let event = wait_for_event(&log_path, "daemon.data_root.mismatch")
+            .expect("startup must emit daemon.data_root.mismatch");
+        assert_eq!(
+            event["daemon_data_root"],
+            "/definitely/not/the/app/data/root"
+        );
+        assert!(event["app_data_root"].is_string());
     }
 }
