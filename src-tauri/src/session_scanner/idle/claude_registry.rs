@@ -14,8 +14,10 @@
 //!   therefore *not* evidence of anything and is never used here as an expiry.
 //! - The rewrite lands 11–64 ms after the embedded `updatedAt`, so a scanner
 //!   poll sees a transition within one cadence tick.
-//! - The record appears only after the workspace-trust prompt is accepted and
-//!   is removed when the session exits cleanly.
+//! - The record appears only after the workspace-trust prompt is accepted. It
+//!   is removed on a clean exit, but an unclean one leaves it behind — this
+//!   host holds six records for long-dead PIDs — so `procStart` (the writing
+//!   process's `/proc/<pid>/stat` field 22) is checked as a PID-reuse guard.
 
 use std::path::{Path, PathBuf};
 
@@ -24,7 +26,10 @@ use serde::Deserialize;
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::SessionState;
 
-use super::{age_secs_since_mtime, file_mtime, path_to_slug, IdleResult};
+use super::{
+    age_secs_since_mtime, classify_mtime, file_mtime, most_recent_mtime, newest_file_mtime,
+    path_to_slug, IdleResult, ACTIVE_THRESHOLD,
+};
 
 /// Directory holding the per-PID registry records.
 const SESSIONS_SUBDIR: &str = "sessions";
@@ -49,6 +54,12 @@ pub(super) struct RegistryEntry {
     pub version: String,
     #[serde(default)]
     pub status: Option<String>,
+    /// Start time of the PID that wrote the record, in `/proc/<pid>/stat`
+    /// field-22 clock ticks. A string on every observed release; kept as a raw
+    /// JSON value so a future numeric spelling cannot make the whole record
+    /// unparsable (which would drop the session entirely).
+    #[serde(default, rename = "procStart")]
+    pub proc_start: Option<serde_json::Value>,
     /// `<session>:@<window>.<pane>` of the pane the session runs in.
     #[serde(default)]
     pub tmux: Option<String>,
@@ -102,7 +113,8 @@ fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
 /// `waiting` is a pending tool-permission prompt (S1): the session is blocked
 /// on the human, which is idle as far as the display is concerned. `shell` is
 /// the user shelled out of the agent loop. An unrecognised status returns
-/// `None` so the caller falls back to the heuristics instead of guessing.
+/// `None` — the state then comes from the heuristic instead of a guess, while
+/// the record's identity is kept (see `detect_idle_from_registry`).
 pub(super) fn state_for_status(status: &str) -> Option<SessionState> {
     match status {
         "busy" => Some(SessionState::Active),
@@ -111,8 +123,17 @@ pub(super) fn state_for_status(status: &str) -> Option<SessionState> {
     }
 }
 
-/// Authoritative idle result for `pid`, or `None` when the registry cannot
-/// answer (absent, too old, another project, unknown status).
+/// Idle result for `pid` from its own registry record, or `None` when the
+/// registry cannot answer at all (absent, too old, another project, a record
+/// left behind by a dead session that held this PID before).
+///
+/// Identity and activity are separate answers. A record that passes the gates
+/// is PID-specific proof of *which* session this process runs, so its
+/// `sessionId` and transcript are used whatever the status says. Only a status
+/// this build understands makes the *state* authoritative; for anything else
+/// the state falls back to the transcript heuristic with
+/// `authoritative: false`, which is what the plan asks for and what keeps a
+/// second pane in the same project from being handed this session's identity.
 pub(super) fn detect_idle_from_registry(
     project_path: &str,
     pid: u32,
@@ -139,19 +160,84 @@ pub(super) fn detect_idle_from_registry(
         return None;
     }
 
-    let status = entry.status.as_deref()?;
-    let state = state_for_status(status)?;
+    if !proc_start_matches(pid, entry.proc_start.as_ref()) {
+        tracing::debug!(
+            pid,
+            session_id = %entry.session_id,
+            "Claude sessions registry record was written by an earlier process with this PID"
+        );
+        return None;
+    }
 
     let transcript = transcript_path(config_dir, &entry);
-    let transcript_mtime = transcript.as_deref().and_then(file_mtime);
+    let latest_output = latest_output_mtime(config_dir, &entry, transcript.as_deref());
+
+    let reported = entry.status.as_deref().and_then(state_for_status);
+    if reported.is_none() {
+        tracing::debug!(
+            pid,
+            status = entry.status.as_deref().unwrap_or("<missing>"),
+            "unrecognised Claude sessions registry status; identity kept, state from the heuristic"
+        );
+    }
+
+    let heuristic_state = latest_output
+        .map(|mtime| classify_mtime(mtime, ACTIVE_THRESHOLD))
+        .unwrap_or(SessionState::Idle);
 
     Some(IdleResult {
-        state,
+        state: reported.unwrap_or(heuristic_state),
         session_id: Some(entry.session_id),
         jsonl_path: transcript.map(|path| path.to_string_lossy().to_string()),
-        last_output_age_secs: transcript_mtime.map(age_secs_since_mtime),
-        authoritative: true,
+        last_output_age_secs: latest_output.map(age_secs_since_mtime),
+        authoritative: reported.is_some(),
     })
+}
+
+/// Whether the live process is the one that wrote the record.
+///
+/// Claude Code stores the writing process's start time (`/proc/<pid>/stat`
+/// field 22) as `procStart`; records outlive unclean exits, and PIDs wrap, so
+/// without this check a fresh session in the same project could inherit a dead
+/// one's identity and frozen status. Unknown on either side — an older record,
+/// a platform without the value — means "cannot disprove", and the record is
+/// used.
+fn proc_start_matches(pid: u32, recorded: Option<&serde_json::Value>) -> bool {
+    let Some(recorded) = recorded.and_then(json_u64) else {
+        return true;
+    };
+    let Some(actual) = crate::platform::process_start_ticks(pid) else {
+        return true;
+    };
+    recorded == actual
+}
+
+/// `procStart` as a number, whether the record spells it as a string or a JSON
+/// number.
+fn json_u64(value: &serde_json::Value) -> Option<u64> {
+    match value {
+        serde_json::Value::String(text) => text.trim().parse().ok(),
+        serde_json::Value::Number(number) => number.as_u64(),
+        _ => None,
+    }
+}
+
+/// Newest write by this session: its transcript, or a compaction subagent
+/// writing under it while the transcript is quiet.
+fn latest_output_mtime(
+    config_dir: &Path,
+    entry: &RegistryEntry,
+    transcript: Option<&Path>,
+) -> Option<std::time::SystemTime> {
+    let subagents = config_dir
+        .join(PROJECTS_SUBDIR)
+        .join(path_to_slug(&entry.cwd))
+        .join(&entry.session_id)
+        .join("subagents");
+    most_recent_mtime(
+        transcript.and_then(file_mtime),
+        newest_file_mtime(&subagents),
+    )
 }
 
 /// Transcript for a registry record, under the same config root.
@@ -268,14 +354,51 @@ mod tests {
         assert!(!version_supported("not-a-version"));
     }
 
+    // Regression: c9669ef returned `None` for a status this build does not
+    // know, throwing away the record's PID-correct `sessionId` with it. The
+    // caller then fell back to "newest transcript in the project", which in a
+    // two-pane project is another pane's session. Identity is the record's
+    // whatever the status says; only the *activity* stops being authoritative.
     #[test]
-    fn unknown_status_falls_back_to_heuristics() {
+    fn unknown_status_keeps_the_identity_but_is_not_authoritative() {
         let tmp = TempDir::new().unwrap();
         write_record(tmp.path(), 27051, "hibernating", "2.1.238");
+        write_transcript(tmp.path(), PROJECT);
 
-        assert!(detect_idle_from_registry(PROJECT, 27051, tmp.path()).is_none());
+        let result = detect_idle_from_registry(PROJECT, 27051, tmp.path()).unwrap();
+
+        assert!(!result.authoritative);
+        assert_eq!(result.session_id.as_deref(), Some(SESSION_ID));
+        assert!(result
+            .jsonl_path
+            .as_deref()
+            .is_some_and(|path| path.ends_with(&format!("{SESSION_ID}.jsonl"))));
+        // The fresh transcript is the only signal left, so the state is the
+        // mtime heuristic — not a guess about what "hibernating" means.
+        assert_eq!(result.state, SessionState::Active);
+
         assert_eq!(state_for_status("busy"), Some(SessionState::Active));
         assert_eq!(state_for_status("nonsense"), None);
+    }
+
+    #[test]
+    fn missing_status_keeps_the_identity_but_is_not_authoritative() {
+        let tmp = TempDir::new().unwrap();
+        let dir = sessions_dir(tmp.path());
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("27051.json"),
+            format!(
+                r#"{{"pid":27051,"sessionId":"{SESSION_ID}","cwd":"{PROJECT}","version":"2.1.238"}}"#
+            ),
+        )
+        .unwrap();
+
+        let result = detect_idle_from_registry(PROJECT, 27051, tmp.path()).unwrap();
+
+        assert!(!result.authoritative);
+        assert_eq!(result.session_id.as_deref(), Some(SESSION_ID));
+        assert_eq!(result.state, SessionState::Idle);
     }
 
     #[test]
@@ -302,6 +425,62 @@ mod tests {
         assert_eq!(result.state, SessionState::Active);
         assert!(result.authoritative);
         assert!(result.jsonl_path.is_none());
+    }
+
+    fn write_record_with_proc_start(config_dir: &Path, pid: u32, proc_start: &str) {
+        let dir = sessions_dir(config_dir);
+        fs::create_dir_all(&dir).unwrap();
+        let record = format!(
+            r#"{{"pid":{pid},"sessionId":"{SESSION_ID}","cwd":"{PROJECT}","procStart":{proc_start},"version":"2.1.238","status":"busy"}}"#
+        );
+        fs::write(dir.join(format!("{pid}.json")), record).unwrap();
+    }
+
+    // Regression: c9669ef adopted any `<pid>.json` whose version and cwd
+    // matched, although every supported record carries `procStart` (verified
+    // live: it equals `/proc/<pid>/stat` field 22) precisely as a PID-reuse
+    // guard. Records outlive unclean exits — `~/.claude/sessions/` on this host
+    // held six records for long-dead PIDs — and PIDs wrap here about every
+    // 1.5 days, so a fresh `claude` landing on a stale PID in the same cwd
+    // would inherit a dead session's id and frozen status, authoritatively.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn record_with_foreign_proc_start_is_ignored() {
+        let tmp = TempDir::new().unwrap();
+        let pid = std::process::id();
+        write_record_with_proc_start(tmp.path(), pid, r#""1""#);
+
+        assert!(detect_idle_from_registry(PROJECT, pid, tmp.path()).is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn record_with_the_processes_own_proc_start_is_used() {
+        let tmp = TempDir::new().unwrap();
+        let pid = std::process::id();
+        let ticks = crate::platform::process_start_ticks(pid).expect("own start ticks");
+        write_record_with_proc_start(tmp.path(), pid, &format!(r#""{ticks}""#));
+
+        let result = detect_idle_from_registry(PROJECT, pid, tmp.path()).unwrap();
+
+        assert_eq!(result.state, SessionState::Active);
+        assert!(result.authoritative);
+    }
+
+    /// `procStart` is a string today; a future numeric spelling must not make
+    /// the whole record unparsable (which would drop the session entirely).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn numeric_proc_start_is_compared_the_same_way() {
+        let tmp = TempDir::new().unwrap();
+        let pid = std::process::id();
+        let ticks = crate::platform::process_start_ticks(pid).expect("own start ticks");
+        write_record_with_proc_start(tmp.path(), pid, &ticks.to_string());
+
+        assert!(detect_idle_from_registry(PROJECT, pid, tmp.path()).is_some());
+
+        write_record_with_proc_start(tmp.path(), pid, "1");
+        assert!(detect_idle_from_registry(PROJECT, pid, tmp.path()).is_none());
     }
 
     #[test]

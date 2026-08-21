@@ -348,6 +348,17 @@ pub(crate) fn retain_state_trackers(active_pids: &[u32]) {
     }
 }
 
+/// Drop one PID's hysteresis tracker (test cleanup only).
+#[cfg(test)]
+pub(crate) fn remove_state_tracker(pid: u32) {
+    let mut guard = STATE_TRACKERS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(map) = guard.as_mut() {
+        map.remove(&pid);
+    }
+}
+
 /// Reported/raw hysteresis state for one PID (test inspection only).
 #[cfg(test)]
 pub(crate) fn state_tracker_snapshot(pid: u32) -> Option<(SessionState, SessionState)> {
@@ -398,15 +409,6 @@ mod tests {
 
     fn reported_state(pid: u32, raw: SessionState) -> SessionState {
         apply_hysteresis(pid, raw).0
-    }
-
-    fn remove_state_tracker(pid: u32) {
-        let mut guard = STATE_TRACKERS
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if let Some(map) = guard.as_mut() {
-            map.remove(&pid);
-        }
     }
 
     fn process_info(pid: u32, tty: &str) -> process::ProcessInfo {

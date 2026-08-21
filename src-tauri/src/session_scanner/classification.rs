@@ -334,6 +334,7 @@ pub(crate) fn set_runtime_idle_detector_override(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::{cache, SCANNER_TEST_LOCK};
 
     fn runtime_session(pid: u32, tty: &str, cli_tool: CliTool) -> RuntimeSession {
         RuntimeSession {
@@ -381,6 +382,11 @@ mod tests {
         }
     }
 
+    /// One classification poll against the process-global hysteresis trackers.
+    ///
+    /// The caller holds `SCANNER_TEST_LOCK` for the whole sequence: these polls
+    /// depend on tracker continuity, and other scanner tests prune the tracker
+    /// map wholesale (`retain_state_trackers(&[])`, `E2eScanner::drop`).
     fn classify_once(pid: u32, result: idle::IdleResult) -> RuntimeSession {
         let sessions_per_project_tool =
             HashMap::from([(("/home/user/proj-a".to_string(), CliTool::Claude), 1)]);
@@ -399,7 +405,10 @@ mod tests {
     // (the sessions registry) is the state — nothing to smooth.
     #[test]
     fn authoritative_result_skips_hysteresis_and_lands_on_the_first_poll() {
-        let pid = 910_001;
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_001;
         assert_eq!(
             classify_once(pid, idle_result(SessionState::Idle, true)).state,
             SessionState::Idle
@@ -412,11 +421,15 @@ mod tests {
             flipped.activity_attribution,
             ActivityAttribution::Attributed
         );
+        cache::remove_state_tracker(pid);
     }
 
     #[test]
     fn heuristic_result_still_needs_two_polls_to_flip() {
-        let pid = 910_002;
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_002;
         assert_eq!(
             classify_once(pid, idle_result(SessionState::Idle, false)).state,
             SessionState::Idle
@@ -430,17 +443,24 @@ mod tests {
             classify_once(pid, idle_result(SessionState::Active, false)).state,
             SessionState::Active
         );
+        cache::remove_state_tracker(pid);
     }
 
     #[test]
     fn authoritative_result_replaces_the_rchar_signal() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // The PID does not exist, so `/proc/<pid>/io` yields nothing: an active
         // `recent_io` can only have come from the authoritative source.
-        let session = classify_once(910_003, idle_result(SessionState::Active, true));
+        let session = classify_once(941_003, idle_result(SessionState::Active, true));
         assert!(session.recent_io);
 
-        let idle = classify_once(910_004, idle_result(SessionState::Idle, true));
+        let idle = classify_once(941_004, idle_result(SessionState::Idle, true));
         assert!(!idle.recent_io);
+
+        cache::remove_state_tracker(941_003);
+        cache::remove_state_tracker(941_004);
     }
 
     #[test]

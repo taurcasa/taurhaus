@@ -255,6 +255,40 @@ mod tests {
         assert!(!result.authoritative);
     }
 
+    // Regression: c9669ef dropped the whole registry record when its `status`
+    // was one this build does not know, so `claude_detect_runtime_idle_with`
+    // fell back to "newest transcript in the project" — which in a project with
+    // two Claude panes hands this PID the *other* pane's session id and
+    // transcript. The record's identity is PID-specific and stays; only the
+    // activity falls back to the heuristic.
+    #[test]
+    fn unknown_status_keeps_this_pids_transcript_not_the_projects_newest() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join(".claude-account2");
+        let project = "/home/user/projects/foo";
+
+        let mine = write_transcript(&config_dir, project, "session-mine");
+        filetime_set_mtime(&mine, SystemTime::now() - Duration::from_secs(30));
+        // A second pane in the same project, writing right now.
+        write_transcript(&config_dir, project, "session-other-pane");
+        write_registry_record(&config_dir, 4242, "session-mine", project, "hibernating");
+
+        let lookup = env_map(&[(
+            4242,
+            "CLAUDE_CONFIG_DIR",
+            config_dir.to_string_lossy().as_ref(),
+        )]);
+        let result = claude_detect_runtime_idle_with(project, 4242, &lookup);
+
+        assert_eq!(result.session_id.as_deref(), Some("session-mine"));
+        assert_eq!(
+            result.jsonl_path.as_deref(),
+            Some(mine.to_string_lossy().as_ref())
+        );
+        assert!(!result.authoritative);
+        assert_eq!(result.state, SessionState::Idle);
+    }
+
     #[test]
     fn claude_config_dir_falls_back_to_the_app_root_when_unset() {
         let lookup = env_map(&[]);

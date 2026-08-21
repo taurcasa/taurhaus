@@ -88,8 +88,81 @@ pub fn list_processes() -> Option<Vec<(u32, String)>> {
     None
 }
 
-/// Not implemented on macOS yet; callers fall back to defaults.
-pub fn process_env_var(_pid: u32, _name: &str) -> Option<String> {
+/// Read one variable from another process's environment via `ps -Eww`.
+///
+/// macOS has no `/proc`, but `ps -E` appends a process's environment to its
+/// command column — for processes owned by the same user, which is exactly the
+/// case the scanner needs (`CLAUDE_CONFIG_DIR` on a session this user
+/// launched). Returns `None` when the process is gone, belongs to another
+/// user, or does not carry the variable; every caller has a default for that.
+pub fn process_env_var(pid: u32, name: &str) -> Option<String> {
+    let output = Command::new("ps")
+        .args(["-Eww", "-o", "command=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    env_var_from_ps_command(&String::from_utf8_lossy(&output.stdout), name)
+}
+
+/// Extract `NAME=value` from the `command` column of `ps -E`.
+///
+/// The column is `argv…` followed by the environment, space separated, so a
+/// value runs until the next `KEY=` token starts (or the end of the line).
+/// Only a token that starts a word is a candidate, so an argument such as
+/// `--define=NAME=x` is not mistaken for the variable. A value that itself
+/// contains something shaped like ` KEY=` is truncated there — `ps` output
+/// carries no quoting that would let anyone do better.
+fn env_var_from_ps_command(command: &str, name: &str) -> Option<String> {
+    let needle = format!("{name}=");
+    for line in command.lines() {
+        let Some(start) = word_start_of(line, &needle) else {
+            continue;
+        };
+        let rest = &line[start + needle.len()..];
+        let end = rest
+            .match_indices(' ')
+            .find(|(index, _)| starts_env_token(&rest[index + 1..]))
+            .map_or(rest.len(), |(index, _)| index);
+        return Some(rest[..end].to_string());
+    }
+    None
+}
+
+/// Byte offset where `needle` starts a space-delimited word in `line`.
+fn word_start_of(line: &str, needle: &str) -> Option<usize> {
+    line.match_indices(needle)
+        .find(|(index, _)| *index == 0 || line.as_bytes()[index - 1] == b' ')
+        .map(|(index, _)| index)
+}
+
+/// Whether `rest` begins with an environment assignment (`KEY=`).
+fn starts_env_token(rest: &str) -> bool {
+    let mut chars = rest.char_indices();
+    match chars.next() {
+        Some((_, first)) if first.is_ascii_alphabetic() || first == '_' => {}
+        _ => return false,
+    }
+    for (index, c) in chars {
+        if c == '=' {
+            return index > 0;
+        }
+        if !(c.is_ascii_alphanumeric() || c == '_') {
+            return false;
+        }
+    }
+    false
+}
+
+/// Process start time, for PID-reuse guards.
+///
+/// Linux-only (`/proc/<pid>/stat` field 22, the unit Claude Code records as
+/// `procStart`). macOS has no comparable value in the registry record, so the
+/// guard is skipped here rather than compared against a different clock.
+pub fn process_start_ticks(_pid: u32) -> Option<u64> {
     None
 }
 
@@ -257,5 +330,79 @@ mod tests {
         let pid = std::process::id();
         let rchar = process_rchar(pid);
         assert!(rchar.is_some(), "Should be able to read our own IO stats");
+    }
+
+    // Regression: 06b432d added `process_env_var` for the Linux `/proc` reader
+    // and stubbed macOS to `None`, so the native macOS daemon silently ignored
+    // a session's `CLAUDE_CONFIG_DIR` and looked for its registry record and
+    // transcript under the app's own `~/.claude` — the same "always yellow"
+    // symptom the Linux fix removed. Exercises the real `ps -Eww` path.
+    #[test]
+    fn process_env_var_reads_child_environment() {
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .env("TAURHAUS_ENV_PROBE", "probe-42")
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+
+        // Until the child has exec'd, its environment is not the one we set.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut probe = process_env_var(pid, "TAURHAUS_ENV_PROBE");
+        while probe.is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            probe = process_env_var(pid, "TAURHAUS_ENV_PROBE");
+        }
+
+        assert_eq!(probe.as_deref(), Some("probe-42"));
+        assert_eq!(process_env_var(pid, "TAURHAUS_ENV_PROBE_MISSING"), None);
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn process_env_var_returns_none_for_nonexistent_pid() {
+        assert!(process_env_var(999_999_999, "PATH").is_none());
+    }
+
+    #[test]
+    fn env_var_from_ps_command_parses_the_environment_tail() {
+        let line = "claude --continue PATH=/usr/bin CLAUDE_CONFIG_DIR=/Users/m1/.claude-account2 SHELL=/bin/zsh";
+        assert_eq!(
+            env_var_from_ps_command(line, "CLAUDE_CONFIG_DIR").as_deref(),
+            Some("/Users/m1/.claude-account2")
+        );
+        // Last token on the line.
+        assert_eq!(
+            env_var_from_ps_command(line, "SHELL").as_deref(),
+            Some("/bin/zsh")
+        );
+        // A value with spaces ends at the next `KEY=`.
+        assert_eq!(
+            env_var_from_ps_command(
+                "claude CLAUDE_CONFIG_DIR=/Users/m1/My Cfg/.claude TERM=xterm",
+                "CLAUDE_CONFIG_DIR"
+            )
+            .as_deref(),
+            Some("/Users/m1/My Cfg/.claude")
+        );
+        // An argv flag that embeds the name is not the variable.
+        assert_eq!(
+            env_var_from_ps_command(
+                "claude --define=CLAUDE_CONFIG_DIR=/nope TERM=xterm",
+                "CLAUDE_CONFIG_DIR"
+            ),
+            None
+        );
+        assert_eq!(
+            env_var_from_ps_command("claude TERM=xterm", "CLAUDE_CONFIG_DIR"),
+            None
+        );
+    }
+
+    #[test]
+    fn process_start_ticks_is_not_available_on_macos() {
+        assert!(process_start_ticks(std::process::id()).is_none());
     }
 }
