@@ -318,12 +318,44 @@ pub(crate) fn apply_hysteresis(
     (result, previous)
 }
 
+/// Record a state the tool reported about itself, bypassing hysteresis.
+///
+/// The tracker is still written so a later fall back to the heuristics resumes
+/// from the authoritative value instead of a stale one. Returns the previously
+/// reported state, like `apply_hysteresis`.
+pub(crate) fn record_authoritative_state(pid: u32, state: SessionState) -> Option<SessionState> {
+    let mut guard = STATE_TRACKERS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+    let previous = map.get(&pid).map(|tracker| tracker.reported);
+    map.insert(
+        pid,
+        StateTracker {
+            reported: state,
+            prev_raw: state,
+        },
+    );
+    previous
+}
+
 pub(crate) fn retain_state_trackers(active_pids: &[u32]) {
     let mut guard = STATE_TRACKERS
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     if let Some(map) = guard.as_mut() {
         map.retain(|pid, _| active_pids.contains(pid));
+    }
+}
+
+/// Drop one PID's hysteresis tracker (test cleanup only).
+#[cfg(test)]
+pub(crate) fn remove_state_tracker(pid: u32) {
+    let mut guard = STATE_TRACKERS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(map) = guard.as_mut() {
+        map.remove(&pid);
     }
 }
 
@@ -377,15 +409,6 @@ mod tests {
 
     fn reported_state(pid: u32, raw: SessionState) -> SessionState {
         apply_hysteresis(pid, raw).0
-    }
-
-    fn remove_state_tracker(pid: u32) {
-        let mut guard = STATE_TRACKERS
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if let Some(map) = guard.as_mut() {
-            map.remove(&pid);
-        }
     }
 
     fn process_info(pid: u32, tty: &str) -> process::ProcessInfo {

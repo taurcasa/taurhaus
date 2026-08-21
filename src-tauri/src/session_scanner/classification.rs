@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 #[cfg(test)]
 use std::sync::{Mutex, OnceLock};
 
-use super::cache::apply_hysteresis;
+use super::cache::{apply_hysteresis, record_authoritative_state};
 use super::{
     idle, proc_io, process, tmux, ActivityAttribution, ActivityConfidence, CliTool, RuntimeSession,
     SessionGroupKind, SessionState,
@@ -145,22 +145,33 @@ where
             };
             idle_ms += idle_started.elapsed();
 
-            let file_active = idle_result.state == SessionState::Active;
+            // The tool reported this state itself (Claude sessions registry):
+            // it replaces the file signal rather than supplementing it.
+            let authoritative = idle_result.authoritative;
+            let authoritative_active = authoritative && idle_result.state == SessionState::Active;
+            let file_active = !authoritative && idle_result.state == SessionState::Active;
             let sessions_for_tool_in_project = sessions_per_project_tool
                 .get(&(proc.project_path.clone(), proc.cli_tool))
                 .copied()
                 .unwrap_or(1);
 
             let process_signal_started = Instant::now();
-            let (process_active, recent_io) = match proc.cli_tool {
-                CliTool::Claude => {
-                    let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
-                    (recent_io, recent_io)
-                }
-                CliTool::Gemini => (proc_io::has_api_connections(proc.pid), false),
-                CliTool::Codex => {
-                    let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
-                    (recent_io, recent_io)
+            // `recent_io` carries "confirmed working now" downstream
+            // (`coordination::activity_export`); an authoritative status is at
+            // least as strong as an rchar burst, and the rchar poll is skipped.
+            let (process_active, recent_io) = if authoritative {
+                (authoritative_active, authoritative_active)
+            } else {
+                match proc.cli_tool {
+                    CliTool::Claude => {
+                        let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                        (recent_io, recent_io)
+                    }
+                    CliTool::Gemini => (proc_io::has_api_connections(proc.pid), false),
+                    CliTool::Codex => {
+                        let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                        (recent_io, recent_io)
+                    }
                 }
             };
             process_signal_ms += process_signal_started.elapsed();
@@ -182,14 +193,23 @@ where
                 deterministic_file_owner,
             );
 
-            let (state, previous_state) = apply_hysteresis(proc.pid, decision.raw_state);
+            // Hysteresis smooths a noisy heuristic; an authoritative status has
+            // no noise to smooth, so it lands on the poll that observed it.
+            let (state, previous_state) = if authoritative {
+                (
+                    idle_result.state,
+                    record_authoritative_state(proc.pid, idle_result.state),
+                )
+            } else {
+                apply_hysteresis(proc.pid, decision.raw_state)
+            };
             if previous_state != Some(state) {
                 emit_activity_state_changed(
                     proc.pid,
                     proc.cli_tool,
                     previous_state,
                     state,
-                    activity_source(process_active, file_active, proc.cli_tool),
+                    activity_source(authoritative, process_active, file_active, proc.cli_tool),
                 );
             }
             let (activity_confidence, activity_attribution, project_unattributed_active) =
@@ -236,7 +256,18 @@ where
 }
 
 /// Name the evidence behind a raw activity decision, for `activity.state.changed`.
-fn activity_source(process_active: bool, file_active: bool, cli_tool: CliTool) -> &'static str {
+///
+/// `authoritative` means the tool reported the state itself. Today the only
+/// such source is the Claude sessions registry; PR 13 adds Codex `-c notify`.
+fn activity_source(
+    authoritative: bool,
+    process_active: bool,
+    file_active: bool,
+    cli_tool: CliTool,
+) -> &'static str {
+    if authoritative {
+        return "registry";
+    }
     if process_active {
         match cli_tool {
             CliTool::Gemini => "tcp",
@@ -303,6 +334,7 @@ pub(crate) fn set_runtime_idle_detector_override(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::{cache, SCANNER_TEST_LOCK};
 
     fn runtime_session(pid: u32, tty: &str, cli_tool: CliTool) -> RuntimeSession {
         RuntimeSession {
@@ -330,13 +362,138 @@ mod tests {
         }
     }
 
+    fn claude_process(pid: u32) -> process::ProcessInfo {
+        process::ProcessInfo {
+            pid,
+            project_path: "/home/user/proj-a".to_string(),
+            tty: "/dev/pts/9".to_string(),
+            args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
+        }
+    }
+
+    fn idle_result(state: SessionState, authoritative: bool) -> idle::IdleResult {
+        idle::IdleResult {
+            state,
+            session_id: Some("session-1".to_string()),
+            jsonl_path: None,
+            last_output_age_secs: None,
+            authoritative,
+        }
+    }
+
+    /// One classification poll against the process-global hysteresis trackers.
+    ///
+    /// The caller holds `SCANNER_TEST_LOCK` for the whole sequence: these polls
+    /// depend on tracker continuity, and other scanner tests prune the tracker
+    /// map wholesale (`retain_state_trackers(&[])`, `E2eScanner::drop`).
+    fn classify_once(pid: u32, result: idle::IdleResult) -> RuntimeSession {
+        let sessions_per_project_tool =
+            HashMap::from([(("/home/user/proj-a".to_string(), CliTool::Claude), 1)]);
+        let (sessions, _, _, _) = classify_display_runtime_sessions_with(
+            vec![claude_process(pid)],
+            HashMap::new(),
+            &sessions_per_project_tool,
+            &move |_: &process::ProcessInfo| result.clone(),
+        );
+        sessions.into_iter().next().expect("one session")
+    }
+
+    // Regression: 9a66d1c classified every Claude session from transcript mtime
+    // plus rchar hysteresis, so a state the session itself reported was still
+    // delayed a poll and diluted to Low confidence. An authoritative result
+    // (the sessions registry) is the state — nothing to smooth.
+    #[test]
+    fn authoritative_result_skips_hysteresis_and_lands_on_the_first_poll() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_001;
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Idle, true)).state,
+            SessionState::Idle
+        );
+
+        let flipped = classify_once(pid, idle_result(SessionState::Active, true));
+        assert_eq!(flipped.state, SessionState::Active);
+        assert_eq!(flipped.activity_confidence, ActivityConfidence::High);
+        assert_eq!(
+            flipped.activity_attribution,
+            ActivityAttribution::Attributed
+        );
+        cache::remove_state_tracker(pid);
+    }
+
+    #[test]
+    fn heuristic_result_still_needs_two_polls_to_flip() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_002;
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Idle, false)).state,
+            SessionState::Idle
+        );
+        // Hysteresis holds the reported state for one cycle on a raw flip.
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Active, false)).state,
+            SessionState::Idle
+        );
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Active, false)).state,
+            SessionState::Active
+        );
+        cache::remove_state_tracker(pid);
+    }
+
+    #[test]
+    fn authoritative_result_replaces_the_rchar_signal() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        // The PID does not exist, so `/proc/<pid>/io` yields nothing: an active
+        // `recent_io` can only have come from the authoritative source.
+        let session = classify_once(941_003, idle_result(SessionState::Active, true));
+        assert!(session.recent_io);
+
+        let idle = classify_once(941_004, idle_result(SessionState::Idle, true));
+        assert!(!idle.recent_io);
+
+        cache::remove_state_tracker(941_003);
+        cache::remove_state_tracker(941_004);
+    }
+
+    #[test]
+    fn activity_source_names_the_registry_when_authoritative() {
+        assert_eq!(
+            activity_source(true, false, false, CliTool::Claude),
+            "registry"
+        );
+        assert_eq!(
+            activity_source(true, true, false, CliTool::Claude),
+            "registry"
+        );
+    }
+
     #[test]
     fn activity_source_names_the_driving_signal() {
-        assert_eq!(activity_source(true, true, CliTool::Claude), "process_io");
-        assert_eq!(activity_source(true, false, CliTool::Codex), "process_io");
-        assert_eq!(activity_source(true, false, CliTool::Gemini), "tcp");
-        assert_eq!(activity_source(false, true, CliTool::Claude), "transcript");
-        assert_eq!(activity_source(false, false, CliTool::Gemini), "none");
+        assert_eq!(
+            activity_source(false, true, true, CliTool::Claude),
+            "process_io"
+        );
+        assert_eq!(
+            activity_source(false, true, false, CliTool::Codex),
+            "process_io"
+        );
+        assert_eq!(activity_source(false, true, false, CliTool::Gemini), "tcp");
+        assert_eq!(
+            activity_source(false, false, true, CliTool::Claude),
+            "transcript"
+        );
+        assert_eq!(
+            activity_source(false, false, false, CliTool::Gemini),
+            "none"
+        );
     }
 
     #[test]

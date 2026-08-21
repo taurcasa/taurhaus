@@ -409,6 +409,9 @@ mod tests {
 
     #[test]
     fn scan_sessions_combines_all_sources() {
+        // `scan_sessions_with` reconciles the process-global Codex binding
+        // store, which the Codex tests assert on.
+        let _codex = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mock_processes = || {
             vec![
                 process::ProcessInfo {
@@ -450,6 +453,7 @@ mod tests {
                         "/home/user/.claude/projects/proj-a/sess-aaa.jsonl".to_string(),
                     ),
                     last_output_age_secs: None,
+                    authoritative: false,
                 }
             } else {
                 idle::IdleResult {
@@ -457,6 +461,7 @@ mod tests {
                     session_id: None,
                     jsonl_path: None,
                     last_output_age_secs: None,
+                    authoritative: false,
                 }
             }
         };
@@ -486,11 +491,15 @@ mod tests {
 
     #[test]
     fn scan_sessions_empty_when_no_processes() {
+        // `scan_sessions_with` reconciles the process-global Codex binding
+        // store, which the Codex tests assert on.
+        let _codex = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let sessions = scan_sessions_with(&|| vec![], &|| HashMap::new(), &|_| idle::IdleResult {
             state: SessionState::Active,
             session_id: None,
             jsonl_path: None,
             last_output_age_secs: None,
+            authoritative: false,
         });
         assert!(sessions.is_empty());
     }
@@ -550,6 +559,7 @@ mod tests {
                     session_id: Some("rollout-123".to_string()),
                     jsonl_path: Some("/tmp/rollout-123.jsonl".to_string()),
                     last_output_age_secs: Some(42),
+                    authoritative: false,
                 }
             } else {
                 idle::IdleResult {
@@ -557,6 +567,7 @@ mod tests {
                     session_id: Some("rollout-456".to_string()),
                     jsonl_path: Some("/tmp/rollout-456.jsonl".to_string()),
                     last_output_age_secs: Some(41),
+                    authoritative: false,
                 }
             }
         }
@@ -564,6 +575,10 @@ mod tests {
         let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
+        // `scan_sessions_for_runtime_with` reconciles the process-global Codex
+        // binding store, which the Codex tests assert on. Taken after the
+        // scanner lock: `E2eScanner` acquires them in that order.
+        let _codex = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_runtime_idle_detector_override(Some(runtime_idle_by_pid));
         let sessions = scan_sessions_for_runtime_with(&mock_processes, &mock_tmux);
         set_runtime_idle_detector_override(None);
@@ -579,6 +594,9 @@ mod tests {
 
     #[test]
     fn scan_sessions_deduplicates_same_tty_same_tool() {
+        // `scan_sessions_with` reconciles the process-global Codex binding
+        // store, which the Codex tests assert on.
+        let _codex = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mock_processes = || {
             vec![
                 process::ProcessInfo {
@@ -616,6 +634,7 @@ mod tests {
             session_id: None,
             jsonl_path: None,
             last_output_age_secs: None,
+            authoritative: false,
         };
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
@@ -627,6 +646,9 @@ mod tests {
 
     #[test]
     fn scan_sessions_keeps_different_tools_on_same_tty() {
+        // `scan_sessions_with` reconciles the process-global Codex binding
+        // store, which the Codex tests assert on.
+        let _codex = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mock_processes = || {
             vec![
                 process::ProcessInfo {
@@ -652,6 +674,7 @@ mod tests {
             session_id: None,
             jsonl_path: None,
             last_output_age_secs: None,
+            authoritative: false,
         };
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
@@ -710,6 +733,7 @@ mod tests {
             session_id: Some(format!("sess-{}", proc.pid)),
             jsonl_path: Some(format!("/tmp/sess-{}.jsonl", proc.pid)),
             last_output_age_secs: Some(1),
+            authoritative: false,
         }
     }
 
@@ -940,6 +964,7 @@ mod tests {
                 session_id: Some(session_id.to_string()),
                 jsonl_path: Some(format!("/home/user/.codex/sessions/{session_id}.jsonl")),
                 last_output_age_secs: None,
+                authoritative: false,
             },
             false,
         )

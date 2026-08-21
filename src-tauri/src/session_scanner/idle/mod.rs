@@ -21,6 +21,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 mod claude;
+mod claude_registry;
 mod codex;
 mod gemini;
 
@@ -54,6 +55,12 @@ pub struct IdleResult {
     pub jsonl_path: Option<String>,
     /// Seconds since the latest observed session output file changed.
     pub last_output_age_secs: Option<u64>,
+    /// The tool itself reported this state (Claude sessions registry).
+    ///
+    /// Authoritative results bypass the rchar heuristic and the display
+    /// hysteresis in `classification.rs` — there is nothing to smooth when the
+    /// session process wrote the state down.
+    pub authoritative: bool,
 }
 
 impl IdleResult {
@@ -64,6 +71,7 @@ impl IdleResult {
             session_id: None,
             jsonl_path: None,
             last_output_age_secs: None,
+            authoritative: false,
         }
     }
 }
@@ -113,8 +121,9 @@ pub fn detect_idle(project_path: &str, tool: CliTool) -> IdleResult {
 /// Detect runtime idle state for a specific process.
 ///
 /// Codex runtime correlation uses a per-PID JSONL match to avoid guessing when
-/// multiple Codex panes share one project path. Other tools still use the
-/// project-scoped resolver.
+/// multiple Codex panes share one project path. Claude resolves its own
+/// `CLAUDE_CONFIG_DIR` from the process environment and prefers the sessions
+/// registry. Other tools still use the project-scoped resolver.
 pub fn detect_runtime_idle(
     project_path: &str,
     pid: u32,
@@ -128,6 +137,7 @@ pub fn detect_runtime_idle(
                 .get_or_init(CodexResolver::new)
                 .detect_idle_for_pid(project_path, pid, pane_id)
         }
+        CliTool::Claude => claude::claude_detect_runtime_idle(project_path, pid),
         _ => detect_idle(project_path, tool),
     }
 }

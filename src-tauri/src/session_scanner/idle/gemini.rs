@@ -80,6 +80,7 @@ pub(super) fn gemini_detect_idle(project_path: &str, base_dir: &Path) -> IdleRes
         session_id,
         jsonl_path: Some(file_path),
         last_output_age_secs: output_mtime.map(age_secs_since_mtime),
+        authoritative: false,
     }
 }
 

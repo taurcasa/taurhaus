@@ -22,7 +22,15 @@ pub fn list_processes() -> Option<Vec<(u32, String)>> {
     None
 }
 
+/// CLI tools run inside WSL2 here, so their environment is read by the WSL
+/// daemon's Linux implementation, not from a native Windows process.
 pub fn process_env_var(_pid: u32, _name: &str) -> Option<String> {
+    None
+}
+
+/// Process start time for PID-reuse guards; see the Linux implementation.
+/// Native Windows PIDs are never the ones the scanner correlates.
+pub fn process_start_ticks(_pid: u32) -> Option<u64> {
     None
 }
 
