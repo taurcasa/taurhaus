@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-08-21
+
+Patch release: repairs the bundled mesh resource. The v0.6.4 Windows installer shipped `resources/mesh` as a directory instead of the mesh binary, which broke mesh installation on fresh installs (machines with an already-installed matching mesh were unaffected).
+
+### Fixed
+
+- **Bundled mesh resource shipped as a directory** — a stray directory at `src-tauri/resources/mesh` made `just bundle-mesh` copy the binary to `resources/mesh/mesh`, and the runtime accepted it because it only checked existence. The resolver now requires a regular file and reports a clear error, and the `bundle-mesh` recipe removes a directory at the target before bundling and asserts the result is a file. Regression tests added.
+
 ## [0.6.4] - 2026-08-20
 
 Patch release: CLI launch commands configured in Settings are now free-form, fixing launches for users with aliased or alternate Claude/Codex/Gemini installs.
