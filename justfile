@@ -383,10 +383,26 @@ _install-daemon-from-build:
     DAEMON_BIN="taurhaus-daemon"
     INSTALL_DIR="$HOME/.local/bin"
     WAS_RUNNING=false
+    PRESERVED_ENV=()
+    PRESERVED_ARGS=()
 
-    # Check if daemon is currently running
-    if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
-        echo "▸ Stopping running $DAEMON_BIN…"
+    # Check if daemon is currently running. Capture its TAURHAUS_*/RUST_LOG env
+    # and CLI args first so the restart is identical — an env-less restart makes
+    # the daemon strip the tmux focus hooks (dead sidebar tmux indicator).
+    OLD_PID="$(pgrep -x "$DAEMON_BIN" | head -1 || true)"
+    if [ -n "$OLD_PID" ]; then
+        if [ -r "/proc/$OLD_PID/environ" ]; then
+            while IFS= read -r -d '' kv; do
+                case "$kv" in
+                    TAURHAUS_*=*|RUST_LOG=*) PRESERVED_ENV+=("$kv") ;;
+                esac
+            done < "/proc/$OLD_PID/environ"
+        fi
+        if [ -r "/proc/$OLD_PID/cmdline" ]; then
+            mapfile -d '' -t CMD < "/proc/$OLD_PID/cmdline"
+            PRESERVED_ARGS=("${CMD[@]:1}")
+        fi
+        echo "▸ Stopping running $DAEMON_BIN (PID $OLD_PID)…"
         pkill -x "$DAEMON_BIN" || true
         # Wait for it to actually exit (up to 5s)
         for i in $(seq 1 10); do
@@ -409,15 +425,40 @@ _install-daemon-from-build:
     mv -f "$TMP_BIN" "$INSTALL_DIR/$DAEMON_BIN"
     echo "✓ Installed $DAEMON_BIN to $INSTALL_DIR/"
 
-    # Restart if it was running before
+    # Restart if it was running before: same env + args, fully detached from this
+    # shell (setsid + nohup + stdin from /dev/null), retrying while the listen
+    # port is still held by lingering FIN_WAIT2 sockets of the old process
+    # (common under WSL mirrored networking; clears within ~60s).
     if [ "$WAS_RUNNING" = true ]; then
         echo "▸ Restarting daemon…"
-        nohup "$INSTALL_DIR/$DAEMON_BIN" >/dev/null 2>&1 &
-        sleep 0.5
-        if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
-            echo "✓ Daemon restarted (PID $(pgrep -x $DAEMON_BIN))"
+        if [ "${#PRESERVED_ENV[@]}" -gt 0 ]; then
+            echo "  env: ${PRESERVED_ENV[*]}"
         else
-            echo "⚠ Daemon did not restart — start it manually"
+            echo "  env: (none preserved — previous daemon had no TAURHAUS_* env)"
+        fi
+        [ "${#PRESERVED_ARGS[@]}" -gt 0 ] && echo "  args: ${PRESERVED_ARGS[*]}"
+        STARTED=false
+        for attempt in $(seq 1 15); do
+            if [ "${#PRESERVED_ENV[@]}" -gt 0 ]; then
+                env "${PRESERVED_ENV[@]}" setsid nohup "$INSTALL_DIR/$DAEMON_BIN" "${PRESERVED_ARGS[@]}" >/dev/null 2>&1 </dev/null &
+            else
+                setsid nohup "$INSTALL_DIR/$DAEMON_BIN" "${PRESERVED_ARGS[@]}" >/dev/null 2>&1 </dev/null &
+            fi
+            disown || true
+            sleep 2
+            if pgrep -x "$DAEMON_BIN" >/dev/null 2>&1; then
+                STARTED=true
+                break
+            fi
+            echo "  · attempt $attempt: not up yet (port likely still in use) — retrying"
+            sleep 3
+        done
+        if [ "$STARTED" = true ]; then
+            echo "✓ Daemon restarted (PID $(pgrep -x $DAEMON_BIN | head -1))"
+        else
+            echo "⚠ Daemon did not restart after 15 attempts — start it manually:"
+            echo "    ${PRESERVED_ENV[*]:-} $INSTALL_DIR/$DAEMON_BIN ${PRESERVED_ARGS[*]:-}"
+            exit 1
         fi
     fi
 
