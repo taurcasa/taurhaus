@@ -132,10 +132,20 @@ pub fn detect_runtime_idle(
     }
 }
 
+#[cfg(test)]
+pub(crate) use codex::{set_binding_store_path_for_test, CODEX_TEST_LOCK};
+
+/// Number of `reconcile_codex_bindings` calls (test inspection only).
+#[cfg(test)]
+pub(crate) static CODEX_RECONCILE_CALLS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 pub(crate) fn reconcile_codex_bindings(
     processes: &[ProcessInfo],
     pane_map: &HashMap<String, TmuxPane>,
 ) {
+    #[cfg(test)]
+    CODEX_RECONCILE_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     codex::reconcile_persisted_bindings(processes, pane_map);
 }
 

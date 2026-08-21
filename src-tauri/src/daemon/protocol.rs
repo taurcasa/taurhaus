@@ -343,6 +343,12 @@ pub struct RuntimeSessionSnapshotResult {
     pub runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
     pub focus: Option<crate::session_scanner::tmux::TmuxFocusState>,
     pub foreground_project_path: Option<String>,
+    /// The daemon scanner's latest cycle could not read its process inventory:
+    /// the sessions are the hub's last good snapshot, not an observation, and
+    /// must not bind identities or promote activity. Additive: older daemons
+    /// omit the field and decode as `false` (their behavior so far).
+    #[serde(default)]
+    pub degraded: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -802,5 +808,35 @@ mod tests {
         let json = serde_json::to_string(&r).unwrap();
         let back: WaitSessionUpdatesResult = serde_json::from_str(&json).unwrap();
         assert_eq!(r, back);
+    }
+
+    // Regression: the daemon hub kept its last good sessions across degraded
+    // scanner cycles but the runtime-session protocol carried no degradation
+    // status, so the Windows app read the cached snapshot as a fresh
+    // observation. The flag travels on `get_runtime_session_snapshot`.
+    #[test]
+    fn runtime_session_snapshot_result_roundtrip_carries_degraded() {
+        let r = RuntimeSessionSnapshotResult {
+            version: 9,
+            display_sessions: vec![],
+            runtime_sessions: vec![],
+            focus: None,
+            foreground_project_path: None,
+            degraded: true,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"degraded\":true"));
+        let back: RuntimeSessionSnapshotResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(r, back);
+    }
+
+    // Regression companion: the field is additive — a daemon built before it
+    // omits it and must decode as a healthy snapshot (its behavior so far).
+    #[test]
+    fn runtime_session_snapshot_result_old_daemon_without_degraded() {
+        let json = r#"{"version":2,"display_sessions":[],"runtime_sessions":[],"focus":null,"foreground_project_path":null}"#;
+        let r: RuntimeSessionSnapshotResult = serde_json::from_str(json).unwrap();
+        assert_eq!(r.version, 2);
+        assert!(!r.degraded);
     }
 }

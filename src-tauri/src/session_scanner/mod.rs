@@ -1,7 +1,7 @@
 //! Session scanner — detects CLI tool sessions running in tmux.
 //!
 //! Combines three detection strategies:
-//! 1. Process scanning (ps + /proc) — find supported CLI tool processes and project paths
+//! 1. Process scanning (`/proc` on Linux, `ps` on macOS; fail-soft) — find supported CLI tool processes and project paths
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
 //! 3. Idle detection — check tool-specific transcript/runtime signals to determine active vs idle
 //!
@@ -30,6 +30,10 @@ pub mod proc_io;
 pub mod process;
 pub mod tmux;
 
+#[cfg(test)]
+pub(crate) use cache::{
+    clear_scan_cache, set_display_scan_compaction_hook, state_tracker_snapshot,
+};
 pub use cache::{latest_compaction_runtime_sessions, notify_tmux_changed};
 pub use cli_tool::CliTool;
 pub use scans::{
@@ -40,3 +44,8 @@ pub use types::{
     ActivityAttribution, ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind,
     SessionState,
 };
+
+/// Serializes tests that drive the scanner's process-global state (scan
+/// cache, last-good inventories, hysteresis trackers, test overrides).
+#[cfg(test)]
+pub(crate) static SCANNER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

@@ -32,9 +32,9 @@ use self::activity_tracking::{
 use self::launching::decode_daemon_launch_result;
 use self::launching::launch_cli_session_impl;
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
-#[cfg(test)]
-use self::session_listing::decode_daemon_session_list;
 use self::session_listing::list_cli_sessions_impl;
+#[cfg(test)]
+use self::session_listing::{daemon_display_sessions, decode_daemon_session_list};
 use crate::commands::runtime_snapshot::daemon_runtime_session_snapshot;
 
 static SESSION_ACTIVITY_RECONCILE_QUEUED: AtomicBool = AtomicBool::new(false);

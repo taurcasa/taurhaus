@@ -134,6 +134,7 @@ mod commands {
                         runtime_sessions: Vec::new(),
                         focus: None,
                         foreground_project_path: None,
+                        degraded: false,
                     },
                 ),
             }

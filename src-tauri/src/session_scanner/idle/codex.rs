@@ -205,8 +205,12 @@ fn with_binding_store<R>(
     f(&mut guard.bindings, &path)
 }
 
+/// Serializes tests that redirect or inspect the process-global binding store.
 #[cfg(test)]
-fn set_binding_store_path_for_test(path: Option<PathBuf>) {
+pub(crate) static CODEX_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn set_binding_store_path_for_test(path: Option<PathBuf>) {
     *CODEX_BINDING_STORE_PATH_OVERRIDE
         .get_or_init(|| Mutex::new(None))
         .lock()
@@ -506,10 +510,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
-    use std::sync::Mutex;
     use tempfile::TempDir;
-
-    static CODEX_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn filetime_set_mtime(path: &Path, time: SystemTime) {
         let file = File::options().write(true).open(path).unwrap();

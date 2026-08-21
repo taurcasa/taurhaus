@@ -182,7 +182,16 @@ where
                 deterministic_file_owner,
             );
 
-            let state = apply_hysteresis(proc.pid, decision.raw_state);
+            let (state, previous_state) = apply_hysteresis(proc.pid, decision.raw_state);
+            if previous_state != Some(state) {
+                emit_activity_state_changed(
+                    proc.pid,
+                    proc.cli_tool,
+                    previous_state,
+                    state,
+                    activity_source(process_active, file_active, proc.cli_tool),
+                );
+            }
             let (activity_confidence, activity_attribution, project_unattributed_active) =
                 if state == SessionState::Active {
                     (decision.confidence, decision.attribution, false)
@@ -224,6 +233,55 @@ where
 
     deduplicate_runtime_sessions(&mut sessions);
     (sessions, idle_ms, process_signal_ms, ownership_ms)
+}
+
+/// Name the evidence behind a raw activity decision, for `activity.state.changed`.
+fn activity_source(process_active: bool, file_active: bool, cli_tool: CliTool) -> &'static str {
+    if process_active {
+        match cli_tool {
+            CliTool::Gemini => "tcp",
+            CliTool::Claude | CliTool::Codex => "process_io",
+        }
+    } else if file_active {
+        "transcript"
+    } else {
+        "none"
+    }
+}
+
+fn emit_activity_state_changed(
+    pid: u32,
+    cli_tool: CliTool,
+    from: Option<SessionState>,
+    to: SessionState,
+    source: &'static str,
+) {
+    tracing::info!(pid, tool = %cli_tool, ?from, ?to, source, "session activity state changed");
+    let mut fields = serde_json::Map::new();
+    fields.insert("pid".to_string(), serde_json::Value::from(pid));
+    fields.insert(
+        "tool".to_string(),
+        serde_json::Value::String(cli_tool.to_string()),
+    );
+    fields.insert(
+        "from".to_string(),
+        serde_json::to_value(from).unwrap_or(serde_json::Value::Null),
+    );
+    fields.insert(
+        "to".to_string(),
+        serde_json::to_value(to).unwrap_or(serde_json::Value::Null),
+    );
+    fields.insert(
+        "source".to_string(),
+        serde_json::Value::String(source.to_string()),
+    );
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "activity.state.changed",
+        Some("Session activity state changed".to_string()),
+        fields,
+    );
 }
 
 pub(crate) fn deduplicate_runtime_sessions(sessions: &mut Vec<RuntimeSession>) {
@@ -270,6 +328,15 @@ mod tests {
             group_label: None,
             member_name: None,
         }
+    }
+
+    #[test]
+    fn activity_source_names_the_driving_signal() {
+        assert_eq!(activity_source(true, true, CliTool::Claude), "process_io");
+        assert_eq!(activity_source(true, false, CliTool::Codex), "process_io");
+        assert_eq!(activity_source(true, false, CliTool::Gemini), "tcp");
+        assert_eq!(activity_source(false, true, CliTool::Claude), "transcript");
+        assert_eq!(activity_source(false, false, CliTool::Gemini), "none");
     }
 
     #[test]

@@ -71,7 +71,12 @@ pub(super) fn default_session_scan(now: DateTime<Utc>) -> Vec<SessionSignal> {
         return Vec::new();
     }
 
-    scan_sessions_for_display()
+    let (sessions, degraded) = scan_sessions_for_display();
+    if degraded {
+        // The process inventory could not be read: no observation this tick.
+        return Vec::new();
+    }
+    sessions
         .into_iter()
         .map(|session| SessionSignal {
             pane_id: session.tmux_pane,

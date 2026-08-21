@@ -178,16 +178,20 @@ async function poll() {
 /**
  * Apply a full session snapshot to the store and trackers.
  * Used by both polling and daemon event-driven updates.
+ *
+ * A snapshot without a sessions array is degraded (no observation), not an
+ * empty inventory: it leaves sessions and trackers untouched so a backend gap
+ * never flushes activity stats or resets _lastTransition.
  */
 function applySessions(result) {
+  if (!Array.isArray(result)) return
   const now = Date.now()
-  const list = Array.isArray(result) ? result : []
 
   // Track which PIDs are still present
   const currentPids = new Set()
 
   const next = new Map()
-  for (const rawSession of list) {
+  for (const rawSession of result) {
     const session = normalizeSessionShape(rawSession)
     const pid = session.pid
     currentPids.add(pid)
@@ -313,8 +317,7 @@ export function applyDaemonSessionUpdate(payload) {
  */
 export async function hydrateFromBackend() {
   try {
-    const result = await listClaudeSessions()
-    applySessions(Array.isArray(result) ? result : [])
+    applySessions(await listClaudeSessions())
   } catch (err) {
     console.warn('[sessionStore] hydrate failed:', err)
   }

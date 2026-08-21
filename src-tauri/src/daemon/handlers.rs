@@ -307,6 +307,7 @@ pub(crate) fn handle_get_runtime_session_snapshot(id: &str) -> DaemonResponse {
             runtime_sessions: snapshot.runtime_sessions,
             focus: snapshot.focus,
             foreground_project_path: snapshot.foreground_project_path,
+            degraded: snapshot.degraded,
         },
     )
 }
@@ -438,7 +439,9 @@ fn load_project_task_scan_inputs(
             }
         }
 
-        let sessions = crate::session_scanner::scan_sessions_for_runtime();
+        // Continuity read: task-source lookup only (see bootstrap.rs); a
+        // degraded scan keeps the last good snapshot, nothing is bound to it.
+        let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
         let claude_index = build_claude_source_index_with_live_sessions(&sessions);
         *guard = Some(ProjectTaskScanCache {
             cycle_id,
@@ -448,7 +451,8 @@ fn load_project_task_scan_inputs(
         return (sessions, claude_index);
     }
 
-    let sessions = crate::session_scanner::scan_sessions_for_runtime();
+    // Continuity read: same task-source lookup as above, uncached.
+    let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     (sessions, claude_index)
 }

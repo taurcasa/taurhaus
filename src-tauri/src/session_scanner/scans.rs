@@ -1,15 +1,15 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use super::cache::{
     finalize_display_scan, publish_compaction_runtime_sessions, scan_inputs_with_cache,
-    ScanCompletionMetrics,
+    ScanCompletionMetrics, ScanInputs,
 };
 use super::classification::{
     classify_display_runtime_sessions_with, deduplicate_runtime_sessions,
     detect_runtime_idle_for_process, detect_runtime_idle_for_process_with_pane,
 };
-#[cfg(target_os = "windows")]
 use super::daemon;
 use super::{
     idle, process, tmux, ActivityAttribution, ActivityConfidence, CliTool, DisplaySession,
@@ -18,6 +18,22 @@ use super::{
 
 #[cfg(test)]
 use super::SessionState;
+
+/// Last good display and runtime views, returned verbatim on degraded scans
+/// so consumers keep data without re-running classification.
+///
+/// One coherent snapshot for both entry points: an authoritative scan refreshes
+/// both views, a runtime scan only the runtime view, so the first degraded call
+/// on either path during an outage finds whatever the other path last saw.
+struct LastGoodSnapshot {
+    display: Vec<DisplaySession>,
+    runtime: Vec<RuntimeSession>,
+}
+
+static LAST_GOOD_SNAPSHOT: Mutex<LastGoodSnapshot> = Mutex::new(LastGoodSnapshot {
+    display: Vec::new(),
+    runtime: Vec::new(),
+});
 
 /// Scan for all running Claude Code sessions.
 ///
@@ -35,34 +51,70 @@ use super::SessionState;
 ///
 /// **Reported state** — applies bidirectional hysteresis on top: a state
 /// change only takes effect after 2 consecutive polls agree on the new state.
-pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
-    scan_sessions_for_authoritative_snapshot().0
+///
+/// The flag is `true` when the process inventory could not be read: the
+/// sessions are then the last fully classified snapshot, not an observation.
+pub fn scan_sessions_for_display() -> (Vec<DisplaySession>, bool) {
+    let (display_sessions, _, degraded) = scan_sessions_for_authoritative_snapshot();
+    (display_sessions, degraded)
 }
 
-/// Scan once and return both the UI-safe display view and the full runtime view.
+/// Scan once and return the UI-safe display view, the full runtime view, and
+/// whether the scan was degraded.
 ///
 /// This is the authoritative combined scan used by daemon-side snapshot
 /// production so consumers do not repeat process/tmux classification work.
-pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<RuntimeSession>) {
-    #[cfg(target_os = "windows")]
-    if let Some(display_sessions) = daemon::scan_display_sessions_via_daemon() {
-        let runtime_sessions = daemon::scan_runtime_sessions_via_daemon().unwrap_or_default();
-        let display_sessions = finalize_display_scan(
-            display_sessions,
-            Some(&runtime_sessions),
-            ScanCompletionMetrics::default(),
-        );
-        return (display_sessions, runtime_sessions);
+///
+/// A degraded scan (`true`) means the process inventory could not be read.
+/// It is inert: no Codex binding reconciliation, idle detection, process-I/O
+/// sampling, hysteresis or transition events run, and the sessions are the
+/// last fully classified snapshot, which must not drive pruning, versioning,
+/// or exports.
+pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<RuntimeSession>, bool)
+{
+    // Windows app: the scan is the WSL daemon hub's snapshot.
+    if let Some(snapshot) = daemon::runtime_session_snapshot_via_daemon() {
+        return authoritative_scan_from_daemon_snapshot(snapshot);
     }
 
     let scan_started = Instant::now();
-    let (processes, pane_map, process_cache_hit, tmux_cache_hit, process_scan_ms, tmux_ms) =
-        scan_inputs_with_cache(
-            scan_started,
-            &process::scan_process_ids_cached,
-            &process::scan_processes,
-            &tmux::list_panes,
+    let ScanInputs {
+        processes,
+        pane_map,
+        process_cache_hit,
+        tmux_cache_hit,
+        process_scan_ms,
+        tmux_ms,
+        degraded,
+    } = scan_inputs_with_cache(
+        scan_started,
+        &process::scan_process_ids_cached,
+        &process::scan_processes,
+        &tmux::list_panes,
+    );
+
+    if degraded {
+        let (display_sessions, runtime_sessions) = {
+            let last_good = LAST_GOOD_SNAPSHOT
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            (last_good.display.clone(), last_good.runtime.clone())
+        };
+        let display_sessions = finalize_display_scan(
+            display_sessions,
+            None,
+            ScanCompletionMetrics {
+                process_scan_ms,
+                tmux_ms,
+                process_cache_hit,
+                tmux_cache_hit,
+                total_ms: scan_started.elapsed().as_millis() as u64,
+                degraded: true,
+                ..ScanCompletionMetrics::default()
+            },
         );
+        return (display_sessions, runtime_sessions, true);
+    }
 
     let mut sessions_per_project_tool: HashMap<(String, CliTool), usize> = HashMap::new();
     for proc in &processes {
@@ -93,6 +145,7 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
         process_signal_ms = process_signal_ms.as_millis() as u64,
         ownership_ms = ownership_ms.as_millis() as u64,
         total_ms,
+        degraded,
         sessions = runtime_sessions.len(),
         "session_scanner metrics"
     );
@@ -115,10 +168,47 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
             process_signal_ms: process_signal_ms.as_millis() as u64,
             ownership_ms: ownership_ms.as_millis() as u64,
             total_ms,
+            degraded: false,
         },
     );
+    remember_authoritative_snapshot(&display_sessions, &runtime_sessions);
 
-    (display_sessions, runtime_sessions)
+    (display_sessions, runtime_sessions, false)
+}
+
+/// Fold the daemon hub's snapshot into the authoritative scan result.
+///
+/// A degraded snapshot is the hub's last good view kept for continuity, not
+/// an observation: it comes back flagged, publishes nothing, prunes nothing
+/// and is not remembered as last good.
+fn authoritative_scan_from_daemon_snapshot(
+    snapshot: crate::daemon::protocol::RuntimeSessionSnapshotResult,
+) -> (Vec<DisplaySession>, Vec<RuntimeSession>, bool) {
+    let degraded = snapshot.degraded;
+    let runtime_sessions = snapshot.runtime_sessions;
+    let display_sessions = finalize_display_scan(
+        snapshot.display_sessions,
+        (!degraded).then_some(runtime_sessions.as_slice()),
+        ScanCompletionMetrics {
+            degraded,
+            ..ScanCompletionMetrics::default()
+        },
+    );
+    if !degraded {
+        remember_authoritative_snapshot(&display_sessions, &runtime_sessions);
+    }
+    (display_sessions, runtime_sessions, degraded)
+}
+
+fn remember_authoritative_snapshot(
+    display_sessions: &[DisplaySession],
+    runtime_sessions: &[RuntimeSession],
+) {
+    let mut last_good = LAST_GOOD_SNAPSHOT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    last_good.display = display_sessions.to_vec();
+    last_good.runtime = runtime_sessions.to_vec();
 }
 
 /// Scan for runtime reconciliation/session-id detection without hiding session metadata.
@@ -126,19 +216,38 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
 /// Coordination uses this path when it needs exact `(pane, tool) -> session_id`
 /// correlation. Unlike the UI-facing `scan_sessions_for_display()`, this keeps session ids
 /// even when activity attribution is ambiguous in multi-session projects.
-pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
-    #[cfg(target_os = "windows")]
-    if let Some(sessions) = daemon::scan_runtime_sessions_via_daemon() {
-        return sessions;
+///
+/// The flag is `true` when the process inventory could not be read: the
+/// sessions are then the last good runtime snapshot, not an observation.
+pub fn scan_sessions_for_runtime() -> (Vec<RuntimeSession>, bool) {
+    // Windows app: the scan is the WSL daemon hub's snapshot.
+    if let Some(snapshot) = daemon::runtime_session_snapshot_via_daemon() {
+        return runtime_scan_from_daemon_snapshot(snapshot);
     }
 
     let scan_started = Instant::now();
-    let (processes, pane_map, ..) = scan_inputs_with_cache(
+    let ScanInputs {
+        processes,
+        pane_map,
+        degraded,
+        ..
+    } = scan_inputs_with_cache(
         scan_started,
         &process::scan_process_ids_cached,
         &process::scan_processes,
         &tmux::list_panes,
     );
+
+    if degraded {
+        // Inert: no binding reconciliation, no transcript lookups.
+        let sessions = LAST_GOOD_SNAPSHOT
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .runtime
+            .clone();
+        return (sessions, true);
+    }
+
     idle::reconcile_codex_bindings(&processes, &pane_map);
 
     let mut sessions: Vec<RuntimeSession> = processes
@@ -151,7 +260,40 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
 
     deduplicate_runtime_sessions(&mut sessions);
     publish_compaction_runtime_sessions(&sessions);
-    sessions
+    remember_runtime_snapshot(&sessions);
+    (sessions, false)
+}
+
+/// Fold the daemon hub's snapshot into the runtime scan result.
+///
+/// A degraded snapshot is the hub's last good view kept for continuity, not
+/// an observation: it comes back flagged (so identity detection keeps
+/// polling instead of binding a cached pane->transcript mapping) and is not
+/// remembered as last good.
+fn runtime_scan_from_daemon_snapshot(
+    snapshot: crate::daemon::protocol::RuntimeSessionSnapshotResult,
+) -> (Vec<RuntimeSession>, bool) {
+    let sessions = snapshot.runtime_sessions;
+    if !snapshot.degraded {
+        remember_runtime_snapshot(&sessions);
+    }
+    (sessions, snapshot.degraded)
+}
+
+fn remember_runtime_snapshot(sessions: &[RuntimeSession]) {
+    LAST_GOOD_SNAPSHOT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .runtime = sessions.to_vec();
+}
+
+#[cfg(test)]
+pub(crate) fn clear_last_good_snapshot() {
+    let mut last_good = LAST_GOOD_SNAPSHOT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    last_good.display.clear();
+    last_good.runtime.clear();
 }
 
 /// Testable version of scan_sessions that accepts injectable functions.
@@ -254,6 +396,16 @@ fn build_runtime_session_with_idle(
 mod tests {
     use super::*;
     use crate::session_scanner::classification::set_runtime_idle_detector_override;
+    use crate::session_scanner::idle::{
+        set_binding_store_path_for_test, CODEX_RECONCILE_CALLS, CODEX_TEST_LOCK,
+    };
+    use crate::session_scanner::{
+        clear_scan_cache, set_display_scan_compaction_hook, state_tracker_snapshot,
+        SCANNER_TEST_LOCK,
+    };
+    use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+    use std::sync::MutexGuard;
+    use tempfile::TempDir;
 
     #[test]
     fn scan_sessions_combines_all_sources() {
@@ -409,6 +561,9 @@ mod tests {
             }
         }
 
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         set_runtime_idle_detector_override(Some(runtime_idle_by_pid));
         let sessions = scan_sessions_for_runtime_with(&mock_processes, &mock_tmux);
         set_runtime_idle_detector_override(None);
@@ -501,5 +656,468 @@ mod tests {
 
         let sessions = scan_sessions_with(&mock_processes, &mock_tmux, &mock_idle);
         assert_eq!(sessions.len(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // End-to-end fail-soft wiring: real scan entry points, injected inventory
+    // -----------------------------------------------------------------------
+
+    const INVENTORY_HEALTHY: u8 = 0;
+    const INVENTORY_FAILS: u8 = 1;
+    const INVENTORY_EMPTY: u8 = 2;
+    static E2E_INVENTORY_MODE: AtomicU8 = AtomicU8::new(INVENTORY_HEALTHY);
+    static E2E_IDLE_CALLS: AtomicUsize = AtomicUsize::new(0);
+    static E2E_COMPACTION_PUBLISHES: AtomicUsize = AtomicUsize::new(0);
+    const E2E_CLAUDE_PID: u32 = 910_001;
+    const E2E_CODEX_PID: u32 = 910_002;
+    const E2E_PROJECT: &str = "/home/user/e2e-project";
+
+    fn e2e_inventory() -> Option<Vec<process::ProcessInfo>> {
+        match E2E_INVENTORY_MODE.load(Ordering::SeqCst) {
+            INVENTORY_FAILS => None,
+            INVENTORY_EMPTY => Some(Vec::new()),
+            _ => Some(vec![
+                process::ProcessInfo {
+                    pid: E2E_CLAUDE_PID,
+                    project_path: E2E_PROJECT.to_string(),
+                    tty: "/dev/pts/9101".to_string(),
+                    args: "claude --continue".to_string(),
+                    cli_tool: CliTool::Claude,
+                },
+                process::ProcessInfo {
+                    pid: E2E_CODEX_PID,
+                    project_path: E2E_PROJECT.to_string(),
+                    tty: "/dev/pts/9102".to_string(),
+                    args: "codex --yolo".to_string(),
+                    cli_tool: CliTool::Codex,
+                },
+            ]),
+        }
+    }
+
+    /// Counts calls; reports Active while healthy and Idle once the inventory
+    /// fails, so any classification during a degraded scan would move the
+    /// hysteresis trackers and be visible.
+    fn e2e_idle(proc: &process::ProcessInfo) -> idle::IdleResult {
+        E2E_IDLE_CALLS.fetch_add(1, Ordering::SeqCst);
+        let state = if E2E_INVENTORY_MODE.load(Ordering::SeqCst) == INVENTORY_FAILS {
+            SessionState::Idle
+        } else {
+            SessionState::Active
+        };
+        idle::IdleResult {
+            state,
+            session_id: Some(format!("sess-{}", proc.pid)),
+            jsonl_path: Some(format!("/tmp/sess-{}.jsonl", proc.pid)),
+            last_output_age_secs: Some(1),
+        }
+    }
+
+    fn e2e_compaction_publish(_sessions: &[RuntimeSession]) {
+        E2E_COMPACTION_PUBLISHES.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Holds the scanner/Codex locks, redirects the Codex binding store to a
+    /// temp dir and installs the inventory/idle/compaction seams; restores
+    /// everything on drop (also on panic).
+    struct E2eScanner {
+        _scanner: MutexGuard<'static, ()>,
+        _codex: MutexGuard<'static, ()>,
+        _tmp: TempDir,
+    }
+
+    impl E2eScanner {
+        fn install() -> Self {
+            let scanner = SCANNER_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let codex = CODEX_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let tmp = TempDir::new().expect("tempdir");
+            set_binding_store_path_for_test(Some(tmp.path().join("codex-bindings.json")));
+            clear_scan_cache();
+            clear_last_good_snapshot();
+            E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
+            E2E_IDLE_CALLS.store(0, Ordering::SeqCst);
+            E2E_COMPACTION_PUBLISHES.store(0, Ordering::SeqCst);
+            process::set_inventory_provider_override(Some(e2e_inventory));
+            set_runtime_idle_detector_override(Some(e2e_idle));
+            set_display_scan_compaction_hook(Some(e2e_compaction_publish));
+            Self {
+                _scanner: scanner,
+                _codex: codex,
+                _tmp: tmp,
+            }
+        }
+    }
+
+    impl Drop for E2eScanner {
+        fn drop(&mut self) {
+            // A healthy empty scan prunes the trackers this test created.
+            E2E_INVENTORY_MODE.store(INVENTORY_EMPTY, Ordering::SeqCst);
+            let _ = scan_sessions_for_authoritative_snapshot();
+            process::set_inventory_provider_override(None);
+            set_runtime_idle_detector_override(None);
+            set_display_scan_compaction_hook(None);
+            set_binding_store_path_for_test(None);
+            clear_scan_cache();
+            clear_last_good_snapshot();
+            E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
+        }
+    }
+
+    /// `(reported, prev_raw)` hysteresis state of one PID, if tracked.
+    type TrackerState = Option<(SessionState, SessionState)>;
+
+    fn e2e_trackers() -> (TrackerState, TrackerState) {
+        (
+            state_tracker_snapshot(E2E_CLAUDE_PID),
+            state_tracker_snapshot(E2E_CODEX_PID),
+        )
+    }
+
+    // Regression: since 06b432d the authoritative scan captured `degraded`
+    // but still ran `reconcile_codex_bindings` and classification (idle
+    // detection, process-I/O sampling, hysteresis, activity.state.changed) on
+    // the previous inventory before `finalize_display_scan` looked at the
+    // flag, so repeated degraded polls advanced hysteresis and could drop
+    // Codex bindings behind the hub's back. A degraded scan must return the
+    // last fully classified snapshot and touch none of that state.
+    #[test]
+    fn degraded_authoritative_scan_is_inert_end_to_end() {
+        let _harness = E2eScanner::install();
+
+        let (display, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
+        assert!(!degraded);
+        let mut pids: Vec<u32> = display.iter().map(|session| session.pid).collect();
+        pids.sort_unstable();
+        assert_eq!(pids, [E2E_CLAUDE_PID, E2E_CODEX_PID]);
+        assert!(display.iter().all(|s| s.state == SessionState::Active));
+        let idle_calls = E2E_IDLE_CALLS.load(Ordering::SeqCst);
+        assert_eq!(idle_calls, 2);
+        let reconcile_calls = CODEX_RECONCILE_CALLS.load(Ordering::SeqCst);
+        assert!(reconcile_calls >= 1);
+        assert_eq!(E2E_COMPACTION_PUBLISHES.load(Ordering::SeqCst), 1);
+        let trackers = e2e_trackers();
+        assert_eq!(
+            trackers,
+            (
+                Some((SessionState::Active, SessionState::Active)),
+                Some((SessionState::Active, SessionState::Active)),
+            )
+        );
+
+        // The inventory source fails: the last classified snapshot comes back
+        // flagged and nothing downstream runs.
+        E2E_INVENTORY_MODE.store(INVENTORY_FAILS, Ordering::SeqCst);
+        let (display_degraded, runtime_degraded, degraded) =
+            scan_sessions_for_authoritative_snapshot();
+        assert!(
+            degraded,
+            "failed inventory read must flag the scan degraded"
+        );
+        assert_eq!(display_degraded, display);
+        assert_eq!(runtime_degraded, runtime);
+        assert_eq!(
+            E2E_IDLE_CALLS.load(Ordering::SeqCst),
+            idle_calls,
+            "degraded scan must not classify (idle detection, process-I/O, hysteresis)"
+        );
+        assert_eq!(
+            CODEX_RECONCILE_CALLS.load(Ordering::SeqCst),
+            reconcile_calls,
+            "degraded scan must not reconcile Codex bindings"
+        );
+        assert_eq!(
+            E2E_COMPACTION_PUBLISHES.load(Ordering::SeqCst),
+            1,
+            "degraded scan must not publish compaction sessions"
+        );
+        assert_eq!(
+            e2e_trackers(),
+            trackers,
+            "degraded scan must not move hysteresis trackers"
+        );
+
+        // Recovery: classification resumes on the fresh inventory.
+        E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
+        let (recovered, _, degraded) = scan_sessions_for_authoritative_snapshot();
+        assert!(!degraded);
+        assert_eq!(recovered, display);
+        assert_eq!(E2E_IDLE_CALLS.load(Ordering::SeqCst), idle_calls + 2);
+        assert_eq!(E2E_COMPACTION_PUBLISHES.load(Ordering::SeqCst), 2);
+    }
+
+    // Regression: same gap on the runtime path — `scan_sessions_for_runtime`
+    // reconciled Codex bindings and ran idle detection before checking the
+    // flag and discarded the flag. It must return the last good runtime
+    // snapshot, flagged, without touching bindings or transcripts.
+    #[test]
+    fn degraded_runtime_scan_is_inert_end_to_end() {
+        let _harness = E2eScanner::install();
+
+        let (sessions, degraded) = scan_sessions_for_runtime();
+        assert!(!degraded);
+        assert_eq!(sessions.len(), 2);
+        assert!(sessions.iter().all(|session| session.session_id.is_some()));
+        let idle_calls = E2E_IDLE_CALLS.load(Ordering::SeqCst);
+        assert_eq!(idle_calls, 2);
+        let reconcile_calls = CODEX_RECONCILE_CALLS.load(Ordering::SeqCst);
+
+        E2E_INVENTORY_MODE.store(INVENTORY_FAILS, Ordering::SeqCst);
+        let (sessions_degraded, degraded) = scan_sessions_for_runtime();
+        assert!(degraded);
+        assert_eq!(sessions_degraded, sessions);
+        assert_eq!(E2E_IDLE_CALLS.load(Ordering::SeqCst), idle_calls);
+        assert_eq!(
+            CODEX_RECONCILE_CALLS.load(Ordering::SeqCst),
+            reconcile_calls
+        );
+
+        E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
+        let (recovered, degraded) = scan_sessions_for_runtime();
+        assert!(!degraded);
+        assert_eq!(recovered, sessions);
+        assert_eq!(E2E_IDLE_CALLS.load(Ordering::SeqCst), idle_calls + 2);
+    }
+
+    // Regression: the authoritative and runtime last-good snapshots were
+    // independent statics, so a healthy authoritative scan (the hub's usual
+    // path) left the runtime fallback empty and the first degraded
+    // `scan_sessions_for_runtime` call of an outage returned no sessions even
+    // though a fully classified snapshot existed. There is one coherent
+    // last-good snapshot: an authoritative scan seeds the runtime view too.
+    #[test]
+    fn authoritative_scan_seeds_runtime_fallback_for_degraded_runtime_scan() {
+        let _harness = E2eScanner::install();
+
+        let (_, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
+        assert!(!degraded);
+        assert_eq!(runtime.len(), 2);
+        assert!(runtime.iter().all(|session| session.session_id.is_some()));
+
+        E2E_INVENTORY_MODE.store(INVENTORY_FAILS, Ordering::SeqCst);
+        let (sessions, degraded) = scan_sessions_for_runtime();
+        assert!(degraded);
+        assert_eq!(
+            sessions, runtime,
+            "degraded runtime scan must return the last good runtime view from the authoritative scan"
+        );
+    }
+
+    // --- Windows app path: the scan is the WSL daemon hub's snapshot ---
+
+    const DAEMON_HEALTHY: u8 = 0;
+    const DAEMON_DEGRADED: u8 = 1;
+    static DAEMON_SNAPSHOT_MODE: AtomicU8 = AtomicU8::new(DAEMON_HEALTHY);
+    const DAEMON_PID: u32 = 930_001;
+    const DAEMON_PANE: &str = "%93";
+    /// What the hub keeps across degraded cycles: the pane still mapped to the
+    /// previous CLI's transcript.
+    const STALE_SESSION: &str = "stale-session";
+    /// What a healthy cycle observes in the same pane after the CLI restart.
+    const FRESH_SESSION: &str = "fresh-session";
+
+    fn daemon_session(session_id: &str) -> RuntimeSession {
+        build_runtime_session_with_idle(
+            process::ProcessInfo {
+                pid: DAEMON_PID,
+                project_path: "/home/user/daemon-project".to_string(),
+                tty: "/dev/pts/9301".to_string(),
+                args: "codex --yolo".to_string(),
+                cli_tool: CliTool::Codex,
+            },
+            Some(&tmux::TmuxPane {
+                pane_id: DAEMON_PANE.to_string(),
+                tty: "/dev/pts/9301".to_string(),
+                window_index: "3".to_string(),
+                window_name: "daemon".to_string(),
+                session_name: "taurhaus".to_string(),
+            }),
+            idle::IdleResult {
+                state: SessionState::Active,
+                session_id: Some(session_id.to_string()),
+                jsonl_path: Some(format!("/home/user/.codex/sessions/{session_id}.jsonl")),
+                last_output_age_secs: None,
+            },
+            false,
+        )
+    }
+
+    /// What the WSL daemon answers `get_runtime_session_snapshot` with: while
+    /// its scanner is degraded, the hub's preserved (stale) sessions flagged
+    /// degraded; once healthy, the fresh observation.
+    fn scripted_daemon_snapshot() -> Option<crate::daemon::protocol::RuntimeSessionSnapshotResult> {
+        let degraded = DAEMON_SNAPSHOT_MODE.load(Ordering::SeqCst) == DAEMON_DEGRADED;
+        let session = daemon_session(if degraded {
+            STALE_SESSION
+        } else {
+            FRESH_SESSION
+        });
+        Some(crate::daemon::protocol::RuntimeSessionSnapshotResult {
+            version: 5,
+            display_sessions: vec![DisplaySession::from(session.clone())],
+            runtime_sessions: vec![session],
+            focus: None,
+            foreground_project_path: None,
+            degraded,
+        })
+    }
+
+    /// Installs the scripted daemon snapshot as the scan source and clears the
+    /// app-local last-good snapshot so remembering can be observed.
+    struct DaemonSnapshotHarness {
+        _scanner: MutexGuard<'static, ()>,
+    }
+
+    impl DaemonSnapshotHarness {
+        fn install(mode: u8) -> Self {
+            let scanner = SCANNER_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            clear_last_good_snapshot();
+            DAEMON_SNAPSHOT_MODE.store(mode, Ordering::SeqCst);
+            daemon::set_daemon_snapshot_override(Some(scripted_daemon_snapshot));
+            Self { _scanner: scanner }
+        }
+    }
+
+    impl Drop for DaemonSnapshotHarness {
+        fn drop(&mut self) {
+            daemon::set_daemon_snapshot_override(None);
+            clear_last_good_snapshot();
+            DAEMON_SNAPSHOT_MODE.store(DAEMON_HEALTHY, Ordering::SeqCst);
+        }
+    }
+
+    fn last_good_runtime() -> Vec<RuntimeSession> {
+        LAST_GOOD_SNAPSHOT
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .runtime
+            .clone()
+    }
+
+    fn last_good_display() -> Vec<DisplaySession> {
+        LAST_GOOD_SNAPSHOT
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .display
+            .clone()
+    }
+
+    // Regression: on Windows (app + WSL daemon) the daemon hub kept its last
+    // good runtime sessions across degraded scanner cycles, the protocol
+    // carried no degradation status, and the Windows branch of
+    // `scan_sessions_for_runtime` returned them as a healthy scan, so
+    // `detect_runtime_session` bound the cached pane->transcript mapping of a
+    // restarted CLI as a fresh observation. A degraded daemon snapshot must
+    // come back flagged: continuity data, never an observation, and it must
+    // not overwrite the app-local last-good snapshot.
+    #[test]
+    fn degraded_daemon_snapshot_flags_runtime_scan_degraded() {
+        let _harness = DaemonSnapshotHarness::install(DAEMON_DEGRADED);
+
+        let (sessions, degraded) = scan_sessions_for_runtime();
+        assert!(
+            degraded,
+            "a degraded daemon snapshot must flag the runtime scan degraded"
+        );
+        assert_eq!(
+            sessions,
+            vec![daemon_session(STALE_SESSION)],
+            "continuity: the daemon's cached sessions are still returned"
+        );
+        assert!(
+            last_good_runtime().is_empty(),
+            "a degraded daemon snapshot must not be remembered as last good"
+        );
+
+        // Recovery: the next healthy daemon snapshot is an observation again.
+        DAEMON_SNAPSHOT_MODE.store(DAEMON_HEALTHY, Ordering::SeqCst);
+        let (sessions, degraded) = scan_sessions_for_runtime();
+        assert!(!degraded);
+        assert_eq!(sessions, vec![daemon_session(FRESH_SESSION)]);
+        assert_eq!(last_good_runtime(), sessions);
+    }
+
+    // Regression companion: the authoritative (display + runtime) Windows
+    // branch had the same shape and discarded the daemon's status as well.
+    #[test]
+    fn degraded_daemon_snapshot_flags_authoritative_scan_degraded() {
+        let _harness = DaemonSnapshotHarness::install(DAEMON_DEGRADED);
+
+        let (display, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
+        assert!(
+            degraded,
+            "a degraded daemon snapshot must flag the authoritative scan degraded"
+        );
+        assert_eq!(runtime, vec![daemon_session(STALE_SESSION)]);
+        assert_eq!(
+            display,
+            vec![DisplaySession::from(daemon_session(STALE_SESSION))]
+        );
+        assert!(last_good_display().is_empty());
+        assert!(last_good_runtime().is_empty());
+
+        DAEMON_SNAPSHOT_MODE.store(DAEMON_HEALTHY, Ordering::SeqCst);
+        let (display, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
+        assert!(!degraded);
+        assert_eq!(last_good_display(), display);
+        assert_eq!(last_good_runtime(), runtime);
+    }
+
+    // Regression (end to end, any host): the Windows production path is app +
+    // WSL daemon, and member identity detection runs on the app. With the
+    // daemon's status dropped at the boundary, an inventory outage in the
+    // daemon after a CLI restart in an existing pane bound the new member to
+    // the previous transcript. Through the real `scan_sessions_for_runtime`
+    // fed by a degraded daemon snapshot whose stale session matches the pane,
+    // detection binds nothing and keeps asking until the window closes.
+    #[test]
+    fn detect_runtime_session_ignores_degraded_daemon_snapshot_with_stale_matching_pane() {
+        use crate::coordination::runtime::{
+            CoordinationRuntime, DetectedRuntimeSession, RealRuntimeScan, SystemCoordinationRuntime,
+        };
+
+        let _harness = DaemonSnapshotHarness::install(DAEMON_DEGRADED);
+        let _real_scan = RealRuntimeScan::install();
+
+        let detected = SystemCoordinationRuntime
+            .detect_runtime_session(DAEMON_PANE, CliTool::Codex)
+            .expect("detection succeeds");
+
+        assert_eq!(
+            detected,
+            DetectedRuntimeSession::default(),
+            "a degraded daemon snapshot must never bind the cached identity"
+        );
+    }
+
+    // Regression companion: a healthy daemon snapshot is an observation and
+    // binds on the first attempt.
+    #[test]
+    fn detect_runtime_session_binds_healthy_daemon_snapshot() {
+        use crate::coordination::runtime::{
+            CoordinationRuntime, DetectedRuntimeSession, RealRuntimeScan, SystemCoordinationRuntime,
+        };
+
+        let _harness = DaemonSnapshotHarness::install(DAEMON_HEALTHY);
+        let _real_scan = RealRuntimeScan::install();
+
+        let detected = SystemCoordinationRuntime
+            .detect_runtime_session(DAEMON_PANE, CliTool::Codex)
+            .expect("detection succeeds");
+
+        assert_eq!(
+            detected,
+            DetectedRuntimeSession {
+                session_id: Some(FRESH_SESSION.to_string()),
+                jsonl_path: Some(std::path::PathBuf::from(
+                    "/home/user/.codex/sessions/fresh-session.jsonl"
+                )),
+            }
+        );
     }
 }
