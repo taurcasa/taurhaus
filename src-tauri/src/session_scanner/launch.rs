@@ -131,6 +131,7 @@ impl LaunchSpec<'_> {
                     });
                 }
 
+                let base_model = first_present_flag_value(self.base, &["-m", "--model"]);
                 if let Some(model) = self.model.model.as_deref() {
                     if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
                         notes.push(LaunchNote::ModelIgnored {
@@ -150,11 +151,8 @@ impl LaunchSpec<'_> {
                 }
 
                 if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    if !ModelCatalog::supports_effort(
-                        self.tool,
-                        self.model.model.as_deref(),
-                        effort,
-                    ) {
+                    let effective_model = base_model.as_deref().or(self.model.model.as_deref());
+                    if !ModelCatalog::supports_effort(self.tool, effective_model, effort) {
                         notes.push(LaunchNote::EffortIgnored {
                             found: effort.to_string(),
                             reason: EffortIgnoreReason::Invalid,
@@ -384,6 +382,27 @@ fn first_present_flag<'a>(command: &str, flags: &'a [&str]) -> Option<&'a str> {
         .find(|flag| command_contains_flag(command, flag))
 }
 
+fn first_present_flag_value(command: &str, flags: &[&str]) -> Option<String> {
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    for flag in flags {
+        for (index, token) in tokens.iter().enumerate() {
+            let token = token.trim_start_matches(['\'', '"']);
+            if token == *flag {
+                return tokens
+                    .get(index + 1)
+                    .map(|value| value.trim_matches(['\'', '"']).to_string());
+            }
+            if let Some(value) = token
+                .strip_prefix(flag)
+                .and_then(|suffix| suffix.strip_prefix('='))
+            {
+                return Some(value.trim_matches(['\'', '"']).to_string());
+            }
+        }
+    }
+    None
+}
+
 fn append_flag(command: &mut String, flag: &str, value: &str) {
     command.push(' ');
     command.push_str(flag);
@@ -565,6 +584,60 @@ mod tests {
         assert!(rendered.notes.iter().any(
             |note| matches!(note, LaunchNote::EffortIgnored { found, .. } if found == "ultra")
         ));
+    }
+
+    // Regression: a79d392 validated effort against the declared model even
+    // when the free-form base pinned a different effective Codex model.
+    #[test]
+    fn codex_effort_is_validated_against_base_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo -m gpt-5.5",
+            model: model_spec("gpt-5.6-sol", Some("ultra")),
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "codex --yolo -m gpt-5.5");
+        assert_eq!(
+            rendered.notes,
+            vec![
+                LaunchNote::ModelIgnored {
+                    found: "-m".to_string(),
+                },
+                LaunchNote::EffortIgnored {
+                    found: "ultra".to_string(),
+                    reason: EffortIgnoreReason::Invalid,
+                },
+            ]
+        );
+    }
+
+    // Regression: a79d392 validated model-less effort against the catalog
+    // default even though the effective Codex model could not be determined.
+    #[test]
+    fn codex_effort_without_an_effective_model_is_unvalidatable() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec {
+                model: None,
+                reasoning_effort: Some("max".to_string()),
+            },
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "codex --yolo");
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::EffortIgnored {
+                found: "max".to_string(),
+                reason: EffortIgnoreReason::Invalid,
+            }]
+        );
     }
 
     #[test]

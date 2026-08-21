@@ -415,10 +415,7 @@ impl ModelCatalog {
             CliTool::Claude => CLAUDE_EFFORTS.contains(&effort),
             CliTool::Codex => model_id
                 .and_then(|model_id| Self::entry_for(tool, model_id))
-                .unwrap_or_else(|| Self::default_for(tool))
-                .efforts
-                .iter()
-                .any(|allowed| allowed == effort),
+                .is_some_and(|entry| entry.efforts.iter().any(|allowed| allowed == effort)),
             CliTool::Gemini => false,
         }
     }
