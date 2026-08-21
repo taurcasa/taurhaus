@@ -201,6 +201,32 @@ fn import_preset_validates_and_writes_to_user_directory() {
     assert_eq!(preset.source, TemplateSource::User);
 }
 
+// Regression: a79d392 reserialized every imported preset, dropping comments and
+// schema-extension keys even when model normalization made no change.
+#[test]
+fn import_canonical_preset_preserves_source_text() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    let external = app_data.join("commented-preset.yaml");
+    let raw = preset_yaml_with_agent("commented", "dev").replace(
+        "name: Base Team\n",
+        "# Keep this operator note.\nname: Base Team\nfuture_extension: keep-me\n",
+    );
+    write(&external, &raw);
+
+    store.import_preset(&external).expect("import preset");
+
+    let imported = fs::read_to_string(
+        app_data
+            .join("templates")
+            .join("presets")
+            .join("commented.yaml"),
+    )
+    .expect("read imported preset");
+    assert_eq!(imported, raw);
+}
+
 #[test]
 fn list_presets_picks_up_external_files_added_to_presets_directory() {
     let (_root, app_data, builtins) = setup_dirs();

@@ -281,16 +281,12 @@ pub struct RoleTemplate {
 
 impl RoleTemplate {
     pub fn normalize_model_fields(&mut self) {
-        if self.defaults.reasoning_effort.is_some() {
-            return;
-        }
-
         let parsed = ModelSpec::parse_legacy(&self.defaults.model);
-        if let Some(effort) = parsed.reasoning_effort {
-            if let Some(model) = parsed.model {
-                self.defaults.model = model;
-            }
-            self.defaults.reasoning_effort = Some(effort);
+        if let Some(model) = parsed.model {
+            self.defaults.model = model;
+        }
+        if self.defaults.reasoning_effort.is_none() {
+            self.defaults.reasoning_effort = parsed.reasoning_effort;
         }
     }
 
@@ -453,17 +449,16 @@ pub struct SlotOverrides {
 
 impl SlotOverrides {
     pub fn normalize_model_fields(&mut self) {
-        if self.reasoning_effort.is_some() {
-            return;
-        }
         let Some(model) = self.model.as_deref() else {
             return;
         };
 
         let parsed = ModelSpec::parse_legacy(model);
-        if let Some(effort) = parsed.reasoning_effort {
+        if parsed.model.is_some() {
             self.model = parsed.model;
-            self.reasoning_effort = Some(effort);
+        }
+        if self.reasoning_effort.is_none() {
+            self.reasoning_effort = parsed.reasoning_effort;
         }
     }
 
@@ -1101,6 +1096,33 @@ mod tests {
                     .unwrap_or_else(|err| panic!("parse role template {}: {err}", path.display()))
             })
             .collect()
+    }
+
+    // Regression: a79d392 skipped legacy slug normalization whenever an explicit effort
+    // was present, leaving `gpt-5.4 high` as an invalid model id on launch.
+    #[test]
+    fn explicit_effort_wins_while_legacy_model_slug_is_canonicalized() {
+        let mut role = sample_role_template();
+        role.defaults.reasoning_effort = Some("low".to_string());
+        role.normalize_model_fields();
+        assert_eq!(role.defaults.model, "gpt-5.4");
+        assert_eq!(role.defaults.reasoning_effort.as_deref(), Some("low"));
+
+        let mut overrides = SlotOverrides {
+            model: Some("gpt-5.4 high".to_string()),
+            reasoning_effort: Some("low".to_string()),
+            name_pattern: None,
+            instructions_replace: None,
+            instructions_append: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            runtime_compact_summary: None,
+            behavioral_contract_append: None,
+        };
+        overrides.normalize_model_fields();
+        assert_eq!(overrides.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(overrides.reasoning_effort.as_deref(), Some("low"));
     }
 
     fn load_team_presets() -> Vec<TeamPreset> {

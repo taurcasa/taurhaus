@@ -394,14 +394,10 @@ fn render_team_launch_command(
         )));
     }
 
-    let model = if reasoning_effort.is_none() {
-        ModelSpec::parse_legacy(model)
-    } else {
-        ModelSpec {
-            model: (!model.trim().is_empty()).then(|| model.trim().to_string()),
-            reasoning_effort: reasoning_effort.map(str::to_string),
-        }
-    };
+    let mut model = ModelSpec::parse_legacy(model);
+    if reasoning_effort.is_some() {
+        model.reasoning_effort = reasoning_effort.map(str::to_string);
+    }
     let rendered = LaunchSpec {
         tool: cli_tool,
         mode: LaunchMode::Fresh,
@@ -607,14 +603,10 @@ pub(super) fn member_from_agent_setup(
 ) -> Result<Member, CoordinationError> {
     validate_member_name(&setup.name)?;
     validate_non_empty("agent project id", &setup.project_id)?;
-    let declared_model = if setup.reasoning_effort.is_none() {
-        ModelSpec::parse_legacy(&setup.model)
-    } else {
-        ModelSpec {
-            model: (!setup.model.trim().is_empty()).then(|| setup.model.trim().to_string()),
-            reasoning_effort: setup.reasoning_effort.clone(),
-        }
-    };
+    let mut declared_model = ModelSpec::parse_legacy(&setup.model);
+    if setup.reasoning_effort.is_some() {
+        declared_model.reasoning_effort = setup.reasoning_effort.clone();
+    }
     Ok(Member {
         name: setup.name.clone(),
         role,

@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use serde_json::{Map, Value};
+use taurhaus_lib::logging::emit_global;
 
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -6,6 +9,7 @@ use crate::coordination::requests::AgentSetupConfig;
 use crate::models::ModelCatalog;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::launch::ModelSpec;
+use crate::templates::storage::TemplateStore;
 use crate::templates::types::RoleTemplate;
 
 /// Wrapper-level operation kind for shared member activation planning.
@@ -143,15 +147,14 @@ fn member_identity_from_agent_setup(
     let cli_tool = CliTool::from_alias(&member.cli_tool)
         .map_err(|err| CoordinationError::Validation(err.to_string()))?;
     let declared = declared_model_fields(&member.model, member.reasoning_effort.clone());
-    let catalog_default = ModelCatalog::default_for(cli_tool);
     Ok(MemberIdentity {
         name: member.name.clone(),
         role,
         cli_tool,
-        model: declared.model.unwrap_or_else(|| catalog_default.id.clone()),
-        reasoning_effort: declared
-            .reasoning_effort
-            .or_else(|| catalog_default.default_effort.clone()),
+        model: declared
+            .model
+            .unwrap_or_else(|| ModelCatalog::default_for(cli_tool).id.clone()),
+        reasoning_effort: declared.reasoning_effort,
         project_path: PathBuf::from(&member.project_id),
     })
 }
@@ -174,23 +177,56 @@ pub(crate) fn hydrate_member_model_fields(member: &mut Member, role: Option<&Rol
                 .and_then(|fields| fields.model.clone())
         })
         .or_else(|| Some(catalog_default.id.clone()));
-    member.reasoning_effort = declared
-        .reasoning_effort
-        .or_else(|| {
-            role_defaults
-                .as_ref()
-                .and_then(|fields| fields.reasoning_effort.clone())
-        })
-        .or_else(|| catalog_default.default_effort.clone());
+    member.reasoning_effort = declared.reasoning_effort.or_else(|| {
+        role_defaults
+            .as_ref()
+            .and_then(|fields| fields.reasoning_effort.clone())
+    });
 }
 
 fn declared_model_fields(model: &str, reasoning_effort: Option<String>) -> ModelSpec {
-    if reasoning_effort.is_none() {
-        ModelSpec::parse_legacy(model)
-    } else {
-        ModelSpec {
-            model: (!model.trim().is_empty()).then(|| model.trim().to_string()),
-            reasoning_effort,
+    let mut parsed = ModelSpec::parse_legacy(model);
+    if reasoning_effort.is_some() {
+        parsed.reasoning_effort = reasoning_effort;
+    }
+    parsed
+}
+
+pub(crate) fn load_role_for_member_hydration(
+    template_root: &Path,
+    role_id: &str,
+    member_name: &str,
+    operation: &str,
+) -> Option<RoleTemplate> {
+    match TemplateStore::new(template_root.to_path_buf()).get_role(role_id) {
+        Ok(record) => Some(record.template),
+        Err(error) => {
+            tracing::warn!(
+                role_id,
+                member = member_name,
+                operation,
+                error = %error,
+                "coordination role hydration failed; continuing without role defaults"
+            );
+            let mut fields = Map::new();
+            fields.insert("role_id".to_string(), Value::String(role_id.to_string()));
+            fields.insert("member".to_string(), Value::String(member_name.to_string()));
+            fields.insert(
+                "operation".to_string(),
+                Value::String(operation.to_string()),
+            );
+            fields.insert("error".to_string(), Value::String(error.to_string()));
+            emit_global(
+                "warn",
+                "coordination",
+                "coordination.role.load_failed",
+                Some(
+                    "Role defaults unavailable; continuing with declared or catalog values"
+                        .to_string(),
+                ),
+                fields,
+            );
+            None
         }
     }
 }

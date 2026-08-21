@@ -192,12 +192,13 @@ impl TemplateStore {
         external_path: &Path,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
-        let mut template = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
+        let parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to parse external preset {}: {err}",
                 external_path.display()
             ))
         })?;
+        let mut template = parsed.clone();
         template.normalize_model_fields();
 
         validate_template_id(&template.preset_id, "preset")?;
@@ -214,14 +215,20 @@ impl TemplateStore {
         };
 
         let relative_path = self.preset_file_path(&preset_id);
-        let payload = serde_norway::to_string(&template).map_err(|err| {
-            TemplateStoreError::Parse(format!(
-                "failed to serialize imported preset '{}': {err}",
-                preset_id
-            ))
-        })?;
+        let payload = if template == parsed {
+            raw.into_bytes()
+        } else {
+            serde_norway::to_string(&template)
+                .map_err(|err| {
+                    TemplateStoreError::Parse(format!(
+                        "failed to serialize imported preset '{}': {err}",
+                        preset_id
+                    ))
+                })?
+                .into_bytes()
+        };
         self.apply_single_template_mutation(
-            TemplateFileMutation::write(relative_path, payload.into_bytes()),
+            TemplateFileMutation::write(relative_path, payload),
             &format!("templates: {action} preset {preset_id}"),
         )
     }

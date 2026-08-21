@@ -375,14 +375,10 @@ fn resolve_fields(
     slot_override: Option<&SlotOverrides>,
     instance_override: Option<&SlotOverrides>,
 ) -> ResolvedFields {
-    let defaults = if role.defaults.reasoning_effort.is_none() {
-        ModelSpec::parse_legacy(&role.defaults.model)
-    } else {
-        ModelSpec {
-            model: Some(role.defaults.model.clone()),
-            reasoning_effort: role.defaults.reasoning_effort.clone(),
-        }
-    };
+    let mut defaults = ModelSpec::parse_legacy(&role.defaults.model);
+    if role.defaults.reasoning_effort.is_some() {
+        defaults.reasoning_effort = role.defaults.reasoning_effort.clone();
+    }
     let mut resolved = ResolvedFields {
         model: defaults
             .model
@@ -418,14 +414,10 @@ fn resolve_fields(
 
 fn apply_overrides(resolved: &mut ResolvedFields, overrides: &SlotOverrides) {
     if let Some(model) = overrides.model.as_deref() {
-        let parsed = if overrides.reasoning_effort.is_none() {
-            ModelSpec::parse_legacy(model)
-        } else {
-            ModelSpec {
-                model: Some(model.to_string()),
-                reasoning_effort: overrides.reasoning_effort.clone(),
-            }
-        };
+        let mut parsed = ModelSpec::parse_legacy(model);
+        if overrides.reasoning_effort.is_some() {
+            parsed.reasoning_effort = overrides.reasoning_effort.clone();
+        }
         resolved.model = parsed.model.unwrap_or_else(|| model.to_string());
         if let Some(effort) = parsed.reasoning_effort {
             resolved.reasoning_effort = Some(effort);

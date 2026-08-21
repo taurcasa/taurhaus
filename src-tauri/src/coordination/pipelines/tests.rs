@@ -25,6 +25,7 @@ use crate::coordination::runtime::{
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::storage::TemplateStore;
 use crate::templates::types::BehavioralContract;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1249,6 +1250,36 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     );
 }
 
+// Regression: a79d392 forced the catalog's low effort onto declarations that omitted it,
+// changing the command after activation instead of preserving the CLI's configured effort.
+#[test]
+fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
+    let mut agent = setup_config("builder", "codex", "", "/tmp/project");
+    agent.role_id = Some("v3-developer-codex".to_string());
+    let initialize = MemberActivationContext::for_initialize_member(
+        "architecture-final",
+        "team-lead",
+        &agent,
+        MemberRole::Agent,
+    )
+    .expect("initialize context");
+
+    let mut persisted = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/project");
+    persisted.role_id = Some("v3-developer-codex".to_string());
+    let resume =
+        MemberActivationContext::for_resume_member("architecture-final", "team-lead", &persisted);
+
+    let initialize_command =
+        build_member_activation_launch_command(&initialize, &CliCommandSettings::default())
+            .expect("initialize command");
+    let resume_command =
+        build_member_activation_launch_command(&resume, &CliCommandSettings::default())
+            .expect("resume command");
+
+    assert_eq!(initialize_command, resume_command);
+    assert_eq!(initialize_command, "codex --yolo -m 'gpt-5.6-sol'");
+}
+
 // Regression: ff40911 stripped the suffix and 5d2ce27 aliased gpt-5.3;
 // roles declaring "gpt-5.4 high" ran at the user's global xhigh.
 #[test]
@@ -2058,6 +2089,142 @@ fn load_resume_member_state_preserves_role_template_context() {
     )));
 }
 
+// Regression: a79d392 treated mesh's pre-existing `external` placeholder as a model
+// declaration, so resume rendered `-m 'external'` instead of the member role's model.
+#[test]
+fn resume_external_placeholder_hydrates_the_role_model() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    orchestrator
+        .create_team("external-placeholder", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "external-placeholder",
+            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    builder.role_id = Some("v3-developer-codex".to_string());
+    builder.model = Some("external".to_string());
+    orchestrator
+        .add_member("external-placeholder", builder)
+        .expect("add builder");
+    mark_member_offline(&tmp, "external-placeholder", "builder", "%71", None);
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "external-placeholder".to_string(),
+                member_name: "builder".to_string(),
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume member");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let calls = runtime.calls();
+    let launch = calls
+        .iter()
+        .find_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys.as_str()),
+            _ => None,
+        })
+        .expect("launch command");
+    assert_eq!(launch, "codex --yolo -m 'gpt-5.4'");
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::JoinMesh { model, .. } if model == "gpt-5.4"
+    )));
+}
+
+// Regression: a79d392 derived the template root from the Claude-owned teams path,
+// making app-data user roles invisible during resume hydration.
+#[test]
+fn resume_hydrates_user_role_from_app_data_template_root() {
+    let tmp = TempDir::new().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let claude_dir = tmp.path().join("claude");
+
+    let store = TemplateStore::new(app_data_dir.clone());
+    let mut role = store
+        .get_role("v3-developer-codex")
+        .expect("bundled role")
+        .template;
+    role.role_id = "user-root-builder".to_string();
+    role.name = "User Root Builder".to_string();
+    role.defaults.model = "gpt-5.5".to_string();
+    role.defaults.reasoning_effort = Some("high".to_string());
+    store.create_role(&role).expect("create user role");
+
+    let teams_dir = claude_dir.join("teams");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime_and_template_root(
+        teams_dir,
+        app_data_dir,
+        backend,
+        runtime,
+    );
+    orchestrator
+        .create_team("user-root", None)
+        .expect("create team");
+    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    builder.role_id = Some("user-root-builder".to_string());
+    orchestrator
+        .add_member("user-root", builder)
+        .expect("add builder");
+
+    let (loaded, _, _) = orchestrator
+        .load_resume_member_state(&ResumeMemberRequest {
+            team_name: "user-root".to_string(),
+            member_name: "builder".to_string(),
+        })
+        .expect("load resume state");
+
+    assert_eq!(loaded.model.as_deref(), Some("gpt-5.5"));
+    assert_eq!(loaded.reasoning_effort.as_deref(), Some("high"));
+}
+
+// Regression: a79d392 made a corrupt user role fatal to resume even though the
+// pre-existing resume path did not require template storage to be healthy.
+#[test]
+fn resume_falls_back_when_user_role_is_corrupt() {
+    let tmp = TempDir::new().expect("tempdir");
+    let roles_dir = tmp.path().join("templates").join("roles");
+    fs::create_dir_all(&roles_dir).expect("create roles dir");
+    fs::write(
+        roles_dir.join("v3-developer-codex.yaml"),
+        "schema: [invalid\n",
+    )
+    .expect("write corrupt role");
+
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    orchestrator
+        .create_team("corrupt-role", None)
+        .expect("create team");
+    let mut builder = member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder");
+    builder.role_id = Some("v3-developer-codex".to_string());
+    orchestrator
+        .add_member("corrupt-role", builder)
+        .expect("add builder");
+
+    let (loaded, _, _) = orchestrator
+        .load_resume_member_state(&ResumeMemberRequest {
+            team_name: "corrupt-role".to_string(),
+            member_name: "builder".to_string(),
+        })
+        .expect("corrupt role should degrade to catalog defaults");
+
+    assert_eq!(loaded.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(loaded.reasoning_effort, None);
+}
+
 #[test]
 fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
     let tmp = TempDir::new().expect("tempdir");
@@ -2520,10 +2687,7 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(
-        launch,
-        "codex --yolo -m 'gpt-5.6-sol' -c 'model_reasoning_effort=\"low\"'"
-    );
+    assert_eq!(launch, "codex --yolo -m 'gpt-5.6-sol'");
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
@@ -2603,10 +2767,7 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(
-        launch,
-        "codex --yolo -m 'gpt-5.6-sol' -c 'model_reasoning_effort=\"low\"'"
-    );
+    assert_eq!(launch, "codex --yolo -m 'gpt-5.6-sol'");
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")));

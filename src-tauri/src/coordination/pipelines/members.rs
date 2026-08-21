@@ -1,14 +1,12 @@
 use super::*;
 
-use std::path::Path;
-
 use chrono::Utc;
 
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
-    hydrate_member_model_fields, MemberActivationContext,
+    hydrate_member_model_fields, load_role_for_member_hydration, MemberActivationContext,
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
@@ -22,7 +20,6 @@ use crate::coordination::validation::{
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::templates::storage::{TemplateStore, TemplateStoreError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeTeamDaemonOwnership {
@@ -214,27 +211,9 @@ impl CoordinationOrchestrator {
                 ))
             })?;
 
-        let role = match member.role_id.as_deref() {
-            Some(role_id) => {
-                let app_data_dir = self
-                    .teams_dir
-                    .file_name()
-                    .filter(|name| *name == "teams")
-                    .and_then(|_| self.teams_dir.parent().map(Path::to_path_buf))
-                    .unwrap_or_else(|| self.teams_dir.clone());
-                match TemplateStore::new(app_data_dir).get_role(role_id) {
-                    Ok(record) => Some(record.template),
-                    Err(TemplateStoreError::NotFound(_)) => None,
-                    Err(err) => {
-                        return Err(CoordinationError::StoreError(format!(
-                            "failed to load role '{role_id}' while resuming '{}': {err}",
-                            member.name
-                        )))
-                    }
-                }
-            }
-            None => None,
-        };
+        let role = member.role_id.as_deref().and_then(|role_id| {
+            load_role_for_member_hydration(&self.template_root, role_id, &member.name, "resume")
+        });
         hydrate_member_model_fields(&mut member, role.as_ref());
 
         let runtime = match MemberRuntimeStore::load(

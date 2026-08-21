@@ -1,12 +1,14 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::commands::coordination_types::{
     AddAgentRequest, AgentSetupConfig, InitializeTeamRequest,
 };
 use crate::commands::projects::DbState;
+use crate::coordination::member_activation::load_role_for_member_hydration;
 use crate::coordination::state::CoordinationState;
 use crate::errors::sanitize_error;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::launch::ModelSpec;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
@@ -170,11 +172,14 @@ fn hydrate_agent_setup_from_role_template(
         return Ok(());
     }
 
-    let store = TemplateStore::new(coordination_app_data_dir(state));
-    let role = match store.get_role(role_id) {
-        Ok(record) => record.template,
-        Err(TemplateStoreError::NotFound(_)) => return Ok(()),
-        Err(err) => return Err(map_template_store_error(err)),
+    let template_root = coordination_app_data_dir(state);
+    let Some(role) = load_role_for_member_hydration(
+        &template_root,
+        role_id,
+        &agent.name,
+        "request_normalization",
+    ) else {
+        return Ok(());
     };
     apply_role_template_defaults(agent, &role);
     Ok(())
@@ -367,23 +372,16 @@ fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplat
 }
 
 fn normalize_agent_model_fields(agent: &mut AgentSetupConfig) {
+    let mut parsed = ModelSpec::parse_legacy(&agent.model);
     if agent.reasoning_effort.is_some() {
-        agent.model = agent.model.trim().to_string();
-        return;
+        parsed.reasoning_effort = agent.reasoning_effort.take();
     }
-
-    let parsed = ModelSpec::parse_legacy(&agent.model);
     agent.model = parsed.model.unwrap_or_default();
     agent.reasoning_effort = parsed.reasoning_effort;
 }
 
 fn coordination_app_data_dir(state: &CoordinationState) -> PathBuf {
-    state
-        .teams_dir()
-        .file_name()
-        .filter(|name| *name == "teams")
-        .and_then(|_| state.teams_dir().parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| state.teams_dir().clone())
+    PlatformPaths::coordination_template_root(state.teams_dir())
 }
 
 fn map_template_store_error(err: TemplateStoreError) -> String {

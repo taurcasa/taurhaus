@@ -926,20 +926,18 @@ fn normalize_persisted_model_fields(
     model: Option<String>,
     reasoning_effort: Option<String>,
 ) -> (Option<String>, Option<String>) {
-    if reasoning_effort.is_none() {
-        if let Some(model) = model.as_deref() {
-            let parsed = ModelSpec::parse_legacy(model);
-            return (parsed.model, parsed.reasoning_effort);
-        }
+    let Some(model) = model.as_deref() else {
+        return (None, reasoning_effort);
+    };
+    if model.trim().eq_ignore_ascii_case("external") {
+        return (None, reasoning_effort);
     }
 
-    (
-        model.and_then(|model| {
-            let trimmed = model.trim();
-            (!trimmed.is_empty()).then(|| trimmed.to_string())
-        }),
-        reasoning_effort,
-    )
+    let mut parsed = ModelSpec::parse_legacy(model);
+    if reasoning_effort.is_some() {
+        parsed.reasoning_effort = reasoning_effort;
+    }
+    (parsed.model, parsed.reasoning_effort)
 }
 
 fn parse_role(value: &str) -> MemberRole {
