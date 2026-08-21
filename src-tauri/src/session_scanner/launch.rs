@@ -76,6 +76,11 @@ pub enum LaunchNote {
     DeprecatedFlag { flag: String },
     /// The base already selected a model, so it wins over `ModelSpec`.
     ModelIgnored { found: String },
+    /// The selected catalog model is deprecated and has a preferred replacement.
+    ModelDeprecated {
+        found: String,
+        replacement: Option<String>,
+    },
     /// The requested effort was ignored because the base overrides it or the
     /// selected tool/model does not support it.
     EffortIgnored {
@@ -95,6 +100,7 @@ impl LaunchNote {
         match self {
             Self::DeprecatedFlag { .. } => "launch.flag.deprecated",
             Self::ModelIgnored { .. } => "launch.model.ignored",
+            Self::ModelDeprecated { .. } => "launch.model.deprecated",
             Self::EffortIgnored {
                 reason: EffortIgnoreReason::BaseOverride,
                 ..
@@ -131,6 +137,14 @@ impl LaunchSpec<'_> {
                             found: found.to_string(),
                         });
                     } else {
+                        if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
+                            .filter(|entry| entry.deprecated)
+                        {
+                            notes.push(LaunchNote::ModelDeprecated {
+                                found: model.to_string(),
+                                replacement: entry.replacement.clone(),
+                            });
+                        }
                         append_flag(&mut command, "-m", model);
                     }
                 }
@@ -497,6 +511,28 @@ mod tests {
         );
     }
 
+    // Regression: a79d392 added catalog deprecation metadata for gpt-5.4,
+    // but launches using that model emitted no actionable replacement note.
+    #[test]
+    fn codex_render_notes_deprecated_catalog_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: model_spec("gpt-5.4", None),
+            team: None,
+        }
+        .render();
+
+        assert!(rendered.notes.iter().any(|note| matches!(
+            note,
+            LaunchNote::ModelDeprecated { found, replacement }
+                if found == "gpt-5.4"
+                    && replacement.as_deref() == Some("gpt-5.6-terra")
+                    && note.event_name() == "launch.model.deprecated"
+        )));
+    }
+
     #[test]
     fn codex_render_never_adds_sandbox_flags() {
         let rendered = LaunchSpec {
@@ -526,9 +562,8 @@ mod tests {
         .render();
 
         assert!(!rendered.command.contains("model_reasoning_effort"));
-        assert!(matches!(
-            rendered.notes.as_slice(),
-            [LaunchNote::EffortIgnored { found, .. }] if found == "ultra"
+        assert!(rendered.notes.iter().any(
+            |note| matches!(note, LaunchNote::EffortIgnored { found, .. } if found == "ultra")
         ));
     }
 
@@ -565,6 +600,14 @@ mod tests {
             }
             .event_name(),
             "launch.model.ignored"
+        );
+        assert_eq!(
+            LaunchNote::ModelDeprecated {
+                found: "gpt-5.4".to_string(),
+                replacement: Some("gpt-5.6-terra".to_string()),
+            }
+            .event_name(),
+            "launch.model.deprecated"
         );
         assert_eq!(
             LaunchNote::EffortIgnored {

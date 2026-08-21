@@ -5,10 +5,14 @@ use crate::commands::coordination_types::{
     AddAgentRequest, AgentSetupConfig, InitializeTeamRequest,
 };
 use crate::commands::projects::DbState;
-use crate::coordination::member_activation::load_role_for_member_hydration;
+use crate::coordination::member_activation::{
+    load_role_for_member_hydration, validated_role_model,
+};
 use crate::coordination::state::CoordinationState;
 use crate::errors::sanitize_error;
+use crate::models::ModelCatalog;
 use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::launch::ModelSpec;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
@@ -194,7 +198,18 @@ fn apply_resolved_member_defaults(
         agent.cli_tool = member.cli_tool.to_string();
     }
     if agent.model.trim().is_empty() {
-        agent.model = member.model.clone();
+        agent.model = CliTool::from_alias(&agent.cli_tool)
+            .ok()
+            .and_then(|tool| {
+                validated_role_model(
+                    tool,
+                    &member.model,
+                    &agent.name,
+                    "preset_request_normalization",
+                )
+                .or_else(|| Some(ModelCatalog::default_for(tool).id.clone()))
+            })
+            .unwrap_or_else(|| member.model.clone());
     }
     if agent.reasoning_effort.is_none() {
         agent.reasoning_effort = member.reasoning_effort.clone();
@@ -307,7 +322,18 @@ fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
 
 fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplate) {
     if agent.model.trim().is_empty() {
-        agent.model = role.defaults.model.clone();
+        agent.model = CliTool::from_alias(&agent.cli_tool)
+            .ok()
+            .and_then(|tool| {
+                validated_role_model(
+                    tool,
+                    &role.defaults.model,
+                    &agent.name,
+                    "request_normalization",
+                )
+                .or_else(|| Some(ModelCatalog::default_for(tool).id.clone()))
+            })
+            .unwrap_or_else(|| role.defaults.model.clone());
     }
     if agent.reasoning_effort.is_none() {
         agent.reasoning_effort = role.defaults.reasoning_effort.clone();

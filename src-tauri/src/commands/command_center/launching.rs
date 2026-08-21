@@ -122,27 +122,31 @@ pub(super) fn launch_cli_session_impl(
     );
     for note in rendered.notes {
         let event = note.event_name();
-        let (field, value, message) = match note {
-            LaunchNote::DeprecatedFlag { flag } => (
-                "flag",
-                flag,
-                "Configured launch base contains a deprecated flag",
-            ),
-            LaunchNote::ModelIgnored { found } => (
-                "found",
-                found,
-                "Configured launch base overrides the requested model",
-            ),
-            LaunchNote::EffortIgnored { found, .. } => (
-                "found",
-                found,
-                "Configured launch base overrides or cannot use the requested reasoning effort",
-            ),
-        };
         let mut fields = Map::new();
         fields.insert("tool".to_string(), Value::String(tool.to_string()));
         fields.insert("mode".to_string(), Value::String(mode_name.clone()));
-        fields.insert(field.to_string(), Value::String(value));
+        let message = match note {
+            LaunchNote::DeprecatedFlag { flag } => {
+                fields.insert("flag".to_string(), Value::String(flag));
+                "Configured launch base contains a deprecated flag"
+            }
+            LaunchNote::ModelIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides the requested model"
+            }
+            LaunchNote::ModelDeprecated { found, replacement } => {
+                fields.insert("found".to_string(), Value::String(found));
+                fields.insert(
+                    "replacement".to_string(),
+                    replacement.map(Value::String).unwrap_or(Value::Null),
+                );
+                "Requested model is deprecated"
+            }
+            LaunchNote::EffortIgnored { found, .. } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides or cannot use the requested reasoning effort"
+            }
+        };
         crate::commands::logging::emit_global(
             "warn",
             "command_center",

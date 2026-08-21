@@ -442,28 +442,32 @@ fn render_team_launch_command(
 
     for note in rendered.notes {
         let event = note.event_name();
-        let (field, value, message) = match note {
-            LaunchNote::DeprecatedFlag { flag } => (
-                "flag",
-                flag,
-                "Configured launch base contains a deprecated flag",
-            ),
-            LaunchNote::ModelIgnored { found } => (
-                "found",
-                found,
-                "Configured launch base overrides the role model",
-            ),
-            LaunchNote::EffortIgnored { found, .. } => (
-                "found",
-                found,
-                "Configured launch base overrides or cannot use the role reasoning effort",
-            ),
-        };
         let mut fields = Map::new();
         fields.insert("team".to_string(), Value::String(team_name.to_string()));
         fields.insert("member".to_string(), Value::String(agent_name.to_string()));
         fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
-        fields.insert(field.to_string(), Value::String(value));
+        let message = match note {
+            LaunchNote::DeprecatedFlag { flag } => {
+                fields.insert("flag".to_string(), Value::String(flag));
+                "Configured launch base contains a deprecated flag"
+            }
+            LaunchNote::ModelIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides the role model"
+            }
+            LaunchNote::ModelDeprecated { found, replacement } => {
+                fields.insert("found".to_string(), Value::String(found));
+                fields.insert(
+                    "replacement".to_string(),
+                    replacement.map(Value::String).unwrap_or(Value::Null),
+                );
+                "Role model is deprecated"
+            }
+            LaunchNote::EffortIgnored { found, .. } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides or cannot use the role reasoning effort"
+            }
+        };
         emit_global(
             "warn",
             "coordination",

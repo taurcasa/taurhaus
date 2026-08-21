@@ -2054,6 +2054,24 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
         .contains("Perform code reviews focused on correctness"));
 }
 
+// Regression: a79d392 hydrated role models without checking the requested CLI,
+// so request normalization could pair Claude with a Codex-only model slug.
+#[test]
+fn role_hydration_cli_mismatch_uses_the_requested_tools_catalog_default() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().join("teams"));
+    let mut request = sample_preflight_request();
+    request.agents[0].cli_tool = "claude".to_string();
+    request.agents[0].model.clear();
+    request.agents[0].role_id = Some("v3-developer-codex".to_string());
+    request.agents[0].role_name = None;
+
+    let hydrated = hydrate_initialize_request_role_metadata(&state, request)
+        .expect("role hydration should succeed");
+
+    assert_eq!(hydrated.agents[0].model, "opus");
+}
+
 #[test]
 fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload() {
     let tmp = TempDir::new().expect("tempdir");
