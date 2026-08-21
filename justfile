@@ -475,7 +475,14 @@ bundle-mesh: mesh-verify-lock
     LOCK_GIT_COMMIT_RAW="${LOCK_FIELDS[3]}"
     echo "▸ Bundling mesh binary into src-tauri/resources/…"
     mkdir -p src-tauri/resources
+    # A stray directory at resources/mesh would turn `cp` into resources/mesh/mesh
+    # and ship a corrupt bundle (v0.6.4). Always bundle onto a regular file.
+    if [ -d src-tauri/resources/mesh ]; then
+        echo "  ! src-tauri/resources/mesh is a directory — removing it"
+        rm -rf src-tauri/resources/mesh
+    fi
     cp "$MESH_BIN" src-tauri/resources/mesh
+    [ -f src-tauri/resources/mesh ] || { echo "✗ src-tauri/resources/mesh is not a regular file after bundling"; exit 1; }
     printf '%s\n' "$LOCK_VERSION" > src-tauri/resources/mesh.version
     cat > src-tauri/resources/mesh.manifest.json <<JSON
     {
