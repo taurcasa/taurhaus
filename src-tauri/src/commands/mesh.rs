@@ -76,14 +76,33 @@ fn resolve_bundled_mesh_assets(
         .path()
         .resource_dir()
         .map_err(|e| format!("Failed to resolve resource directory: {e}"))?;
-    let bundled_binary = resource_dir.join("resources").join(MESH_BINARY_NAME);
+    resolve_bundled_mesh_assets_in(&resource_dir.join("resources"))
+}
+
+/// Resolve the bundled mesh binary + manifest from a resources directory.
+///
+/// The binary must be a regular file. A directory at `resources/mesh` (which
+/// `just bundle-mesh` could previously produce if a stray directory existed,
+/// turning `cp mesh resources/mesh` into `resources/mesh/mesh`) is rejected
+/// explicitly instead of being handed to the installer as if it were a binary.
+fn resolve_bundled_mesh_assets_in(
+    resources_dir: &Path,
+) -> Result<(PathBuf, MeshCompatibilityContract), String> {
+    let bundled_binary = resources_dir.join(MESH_BINARY_NAME);
     if !bundled_binary.exists() {
         return Err(format!(
             "Bundled mesh binary not found at {}",
             bundled_binary.display()
         ));
     }
-    let bundled_contract = read_mesh_manifest_resource(&resource_dir.join("resources"))?;
+    if !bundled_binary.is_file() {
+        return Err(format!(
+            "Bundled mesh binary at {} is not a regular file (found a directory); \
+             the resource bundle is corrupt — rebuild with `just bundle-mesh`",
+            bundled_binary.display()
+        ));
+    }
+    let bundled_contract = read_mesh_manifest_resource(resources_dir)?;
     Ok((bundled_binary, bundled_contract))
 }
 
@@ -909,6 +928,47 @@ mod tests {
     }
 
     #[cfg(not(target_os = "windows"))]
+    // Regression: v0.6.4 shipped with `resources/mesh` as a *directory*
+    // (`resources/mesh/mesh`) because a stray directory pre-existed and
+    // `just bundle-mesh` copied the binary into it. `exists()` was true, so
+    // the installer was handed a directory. The resolver must reject that.
+    #[test]
+    fn resolve_bundled_mesh_assets_rejects_directory_at_binary_path() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let resources = tmp.path().join("resources");
+        std::fs::create_dir_all(resources.join(MESH_BINARY_NAME)).expect("dir at mesh path");
+        std::fs::write(
+            resources.join(MESH_MANIFEST_RESOURCE),
+            r#"{"version":"0.2.17","protocol_version":1,"schema_version":1,"git_commit":"abc","bundled_at_utc":"x"}"#,
+        )
+        .expect("manifest");
+
+        let err =
+            resolve_bundled_mesh_assets_in(&resources).expect_err("directory must be rejected");
+        assert!(
+            err.contains("not a regular file"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_bundled_mesh_assets_accepts_regular_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let resources = tmp.path().join("resources");
+        std::fs::create_dir_all(&resources).expect("resources dir");
+        std::fs::write(resources.join(MESH_BINARY_NAME), b"#!/bin/sh\n").expect("binary");
+        std::fs::write(
+            resources.join(MESH_MANIFEST_RESOURCE),
+            r#"{"version":"0.2.17","protocol_version":1,"schema_version":1,"git_commit":"abc","bundled_at_utc":"x"}"#,
+        )
+        .expect("manifest");
+
+        let (binary, contract) =
+            resolve_bundled_mesh_assets_in(&resources).expect("regular file resolves");
+        assert_eq!(binary, resources.join(MESH_BINARY_NAME));
+        assert_eq!(contract.version, "0.2.17");
+    }
+
     #[test]
     fn install_mesh_wsl_script_executes_atomic_swap_with_live_daemon_like_processes() {
         let temp_home = tempfile::TempDir::new().expect("tempdir");
