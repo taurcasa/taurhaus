@@ -1072,12 +1072,28 @@ mod tests {
     // allowlist, so a user-added Codex model (e.g. a newer slug not yet in the
     // static list) silently lost its declared reasoning effort.
     fn codex_effort_is_accepted_for_models_outside_the_catalog() {
-        assert!(ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.7-nova"), "high"));
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.7-nova"),
+            "high"
+        ));
         assert!(ModelCatalog::supports_effort(CliTool::Codex, None, "xhigh"));
-        assert!(!ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.7-nova"), "turbo"));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.7-nova"),
+            "turbo"
+        ));
         // Known entries keep their own list (luna has no `ultra`).
-        assert!(!ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.6-luna"), "ultra"));
-        assert!(ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.6-sol"), "ultra"));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.6-luna"),
+            "ultra"
+        ));
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.6-sol"),
+            "ultra"
+        ));
     }
 
     #[test]
