@@ -1,5 +1,5 @@
 use super::*;
-use crate::commands::logging::LogFileState;
+use crate::commands::logging::{install_global_sink, LogFileState};
 use crate::commands::runtime_snapshot::{
     daemon_runtime_session_snapshot, decode_daemon_runtime_session_snapshot,
     RuntimeSnapshotFreshness,
@@ -14,7 +14,7 @@ use crate::coordination::runtime::{
 };
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfig};
-use crate::session_scanner::control::resolve_configured_tool_command;
+use crate::session_scanner::launch::base_command;
 use crate::session_scanner::tmux::TmuxFocusState;
 use crate::session_scanner::{DisplaySession, SessionGroupKind, SessionState};
 use std::io::{BufRead, BufReader, Write};
@@ -832,11 +832,11 @@ fn daemon_launch_decode_handles_missing_invalid_and_valid_payloads() {
 }
 
 #[test]
-fn resolve_tool_command_defaults_are_non_empty_and_match_expected_values() {
+fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
     let cmds = crate::models::CliCommandSettings::default();
     for tool in [CliTool::Claude, CliTool::Codex, CliTool::Gemini] {
         for mode in [LaunchMode::Continue, LaunchMode::Fresh, LaunchMode::Resume] {
-            let command = resolve_configured_tool_command(&cmds, tool, mode);
+            let command = base_command(&cmds, tool, mode);
             assert!(
                 !command.trim().is_empty(),
                 "command must be non-empty for {tool:?}/{mode:?}"
@@ -878,7 +878,7 @@ fn resolve_tool_command_defaults_are_non_empty_and_match_expected_values() {
             "gemini --yolo --resume",
         ),
     ] {
-        assert_eq!(resolve_configured_tool_command(&cmds, tool, mode), expected);
+        assert_eq!(base_command(&cmds, tool, mode), expected);
     }
 }
 
@@ -988,6 +988,74 @@ fn launch_cli_session_logs_daemon_request_context() {
     assert_eq!(request["daemon_method"], protocol::method::LAUNCH_SESSION);
     assert_eq!(request["project_id"], "p1");
     assert_eq!(request["project_path"], "/tmp/project");
+}
+
+#[test]
+fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": {
+            "tmux_session": "taurhaus",
+            "tmux_window": "2",
+            "tmux_pane": "%7"
+        },
+        "error": null
+    }));
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    };
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "claude --dangerously-skip-permissions"
+    );
+
+    let rendered = (0..100)
+        .find_map(|_| {
+            let content = std::fs::read_to_string(log_file_path.path()).unwrap_or_default();
+            let event = content
+                .lines()
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .find(|event| {
+                    event["event"] == "launch.command.rendered"
+                        && event["tool"] == "claude"
+                        && event["mode"] == "fresh"
+                        && event["command"] == "claude --dangerously-skip-permissions"
+                });
+            if event.is_none() {
+                thread::sleep(Duration::from_millis(20));
+            }
+            event
+        })
+        .expect("rendered launch event");
+    assert_eq!(rendered["tool"], "claude");
+    assert_eq!(rendered["mode"], "fresh");
+    assert_eq!(rendered["command"], "claude --dangerously-skip-permissions");
 }
 
 #[test]

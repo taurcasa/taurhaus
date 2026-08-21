@@ -64,7 +64,7 @@ export function buildMockLiveTeamStatus(teamName, overrides = {}) {
         name: 'frontend-dev',
         role: 'member',
         cliTool: 'codex',
-        model: 'gpt-5.3',
+        model: 'gpt-5.4',
         roleId: 'codex-developer',
         roleName: 'Codex Developer',
         focusArea: 'Scoped implementation',

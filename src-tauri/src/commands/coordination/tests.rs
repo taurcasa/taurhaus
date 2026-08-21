@@ -156,7 +156,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             AgentSetupConfig {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 role_id: Some("codex-architect".to_string()),
                 role_name: Some("Codex Architect".to_string()),
                 focus_area: Some("Architecture decisions and structural review".to_string()),
@@ -213,7 +213,7 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
         agent: AgentSetupConfig {
             name: member_name.to_string(),
             cli_tool: "codex".to_string(),
-            model: "gpt-5.3".to_string(),
+            model: "gpt-5.4".to_string(),
             role_id: None,
             role_name: None,
             focus_area: None,
@@ -713,7 +713,7 @@ fn add_agent_and_reonboard_validate_empty_strings() {
             agent: AgentSetupConfig {
                 name: "".to_string(),
                 cli_tool: "".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 role_id: None,
                 role_name: None,
                 focus_area: None,
@@ -2284,7 +2284,7 @@ fn initialize_team_request_round_trip() {
             AgentSetupConfig {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 role_id: None,
                 role_name: None,
                 focus_area: None,
@@ -2375,7 +2375,7 @@ fn add_agent_request_and_report_round_trip() {
         agent: AgentSetupConfig {
             name: "backend-dev".to_string(),
             cli_tool: "codex".to_string(),
-            model: "gpt-5.3".to_string(),
+            model: "gpt-5.4".to_string(),
             role_id: None,
             role_name: None,
             focus_area: None,
@@ -2546,7 +2546,7 @@ fn live_team_status_round_trip() {
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
                 cli_tool: "codex".to_string(),
-                model: "gpt-5.3".to_string(),
+                model: "gpt-5.4".to_string(),
                 role_id: None,
                 role_name: None,
                 focus_area: None,

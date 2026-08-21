@@ -174,6 +174,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 1 tmux focus hotfix | Codex gpt-5.6 | Opus ×2 | 2 | 4 (Opus: cold tmux server left no hooks; unthrottled WARN loop; deleted regression guard) | #11 |
 | 2 fail-soft process inventory | Opus 5 | Fable ×2 (approve), Codex gpt-5.6 | 3 | 3 (Codex: degraded scans still mutated state; Windows daemon branch lacked the flag; re-confirmed) | #9 `ef55e83` |
 | 3 Claude registry identity | Opus 5 | Fable ×2 (approve), Codex gpt-5.6 | 2 | 2 (Codex: macOS ignored per-process `CLAUDE_CONFIG_DIR`; unknown status discarded identity) | #10 `28b474b` |
+| 4 ModelSpec + LaunchSpec | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 
 ## Spikes / unknowns
 
@@ -184,7 +185,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | S3 | Is `CLAUDECODE=1` (`helpers.rs:412-414`) harmless on 2.1.238 or a nested-session signal? | launch with/without, inspect the registry entry | PR 4 |
 | S6 | Codex 0.147: does `SessionStart(source=compact)` fire, is `additionalContext` honoured, does `PostCompact` double-fire, is `session_id` the rollout id, trust UX | scratch `~/.codex/hooks.json` logging hook + forced compaction | PR 9 |
 | S7 | `/proc/*/cmdline` cost at ~2 000 pids vs `ps` | `process_scan_ms` before/after | PR 2 |
-| S9 | Claude `--model` with full ids under subscription (`claude-sonnet-4-5` in `claude-researcher.yaml:12`) | `claude --model <id> -p ok` per YAML id | PR 4 allowlist |
+| S9 | Claude `--model` with full ids under subscription (`claude-sonnet-4-5` in `claude-researcher.yaml:12`) | **Executed 2026-08-21 (PR 4)** from `/tmp`: both `claude --model claude-opus-4-6 -p 'reply OK' --max-turns 1` and `claude --model claude-sonnet-4-5 -p 'reply OK' --max-turns 1` returned `OK` with exit 0 under subscription. `claude --help` lists `low`, `medium`, `high`, `xhigh`, `max` for `--effort`. | **Answered — both full ids accepted; no default changed.** |
 | S10 | Default Codex slug: keep `gpt-5.4` with a deprecation hint or move to `gpt-5.6-terra` | product decision | PR 5 defaults |
 | S11 | Native daemon always runs the hub on Linux/macOS (`launcher.rs:490-501`) | read + run | PR 8 |
 | S12 | Gemini `-m`, `--yolo`, model ids (no binary installed) | install once | PR 4 Gemini arm |

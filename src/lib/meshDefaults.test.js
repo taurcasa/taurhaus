@@ -15,6 +15,8 @@ import {
 } from './meshDefaults.js'
 
 describe('meshDefaults', () => {
+  // Regression: 791f6be removed the explicit Codex effort from the primary
+  // builder default, so UI-created members inherited the user's global xhigh.
   it('exposes canonical tool/model defaults', () => {
     expect(TOOL_OPTIONS).toEqual(['claude', 'codex', 'gemini'])
     expect(MODEL_OPTIONS_BY_TOOL.claude).toEqual(['opus', 'sonnet', 'haiku'])

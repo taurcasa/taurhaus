@@ -1197,7 +1197,7 @@ fn build_cli_launch_command_uses_configured_fresh_command() {
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
             .expect("command"),
-        "gemini --yolo --sandbox read-only"
+        "gemini --yolo --sandbox read-only -m 'gemini-2.5-pro'"
     );
 }
 
@@ -1234,6 +1234,41 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     );
 }
 
+// Regression: ff40911 stripped the suffix and 5d2ce27 aliased gpt-5.3;
+// roles declaring "gpt-5.4 high" ran at the user's global xhigh.
+#[test]
+fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
+    let cmds = crate::models::CliCommandSettings::default();
+    let agent = AgentSetupConfig {
+        name: "builder".to_string(),
+        cli_tool: "codex".to_string(),
+        model: "gpt-5.4 high".to_string(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        role_name: None,
+        focus_area: None,
+        context_summary: None,
+        behavior_summary: None,
+        communication_style: None,
+        runtime_compact_summary: None,
+        instructions: None,
+        behavioral_contract: None,
+        quality_gates: None,
+        definition_of_done: None,
+        phase_scope: None,
+        mode: None,
+        inherits_from: None,
+        required_artifacts: None,
+        capabilities: None,
+    };
+
+    let command = build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
+        .expect("command");
+    assert!(command.contains("-m 'gpt-5.4'"));
+    assert!(command.contains("-c 'model_reasoning_effort=\"high\"'"));
+}
+
 #[test]
 fn build_cli_launch_command_for_claude_appends_team_context() {
     let cmds = crate::models::CliCommandSettings::default();
@@ -1264,10 +1299,28 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
         build_cli_launch_command(&agent, "ledger-team", MemberRole::Lead, &cmds).expect("command");
     assert!(command.contains("CLAUDECODE=1"));
     assert!(command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"));
-    assert!(command.contains("--team-name ledger-team"));
-    assert!(command.contains("--agent-name team-lead"));
-    assert!(command.contains("--agent-id team-lead@ledger-team"));
-    assert!(command.contains("--agent-type orchestrator"));
+    assert!(command.contains("--model 'claude-opus-4-6'"));
+    assert!(command.contains("--team-name 'ledger-team'"));
+    assert!(command.contains("--agent-name 'team-lead'"));
+    assert!(command.contains("--agent-id 'team-lead@ledger-team'"));
+    assert!(command.contains("--agent-type 'orchestrator'"));
+    assert!(command.contains("-n 'team-lead'"));
+    for flag in [
+        "--team-name",
+        "--agent-name",
+        "--agent-id",
+        "--agent-type",
+        "-n",
+    ] {
+        assert_eq!(
+            command
+                .split_whitespace()
+                .filter(|token| *token == flag)
+                .count(),
+            1,
+            "{flag} must be rendered exactly once: {command}"
+        );
+    }
 }
 
 // Resume always starts a fresh session — never uses --continue or resume --last.
@@ -1285,7 +1338,7 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
         &cmds,
     )
     .expect("command");
-    assert_eq!(command, "codex --yolo -m 'gpt-5.3-codex'");
+    assert_eq!(command, "codex --yolo -m 'gpt-5.3'");
     assert!(!command.contains("resume"));
     assert!(!command.contains("--last"));
 
@@ -1299,8 +1352,8 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
     )
     .expect("command");
     assert!(!command.contains("--continue"));
-    assert!(command.contains("--agent-type orchestrator"));
-    assert!(command.contains("--team-name architecture-final"));
+    assert!(command.contains("--agent-type 'orchestrator'"));
+    assert!(command.contains("--team-name 'architecture-final'"));
 }
 
 #[test]
@@ -2037,7 +2090,7 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
         })
         .expect("launch command");
     assert!(!launch.contains("--continue"));
-    assert!(launch.contains("--agent-type orchestrator"));
+    assert!(launch.contains("--agent-type 'orchestrator'"));
     assert!(!calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
@@ -2109,7 +2162,7 @@ fn resume_pipeline_claude_member_sends_onboarding_and_skips_mesh_daemon() {
             _ => None,
         })
         .expect("launch command");
-    assert!(launch.contains("--agent-type general-purpose"));
+    assert!(launch.contains("--agent-type 'general-purpose'"));
     assert!(!calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));

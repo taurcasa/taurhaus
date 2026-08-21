@@ -7,6 +7,7 @@ use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::{self, CliTool};
+use crate::session_scanner::launch::{base_command, shell_escape, LaunchSpec, ModelSpec};
 use crate::tmux_layout::{
     derive_window_name, parse_pane_records, parse_window_records, resolve_layout_allocation,
     resolve_split_target_pane, wait_for_tmux_session_ready, TmuxLayoutAllocation, TmuxLayoutPolicy,
@@ -435,81 +436,22 @@ pub(crate) fn validate_command_override(cmd: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolve a launch command using configured per-tool/per-mode settings.
-pub fn resolve_configured_tool_command(
-    cmds: &CliCommandSettings,
-    tool: CliTool,
-    mode: LaunchMode,
-) -> String {
-    let tool_cmds = match tool {
-        CliTool::Claude => &cmds.claude,
-        CliTool::Codex => &cmds.codex,
-        CliTool::Gemini => &cmds.gemini,
-    };
-    let cmd = match mode {
-        LaunchMode::Continue => &tool_cmds.continue_cmd,
-        LaunchMode::Fresh => &tool_cmds.fresh,
-        LaunchMode::Resume => &tool_cmds.resume,
-    };
-    cmd.clone()
-}
-
-fn codex_command_has_model_arg(command: &str) -> bool {
-    let mut tokens = command.split_whitespace();
-    while let Some(token) = tokens.next() {
-        if token == "-m" {
-            return true;
-        }
-        if token.starts_with("--model") {
-            return true;
-        }
-        // consume next token for "-m <value>" cases already handled above
-        if token == "--model" {
-            let _ = tokens.next();
-            return true;
-        }
-    }
-    false
-}
-
-fn normalize_codex_model(model: &str) -> String {
-    let trimmed = model.trim();
-    let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
-    if compact.eq_ignore_ascii_case("gpt-5.4")
-        || compact.eq_ignore_ascii_case("gpt-5.4 high")
-        || compact.eq_ignore_ascii_case("gpt-5.4 medium")
-        || compact.eq_ignore_ascii_case("gpt-5.4 low")
-        || trimmed.eq_ignore_ascii_case("gpt-5.4-high")
-        || trimmed.eq_ignore_ascii_case("gpt-5.4-medium")
-        || trimmed.eq_ignore_ascii_case("gpt-5.4-low")
-    {
-        return "gpt-5.4".to_string();
-    }
-    if trimmed.eq_ignore_ascii_case("gpt-5.3") {
-        return "gpt-5.3-codex".to_string();
-    }
-    compact
-}
-
-/// Build the command used for team-agent launch (fresh mode + optional model).
-pub fn build_team_launch_command(cmds: &CliCommandSettings, tool: CliTool, model: &str) -> String {
-    let base = resolve_configured_tool_command(cmds, tool, LaunchMode::Fresh);
-    if tool != CliTool::Codex {
-        return base;
-    }
-
-    let model = model.trim();
-    if model.is_empty() || codex_command_has_model_arg(&base) {
-        return base;
-    }
-
-    let normalized_model = normalize_codex_model(model);
-    format!("{base} -m {}", shell_escape(&normalized_model))
-}
-
 /// Build the launch command string for a given tool and launch mode.
+///
+/// This is the daemon-only fallback for old callers that omit `command_override`.
+/// The daemon has no settings database; every app-side launch sends a command
+/// rendered from the loaded `CliCommandSettings` instead.
 pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
-    resolve_configured_tool_command(&CliCommandSettings::default(), tool, mode)
+    let commands = CliCommandSettings::default();
+    LaunchSpec {
+        tool,
+        mode,
+        base: base_command(&commands, tool, mode),
+        model: ModelSpec::default(),
+        team: None,
+    }
+    .render()
+    .command
 }
 
 /// The tmux session name used by taurhaus for all CLI tool windows.
@@ -917,16 +859,6 @@ fn build_tmux_shell_command(project_path: &str, command: &str) -> String {
     format!("exec \"$SHELL\" -ic {}", shell_escape(&inner_cmd))
 }
 
-/// Escape a string for safe use in a POSIX shell command.
-///
-/// Wraps the string in single quotes and escapes any embedded single quotes
-/// using the `'\''` technique (end quote, escaped quote, start quote).
-/// This prevents shell interpretation of spaces, semicolons, backticks,
-/// `$()`, and all other metacharacters.
-fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
 /// Send a raw key sequence to a tmux pane (no Enter, no text escaping).
 ///
 /// Used for control sequences like `C-c` (Ctrl+C) that aren't typed text.
@@ -1088,62 +1020,6 @@ mod tests {
         assert!(validate_command_override("claude\nrm -rf /").is_err());
         assert!(validate_command_override("claude\r").is_err());
         assert!(validate_command_override("claude\0").is_err());
-    }
-
-    #[test]
-    fn resolve_configured_tool_command_uses_settings_values() {
-        let mut cmds = crate::models::CliCommandSettings::default();
-        cmds.codex.fresh = "codex --yolo --sandbox workspace-write".to_string();
-        assert_eq!(
-            resolve_configured_tool_command(&cmds, CliTool::Codex, LaunchMode::Fresh),
-            "codex --yolo --sandbox workspace-write"
-        );
-    }
-
-    #[test]
-    fn build_team_launch_command_for_codex_appends_model_when_missing() {
-        let cmds = crate::models::CliCommandSettings::default();
-        assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4"),
-            "codex --yolo -m 'gpt-5.4'"
-        );
-    }
-
-    #[test]
-    fn build_team_launch_command_for_codex_normalizes_legacy_hyphenated_high_model() {
-        let cmds = crate::models::CliCommandSettings::default();
-        assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4-high"),
-            "codex --yolo -m 'gpt-5.4'"
-        );
-    }
-
-    #[test]
-    fn build_team_launch_command_for_codex_strips_embedded_reasoning_suffix() {
-        let cmds = crate::models::CliCommandSettings::default();
-        assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4 high"),
-            "codex --yolo -m 'gpt-5.4'"
-        );
-    }
-
-    #[test]
-    fn build_team_launch_command_for_codex_preserves_codex_model_suffix() {
-        let cmds = crate::models::CliCommandSettings::default();
-        assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.3-codex"),
-            "codex --yolo -m 'gpt-5.3-codex'"
-        );
-    }
-
-    #[test]
-    fn build_team_launch_command_for_codex_keeps_existing_model_flag() {
-        let mut cmds = crate::models::CliCommandSettings::default();
-        cmds.codex.fresh = "codex --yolo --model gpt-6".to_string();
-        assert_eq!(
-            build_team_launch_command(&cmds, CliTool::Codex, "gpt-5.4"),
-            "codex --yolo --model gpt-6"
-        );
     }
 
     #[test]
