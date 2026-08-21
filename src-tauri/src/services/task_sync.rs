@@ -371,6 +371,9 @@ pub(crate) fn scan_tasks_from_files(
         }
     }
 
+    // Continuity read: the sessions only locate transcripts to read tasks
+    // from; a degraded scan keeps the last good snapshot (degraded flag
+    // dropped on purpose), nothing is bound to it.
     let all_sessions: Vec<RuntimeSession> = cached_sessions
         .map(|s| s.to_vec())
         .unwrap_or_else(|| crate::session_scanner::scan_sessions_for_runtime().0);

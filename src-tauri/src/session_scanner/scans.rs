@@ -20,14 +20,21 @@ use super::{
 #[cfg(test)]
 use super::SessionState;
 
-/// Last fully classified display/runtime snapshot, returned verbatim on
-/// degraded scans so consumers keep data without re-running classification.
-#[allow(clippy::type_complexity)]
-static LAST_AUTHORITATIVE_SNAPSHOT: Mutex<(Vec<DisplaySession>, Vec<RuntimeSession>)> =
-    Mutex::new((Vec::new(), Vec::new()));
+/// Last good display and runtime views, returned verbatim on degraded scans
+/// so consumers keep data without re-running classification.
+///
+/// One coherent snapshot for both entry points: an authoritative scan refreshes
+/// both views, a runtime scan only the runtime view, so the first degraded call
+/// on either path during an outage finds whatever the other path last saw.
+struct LastGoodSnapshot {
+    display: Vec<DisplaySession>,
+    runtime: Vec<RuntimeSession>,
+}
 
-/// Last good runtime-path snapshot, returned verbatim on degraded scans.
-static LAST_RUNTIME_SNAPSHOT: Mutex<Vec<RuntimeSession>> = Mutex::new(Vec::new());
+static LAST_GOOD_SNAPSHOT: Mutex<LastGoodSnapshot> = Mutex::new(LastGoodSnapshot {
+    display: Vec::new(),
+    runtime: Vec::new(),
+});
 
 /// Scan for all running Claude Code sessions.
 ///
@@ -95,10 +102,12 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
     );
 
     if degraded {
-        let (display_sessions, runtime_sessions) = LAST_AUTHORITATIVE_SNAPSHOT
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .clone();
+        let (display_sessions, runtime_sessions) = {
+            let last_good = LAST_GOOD_SNAPSHOT
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            (last_good.display.clone(), last_good.runtime.clone())
+        };
         let display_sessions = finalize_display_scan(
             display_sessions,
             None,
@@ -179,10 +188,11 @@ fn remember_authoritative_snapshot(
     display_sessions: &[DisplaySession],
     runtime_sessions: &[RuntimeSession],
 ) {
-    *LAST_AUTHORITATIVE_SNAPSHOT
+    let mut last_good = LAST_GOOD_SNAPSHOT
         .lock()
-        .unwrap_or_else(|error| error.into_inner()) =
-        (display_sessions.to_vec(), runtime_sessions.to_vec());
+        .unwrap_or_else(|error| error.into_inner());
+    last_good.display = display_sessions.to_vec();
+    last_good.runtime = runtime_sessions.to_vec();
 }
 
 /// Scan for runtime reconciliation/session-id detection without hiding session metadata.
@@ -215,9 +225,10 @@ pub fn scan_sessions_for_runtime() -> (Vec<RuntimeSession>, bool) {
 
     if degraded {
         // Inert: no binding reconciliation, no transcript lookups.
-        let sessions = LAST_RUNTIME_SNAPSHOT
+        let sessions = LAST_GOOD_SNAPSHOT
             .lock()
             .unwrap_or_else(|error| error.into_inner())
+            .runtime
             .clone();
         return (sessions, true);
     }
@@ -239,9 +250,19 @@ pub fn scan_sessions_for_runtime() -> (Vec<RuntimeSession>, bool) {
 }
 
 fn remember_runtime_snapshot(sessions: &[RuntimeSession]) {
-    *LAST_RUNTIME_SNAPSHOT
+    LAST_GOOD_SNAPSHOT
         .lock()
-        .unwrap_or_else(|error| error.into_inner()) = sessions.to_vec();
+        .unwrap_or_else(|error| error.into_inner())
+        .runtime = sessions.to_vec();
+}
+
+#[cfg(test)]
+pub(crate) fn clear_last_good_snapshot() {
+    let mut last_good = LAST_GOOD_SNAPSHOT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    last_good.display.clear();
+    last_good.runtime.clear();
 }
 
 /// Testable version of scan_sessions that accepts injectable functions.
@@ -685,6 +706,7 @@ mod tests {
             let tmp = TempDir::new().expect("tempdir");
             set_binding_store_path_for_test(Some(tmp.path().join("codex-bindings.json")));
             clear_scan_cache();
+            clear_last_good_snapshot();
             E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
             E2E_IDLE_CALLS.store(0, Ordering::SeqCst);
             E2E_COMPACTION_PUBLISHES.store(0, Ordering::SeqCst);
@@ -709,6 +731,7 @@ mod tests {
             set_display_scan_compaction_hook(None);
             set_binding_store_path_for_test(None);
             clear_scan_cache();
+            clear_last_good_snapshot();
             E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
         }
     }
@@ -826,5 +849,29 @@ mod tests {
         assert!(!degraded);
         assert_eq!(recovered, sessions);
         assert_eq!(E2E_IDLE_CALLS.load(Ordering::SeqCst), idle_calls + 2);
+    }
+
+    // Regression: the authoritative and runtime last-good snapshots were
+    // independent statics, so a healthy authoritative scan (the hub's usual
+    // path) left the runtime fallback empty and the first degraded
+    // `scan_sessions_for_runtime` call of an outage returned no sessions even
+    // though a fully classified snapshot existed. There is one coherent
+    // last-good snapshot: an authoritative scan seeds the runtime view too.
+    #[test]
+    fn authoritative_scan_seeds_runtime_fallback_for_degraded_runtime_scan() {
+        let _harness = E2eScanner::install();
+
+        let (_, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
+        assert!(!degraded);
+        assert_eq!(runtime.len(), 2);
+        assert!(runtime.iter().all(|session| session.session_id.is_some()));
+
+        E2E_INVENTORY_MODE.store(INVENTORY_FAILS, Ordering::SeqCst);
+        let (sessions, degraded) = scan_sessions_for_runtime();
+        assert!(degraded);
+        assert_eq!(
+            sessions, runtime,
+            "degraded runtime scan must return the last good runtime view from the authoritative scan"
+        );
     }
 }

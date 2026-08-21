@@ -16,6 +16,12 @@ pub fn process_tty(_pid: u32) -> Option<String> {
     None
 }
 
+/// No `/proc` inventory on this platform; the session scanner selects another
+/// inventory backend here (see `session_scanner::process`).
+pub fn list_processes() -> Option<Vec<(u32, String)>> {
+    None
+}
+
 pub fn process_env_var(_pid: u32, _name: &str) -> Option<String> {
     None
 }

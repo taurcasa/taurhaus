@@ -347,6 +347,10 @@ pub(crate) fn next_task_scan_cycle_id() -> u64 {
 }
 
 fn build_task_scan_cycle_context(cycle_id: u64) -> TaskScanCycleContext {
+    // Continuity read: the sessions only locate task sources (Claude session
+    // id -> project path, Codex transcript paths) that are read from disk; a
+    // degraded scan keeps the last good snapshot instead of losing mappings.
+    // Nothing is bound to or retired from these sessions.
     let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     TaskScanCycleContext {

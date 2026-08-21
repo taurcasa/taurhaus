@@ -32,10 +32,13 @@ struct RuntimeSessionInfo {
     jsonl_path: Option<PathBuf>,
 }
 
+/// One runtime scan for session identity detection: the sessions and whether
+/// the scan was degraded (process inventory unreadable, sessions are the
+/// scanner's last good snapshot rather than an observation).
 #[cfg(not(test))]
-fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
-    let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
-    sessions
+fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
+    let (sessions, degraded) = crate::session_scanner::scan_sessions_for_runtime();
+    let sessions = sessions
         .into_iter()
         .map(|session| RuntimeSessionInfo {
             tmux_pane: session.tmux_pane,
@@ -43,12 +46,27 @@ fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
             session_id: session.session_id,
             jsonl_path: session.jsonl_path.map(PathBuf::from),
         })
-        .collect()
+        .collect();
+    (sessions, degraded)
 }
 
+/// Test seam: stands in for the scanner so identity detection can be driven
+/// through healthy and degraded scans.
 #[cfg(test)]
-fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
-    Vec::new()
+type RuntimeScanOverride = fn() -> (Vec<RuntimeSessionInfo>, bool);
+#[cfg(test)]
+static RUNTIME_SCAN_OVERRIDE: std::sync::Mutex<Option<RuntimeScanOverride>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
+    let scan = *RUNTIME_SCAN_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    match scan {
+        Some(scan) => scan(),
+        None => (Vec::new(), false),
+    }
 }
 
 impl CoordinationRuntime for SystemCoordinationRuntime {
@@ -140,15 +158,22 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         cli_tool: CliTool,
     ) -> Result<DetectedRuntimeSession, CoordinationError> {
         for _ in 0..SESSION_DETECT_ATTEMPTS {
-            let matched = collect_runtime_sessions().into_iter().find(|session| {
-                session.tmux_pane.as_deref() == Some(pane_id) && session.cli_tool == cli_tool
-            });
-
-            if let Some(session) = matched {
-                return Ok(DetectedRuntimeSession {
-                    session_id: session.session_id,
-                    jsonl_path: session.jsonl_path,
+            let (sessions, degraded) = collect_runtime_sessions();
+            // Identity binding: a degraded scan hands back the scanner's last
+            // good snapshot, which can still map this pane to the previous
+            // CLI's transcript. That is no observation — never match it, poll
+            // again.
+            if !degraded {
+                let matched = sessions.into_iter().find(|session| {
+                    session.tmux_pane.as_deref() == Some(pane_id) && session.cli_tool == cli_tool
                 });
+
+                if let Some(session) = matched {
+                    return Ok(DetectedRuntimeSession {
+                        session_id: session.session_id,
+                        jsonl_path: session.jsonl_path,
+                    });
+                }
             }
 
             thread::sleep(SESSION_DETECT_INTERVAL);
@@ -432,5 +457,122 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
             }
         }
         delete_pid_file_if_present(pid_path.as_deref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Serializes tests that install the runtime scan override.
+    static DETECT_TEST_LOCK: Mutex<()> = Mutex::new(());
+    static SCAN_CALLS: AtomicUsize = AtomicUsize::new(0);
+    /// Scans before this count are degraded; the rest are healthy.
+    static DEGRADED_SCANS: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+    const PANE: &str = "%7";
+
+    fn stale_cached_session() -> RuntimeSessionInfo {
+        RuntimeSessionInfo {
+            tmux_pane: Some(PANE.to_string()),
+            cli_tool: CliTool::Codex,
+            session_id: Some("stale-session".to_string()),
+            jsonl_path: Some(PathBuf::from("/tmp/stale-session.jsonl")),
+        }
+    }
+
+    fn fresh_session() -> RuntimeSessionInfo {
+        RuntimeSessionInfo {
+            tmux_pane: Some(PANE.to_string()),
+            cli_tool: CliTool::Codex,
+            session_id: Some("fresh-session".to_string()),
+            jsonl_path: Some(PathBuf::from("/tmp/fresh-session.jsonl")),
+        }
+    }
+
+    /// Degraded scans hand back the last good snapshot, which still maps the
+    /// pane to the previous CLI's transcript; healthy scans see the new one.
+    fn scripted_scan() -> (Vec<RuntimeSessionInfo>, bool) {
+        let call = SCAN_CALLS.fetch_add(1, Ordering::SeqCst);
+        if call < DEGRADED_SCANS.load(Ordering::SeqCst) {
+            (vec![stale_cached_session()], true)
+        } else {
+            (vec![fresh_session()], false)
+        }
+    }
+
+    struct ScanOverride {
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl ScanOverride {
+        fn install(degraded_scans: usize) -> Self {
+            let lock = DETECT_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            SCAN_CALLS.store(0, Ordering::SeqCst);
+            DEGRADED_SCANS.store(degraded_scans, Ordering::SeqCst);
+            *RUNTIME_SCAN_OVERRIDE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Some(scripted_scan);
+            Self { _lock: lock }
+        }
+    }
+
+    impl Drop for ScanOverride {
+        fn drop(&mut self) {
+            *RUNTIME_SCAN_OVERRIDE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = None;
+        }
+    }
+
+    // Regression: `detect_runtime_session` discarded the degraded flag of
+    // `scan_sessions_for_runtime` and matched the pane/tool against the
+    // scanner's last good snapshot. During an inventory outage after a CLI
+    // restart in an existing pane, that bound the new member runtime to the
+    // previous CLI's session_id/jsonl_path, which initialization then
+    // persisted. A degraded scan is no observation: never match cached
+    // identities, keep polling, and report no session when the outage lasts.
+    #[test]
+    fn detect_runtime_session_ignores_degraded_snapshot_and_keeps_polling() {
+        let _override = ScanOverride::install(usize::MAX);
+
+        let detected = SystemCoordinationRuntime
+            .detect_runtime_session(PANE, CliTool::Codex)
+            .expect("detection succeeds");
+
+        assert_eq!(
+            detected,
+            DetectedRuntimeSession::default(),
+            "a degraded scan must never bind the cached identity"
+        );
+        assert_eq!(
+            SCAN_CALLS.load(Ordering::SeqCst),
+            SESSION_DETECT_ATTEMPTS,
+            "every attempt must poll the scanner again"
+        );
+    }
+
+    // Regression companion: once the inventory is readable again within the
+    // detection window, the fresh observation is bound, not the stale one.
+    #[test]
+    fn detect_runtime_session_binds_first_healthy_scan_after_degraded_ones() {
+        let _override = ScanOverride::install(2);
+
+        let detected = SystemCoordinationRuntime
+            .detect_runtime_session(PANE, CliTool::Codex)
+            .expect("detection succeeds");
+
+        assert_eq!(
+            detected,
+            DetectedRuntimeSession {
+                session_id: Some("fresh-session".to_string()),
+                jsonl_path: Some(PathBuf::from("/tmp/fresh-session.jsonl")),
+            }
+        );
+        assert_eq!(SCAN_CALLS.load(Ordering::SeqCst), 3);
     }
 }

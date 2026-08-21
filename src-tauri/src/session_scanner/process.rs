@@ -1,8 +1,8 @@
 //! Process scanner — find CLI tool processes from the platform process inventory.
 //!
-//! Linux reads `/proc/*/cmdline` directly; other Unix platforms run `ps`;
-//! Windows has no native inventory (sessions are scanned through the WSL
-//! daemon). The inventory is fail-soft: when it cannot be read, the last good
+//! Linux reads `/proc/*/cmdline` directly; macOS runs `ps`; Windows has no
+//! native inventory (sessions are scanned through the WSL daemon) — see
+//! `inventory_backend`. The inventory is fail-soft: when it cannot be read, the last good
 //! inventory is reported with `ProcessScan::degraded` set so callers keep
 //! their state instead of treating the gap as "no sessions".
 
@@ -38,13 +38,62 @@ pub struct ProcessScan {
 /// Last successfully read inventory, reported verbatim on degraded scans.
 static LAST_GOOD_INVENTORY: Mutex<Vec<ProcessInfo>> = Mutex::new(Vec::new());
 
-/// Name of the inventory source, for the degraded/recovered events.
+/// Compile target, the only input to the inventory backend selection.
+///
+/// Outside tests only the host's own variant is constructed (see `TARGET_OS`).
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TargetOs {
+    Linux,
+    MacOs,
+    Windows,
+}
+
 #[cfg(target_os = "linux")]
-const INVENTORY_SOURCE: &str = "proc";
-#[cfg(all(unix, not(target_os = "linux")))]
-const INVENTORY_SOURCE: &str = "ps";
-#[cfg(not(unix))]
-const INVENTORY_SOURCE: &str = "none";
+const TARGET_OS: TargetOs = TargetOs::Linux;
+#[cfg(target_os = "macos")]
+const TARGET_OS: TargetOs = TargetOs::MacOs;
+#[cfg(target_os = "windows")]
+const TARGET_OS: TargetOs = TargetOs::Windows;
+
+/// Native process inventory source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InventoryBackend {
+    /// `/proc/*/cmdline`.
+    Proc,
+    /// `ps -eo pid,args`.
+    Ps,
+    /// No native inventory: CLI tools run inside WSL2 and the session scan
+    /// goes through the WSL daemon, so the local read is always degraded.
+    None,
+}
+
+impl InventoryBackend {
+    /// Source name carried by the degraded/recovered events.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Proc => "proc",
+            Self::Ps => "ps",
+            Self::None => "none",
+        }
+    }
+}
+
+/// Select the inventory backend for a target OS. Pure, so the selection is
+/// unit-tested for every OS on any host; the cfg glue above only names the
+/// compile target.
+const fn inventory_backend(os: TargetOs) -> InventoryBackend {
+    match os {
+        TargetOs::Linux => InventoryBackend::Proc,
+        TargetOs::MacOs => InventoryBackend::Ps,
+        TargetOs::Windows => InventoryBackend::None,
+    }
+}
+
+const INVENTORY_BACKEND: InventoryBackend = inventory_backend(TARGET_OS);
+
+/// Name of the inventory source, for the degraded/recovered events.
+const INVENTORY_SOURCE: &str = INVENTORY_BACKEND.name();
 
 /// Test seam: replaces the enriched platform inventory read so the real
 /// scanner wiring can be driven through healthy and failed reads.
@@ -180,38 +229,33 @@ pub fn scan_process_ids_cached() -> Option<Vec<u32>> {
 }
 
 /// Count live process entries for cache invalidation.
-#[cfg(target_os = "linux")]
 fn system_process_count() -> Option<usize> {
-    let entries = std::fs::read_dir("/proc").ok()?;
-    Some(
-        entries
-            .filter_map(Result::ok)
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .chars()
-                    .all(|c| c.is_ascii_digit())
-            })
-            .count(),
-    )
-}
-
-/// Count live process entries for cache invalidation (macOS and other non-Linux Unix).
-#[cfg(all(unix, not(target_os = "linux")))]
-fn system_process_count() -> Option<usize> {
-    let output = run_with_timeout("ps", &["-A", "-o", "pid="])?;
-    Some(
-        output
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .count(),
-    )
-}
-
-/// Windows has no native inventory; process inspection routes through the WSL daemon.
-#[cfg(not(unix))]
-fn system_process_count() -> Option<usize> {
-    None
+    match INVENTORY_BACKEND {
+        InventoryBackend::Proc => {
+            let entries = std::fs::read_dir("/proc").ok()?;
+            Some(
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|e| {
+                        e.file_name()
+                            .to_string_lossy()
+                            .chars()
+                            .all(|c| c.is_ascii_digit())
+                    })
+                    .count(),
+            )
+        }
+        InventoryBackend::Ps => {
+            let output = run_with_timeout("ps", &["-A", "-o", "pid="])?;
+            Some(
+                output
+                    .lines()
+                    .filter(|line| !line.trim().is_empty())
+                    .count(),
+            )
+        }
+        InventoryBackend::None => None,
+    }
 }
 
 /// Read the raw CLI-tool inventory as `(pid, args, cli_tool)` tuples.
@@ -222,33 +266,27 @@ fn list_cli_tool_processes() -> Option<Vec<(u32, String, CliTool)>> {
     note_inventory_health(read_cli_tool_inventory())
 }
 
-/// Detect CLI tools from `/proc/*/cmdline`.
-#[cfg(target_os = "linux")]
+/// Detect CLI tools from the selected inventory backend.
 fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
-    let processes = crate::platform::list_processes()?;
-    Some(
-        processes
-            .into_iter()
-            .filter_map(|(pid, args)| {
-                let tool = detect_cli_tool(&args)?;
-                Some((pid, args, tool))
-            })
-            .collect(),
-    )
-}
-
-/// Detect CLI tools from `ps -eo pid,args` (macOS and other non-Linux Unix).
-#[cfg(all(unix, not(target_os = "linux")))]
-fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
-    let output = run_with_timeout("ps", &["-eo", "pid,args"])?;
-    Some(parse_ps_output(&output))
-}
-
-/// Windows has no native inventory (CLI tools run inside WSL2); the session
-/// scan goes through the WSL daemon and this local read is always degraded.
-#[cfg(not(unix))]
-fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
-    None
+    match INVENTORY_BACKEND {
+        InventoryBackend::Proc => {
+            let processes = crate::platform::list_processes()?;
+            Some(
+                processes
+                    .into_iter()
+                    .filter_map(|(pid, args)| {
+                        let tool = detect_cli_tool(&args)?;
+                        Some((pid, args, tool))
+                    })
+                    .collect(),
+            )
+        }
+        InventoryBackend::Ps => {
+            let output = run_with_timeout("ps", &["-eo", "pid,args"])?;
+            Some(parse_ps_output(&output))
+        }
+        InventoryBackend::None => None,
+    }
 }
 
 /// Bounded reminder cadence while the inventory stays unreadable.
@@ -426,12 +464,26 @@ pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    let deadline = Instant::now() + SUBPROCESS_TIMEOUT;
 
-    let Some(mut stdout) = child.stdout.take() else {
+    let Some(stdout) = child.stdout.take() else {
         kill_and_reap(&mut child);
         return None;
     };
+    wait_for_output(cmd, child, stdout)
+}
+
+/// Drain `stdout` on a separate thread while `child` runs, then reap the
+/// child within `SUBPROCESS_TIMEOUT`.
+///
+/// The reader is injectable so a failing stdout read can be exercised: a read
+/// error is a failed read (`None`), never a partial success, even when the
+/// child itself exits cleanly.
+fn wait_for_output<R: Read + Send + 'static>(
+    cmd: &str,
+    mut child: Child,
+    mut stdout: R,
+) -> Option<String> {
+    let deadline = Instant::now() + SUBPROCESS_TIMEOUT;
     let (output_tx, output_rx) = mpsc::channel::<io::Result<Vec<u8>>>();
     let drain = std::thread::Builder::new()
         .name("scanner-stdout-drain".to_string())
@@ -721,6 +773,70 @@ mod tests {
             elapsed < SUBPROCESS_TIMEOUT,
             "drained child must finish well under the timeout, took {elapsed:?}"
         );
+    }
+
+    /// Stdout that yields some bytes, then fails: a pipe that breaks mid-read.
+    #[cfg(unix)]
+    struct FailingReader(&'static [u8]);
+
+    #[cfg(unix)]
+    impl Read for FailingReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.0.is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "stdout read failed",
+                ));
+            }
+            let count = self.0.len().min(buf.len());
+            buf[..count].copy_from_slice(&self.0[..count]);
+            self.0 = &self.0[count..];
+            Ok(count)
+        }
+    }
+
+    // Regression: since 06b432d the drain thread sent the buffer regardless
+    // of the `read_to_end` result, so a failed stdout read reported the bytes
+    // read so far as a complete inventory: pids missing from it were read as
+    // gone and their sessions retired. A read error is a failed read — `None`,
+    // which `read_cli_tool_inventory` turns into a degraded scan — never a
+    // partial success, even when the child exits 0.
+    #[cfg(unix)]
+    #[test]
+    fn wait_for_output_rejects_partial_stdout_on_read_error() {
+        let child = Command::new("sh")
+            .args(["-c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn child");
+
+        let output = wait_for_output("sh", child, FailingReader(b" 1234 claude\n"));
+
+        assert_eq!(
+            output, None,
+            "a partial stdout read must be a failed read, not a partial inventory"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // inventory backend selection
+    // -----------------------------------------------------------------------
+
+    // Regression: the backend was chosen by cfg branches alone; before f549f3b
+    // `cfg(not(target_os = "linux"))` selected `ps` on Windows too, where it
+    // does not exist, and only a native Windows build could have caught it.
+    // The selection is a pure function of the target OS, checked for every OS
+    // on any host; the cfg glue only names the compile target.
+    #[test]
+    fn inventory_backend_is_selected_per_target_os() {
+        assert_eq!(inventory_backend(TargetOs::Linux), InventoryBackend::Proc);
+        assert_eq!(inventory_backend(TargetOs::MacOs), InventoryBackend::Ps);
+        assert_eq!(inventory_backend(TargetOs::Windows), InventoryBackend::None);
+        assert_eq!(InventoryBackend::Proc.name(), "proc");
+        assert_eq!(InventoryBackend::Ps.name(), "ps");
+        assert_eq!(InventoryBackend::None.name(), "none");
     }
 
     // -----------------------------------------------------------------------

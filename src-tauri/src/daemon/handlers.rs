@@ -438,6 +438,8 @@ fn load_project_task_scan_inputs(
             }
         }
 
+        // Continuity read: task-source lookup only (see bootstrap.rs); a
+        // degraded scan keeps the last good snapshot, nothing is bound to it.
         let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
         let claude_index = build_claude_source_index_with_live_sessions(&sessions);
         *guard = Some(ProjectTaskScanCache {
@@ -448,6 +450,7 @@ fn load_project_task_scan_inputs(
         return (sessions, claude_index);
     }
 
+    // Continuity read: same task-source lookup as above, uncached.
     let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     (sessions, claude_index)

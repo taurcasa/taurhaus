@@ -29,6 +29,9 @@ pub fn build_claude_source_index() -> ClaudeSourceIndex {
     let tasks_base = PlatformPaths::claude_dir().join("tasks");
     let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
     let teams_base = PlatformPaths::teams_dir();
+    // Continuity read: live sessions only add session id -> project path
+    // mappings (merged with offline discovery); a degraded scan keeps the last
+    // good snapshot instead of dropping them, nothing is bound to it.
     let (live_sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
 
     build_claude_source_index_in(&live_sessions, &tasks_base, &projects_base, &teams_base)

@@ -33,7 +33,12 @@ pub(super) fn list_cli_sessions_impl(
             .teams_dir(),
         &mut fallback,
     );
-    promote_activity_from_sessions(app, db, &fallback);
+    // Continuity read: a degraded scan returns the last good snapshot so the
+    // list does not blank out. It is not an observation, so it must not write
+    // project activity — promotion only runs on a healthy scan.
+    if !degraded {
+        promote_activity_from_sessions(app, db, &fallback);
+    }
     Ok(fallback)
 }
 
