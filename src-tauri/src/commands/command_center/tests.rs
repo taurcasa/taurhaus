@@ -465,6 +465,44 @@ fn daemon_runtime_session_snapshot_uses_snapshot_method_and_returns_payload() {
     );
 }
 
+// Regression: the daemon list path promoted project activity from every
+// daemon snapshot. When the WSL daemon's scanner degrades, the hub hands out
+// its last good sessions for continuity; those are not an observation and
+// the snapshot says so (`degraded`), which the list path must report so
+// promotion is skipped — the same rule the local fallback already follows.
+#[test]
+fn daemon_display_sessions_reports_degraded_snapshot() {
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": {
+            "version": 3,
+            "display_sessions": [serde_json::to_value(active_session_for("/tmp/project")).unwrap()],
+            "runtime_sessions": [],
+            "focus": null,
+            "foreground_project_path": null,
+            "degraded": true
+        },
+        "error": null
+    }));
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    };
+
+    let (sessions, degraded) = daemon_display_sessions(&provider)
+        .expect("snapshot call")
+        .expect("connected daemon snapshot");
+
+    assert!(
+        degraded,
+        "a degraded daemon snapshot must be reported as such"
+    );
+    assert_eq!(sessions, vec![active_session_for("/tmp/project")]);
+}
+
 #[test]
 fn daemon_session_decode_handles_missing_invalid_and_valid_payloads() {
     assert!(decode_daemon_session_list(None).unwrap().is_empty());

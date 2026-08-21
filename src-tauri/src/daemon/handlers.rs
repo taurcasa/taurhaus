@@ -307,6 +307,7 @@ pub(crate) fn handle_get_runtime_session_snapshot(id: &str) -> DaemonResponse {
             runtime_sessions: snapshot.runtime_sessions,
             focus: snapshot.focus,
             foreground_project_path: snapshot.foreground_project_path,
+            degraded: snapshot.degraded,
         },
     )
 }

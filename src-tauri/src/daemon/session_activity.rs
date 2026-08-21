@@ -37,6 +37,9 @@ pub struct RuntimeSessionSnapshot {
     pub runtime_sessions: Vec<RuntimeSession>,
     pub focus: Option<TmuxFocusState>,
     pub foreground_project_path: Option<String>,
+    /// The latest scanner cycle was degraded: the sessions are the last good
+    /// snapshot kept for continuity, not an observation.
+    pub degraded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -53,6 +56,9 @@ struct HubState {
     runtime_sessions: Vec<RuntimeSession>,
     focus: Option<TmuxFocusState>,
     foreground_project_path: Option<String>,
+    /// Set by a degraded cycle, cleared by the next healthy commit. Lives
+    /// outside the versioned snapshot: a degraded cycle wakes no waiter.
+    degraded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,6 +232,7 @@ impl SessionActivityHub {
             runtime_sessions: guard.runtime_sessions.clone(),
             focus: guard.focus.clone(),
             foreground_project_path: guard.foreground_project_path.clone(),
+            degraded: guard.degraded,
         }
     }
 
@@ -275,7 +282,9 @@ impl SessionActivityHub {
     /// Fold one scan cycle into the hub state.
     ///
     /// Degraded cycles are inert: the previous snapshot stays, the version is
-    /// not bumped, no export is due, and the cadence holds its interval.
+    /// not bumped, no export is due, and the cadence holds its interval. The
+    /// preserved snapshot is marked degraded until the next healthy commit so
+    /// consumers read it as continuity data, not as an observation.
     fn commit_cycle(
         &self,
         cycle: ScanCycle,
@@ -284,6 +293,10 @@ impl SessionActivityHub {
         now: Instant,
     ) -> CycleDecision {
         if cycle.degraded {
+            self.state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .degraded = true;
             return CycleDecision {
                 changed: false,
                 export_due: false,
@@ -299,6 +312,7 @@ impl SessionActivityHub {
         state.runtime_sessions = cycle.runtime_sessions;
         state.focus = cycle.focus;
         state.foreground_project_path = cycle.foreground_project_path;
+        state.degraded = false;
         if changed {
             state.version = state.version.saturating_add(1);
             state.initialized = true;
@@ -495,6 +509,51 @@ mod tests {
         assert!(emptied.export_due);
         assert_eq!(hub.snapshot().version, 2);
         assert!(hub.snapshot().sessions.is_empty());
+    }
+
+    // Regression: the hub preserved its last good sessions across degraded
+    // cycles (correct for continuity) but exposed no degradation status, so
+    // the daemon handed the cached runtime sessions to the Windows app as a
+    // fresh observation and member identity detection could bind a stale
+    // pane->transcript mapping. The snapshot reports `degraded` after a
+    // degraded cycle and clears it on the next healthy commit.
+    #[test]
+    fn hub_reports_degraded_until_next_healthy_commit() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let active = vec![session_with_state(SessionState::Active)];
+
+        assert!(
+            !hub.runtime_snapshot().degraded,
+            "fresh hub is not degraded"
+        );
+
+        let _ = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, None, now);
+        assert!(!hub.runtime_snapshot().degraded);
+
+        let _ = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        let snapshot = hub.runtime_snapshot();
+        assert!(
+            snapshot.degraded,
+            "a degraded cycle must mark the preserved snapshot degraded"
+        );
+        assert_eq!(
+            snapshot.display_sessions, active,
+            "continuity: the last good sessions stay available"
+        );
+        assert_eq!(snapshot.version, 1, "degraded cycle still bumps no version");
+
+        // A second degraded cycle keeps the flag.
+        let _ = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        assert!(hub.runtime_snapshot().degraded);
+
+        // The next healthy commit clears it, even without a session change.
+        let healthy = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, Some(now), now);
+        assert!(!healthy.changed);
+        let snapshot = hub.runtime_snapshot();
+        assert!(!snapshot.degraded, "healthy commit must clear degraded");
+        assert_eq!(snapshot.version, 1);
     }
 
     #[test]

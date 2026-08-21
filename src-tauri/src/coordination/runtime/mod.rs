@@ -19,6 +19,11 @@ mod tmux;
 
 pub(crate) use process::{apply_background_command_settings, mesh_command_invocation_for_member};
 pub use recording::{RecordingCoordinationRuntime, RuntimeCall};
+/// Test seam used by the scanner tests; the integration-test shim crates
+/// compile this module too and do not use it.
+#[cfg(test)]
+#[allow(unused_imports)]
+pub(crate) use system::RealRuntimeScan;
 pub use system::SystemCoordinationRuntime;
 
 const TMUX_TEXT_TO_ENTER_DELAY: Duration = Duration::from_millis(350);

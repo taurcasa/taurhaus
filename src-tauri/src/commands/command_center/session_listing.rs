@@ -10,8 +10,12 @@ pub(super) fn list_cli_sessions_impl(
     db: &DbState,
     provider: &ProviderState,
 ) -> Result<Vec<DisplaySession>, String> {
-    if let Some(sessions) = daemon_display_sessions(provider)? {
-        promote_activity_from_sessions(app, db, &sessions);
+    if let Some((sessions, degraded)) = daemon_display_sessions(provider)? {
+        // Continuity read: a degraded daemon snapshot is the hub's last good
+        // view, not an observation — it must not promote project activity.
+        if !degraded {
+            promote_activity_from_sessions(app, db, &sessions);
+        }
         return Ok(sessions);
     }
 
@@ -42,13 +46,16 @@ pub(super) fn list_cli_sessions_impl(
     Ok(fallback)
 }
 
-fn daemon_display_sessions(
+/// The daemon's display sessions and whether its snapshot is degraded
+/// (the hub's last good view kept for continuity, not an observation).
+pub(super) fn daemon_display_sessions(
     provider: &ProviderState,
-) -> Result<Option<Vec<DisplaySession>>, String> {
+) -> Result<Option<(Vec<DisplaySession>, bool)>, String> {
     let Some(snapshot) = daemon_runtime_session_snapshot(provider)?.snapshot else {
         return Ok(None);
     };
 
+    let degraded = snapshot.degraded;
     let mut sessions = snapshot.display_sessions;
     if !crate::daemon::launcher::is_native_daemon() {
         if let Some(ref distro) = provider.wsl_distro {
@@ -60,7 +67,7 @@ fn daemon_display_sessions(
             }
         }
     }
-    Ok(Some(sessions))
+    Ok(Some((sessions, degraded)))
 }
 
 #[cfg(test)]

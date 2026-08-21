@@ -33,10 +33,10 @@ struct RuntimeSessionInfo {
 }
 
 /// One runtime scan for session identity detection: the sessions and whether
-/// the scan was degraded (process inventory unreadable, sessions are the
-/// scanner's last good snapshot rather than an observation).
-#[cfg(not(test))]
-fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
+/// the scan was degraded (process inventory unreadable — or, on Windows, the
+/// WSL daemon's scanner degraded — so the sessions are a last good snapshot
+/// rather than an observation).
+fn scan_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
     let (sessions, degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let sessions = sessions
         .into_iter()
@@ -50,6 +50,11 @@ fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
     (sessions, degraded)
 }
 
+#[cfg(not(test))]
+fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
+    scan_runtime_sessions()
+}
+
 /// Test seam: stands in for the scanner so identity detection can be driven
 /// through healthy and degraded scans.
 #[cfg(test)]
@@ -57,6 +62,9 @@ type RuntimeScanOverride = fn() -> (Vec<RuntimeSessionInfo>, bool);
 #[cfg(test)]
 static RUNTIME_SCAN_OVERRIDE: std::sync::Mutex<Option<RuntimeScanOverride>> =
     std::sync::Mutex::new(None);
+/// Serializes tests that install the runtime scan override.
+#[cfg(test)]
+static DETECT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
@@ -66,6 +74,36 @@ fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
     match scan {
         Some(scan) => scan(),
         None => (Vec::new(), false),
+    }
+}
+
+/// Test seam for scanner-level tests: routes identity detection through the
+/// real `scan_sessions_for_runtime` for as long as the guard lives, serialized
+/// against the scripted scans of this module's own tests.
+#[cfg(test)]
+pub(crate) struct RealRuntimeScan {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl RealRuntimeScan {
+    pub(crate) fn install() -> Self {
+        let lock = DETECT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *RUNTIME_SCAN_OVERRIDE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(scan_runtime_sessions);
+        Self { _lock: lock }
+    }
+}
+
+#[cfg(test)]
+impl Drop for RealRuntimeScan {
+    fn drop(&mut self) {
+        *RUNTIME_SCAN_OVERRIDE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
     }
 }
 
@@ -464,10 +502,8 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::MutexGuard;
 
-    /// Serializes tests that install the runtime scan override.
-    static DETECT_TEST_LOCK: Mutex<()> = Mutex::new(());
     static SCAN_CALLS: AtomicUsize = AtomicUsize::new(0);
     /// Scans before this count are degraded; the rest are healthy.
     static DEGRADED_SCANS: AtomicUsize = AtomicUsize::new(usize::MAX);
