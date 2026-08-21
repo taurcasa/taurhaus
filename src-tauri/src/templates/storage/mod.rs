@@ -566,9 +566,10 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&path)?;
-            let parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
+            let mut parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
                 TemplateStoreError::Parse(format!("failed to parse role {}: {err}", path.display()))
             })?;
+            parsed.normalize_model_fields();
             roles.push(RoleTemplateFile { template: parsed });
         }
 
@@ -585,9 +586,10 @@ impl TemplateStore {
             return Ok(None);
         }
         let raw = fs::read_to_string(&path)?;
-        let parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
+        let mut parsed = serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to parse role {}: {err}", path.display()))
         })?;
+        parsed.normalize_model_fields();
         Ok(Some(RoleTemplateFile { template: parsed }))
     }
 
@@ -618,12 +620,13 @@ impl TemplateStore {
                 continue;
             }
             let raw = fs::read_to_string(&path)?;
-            let parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
+            let mut parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
                 TemplateStoreError::Parse(format!(
                     "failed to parse preset {}: {err}",
                     path.display()
                 ))
             })?;
+            parsed.normalize_model_fields();
             presets.push(TeamPresetFile { template: parsed });
         }
 
@@ -640,9 +643,10 @@ impl TemplateStore {
             return Ok(None);
         }
         let raw = fs::read_to_string(&path)?;
-        let parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
+        let mut parsed = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to parse preset {}: {err}", path.display()))
         })?;
+        parsed.normalize_model_fields();
         Ok(Some(TeamPresetFile { template: parsed }))
     }
 }

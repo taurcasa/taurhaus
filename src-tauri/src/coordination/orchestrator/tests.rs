@@ -37,12 +37,15 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
         instructions: Some("focus on implementation".to_string()),
         behavioral_contract: None,
         quality_gates: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        model: None,
+        reasoning_effort: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: tool,
     }
@@ -162,8 +165,10 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner.join_mesh(team_name, member_name, project_id)?;
+        self.inner
+            .join_mesh(team_name, member_name, project_id, model)?;
 
         let mut config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         if !config
@@ -184,6 +189,7 @@ impl CoordinationRuntime for MeshPreAddRuntime {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -192,6 +198,8 @@ impl CoordinationRuntime for MeshPreAddRuntime {
                 capabilities: None,
                 project_path: self.preadded_project_path.clone(),
                 cli_tool: CliTool::Codex,
+                model: Some(model.to_string()),
+                reasoning_effort: None,
             });
             TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
         }
@@ -302,8 +310,10 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner.join_mesh(team_name, member_name, project_id)
+        self.inner
+            .join_mesh(team_name, member_name, project_id, model)
     }
 
     fn spawn_mesh_daemon(
@@ -409,6 +419,7 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
         if !std::path::Path::new(project_id).is_dir() {
             return Err(CoordinationError::Io(std::io::Error::new(
@@ -416,7 +427,8 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
                 format!("project path does not exist: {project_id}"),
             )));
         }
-        self.inner.join_mesh(team_name, member_name, project_id)
+        self.inner
+            .join_mesh(team_name, member_name, project_id, model)
     }
 
     fn spawn_mesh_daemon(
@@ -522,13 +534,15 @@ impl CoordinationRuntime for SelectiveJoinFailureRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
         if self.fail_members.contains(member_name) {
             return Err(CoordinationError::Backend(format!(
                 "programmed join_mesh failure for '{member_name}'"
             )));
         }
-        self.inner.join_mesh(team_name, member_name, project_id)
+        self.inner
+            .join_mesh(team_name, member_name, project_id, model)
     }
 
     fn spawn_mesh_daemon(
@@ -648,8 +662,10 @@ impl CoordinationRuntime for ClaudeLaunchRosterRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner.join_mesh(team_name, member_name, project_id)
+        self.inner
+            .join_mesh(team_name, member_name, project_id, model)
     }
 
     fn spawn_mesh_daemon(
@@ -716,6 +732,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             name: "team-lead".to_string(),
             cli_tool: "claude".to_string(),
             model: "opus".to_string(),
+            reasoning_effort: None,
             project_id: "/tmp/lead".to_string(),
             description: Some("lead".to_string()),
             role_id: None,
@@ -728,6 +745,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -740,6 +758,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 name: "frontend-dev".to_string(),
                 cli_tool: "codex".to_string(),
                 model: "gpt-5.4".to_string(),
+                reasoning_effort: None,
                 project_id: "/tmp/frontend".to_string(),
                 description: Some("frontend".to_string()),
                 role_id: None,
@@ -752,6 +771,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -763,6 +783,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 name: "reviewer".to_string(),
                 cli_tool: "gemini".to_string(),
                 model: "pro".to_string(),
+                reasoning_effort: None,
                 project_id: "/tmp/reviewer".to_string(),
                 description: Some("review".to_string()),
                 role_id: None,
@@ -775,6 +796,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -793,6 +815,7 @@ fn add_agent_request(team_name: &str, agent_name: &str, cli_tool: &str) -> AddAg
             name: agent_name.to_string(),
             cli_tool: cli_tool.to_string(),
             model: "model".to_string(),
+            reasoning_effort: None,
             project_id: format!("/tmp/{agent_name}"),
             description: Some("hot-added".to_string()),
             role_id: None,
@@ -805,6 +828,7 @@ fn add_agent_request(team_name: &str, agent_name: &str, cli_tool: &str) -> AddAg
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -835,12 +859,15 @@ fn create_running_team(orchestrator: &mut CoordinationOrchestrator, team_name: &
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -865,12 +892,15 @@ fn member_with_project(name: &str, role: MemberRole, tool: CliTool, project_path
         instructions: Some("resume me".to_string()),
         behavioral_contract: None,
         quality_gates: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        model: None,
+        reasoning_effort: None,
         project_path: PathBuf::from(project_path),
         cli_tool: tool,
     }
@@ -1239,12 +1269,15 @@ fn disband_team_stops_team_daemon_best_effort() {
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -1566,12 +1599,15 @@ fn remove_member_cleans_runtime() {
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -1627,12 +1663,15 @@ fn remove_member_tears_down_runtime_resources() {
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -1712,12 +1751,15 @@ fn remove_member_discovers_and_terminates_daemon_when_runtime_pid_is_missing() {
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -1793,12 +1835,15 @@ fn remove_member_discovers_and_terminates_daemon_from_pidfile_when_runtime_attac
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -1863,12 +1908,15 @@ fn remove_member_rejects_lead_removal() {
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -1918,12 +1966,15 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
                 instructions: Some("lead".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
             },
@@ -3922,12 +3973,14 @@ fn add_agent_join_mesh_uses_selected_project_path() {
                 team_name,
                 member_name,
                 project_id,
-            } => Some((team_name, member_name, project_id)),
+                model,
+            } => Some((team_name, member_name, project_id, model)),
             _ => None,
         })
         .expect("join_mesh call should be recorded");
     assert_eq!(join_call.0, team_name);
     assert_eq!(join_call.1, "new-agent");
+    assert_eq!(join_call.3, "model");
     assert_eq!(join_call.2, "/tmp/selected-project");
 }
 

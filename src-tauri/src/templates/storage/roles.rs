@@ -86,7 +86,9 @@ impl TemplateStore {
         template: &RoleTemplate,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         validate_template_id(&template.role_id, "role")?;
-        template
+        let mut canonical = template.clone();
+        canonical.normalize_model_fields();
+        canonical
             .validate()
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
 
@@ -108,7 +110,7 @@ impl TemplateStore {
         }
 
         let relative_path = self.role_file_path(&template.role_id);
-        let payload = serde_norway::to_string(template).map_err(|err| {
+        let payload = serde_norway::to_string(&canonical).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to serialize role '{}': {err}",
                 template.role_id
@@ -132,7 +134,9 @@ impl TemplateStore {
             )));
         }
         validate_template_id(role_id, "role")?;
-        template
+        let mut canonical = template.clone();
+        canonical.normalize_model_fields();
+        canonical
             .validate()
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
 
@@ -148,7 +152,7 @@ impl TemplateStore {
 
         // Updating built-ins creates/updates user override.
         let relative_path = self.role_file_path(role_id);
-        let payload = serde_norway::to_string(template).map_err(|err| {
+        let payload = serde_norway::to_string(&canonical).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize role '{role_id}': {err}"))
         })?;
         self.apply_single_template_mutation(
@@ -201,7 +205,7 @@ impl TemplateStore {
     ) -> Result<PreparedRoleImport, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
         let import_format = infer_role_import_format(external_path, &raw)?;
-        let template = match import_format {
+        let mut template = match import_format {
             None => serde_norway::from_str::<RoleTemplate>(&raw).map_err(|err| {
                 TemplateStoreError::Parse(format!(
                     "failed to parse external role {}: {err}",
@@ -214,6 +218,7 @@ impl TemplateStore {
                     .map_err(map_role_import_error)?
             }
         };
+        template.normalize_model_fields();
         template
             .validate()
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
@@ -228,7 +233,8 @@ impl TemplateStore {
         &self,
         prepared: &PreparedRoleImport,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
-        let template = &prepared.template;
+        let mut template = prepared.template.clone();
+        template.normalize_model_fields();
         let role_id = template.role_id.clone();
         validate_template_id(&role_id, "role")?;
         if let Ok(existing) = self.get_role(&role_id) {

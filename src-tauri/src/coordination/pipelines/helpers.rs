@@ -221,6 +221,7 @@ pub(super) fn build_cli_launch_command(
         cli_commands,
         cli_tool,
         &agent.model,
+        agent.reasoning_effort.as_deref(),
         team_name,
         &agent.name,
         role,
@@ -276,12 +277,13 @@ pub(super) fn join_mesh_if_required(
     member_name: &str,
     project_id: &str,
     cli_tool: CliTool,
+    model: &str,
 ) -> Result<bool, CoordinationError> {
     if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
         return Ok(false);
     }
 
-    runtime.join_mesh(team_name, member_name, project_id)?;
+    runtime.join_mesh(team_name, member_name, project_id, model)?;
     Ok(true)
 }
 
@@ -368,6 +370,7 @@ pub(super) fn build_member_activation_launch_command(
         cli_commands,
         context.member.cli_tool,
         &context.member.model,
+        context.member.reasoning_effort.as_deref(),
         &context.team_name,
         &context.member.name,
         context.member.role,
@@ -377,7 +380,8 @@ pub(super) fn build_member_activation_launch_command(
 fn render_team_launch_command(
     cli_commands: &CliCommandSettings,
     cli_tool: CliTool,
-    legacy_model: &str,
+    model: &str,
+    reasoning_effort: Option<&str>,
     team_name: &str,
     agent_name: &str,
     role: MemberRole,
@@ -390,7 +394,10 @@ fn render_team_launch_command(
         )));
     }
 
-    let model = ModelSpec::parse_legacy(legacy_model);
+    let mut model = ModelSpec::parse_legacy(model);
+    if reasoning_effort.is_some() {
+        model.reasoning_effort = reasoning_effort.map(str::to_string);
+    }
     let rendered = LaunchSpec {
         tool: cli_tool,
         mode: LaunchMode::Fresh,
@@ -434,31 +441,33 @@ fn render_team_launch_command(
     );
 
     for note in rendered.notes {
-        let (event, field, value, message) = match note {
-            LaunchNote::DeprecatedFlag { flag } => (
-                "launch.deprecated_flag",
-                "flag",
-                flag,
-                "Configured launch base contains a deprecated flag",
-            ),
-            LaunchNote::ModelIgnored { found } => (
-                "launch.model_ignored",
-                "found",
-                found,
-                "Configured launch base overrides the role model",
-            ),
-            LaunchNote::EffortIgnored { found } => (
-                "launch.effort_ignored",
-                "found",
-                found,
-                "Configured launch base overrides the role reasoning effort",
-            ),
-        };
+        let event = note.event_name();
         let mut fields = Map::new();
         fields.insert("team".to_string(), Value::String(team_name.to_string()));
         fields.insert("member".to_string(), Value::String(agent_name.to_string()));
         fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
-        fields.insert(field.to_string(), Value::String(value));
+        let message = match note {
+            LaunchNote::DeprecatedFlag { flag } => {
+                fields.insert("flag".to_string(), Value::String(flag));
+                "Configured launch base contains a deprecated flag"
+            }
+            LaunchNote::ModelIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides the role model"
+            }
+            LaunchNote::ModelDeprecated { found, replacement } => {
+                fields.insert("found".to_string(), Value::String(found));
+                fields.insert(
+                    "replacement".to_string(),
+                    replacement.map(Value::String).unwrap_or(Value::Null),
+                );
+                "Role model is deprecated"
+            }
+            LaunchNote::EffortIgnored { found, .. } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides or cannot use the role reasoning effort"
+            }
+        };
         emit_global(
             "warn",
             "coordination",
@@ -552,6 +561,7 @@ pub(super) fn agent_has_role_context(agent: &AgentSetupConfig) -> bool {
             })
             .unwrap_or(false)
         || has_non_empty_list(agent.quality_gates.as_deref())
+        || has_non_empty_list(agent.handoff_expectations.as_deref())
         || has_non_empty_list(agent.definition_of_done.as_deref())
         || has_non_empty_capabilities(agent.capabilities.as_deref())
 }
@@ -586,6 +596,7 @@ pub(super) fn member_has_role_context(member: &Member) -> bool {
             })
             .unwrap_or(false)
         || has_non_empty_list(member.quality_gates.as_deref())
+        || has_non_empty_list(member.handoff_expectations.as_deref())
         || has_non_empty_list(member.definition_of_done.as_deref())
         || has_non_empty_capabilities(member.capabilities.as_deref())
 }
@@ -596,6 +607,10 @@ pub(super) fn member_from_agent_setup(
 ) -> Result<Member, CoordinationError> {
     validate_member_name(&setup.name)?;
     validate_non_empty("agent project id", &setup.project_id)?;
+    let mut declared_model = ModelSpec::parse_legacy(&setup.model);
+    if setup.reasoning_effort.is_some() {
+        declared_model.reasoning_effort = setup.reasoning_effort.clone();
+    }
     Ok(Member {
         name: setup.name.clone(),
         role,
@@ -612,12 +627,15 @@ pub(super) fn member_from_agent_setup(
             .or_else(|| setup.description.clone()),
         behavioral_contract: setup.behavioral_contract.clone(),
         quality_gates: setup.quality_gates.clone(),
+        handoff_expectations: setup.handoff_expectations.clone(),
         definition_of_done: setup.definition_of_done.clone(),
         phase_scope: setup.phase_scope.clone(),
         mode: setup.mode.clone(),
         inherits_from: setup.inherits_from.clone(),
         required_artifacts: setup.required_artifacts.clone(),
         capabilities: setup.capabilities.clone(),
+        model: declared_model.model,
+        reasoning_effort: declared_model.reasoning_effort,
         project_path: PathBuf::from(&setup.project_id),
         cli_tool: parse_cli_tool(&setup.cli_tool)?,
     })

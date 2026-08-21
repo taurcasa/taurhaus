@@ -5,7 +5,9 @@ use chrono::Utc;
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::member_activation::MemberActivationContext;
+use crate::coordination::member_activation::{
+    hydrate_member_model_fields, load_role_for_member_hydration, MemberActivationContext,
+};
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentReport, AddAgentRequest, DeliveryRequest, InitializeTeamRequest, MemberActivationStage,
@@ -197,7 +199,7 @@ impl CoordinationOrchestrator {
     ) -> Result<(Member, MemberRuntimeRecord, String), CoordinationError> {
         let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
         let lead_name = self.load_team_lead_name(&request.team_name)?;
-        let member = config
+        let mut member = config
             .members
             .iter()
             .find(|member| member.name == request.member_name)
@@ -208,6 +210,11 @@ impl CoordinationOrchestrator {
                     request.member_name, request.team_name
                 ))
             })?;
+
+        let role = member.role_id.as_deref().and_then(|role_id| {
+            load_role_for_member_hydration(&self.template_root, role_id, &member.name, "resume")
+        });
+        hydrate_member_model_fields(&mut member, role.as_ref());
 
         let runtime = match MemberRuntimeStore::load(
             &self.teams_dir,
@@ -842,6 +849,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &prepared.member.name,
             project_id.as_str(),
             prepared.member.cli_tool,
+            &prepared.activation_context.member.model,
         ) {
             Ok(joined) => {
                 self.runtime_state.mesh_joined = joined;
@@ -1152,6 +1160,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 instructions: prepared.member.instructions.as_deref(),
                 behavioral_contract: prepared.member.behavioral_contract.as_ref(),
                 quality_gates: prepared.member.quality_gates.as_deref(),
+                handoff_expectations: prepared.member.handoff_expectations.as_deref(),
                 definition_of_done: prepared.member.definition_of_done.as_deref(),
                 capabilities: prepared.member.capabilities.as_deref(),
             },

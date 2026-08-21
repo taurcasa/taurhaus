@@ -58,6 +58,8 @@ export function normalizeRoleTemplateInput(roleData) {
     defaults: {
       cliTool,
       model,
+      reasoningEffort:
+        source.defaults?.reasoningEffort ?? source.defaults?.reasoning_effort ?? null,
       defaultNamePattern: String(
         source.defaults?.defaultNamePattern ??
           (roleKind === 'lead' ? 'team-lead' : `${roleId || 'agent'}-{n}`)
@@ -73,6 +75,9 @@ export function normalizeRoleTemplateInput(roleData) {
       mode: BEHAVIORAL_CONTRACT_MODES.TEMPLATE_INPUT,
     }),
     qualityGates: optionalTrimmedStringList(source.qualityGates ?? source.quality_gates),
+    handoffExpectations: optionalTrimmedStringList(
+      source.handoffExpectations ?? source.handoff_expectations
+    ),
     definitionOfDone: optionalTrimmedStringList(source.definitionOfDone ?? source.definition_of_done),
     phaseScope: optionalTrimmedStringList(source.phaseScope ?? source.phase_scope),
     mode: optionalTrimmedString(source.mode),

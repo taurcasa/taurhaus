@@ -29,6 +29,7 @@ pub enum RuntimeCall {
         team_name: String,
         member_name: String,
         project_id: String,
+        model: String,
     },
     SpawnDaemon {
         pane_id: String,
@@ -326,11 +327,13 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
         self.push_call(RuntimeCall::JoinMesh {
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),
             project_id: project_id.to_string(),
+            model: model.to_string(),
         });
         Ok(())
     }

@@ -12,6 +12,7 @@ pub(crate) struct RoleContext<'a> {
     pub(crate) instructions: Option<&'a str>,
     pub(crate) behavioral_contract: Option<&'a BehavioralContract>,
     pub(crate) quality_gates: Option<&'a [String]>,
+    pub(crate) handoff_expectations: Option<&'a [String]>,
     pub(crate) definition_of_done: Option<&'a [String]>,
     pub(crate) capabilities: Option<&'a [String]>,
 }
@@ -159,6 +160,10 @@ impl DeliveryRenderer {
             .quality_gates
             .map(Self::has_non_empty_items)
             .unwrap_or(false);
+        let has_handoff_expectations = role_context
+            .handoff_expectations
+            .map(Self::has_non_empty_items)
+            .unwrap_or(false);
         let has_definition_of_done = role_context
             .definition_of_done
             .map(Self::has_non_empty_items)
@@ -173,6 +178,7 @@ impl DeliveryRenderer {
             && instructions.is_none()
             && behavioral_contract.is_none()
             && !has_quality_gates
+            && !has_handoff_expectations
             && !has_definition_of_done
             && !has_capabilities
         {
@@ -205,6 +211,13 @@ impl DeliveryRenderer {
             if has_quality_gates {
                 rendered.push_str("\n\nQuality Gates:\n");
                 Self::append_bullets(rendered, quality_gates);
+            }
+        }
+
+        if let Some(handoff_expectations) = role_context.handoff_expectations {
+            if has_handoff_expectations {
+                rendered.push_str("\n\nHandoff Expectations:\n");
+                Self::append_bullets(rendered, handoff_expectations);
             }
         }
 
@@ -449,6 +462,7 @@ mod tests {
         };
         let capabilities = vec!["code-review".to_string(), "testing".to_string()];
         let quality_gates = vec!["Run the scoped test lane.".to_string()];
+        let handoff_expectations = vec!["Summarize evidence and residual risk.".to_string()];
         let definition_of_done = vec!["Report the exact shipped behavior.".to_string()];
 
         let rendered = DeliveryRenderer::render_onboarding(
@@ -461,6 +475,7 @@ mod tests {
                 instructions: Some("Review architecture patches and propose fixes."),
                 behavioral_contract: Some(&contract),
                 quality_gates: Some(&quality_gates),
+                handoff_expectations: Some(&handoff_expectations),
                 definition_of_done: Some(&definition_of_done),
                 capabilities: Some(&capabilities),
             },
@@ -474,6 +489,7 @@ mod tests {
         assert!(rendered.contains("Execution:\n- Ship reviewed patches."));
         assert!(rendered.contains("Escalation:\n- Escalate blockers quickly."));
         assert!(rendered.contains("Quality Gates:\n- Run the scoped test lane."));
+        assert!(rendered.contains("Handoff Expectations:\n- Summarize evidence and residual risk."));
         assert!(rendered.contains("Definition of Done:\n- Report the exact shipped behavior."));
         assert!(rendered.contains("Capabilities:"));
         assert!(rendered.contains("- code-review"));
@@ -504,6 +520,7 @@ mod tests {
                 instructions: Some("Implement role-specific changes."),
                 behavioral_contract: Some(&contract),
                 quality_gates: Some(&quality_gates),
+                handoff_expectations: None,
                 definition_of_done: Some(&definition_of_done),
                 capabilities: Some(&capabilities),
             },

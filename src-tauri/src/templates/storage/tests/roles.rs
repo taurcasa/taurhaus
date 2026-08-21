@@ -46,6 +46,71 @@ fn get_role_prefers_user_override() {
     assert_eq!(role.template.instructions, "user override");
 }
 
+// Regression: ff40911 stripped legacy effort suffixes only at launch time,
+// leaving template storage unable to preserve the requested effort separately.
+#[test]
+fn role_loaders_split_legacy_model_and_effort_for_builtins_and_user_files() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+
+    write(
+        &app_data.join("templates/roles/dev-dash.yaml"),
+        &agent_role_yaml("dev-dash", "user dash").replace("gpt-5.4 high", "gpt-5.4-high"),
+    );
+    write(
+        &app_data.join("templates/roles/dev-bare.yaml"),
+        &agent_role_yaml("dev-bare", "user bare").replace("gpt-5.4 high", "gpt-5.4"),
+    );
+
+    let roles = store.list_roles().expect("list roles");
+    for role_id in ["dev", "dev-dash"] {
+        let defaults = &roles
+            .iter()
+            .find(|role| role.template.role_id == role_id)
+            .expect("role")
+            .template
+            .defaults;
+        assert_eq!(defaults.model, "gpt-5.4");
+        assert_eq!(defaults.reasoning_effort.as_deref(), Some("high"));
+    }
+
+    let bare = &roles
+        .iter()
+        .find(|role| role.template.role_id == "dev-bare")
+        .expect("bare role")
+        .template
+        .defaults;
+    assert_eq!(bare.model, "gpt-5.4");
+    assert_eq!(bare.reasoning_effort, None);
+}
+
+// Regression: ff40911 left the legacy model suffix in persisted role files,
+// so an editor save could not preserve effort in its own schema field.
+#[test]
+fn save_after_legacy_load_writes_canonical_model_and_effort_keys() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store
+        .ensure_repo_for_mutation()
+        .expect("ensure repo")
+        .expect("repo");
+
+    let loaded = store.get_role("dev").expect("load legacy builtin");
+    store
+        .update_role("dev", &loaded.template)
+        .expect("save canonical override");
+
+    let raw =
+        fs::read_to_string(app_data.join("templates/roles/dev.yaml")).expect("read saved role");
+    assert!(raw.contains("model: gpt-5.4"));
+    assert!(raw.contains("reasoning_effort: high"));
+    assert!(!raw.contains("gpt-5.4 high"));
+    assert!(!raw.contains("gpt-5.4-high"));
+}
+
 #[test]
 fn create_role_validates_writes_and_commits() {
     let (_root, app_data, builtins) = setup_dirs();

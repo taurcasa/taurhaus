@@ -1,6 +1,6 @@
 use crate::coordination::domain::MemberRole;
 use crate::daemon::protocol::LaunchMode;
-use crate::models::CliCommandSettings;
+use crate::models::{CliCommandSettings, ModelCatalog};
 use crate::session_scanner::cli_tool::CliTool;
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
@@ -76,8 +76,41 @@ pub enum LaunchNote {
     DeprecatedFlag { flag: String },
     /// The base already selected a model, so it wins over `ModelSpec`.
     ModelIgnored { found: String },
-    /// The base already selected an effort, so it wins over `ModelSpec`.
-    EffortIgnored { found: String },
+    /// The selected catalog model is deprecated and has a preferred replacement.
+    ModelDeprecated {
+        found: String,
+        replacement: Option<String>,
+    },
+    /// The requested effort was ignored because the base overrides it or the
+    /// selected tool/model does not support it.
+    EffortIgnored {
+        found: String,
+        reason: EffortIgnoreReason,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortIgnoreReason {
+    BaseOverride,
+    Invalid,
+}
+
+impl LaunchNote {
+    pub fn event_name(&self) -> &'static str {
+        match self {
+            Self::DeprecatedFlag { .. } => "launch.flag.deprecated",
+            Self::ModelIgnored { .. } => "launch.model.ignored",
+            Self::ModelDeprecated { .. } => "launch.model.deprecated",
+            Self::EffortIgnored {
+                reason: EffortIgnoreReason::BaseOverride,
+                ..
+            } => "launch.effort.ignored",
+            Self::EffortIgnored {
+                reason: EffortIgnoreReason::Invalid,
+                ..
+            } => "launch.effort.invalid",
+        }
+    }
 }
 
 pub struct RenderedLaunch {
@@ -98,20 +131,36 @@ impl LaunchSpec<'_> {
                     });
                 }
 
+                let base_model = first_present_flag_value(self.base, &["-m", "--model"]);
                 if let Some(model) = self.model.model.as_deref() {
                     if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
                         notes.push(LaunchNote::ModelIgnored {
                             found: found.to_string(),
                         });
                     } else {
+                        if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
+                            .filter(|entry| entry.deprecated)
+                        {
+                            notes.push(LaunchNote::ModelDeprecated {
+                                found: model.to_string(),
+                                replacement: entry.replacement.clone(),
+                            });
+                        }
                         append_flag(&mut command, "-m", model);
                     }
                 }
 
                 if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    if command_contains_flag(self.base, "model_reasoning_effort") {
+                    let effective_model = base_model.as_deref().or(self.model.model.as_deref());
+                    if !ModelCatalog::supports_effort(self.tool, effective_model, effort) {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if command_contains_flag(self.base, "model_reasoning_effort") {
                         notes.push(LaunchNote::EffortIgnored {
                             found: "model_reasoning_effort".to_string(),
+                            reason: EffortIgnoreReason::BaseOverride,
                         });
                     } else {
                         append_flag(
@@ -134,9 +183,19 @@ impl LaunchSpec<'_> {
                 }
 
                 if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    if command_contains_flag(self.base, "--effort") {
+                    if !ModelCatalog::supports_effort(
+                        self.tool,
+                        self.model.model.as_deref(),
+                        effort,
+                    ) {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if command_contains_flag(self.base, "--effort") {
                         notes.push(LaunchNote::EffortIgnored {
                             found: "--effort".to_string(),
+                            reason: EffortIgnoreReason::BaseOverride,
                         });
                     } else {
                         append_flag(&mut command, "--effort", effort);
@@ -180,6 +239,12 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Gemini => {
+                if let Some(effort) = self.model.reasoning_effort.as_deref() {
+                    notes.push(LaunchNote::EffortIgnored {
+                        found: effort.to_string(),
+                        reason: EffortIgnoreReason::Invalid,
+                    });
+                }
                 // unverified (S12): Gemini is not installed on the audit host.
                 if let Some(model) = self.model.model.as_deref() {
                     if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
@@ -317,6 +382,27 @@ fn first_present_flag<'a>(command: &str, flags: &'a [&str]) -> Option<&'a str> {
         .find(|flag| command_contains_flag(command, flag))
 }
 
+fn first_present_flag_value(command: &str, flags: &[&str]) -> Option<String> {
+    let tokens = command.split_whitespace().collect::<Vec<_>>();
+    for flag in flags {
+        for (index, token) in tokens.iter().enumerate() {
+            let token = token.trim_start_matches(['\'', '"']);
+            if token == *flag {
+                return tokens
+                    .get(index + 1)
+                    .map(|value| value.trim_matches(['\'', '"']).to_string());
+            }
+            if let Some(value) = token
+                .strip_prefix(flag)
+                .and_then(|suffix| suffix.strip_prefix('='))
+            {
+                return Some(value.trim_matches(['\'', '"']).to_string());
+            }
+        }
+    }
+    None
+}
+
 fn append_flag(command: &mut String, flag: &str, value: &str) {
     command.push(' ');
     command.push_str(flag);
@@ -444,6 +530,28 @@ mod tests {
         );
     }
 
+    // Regression: a79d392 added catalog deprecation metadata for gpt-5.4,
+    // but launches using that model emitted no actionable replacement note.
+    #[test]
+    fn codex_render_notes_deprecated_catalog_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: model_spec("gpt-5.4", None),
+            team: None,
+        }
+        .render();
+
+        assert!(rendered.notes.iter().any(|note| matches!(
+            note,
+            LaunchNote::ModelDeprecated { found, replacement }
+                if found == "gpt-5.4"
+                    && replacement.as_deref() == Some("gpt-5.6-terra")
+                    && note.event_name() == "launch.model.deprecated"
+        )));
+    }
+
     #[test]
     fn codex_render_never_adds_sandbox_flags() {
         let rendered = LaunchSpec {
@@ -457,6 +565,159 @@ mod tests {
 
         assert!(!rendered.command.contains("--sandbox"));
         assert!(!rendered.command.contains("--ask-for-approval"));
+    }
+
+    // Regression: ff40911 discarded a role's explicit effort instead of
+    // validating it, allowing the user's global effort to win silently.
+    #[test]
+    fn codex_render_notes_and_drops_effort_invalid_for_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: model_spec("gpt-5.4", Some("ultra")),
+            team: None,
+        }
+        .render();
+
+        assert!(!rendered.command.contains("model_reasoning_effort"));
+        assert!(rendered.notes.iter().any(
+            |note| matches!(note, LaunchNote::EffortIgnored { found, .. } if found == "ultra")
+        ));
+    }
+
+    // Regression: a79d392 validated effort against the declared model even
+    // when the free-form base pinned a different effective Codex model.
+    #[test]
+    fn codex_effort_is_validated_against_base_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo -m gpt-5.5",
+            model: model_spec("gpt-5.6-sol", Some("ultra")),
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "codex --yolo -m gpt-5.5");
+        assert_eq!(
+            rendered.notes,
+            vec![
+                LaunchNote::ModelIgnored {
+                    found: "-m".to_string(),
+                },
+                LaunchNote::EffortIgnored {
+                    found: "ultra".to_string(),
+                    reason: EffortIgnoreReason::Invalid,
+                },
+            ]
+        );
+    }
+
+    // Regression: a79d392 validated model-less effort against the catalog
+    // default, and the review fix then treated the catalog as an allowlist;
+    // a declared effort must render whenever it is in Codex's vocabulary,
+    // even when the effective model is unknown to the static catalog —
+    // Codex validates the pair itself.
+    #[test]
+    fn codex_effort_without_an_effective_model_renders_when_in_vocabulary() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec {
+                model: None,
+                reasoning_effort: Some("max".to_string()),
+            },
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "codex --yolo -c 'model_reasoning_effort=\"max\"'"
+        );
+        assert!(rendered.notes.is_empty(), "notes: {:?}", rendered.notes);
+
+        let invalid = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec {
+                model: Some("gpt-5.7-nova".to_string()),
+                reasoning_effort: Some("turbo".to_string()),
+            },
+            team: None,
+        }
+        .render();
+        assert_eq!(invalid.command, "codex --yolo -m 'gpt-5.7-nova'");
+        assert_eq!(
+            invalid.notes,
+            vec![LaunchNote::EffortIgnored {
+                found: "turbo".to_string(),
+                reason: EffortIgnoreReason::Invalid,
+            }]
+        );
+    }
+
+    #[test]
+    fn claude_render_notes_and_drops_unknown_effort() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base: "claude --dangerously-skip-permissions",
+            model: model_spec("opus", Some("ultra")),
+            team: None,
+        }
+        .render();
+
+        assert!(!rendered.command.contains("--effort"));
+        assert!(matches!(
+            rendered.notes.as_slice(),
+            [LaunchNote::EffortIgnored { found, .. }] if found == "ultra"
+        ));
+    }
+
+    #[test]
+    fn launch_note_events_use_entity_verb_shape() {
+        assert_eq!(
+            LaunchNote::DeprecatedFlag {
+                flag: "--full-auto".to_string()
+            }
+            .event_name(),
+            "launch.flag.deprecated"
+        );
+        assert_eq!(
+            LaunchNote::ModelIgnored {
+                found: "--model".to_string()
+            }
+            .event_name(),
+            "launch.model.ignored"
+        );
+        assert_eq!(
+            LaunchNote::ModelDeprecated {
+                found: "gpt-5.4".to_string(),
+                replacement: Some("gpt-5.6-terra".to_string()),
+            }
+            .event_name(),
+            "launch.model.deprecated"
+        );
+        assert_eq!(
+            LaunchNote::EffortIgnored {
+                found: "--effort".to_string(),
+                reason: EffortIgnoreReason::BaseOverride,
+            }
+            .event_name(),
+            "launch.effort.ignored"
+        );
+        assert_eq!(
+            LaunchNote::EffortIgnored {
+                found: "ultra".to_string(),
+                reason: EffortIgnoreReason::Invalid,
+            }
+            .event_name(),
+            "launch.effort.invalid"
+        );
     }
 
     #[test]
@@ -554,7 +815,7 @@ mod tests {
     }
 
     #[test]
-    fn gemini_render_adds_model_only() {
+    fn gemini_render_adds_model_and_notes_unsupported_effort() {
         let rendered = LaunchSpec {
             tool: CliTool::Gemini,
             mode: LaunchMode::Fresh,
@@ -565,7 +826,13 @@ mod tests {
         .render();
 
         assert_eq!(rendered.command, "gemini --yolo -m 'gemini-3.1-pro'");
-        assert!(rendered.notes.is_empty());
+        assert!(matches!(
+            rendered.notes.as_slice(),
+            [LaunchNote::EffortIgnored {
+                found,
+                reason: EffortIgnoreReason::Invalid,
+            }] if found == "high"
+        ));
     }
 
     // Regression: 791f6be checked only Gemini's short model flag, so a

@@ -366,12 +366,15 @@ mod tests {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            model: None,
+            reasoning_effort: None,
             project_path: PathBuf::from(project_path),
             cli_tool: tool,
         }
@@ -468,8 +471,10 @@ mod tests {
             team_name: &str,
             member_name: &str,
             project_id: &str,
+            model: &str,
         ) -> Result<(), CoordinationError> {
-            self.inner.join_mesh(team_name, member_name, project_id)
+            self.inner
+                .join_mesh(team_name, member_name, project_id, model)
         }
 
         fn spawn_mesh_daemon(

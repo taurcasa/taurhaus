@@ -5,6 +5,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::ModelSpec;
 use crate::templates::adapters::RoleProvenance;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,8 @@ pub struct RoleDefaults {
     #[serde(alias = "cli_tool")]
     pub cli_tool: CliTool,
     pub model: String,
+    #[serde(default, rename = "reasoning_effort", alias = "reasoningEffort")]
+    pub reasoning_effort: Option<String>,
     #[serde(alias = "default_name_pattern")]
     pub default_name_pattern: String,
 }
@@ -239,6 +242,12 @@ pub struct RoleTemplate {
     pub quality_gates: Option<Vec<String>>,
     #[serde(
         default,
+        alias = "handoff_expectations",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub handoff_expectations: Option<Vec<String>>,
+    #[serde(
+        default,
         alias = "definition_of_done",
         skip_serializing_if = "Option::is_none"
     )]
@@ -271,7 +280,23 @@ pub struct RoleTemplate {
 }
 
 impl RoleTemplate {
+    pub fn normalize_model_fields(&mut self) {
+        let parsed = ModelSpec::parse_legacy(&self.defaults.model);
+        if let Some(model) = parsed.model {
+            self.defaults.model = model;
+        }
+        if self.defaults.reasoning_effort.is_none() {
+            self.defaults.reasoning_effort = parsed.reasoning_effort;
+        }
+    }
+
     pub fn validate(&self) -> Result<(), TemplateValidationError> {
+        let mut normalized = self.clone();
+        normalized.normalize_model_fields();
+        normalized.validate_normalized()
+    }
+
+    fn validate_normalized(&self) -> Result<(), TemplateValidationError> {
         let mut errors = Vec::new();
 
         if self.schema.kind != TemplateKind::RoleTemplate {
@@ -324,6 +349,9 @@ impl RoleTemplate {
 
         if let Some(quality_gates) = self.quality_gates.as_ref() {
             validate_string_list("quality_gates", quality_gates, &mut errors);
+        }
+        if let Some(handoff_expectations) = self.handoff_expectations.as_ref() {
+            validate_string_list("handoff_expectations", handoff_expectations, &mut errors);
         }
         if let Some(definition_of_done) = self.definition_of_done.as_ref() {
             validate_string_list("definition_of_done", definition_of_done, &mut errors);
@@ -399,6 +427,8 @@ impl RoleTemplate {
 #[serde(rename_all = "camelCase")]
 pub struct SlotOverrides {
     pub model: Option<String>,
+    #[serde(default, rename = "reasoning_effort", alias = "reasoningEffort")]
+    pub reasoning_effort: Option<String>,
     #[serde(alias = "name_pattern")]
     pub name_pattern: Option<String>,
     #[serde(alias = "instructions_replace")]
@@ -418,6 +448,20 @@ pub struct SlotOverrides {
 }
 
 impl SlotOverrides {
+    pub fn normalize_model_fields(&mut self) {
+        let Some(model) = self.model.as_deref() else {
+            return;
+        };
+
+        let parsed = ModelSpec::parse_legacy(model);
+        if parsed.model.is_some() {
+            self.model = parsed.model;
+        }
+        if self.reasoning_effort.is_none() {
+            self.reasoning_effort = parsed.reasoning_effort;
+        }
+    }
+
     fn validate(&self, field_prefix: &str, errors: &mut Vec<String>) {
         if let Some(model) = self.model.as_deref() {
             validate_non_empty(&format!("{field_prefix}.model"), model, errors);
@@ -561,7 +605,21 @@ pub struct TeamPreset {
 }
 
 impl TeamPreset {
+    pub fn normalize_model_fields(&mut self) {
+        for slot in &mut self.agent_slots {
+            if let Some(overrides) = &mut slot.overrides {
+                overrides.normalize_model_fields();
+            }
+        }
+    }
+
     pub fn validate(&self) -> Result<(), TemplateValidationError> {
+        let mut normalized = self.clone();
+        normalized.normalize_model_fields();
+        normalized.validate_normalized()
+    }
+
+    fn validate_normalized(&self) -> Result<(), TemplateValidationError> {
         let mut errors = Vec::new();
 
         if self.schema.kind != TemplateKind::TeamPreset {
@@ -911,6 +969,7 @@ mod tests {
             defaults: RoleDefaults {
                 cli_tool: CliTool::Codex,
                 model: "gpt-5.4 high".to_string(),
+                reasoning_effort: None,
                 default_name_pattern: "dev-{n}".to_string(),
             },
             instructions: "Execute scoped tasks.".to_string(),
@@ -950,6 +1009,7 @@ mod tests {
                 "Run the named validation lane.".to_string(),
                 "Keep regression coverage for confirmed bugs.".to_string(),
             ]),
+            handoff_expectations: None,
             definition_of_done: Some(vec![
                 "Requested behavior matches the acceptance criteria.".to_string(),
                 "Residual risks are called out explicitly.".to_string(),
@@ -990,6 +1050,7 @@ mod tests {
                 project_id: Some("project-a".to_string()),
                 overrides: Some(SlotOverrides {
                     model: Some("gpt-5.4 high".to_string()),
+                    reasoning_effort: None,
                     name_pattern: Some("dev-{n}".to_string()),
                     instructions_replace: Some("Replace instructions".to_string()),
                     instructions_append: Some("Append instructions".to_string()),
@@ -1035,6 +1096,33 @@ mod tests {
                     .unwrap_or_else(|err| panic!("parse role template {}: {err}", path.display()))
             })
             .collect()
+    }
+
+    // Regression: a79d392 skipped legacy slug normalization whenever an explicit effort
+    // was present, leaving `gpt-5.4 high` as an invalid model id on launch.
+    #[test]
+    fn explicit_effort_wins_while_legacy_model_slug_is_canonicalized() {
+        let mut role = sample_role_template();
+        role.defaults.reasoning_effort = Some("low".to_string());
+        role.normalize_model_fields();
+        assert_eq!(role.defaults.model, "gpt-5.4");
+        assert_eq!(role.defaults.reasoning_effort.as_deref(), Some("low"));
+
+        let mut overrides = SlotOverrides {
+            model: Some("gpt-5.4 high".to_string()),
+            reasoning_effort: Some("low".to_string()),
+            name_pattern: None,
+            instructions_replace: None,
+            instructions_append: None,
+            focus_area: None,
+            context_summary: None,
+            behavior_summary: None,
+            runtime_compact_summary: None,
+            behavioral_contract_append: None,
+        };
+        overrides.normalize_model_fields();
+        assert_eq!(overrides.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(overrides.reasoning_effort.as_deref(), Some("low"));
     }
 
     fn load_team_presets() -> Vec<TeamPreset> {
@@ -1293,6 +1381,7 @@ mod tests {
             defaults: RoleDefaults {
                 cli_tool: CliTool::Claude,
                 model: "claude-opus-4-6".to_string(),
+                reasoning_effort: None,
                 default_name_pattern: "lead-{project}".to_string(),
             },
             instructions: "Lead".to_string(),
@@ -1307,6 +1396,7 @@ mod tests {
                 escalation: vec!["c".to_string()],
             },
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -1333,6 +1423,7 @@ mod tests {
             defaults: RoleDefaults {
                 cli_tool: CliTool::Codex,
                 model: "gpt-5.4 high".to_string(),
+                reasoning_effort: None,
                 default_name_pattern: "worker".to_string(),
             },
             instructions: "Agent".to_string(),
@@ -1347,6 +1438,7 @@ mod tests {
                 escalation: vec!["c".to_string()],
             },
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -1380,6 +1472,7 @@ mod tests {
                     project_id: None,
                     overrides: Some(SlotOverrides {
                         model: None,
+                        reasoning_effort: None,
                         name_pattern: Some("worker".to_string()),
                         instructions_replace: None,
                         instructions_append: None,
@@ -1397,6 +1490,7 @@ mod tests {
                     project_id: None,
                     overrides: Some(SlotOverrides {
                         model: None,
+                        reasoning_effort: None,
                         name_pattern: Some("worker".to_string()),
                         instructions_replace: None,
                         instructions_append: None,

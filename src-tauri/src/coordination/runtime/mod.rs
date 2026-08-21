@@ -113,6 +113,7 @@ pub trait CoordinationRuntime: Send + Sync {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError>;
 
     fn spawn_mesh_daemon(
@@ -380,12 +381,15 @@ mod tests {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            model: None,
+            reasoning_effort: None,
             project_path: PathBuf::from(project_path),
             cli_tool: CliTool::Codex,
         }
@@ -625,7 +629,7 @@ mod tests {
             .send_tmux_keys_with_enter(&pane, "codex --yolo")
             .expect("keys");
         runtime
-            .join_mesh("alpha", "agent-a", "/tmp/project")
+            .join_mesh("alpha", "agent-a", "/tmp/project", "gpt-5.6-sol")
             .expect("join");
         assert!(runtime
             .pane_belongs_to_project(&pane, "/tmp/project")
@@ -655,6 +659,7 @@ mod tests {
                     team_name: "alpha".to_string(),
                     member_name: "agent-a".to_string(),
                     project_id: "/tmp/project".to_string(),
+                    model: "gpt-5.6-sol".to_string(),
                 },
                 RuntimeCall::CheckPaneOwnership {
                     pane_id: "test-pane-1".to_string(),

@@ -539,6 +539,7 @@ mod tests {
             defaults: RoleDefaults {
                 cli_tool: CliTool::Claude,
                 model: "claude-opus-4-6".to_string(),
+                reasoning_effort: None,
                 default_name_pattern: "export-{n}".to_string(),
             },
             instructions: "Ship the requested change with tests first.".to_string(),
@@ -555,6 +556,7 @@ mod tests {
                 escalation: vec!["Escalate unsupported mappings.".to_string()],
             },
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,

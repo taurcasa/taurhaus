@@ -14,6 +14,7 @@ use crate::coordination::audit::AuditEvent;
 use crate::coordination::backend::CoordinationBackend;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{MemberRuntimeRecord, TeamConfig};
+use crate::provider::platform_paths::PlatformPaths;
 
 /// Aggregated status view for a single team.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +75,7 @@ pub struct RemoveMemberStepResult {
 /// Top-level coordination service entrypoint.
 pub struct CoordinationOrchestrator {
     pub(crate) teams_dir: PathBuf,
+    pub(crate) template_root: PathBuf,
     pub(crate) audit_log: Vec<AuditEvent>,
     pub(crate) backend: Arc<dyn CoordinationBackend>,
     /// Optional per-tool backend for Claude agents (inbox file delivery).
@@ -88,6 +90,7 @@ impl std::fmt::Debug for CoordinationOrchestrator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CoordinationOrchestrator")
             .field("teams_dir", &self.teams_dir)
+            .field("template_root", &self.template_root)
             .field("audit_log_len", &self.audit_log.len())
             .field("backend_kind", &self.backend.kind())
             .finish()
@@ -104,8 +107,19 @@ impl CoordinationOrchestrator {
         backend: Arc<dyn CoordinationBackend>,
         runtime: Arc<dyn CoordinationRuntime>,
     ) -> Self {
+        let template_root = PlatformPaths::coordination_template_root(&teams_dir);
+        Self::new_with_runtime_and_template_root(teams_dir, template_root, backend, runtime)
+    }
+
+    pub fn new_with_runtime_and_template_root(
+        teams_dir: PathBuf,
+        template_root: PathBuf,
+        backend: Arc<dyn CoordinationBackend>,
+        runtime: Arc<dyn CoordinationRuntime>,
+    ) -> Self {
         Self {
             teams_dir,
+            template_root,
             audit_log: Vec::new(),
             backend,
             claude_backend: None,

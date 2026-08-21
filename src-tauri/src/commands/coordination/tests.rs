@@ -145,6 +145,8 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -173,6 +175,8 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -196,6 +200,8 @@ fn sample_preflight_request() -> InitializeTeamRequest {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -226,6 +232,8 @@ fn sample_add_agent_request(team_name: &str, member_name: &str) -> AddAgentReque
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -726,6 +734,8 @@ fn add_agent_and_reonboard_validate_empty_strings() {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -1937,6 +1947,8 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -1961,6 +1973,8 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -1984,6 +1998,8 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -2038,6 +2054,24 @@ fn project_mesh_snapshot_resolves_role_metadata_when_initialize_request_only_has
         .contains("Perform code reviews focused on correctness"));
 }
 
+// Regression: a79d392 hydrated role models without checking the requested CLI,
+// so request normalization could pair Claude with a Codex-only model slug.
+#[test]
+fn role_hydration_cli_mismatch_uses_the_requested_tools_catalog_default() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().join("teams"));
+    let mut request = sample_preflight_request();
+    request.agents[0].cli_tool = "claude".to_string();
+    request.agents[0].model.clear();
+    request.agents[0].role_id = Some("v3-developer-codex".to_string());
+    request.agents[0].role_name = None;
+
+    let hydrated = hydrate_initialize_request_role_metadata(&state, request)
+        .expect("role hydration should succeed");
+
+    assert_eq!(hydrated.agents[0].model, "opus");
+}
+
 #[test]
 fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload() {
     let tmp = TempDir::new().expect("tempdir");
@@ -2064,6 +2098,8 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -2088,6 +2124,8 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -2111,6 +2149,8 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -2151,6 +2191,12 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
     assert_eq!(developer.role_id.as_deref(), Some("v3-developer-codex"));
     assert_eq!(developer.role_name.as_deref(), Some("V3 Developer (Codex)"));
     assert_eq!(developer.cli_tool, CliTool::Codex);
+    assert_eq!(developer.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(developer.reasoning_effort, None);
+    assert!(developer
+        .handoff_expectations
+        .as_ref()
+        .is_some_and(|items| !items.is_empty()));
     assert!(developer
         .instructions
         .as_deref()
@@ -2273,6 +2319,8 @@ fn initialize_team_request_round_trip() {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -2297,6 +2345,8 @@ fn initialize_team_request_round_trip() {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -2320,6 +2370,8 @@ fn initialize_team_request_round_trip() {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -2388,6 +2440,8 @@ fn add_agent_request_and_report_round_trip() {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -2530,6 +2584,7 @@ fn live_team_status_round_trip() {
                 role: AgentRole::Lead,
                 cli_tool: "claude".to_string(),
                 model: "opus".to_string(),
+                reasoning_effort: None,
                 role_id: None,
                 role_name: None,
                 focus_area: None,
@@ -2547,6 +2602,7 @@ fn live_team_status_round_trip() {
                 role: AgentRole::Member,
                 cli_tool: "codex".to_string(),
                 model: "gpt-5.4".to_string(),
+                reasoning_effort: Some("high".to_string()),
                 role_id: None,
                 role_name: None,
                 focus_area: None,
@@ -2581,6 +2637,8 @@ fn project_mesh_snapshot_round_trip() {
                 name: "frontend-dev".to_string(),
                 role: AgentRole::Member,
                 cli_tool: "codex".to_string(),
+                model: Some("gpt-5.4".to_string()),
+                reasoning_effort: Some("high".to_string()),
                 role_id: None,
                 role_name: None,
                 focus_area: None,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { normalizeRoleTemplateInput } from './templatePayloads.js'
+import { normalizeRoleTemplateResponse } from './templateResponses.js'
 
 describe('templatePayloads normalizeRoleTemplateInput', () => {
   it('preserves explicit non-Claude lead tool and model', () => {
@@ -64,6 +65,33 @@ describe('templatePayloads normalizeRoleTemplateInput', () => {
       runtimeCompactSummary: expect.objectContaining({
         rolePurpose: 'Keep reviews compact.',
       }),
+    }))
+  })
+
+  // Regression: a79d392 split reasoning effort into its own backend field, but
+  // the role editor mappers erased it and handoff expectations during save.
+  it('round-trips reasoning effort and handoff expectations through role editor mappers', () => {
+    const response = normalizeRoleTemplateResponse({
+      role_id: 'developer-codex',
+      name: 'Developer',
+      kind: 'agent',
+      defaults: {
+        cli_tool: 'codex',
+        model: 'gpt-5.4',
+        reasoning_effort: 'high',
+        default_name_pattern: 'dev-{n}',
+      },
+      handoff_expectations: ['Report tests and changed files'],
+    })
+
+    expect(normalizeRoleTemplateInput(response)).toEqual(expect.objectContaining({
+      defaults: {
+        cliTool: 'codex',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
+        defaultNamePattern: 'dev-{n}',
+      },
+      handoffExpectations: ['Report tests and changed files'],
     }))
   })
 })

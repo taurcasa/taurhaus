@@ -26,24 +26,33 @@ const DEFAULT_CLI_COMMANDS = {
   },
 }
 
+const EMPTY_MODEL_CATALOG = {
+  claude: [],
+  codex: [],
+  gemini: [],
+}
+
 const DEFAULT_TERMINAL_CONTRACTS = {
   linux: {
     platform: 'linux',
     default_emulator: 'manual',
     supported_emulators: ['manual'],
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
+    model_catalog: EMPTY_MODEL_CATALOG,
   },
   macos: {
     platform: 'macos',
     default_emulator: 'iterm2',
     supported_emulators: ['iterm2', 'ghostty', 'terminal_app', 'custom'],
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
+    model_catalog: EMPTY_MODEL_CATALOG,
   },
   windows: {
     platform: 'windows',
     default_emulator: 'windows_terminal',
     supported_emulators: ['windows_terminal', 'custom'],
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
+    model_catalog: EMPTY_MODEL_CATALOG,
   },
 }
 
@@ -53,6 +62,15 @@ function normalizeToolCommands(raw, defaults = {}) {
     continue_cmd: commands.continue_cmd ?? commands.continueCmd ?? defaults.continue_cmd ?? '',
     fresh: commands.fresh ?? defaults.fresh ?? '',
     resume: commands.resume ?? defaults.resume ?? '',
+  }
+}
+
+function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
+  const catalog = raw && typeof raw === 'object' ? raw : defaults
+  return {
+    claude: Array.isArray(catalog.claude) ? [...catalog.claude] : [...defaults.claude],
+    codex: Array.isArray(catalog.codex) ? [...catalog.codex] : [...defaults.codex],
+    gemini: Array.isArray(catalog.gemini) ? [...catalog.gemini] : [...defaults.gemini],
   }
 }
 
@@ -67,6 +85,7 @@ export function buildFrontendFallbackTerminalContract(platform = 'linux') {
       codex: { ...fallback.cli_command_defaults.codex },
       gemini: { ...fallback.cli_command_defaults.gemini },
     },
+    model_catalog: normalizeModelCatalog(fallback.model_catalog),
   }
 }
 
@@ -85,6 +104,12 @@ function normalizeTerminalContract(raw) {
       : contract.cliCommandDefaults && typeof contract.cliCommandDefaults === 'object'
         ? contract.cliCommandDefaults
         : defaults.cli_command_defaults
+  const modelCatalog =
+    contract.model_catalog && typeof contract.model_catalog === 'object'
+      ? contract.model_catalog
+      : contract.modelCatalog && typeof contract.modelCatalog === 'object'
+        ? contract.modelCatalog
+        : defaults.model_catalog
 
   return {
     platform: defaults.platform,
@@ -95,6 +120,7 @@ function normalizeTerminalContract(raw) {
       codex: normalizeToolCommands(cliCommandDefaults.codex, defaults.cli_command_defaults.codex),
       gemini: normalizeToolCommands(cliCommandDefaults.gemini, defaults.cli_command_defaults.gemini),
     },
+    model_catalog: normalizeModelCatalog(modelCatalog, defaults.model_catalog),
   }
 }
 

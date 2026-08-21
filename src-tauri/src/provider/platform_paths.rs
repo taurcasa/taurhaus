@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::commands::logging::JSONL_LOG_FILE_NAME;
 use crate::coordination::mesh_cli;
@@ -40,6 +40,23 @@ impl PlatformPaths {
     /// Team state root (`~/.claude/teams`).
     pub fn teams_dir() -> PathBuf {
         Self::claude_dir().join("teams")
+    }
+
+    /// App-data root used by coordination template hydration.
+    ///
+    /// Production team state is Claude-owned while templates are taurhaus-owned.
+    /// Explicit non-production roots keep the historical colocated layout used by
+    /// tests and embedders.
+    pub fn coordination_template_root(teams_dir: &Path) -> PathBuf {
+        if teams_dir == Self::teams_dir() {
+            return Self::app_data_root();
+        }
+
+        teams_dir
+            .file_name()
+            .filter(|name| *name == "teams")
+            .and_then(|_| teams_dir.parent().map(Path::to_path_buf))
+            .unwrap_or_else(|| teams_dir.to_path_buf())
     }
 
     /// Per-tool session root.

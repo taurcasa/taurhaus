@@ -16,6 +16,7 @@ function normalizeTemplateDefaults(value) {
   return {
     cliTool: value.cliTool ?? value.cli_tool ?? null,
     model: value.model ?? null,
+    reasoningEffort: value.reasoningEffort ?? value.reasoning_effort ?? null,
     defaultNamePattern: value.defaultNamePattern ?? value.default_name_pattern ?? null,
   }
 }
@@ -109,6 +110,9 @@ export function normalizeRoleTemplateResponse(value) {
       { mode: BEHAVIORAL_CONTRACT_MODES.OPTIONAL_OBJECT }
     ),
     qualityGates: normalizeOptionalStringList(value.qualityGates ?? value.quality_gates),
+    handoffExpectations: normalizeOptionalStringList(
+      value.handoffExpectations ?? value.handoff_expectations
+    ),
     definitionOfDone: normalizeOptionalStringList(value.definitionOfDone ?? value.definition_of_done),
     phaseScope: normalizeOptionalStringList(value.phaseScope ?? value.phase_scope),
     mode: value.mode ?? null,

@@ -1,12 +1,19 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::commands::coordination_types::{
     AddAgentRequest, AgentSetupConfig, InitializeTeamRequest,
 };
 use crate::commands::projects::DbState;
+use crate::coordination::member_activation::{
+    load_role_for_member_hydration, validated_role_model,
+};
 use crate::coordination::state::CoordinationState;
 use crate::errors::sanitize_error;
+use crate::models::ModelCatalog;
+use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::ModelSpec;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
 use crate::templates::types::RoleTemplate;
@@ -59,6 +66,11 @@ pub(super) fn hydrate_initialize_request_role_metadata(
     state: &CoordinationState,
     mut request: InitializeTeamRequest,
 ) -> Result<InitializeTeamRequest, String> {
+    normalize_agent_model_fields(&mut request.lead);
+    for agent in &mut request.agents {
+        normalize_agent_model_fields(agent);
+    }
+
     if let Some(preset_id) = request
         .preset_id
         .clone()
@@ -80,6 +92,7 @@ pub(super) fn hydrate_add_agent_request_role_metadata(
     state: &CoordinationState,
     mut request: AddAgentRequest,
 ) -> Result<AddAgentRequest, String> {
+    normalize_agent_model_fields(&mut request.agent);
     hydrate_agent_setup_from_role_template(state, &mut request.agent)?;
     Ok(request)
 }
@@ -163,11 +176,14 @@ fn hydrate_agent_setup_from_role_template(
         return Ok(());
     }
 
-    let store = TemplateStore::new(coordination_app_data_dir(state));
-    let role = match store.get_role(role_id) {
-        Ok(record) => record.template,
-        Err(TemplateStoreError::NotFound(_)) => return Ok(()),
-        Err(err) => return Err(map_template_store_error(err)),
+    let template_root = coordination_app_data_dir(state);
+    let Some(role) = load_role_for_member_hydration(
+        &template_root,
+        role_id,
+        &agent.name,
+        "request_normalization",
+    ) else {
+        return Ok(());
     };
     apply_role_template_defaults(agent, &role);
     Ok(())
@@ -182,7 +198,21 @@ fn apply_resolved_member_defaults(
         agent.cli_tool = member.cli_tool.to_string();
     }
     if agent.model.trim().is_empty() {
-        agent.model = member.model.clone();
+        agent.model = CliTool::from_alias(&agent.cli_tool)
+            .ok()
+            .and_then(|tool| {
+                validated_role_model(
+                    tool,
+                    &member.model,
+                    &agent.name,
+                    "preset_request_normalization",
+                )
+                .or_else(|| Some(ModelCatalog::default_for(tool).id.clone()))
+            })
+            .unwrap_or_else(|| member.model.clone());
+    }
+    if agent.reasoning_effort.is_none() {
+        agent.reasoning_effort = member.reasoning_effort.clone();
     }
     if agent
         .role_id
@@ -244,18 +274,23 @@ fn apply_resolved_member_defaults(
     if agent.behavioral_contract.is_none() {
         agent.behavioral_contract = Some(member.behavioral_contract.clone());
     }
+    if agent.handoff_expectations.is_none() {
+        agent.handoff_expectations = member.handoff_expectations.clone();
+    }
     if agent.capabilities.is_none() {
         agent.capabilities = Some(member.capabilities.clone());
     }
 }
 
 fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
-    agent
-        .role_name
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
+    agent.model.trim().is_empty()
+        || agent.reasoning_effort.is_none()
+        || agent
+            .role_name
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
         || agent
             .focus_area
             .as_deref()
@@ -286,6 +321,23 @@ fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
 }
 
 fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplate) {
+    if agent.model.trim().is_empty() {
+        agent.model = CliTool::from_alias(&agent.cli_tool)
+            .ok()
+            .and_then(|tool| {
+                validated_role_model(
+                    tool,
+                    &role.defaults.model,
+                    &agent.name,
+                    "request_normalization",
+                )
+                .or_else(|| Some(ModelCatalog::default_for(tool).id.clone()))
+            })
+            .unwrap_or_else(|| role.defaults.model.clone());
+    }
+    if agent.reasoning_effort.is_none() {
+        agent.reasoning_effort = role.defaults.reasoning_effort.clone();
+    }
     if agent
         .role_name
         .as_deref()
@@ -337,18 +389,25 @@ fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplat
     if agent.behavioral_contract.is_none() {
         agent.behavioral_contract = Some(role.behavioral_contract.clone());
     }
+    if agent.handoff_expectations.is_none() {
+        agent.handoff_expectations = role.handoff_expectations.clone();
+    }
     if agent.capabilities.is_none() {
         agent.capabilities = Some(role.capabilities.clone());
     }
 }
 
+fn normalize_agent_model_fields(agent: &mut AgentSetupConfig) {
+    let mut parsed = ModelSpec::parse_legacy(&agent.model);
+    if agent.reasoning_effort.is_some() {
+        parsed.reasoning_effort = agent.reasoning_effort.take();
+    }
+    agent.model = parsed.model.unwrap_or_default();
+    agent.reasoning_effort = parsed.reasoning_effort;
+}
+
 fn coordination_app_data_dir(state: &CoordinationState) -> PathBuf {
-    state
-        .teams_dir()
-        .file_name()
-        .filter(|name| *name == "teams")
-        .and_then(|_| state.teams_dir().parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| state.teams_dir().clone())
+    PlatformPaths::coordination_template_root(state.teams_dir())
 }
 
 fn map_template_store_error(err: TemplateStoreError) -> String {

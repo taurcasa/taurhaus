@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::models::ModelCatalog;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::ModelSpec;
 use crate::templates::types::{
     BehavioralContract, ProjectBinding, RoleConstraints, RoleKind, RoleTemplate,
 };
@@ -31,6 +33,14 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         instruction_only: "Optional 'Model' section in Markdown body",
         export_mapping: "Direct field when schema exists; rendered as body metadata for instruction-only exports",
         import_fidelity: "Lossless for Claude/Copilot, lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "defaults.reasoning_effort",
+        claude_agent: "Not represented",
+        copilot_agent: "Not represented",
+        instruction_only: "Not represented",
+        export_mapping: "Not exported; external agent frontmatter has no effort field",
+        import_fidelity: "Lossy for all non-YAML formats",
     },
     RoleFieldMappingRow {
         taurhaus_field: "instructions",
@@ -85,6 +95,14 @@ pub const ROLE_FIELD_MAPPINGS: &[RoleFieldMappingRow] = &[
         claude_agent: "Compiled 'Quality Gates' section in body",
         copilot_agent: "Compiled 'Quality Gates' section in body",
         instruction_only: "Compiled 'Quality Gates' section in body",
+        export_mapping: "Rendered as bullet list section in prompt appendix",
+        import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
+    },
+    RoleFieldMappingRow {
+        taurhaus_field: "handoff_expectations",
+        claude_agent: "Compiled 'Handoff Expectations' section in body",
+        copilot_agent: "Compiled 'Handoff Expectations' section in body",
+        instruction_only: "Compiled 'Handoff Expectations' section in Markdown body",
         export_mapping: "Rendered as bullet list section in prompt appendix",
         import_fidelity: "Lossless for Taurhaus-generated Claude/Copilot exports; lossy for instruction-only formats",
     },
@@ -227,6 +245,7 @@ struct ParsedCompiledPromptBody {
     communication_style: Option<String>,
     behavioral_contract: Option<BehavioralContract>,
     quality_gates: Option<Vec<String>>,
+    handoff_expectations: Option<Vec<String>>,
     definition_of_done: Option<Vec<String>>,
     phase_scope: Option<Vec<String>>,
     mode: Option<String>,
@@ -245,6 +264,7 @@ enum KnownPromptHeading {
     CommunicationStyle,
     BehavioralContract,
     QualityGates,
+    HandoffExpectations,
     DefinitionOfDone,
     PhaseScope,
     Mode,
@@ -461,6 +481,10 @@ fn build_imported_role(
     };
 
     let default_cli_tool = parsed_body.default_cli_tool.unwrap_or(cli_tool);
+    let default_model = imported_model
+        .clone()
+        .unwrap_or_else(|| ModelCatalog::default_for(default_cli_tool).id.clone());
+    let model = ModelSpec::parse_legacy(&default_model);
 
     Ok(ImportedRoleTemplate {
         template: RoleTemplate {
@@ -474,8 +498,8 @@ fn build_imported_role(
             kind: RoleKind::Agent,
             defaults: crate::templates::types::RoleDefaults {
                 cli_tool: default_cli_tool,
-                model: imported_model
-                    .unwrap_or_else(|| default_model_for_tool(default_cli_tool).to_string()),
+                model: model.model.unwrap_or(default_model),
+                reasoning_effort: model.reasoning_effort,
                 default_name_pattern: format!("{role_id}-{{n}}"),
             },
             instructions: instructions.to_string(),
@@ -488,6 +512,7 @@ fn build_imported_role(
                 .behavioral_contract
                 .unwrap_or_else(default_import_behavioral_contract),
             quality_gates: parsed_body.quality_gates,
+            handoff_expectations: parsed_body.handoff_expectations,
             definition_of_done: parsed_body.definition_of_done,
             phase_scope: parsed_body.phase_scope,
             mode: parsed_body.mode,
@@ -509,6 +534,10 @@ fn build_imported_role(
 
 pub fn lossy_fields_for_export(role: &RoleTemplate, format: RoleExportFormat) -> Vec<String> {
     let mut lossy = Vec::new();
+
+    if format != RoleExportFormat::Yaml && role.defaults.reasoning_effort.is_some() {
+        lossy.push("defaults.reasoning_effort".to_string());
+    }
 
     match format {
         RoleExportFormat::Yaml => {}
@@ -694,6 +723,17 @@ fn compiled_prompt_sections(role: &RoleTemplate) -> Vec<PromptSection> {
         });
     }
 
+    if let Some(handoff_expectations) = role
+        .handoff_expectations
+        .as_ref()
+        .filter(|items| !items.is_empty())
+    {
+        sections.push(PromptSection {
+            heading: "Handoff Expectations",
+            body: render_bulleted_list(handoff_expectations),
+        });
+    }
+
     if let Some(definition_of_done) = role
         .definition_of_done
         .as_ref()
@@ -832,6 +872,7 @@ fn prompt_heading_from_line(line: &str) -> Option<KnownPromptHeading> {
         "## Communication Style" => Some(KnownPromptHeading::CommunicationStyle),
         "## Behavioral Contract" => Some(KnownPromptHeading::BehavioralContract),
         "## Quality Gates" => Some(KnownPromptHeading::QualityGates),
+        "## Handoff Expectations" => Some(KnownPromptHeading::HandoffExpectations),
         "## Definition of Done" => Some(KnownPromptHeading::DefinitionOfDone),
         "## Phase Scope" => Some(KnownPromptHeading::PhaseScope),
         "## Mode" => Some(KnownPromptHeading::Mode),
@@ -866,6 +907,9 @@ fn apply_parsed_prompt_section(
         }
         KnownPromptHeading::QualityGates => {
             parsed.quality_gates = parse_bulleted_list(body);
+        }
+        KnownPromptHeading::HandoffExpectations => {
+            parsed.handoff_expectations = parse_bulleted_list(body);
         }
         KnownPromptHeading::DefinitionOfDone => {
             parsed.definition_of_done = parse_bulleted_list(body);
@@ -1045,14 +1089,6 @@ fn split_frontmatter_and_body(raw: &str) -> Result<(Option<String>, &str), RoleI
     Ok((Some(frontmatter), body))
 }
 
-fn default_model_for_tool(tool: CliTool) -> &'static str {
-    match tool {
-        CliTool::Claude => "claude-opus-4-6",
-        CliTool::Codex => "gpt-5.4 high",
-        CliTool::Gemini => "gemini-3.1-pro",
-    }
-}
-
 fn default_import_behavioral_contract() -> crate::templates::types::BehavioralContract {
     crate::templates::types::BehavioralContract {
         communication: Vec::new(),
@@ -1100,6 +1136,11 @@ fn synthesized_fields_for_import(
         &mut fields,
         "quality_gates",
         parsed_body.quality_gates.is_none(),
+    );
+    push_missing_synthesized_field(
+        &mut fields,
+        "handoff_expectations",
+        parsed_body.handoff_expectations.is_none(),
     );
     push_missing_synthesized_field(
         &mut fields,
@@ -1217,6 +1258,9 @@ fn push_compiled_section_losses(role: &RoleTemplate, lossy: &mut Vec<String>) {
     if role.quality_gates.is_some() {
         lossy.push("quality_gates".to_string());
     }
+    if role.handoff_expectations.is_some() {
+        lossy.push("handoff_expectations".to_string());
+    }
     if role.definition_of_done.is_some() {
         lossy.push("definition_of_done".to_string());
     }
@@ -1332,6 +1376,7 @@ mod tests {
             defaults: RoleDefaults {
                 cli_tool: CliTool::Claude,
                 model: "claude-opus-4-6".to_string(),
+                reasoning_effort: None,
                 default_name_pattern: "worker-{n}".to_string(),
             },
             instructions: "Do the primary assignment first.".to_string(),
@@ -1349,6 +1394,7 @@ mod tests {
                 "Run the named verification lane.".to_string(),
                 "Keep regression coverage intact.".to_string(),
             ]),
+            handoff_expectations: None,
             definition_of_done: Some(vec![
                 "The requested outcome is visible in code or docs.".to_string(),
                 "Residual risk is called out.".to_string(),
@@ -1431,14 +1477,18 @@ mod tests {
 
     #[test]
     fn export_role_to_claude_agent_maps_partial_tools_and_marks_lossy_fields() {
-        let role = sample_role();
+        let mut role = sample_role();
+        role.defaults.reasoning_effort = Some("high".to_string());
         let exported = export_role(&role, RoleExportFormat::ClaudeAgent);
 
         assert_eq!(exported.target_format, RoleExportFormat::ClaudeAgent);
         assert!(exported.file_content.contains("name: \"Sample Role\""));
         assert!(exported.file_content.contains("model: \"claude-opus-4-6\""));
         assert!(exported.file_content.contains("tools: [read, edit, bash]"));
-        assert!(exported.lossy_fields.is_empty());
+        assert_eq!(
+            exported.lossy_fields,
+            vec!["defaults.reasoning_effort".to_string()]
+        );
     }
 
     #[test]
@@ -1478,7 +1528,8 @@ mod tests {
 
     #[test]
     fn export_role_to_copilot_agent_preserves_compiled_fields_without_known_loss() {
-        let role = sample_role();
+        let mut role = sample_role();
+        role.defaults.reasoning_effort = Some("high".to_string());
         let exported = export_role(&role, RoleExportFormat::CopilotAgent);
 
         assert_eq!(exported.target_format, RoleExportFormat::CopilotAgent);
@@ -1486,7 +1537,10 @@ mod tests {
         assert!(exported
             .file_content
             .contains("description: \"Escalates direction questions quickly.\""));
-        assert!(exported.lossy_fields.is_empty());
+        assert_eq!(
+            exported.lossy_fields,
+            vec!["defaults.reasoning_effort".to_string()]
+        );
 
         let imported = import_role_at(
             RoleExportFormat::CopilotAgent,
@@ -1673,11 +1727,10 @@ Review architecture changes and report structural risks.
         assert_eq!(imported.template.capabilities, role.capabilities);
         assert_eq!(imported.template.constraints, role.constraints);
         assert_eq!(imported.template.defaults.cli_tool, role.defaults.cli_tool);
-        assert!(imported
-            .import_source
-            .provenance
-            .non_roundtrippable_fields
-            .is_empty());
+        assert_eq!(
+            imported.import_source.provenance.non_roundtrippable_fields,
+            vec!["handoff_expectations".to_string()]
+        );
     }
 
     #[test]
@@ -1745,7 +1798,7 @@ Investigate the relevant files before proposing a change.
 
         assert_eq!(imported.template.role_id, "no-frontmatter");
         assert_eq!(imported.template.name, "no-frontmatter");
-        assert_eq!(imported.template.defaults.model, "claude-opus-4-6");
+        assert_eq!(imported.template.defaults.model, "opus");
         assert_eq!(
             imported.template.instructions,
             "Follow the existing repository conventions exactly."
