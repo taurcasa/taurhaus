@@ -413,9 +413,14 @@ impl ModelCatalog {
     pub fn supports_effort(tool: CliTool, model_id: Option<&str>, effort: &str) -> bool {
         match tool {
             CliTool::Claude => CLAUDE_EFFORTS.contains(&effort),
-            CliTool::Codex => model_id
-                .and_then(|model_id| Self::entry_for(tool, model_id))
-                .is_some_and(|entry| entry.efforts.iter().any(|allowed| allowed == effort)),
+            // Known catalog entry: its own effort list. Unknown (user-added /
+            // newer) model: the tool-wide vocabulary — Codex validates the pair
+            // itself, and dropping a declared effort silently is the bug PR 4
+            // fixed. The catalog is a suggestion list, not an allowlist.
+            CliTool::Codex => match model_id.and_then(|model_id| Self::entry_for(tool, model_id)) {
+                Some(entry) => entry.efforts.iter().any(|allowed| allowed == effort),
+                None => CODEX_EFFORTS_WITH_ULTRA.contains(&effort),
+            },
             CliTool::Gemini => false,
         }
     }
@@ -1060,6 +1065,19 @@ mod tests {
             contract.supported_emulators,
             vec!["windows_terminal", "custom"]
         );
+    }
+
+    #[test]
+    // Regression: PR 5a/5b review — `supports_effort` treated the catalog as an
+    // allowlist, so a user-added Codex model (e.g. a newer slug not yet in the
+    // static list) silently lost its declared reasoning effort.
+    fn codex_effort_is_accepted_for_models_outside_the_catalog() {
+        assert!(ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.7-nova"), "high"));
+        assert!(ModelCatalog::supports_effort(CliTool::Codex, None, "xhigh"));
+        assert!(!ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.7-nova"), "turbo"));
+        // Known entries keep their own list (luna has no `ultra`).
+        assert!(!ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.6-luna"), "ultra"));
+        assert!(ModelCatalog::supports_effort(CliTool::Codex, Some("gpt-5.6-sol"), "ultra"));
     }
 
     #[test]

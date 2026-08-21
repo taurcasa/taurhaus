@@ -615,9 +615,12 @@ mod tests {
     }
 
     // Regression: a79d392 validated model-less effort against the catalog
-    // default even though the effective Codex model could not be determined.
+    // default, and the review fix then treated the catalog as an allowlist;
+    // a declared effort must render whenever it is in Codex's vocabulary,
+    // even when the effective model is unknown to the static catalog —
+    // Codex validates the pair itself.
     #[test]
-    fn codex_effort_without_an_effective_model_is_unvalidatable() {
+    fn codex_effort_without_an_effective_model_renders_when_in_vocabulary() {
         let rendered = LaunchSpec {
             tool: CliTool::Codex,
             mode: LaunchMode::Fresh,
@@ -628,6 +631,34 @@ mod tests {
             },
             team: None,
         }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "codex --yolo -c 'model_reasoning_effort=\"max\"'"
+        );
+        assert!(rendered.notes.is_empty(), "notes: {:?}", rendered.notes);
+
+        let invalid = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec {
+                model: Some("gpt-5.7-nova".to_string()),
+                reasoning_effort: Some("turbo".to_string()),
+            },
+            team: None,
+        }
+        .render();
+        assert_eq!(invalid.command, "codex --yolo -m 'gpt-5.7-nova'");
+        assert_eq!(
+            invalid.notes,
+            vec![LaunchNote::EffortIgnored {
+                found: "turbo".to_string(),
+                reason: EffortIgnoreReason::Invalid,
+            }]
+        );
+    }
         .render();
 
         assert_eq!(rendered.command, "codex --yolo");
