@@ -659,17 +659,6 @@ mod tests {
             }]
         );
     }
-        .render();
-
-        assert_eq!(rendered.command, "codex --yolo");
-        assert_eq!(
-            rendered.notes,
-            vec![LaunchNote::EffortIgnored {
-                found: "max".to_string(),
-                reason: EffortIgnoreReason::Invalid,
-            }]
-        );
-    }
 
     #[test]
     fn claude_render_notes_and_drops_unknown_effort() {
