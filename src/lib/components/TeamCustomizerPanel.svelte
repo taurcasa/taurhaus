@@ -78,15 +78,17 @@
     const tool = normalizeOptionalTool(selectedRole?.cliTool ?? selectedRole?.tool)
     const parsed = parseLegacyModel(selectedRole?.model)
     const model = parsed.model || (tool ? defaultModelFor(catalog, tool) : '')
+    const declaredEffort =
+      selectedRole?.reasoningEffort ?? selectedRole?.reasoning_effort ?? parsed.reasoningEffort
 
     return {
       tool,
       model,
+      // Only a catalog-supplied model brings the catalog's default effort: a role
+      // that names a model but no effort keeps inheriting the CLI global setting.
       reasoningEffort:
-        selectedRole?.reasoningEffort ??
-        selectedRole?.reasoning_effort ??
-        parsed.reasoningEffort ??
-        (tool ? defaultEffortFor(catalog, tool, model) : null),
+        declaredEffort ??
+        (!parsed.model && tool ? defaultEffortFor(catalog, tool, model) : null),
       roleId: selectedRole?.roleId ?? null,
       description: String(selectedRole?.name ?? 'Team lead'),
     }
@@ -222,6 +224,16 @@
     return 'codex-developer'
   }
 
+  // Without overrides the saved preset only remembers the role, so reloading it
+  // restores the role defaults and throws away the model and effort the roster
+  // actually selected.
+  function slotOverridesFor(agent) {
+    const model = String(agent?.model ?? '').trim()
+    const reasoningEffort = String(agent?.reasoningEffort ?? '').trim()
+    if (!model && !reasoningEffort) return null
+    return { model: model || null, reasoningEffort: reasoningEffort || null }
+  }
+
   function clearPresetSaveTimer() {
     if (!presetSaveTimer) return
     clearTimeout(presetSaveTimer)
@@ -252,7 +264,7 @@
         count: 1,
         projectBinding: 'lead_project',
         projectId: null,
-        overrides: null,
+        overrides: slotOverridesFor(agent),
       }))
 
       await upsertTeamPreset({

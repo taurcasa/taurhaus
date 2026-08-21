@@ -8,6 +8,7 @@ import {
   isKnownModel,
   parseLegacyModel,
   resolveMemberModel,
+  toolEffortsFor,
 } from './modelCatalog.js'
 
 const CATALOG = {
@@ -83,6 +84,16 @@ describe('modelCatalog lookups', () => {
     expect(isKnownModel(CATALOG, 'codex', 'mystery-model')).toBe(false)
     expect(entryFor(CATALOG, 'codex', 'gpt-5.6-terra')?.label).toBe('GPT-5.6-Terra')
   })
+
+  // The backend accepts the tool-wide effort vocabulary for models it does not
+  // know (`ModelCatalog::supports_effort`, models/mod.rs), so a custom model id
+  // must still be assignable an effort in the UI.
+  it('toolEffortsFor unions the efforts the tool declares anywhere in the catalog', () => {
+    expect(toolEffortsFor(CATALOG, 'codex')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(toolEffortsFor(CATALOG, 'claude')).toEqual(['low', 'medium', 'high'])
+    expect(toolEffortsFor(CATALOG, 'gemini')).toEqual([])
+    expect(toolEffortsFor(null, 'codex')).toEqual([])
+  })
 })
 
 describe('parseLegacyModel', () => {
@@ -156,11 +167,25 @@ describe('resolveMemberModel', () => {
     })
   })
 
-  it('uses the catalog default effort when no layer declares one', () => {
+  // Regression: b345de1 (PR 5c) let every layer fall through to the catalog's
+  // `defaultEffort`, so a member or role that named a model but deliberately left
+  // the effort unset was pinned to the catalog default and the initialize payload
+  // shipped it. The backend keeps such an effort unset
+  // (`hydrate_member_model_fields`, member_activation.rs) so the user's global CLI
+  // setting still applies.
+  it('keeps an explicitly declared model without an effort unset', () => {
     expect(resolveMemberModel({ cliTool: 'codex', model: 'gpt-5.4' }, null, CATALOG)).toEqual({
       model: 'gpt-5.4',
-      reasoningEffort: 'medium',
+      reasoningEffort: null,
       source: 'member',
+    })
+
+    expect(
+      resolveMemberModel({ cliTool: 'codex' }, { cliTool: 'codex', model: 'gpt-5.4' }, CATALOG)
+    ).toEqual({
+      model: 'gpt-5.4',
+      reasoningEffort: null,
+      source: 'role',
     })
   })
 

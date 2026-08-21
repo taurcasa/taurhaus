@@ -62,6 +62,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
       role: selectedNode.role,
       tool: selectedNode.tool ?? selectedNode.cliTool ?? selectedNode.cli_tool,
       model: selectedNode.model ?? selectedNode.modelName ?? selectedNode.model_name,
+      reasoningEffort: selectedNode.reasoningEffort ?? selectedNode.reasoning_effort ?? null,
       status: selectedNode.status ?? selectedNode.sessionStatus ?? selectedNode.session_status,
       projectId: selectedNode.projectId ?? selectedNode.project_id,
       isCrossProject: selectedNode.isCrossProject ?? selectedNode.is_cross_project ?? false,

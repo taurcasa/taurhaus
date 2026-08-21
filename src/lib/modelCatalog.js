@@ -38,6 +38,24 @@ export function effortsFor(catalog, tool, modelId) {
   return Array.isArray(efforts) ? efforts.map((effort) => trimmed(effort)).filter(Boolean) : []
 }
 
+/**
+ * The union of every effort the tool declares anywhere in the catalog. The
+ * backend validates an effort against this tool-wide vocabulary for models it
+ * does not know (`ModelCatalog::supports_effort`, models/mod.rs), so a custom
+ * model id can still be given one.
+ */
+export function toolEffortsFor(catalog, tool) {
+  const seen = []
+  for (const entry of catalogFor(catalog, tool)) {
+    if (!Array.isArray(entry?.efforts)) continue
+    for (const effort of entry.efforts) {
+      const normalized = trimmed(effort)
+      if (normalized && !seen.includes(normalized)) seen.push(normalized)
+    }
+  }
+  return seen
+}
+
 export function defaultEffortFor(catalog, tool, modelId) {
   const entry = entryFor(catalog, tool, modelId)
   return trimmed(entry?.defaultEffort ?? entry?.default_effort) || null
@@ -87,6 +105,12 @@ function readEffort(source) {
  * The single place the model fallback order lives: member -> role defaults ->
  * catalog default. `source` reports which layer answered; a value the catalog
  * does not know reports `custom` and is never rewritten.
+ *
+ * An effort nobody declared stays `null` whenever a real layer supplied the
+ * model: the backend does the same (`hydrate_member_model_fields`,
+ * member_activation.rs) so the CLI's own global setting keeps applying. The
+ * catalog's `defaultEffort` is only a suggestion, and it is used exactly where
+ * the catalog also supplied the model.
  */
 export function resolveMemberModel(member, roleDefaults, catalog) {
   const tool = normalizeTool(readTool(member) || readTool(roleDefaults))
@@ -107,10 +131,10 @@ export function resolveMemberModel(member, roleDefaults, catalog) {
     layerEffort = roleModel.reasoningEffort ?? readEffort(roleDefaults)
   } else {
     model = defaultModelFor(catalog, tool)
+    layerEffort = defaultEffortFor(catalog, tool, model)
   }
 
-  const reasoningEffort =
-    readEffort(member) ?? layerEffort ?? defaultEffortFor(catalog, tool, model)
+  const reasoningEffort = readEffort(member) ?? layerEffort
 
   if (model && !isKnownModel(catalog, tool, model)) {
     source = 'custom'

@@ -73,6 +73,12 @@ const BASE_CASES = [
     reasoningEffort: null,
   },
   {
+    label: 'Inherited effort (unset)',
+    tool: 'codex',
+    model: 'gpt-5.6-terra',
+    reasoningEffort: null,
+  },
+  {
     label: 'Custom value from a YAML template',
     tool: 'codex',
     model: 'gpt-6-preview',

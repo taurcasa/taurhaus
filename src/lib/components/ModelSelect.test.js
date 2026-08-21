@@ -88,12 +88,53 @@ describe('ModelSelect', () => {
     expect(screen.queryByTestId('model-select-effort')).not.toBeInTheDocument()
   })
 
-  it('defaults the effort select to the catalog default effort', () => {
+  // Regression: b345de1 (PR 5c) preselected the entry's `defaultEffort` whenever
+  // the value was unset, so a member that deliberately inherits the CLI's global
+  // effort looked as if it had picked one — and `resolveMemberModel` then shipped
+  // that synthesized effort in the initialize payload.
+  it('shows the inherited default state when no effort is set', () => {
     render(ModelSelect, {
       props: { tool: 'codex', model: 'gpt-5.6-terra', catalog: CATALOG },
     })
 
-    expect(screen.getByTestId('model-select-effort')).toHaveValue('high')
+    const effort = screen.getByTestId('model-select-effort')
+    expect(effort).toHaveValue('')
+    expect(optionValues(effort)).toEqual(['', 'low', 'medium', 'high', 'xhigh'])
+    expect(effort).toHaveTextContent('default')
+  })
+
+  it('emits a null effort when the inherited option is chosen again', async () => {
+    const onchange = vi.fn()
+    render(ModelSelect, {
+      props: {
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'low',
+        catalog: CATALOG,
+        onchange,
+      },
+    })
+
+    await fireEvent.change(screen.getByTestId('model-select-effort'), { target: { value: '' } })
+
+    expect(onchange).toHaveBeenCalledWith({ model: 'gpt-5.6-terra', reasoningEffort: null })
+  })
+
+  // The backend validates an effort against the tool-wide vocabulary for models
+  // it does not know (`ModelCatalog::supports_effort`), so a custom model id must
+  // still offer the tool's efforts instead of hiding the control.
+  it('offers the tool-wide efforts for a model outside the catalog', () => {
+    render(ModelSelect, {
+      props: { tool: 'codex', model: 'gpt-6-preview', catalog: CATALOG },
+    })
+
+    expect(optionValues(screen.getByTestId('model-select-effort'))).toEqual([
+      '',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
   })
 
   it('resets the effort to the new entry default when the model changes', async () => {
@@ -146,7 +187,7 @@ describe('ModelSelect', () => {
     })
 
     const effort = screen.getByTestId('model-select-effort')
-    expect(optionValues(effort)).toEqual(['ultra', 'low', 'medium', 'high', 'xhigh'])
+    expect(optionValues(effort)).toEqual(['', 'ultra', 'low', 'medium', 'high', 'xhigh'])
     expect(effort).toHaveValue('ultra')
   })
 

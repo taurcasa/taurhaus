@@ -587,6 +587,41 @@ describe('MeshTeamBuilder', () => {
     expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
   })
 
+  // Regression: b345de1 (PR 5c) added an effort control to the inline role editor
+  // but left `reasoningEffort` out of `serializeRoleDetailDraft`, so changing only
+  // the effort never flipped the draft to dirty and the unsaved marker stayed
+  // hidden.
+  it('marks the role detail dirty when only the reasoning effort changes', async () => {
+    getRoleTemplate.mockResolvedValue({
+      ...sampleRoles().find((role) => role.roleId === 'agent-codex'),
+      model: 'gpt-5.4',
+      defaults: {
+        cliTool: 'codex',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
+        defaultNamePattern: 'agent-codex-{n}',
+      },
+    })
+
+    renderBuilder()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-model-input-effort')).toHaveValue('high')
+    })
+    expect(screen.queryByTestId('mesh-node-detail-unsaved-dot')).not.toBeInTheDocument()
+
+    await fireEvent.change(screen.getByTestId('mesh-node-detail-model-input-effort'), {
+      target: { value: 'xhigh' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-unsaved-dot')).toBeInTheDocument()
+    })
+  })
+
   it('switches from role detail into edit mode and saves role changes', async () => {
     const onRefreshRoleTemplates = vi.fn().mockResolvedValue(undefined)
     getRoleTemplate.mockResolvedValue({

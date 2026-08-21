@@ -1,4 +1,13 @@
 export function createMeshTabSetup({ state, refs, deps, gate }) {
+  // A saved preset has to remember what the roster actually selected; without
+  // overrides, reloading it restores the role defaults and drops the choice.
+  function slotOverridesForMember(member) {
+    const model = String(member?.model ?? '').trim()
+    const reasoningEffort = String(member?.reasoningEffort ?? '').trim()
+    if (!model && !reasoningEffort) return null
+    return { model: model || null, reasoningEffort: reasoningEffort || null }
+  }
+
   function detachPresetConfig(config) {
     if (!config || config.initializationMode !== 'preset') return config
     return {
@@ -209,7 +218,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
           count: 1,
           projectBinding: 'lead_project',
           projectId: null,
-          overrides: null,
+          overrides: slotOverridesForMember(agent),
         })),
         defaults: {
           teamNamePattern: '{project}-team',
@@ -307,8 +316,14 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const role = state.roleTemplates.find((entry) => entry.roleId === selectedRoleId)
     if (!role) return
     const tool = deps.normalizeTool(role.cliTool || 'codex')
-    const model = role.model || deps.defaultModelFor(tool)
-    const reasoningEffort = role.reasoningEffort ?? deps.defaultEffortFor(tool, model)
+    // The role response keeps the effort under `defaults` unless it was lifted;
+    // read both. A role that names a model but no effort inherits the CLI's
+    // global setting, so only a catalog-supplied model brings a catalog effort.
+    const roleModel = deps.resolveRoleModel(role)
+    const model = roleModel || deps.defaultModelFor(tool)
+    const reasoningEffort =
+      deps.resolveRoleReasoningEffort(role)
+      ?? (roleModel ? null : deps.defaultEffortFor(tool, model))
     const instructions = role.instructions || ''
     state.slideOverContext = {
       ...draft,

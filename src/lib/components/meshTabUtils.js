@@ -407,6 +407,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
           name: member.name,
           tool: member.tool,
           model: member.model,
+          reasoningEffort: member.reasoningEffort,
           status: member.status,
           projectId: member.projectId,
           isCrossProject: member.isCrossProject,

@@ -5,6 +5,8 @@
     defaultModelFor,
     effortsFor,
     entryFor,
+    isKnownModel,
+    toolEffortsFor,
   } from '../modelCatalog.js'
 
   let {
@@ -42,13 +44,23 @@
     return known
   })
 
-  const efforts = $derived(effortsFor(catalog, tool, selectedModel))
-  const selectedEffort = $derived(
-    String(reasoningEffort ?? '').trim() || defaultEffortFor(catalog, tool, selectedModel) || ''
+  // A model the catalog does not know still gets the tool's effort vocabulary:
+  // that is exactly what the backend validates against (`supports_effort`).
+  const efforts = $derived(
+    isKnownModel(catalog, tool, selectedModel)
+      ? effortsFor(catalog, tool, selectedModel)
+      : toolEffortsFor(catalog, tool)
   )
+  const selectedEffort = $derived(String(reasoningEffort ?? '').trim())
+  // The leading empty option is the unset state: no effort is sent and the CLI's
+  // own global setting applies. Never pre-select the catalog default here — that
+  // would silently pin an effort the user never chose.
   const effortOptions = $derived(
-    selectedEffort && !efforts.includes(selectedEffort) ? [selectedEffort, ...efforts] : efforts
+    selectedEffort && !efforts.includes(selectedEffort)
+      ? ['', selectedEffort, ...efforts]
+      : ['', ...efforts]
   )
+  const hasEffortSelect = $derived(efforts.length > 0 || Boolean(selectedEffort))
   const deprecationHint = $derived.by(() => {
     if (!selectedEntry?.deprecated) return ''
     const replacement = String(selectedEntry.replacement ?? '').trim()
@@ -103,7 +115,7 @@
       {/each}
     </select>
 
-    {#if effortOptions.length > 0}
+    {#if hasEffortSelect}
       <select
         class="{controlClass} w-[6.5rem] flex-none"
         value={selectedEffort}
@@ -113,7 +125,7 @@
         data-testid={`${testId}-effort`}
       >
         {#each effortOptions as effort (effort)}
-          <option value={effort}>{effort}</option>
+          <option value={effort}>{effort || 'default'}</option>
         {/each}
       </select>
     {/if}

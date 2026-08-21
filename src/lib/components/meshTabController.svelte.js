@@ -21,7 +21,11 @@ import {
   normalizeResumeTeamReport,
 } from '../ipc/coordinationResponses.js'
 import { clearMeshCache, getMeshCacheEntry, setMeshCache } from '../meshCache.svelte.js'
-import { normalizeTool } from '../meshDefaults.js'
+import {
+  normalizeTool,
+  resolveRoleModel,
+  resolveRoleReasoningEffort,
+} from '../meshDefaults.js'
 import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
 import { normalizeProjectOption } from '../projectOptions.js'
 import {
@@ -118,6 +122,8 @@ export function createMeshTabController({
       normalizeRoleKind,
       normalizeTool,
       onAddAgent,
+      resolveRoleModel,
+      resolveRoleReasoningEffort,
       quickPresets: QUICK_PRESETS,
       slugifyRoleId,
       upsertRoleTemplate,

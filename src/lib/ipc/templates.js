@@ -171,6 +171,7 @@ export function composeTeam(request) {
           roleKind: 'lead',
           cliTool: leadRole?.cliTool ?? '',
           model: leadRole?.model ?? '',
+          reasoningEffort: leadRole?.reasoningEffort ?? null,
           focusArea: leadRole?.focusArea ?? '',
           contextSummary: leadRole?.contextSummary ?? '',
           behaviorSummary: leadRole?.behaviorSummary ?? '',
