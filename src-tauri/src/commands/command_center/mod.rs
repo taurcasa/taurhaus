@@ -73,6 +73,9 @@ pub fn launch_cli_session(
         cli_tool,
     )
     .ipc_cmd("launch_cli_session");
+    if result.is_ok() {
+        crate::startup::watchers::repair_tmux_focus_hooks();
+    }
     span.finish_result(&result);
     result
 }
@@ -179,7 +182,7 @@ pub(crate) fn get_foreground_project_impl(
             }
             return resolve_project_id_from_path(db, &project_path);
         }
-        if snapshot.focus.is_some() {
+        if !should_fall_back_to_local_focus(&snapshot) {
             return Ok(None);
         }
 
@@ -202,6 +205,19 @@ pub(crate) fn get_foreground_project_impl(
 
     let sessions = list_cli_sessions_impl(app, db, provider)?;
     resolve_foreground_project_id_from_sessions(db, &focus, &sessions)
+}
+
+fn should_fall_back_to_local_focus(snapshot: &protocol::RuntimeSessionSnapshotResult) -> bool {
+    snapshot
+        .focus
+        .as_ref()
+        .and_then(|focus| {
+            crate::session_scanner::tmux::resolve_focus_project_path(
+                focus,
+                &snapshot.display_sessions,
+            )
+        })
+        .is_none()
 }
 
 fn resolve_foreground_project_from_daemon_snapshot(

@@ -451,11 +451,39 @@ fn get_foreground_project_impl_falls_back_to_local_file_when_daemon_snapshot_foc
         degraded: false,
     };
 
+    assert!(should_fall_back_to_local_focus(&snapshot));
+
     let project_id =
         resolve_foreground_project_from_daemon_snapshot(data_dir.path(), &db, &provider, snapshot)
             .expect("resolve local focus fallback");
 
     assert_eq!(project_id, Some("p1".to_string()));
+
+    let detached_snapshot = crate::daemon::protocol::RuntimeSessionSnapshotResult {
+        version: 2,
+        display_sessions: vec![active_session_for("/tmp/project")],
+        runtime_sessions: Vec::new(),
+        focus: Some(TmuxFocusState::detached()),
+        foreground_project_path: None,
+        degraded: false,
+    };
+    assert!(
+        should_fall_back_to_local_focus(&detached_snapshot),
+        "a stale detached daemon focus must not suppress the app-owned focus file"
+    );
+
+    let stale_snapshot = crate::daemon::protocol::RuntimeSessionSnapshotResult {
+        version: 3,
+        display_sessions: vec![active_session_for("/tmp/project")],
+        runtime_sessions: Vec::new(),
+        focus: Some(attached_focus("taurhaus", "missing")),
+        foreground_project_path: None,
+        degraded: false,
+    };
+    assert!(
+        should_fall_back_to_local_focus(&stale_snapshot),
+        "an unresolvable daemon focus must not suppress the app-owned focus file"
+    );
 }
 
 #[test]

@@ -477,7 +477,9 @@ fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde
 #[cfg(test)]
 mod tests {
     use super::ensure_expected_daemon_runtime;
-    use crate::commands::logging::{install_global_sink, LogFileState};
+    use crate::commands::logging::{
+        clear_test_tap, install_global_sink, install_test_tap, LogFileState,
+    };
     use std::time::Duration;
 
     fn wait_for_event(path: &std::path::Path, event: &str) -> Option<serde_json::Value> {
@@ -567,5 +569,40 @@ mod tests {
             "/definitely/not/the/app/data/root"
         );
         assert!(event["app_data_root"].is_string());
+    }
+
+    #[test]
+    fn startup_does_not_log_daemon_data_root_mismatch_for_matching_root() {
+        // Regression: commit 55fcf0c added mismatch telemetry; a matching daemon
+        // identity must not turn the startup check into another heartbeat event.
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let state =
+            LogFileState::new(dir.path().join("matching-root.log.jsonl")).expect("log state");
+        install_global_sink(&state);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        install_test_tap(sender);
+        let ping = crate::daemon::protocol::PingResult {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            protocol_version: crate::daemon::protocol::PROTOCOL_VERSION,
+            uptime_secs: 1,
+            data_root: crate::provider::platform_paths::PlatformPaths::app_data_root()
+                .display()
+                .to_string(),
+            focus_path: crate::session_scanner::control::default_tmux_focus_path()
+                .display()
+                .to_string(),
+        };
+
+        let result = ensure_expected_daemon_runtime(&ping);
+        clear_test_tap();
+
+        assert!(result.is_ok());
+        assert!(
+            receiver
+                .try_iter()
+                .all(|event| event["event"] != "daemon.data_root.mismatch"),
+            "matching daemon data roots must not emit mismatch telemetry"
+        );
     }
 }

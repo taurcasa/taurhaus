@@ -20,6 +20,14 @@ use super::SetupContext;
 
 static RECONCILE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static RECONCILE_PENDING: AtomicBool = AtomicBool::new(false);
+static LAST_TMUX_FOCUS_HOOKS_STATE: Mutex<Option<TmuxFocusHooksEventState>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TmuxFocusHooksEventState {
+    Unreachable,
+    Healthy,
+    Failed,
+}
 
 fn should_watch_locally(project_path: &str, has_daemon: bool, defer_wsl_to_daemon: bool) -> bool {
     if provider::path::is_wsl_path(project_path) {
@@ -429,8 +437,105 @@ pub(crate) fn repair_tmux_focus_hooks() {
 }
 
 fn repair_tmux_focus_hooks_for_path(focus_path: &std::path::Path) {
-    crate::session_scanner::control::remove_stale_tmux_focus_hooks(Some(focus_path));
-    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(focus_path);
+    use crate::session_scanner::control::TmuxFocusHooksRepairOutcome;
+
+    let outcome = crate::session_scanner::control::reconcile_tmux_focus_hooks_for_path(focus_path);
+    let should_emit = {
+        let mut previous = LAST_TMUX_FOCUS_HOOKS_STATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        should_emit_tmux_focus_hooks_event(&mut previous, &outcome)
+    };
+    if !should_emit {
+        return;
+    }
+
+    let mut fields = Map::new();
+    fields.insert(
+        "path".to_string(),
+        Value::String(focus_path.display().to_string()),
+    );
+    match outcome {
+        TmuxFocusHooksRepairOutcome::Repaired {
+            removed_count,
+            installed_count,
+        } => {
+            fields.insert(
+                "removed_count".to_string(),
+                Value::Number(serde_json::Number::from(removed_count as u64)),
+            );
+            fields.insert(
+                "installed_count".to_string(),
+                Value::Number(serde_json::Number::from(installed_count as u64)),
+            );
+            tracing::info!(
+                path = %focus_path.display(),
+                removed_count,
+                installed_count,
+                "Repaired tmux focus hooks"
+            );
+            emit_watch_bootstrap_event(
+                "info",
+                "tmux.focus_hooks.repaired",
+                "Tmux focus hooks repaired",
+                fields,
+            );
+        }
+        TmuxFocusHooksRepairOutcome::Failed {
+            removed_count,
+            installed_count,
+            error,
+        } => {
+            fields.insert(
+                "removed_count".to_string(),
+                Value::Number(serde_json::Number::from(removed_count as u64)),
+            );
+            fields.insert(
+                "installed_count".to_string(),
+                Value::Number(serde_json::Number::from(installed_count as u64)),
+            );
+            fields.insert("error.message".to_string(), Value::String(error.clone()));
+            tracing::warn!(
+                path = %focus_path.display(),
+                error = %error,
+                "Failed to repair tmux focus hooks"
+            );
+            emit_watch_bootstrap_event(
+                "warn",
+                "tmux.focus_hooks.failed",
+                "Tmux focus hook repair failed",
+                fields,
+            );
+        }
+        TmuxFocusHooksRepairOutcome::Unreachable { .. } | TmuxFocusHooksRepairOutcome::Verified => {
+        }
+    }
+}
+
+fn should_emit_tmux_focus_hooks_event(
+    previous: &mut Option<TmuxFocusHooksEventState>,
+    outcome: &crate::session_scanner::control::TmuxFocusHooksRepairOutcome,
+) -> bool {
+    use crate::session_scanner::control::TmuxFocusHooksRepairOutcome;
+
+    let next = match outcome {
+        TmuxFocusHooksRepairOutcome::Unreachable { .. } => TmuxFocusHooksEventState::Unreachable,
+        TmuxFocusHooksRepairOutcome::Verified | TmuxFocusHooksRepairOutcome::Repaired { .. } => {
+            TmuxFocusHooksEventState::Healthy
+        }
+        TmuxFocusHooksRepairOutcome::Failed { .. } => TmuxFocusHooksEventState::Failed,
+    };
+    let should_emit = match outcome {
+        TmuxFocusHooksRepairOutcome::Repaired { .. } => true,
+        TmuxFocusHooksRepairOutcome::Failed { .. } => {
+            *previous != Some(TmuxFocusHooksEventState::Failed)
+        }
+        TmuxFocusHooksRepairOutcome::Unreachable { .. } | TmuxFocusHooksRepairOutcome::Verified => {
+            false
+        }
+    };
+    *previous = Some(next);
+    should_emit
 }
 
 fn emit_watch_bootstrap_event(
@@ -451,12 +556,49 @@ fn emit_watch_bootstrap_event(
 #[cfg(test)]
 mod tests {
     use super::ensure_directory_exists;
+    use super::should_emit_tmux_focus_hooks_event;
     use super::should_watch_claude_tasks_locally;
     use super::should_watch_locally;
     use super::spawn_auxiliary_watch_bootstrap_task;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+
+    #[test]
+    fn tmux_focus_hook_events_emit_only_for_repairs_and_failure_transitions() {
+        // Regression: commit 55fcf0c emitted a verified JSONL heartbeat and a
+        // repeated WARN on every 60-second repair tick while tmux was absent.
+        use crate::session_scanner::control::TmuxFocusHooksRepairOutcome;
+
+        let mut previous = None;
+        let failed = TmuxFocusHooksRepairOutcome::Failed {
+            removed_count: 0,
+            installed_count: 0,
+            error: "set-hook failed".to_string(),
+        };
+        assert!(should_emit_tmux_focus_hooks_event(&mut previous, &failed));
+        assert!(!should_emit_tmux_focus_hooks_event(&mut previous, &failed));
+
+        assert!(!should_emit_tmux_focus_hooks_event(
+            &mut previous,
+            &TmuxFocusHooksRepairOutcome::Verified
+        ));
+        assert!(should_emit_tmux_focus_hooks_event(&mut previous, &failed));
+
+        assert!(!should_emit_tmux_focus_hooks_event(
+            &mut previous,
+            &TmuxFocusHooksRepairOutcome::Unreachable {
+                error: "no tmux server".to_string(),
+            }
+        ));
+        assert!(should_emit_tmux_focus_hooks_event(
+            &mut previous,
+            &TmuxFocusHooksRepairOutcome::Repaired {
+                removed_count: 1,
+                installed_count: 5,
+            }
+        ));
+    }
 
     #[test]
     fn local_watch_skips_wsl_paths_when_daemon_is_connected() {
