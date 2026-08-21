@@ -306,6 +306,7 @@ fn prepare_agent_onboarding_delivery(
         instructions: agent_instructions(member),
         behavioral_contract: member.behavioral_contract.as_ref(),
         quality_gates: member.quality_gates.as_deref(),
+        handoff_expectations: member.handoff_expectations.as_deref(),
         definition_of_done: member.definition_of_done.as_deref(),
         capabilities: member.capabilities.as_deref(),
     };
@@ -323,6 +324,7 @@ fn prepare_member_onboarding_delivery(
         instructions: member.instructions.as_deref(),
         behavioral_contract: member.behavioral_contract.as_ref(),
         quality_gates: member.quality_gates.as_deref(),
+        handoff_expectations: member.handoff_expectations.as_deref(),
         definition_of_done: member.definition_of_done.as_deref(),
         capabilities: member.capabilities.as_deref(),
     };

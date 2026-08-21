@@ -174,9 +174,18 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
         run_mesh(
-            &["join", "--team", team_name, "--name", member_name],
+            &[
+                "join",
+                "--team",
+                team_name,
+                "--name",
+                member_name,
+                "--model",
+                model,
+            ],
             Some(project_id),
         )
         .map(|_| ())

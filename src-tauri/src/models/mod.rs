@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
+
+use crate::session_scanner::cli_tool::CliTool;
 
 // ---------------------------------------------------------------------------
 // Activity state (ADR-008)
@@ -259,6 +262,168 @@ pub enum AppPlatform {
     Windows,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCatalogEntry {
+    pub id: String,
+    pub label: String,
+    pub efforts: Vec<String>,
+    pub default_effort: Option<String>,
+    pub deprecated: bool,
+    pub replacement: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCatalog {
+    pub claude: Vec<ModelCatalogEntry>,
+    pub codex: Vec<ModelCatalogEntry>,
+    pub gemini: Vec<ModelCatalogEntry>,
+}
+
+static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
+    claude: vec![
+        model_catalog_entry("opus", "Opus 5", CLAUDE_EFFORTS, None, false, None),
+        model_catalog_entry("sonnet", "Sonnet", CLAUDE_EFFORTS, None, false, None),
+        model_catalog_entry("haiku", "Haiku", CLAUDE_EFFORTS, None, false, None),
+        model_catalog_entry(
+            "claude-opus-4-6",
+            "Claude Opus 4.6",
+            CLAUDE_EFFORTS,
+            None,
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "claude-sonnet-4-5",
+            "Claude Sonnet 4.5",
+            CLAUDE_EFFORTS,
+            None,
+            false,
+            None,
+        ),
+    ],
+    codex: vec![
+        model_catalog_entry(
+            "gpt-5.6-sol",
+            "GPT-5.6-Sol",
+            CODEX_EFFORTS_WITH_ULTRA,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gpt-5.6-terra",
+            "GPT-5.6-Terra",
+            CODEX_EFFORTS_WITH_ULTRA,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gpt-5.6-luna",
+            "GPT-5.6-Luna",
+            CODEX_EFFORTS_WITH_MAX,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gpt-5.5",
+            "GPT-5.5",
+            CODEX_EFFORTS_THROUGH_XHIGH,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gpt-5.4",
+            "GPT-5.4",
+            CODEX_EFFORTS_THROUGH_XHIGH,
+            Some("medium"),
+            true,
+            Some("gpt-5.6-terra"),
+        ),
+        model_catalog_entry(
+            "gpt-5.4-mini",
+            "GPT-5.4-Mini",
+            CODEX_EFFORTS_THROUGH_XHIGH,
+            Some("medium"),
+            true,
+            Some("gpt-5.6-luna"),
+        ),
+    ],
+    gemini: vec![model_catalog_entry(
+        "gemini-3.1-pro",
+        "Gemini 3.1 Pro",
+        &[],
+        None,
+        false,
+        None,
+    )],
+});
+
+const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+const CODEX_EFFORTS_WITH_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
+const CODEX_EFFORTS_WITH_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+const CODEX_EFFORTS_THROUGH_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
+
+fn model_catalog_entry(
+    id: &str,
+    label: &str,
+    efforts: &[&str],
+    default_effort: Option<&str>,
+    deprecated: bool,
+    replacement: Option<&str>,
+) -> ModelCatalogEntry {
+    ModelCatalogEntry {
+        id: id.to_string(),
+        label: label.to_string(),
+        efforts: efforts.iter().map(|effort| (*effort).to_string()).collect(),
+        default_effort: default_effort.map(str::to_string),
+        deprecated,
+        replacement: replacement.map(str::to_string),
+    }
+}
+
+impl Default for ModelCatalog {
+    fn default() -> Self {
+        MODEL_CATALOG.clone()
+    }
+}
+
+impl ModelCatalog {
+    pub fn default_for(tool: CliTool) -> &'static ModelCatalogEntry {
+        match tool {
+            CliTool::Claude => &MODEL_CATALOG.claude[0],
+            CliTool::Codex => &MODEL_CATALOG.codex[0],
+            CliTool::Gemini => &MODEL_CATALOG.gemini[0],
+        }
+    }
+
+    pub fn entry_for(tool: CliTool, model_id: &str) -> Option<&'static ModelCatalogEntry> {
+        let entries = match tool {
+            CliTool::Claude => &MODEL_CATALOG.claude,
+            CliTool::Codex => &MODEL_CATALOG.codex,
+            CliTool::Gemini => &MODEL_CATALOG.gemini,
+        };
+        entries.iter().find(|entry| entry.id == model_id)
+    }
+
+    pub fn supports_effort(tool: CliTool, model_id: Option<&str>, effort: &str) -> bool {
+        match tool {
+            CliTool::Claude => CLAUDE_EFFORTS.contains(&effort),
+            CliTool::Codex => model_id
+                .and_then(|model_id| Self::entry_for(tool, model_id))
+                .unwrap_or_else(|| Self::default_for(tool))
+                .efforts
+                .iter()
+                .any(|allowed| allowed == effort),
+            CliTool::Gemini => false,
+        }
+    }
+}
+
 impl AppPlatform {
     pub fn current() -> Self {
         #[cfg(target_os = "macos")]
@@ -286,6 +451,8 @@ pub struct TerminalPlatformContract {
     pub supported_emulators: Vec<String>,
     #[serde(alias = "cli_command_defaults")]
     pub cli_command_defaults: CliCommandSettings,
+    #[serde(alias = "model_catalog")]
+    pub model_catalog: ModelCatalog,
 }
 
 impl Default for TerminalPlatformContract {
@@ -313,6 +480,7 @@ impl TerminalPlatformContract {
                 .map(str::to_string)
                 .collect(),
             cli_command_defaults: CliCommandSettings::default(),
+            model_catalog: ModelCatalog::default(),
         }
     }
 
@@ -895,6 +1063,79 @@ mod tests {
             contract.supported_emulators,
             vec!["windows_terminal", "custom"]
         );
+    }
+
+    #[test]
+    fn model_catalog_defaults_are_explicit_per_tool() {
+        assert_eq!(ModelCatalog::default_for(CliTool::Claude).id, "opus");
+        assert_eq!(ModelCatalog::default_for(CliTool::Codex).id, "gpt-5.6-sol");
+        assert_eq!(
+            ModelCatalog::default_for(CliTool::Gemini).id,
+            "gemini-3.1-pro"
+        );
+    }
+
+    #[test]
+    fn model_catalog_deprecated_entries_name_replacements() {
+        let catalog = ModelCatalog::default();
+        let deprecated = catalog
+            .codex
+            .iter()
+            .find(|entry| entry.id == "gpt-5.4")
+            .expect("gpt-5.4 catalog entry");
+
+        assert!(deprecated.deprecated);
+        assert_eq!(deprecated.replacement.as_deref(), Some("gpt-5.6-terra"));
+    }
+
+    #[test]
+    fn model_catalog_validates_effort_per_tool_and_codex_model() {
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Claude,
+            Some("opus"),
+            "max"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Claude,
+            Some("opus"),
+            "ultra"
+        ));
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.6-sol"),
+            "ultra"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.6-luna"),
+            "ultra"
+        ));
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.5"),
+            "xhigh"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Codex,
+            Some("gpt-5.5"),
+            "max"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Gemini,
+            Some("gemini-3.1-pro"),
+            "high"
+        ));
+    }
+
+    #[test]
+    fn terminal_platform_contract_serializes_model_catalog_as_camel_case() {
+        let contract = TerminalPlatformContract::for_platform(AppPlatform::Linux);
+        let value = serde_json::to_value(contract).expect("serialize terminal contract");
+
+        assert_eq!(value["modelCatalog"]["codex"][0]["id"], "gpt-5.6-sol");
+        assert!(value["modelCatalog"]["codex"][0]
+            .get("defaultEffort")
+            .is_some());
     }
 
     #[test]

@@ -175,6 +175,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 2 fail-soft process inventory | Opus 5 | Fable ×2 (approve), Codex gpt-5.6 | 3 | 3 (Codex: degraded scans still mutated state; Windows daemon branch lacked the flag; re-confirmed) | #9 `ef55e83` |
 | 3 Claude registry identity | Opus 5 | Fable ×2 (approve), Codex gpt-5.6 | 2 | 2 (Codex: macOS ignored per-process `CLAUDE_CONFIG_DIR`; unknown status discarded identity) | #10 `28b474b` |
 | 4 ModelSpec + LaunchSpec | Codex gpt-5.6 | Opus ×2 | 2 | 5 (Opus: 2 blockers — stale integration test after quoting change, tautological parity test; 3 majors incl. UI default dropping effort) | #13 |
+| 5a/5b reasoning effort + persistence | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 
 ## Spikes / unknowns
 

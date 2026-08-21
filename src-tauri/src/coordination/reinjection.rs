@@ -36,6 +36,7 @@ pub struct OperationalReinjectionRole {
     pub instructions: Option<String>,
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub quality_gates: Vec<String>,
+    pub handoff_expectations: Vec<String>,
     pub definition_of_done: Vec<String>,
     pub phase_scope: Vec<String>,
     pub mode: Option<String>,
@@ -109,6 +110,9 @@ impl CompactionReinjectionService {
                 instructions: normalize_optional(member.instructions.as_deref()),
                 runtime_compact_summary: member.runtime_compact_summary.clone(),
                 quality_gates: normalize_list(member.quality_gates.as_deref().unwrap_or(&[])),
+                handoff_expectations: normalize_list(
+                    member.handoff_expectations.as_deref().unwrap_or(&[]),
+                ),
                 definition_of_done: normalize_list(
                     member.definition_of_done.as_deref().unwrap_or(&[]),
                 ),
@@ -221,6 +225,12 @@ impl CompactionReinjectionService {
             "Quality gates",
             &card.role.quality_gates,
             "No explicit quality gates recorded.",
+        );
+        append_bullet_section(
+            &mut lines,
+            "Handoff expectations",
+            &card.role.handoff_expectations,
+            "No explicit handoff expectations recorded.",
         );
         append_bullet_section(
             &mut lines,
@@ -417,6 +427,9 @@ mod tests {
                 "Tie conclusions to concrete repo evidence.".to_string(),
                 "Avoid speculative architecture changes.".to_string(),
             ]),
+            handoff_expectations: Some(vec![
+                "Summarize evidence and residual risk.".to_string(),
+            ]),
             definition_of_done: Some(vec![
                 "Root cause and impact are explicit.".to_string(),
                 "Residual risk is documented.".to_string(),
@@ -429,6 +442,8 @@ mod tests {
                 "validation notes".to_string(),
             ]),
             capabilities: None,
+            model: Some("gpt-5.6-sol".to_string()),
+            reasoning_effort: Some("high".to_string()),
             project_path: PathBuf::from("/home/user/projects/taurhaus"),
             cli_tool: CliTool::Codex,
         }
@@ -495,12 +510,15 @@ mod tests {
             instructions: Some(role.instructions.clone()),
             behavioral_contract: Some(role.behavioral_contract.clone()),
             quality_gates: role.quality_gates.clone(),
+            handoff_expectations: role.handoff_expectations.clone(),
             definition_of_done: role.definition_of_done.clone(),
             phase_scope: role.phase_scope.clone(),
             mode: role.mode.clone(),
             inherits_from: role.inherits_from.clone(),
             required_artifacts: role.required_artifacts.clone(),
             capabilities: Some(role.capabilities.clone()),
+            model: Some(role.defaults.model.clone()),
+            reasoning_effort: role.defaults.reasoning_effort.clone(),
             project_path: PathBuf::from("/home/user/projects/taurhaus"),
             cli_tool: role.defaults.cli_tool,
         }
@@ -540,6 +558,7 @@ mod tests {
                         "Tie conclusions to concrete repo evidence.".to_string(),
                         "Avoid speculative architecture changes.".to_string(),
                     ],
+                    handoff_expectations: vec!["Summarize evidence and residual risk.".to_string(),],
                     definition_of_done: vec![
                         "Root cause and impact are explicit.".to_string(),
                         "Residual risk is documented.".to_string(),
@@ -712,6 +731,9 @@ mod tests {
     "quality_gates": [
       "Tie conclusions to concrete repo evidence.",
       "Avoid speculative architecture changes."
+    ],
+    "handoff_expectations": [
+      "Summarize evidence and residual risk."
     ],
     "definition_of_done": [
       "Root cause and impact are explicit.",

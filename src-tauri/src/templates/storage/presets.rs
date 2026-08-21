@@ -82,7 +82,9 @@ impl TemplateStore {
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         validate_template_id(&template.preset_id, "preset")?;
         let roles = self.load_role_catalog()?;
-        template
+        let mut canonical = template.clone();
+        canonical.normalize_model_fields();
+        canonical
             .validate_with_role_catalog(&roles)
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
 
@@ -104,7 +106,7 @@ impl TemplateStore {
         }
 
         let relative_path = self.preset_file_path(&template.preset_id);
-        let payload = serde_norway::to_string(template).map_err(|err| {
+        let payload = serde_norway::to_string(&canonical).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to serialize preset '{}': {err}",
                 template.preset_id
@@ -130,7 +132,9 @@ impl TemplateStore {
         validate_template_id(preset_id, "preset")?;
 
         let roles = self.load_role_catalog()?;
-        template
+        let mut canonical = template.clone();
+        canonical.normalize_model_fields();
+        canonical
             .validate_with_role_catalog(&roles)
             .map_err(|err| TemplateStoreError::Validation(err.to_string()))?;
 
@@ -146,7 +150,7 @@ impl TemplateStore {
 
         // Updating built-ins creates/updates user override.
         let relative_path = self.preset_file_path(preset_id);
-        let payload = serde_norway::to_string(template).map_err(|err| {
+        let payload = serde_norway::to_string(&canonical).map_err(|err| {
             TemplateStoreError::Parse(format!("failed to serialize preset '{preset_id}': {err}"))
         })?;
         self.apply_single_template_mutation(
@@ -188,12 +192,13 @@ impl TemplateStore {
         external_path: &Path,
     ) -> Result<TemplateMutationResult, TemplateStoreError> {
         let raw = fs::read_to_string(external_path)?;
-        let template = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
+        let mut template = serde_norway::from_str::<TeamPreset>(&raw).map_err(|err| {
             TemplateStoreError::Parse(format!(
                 "failed to parse external preset {}: {err}",
                 external_path.display()
             ))
         })?;
+        template.normalize_model_fields();
 
         validate_template_id(&template.preset_id, "preset")?;
         let roles = self.load_role_catalog()?;
@@ -209,8 +214,14 @@ impl TemplateStore {
         };
 
         let relative_path = self.preset_file_path(&preset_id);
+        let payload = serde_norway::to_string(&template).map_err(|err| {
+            TemplateStoreError::Parse(format!(
+                "failed to serialize imported preset '{}': {err}",
+                preset_id
+            ))
+        })?;
         self.apply_single_template_mutation(
-            TemplateFileMutation::write(relative_path, raw.into_bytes()),
+            TemplateFileMutation::write(relative_path, payload.into_bytes()),
             &format!("templates: {action} preset {preset_id}"),
         )
     }

@@ -36,6 +36,30 @@ fn get_preset_prefers_user_override() {
     assert_eq!(preset.source, TemplateSource::User);
 }
 
+// Regression: ff40911 left preset overrides in the combined legacy spelling,
+// so per-slot effort could not survive composition and persistence.
+#[test]
+fn preset_loader_splits_legacy_slot_override_model_and_effort() {
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    write(
+        &builtins.join("presets/legacy-effort.yaml"),
+        &preset_yaml_with_agent("legacy-effort", "dev").replace(
+            "    project_binding: lead_project\n",
+            "    project_binding: lead_project\n    overrides:\n      model: gpt-5.4-high\n",
+        ),
+    );
+    let store = TemplateStore::with_builtins_dir(app_data, builtins);
+
+    let preset = store.get_preset("legacy-effort").expect("load preset");
+    let overrides = preset.template.agent_slots[0]
+        .overrides
+        .as_ref()
+        .expect("slot overrides");
+    assert_eq!(overrides.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(overrides.reasoning_effort.as_deref(), Some("high"));
+}
+
 #[test]
 fn create_preset_validates_writes_and_commits() {
     let (_root, app_data, builtins) = setup_dirs();

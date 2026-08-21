@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::ModelSpec;
 use crate::templates::types::{
     validate_agent_slot_common, AgentSlot, BehavioralContract, ProjectBinding, RoleKind,
     RoleTemplate, RuntimeCompactSummary, SlotOverrides,
@@ -33,6 +34,7 @@ pub struct ResolvedMember {
     pub role_kind: RoleKind,
     pub cli_tool: CliTool,
     pub model: String,
+    pub reasoning_effort: Option<String>,
     pub instructions: String,
     pub focus_area: Option<String>,
     pub context_summary: Option<String>,
@@ -41,6 +43,7 @@ pub struct ResolvedMember {
     pub runtime_compact_summary: Option<RuntimeCompactSummary>,
     pub behavioral_contract: BehavioralContract,
     pub quality_gates: Option<Vec<String>>,
+    pub handoff_expectations: Option<Vec<String>>,
     pub definition_of_done: Option<Vec<String>>,
     pub phase_scope: Option<Vec<String>>,
     pub mode: Option<String>,
@@ -68,6 +71,7 @@ impl CompositionResult {
 #[derive(Debug, Clone)]
 struct ResolvedFields {
     model: String,
+    reasoning_effort: Option<String>,
     name_pattern: String,
     instructions: String,
     focus_area: Option<String>,
@@ -77,6 +81,7 @@ struct ResolvedFields {
     runtime_compact_summary: Option<RuntimeCompactSummary>,
     behavioral_contract: BehavioralContract,
     quality_gates: Option<Vec<String>>,
+    handoff_expectations: Option<Vec<String>>,
     definition_of_done: Option<Vec<String>>,
     phase_scope: Option<Vec<String>>,
     mode: Option<String>,
@@ -230,6 +235,7 @@ pub fn compose_team(
                 role_kind: lead.kind,
                 cli_tool: lead.defaults.cli_tool,
                 model: fields.model,
+                reasoning_effort: fields.reasoning_effort,
                 instructions: fields.instructions,
                 focus_area: fields.focus_area,
                 context_summary: fields.context_summary,
@@ -238,6 +244,7 @@ pub fn compose_team(
                 runtime_compact_summary: fields.runtime_compact_summary,
                 behavioral_contract: fields.behavioral_contract,
                 quality_gates: fields.quality_gates,
+                handoff_expectations: fields.handoff_expectations,
                 definition_of_done: fields.definition_of_done,
                 phase_scope: fields.phase_scope,
                 mode: fields.mode,
@@ -296,6 +303,7 @@ pub fn compose_team(
                 role_kind: role.kind,
                 cli_tool: role.defaults.cli_tool,
                 model: fields.model,
+                reasoning_effort: fields.reasoning_effort,
                 instructions: fields.instructions,
                 focus_area: fields.focus_area,
                 context_summary: fields.context_summary,
@@ -304,6 +312,7 @@ pub fn compose_team(
                 runtime_compact_summary: fields.runtime_compact_summary,
                 behavioral_contract: fields.behavioral_contract,
                 quality_gates: fields.quality_gates,
+                handoff_expectations: fields.handoff_expectations,
                 definition_of_done: fields.definition_of_done,
                 phase_scope: fields.phase_scope,
                 mode: fields.mode,
@@ -366,8 +375,19 @@ fn resolve_fields(
     slot_override: Option<&SlotOverrides>,
     instance_override: Option<&SlotOverrides>,
 ) -> ResolvedFields {
+    let defaults = if role.defaults.reasoning_effort.is_none() {
+        ModelSpec::parse_legacy(&role.defaults.model)
+    } else {
+        ModelSpec {
+            model: Some(role.defaults.model.clone()),
+            reasoning_effort: role.defaults.reasoning_effort.clone(),
+        }
+    };
     let mut resolved = ResolvedFields {
-        model: role.defaults.model.clone(),
+        model: defaults
+            .model
+            .unwrap_or_else(|| role.defaults.model.clone()),
+        reasoning_effort: defaults.reasoning_effort,
         name_pattern: role.defaults.default_name_pattern.clone(),
         instructions: role.instructions.clone(),
         focus_area: role.focus_area.clone(),
@@ -377,6 +397,7 @@ fn resolve_fields(
         runtime_compact_summary: role.runtime_compact_summary.clone(),
         behavioral_contract: role.behavioral_contract.clone(),
         quality_gates: role.quality_gates.clone(),
+        handoff_expectations: role.handoff_expectations.clone(),
         definition_of_done: role.definition_of_done.clone(),
         phase_scope: role.phase_scope.clone(),
         mode: role.mode.clone(),
@@ -397,7 +418,20 @@ fn resolve_fields(
 
 fn apply_overrides(resolved: &mut ResolvedFields, overrides: &SlotOverrides) {
     if let Some(model) = overrides.model.as_deref() {
-        resolved.model = model.to_string();
+        let parsed = if overrides.reasoning_effort.is_none() {
+            ModelSpec::parse_legacy(model)
+        } else {
+            ModelSpec {
+                model: Some(model.to_string()),
+                reasoning_effort: overrides.reasoning_effort.clone(),
+            }
+        };
+        resolved.model = parsed.model.unwrap_or_else(|| model.to_string());
+        if let Some(effort) = parsed.reasoning_effort {
+            resolved.reasoning_effort = Some(effort);
+        }
+    } else if let Some(effort) = overrides.reasoning_effort.as_ref() {
+        resolved.reasoning_effort = Some(effort.clone());
     }
     if let Some(name_pattern) = overrides.name_pattern.as_deref() {
         resolved.name_pattern = name_pattern.to_string();
@@ -659,6 +693,7 @@ mod tests {
                 project_id: None,
                 overrides: Some(SlotOverrides {
                     model: None,
+                    reasoning_effort: None,
                     name_pattern: Some("worker".to_string()),
                     instructions_replace: None,
                     instructions_append: None,
@@ -676,6 +711,7 @@ mod tests {
                 project_id: None,
                 overrides: Some(SlotOverrides {
                     model: None,
+                    reasoning_effort: None,
                     name_pattern: Some("worker".to_string()),
                     instructions_replace: None,
                     instructions_append: None,
@@ -721,6 +757,7 @@ mod tests {
             project_id: None,
             overrides: Some(SlotOverrides {
                 model: Some("gpt-5-mini".to_string()),
+                reasoning_effort: None,
                 name_pattern: None,
                 instructions_replace: None,
                 instructions_append: Some("slot append".to_string()),
@@ -742,6 +779,7 @@ mod tests {
                     member_index: 1,
                     overrides: SlotOverrides {
                         model: Some("gpt-5.4 high".to_string()),
+                        reasoning_effort: None,
                         name_pattern: None,
                         instructions_replace: Some("instance replace".to_string()),
                         instructions_append: Some("instance append".to_string()),
@@ -770,8 +808,10 @@ mod tests {
             .find(|member| member.name == "dev-2")
             .expect("dev-2 exists");
 
-        assert_eq!(dev1.model, "gpt-5.4 high");
+        assert_eq!(dev1.model, "gpt-5.4");
+        assert_eq!(dev1.reasoning_effort.as_deref(), Some("high"));
         assert_eq!(dev2.model, "gpt-5-mini");
+        assert_eq!(dev2.reasoning_effort.as_deref(), Some("high"));
 
         assert_eq!(dev1.instructions, "instance replace\ninstance append");
         assert!(dev2.instructions.contains("slot append"));

@@ -32,12 +32,18 @@ pub struct Member {
     pub instructions: Option<String>,
     pub behavioral_contract: Option<BehavioralContract>,
     pub quality_gates: Option<Vec<String>>,
+    #[serde(default)]
+    pub handoff_expectations: Option<Vec<String>>,
     pub definition_of_done: Option<Vec<String>>,
     pub phase_scope: Option<Vec<String>>,
     pub mode: Option<String>,
     pub inherits_from: Option<String>,
     pub required_artifacts: Option<Vec<String>>,
     pub capabilities: Option<Vec<String>>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub project_path: PathBuf,
     pub cli_tool: CliTool,
 }
@@ -128,12 +134,15 @@ mod tests {
                 escalation: vec!["raise blockers".to_string()],
             }),
             quality_gates: Some(vec!["run targeted validation".to_string()]),
+            handoff_expectations: Some(vec!["report the final outcome".to_string()]),
             definition_of_done: Some(vec!["report concrete findings or fixes".to_string()]),
             phase_scope: Some(vec!["review".to_string()]),
             mode: Some("review".to_string()),
             inherits_from: Some("taurhaus-review-base".to_string()),
             required_artifacts: Some(vec!["review findings".to_string()]),
             capabilities: Some(vec!["review".to_string(), "testing".to_string()]),
+            model: Some("gpt-5.6-sol".to_string()),
+            reasoning_effort: Some("high".to_string()),
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
         };

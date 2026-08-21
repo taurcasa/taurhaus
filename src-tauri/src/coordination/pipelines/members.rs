@@ -1,11 +1,15 @@
 use super::*;
 
+use std::path::Path;
+
 use chrono::Utc;
 
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::member_activation::MemberActivationContext;
+use crate::coordination::member_activation::{
+    hydrate_member_model_fields, MemberActivationContext,
+};
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
     AddAgentReport, AddAgentRequest, DeliveryRequest, InitializeTeamRequest, MemberActivationStage,
@@ -18,6 +22,7 @@ use crate::coordination::validation::{
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::templates::storage::{TemplateStore, TemplateStoreError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeTeamDaemonOwnership {
@@ -197,7 +202,7 @@ impl CoordinationOrchestrator {
     ) -> Result<(Member, MemberRuntimeRecord, String), CoordinationError> {
         let config = TeamConfigStore::load(&self.teams_dir, &request.team_name)?;
         let lead_name = self.load_team_lead_name(&request.team_name)?;
-        let member = config
+        let mut member = config
             .members
             .iter()
             .find(|member| member.name == request.member_name)
@@ -208,6 +213,29 @@ impl CoordinationOrchestrator {
                     request.member_name, request.team_name
                 ))
             })?;
+
+        let role = match member.role_id.as_deref() {
+            Some(role_id) => {
+                let app_data_dir = self
+                    .teams_dir
+                    .file_name()
+                    .filter(|name| *name == "teams")
+                    .and_then(|_| self.teams_dir.parent().map(Path::to_path_buf))
+                    .unwrap_or_else(|| self.teams_dir.clone());
+                match TemplateStore::new(app_data_dir).get_role(role_id) {
+                    Ok(record) => Some(record.template),
+                    Err(TemplateStoreError::NotFound(_)) => None,
+                    Err(err) => {
+                        return Err(CoordinationError::StoreError(format!(
+                            "failed to load role '{role_id}' while resuming '{}': {err}",
+                            member.name
+                        )))
+                    }
+                }
+            }
+            None => None,
+        };
+        hydrate_member_model_fields(&mut member, role.as_ref());
 
         let runtime = match MemberRuntimeStore::load(
             &self.teams_dir,
@@ -842,6 +870,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &prepared.member.name,
             project_id.as_str(),
             prepared.member.cli_tool,
+            &prepared.activation_context.member.model,
         ) {
             Ok(joined) => {
                 self.runtime_state.mesh_joined = joined;
@@ -1152,6 +1181,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 instructions: prepared.member.instructions.as_deref(),
                 behavioral_contract: prepared.member.behavioral_contract.as_ref(),
                 quality_gates: prepared.member.quality_gates.as_deref(),
+                handoff_expectations: prepared.member.handoff_expectations.as_deref(),
                 definition_of_done: prepared.member.definition_of_done.as_deref(),
                 capabilities: prepared.member.capabilities.as_deref(),
             },

@@ -145,8 +145,10 @@ impl CoordinationRuntime for SequencedRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        model: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner.join_mesh(team_name, member_name, project_id)?;
+        self.inner
+            .join_mesh(team_name, member_name, project_id, model)?;
         self.push_event(DeliveryTimelineEvent::JoinMesh(member_name.to_string()));
         Ok(())
     }
@@ -244,12 +246,15 @@ fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Mem
         instructions: None,
         behavioral_contract: None,
         quality_gates: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
         inherits_from: None,
         required_artifacts: None,
         capabilities: None,
+        model: None,
+        reasoning_effort: None,
         project_path: PathBuf::from(project),
         cli_tool,
     }
@@ -272,6 +277,8 @@ fn setup_config(name: &str, cli_tool: &str, model: &str, project_id: &str) -> Ag
         instructions: None,
         behavioral_contract: None,
         quality_gates: None,
+        reasoning_effort: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
@@ -1092,6 +1099,7 @@ fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
         "team-lead",
         "/tmp/lead",
         CliTool::Claude,
+        "opus",
     )
     .expect("claude join result");
     let codex_joined = join_mesh_if_required(
@@ -1100,6 +1108,7 @@ fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
         "builder",
         "/tmp/builder",
         CliTool::Codex,
+        "gpt-5.6-sol",
     )
     .expect("codex join result");
 
@@ -1121,9 +1130,11 @@ fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
             team_name,
             member_name,
             project_id,
+            model,
         } if team_name == "architecture-final"
             && member_name == "builder"
             && project_id == "/tmp/builder"
+            && model == "gpt-5.6-sol"
     )));
 }
 
@@ -1187,6 +1198,8 @@ fn build_cli_launch_command_uses_configured_fresh_command() {
         instructions: None,
         behavioral_contract: None,
         quality_gates: None,
+        reasoning_effort: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
@@ -1220,6 +1233,8 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
         instructions: None,
         behavioral_contract: None,
         quality_gates: None,
+        reasoning_effort: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
@@ -1255,6 +1270,8 @@ fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
         instructions: None,
         behavioral_contract: None,
         quality_gates: None,
+        reasoning_effort: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
@@ -1288,6 +1305,8 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
         instructions: None,
         behavioral_contract: None,
         quality_gates: None,
+        reasoning_effort: None,
+        handoff_expectations: None,
         definition_of_done: None,
         phase_scope: None,
         mode: None,
@@ -1932,7 +1951,7 @@ fn load_resume_member_state_preserves_role_template_context() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
 
     orchestrator
         .create_team("architecture-final", None)
@@ -1968,12 +1987,15 @@ fn load_resume_member_state_preserves_role_template_context() {
                     escalation: vec!["raise blockers".to_string()],
                 }),
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/builder"),
                 cli_tool: CliTool::Codex,
             },
@@ -2011,6 +2033,29 @@ fn load_resume_member_state_preserves_role_template_context() {
             .unwrap_or_default(),
         vec!["implementation".to_string(), "testing".to_string()]
     );
+    // Regression: ff40911 discarded the role effort during relaunch, while
+    // resume also replaced the model with an empty string.
+    assert_eq!(loaded_member.model.as_deref(), Some("gpt-5.4"));
+    assert_eq!(loaded_member.reasoning_effort.as_deref(), Some("high"));
+
+    mark_member_offline(&tmp, "architecture-final", "builder", "%61", Some(55));
+    let report = orchestrator
+        .resume_member_with_cli_commands(&request, &CliCommandSettings::default())
+        .expect("resume role-backed member");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let calls = runtime.calls();
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::JoinMesh { member_name, model, .. }
+            if member_name == "builder" && model == "gpt-5.4"
+    )));
+    assert!(calls.iter().any(|call| matches!(
+        call,
+        RuntimeCall::SendKeys { keys, .. }
+            if keys.contains("-m 'gpt-5.4'")
+                && keys.contains("model_reasoning_effort=\"high\"")
+    )));
 }
 
 #[test]
@@ -2209,12 +2254,15 @@ fn resume_onboarding_entry_uses_immediate_policy() {
                 instructions: Some("Investigate tradeoffs.".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/research"),
                 cli_tool: CliTool::Claude,
             },
@@ -2371,12 +2419,15 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
                     escalation: vec!["escalate blockers immediately".to_string()],
                 }),
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: Some(vec!["analysis".to_string()]),
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/research"),
                 cli_tool: CliTool::Claude,
             },
@@ -2469,7 +2520,10 @@ fn resume_pipeline_non_claude_reuses_pane_but_starts_fresh_session_and_updates_r
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex --yolo");
+    assert_eq!(
+        launch,
+        "codex --yolo -m 'gpt-5.6-sol' -c 'model_reasoning_effort=\"low\"'"
+    );
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
@@ -2549,7 +2603,10 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
             _ => None,
         })
         .expect("launch command");
-    assert_eq!(launch, "codex --yolo");
+    assert_eq!(
+        launch,
+        "codex --yolo -m 'gpt-5.6-sol' -c 'model_reasoning_effort=\"low\"'"
+    );
     assert!(calls
         .iter()
         .any(|call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")));

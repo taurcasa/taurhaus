@@ -478,6 +478,8 @@ pub struct AgentDefinition {
     pub name: String,
     pub cli_tool: String,
     pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub project_id: String,
     pub description: Option<String>,
     #[serde(default)]
@@ -500,6 +502,8 @@ pub struct AgentDefinition {
     pub behavioral_contract: Option<BehavioralContract>,
     #[serde(default)]
     pub quality_gates: Option<Vec<String>>,
+    #[serde(default)]
+    pub handoff_expectations: Option<Vec<String>>,
     #[serde(default)]
     pub definition_of_done: Option<Vec<String>>,
     #[serde(default)]
@@ -664,12 +668,15 @@ mod tests {
                 instructions: Some("Focus on implementation".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
             },
@@ -722,6 +729,8 @@ mod tests {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -745,6 +754,8 @@ mod tests {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
@@ -780,6 +791,8 @@ mod tests {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                reasoning_effort: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,

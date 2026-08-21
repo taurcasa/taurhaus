@@ -121,24 +121,22 @@ pub(super) fn launch_cli_session_impl(
         rendered_fields,
     );
     for note in rendered.notes {
-        let (event, field, value, message) = match note {
+        let event = note.event_name();
+        let (field, value, message) = match note {
             LaunchNote::DeprecatedFlag { flag } => (
-                "launch.deprecated_flag",
                 "flag",
                 flag,
                 "Configured launch base contains a deprecated flag",
             ),
             LaunchNote::ModelIgnored { found } => (
-                "launch.model_ignored",
                 "found",
                 found,
                 "Configured launch base overrides the requested model",
             ),
-            LaunchNote::EffortIgnored { found } => (
-                "launch.effort_ignored",
+            LaunchNote::EffortIgnored { found, .. } => (
                 "found",
                 found,
-                "Configured launch base overrides the requested reasoning effort",
+                "Configured launch base overrides or cannot use the requested reasoning effort",
             ),
         };
         let mut fields = Map::new();

@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::AgentSetupConfig;
+use crate::models::ModelCatalog;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::ModelSpec;
+use crate::templates::types::RoleTemplate;
 
 /// Wrapper-level operation kind for shared member activation planning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +52,7 @@ pub struct MemberIdentity {
     pub role: MemberRole,
     pub cli_tool: CliTool,
     pub model: String,
+    pub reasoning_effort: Option<String>,
     pub project_path: PathBuf,
 }
 
@@ -106,6 +110,8 @@ impl MemberActivationContext {
     }
 
     pub fn for_resume_member(team_name: &str, lead_name: &str, member: &Member) -> Self {
+        let mut member = member.clone();
+        hydrate_member_model_fields(&mut member, None);
         Self {
             operation: MemberActivationOperationKind::Resume,
             team_name: team_name.to_string(),
@@ -116,7 +122,10 @@ impl MemberActivationContext {
                 name: member.name.clone(),
                 role: member.role,
                 cli_tool: member.cli_tool,
-                model: String::new(),
+                model: member
+                    .model
+                    .unwrap_or_else(|| ModelCatalog::default_for(member.cli_tool).id.clone()),
+                reasoning_effort: member.reasoning_effort,
                 project_path: member.project_path.clone(),
             },
             pane_policy: MemberActivationPanePolicy::ReuseOrCreate,
@@ -133,13 +142,57 @@ fn member_identity_from_agent_setup(
 ) -> Result<MemberIdentity, CoordinationError> {
     let cli_tool = CliTool::from_alias(&member.cli_tool)
         .map_err(|err| CoordinationError::Validation(err.to_string()))?;
+    let declared = declared_model_fields(&member.model, member.reasoning_effort.clone());
+    let catalog_default = ModelCatalog::default_for(cli_tool);
     Ok(MemberIdentity {
         name: member.name.clone(),
         role,
         cli_tool,
-        model: member.model.clone(),
+        model: declared.model.unwrap_or_else(|| catalog_default.id.clone()),
+        reasoning_effort: declared
+            .reasoning_effort
+            .or_else(|| catalog_default.default_effort.clone()),
         project_path: PathBuf::from(&member.project_id),
     })
+}
+
+pub(crate) fn hydrate_member_model_fields(member: &mut Member, role: Option<&RoleTemplate>) {
+    let declared = declared_model_fields(
+        member.model.as_deref().unwrap_or_default(),
+        member.reasoning_effort.clone(),
+    );
+    let role_defaults = role.map(|role| {
+        declared_model_fields(&role.defaults.model, role.defaults.reasoning_effort.clone())
+    });
+    let catalog_default = ModelCatalog::default_for(member.cli_tool);
+
+    member.model = declared
+        .model
+        .or_else(|| {
+            role_defaults
+                .as_ref()
+                .and_then(|fields| fields.model.clone())
+        })
+        .or_else(|| Some(catalog_default.id.clone()));
+    member.reasoning_effort = declared
+        .reasoning_effort
+        .or_else(|| {
+            role_defaults
+                .as_ref()
+                .and_then(|fields| fields.reasoning_effort.clone())
+        })
+        .or_else(|| catalog_default.default_effort.clone());
+}
+
+fn declared_model_fields(model: &str, reasoning_effort: Option<String>) -> ModelSpec {
+    if reasoning_effort.is_none() {
+        ModelSpec::parse_legacy(model)
+    } else {
+        ModelSpec {
+            model: (!model.trim().is_empty()).then(|| model.trim().to_string()),
+            reasoning_effort,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -165,6 +218,8 @@ mod tests {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            reasoning_effort: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
@@ -252,12 +307,15 @@ mod tests {
             instructions: None,
             behavioral_contract: None,
             quality_gates: None,
+            handoff_expectations: None,
             definition_of_done: None,
             phase_scope: None,
             mode: None,
             inherits_from: None,
             required_artifacts: None,
             capabilities: None,
+            model: None,
+            reasoning_effort: None,
             project_path: PathBuf::from("/tmp/review"),
             cli_tool: CliTool::Claude,
         };
@@ -270,7 +328,7 @@ mod tests {
         assert_eq!(context.member.name, "reviewer");
         assert_eq!(context.member.role, MemberRole::Agent);
         assert_eq!(context.member.cli_tool, CliTool::Claude);
-        assert_eq!(context.member.model, "");
+        assert_eq!(context.member.model, "opus");
         assert_eq!(context.member.project_path, PathBuf::from("/tmp/review"));
         assert_eq!(
             context.pane_policy,

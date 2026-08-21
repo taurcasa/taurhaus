@@ -17,6 +17,7 @@ use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::runtime::MemberRuntimeRecord;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch::ModelSpec;
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
 
 const CONFIG_FILENAME: &str = "config.json";
@@ -93,6 +94,11 @@ struct MeshCompatibleMemberWire {
     behavioral_contract: Option<BehavioralContract>,
     #[serde(rename = "qualityGates", skip_serializing_if = "Option::is_none")]
     quality_gates: Option<Vec<String>>,
+    #[serde(
+        rename = "handoffExpectations",
+        skip_serializing_if = "Option::is_none"
+    )]
+    handoff_expectations: Option<Vec<String>>,
     #[serde(rename = "definitionOfDone", skip_serializing_if = "Option::is_none")]
     definition_of_done: Option<Vec<String>>,
     #[serde(rename = "phaseScope", skip_serializing_if = "Option::is_none")]
@@ -111,7 +117,10 @@ struct MeshCompatibleMemberWire {
     agent_id: String,
     #[serde(rename = "agentType")]
     agent_type: String,
-    model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(rename = "reasoningEffort", skip_serializing_if = "Option::is_none")]
+    reasoning_effort: Option<String>,
     #[serde(rename = "joinedAt")]
     joined_at_millis: i64,
     #[serde(rename = "projectPath")]
@@ -184,6 +193,8 @@ struct MeshMemberWire {
     behavioral_contract: Option<BehavioralContract>,
     #[serde(default, alias = "qualityGates")]
     quality_gates: Option<Vec<String>>,
+    #[serde(default, alias = "handoffExpectations")]
+    handoff_expectations: Option<Vec<String>>,
     #[serde(default, alias = "definitionOfDone")]
     definition_of_done: Option<Vec<String>>,
     #[serde(default, alias = "phaseScope")]
@@ -206,6 +217,8 @@ struct MeshMemberWire {
     cwd: Option<PathBuf>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default, alias = "reasoningEffort")]
+    reasoning_effort: Option<String>,
 }
 
 /// Native config member wire format.
@@ -237,6 +250,8 @@ struct NativeMemberWire {
     behavioral_contract: Option<BehavioralContract>,
     #[serde(default)]
     quality_gates: Option<Vec<String>>,
+    #[serde(default, alias = "handoffExpectations")]
+    handoff_expectations: Option<Vec<String>>,
     #[serde(default)]
     definition_of_done: Option<Vec<String>>,
     #[serde(default)]
@@ -256,6 +271,10 @@ struct NativeMemberWire {
     #[serde(default)]
     cwd: Option<PathBuf>,
     cli_tool: CliTool,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default, alias = "reasoningEffort")]
+    reasoning_effort: Option<String>,
 }
 
 impl TeamConfigStore {
@@ -687,6 +706,7 @@ fn mesh_compatible_wire(
                 instructions: member.instructions.clone(),
                 behavioral_contract: member.behavioral_contract.clone(),
                 quality_gates: member.quality_gates.clone(),
+                handoff_expectations: member.handoff_expectations.clone(),
                 definition_of_done: member.definition_of_done.clone(),
                 phase_scope: member.phase_scope.clone(),
                 mode: member.mode.clone(),
@@ -701,7 +721,8 @@ fn mesh_compatible_wire(
                 } else {
                     "general-purpose".to_string()
                 },
-                model: default_model_for_cli(member.cli_tool).to_string(),
+                model: member.model.clone(),
+                reasoning_effort: member.reasoning_effort.clone(),
                 joined_at_millis: created_at_millis,
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
@@ -729,14 +750,6 @@ fn mesh_compatible_wire(
         lead_agent_id,
         lead_session_id,
         members,
-    }
-}
-
-fn default_model_for_cli(cli_tool: CliTool) -> &'static str {
-    match cli_tool {
-        CliTool::Claude => "claude-opus-4-6",
-        CliTool::Codex => "gpt-5.4 high",
-        CliTool::Gemini => "gemini-2.5-pro",
     }
 }
 
@@ -824,9 +837,11 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         .or(member.agent_type.as_deref())
         .unwrap_or("agent");
     let role = parse_role(role_hint);
+    let (model, reasoning_effort) =
+        normalize_persisted_model_fields(member.model, member.reasoning_effort);
     let cli_tool = member
         .cli_tool
-        .or_else(|| member.model.as_deref().map(cli_tool_from_model))
+        .or_else(|| model.as_deref().map(cli_tool_from_model))
         .unwrap_or(CliTool::Codex);
     let project_path = member
         .project_path
@@ -852,18 +867,23 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
         quality_gates: member.quality_gates,
+        handoff_expectations: member.handoff_expectations,
         definition_of_done: member.definition_of_done,
         phase_scope: member.phase_scope,
         mode: member.mode,
         inherits_from: member.inherits_from,
         required_artifacts: member.required_artifacts,
         capabilities: member.capabilities,
+        model,
+        reasoning_effort,
         project_path,
         cli_tool,
     })
 }
 
 fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, CoordinationError> {
+    let (model, reasoning_effort) =
+        normalize_persisted_model_fields(member.model, member.reasoning_effort);
     let project_path = member
         .project_path
         .or(member.project_path_camel)
@@ -888,15 +908,38 @@ fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, Coordinat
         instructions: member.instructions,
         behavioral_contract: member.behavioral_contract,
         quality_gates: member.quality_gates,
+        handoff_expectations: member.handoff_expectations,
         definition_of_done: member.definition_of_done,
         phase_scope: member.phase_scope,
         mode: member.mode,
         inherits_from: member.inherits_from,
         required_artifacts: member.required_artifacts,
         capabilities: member.capabilities,
+        model,
+        reasoning_effort,
         project_path,
         cli_tool: member.cli_tool,
     })
+}
+
+fn normalize_persisted_model_fields(
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+) -> (Option<String>, Option<String>) {
+    if reasoning_effort.is_none() {
+        if let Some(model) = model.as_deref() {
+            let parsed = ModelSpec::parse_legacy(model);
+            return (parsed.model, parsed.reasoning_effort);
+        }
+    }
+
+    (
+        model.and_then(|model| {
+            let trimmed = model.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        }),
+        reasoning_effort,
+    )
 }
 
 fn parse_role(value: &str) -> MemberRole {
@@ -961,12 +1004,15 @@ mod tests {
                 instructions: Some("Own orchestration".to_string()),
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: Some(vec!["Report verification evidence".to_string()]),
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: Some("claude-sonnet-4-5".to_string()),
+                reasoning_effort: Some("high".to_string()),
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Claude,
             }],
@@ -996,12 +1042,15 @@ mod tests {
                     escalation: vec!["raise blockers".to_string()],
                 }),
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: Some(vec!["implementation".to_string(), "testing".to_string()]),
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
             }],
@@ -1089,6 +1138,58 @@ mod tests {
         let loaded = TeamConfigStore::load(teams_dir, team_name).expect("load should succeed");
 
         assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn save_writes_declared_model_and_reasoning_effort() {
+        let tmp = TempDir::new().expect("tempdir");
+        let config = sample_config("architecture-final");
+
+        TeamConfigStore::save(tmp.path(), "architecture-final", &config).expect("save");
+        let value: Value = serde_json::from_str(
+            &fs::read_to_string(config_path(tmp.path(), "architecture-final"))
+                .expect("read config"),
+        )
+        .expect("parse config");
+
+        assert_eq!(value["members"][0]["model"], "claude-sonnet-4-5");
+        assert_eq!(value["members"][0]["reasoningEffort"], "high");
+        assert_eq!(
+            value["members"][0]["handoffExpectations"][0],
+            "Report verification evidence"
+        );
+    }
+
+    #[test]
+    fn pre_model_persistence_config_loads_with_absent_model_fields() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "legacy-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            r#"{
+  "name": "legacy-team",
+  "createdAt": 1772399806546,
+  "members": [{
+    "name": "builder",
+    "agentType": "general-purpose",
+    "cli_tool": "codex",
+    "cwd": "/tmp/project"
+  }]
+}"#,
+        )
+        .expect("write legacy config");
+
+        let config = TeamConfigStore::load(tmp.path(), team_name).expect("load legacy config");
+        assert_eq!(config.members[0].model, None);
+        assert_eq!(config.members[0].reasoning_effort, None);
+    }
+
+    #[test]
+    fn config_store_has_no_legacy_model_default_helper() {
+        let removed_helper = ["default_model", "for_cli"].join("_");
+        assert!(!include_str!("config.rs").contains(&removed_helper));
     }
 
     #[test]
@@ -1705,12 +1806,15 @@ mod tests {
                 instructions: None,
                 behavioral_contract: None,
                 quality_gates: None,
+                handoff_expectations: None,
                 definition_of_done: None,
                 phase_scope: None,
                 mode: None,
                 inherits_from: None,
                 required_artifacts: None,
                 capabilities: None,
+                model: None,
+                reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/agent-a"),
                 cli_tool: CliTool::Codex,
             }],

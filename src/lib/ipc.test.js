@@ -626,6 +626,11 @@ describe('ipc module', () => {
               resume: 'gemini --yolo --resume',
             },
           },
+          modelCatalog: {
+            claude: [{ id: 'opus', label: 'Opus 5', efforts: ['high'], defaultEffort: null, deprecated: false, replacement: null }],
+            codex: [{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'high'], defaultEffort: 'low', deprecated: false, replacement: null }],
+            gemini: [{ id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', efforts: [], defaultEffort: null, deprecated: false, replacement: null }],
+          },
         },
       })
 
@@ -644,6 +649,14 @@ describe('ipc module', () => {
       expect(result.terminal.cli_commands.claude.continue_cmd).toBe('claude --continue')
       expect(result.terminal_contract.default_emulator).toBe('windows_terminal')
       expect(result.terminal_contract.supported_emulators).toEqual(['windows_terminal', 'custom'])
+      expect(result.terminal_contract.model_catalog.codex[0]).toEqual({
+        id: 'gpt-5.6-sol',
+        label: 'GPT-5.6-Sol',
+        efforts: ['low', 'high'],
+        defaultEffort: 'low',
+        deprecated: false,
+        replacement: null,
+      })
       delete window.__TAURI_INTERNALS__
     })
 

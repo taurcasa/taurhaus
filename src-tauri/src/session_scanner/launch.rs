@@ -1,6 +1,6 @@
 use crate::coordination::domain::MemberRole;
 use crate::daemon::protocol::LaunchMode;
-use crate::models::CliCommandSettings;
+use crate::models::{CliCommandSettings, ModelCatalog};
 use crate::session_scanner::cli_tool::CliTool;
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
@@ -76,8 +76,35 @@ pub enum LaunchNote {
     DeprecatedFlag { flag: String },
     /// The base already selected a model, so it wins over `ModelSpec`.
     ModelIgnored { found: String },
-    /// The base already selected an effort, so it wins over `ModelSpec`.
-    EffortIgnored { found: String },
+    /// The requested effort was ignored because the base overrides it or the
+    /// selected tool/model does not support it.
+    EffortIgnored {
+        found: String,
+        reason: EffortIgnoreReason,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortIgnoreReason {
+    BaseOverride,
+    Invalid,
+}
+
+impl LaunchNote {
+    pub fn event_name(&self) -> &'static str {
+        match self {
+            Self::DeprecatedFlag { .. } => "launch.flag.deprecated",
+            Self::ModelIgnored { .. } => "launch.model.ignored",
+            Self::EffortIgnored {
+                reason: EffortIgnoreReason::BaseOverride,
+                ..
+            } => "launch.effort.ignored",
+            Self::EffortIgnored {
+                reason: EffortIgnoreReason::Invalid,
+                ..
+            } => "launch.effort.invalid",
+        }
+    }
 }
 
 pub struct RenderedLaunch {
@@ -109,9 +136,19 @@ impl LaunchSpec<'_> {
                 }
 
                 if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    if command_contains_flag(self.base, "model_reasoning_effort") {
+                    if !ModelCatalog::supports_effort(
+                        self.tool,
+                        self.model.model.as_deref(),
+                        effort,
+                    ) {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if command_contains_flag(self.base, "model_reasoning_effort") {
                         notes.push(LaunchNote::EffortIgnored {
                             found: "model_reasoning_effort".to_string(),
+                            reason: EffortIgnoreReason::BaseOverride,
                         });
                     } else {
                         append_flag(
@@ -134,9 +171,19 @@ impl LaunchSpec<'_> {
                 }
 
                 if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    if command_contains_flag(self.base, "--effort") {
+                    if !ModelCatalog::supports_effort(
+                        self.tool,
+                        self.model.model.as_deref(),
+                        effort,
+                    ) {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if command_contains_flag(self.base, "--effort") {
                         notes.push(LaunchNote::EffortIgnored {
                             found: "--effort".to_string(),
+                            reason: EffortIgnoreReason::BaseOverride,
                         });
                     } else {
                         append_flag(&mut command, "--effort", effort);
@@ -180,6 +227,12 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Gemini => {
+                if let Some(effort) = self.model.reasoning_effort.as_deref() {
+                    notes.push(LaunchNote::EffortIgnored {
+                        found: effort.to_string(),
+                        reason: EffortIgnoreReason::Invalid,
+                    });
+                }
                 // unverified (S12): Gemini is not installed on the audit host.
                 if let Some(model) = self.model.model.as_deref() {
                     if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
@@ -459,6 +512,78 @@ mod tests {
         assert!(!rendered.command.contains("--ask-for-approval"));
     }
 
+    // Regression: ff40911 discarded a role's explicit effort instead of
+    // validating it, allowing the user's global effort to win silently.
+    #[test]
+    fn codex_render_notes_and_drops_effort_invalid_for_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: model_spec("gpt-5.4", Some("ultra")),
+            team: None,
+        }
+        .render();
+
+        assert!(!rendered.command.contains("model_reasoning_effort"));
+        assert!(matches!(
+            rendered.notes.as_slice(),
+            [LaunchNote::EffortIgnored { found, .. }] if found == "ultra"
+        ));
+    }
+
+    #[test]
+    fn claude_render_notes_and_drops_unknown_effort() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base: "claude --dangerously-skip-permissions",
+            model: model_spec("opus", Some("ultra")),
+            team: None,
+        }
+        .render();
+
+        assert!(!rendered.command.contains("--effort"));
+        assert!(matches!(
+            rendered.notes.as_slice(),
+            [LaunchNote::EffortIgnored { found, .. }] if found == "ultra"
+        ));
+    }
+
+    #[test]
+    fn launch_note_events_use_entity_verb_shape() {
+        assert_eq!(
+            LaunchNote::DeprecatedFlag {
+                flag: "--full-auto".to_string()
+            }
+            .event_name(),
+            "launch.flag.deprecated"
+        );
+        assert_eq!(
+            LaunchNote::ModelIgnored {
+                found: "--model".to_string()
+            }
+            .event_name(),
+            "launch.model.ignored"
+        );
+        assert_eq!(
+            LaunchNote::EffortIgnored {
+                found: "--effort".to_string(),
+                reason: EffortIgnoreReason::BaseOverride,
+            }
+            .event_name(),
+            "launch.effort.ignored"
+        );
+        assert_eq!(
+            LaunchNote::EffortIgnored {
+                found: "ultra".to_string(),
+                reason: EffortIgnoreReason::Invalid,
+            }
+            .event_name(),
+            "launch.effort.invalid"
+        );
+    }
+
     #[test]
     fn claude_render_adds_model_effort_and_display_name_once() {
         let rendered = LaunchSpec {
@@ -554,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn gemini_render_adds_model_only() {
+    fn gemini_render_adds_model_and_notes_unsupported_effort() {
         let rendered = LaunchSpec {
             tool: CliTool::Gemini,
             mode: LaunchMode::Fresh,
@@ -565,7 +690,13 @@ mod tests {
         .render();
 
         assert_eq!(rendered.command, "gemini --yolo -m 'gemini-3.1-pro'");
-        assert!(rendered.notes.is_empty());
+        assert!(matches!(
+            rendered.notes.as_slice(),
+            [LaunchNote::EffortIgnored {
+                found,
+                reason: EffortIgnoreReason::Invalid,
+            }] if found == "high"
+        ));
     }
 
     // Regression: 791f6be checked only Gemini's short model flag, so a

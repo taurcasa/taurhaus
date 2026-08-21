@@ -7,6 +7,7 @@ use crate::commands::coordination_types::{
 use crate::commands::projects::DbState;
 use crate::coordination::state::CoordinationState;
 use crate::errors::sanitize_error;
+use crate::session_scanner::launch::ModelSpec;
 use crate::templates::composition::{compose_team, CompositionOverrides, ResolvedMember};
 use crate::templates::storage::{TemplateStore, TemplateStoreError};
 use crate::templates::types::RoleTemplate;
@@ -59,6 +60,11 @@ pub(super) fn hydrate_initialize_request_role_metadata(
     state: &CoordinationState,
     mut request: InitializeTeamRequest,
 ) -> Result<InitializeTeamRequest, String> {
+    normalize_agent_model_fields(&mut request.lead);
+    for agent in &mut request.agents {
+        normalize_agent_model_fields(agent);
+    }
+
     if let Some(preset_id) = request
         .preset_id
         .clone()
@@ -80,6 +86,7 @@ pub(super) fn hydrate_add_agent_request_role_metadata(
     state: &CoordinationState,
     mut request: AddAgentRequest,
 ) -> Result<AddAgentRequest, String> {
+    normalize_agent_model_fields(&mut request.agent);
     hydrate_agent_setup_from_role_template(state, &mut request.agent)?;
     Ok(request)
 }
@@ -184,6 +191,9 @@ fn apply_resolved_member_defaults(
     if agent.model.trim().is_empty() {
         agent.model = member.model.clone();
     }
+    if agent.reasoning_effort.is_none() {
+        agent.reasoning_effort = member.reasoning_effort.clone();
+    }
     if agent
         .role_id
         .as_deref()
@@ -244,18 +254,23 @@ fn apply_resolved_member_defaults(
     if agent.behavioral_contract.is_none() {
         agent.behavioral_contract = Some(member.behavioral_contract.clone());
     }
+    if agent.handoff_expectations.is_none() {
+        agent.handoff_expectations = member.handoff_expectations.clone();
+    }
     if agent.capabilities.is_none() {
         agent.capabilities = Some(member.capabilities.clone());
     }
 }
 
 fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
-    agent
-        .role_name
-        .as_deref()
-        .map(str::trim)
-        .unwrap_or("")
-        .is_empty()
+    agent.model.trim().is_empty()
+        || agent.reasoning_effort.is_none()
+        || agent
+            .role_name
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
         || agent
             .focus_area
             .as_deref()
@@ -286,6 +301,12 @@ fn agent_role_metadata_missing(agent: &AgentSetupConfig) -> bool {
 }
 
 fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplate) {
+    if agent.model.trim().is_empty() {
+        agent.model = role.defaults.model.clone();
+    }
+    if agent.reasoning_effort.is_none() {
+        agent.reasoning_effort = role.defaults.reasoning_effort.clone();
+    }
     if agent
         .role_name
         .as_deref()
@@ -337,9 +358,23 @@ fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplat
     if agent.behavioral_contract.is_none() {
         agent.behavioral_contract = Some(role.behavioral_contract.clone());
     }
+    if agent.handoff_expectations.is_none() {
+        agent.handoff_expectations = role.handoff_expectations.clone();
+    }
     if agent.capabilities.is_none() {
         agent.capabilities = Some(role.capabilities.clone());
     }
+}
+
+fn normalize_agent_model_fields(agent: &mut AgentSetupConfig) {
+    if agent.reasoning_effort.is_some() {
+        agent.model = agent.model.trim().to_string();
+        return;
+    }
+
+    let parsed = ModelSpec::parse_legacy(&agent.model);
+    agent.model = parsed.model.unwrap_or_default();
+    agent.reasoning_effort = parsed.reasoning_effort;
 }
 
 fn coordination_app_data_dir(state: &CoordinationState) -> PathBuf {
