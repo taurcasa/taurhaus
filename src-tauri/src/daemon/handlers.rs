@@ -86,12 +86,15 @@ pub(crate) fn dispatch(
 }
 
 pub(crate) fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {
+    let (data_root, focus_path) = crate::daemon_api::data_identity_paths();
     DaemonResponse::ok(
         id,
         protocol::PingResult {
             version: env!("CARGO_PKG_VERSION").to_string(),
             protocol_version: protocol::PROTOCOL_VERSION,
             uptime_secs: start_time.elapsed().as_secs(),
+            data_root: data_root.display().to_string(),
+            focus_path: focus_path.display().to_string(),
         },
     )
 }

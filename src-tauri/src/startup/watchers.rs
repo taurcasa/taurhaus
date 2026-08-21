@@ -20,6 +20,14 @@ use super::SetupContext;
 
 static RECONCILE_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 static RECONCILE_PENDING: AtomicBool = AtomicBool::new(false);
+static LAST_TMUX_FOCUS_HOOKS_STATE: Mutex<Option<TmuxFocusHooksEventState>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TmuxFocusHooksEventState {
+    Unreachable,
+    Healthy,
+    Failed,
+}
 
 fn should_watch_locally(project_path: &str, has_daemon: bool, defer_wsl_to_daemon: bool) -> bool {
     if provider::path::is_wsl_path(project_path) {
@@ -67,7 +75,6 @@ pub(crate) fn initialize(
     });
     spawn_auxiliary_watch_bootstrap(
         app.handle().clone(),
-        context.data_dir.clone(),
         context.daemon_connected_at_startup,
         context.wsl_distro.is_none() || crate::daemon::launcher::is_native_daemon(),
     );
@@ -76,6 +83,7 @@ pub(crate) fn initialize(
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(60));
         reconcile_activity_watches(&periodic_handle, "periodic");
+        repair_tmux_focus_hooks();
     });
 
     Ok(())
@@ -83,14 +91,12 @@ pub(crate) fn initialize(
 
 fn spawn_auxiliary_watch_bootstrap(
     app: tauri::AppHandle,
-    data_dir: std::path::PathBuf,
     has_daemon: bool,
     allow_disconnected_windows_fallback: bool,
 ) {
     spawn_auxiliary_watch_bootstrap_task(move || {
         refresh_auxiliary_watches(
             &app,
-            &data_dir,
             has_daemon,
             allow_disconnected_windows_fallback,
             "startup",
@@ -100,7 +106,6 @@ fn spawn_auxiliary_watch_bootstrap(
 
 pub(crate) fn refresh_auxiliary_watches(
     app: &tauri::AppHandle,
-    data_dir: &std::path::Path,
     has_daemon: bool,
     allow_disconnected_windows_fallback: bool,
     reason: &'static str,
@@ -117,7 +122,7 @@ pub(crate) fn refresh_auxiliary_watches(
         },
     );
     ensure_task_directory_watch(app, has_daemon, allow_disconnected_windows_fallback);
-    ensure_tmux_focus_watch(app, data_dir);
+    ensure_tmux_focus_watch(app);
 
     let mut fields = Map::new();
     fields.insert("reason".to_string(), Value::String(reason.to_string()));
@@ -394,11 +399,14 @@ fn ensure_task_directory_watch<T, R>(
     }
 }
 
-fn ensure_tmux_focus_watch<T, R>(app: &T, data_dir: &std::path::Path)
+fn ensure_tmux_focus_watch<T, R>(app: &T)
 where
     R: tauri::Runtime,
     T: Manager<R>,
 {
+    let focus_path = crate::session_scanner::control::default_tmux_focus_path();
+    repair_tmux_focus_hooks_for_path(&focus_path);
+
     let watcher_state = app.state::<WatcherState>();
     let mut watcher_guard = watcher_state.0.lock().unwrap_or_else(|error| {
         tracing::warn!(
@@ -407,20 +415,6 @@ where
         );
         error.into_inner()
     });
-    let focus_path = crate::session_scanner::tmux::focus_file_path(data_dir);
-    if let Err(error) = crate::session_scanner::tmux::write_focus_state(
-        &focus_path,
-        &crate::session_scanner::tmux::TmuxFocusState::detached(),
-    ) {
-        tracing::warn!(
-            error = %error,
-            path = %focus_path.display(),
-            "Failed to initialize tmux focus file before watch registration"
-        );
-        return;
-    }
-    crate::session_scanner::control::remove_legacy_tmux_focus_hooks();
-    crate::session_scanner::control::ensure_tmux_focus_hooks_for_path(&focus_path);
     if let Err(error) =
         watcher_guard.watch_file(TMUX_FOCUS_PROJECT_ID.to_string(), focus_path.clone())
     {
@@ -435,6 +429,113 @@ where
             "Watching tmux focus file"
         );
     }
+}
+
+pub(crate) fn repair_tmux_focus_hooks() {
+    let focus_path = crate::session_scanner::control::default_tmux_focus_path();
+    repair_tmux_focus_hooks_for_path(&focus_path);
+}
+
+fn repair_tmux_focus_hooks_for_path(focus_path: &std::path::Path) {
+    use crate::session_scanner::control::TmuxFocusHooksRepairOutcome;
+
+    let outcome = crate::session_scanner::control::reconcile_tmux_focus_hooks_for_path(focus_path);
+    let should_emit = {
+        let mut previous = LAST_TMUX_FOCUS_HOOKS_STATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        should_emit_tmux_focus_hooks_event(&mut previous, &outcome)
+    };
+    if !should_emit {
+        return;
+    }
+
+    let mut fields = Map::new();
+    fields.insert(
+        "path".to_string(),
+        Value::String(focus_path.display().to_string()),
+    );
+    match outcome {
+        TmuxFocusHooksRepairOutcome::Repaired {
+            removed_count,
+            installed_count,
+        } => {
+            fields.insert(
+                "removed_count".to_string(),
+                Value::Number(serde_json::Number::from(removed_count as u64)),
+            );
+            fields.insert(
+                "installed_count".to_string(),
+                Value::Number(serde_json::Number::from(installed_count as u64)),
+            );
+            tracing::info!(
+                path = %focus_path.display(),
+                removed_count,
+                installed_count,
+                "Repaired tmux focus hooks"
+            );
+            emit_watch_bootstrap_event(
+                "info",
+                "tmux.focus_hooks.repaired",
+                "Tmux focus hooks repaired",
+                fields,
+            );
+        }
+        TmuxFocusHooksRepairOutcome::Failed {
+            removed_count,
+            installed_count,
+            error,
+        } => {
+            fields.insert(
+                "removed_count".to_string(),
+                Value::Number(serde_json::Number::from(removed_count as u64)),
+            );
+            fields.insert(
+                "installed_count".to_string(),
+                Value::Number(serde_json::Number::from(installed_count as u64)),
+            );
+            fields.insert("error.message".to_string(), Value::String(error.clone()));
+            tracing::warn!(
+                path = %focus_path.display(),
+                error = %error,
+                "Failed to repair tmux focus hooks"
+            );
+            emit_watch_bootstrap_event(
+                "warn",
+                "tmux.focus_hooks.failed",
+                "Tmux focus hook repair failed",
+                fields,
+            );
+        }
+        TmuxFocusHooksRepairOutcome::Unreachable { .. } | TmuxFocusHooksRepairOutcome::Verified => {
+        }
+    }
+}
+
+fn should_emit_tmux_focus_hooks_event(
+    previous: &mut Option<TmuxFocusHooksEventState>,
+    outcome: &crate::session_scanner::control::TmuxFocusHooksRepairOutcome,
+) -> bool {
+    use crate::session_scanner::control::TmuxFocusHooksRepairOutcome;
+
+    let next = match outcome {
+        TmuxFocusHooksRepairOutcome::Unreachable { .. } => TmuxFocusHooksEventState::Unreachable,
+        TmuxFocusHooksRepairOutcome::Verified | TmuxFocusHooksRepairOutcome::Repaired { .. } => {
+            TmuxFocusHooksEventState::Healthy
+        }
+        TmuxFocusHooksRepairOutcome::Failed { .. } => TmuxFocusHooksEventState::Failed,
+    };
+    let should_emit = match outcome {
+        TmuxFocusHooksRepairOutcome::Repaired { .. } => true,
+        TmuxFocusHooksRepairOutcome::Failed { .. } => {
+            *previous != Some(TmuxFocusHooksEventState::Failed)
+        }
+        TmuxFocusHooksRepairOutcome::Unreachable { .. } | TmuxFocusHooksRepairOutcome::Verified => {
+            false
+        }
+    };
+    *previous = Some(next);
+    should_emit
 }
 
 fn emit_watch_bootstrap_event(
@@ -455,12 +556,49 @@ fn emit_watch_bootstrap_event(
 #[cfg(test)]
 mod tests {
     use super::ensure_directory_exists;
+    use super::should_emit_tmux_focus_hooks_event;
     use super::should_watch_claude_tasks_locally;
     use super::should_watch_locally;
     use super::spawn_auxiliary_watch_bootstrap_task;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+
+    #[test]
+    fn tmux_focus_hook_events_emit_only_for_repairs_and_failure_transitions() {
+        // Regression: commit 55fcf0c emitted a verified JSONL heartbeat and a
+        // repeated WARN on every 60-second repair tick while tmux was absent.
+        use crate::session_scanner::control::TmuxFocusHooksRepairOutcome;
+
+        let mut previous = None;
+        let failed = TmuxFocusHooksRepairOutcome::Failed {
+            removed_count: 0,
+            installed_count: 0,
+            error: "set-hook failed".to_string(),
+        };
+        assert!(should_emit_tmux_focus_hooks_event(&mut previous, &failed));
+        assert!(!should_emit_tmux_focus_hooks_event(&mut previous, &failed));
+
+        assert!(!should_emit_tmux_focus_hooks_event(
+            &mut previous,
+            &TmuxFocusHooksRepairOutcome::Verified
+        ));
+        assert!(should_emit_tmux_focus_hooks_event(&mut previous, &failed));
+
+        assert!(!should_emit_tmux_focus_hooks_event(
+            &mut previous,
+            &TmuxFocusHooksRepairOutcome::Unreachable {
+                error: "no tmux server".to_string(),
+            }
+        ));
+        assert!(should_emit_tmux_focus_hooks_event(
+            &mut previous,
+            &TmuxFocusHooksRepairOutcome::Repaired {
+                removed_count: 1,
+                installed_count: 5,
+            }
+        ));
+    }
 
     #[test]
     fn local_watch_skips_wsl_paths_when_daemon_is_connected() {

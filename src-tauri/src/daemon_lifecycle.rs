@@ -808,6 +808,7 @@ where
 
 fn handle_daemon_recovered(app: &AppHandle) {
     respawn_daemon_watches(app);
+    crate::startup::watchers::repair_tmux_focus_hooks();
     {
         let app_for_reseed = app.clone();
         std::thread::spawn(move || {
