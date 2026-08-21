@@ -249,7 +249,7 @@ mod tests {
 
     use std::io::Write;
     use std::path::PathBuf;
-    use std::sync::Mutex;
+    use std::sync::{Mutex, MutexGuard};
     use std::time::Instant;
 
     use chrono::{DateTime, Utc};
@@ -268,6 +268,34 @@ mod tests {
     };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Guards for one compaction test.
+    ///
+    /// These tests install the process-global compaction extractor service, so
+    /// they need the heavy-test guard as well as their own lock: every test
+    /// that spawns a real daemon server takes that guard, and
+    /// `daemon::server::run` calls `DaemonCompactionRuntime::maybe_start()`,
+    /// which replaces the global extractor with one rooted at the real teams
+    /// dir. Without the guard a spawned daemon can swap the extractor out from
+    /// under a running compaction test.
+    ///
+    /// Regression: `daemon::compaction::tests` ran with only `TEST_LOCK` while
+    /// `daemon::launcher`/`daemon::server`/`daemon::event_listener` tests spawn
+    /// daemons under the heavy guard. The race stayed hidden while the daemon
+    /// hub's first scan cycle took longer than `server::run`'s 750 ms startup
+    /// wait, so the extractor swap landed after delivery. Making degraded scan
+    /// cycles inert (this branch) let the first cycle commit in ~10 ms, moving
+    /// the swap to just after the test installed its own extractor and making
+    /// `daemon_compaction_runtime_bootstrap_and_watchers_deliver_codex_compaction`
+    /// time out whenever it shared a run with a daemon-spawning test.
+    ///
+    /// `TEST_LOCK` is taken poison-tolerantly so one failing test reports its
+    /// own cause instead of cascading `PoisonError` into the others.
+    fn compaction_test_guards() -> (crate::test_support::HeavyTestGuard, MutexGuard<'static, ()>) {
+        let heavy = crate::test_support::acquire_heavy_test_guard();
+        let lock = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        (heavy, lock)
+    }
 
     fn accept_signal(
         _: &crate::coordination::stores::CompactionSignalRecord,
@@ -415,7 +443,7 @@ mod tests {
 
     #[test]
     fn daemon_compaction_runtime_bootstrap_and_watchers_deliver_codex_compaction() {
-        let _guard = TEST_LOCK.lock().expect("lock");
+        let _guards = compaction_test_guards();
         compaction_extractor::stop_compaction_extractor_service_for_test();
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -484,7 +512,7 @@ mod tests {
 
     #[test]
     fn daemon_runtime_skips_orphaned_team_dirs_without_failing() {
-        let _guard = TEST_LOCK.lock().expect("lock");
+        let _guards = compaction_test_guards();
         compaction_extractor::stop_compaction_extractor_service_for_test();
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -519,7 +547,7 @@ mod tests {
 
     #[test]
     fn desired_watcher_teams_only_includes_teams_with_managed_codex_members() {
-        let _guard = TEST_LOCK.lock().expect("lock");
+        let _guards = compaction_test_guards();
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
@@ -542,7 +570,7 @@ mod tests {
 
     #[test]
     fn topology_events_start_and_stop_team_watchers_without_waiting_for_fallback_reconcile() {
-        let _guard = TEST_LOCK.lock().expect("lock");
+        let _guards = compaction_test_guards();
         compaction_extractor::stop_compaction_extractor_service_for_test();
 
         let tmp = tempfile::tempdir().expect("tempdir");
