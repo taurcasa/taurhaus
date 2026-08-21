@@ -2555,6 +2555,43 @@ describe('MeshTab', () => {
     })
   })
 
+  // Regression: b345de1 (PR 5c) offered an empty "default" reasoning-effort option
+  // on the runtime add-agent form too. Choosing it sent reasoningEffort: null,
+  // which `hydrate_member_model_fields` (member_activation.rs) refills from the
+  // selected role template, so the member still started at the role's effort.
+  it('hides the inherit-global effort option for a role that declares one', async () => {
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+    listRoleTemplates.mockReset()
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'codex-architect',
+        name: 'Codex Architect',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.4',
+        defaults: { cliTool: 'codex', model: 'gpt-5.4', reasoningEffort: 'high' },
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+        instructions: 'Own structural review',
+      },
+    ])
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-codex-architect')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-codex-architect'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-model-select-effort')).toHaveValue('high')
+    })
+    const effortOptions = Array.from(
+      screen.getByTestId('mesh-add-agent-model-select-effort').querySelectorAll('option')
+    ).map((option) => option.value)
+    expect(effortOptions).not.toContain('')
+  })
+
   it('captures runtime node as role and saves through upsertRoleTemplate', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 

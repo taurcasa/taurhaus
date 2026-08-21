@@ -19,6 +19,7 @@
         tool={entry.tool}
         model={entry.model}
         reasoningEffort={entry.reasoningEffort}
+        inheritedEffort={entry.inheritedEffort ?? null}
         {catalog}
         {dark}
         compact={Boolean(entry.compact)}

@@ -184,7 +184,13 @@ describe('TemplateBrowserPanel', () => {
           name: 'Backend Sprint Team',
           description: 'Preset details',
           leadRoleId: 'claude-orchestrator',
-          agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
+          agentSlots: [
+            {
+              roleId: 'custom-doc-writer',
+              count: 2,
+              overrides: { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+            },
+          ],
           defaults: {
             teamNamePattern: '{project}-team',
             tmuxLayout: 'tiled',
@@ -500,6 +506,53 @@ describe('TemplateBrowserPanel', () => {
       expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
       expect(listTeamPresets.mock.calls.length).toBeGreaterThanOrEqual(2)
     })
+  })
+
+  // Regression: b345de1 (PR 5c) routed preset editing through TeamCustomizerPanel
+  // but `savePresetFromCustomizer` submitted the normalized draft slots, which had
+  // already lost `overrides`, and ignored the customizer's edited agents entirely.
+  // Editing a preset therefore erased its pinned model/effort and discarded every
+  // change made in the editor.
+  it('round-trips preset slot overrides through the customizer save', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-sprint-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-sprint-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-agent-agent-1-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
+
+    const modelSelect = await screen.findByTestId('team-customizer-agent-agent-1-model-select')
+    expect(modelSelect).toHaveValue('gpt-5.6-terra')
+
+    await fireEvent.change(modelSelect, { target: { value: 'gemini-3.1-pro' } })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-save'))
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'backend-sprint-team',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [
+        expect.objectContaining({
+          roleId: 'custom-doc-writer',
+          count: 1,
+          overrides: expect.objectContaining({ model: 'gemini-3.1-pro', reasoningEffort: null }),
+        }),
+        expect.objectContaining({
+          roleId: 'custom-doc-writer',
+          count: 1,
+          overrides: expect.objectContaining({ model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' }),
+        }),
+      ],
+    }))
   })
 
   it('shows create/edit/delete actions only for custom roles', async () => {

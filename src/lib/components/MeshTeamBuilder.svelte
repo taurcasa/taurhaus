@@ -18,7 +18,7 @@
     resolveRoleTool,
   } from '../meshDefaults.js'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
-  import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
+  import { EMPTY_MODEL_CATALOG, resolveMemberModel, roleDeclaredEffort } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
@@ -70,6 +70,18 @@
   const t = $derived(themeTokens(dark))
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
+
+  // The effort a role-bound roster row actually launches with when it declares
+  // none itself: the backend refills it from the role template.
+  function effortFromRole(roleId) {
+    const id = String(roleId ?? '').trim()
+    if (!id) return null
+    return roleDeclaredEffort(
+      (roleTemplates ?? []).find(
+        (entry) => String(entry?.roleId ?? entry?.role_id ?? '').trim() === id
+      )
+    )
+  }
 
   function memberModelLabel(member) {
     const resolved = resolveMemberModel(member, null, catalog)
@@ -2270,6 +2282,7 @@
                           tool={normalizeTool(normalizedTeam.lead.tool)}
                           model={normalizedTeam.lead.model}
                           reasoningEffort={normalizedTeam.lead.reasoningEffort ?? null}
+                          inheritedEffort={effortFromRole(normalizedTeam.lead.roleId)}
                           {catalog}
                           {dark}
                           inputClass={inputTone}
@@ -2407,6 +2420,7 @@
                           tool={normalizeTool(agent.tool)}
                           model={agent.model}
                           reasoningEffort={agent.reasoningEffort ?? null}
+                          inheritedEffort={effortFromRole(agent.roleId)}
                           {catalog}
                           {dark}
                           inputClass={inputTone}

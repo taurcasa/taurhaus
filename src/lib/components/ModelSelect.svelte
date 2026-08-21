@@ -13,6 +13,7 @@
     tool = 'codex',
     model = '',
     reasoningEffort = null,
+    inheritedEffort = null,
     catalog = null,
     disabled = false,
     dark = false,
@@ -52,15 +53,22 @@
       : toolEffortsFor(catalog, tool)
   )
   const selectedEffort = $derived(String(reasoningEffort ?? '').trim())
+  // What actually runs when the member itself declares nothing: the role template
+  // the member is bound to. The backend fills an unset effort from it
+  // (`apply_role_template_defaults`, request_normalization.rs).
+  const inherited = $derived(String(inheritedEffort ?? '').trim())
+  const effectiveEffort = $derived(selectedEffort || inherited)
   // The leading empty option is the unset state: no effort is sent and the CLI's
-  // own global setting applies. Never pre-select the catalog default here — that
-  // would silently pin an effort the user never chose.
-  const effortOptions = $derived(
-    selectedEffort && !efforts.includes(selectedEffort)
-      ? ['', selectedEffort, ...efforts]
-      : ['', ...efforts]
-  )
-  const hasEffortSelect = $derived(efforts.length > 0 || Boolean(selectedEffort))
+  // own global setting applies. That is only true when nothing fills the gap — a
+  // role that declares an effort has it reapplied, so offering "default" there
+  // would promise something the launch never honours. Never pre-select the
+  // catalog default either: that would pin an effort the user never chose.
+  const effortOptions = $derived.by(() => {
+    const options = [...efforts]
+    if (effectiveEffort && !options.includes(effectiveEffort)) options.unshift(effectiveEffort)
+    return inherited ? options : ['', ...options]
+  })
+  const hasEffortSelect = $derived(effortOptions.some((effort) => effort !== ''))
   const deprecationHint = $derived.by(() => {
     if (!selectedEntry?.deprecated) return ''
     const replacement = String(selectedEntry.replacement ?? '').trim()
@@ -118,7 +126,7 @@
     {#if hasEffortSelect}
       <select
         class="{controlClass} w-[6.5rem] flex-none"
-        value={selectedEffort}
+        value={effectiveEffort}
         {disabled}
         aria-label="Reasoning effort"
         onchange={handleEffortChange}

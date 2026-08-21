@@ -1,7 +1,7 @@
 <script>
   import { normalizeTool } from '../meshDefaults.js'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
-  import { EMPTY_MODEL_CATALOG } from '../modelCatalog.js'
+  import { EMPTY_MODEL_CATALOG, roleDeclaredEffort } from '../modelCatalog.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
@@ -687,6 +687,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
               tool={addAgentDraft?.tool ?? 'codex'}
               model={addAgentDraft?.model}
               reasoningEffort={addAgentDraft?.reasoningEffort ?? null}
+              inheritedEffort={roleDeclaredEffort(selectedRuntimeRole)}
               {catalog}
               {dark}
               disabled={Boolean(addAgentDraft?.submitting || addAgentDraft?.isLocked)}

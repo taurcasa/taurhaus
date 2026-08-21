@@ -1,4 +1,5 @@
 import {
+  MOCK_MODEL_CATALOG,
   MOCK_ROLE_TEMPLATES,
   MOCK_TEAM_PRESETS,
   MOCK_TEMPLATE_DIFFS,
@@ -9,6 +10,7 @@ import {
   teamPresetSummary,
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
+import { defaultModelFor } from '../modelCatalog.js'
 import {
   normalizeComposeTeamRequest,
   normalizeRoleTemplateInput,
@@ -65,7 +67,9 @@ export function importRoleFromFile(filePath) {
       kind: 'agent',
       defaults: {
         cliTool: 'claude',
-        model: 'claude-opus-4-6',
+        // Browser mode has no backend catalog; the mock one stands in for it so
+        // the fallback never pins a model the catalog does not offer.
+        model: defaultModelFor(MOCK_MODEL_CATALOG, 'claude'),
         defaultNamePattern: 'imported-role-{n}',
       },
       instructions: 'Imported role instructions.',

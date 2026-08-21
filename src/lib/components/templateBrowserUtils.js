@@ -1,4 +1,5 @@
 import { resolveRoleReasoningEffort } from '../meshDefaults.js'
+import { parseLegacyModel } from '../modelCatalog.js'
 
 function normalizeBehavioralContractForEditor(contract) {
   if (Array.isArray(contract)) {
@@ -135,6 +136,27 @@ export function defaultAgentRoleId(roleTemplates = [], leadRoleId = defaultLeadR
   )
 }
 
+/**
+ * A preset slot can pin its own model/effort on top of the role defaults. Losing
+ * those on the way into the editor silently rewrites the preset on the next save,
+ * so they are normalized (camelCase, legacy combined models split) and kept
+ * alongside every other override field the slot carries.
+ */
+export function normalizeSlotOverridesForDraft(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const { reasoningEffort, reasoning_effort: snakeEffort, ...rest } = value
+  const parsed = parseLegacyModel(value.model)
+  const model = parsed.model || null
+  const effort = String(reasoningEffort ?? snakeEffort ?? '').trim() || parsed.reasoningEffort || null
+
+  const normalized = { ...rest, model, reasoningEffort: effort }
+  const pinsSomething = Object.values(normalized).some(
+    (entry) => entry !== null && entry !== undefined && entry !== ''
+  )
+  return pinsSomething ? normalized : null
+}
+
 export function normalizePresetDraft(source = {}, roleTemplates = [], teamPresets = []) {
   const leadRoleId = source?.leadRoleId ?? source?.lead_role_id ?? defaultLeadRoleId(roleTemplates)
   const slots = Array.isArray(source?.agentSlots ?? source?.agent_slots)
@@ -147,12 +169,14 @@ export function normalizePresetDraft(source = {}, roleTemplates = [], teamPreset
       count: Math.max(1, Number(slot?.count ?? 1)),
       projectBinding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
       projectId: slot?.projectId ?? slot?.project_id ?? null,
+      overrides: normalizeSlotOverridesForDraft(slot?.overrides),
     }))
     : [{
       roleId: fallbackAgentRoleId,
       count: 1,
       projectBinding: 'lead_project',
       projectId: null,
+      overrides: null,
     }]
 
   return {
@@ -176,8 +200,10 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
   const agents = []
   let nextAgent = 1
 
-  for (const slot of draft.agentSlots) {
+  for (const [slotIndex, slot] of draft.agentSlots.entries()) {
     const role = roleTemplates.find((entry) => entry.roleId === slot.roleId) ?? null
+    const overrideModel = String(slot.overrides?.model ?? '').trim()
+    const overrideEffort = String(slot.overrides?.reasoningEffort ?? '').trim()
     for (let idx = 0; idx < slot.count; idx += 1) {
       const previous = agentRoleCounts.get(slot.roleId) ?? 0
       agentRoleCounts.set(slot.roleId, previous + 1)
@@ -188,12 +214,13 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
         id: `agent-${nextAgent}`,
         name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
         tool,
-        model: role?.model ?? '',
-        reasoningEffort: role?.reasoningEffort ?? null,
+        model: overrideModel || role?.model || '',
+        reasoningEffort: overrideEffort || (overrideModel ? null : role?.reasoningEffort ?? null),
         projectId: '',
         description: slot.roleId || '',
         roleId: slot.roleId ?? null,
         roleName: role?.name ?? null,
+        slotIndex,
       })
       nextAgent += 1
     }

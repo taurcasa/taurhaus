@@ -120,6 +120,7 @@
       projectId: projectPath || projectOptions[0]?.id || '',
       description: '',
       roleId: null,
+      slotIndex: null,
     }
   }
 
@@ -161,6 +162,9 @@
       projectId: String(agent.projectId ?? agent.project_id ?? projectPath ?? ''),
       description: String(agent.description ?? ''),
       roleId: agent.roleId ?? null,
+      // Which preset slot this row came from, so a save can put the edit back on
+      // that slot's overrides instead of rebuilding the preset from role defaults.
+      slotIndex: Number.isInteger(agent.slotIndex) ? agent.slotIndex : null,
     }))
     nextAgentId = agents.length + 1
   }
@@ -325,6 +329,7 @@
         projectId: String(agent.projectId ?? '').trim(),
         description: String(agent.description ?? '').trim(),
         roleId: agent.roleId ?? null,
+        slotIndex: Number.isInteger(agent.slotIndex) ? agent.slotIndex : null,
       })),
       ...payload,
     })

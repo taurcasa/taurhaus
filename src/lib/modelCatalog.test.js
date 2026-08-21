@@ -8,6 +8,7 @@ import {
   isKnownModel,
   parseLegacyModel,
   resolveMemberModel,
+  roleDeclaredEffort,
   toolEffortsFor,
 } from './modelCatalog.js'
 
@@ -121,6 +122,27 @@ describe('parseLegacyModel', () => {
   it('returns empty values for blank input', () => {
     expect(parseLegacyModel('   ')).toEqual({ model: '', reasoningEffort: null })
     expect(parseLegacyModel(null)).toEqual({ model: '', reasoningEffort: null })
+  })
+})
+
+describe('roleDeclaredEffort', () => {
+  it('reads the canonical field', () => {
+    expect(roleDeclaredEffort({ roleId: 'dev', reasoningEffort: 'xhigh' })).toBe('xhigh')
+  })
+
+  it('reads the snake_case and defaults spellings', () => {
+    expect(roleDeclaredEffort({ reasoning_effort: 'low' })).toBe('low')
+    expect(roleDeclaredEffort({ defaults: { reasoning_effort: 'max' } })).toBe('max')
+  })
+
+  it('falls back to the effort folded into a legacy model string', () => {
+    expect(roleDeclaredEffort({ model: 'gpt-5.4 high' })).toBe('high')
+    expect(roleDeclaredEffort({ defaults: { model: 'gpt-5.4-medium' } })).toBe('medium')
+  })
+
+  it('reports nothing for a role that declares no effort', () => {
+    expect(roleDeclaredEffort({ model: 'gpt-5.6-terra' })).toBeNull()
+    expect(roleDeclaredEffort(null)).toBeNull()
   })
 })
 

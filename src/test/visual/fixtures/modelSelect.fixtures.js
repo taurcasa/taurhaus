@@ -79,6 +79,13 @@ const BASE_CASES = [
     reasoningEffort: null,
   },
   {
+    label: 'Role-declared effort (no default option)',
+    tool: 'codex',
+    model: 'gpt-5.6-terra',
+    reasoningEffort: null,
+    inheritedEffort: 'high',
+  },
+  {
     label: 'Custom value from a YAML template',
     tool: 'codex',
     model: 'gpt-6-preview',

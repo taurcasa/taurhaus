@@ -976,3 +976,75 @@ describe('MeshTeamBuilder', () => {
     expect(screen.queryByTestId('mesh-template-preset-built-in-research-pod')).not.toBeInTheDocument()
   })
 })
+
+describe('MeshTeamBuilder role-inherited reasoning effort', () => {
+  function optionValues(select) {
+    return Array.from(select.querySelectorAll('option')).map((option) => option.value)
+  }
+
+  function roleBoundTeamConfig() {
+    return {
+      description: '',
+      lead: {
+        id: 'lead',
+        name: 'team-lead',
+        roleId: 'lead-codex',
+        roleName: 'Codex Product Lead',
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: null,
+        projectId: '/projects/taurhaus',
+      },
+      agents: [
+        {
+          id: 'agent-codex-1',
+          name: 'builder-1',
+          roleId: 'agent-codex',
+          roleName: 'Codex Developer',
+          tool: 'codex',
+          model: 'gpt-5.6-terra',
+          reasoningEffort: null,
+          projectId: '/projects/taurhaus',
+        },
+      ],
+    }
+  }
+
+  // Regression: b345de1 (PR 5c) offered an empty "default" effort option on every
+  // roster row. Picking it sent reasoning_effort: null, which the backend refills
+  // from the member's role template (`apply_role_template_defaults`,
+  // request_normalization.rs), so a role declaring "high" still launched at high
+  // while the row claimed the CLI global applied.
+  it('shows the role-declared effort instead of a misleading default option', async () => {
+    renderBuilder({ teamConfig: roleBoundTeamConfig() })
+
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+
+    const effort = await screen.findByTestId('mesh-builder-agent-model-input-agent-codex-1-effort')
+    expect(effort).toHaveValue('high')
+    expect(optionValues(effort)).not.toContain('')
+  })
+
+  it('shows the lead role-declared effort the same way', async () => {
+    renderBuilder({ teamConfig: roleBoundTeamConfig() })
+
+    await fireEvent.click(screen.getByLabelText('Edit lead details'))
+
+    const effort = await screen.findByTestId('mesh-builder-lead-model-input-effort')
+    expect(effort).toHaveValue('high')
+    expect(optionValues(effort)).not.toContain('')
+  })
+
+  it('keeps the inherit-global option for a member whose role declares no effort', async () => {
+    const config = roleBoundTeamConfig()
+    config.agents[0].roleId = 'agent-gemini'
+    config.agents[0].tool = 'codex'
+    renderBuilder({ teamConfig: config })
+
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+
+    const effort = await screen.findByTestId('mesh-builder-agent-model-input-agent-codex-1-effort')
+    expect(optionValues(effort)).toContain('')
+    expect(effort).toHaveValue('')
+  })
+})

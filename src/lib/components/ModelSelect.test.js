@@ -206,6 +206,84 @@ describe('ModelSelect', () => {
     expect(screen.getByTestId('mesh-builder-lead-model-input-effort')).toBeDisabled()
   })
 
+  // Regression: b345de1 (PR 5c) offered an empty "default" effort option on every
+  // roster row and emitted null for it. For a member bound to a role that declares
+  // an effort the backend refills that null from the role template
+  // (`apply_role_template_defaults`, request_normalization.rs), so choosing
+  // "default" still launched at the role's effort. A role-declared effort is now
+  // shown as the inherited value and the misleading empty option is withheld.
+  it('withholds the misleading empty option when a role effort is inherited', () => {
+    render(ModelSelect, {
+      props: {
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: null,
+        inheritedEffort: 'high',
+        catalog: CATALOG,
+      },
+    })
+
+    const effort = screen.getByTestId('model-select-effort')
+    expect(optionValues(effort)).toEqual(['low', 'medium', 'high', 'xhigh'])
+    expect(effort).toHaveValue('high')
+  })
+
+  it('keeps an inherited effort the model does not list', () => {
+    render(ModelSelect, {
+      props: {
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        inheritedEffort: 'ultra',
+        catalog: CATALOG,
+      },
+    })
+
+    const effort = screen.getByTestId('model-select-effort')
+    expect(optionValues(effort)).toEqual(['ultra', 'low', 'medium', 'high', 'xhigh'])
+    expect(effort).toHaveValue('ultra')
+  })
+
+  it('lets an explicit member effort win over the inherited one', () => {
+    render(ModelSelect, {
+      props: {
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'low',
+        inheritedEffort: 'high',
+        catalog: CATALOG,
+      },
+    })
+
+    expect(screen.getByTestId('model-select-effort')).toHaveValue('low')
+  })
+
+  it('still offers the empty option when nothing is inherited', () => {
+    render(ModelSelect, {
+      props: { tool: 'codex', model: 'gpt-5.6-terra', inheritedEffort: null, catalog: CATALOG },
+    })
+
+    expect(optionValues(screen.getByTestId('model-select-effort'))).toEqual([
+      '',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+  })
+
+  it('shows an inherited effort even when the model declares none', () => {
+    render(ModelSelect, {
+      props: {
+        tool: 'gemini',
+        model: 'gemini-3.1-pro',
+        inheritedEffort: 'medium',
+        catalog: CATALOG,
+      },
+    })
+
+    expect(screen.getByTestId('model-select-effort')).toHaveValue('medium')
+  })
+
   it('falls back to the catalog default when no model is set', () => {
     render(ModelSelect, {
       props: { tool: 'codex', catalog: CATALOG },

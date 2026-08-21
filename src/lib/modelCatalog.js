@@ -1,4 +1,4 @@
-import { normalizeTool } from './meshDefaults.js'
+import { normalizeTool, resolveRoleModel, resolveRoleReasoningEffort } from './meshDefaults.js'
 
 /**
  * Model catalog helpers.
@@ -87,6 +87,22 @@ export function parseLegacyModel(value) {
   }
 
   return { model: raw, reasoningEffort: null }
+}
+
+/**
+ * The effort a role template declares, including the pre-PR-5a spelling that
+ * folded it into the model string. A member bound to such a role never inherits
+ * the CLI's global setting: the backend refills an unset effort from the role
+ * (`apply_role_template_defaults` in request_normalization.rs,
+ * `hydrate_member_model_fields` in member_activation.rs), so the UI must show
+ * this value instead of offering an inherit-global choice it cannot deliver.
+ */
+export function roleDeclaredEffort(roleTemplate) {
+  if (!roleTemplate) return null
+  return (
+    resolveRoleReasoningEffort(roleTemplate) ??
+    parseLegacyModel(resolveRoleModel(roleTemplate)).reasoningEffort
+  )
 }
 
 function readTool(source) {
