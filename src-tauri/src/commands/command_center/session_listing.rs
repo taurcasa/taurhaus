@@ -22,8 +22,12 @@ pub(super) fn list_cli_sessions_impl(
         return Ok(Vec::new());
     }
 
-    let mut fallback = crate::session_scanner::scan_sessions_for_display();
-    tracing::debug!(count = fallback.len(), "list_cli_sessions: fallback scan");
+    let (mut fallback, degraded) = crate::session_scanner::scan_sessions_for_display();
+    tracing::debug!(
+        count = fallback.len(),
+        degraded,
+        "list_cli_sessions: fallback scan"
+    );
     enrich_sessions_with_team_membership(
         app.state::<crate::coordination::state::CoordinationState>()
             .teams_dir(),

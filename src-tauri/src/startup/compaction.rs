@@ -25,7 +25,7 @@ pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> 
     }
 
     let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
-    let initial_sessions = scan_sessions_for_runtime();
+    let (initial_sessions, _degraded) = scan_sessions_for_runtime();
     compaction_extractor::start_compaction_extractor_service_at(
         teams_dir.clone(),
         initial_sessions,

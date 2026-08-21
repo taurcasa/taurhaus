@@ -373,7 +373,7 @@ pub(crate) fn scan_tasks_from_files(
 
     let all_sessions: Vec<RuntimeSession> = cached_sessions
         .map(|s| s.to_vec())
-        .unwrap_or_else(crate::session_scanner::scan_sessions_for_runtime);
+        .unwrap_or_else(|| crate::session_scanner::scan_sessions_for_runtime().0);
     let project_sessions: Vec<RuntimeSession> = all_sessions
         .into_iter()
         .filter(|s| s.project_path == project_path)

@@ -24,6 +24,9 @@ const TMUX_CACHE_MAX_AGE: Duration = Duration::from_secs(2);
 
 #[derive(Default)]
 struct ScannerCache {
+    /// A healthy full scan has populated `processes`/`pid_fingerprint`; a
+    /// healthy empty inventory is a valid cached state.
+    initialized: bool,
     pid_fingerprint: Vec<u32>,
     processes: Vec<process::ProcessInfo>,
     pane_map: HashMap<String, tmux::TmuxPane>,
@@ -41,6 +44,22 @@ static DISPLAY_SCAN_COMPACTION_HOOK: OnceLock<Mutex<Option<fn(&[RuntimeSession])
 #[allow(clippy::type_complexity)]
 #[cfg(test)]
 static DISPLAY_SCAN_COMPLETED_HOOK: OnceLock<Mutex<Option<fn(usize)>>> = OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn set_display_scan_compaction_hook(hook: Option<fn(&[RuntimeSession])>) {
+    *DISPLAY_SCAN_COMPACTION_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = hook;
+}
+
+#[cfg(test)]
+pub(crate) fn set_display_scan_completed_hook(hook: Option<fn(usize)>) {
+    *DISPLAY_SCAN_COMPLETED_HOOK
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = hook;
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct ScanCompletionMetrics {
@@ -196,6 +215,9 @@ where
     G: Fn() -> process::ProcessScan,
     H: Fn() -> HashMap<String, tmux::TmuxPane>,
 {
+    // The inventory cost is the fingerprint read plus any full scan it
+    // triggers; a degraded fingerprint read is the whole cost of that cycle.
+    let process_started = Instant::now();
     let current_pids = process_id_scanner();
     let current_tmux_epoch = TMUX_CHANGE_EPOCH.load(Ordering::Relaxed);
 
@@ -204,25 +226,22 @@ where
 
     let mut degraded = false;
     let mut process_cache_hit = false;
-    let mut process_scan_ms = 0u64;
     let processes = match current_pids {
         None => {
             degraded = true;
             guard.processes.clone()
         }
         Some(current_pids) => {
-            process_cache_hit =
-                !guard.processes.is_empty() && guard.pid_fingerprint == current_pids;
+            process_cache_hit = guard.initialized && guard.pid_fingerprint == current_pids;
             if process_cache_hit {
                 guard.processes.clone()
             } else {
-                let process_started = Instant::now();
                 let fresh = process_scanner();
-                process_scan_ms = process_started.elapsed().as_millis() as u64;
                 if fresh.degraded {
                     degraded = true;
                     guard.processes.clone()
                 } else {
+                    guard.initialized = true;
                     guard.processes = fresh.processes.clone();
                     guard.pid_fingerprint = current_pids;
                     fresh.processes
@@ -230,6 +249,7 @@ where
             }
         }
     };
+    let process_scan_ms = process_started.elapsed().as_millis() as u64;
 
     let tmux_cache_hit = (process_cache_hit || degraded)
         && !guard.pane_map.is_empty()
@@ -307,8 +327,19 @@ pub(crate) fn retain_state_trackers(active_pids: &[u32]) {
     }
 }
 
+/// Reported/raw hysteresis state for one PID (test inspection only).
 #[cfg(test)]
-fn clear_scan_cache() {
+pub(crate) fn state_tracker_snapshot(pid: u32) -> Option<(SessionState, SessionState)> {
+    STATE_TRACKERS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .and_then(|map| map.get(&pid))
+        .map(|tracker| (tracker.reported, tracker.prev_raw))
+}
+
+#[cfg(test)]
+pub(crate) fn clear_scan_cache() {
     if let Some(cache) = SCAN_CACHE.get() {
         let mut guard = cache.lock().unwrap_or_else(|error| error.into_inner());
         *guard = ScannerCache::default();
@@ -320,28 +351,13 @@ fn clear_scan_cache() {
 mod tests {
     use super::*;
     use crate::session_scanner::{
-        ActivityAttribution, ActivityConfidence, CliTool, SessionGroupKind,
+        ActivityAttribution, ActivityConfidence, CliTool, SessionGroupKind, SCANNER_TEST_LOCK,
     };
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
-    static SCAN_CACHE_TEST_LOCK: Mutex<()> = Mutex::new(());
     static TEST_COMPACTION_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
     static TEST_COMPLETED_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
     static TEST_COMPACTION_SESSION_IDS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-
-    fn set_display_scan_compaction_hook(hook: Option<fn(&[RuntimeSession])>) {
-        *DISPLAY_SCAN_COMPACTION_HOOK
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = hook;
-    }
-
-    fn set_display_scan_completed_hook(hook: Option<fn(usize)>) {
-        *DISPLAY_SCAN_COMPLETED_HOOK
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = hook;
-    }
 
     fn record_compaction_sessions(sessions: &[RuntimeSession]) {
         TEST_COMPACTION_SESSION_COUNT.store(sessions.len(), AtomicOrdering::SeqCst);
@@ -404,7 +420,9 @@ mod tests {
 
     #[test]
     fn finalize_display_scan_processes_runtime_compaction_and_emits_completion() {
-        let _guard = SCAN_CACHE_TEST_LOCK.lock().expect("lock");
+        let _guard = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         TEST_COMPACTION_SESSION_COUNT.store(0, AtomicOrdering::SeqCst);
         TEST_COMPLETED_SESSION_COUNT.store(0, AtomicOrdering::SeqCst);
         TEST_COMPACTION_SESSION_IDS
@@ -470,6 +488,9 @@ mod tests {
     }
     #[test]
     fn hysteresis_first_observation_reports_raw() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         assert_eq!(
             reported_state(900_001, SessionState::Idle),
             SessionState::Idle
@@ -478,6 +499,9 @@ mod tests {
     }
     #[test]
     fn hysteresis_holds_state_on_single_change() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let pid = 900_002;
         assert_eq!(reported_state(pid, SessionState::Idle), SessionState::Idle);
         assert_eq!(
@@ -489,6 +513,9 @@ mod tests {
     }
     #[test]
     fn hysteresis_switches_after_two_consecutive() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let pid = 900_003;
         assert_eq!(reported_state(pid, SessionState::Idle), SessionState::Idle);
         assert_eq!(
@@ -503,6 +530,9 @@ mod tests {
     }
     #[test]
     fn hysteresis_works_in_both_directions() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let pid = 900_004;
         assert_eq!(reported_state(pid, SessionState::Idle), SessionState::Idle);
         assert_eq!(
@@ -522,6 +552,9 @@ mod tests {
     }
     #[test]
     fn hysteresis_absorbs_alternating_readings() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let pid = 900_005;
         assert_eq!(reported_state(pid, SessionState::Idle), SessionState::Idle);
         assert_eq!(
@@ -538,6 +571,9 @@ mod tests {
     }
     #[test]
     fn retain_state_trackers_cleans_up() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let pid = 900_006;
         reported_state(pid, SessionState::Idle);
         {
@@ -556,7 +592,7 @@ mod tests {
     }
     #[test]
     fn scanner_cache_hit_reuses_process_and_tmux_data() {
-        let _lock = SCAN_CACHE_TEST_LOCK
+        let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         clear_scan_cache();
@@ -591,7 +627,7 @@ mod tests {
     }
     #[test]
     fn scanner_cache_invalidates_on_pid_change() {
-        let _lock = SCAN_CACHE_TEST_LOCK
+        let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         clear_scan_cache();
@@ -630,7 +666,7 @@ mod tests {
     }
     #[test]
     fn scanner_cache_invalidates_on_tmux_change_epoch() {
-        let _lock = SCAN_CACHE_TEST_LOCK
+        let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         clear_scan_cache();
@@ -669,7 +705,9 @@ mod tests {
     // hysteresis state. A degraded scan must leave trackers untouched.
     #[test]
     fn finalize_display_scan_does_not_prune_trackers_on_degraded() {
-        let _guard = SCAN_CACHE_TEST_LOCK.lock().expect("lock");
+        let _guard = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         set_display_scan_compaction_hook(Some(record_compaction_sessions));
         TEST_COMPACTION_SESSION_COUNT.store(usize::MAX, AtomicOrdering::SeqCst);
         let pid = 900_007;
@@ -721,6 +759,9 @@ mod tests {
 
     #[test]
     fn hysteresis_reports_previous_state_on_transition() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let pid = 900_008;
         assert_eq!(
             apply_hysteresis(pid, SessionState::Idle),
@@ -743,7 +784,7 @@ mod tests {
     // must keep the previous inventory and report the cycle as degraded.
     #[test]
     fn scanner_cache_keeps_previous_inventory_on_degraded_scan() {
-        let _lock = SCAN_CACHE_TEST_LOCK
+        let _lock = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         clear_scan_cache();
@@ -805,5 +846,66 @@ mod tests {
         assert!(!recovered.degraded);
         assert!(recovered.process_cache_hit);
         assert_eq!(full_process_calls.load(AtomicOrdering::Relaxed), 2);
+    }
+
+    // Regression: since 06b432d the cache hit required a non-empty inventory,
+    // so a healthy empty inventory (no CLI running) never hit and the full
+    // /proc walk ran every cycle. Initialization is tracked separately.
+    #[test]
+    fn scanner_cache_hits_for_healthy_empty_inventory() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        clear_scan_cache();
+
+        let full_process_calls = AtomicUsize::new(0);
+        let process_ids = || Some(Vec::new());
+        let process_scan = || {
+            full_process_calls.fetch_add(1, AtomicOrdering::Relaxed);
+            healthy_scan(Vec::new())
+        };
+        let tmux_scan = HashMap::new;
+
+        let now = Instant::now();
+        let first = scan_inputs_with_cache(now, &process_ids, &process_scan, &tmux_scan);
+        let second = scan_inputs_with_cache(
+            now + Duration::from_millis(100),
+            &process_ids,
+            &process_scan,
+            &tmux_scan,
+        );
+
+        assert!(!first.degraded);
+        assert!(!first.process_cache_hit);
+        assert!(second.process_cache_hit);
+        assert!(second.processes.is_empty());
+        assert_eq!(full_process_calls.load(AtomicOrdering::Relaxed), 1);
+    }
+
+    // Regression: `process_scan_ms` only timed the full scan, so a degraded
+    // fingerprint read — the whole inventory cost of that cycle — reported 0.
+    #[test]
+    fn process_scan_ms_includes_fingerprint_read() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        clear_scan_cache();
+
+        let process_ids = || {
+            std::thread::sleep(Duration::from_millis(15));
+            None
+        };
+        let process_scan =
+            || -> process::ProcessScan { panic!("no full scan after a failed fingerprint read") };
+        let tmux_scan = HashMap::new;
+
+        let inputs =
+            scan_inputs_with_cache(Instant::now(), &process_ids, &process_scan, &tmux_scan);
+        assert!(inputs.degraded);
+        assert!(
+            inputs.process_scan_ms >= 15,
+            "process_scan_ms must include the fingerprint read, got {}",
+            inputs.process_scan_ms
+        );
     }
 }

@@ -438,7 +438,7 @@ fn load_project_task_scan_inputs(
             }
         }
 
-        let sessions = crate::session_scanner::scan_sessions_for_runtime();
+        let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
         let claude_index = build_claude_source_index_with_live_sessions(&sessions);
         *guard = Some(ProjectTaskScanCache {
             cycle_id,
@@ -448,7 +448,7 @@ fn load_project_task_scan_inputs(
         return (sessions, claude_index);
     }
 
-    let sessions = crate::session_scanner::scan_sessions_for_runtime();
+    let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     (sessions, claude_index)
 }

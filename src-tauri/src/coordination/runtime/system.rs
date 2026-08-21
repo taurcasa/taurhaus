@@ -34,7 +34,8 @@ struct RuntimeSessionInfo {
 
 #[cfg(not(test))]
 fn collect_runtime_sessions() -> Vec<RuntimeSessionInfo> {
-    crate::session_scanner::scan_sessions_for_runtime()
+    let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
+    sessions
         .into_iter()
         .map(|session| RuntimeSessionInfo {
             tmux_pane: session.tmux_pane,

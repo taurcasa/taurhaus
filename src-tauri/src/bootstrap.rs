@@ -347,7 +347,7 @@ pub(crate) fn next_task_scan_cycle_id() -> u64 {
 }
 
 fn build_task_scan_cycle_context(cycle_id: u64) -> TaskScanCycleContext {
-    let sessions = crate::session_scanner::scan_sessions_for_runtime();
+    let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     TaskScanCycleContext {
         cycle_id,

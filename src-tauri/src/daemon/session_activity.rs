@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
@@ -144,6 +145,37 @@ struct CycleDecision {
     changed: bool,
     export_due: bool,
     interval: Duration,
+}
+
+/// Run one scanner cycle: scan, then enrich with team membership and read
+/// the tmux focus state. A degraded scan produces an inert cycle.
+fn scan_cycle(teams_dir: &Path) -> ScanCycle {
+    let (mut display_sessions, mut runtime_sessions, degraded) =
+        crate::session_scanner::scan_sessions_for_authoritative_snapshot();
+    if degraded {
+        return ScanCycle {
+            display_sessions: Vec::new(),
+            runtime_sessions: Vec::new(),
+            focus: None,
+            foreground_project_path: None,
+            degraded: true,
+        };
+    }
+
+    enrich_sessions_with_team_membership(teams_dir, &mut display_sessions);
+    enrich_runtime_sessions_with_team_membership(teams_dir, &mut runtime_sessions);
+    let focus =
+        tmux::read_focus_state(&crate::provider::platform_paths::PlatformPaths::app_data_root());
+    let foreground_project_path = focus
+        .as_ref()
+        .and_then(|focus| tmux::resolve_focus_project_path(focus, &display_sessions));
+    ScanCycle {
+        display_sessions,
+        runtime_sessions,
+        focus,
+        foreground_project_path,
+        degraded: false,
+    }
 }
 
 /// Global daemon-owned session scanner with a versioned snapshot.
@@ -297,34 +329,8 @@ impl SessionActivityHub {
 
             loop {
                 let loop_started_at = Instant::now();
-                let (mut display_sessions, mut runtime_sessions, degraded) =
-                    crate::session_scanner::scan_sessions_for_authoritative_snapshot();
                 let teams_dir = default_activity_export_teams_dir();
-                let cycle = if degraded {
-                    ScanCycle {
-                        display_sessions: Vec::new(),
-                        runtime_sessions: Vec::new(),
-                        focus: None,
-                        foreground_project_path: None,
-                        degraded: true,
-                    }
-                } else {
-                    enrich_sessions_with_team_membership(&teams_dir, &mut display_sessions);
-                    enrich_runtime_sessions_with_team_membership(&teams_dir, &mut runtime_sessions);
-                    let focus = tmux::read_focus_state(
-                        &crate::provider::platform_paths::PlatformPaths::app_data_root(),
-                    );
-                    let foreground_project_path = focus.as_ref().and_then(|focus| {
-                        tmux::resolve_focus_project_path(focus, &display_sessions)
-                    });
-                    ScanCycle {
-                        display_sessions,
-                        runtime_sessions,
-                        focus,
-                        foreground_project_path,
-                        degraded: false,
-                    }
-                };
+                let cycle = scan_cycle(&teams_dir);
 
                 let decision = hub.commit_cycle(
                     cycle,
@@ -365,6 +371,10 @@ impl SessionActivityHub {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::idle::{set_binding_store_path_for_test, CODEX_TEST_LOCK};
+    use crate::session_scanner::{clear_scan_cache, process, SCANNER_TEST_LOCK};
+    use std::sync::atomic::AtomicU8;
+    use tempfile::TempDir;
 
     fn session_with_state(state: SessionState) -> DisplaySession {
         DisplaySession {
@@ -505,6 +515,96 @@ mod tests {
         let healthy = hub.commit_cycle(cycle(idle, false), &mut cadence, Some(now), now);
         assert!(!healthy.changed);
         assert_eq!(healthy.interval, IDLE_SCAN_INTERVAL);
+    }
+
+    const HUB_INVENTORY_HEALTHY: u8 = 0;
+    const HUB_INVENTORY_FAILS: u8 = 1;
+    const HUB_INVENTORY_EMPTY: u8 = 2;
+    static HUB_INVENTORY_MODE: AtomicU8 = AtomicU8::new(HUB_INVENTORY_HEALTHY);
+    const HUB_E2E_PID: u32 = 920_001;
+
+    fn hub_inventory() -> Option<Vec<process::ProcessInfo>> {
+        match HUB_INVENTORY_MODE.load(Ordering::SeqCst) {
+            HUB_INVENTORY_FAILS => None,
+            HUB_INVENTORY_EMPTY => Some(Vec::new()),
+            _ => Some(vec![process::ProcessInfo {
+                pid: HUB_E2E_PID,
+                project_path: "/home/user/hub-e2e-project".to_string(),
+                tty: "/dev/pts/9201".to_string(),
+                args: "claude --continue".to_string(),
+                cli_tool: CliTool::Claude,
+            }]),
+        }
+    }
+
+    // Regression: the scanner loop is the hub's only source of the degraded
+    // flag; `hub_does_not_bump_version_or_export_on_degraded` injects the flag
+    // directly. This drives the real scanner with an inventory source that
+    // fails after one healthy read and asserts the hub stays inert.
+    #[test]
+    fn hub_ignores_degraded_cycle_from_real_scanner() {
+        let _scanner = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _codex = CODEX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let tmp = TempDir::new().expect("tempdir");
+        set_binding_store_path_for_test(Some(tmp.path().join("codex-bindings.json")));
+        clear_scan_cache();
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
+        process::set_inventory_provider_override(Some(hub_inventory));
+
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+
+        let healthy = hub.commit_cycle(scan_cycle(tmp.path()), &mut cadence, None, now);
+        assert!(healthy.changed);
+        assert!(healthy.export_due);
+        let snapshot = hub.snapshot();
+        assert_eq!(snapshot.version, 1);
+        assert_eq!(
+            snapshot
+                .sessions
+                .iter()
+                .map(|session| session.pid)
+                .collect::<Vec<_>>(),
+            [HUB_E2E_PID]
+        );
+
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_FAILS, Ordering::SeqCst);
+        let export_overdue = Some(now - ACTIVITY_EXPORT_REFRESH_INTERVAL - Duration::from_secs(1));
+        let degraded = hub.commit_cycle(
+            scan_cycle(tmp.path()),
+            &mut cadence,
+            export_overdue,
+            now + Duration::from_secs(1),
+        );
+        assert_eq!(
+            degraded,
+            CycleDecision {
+                changed: false,
+                export_due: false,
+                interval: ACTIVE_SCAN_INTERVAL,
+            }
+        );
+        assert_eq!(hub.snapshot(), snapshot);
+        assert!(!hub.wait_for_update(1, Duration::ZERO).changed);
+
+        // Recovery: same sessions, no new version.
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
+        let recovered = hub.commit_cycle(scan_cycle(tmp.path()), &mut cadence, Some(now), now);
+        assert!(!recovered.changed);
+        assert_eq!(hub.snapshot().version, 1);
+
+        // Teardown: a healthy empty scan prunes this test's trackers.
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_EMPTY, Ordering::SeqCst);
+        let _ = scan_cycle(tmp.path());
+        process::set_inventory_provider_override(None);
+        set_binding_store_path_for_test(None);
+        clear_scan_cache();
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
     }
 
     #[test]

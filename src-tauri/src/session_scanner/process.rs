@@ -1,11 +1,12 @@
 //! Process scanner — find CLI tool processes from the platform process inventory.
 //!
-//! Linux reads `/proc/*/cmdline` directly; other Unix platforms run `ps`.
-//! The inventory is fail-soft: when it cannot be read, the last good
+//! Linux reads `/proc/*/cmdline` directly; other Unix platforms run `ps`;
+//! Windows has no native inventory (sessions are scanned through the WSL
+//! daemon). The inventory is fail-soft: when it cannot be read, the last good
 //! inventory is reported with `ProcessScan::degraded` set so callers keep
 //! their state instead of treating the gap as "no sessions".
 
-use std::io::Read;
+use std::io::{self, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::{mpsc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -37,11 +38,34 @@ pub struct ProcessScan {
 /// Last successfully read inventory, reported verbatim on degraded scans.
 static LAST_GOOD_INVENTORY: Mutex<Vec<ProcessInfo>> = Mutex::new(Vec::new());
 
-/// Name of the inventory source, for the degraded event.
+/// Name of the inventory source, for the degraded/recovered events.
 #[cfg(target_os = "linux")]
 const INVENTORY_SOURCE: &str = "proc";
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(unix, not(target_os = "linux")))]
 const INVENTORY_SOURCE: &str = "ps";
+#[cfg(not(unix))]
+const INVENTORY_SOURCE: &str = "none";
+
+/// Test seam: replaces the enriched platform inventory read so the real
+/// scanner wiring can be driven through healthy and failed reads.
+#[cfg(test)]
+pub(crate) type InventoryProvider = fn() -> Option<Vec<ProcessInfo>>;
+#[cfg(test)]
+static INVENTORY_PROVIDER_OVERRIDE: Mutex<Option<InventoryProvider>> = Mutex::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_inventory_provider_override(provider: Option<InventoryProvider>) {
+    *INVENTORY_PROVIDER_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = provider;
+}
+
+#[cfg(test)]
+fn inventory_provider_override() -> Option<InventoryProvider> {
+    *INVENTORY_PROVIDER_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
 
 /// Scan supported CLI tool processes and enrich them from the platform.
 ///
@@ -50,12 +74,7 @@ const INVENTORY_SOURCE: &str = "ps";
 /// When the inventory itself cannot be read, returns the last good inventory
 /// with `degraded` set.
 pub fn scan_processes() -> ProcessScan {
-    let fresh = list_cli_tool_processes().map(|entries| {
-        entries
-            .into_iter()
-            .filter_map(|(pid, args, tool)| enrich_from_proc(pid, args, tool))
-            .collect()
-    });
+    let fresh = read_enriched_inventory();
     let mut last_good = LAST_GOOD_INVENTORY
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -82,10 +101,34 @@ fn resolve_process_scan(
     }
 }
 
+/// One fresh inventory read, enriched with cwd/tty; `None` when unreadable.
+fn read_enriched_inventory() -> Option<Vec<ProcessInfo>> {
+    #[cfg(test)]
+    if let Some(provider) = inventory_provider_override() {
+        return note_inventory_health(provider());
+    }
+
+    let entries = list_cli_tool_processes()?;
+    Some(
+        entries
+            .into_iter()
+            .filter_map(|(pid, args, tool)| enrich_from_proc(pid, args, tool))
+            .collect(),
+    )
+}
+
 /// Scan only detected CLI-tool PIDs (cheap fingerprint for cache checks).
 ///
 /// Returns `None` when the inventory could not be read.
 pub fn scan_process_ids() -> Option<Vec<u32>> {
+    #[cfg(test)]
+    if let Some(provider) = inventory_provider_override() {
+        let processes = note_inventory_health(provider())?;
+        let mut pids: Vec<u32> = processes.into_iter().map(|process| process.pid).collect();
+        pids.sort_unstable();
+        return Some(pids);
+    }
+
     let mut pids: Vec<u32> = list_cli_tool_processes()?
         .into_iter()
         .map(|(pid, _, _)| pid)
@@ -110,6 +153,12 @@ static PID_FINGERPRINT_CACHE: OnceLock<Mutex<PidFingerprintCache>> = OnceLock::n
 /// Returns `None` when the inventory could not be read; the cache is left
 /// untouched so the next call retries.
 pub fn scan_process_ids_cached() -> Option<Vec<u32>> {
+    #[cfg(test)]
+    if inventory_provider_override().is_some() {
+        // The injected provider is the inventory; no count-based short-circuit.
+        return scan_process_ids();
+    }
+
     let now = Instant::now();
     let proc_count = system_process_count();
     let cache = PID_FINGERPRINT_CACHE.get_or_init(|| Mutex::new(PidFingerprintCache::default()));
@@ -131,45 +180,46 @@ pub fn scan_process_ids_cached() -> Option<Vec<u32>> {
 }
 
 /// Count live process entries for cache invalidation.
+#[cfg(target_os = "linux")]
 fn system_process_count() -> Option<usize> {
-    #[cfg(target_os = "linux")]
-    {
-        let entries = std::fs::read_dir("/proc").ok()?;
-        Some(
-            entries
-                .filter_map(Result::ok)
-                .filter(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .chars()
-                        .all(|c| c.is_ascii_digit())
-                })
-                .count(),
-        )
-    }
+    let entries = std::fs::read_dir("/proc").ok()?;
+    Some(
+        entries
+            .filter_map(Result::ok)
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .chars()
+                    .all(|c| c.is_ascii_digit())
+            })
+            .count(),
+    )
+}
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let output = run_with_timeout("ps", &["-A", "-o", "pid="])?;
-        Some(
-            output
-                .lines()
-                .filter(|line| !line.trim().is_empty())
-                .count(),
-        )
-    }
+/// Count live process entries for cache invalidation (macOS and other non-Linux Unix).
+#[cfg(all(unix, not(target_os = "linux")))]
+fn system_process_count() -> Option<usize> {
+    let output = run_with_timeout("ps", &["-A", "-o", "pid="])?;
+    Some(
+        output
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .count(),
+    )
+}
+
+/// Windows has no native inventory; process inspection routes through the WSL daemon.
+#[cfg(not(unix))]
+fn system_process_count() -> Option<usize> {
+    None
 }
 
 /// Read the raw CLI-tool inventory as `(pid, args, cli_tool)` tuples.
 ///
-/// Returns `None` when the platform inventory is unavailable and emits
-/// `session_scanner.process_scan.degraded`.
+/// Returns `None` when the platform inventory is unavailable; the degraded /
+/// recovered transition events are emitted from here.
 fn list_cli_tool_processes() -> Option<Vec<(u32, String, CliTool)>> {
-    let inventory = read_cli_tool_inventory();
-    if inventory.is_none() {
-        emit_process_scan_degraded();
-    }
-    inventory
+    note_inventory_health(read_cli_tool_inventory())
 }
 
 /// Detect CLI tools from `/proc/*/cmdline`.
@@ -188,22 +238,116 @@ fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
 }
 
 /// Detect CLI tools from `ps -eo pid,args` (macOS and other non-Linux Unix).
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(unix, not(target_os = "linux")))]
 fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
     let output = run_with_timeout("ps", &["-eo", "pid,args"])?;
     Some(parse_ps_output(&output))
 }
 
-fn emit_process_scan_degraded() {
+/// Windows has no native inventory (CLI tools run inside WSL2); the session
+/// scan goes through the WSL daemon and this local read is always degraded.
+#[cfg(not(unix))]
+fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
+    None
+}
+
+/// Bounded reminder cadence while the inventory stays unreadable.
+const DEGRADED_REMINDER_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Edge-triggered health of the inventory source: one `degraded` event on
+/// entry, a bounded periodic reminder while it lasts, one `recovered` on exit.
+struct InventoryHealth {
+    degraded_since: Option<Instant>,
+    failed_reads: u64,
+    last_emitted_at: Option<Instant>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum InventoryHealthEvent {
+    Degraded {
+        failed_reads: u64,
+        degraded_for: Duration,
+    },
+    Recovered {
+        failed_reads: u64,
+        degraded_for: Duration,
+    },
+}
+
+impl InventoryHealth {
+    const fn new() -> Self {
+        Self {
+            degraded_since: None,
+            failed_reads: 0,
+            last_emitted_at: None,
+        }
+    }
+
+    fn note(&mut self, readable: bool, now: Instant) -> Option<InventoryHealthEvent> {
+        match (readable, self.degraded_since) {
+            (true, None) => None,
+            (true, Some(since)) => {
+                let event = InventoryHealthEvent::Recovered {
+                    failed_reads: self.failed_reads,
+                    degraded_for: now.duration_since(since),
+                };
+                *self = Self::new();
+                Some(event)
+            }
+            (false, None) => {
+                self.degraded_since = Some(now);
+                self.failed_reads = 1;
+                self.last_emitted_at = Some(now);
+                Some(InventoryHealthEvent::Degraded {
+                    failed_reads: 1,
+                    degraded_for: Duration::ZERO,
+                })
+            }
+            (false, Some(since)) => {
+                self.failed_reads += 1;
+                let reminder_due = self
+                    .last_emitted_at
+                    .is_none_or(|at| now.duration_since(at) >= DEGRADED_REMINDER_INTERVAL);
+                if !reminder_due {
+                    return None;
+                }
+                self.last_emitted_at = Some(now);
+                Some(InventoryHealthEvent::Degraded {
+                    failed_reads: self.failed_reads,
+                    degraded_for: now.duration_since(since),
+                })
+            }
+        }
+    }
+}
+
+static INVENTORY_HEALTH: Mutex<InventoryHealth> = Mutex::new(InventoryHealth::new());
+
+/// Record one inventory read's outcome and emit the transition events.
+fn note_inventory_health<T>(read: Option<T>) -> Option<T> {
+    let event = INVENTORY_HEALTH
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .note(read.is_some(), Instant::now());
+    match event {
+        Some(InventoryHealthEvent::Degraded {
+            failed_reads,
+            degraded_for,
+        }) => emit_process_scan_degraded(failed_reads, degraded_for),
+        Some(InventoryHealthEvent::Recovered {
+            failed_reads,
+            degraded_for,
+        }) => emit_process_scan_recovered(failed_reads, degraded_for),
+        None => {}
+    }
+    read
+}
+
+fn inventory_health_fields(failed_reads: u64, degraded_for: Duration) -> Map<String, Value> {
     let previous_inventory = LAST_GOOD_INVENTORY
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .len();
-    tracing::warn!(
-        source = INVENTORY_SOURCE,
-        previous_inventory,
-        "process inventory unavailable; keeping previous inventory"
-    );
     let mut fields = Map::new();
     fields.insert(
         "source".to_string(),
@@ -213,11 +357,47 @@ fn emit_process_scan_degraded() {
         "previous_inventory".to_string(),
         Value::Number(serde_json::Number::from(previous_inventory as u64)),
     );
+    fields.insert(
+        "failed_reads".to_string(),
+        Value::Number(serde_json::Number::from(failed_reads)),
+    );
+    fields.insert(
+        "degraded_ms".to_string(),
+        Value::Number(serde_json::Number::from(degraded_for.as_millis() as u64)),
+    );
+    fields
+}
+
+fn emit_process_scan_degraded(failed_reads: u64, degraded_for: Duration) {
+    let fields = inventory_health_fields(failed_reads, degraded_for);
+    tracing::warn!(
+        source = INVENTORY_SOURCE,
+        failed_reads,
+        degraded_ms = degraded_for.as_millis() as u64,
+        "process inventory unavailable; keeping previous inventory"
+    );
     crate::commands::logging::emit_global(
         "warn",
         "backend",
         "session_scanner.process_scan.degraded",
         Some("Process inventory unavailable; keeping previous inventory".to_string()),
+        fields,
+    );
+}
+
+fn emit_process_scan_recovered(failed_reads: u64, degraded_for: Duration) {
+    let fields = inventory_health_fields(failed_reads, degraded_for);
+    tracing::info!(
+        source = INVENTORY_SOURCE,
+        failed_reads,
+        degraded_ms = degraded_for.as_millis() as u64,
+        "process inventory readable again"
+    );
+    crate::commands::logging::emit_global(
+        "info",
+        "backend",
+        "session_scanner.process_scan.recovered",
+        Some("Process inventory readable again".to_string()),
         fields,
     );
 }
@@ -229,8 +409,9 @@ const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(2);
 /// Spawn a subprocess, drain its stdout concurrently, and wait with a timeout.
 ///
 /// Returns the stdout as a string on success. Returns `None` if the command
-/// fails to spawn, exits with error, or exceeds `SUBPROCESS_TIMEOUT`.
-/// On timeout, the child process is killed.
+/// fails to spawn, its stdout cannot be drained (thread spawn or read error),
+/// exits with error, or exceeds `SUBPROCESS_TIMEOUT`. On timeout, the child
+/// process is killed. A partial read is never reported as success.
 ///
 /// Stdout is drained on a separate thread while the child runs: a child whose
 /// output exceeds the pipe buffer would otherwise block on write and never
@@ -251,17 +432,32 @@ pub(super) fn run_with_timeout(cmd: &str, args: &[&str]) -> Option<String> {
         kill_and_reap(&mut child);
         return None;
     };
-    let (output_tx, output_rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = stdout.read_to_end(&mut buf);
-        let _ = output_tx.send(buf);
-    });
-
-    let Ok(output) = output_rx.recv_timeout(SUBPROCESS_TIMEOUT) else {
+    let (output_tx, output_rx) = mpsc::channel::<io::Result<Vec<u8>>>();
+    let drain = std::thread::Builder::new()
+        .name("scanner-stdout-drain".to_string())
+        .spawn(move || {
+            let mut buf = Vec::new();
+            let result = stdout.read_to_end(&mut buf).map(|_| buf);
+            let _ = output_tx.send(result);
+        });
+    if let Err(error) = drain {
         kill_and_reap(&mut child);
-        tracing::warn!(cmd, "Subprocess timed out after {SUBPROCESS_TIMEOUT:?}");
+        tracing::warn!(cmd, %error, "Could not spawn stdout drain thread");
         return None;
+    }
+
+    let output = match output_rx.recv_timeout(SUBPROCESS_TIMEOUT) {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            kill_and_reap(&mut child);
+            tracing::warn!(cmd, %error, "Subprocess stdout read failed");
+            return None;
+        }
+        Err(_) => {
+            kill_and_reap(&mut child);
+            tracing::warn!(cmd, "Subprocess timed out after {SUBPROCESS_TIMEOUT:?}");
+            return None;
+        }
     };
 
     // Stdout reached EOF; reap the child within the remaining budget.
@@ -405,6 +601,8 @@ fn enrich_from_proc(pid: u32, args: String, cli_tool: CliTool) -> Option<Process
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::SCANNER_TEST_LOCK;
+    use std::sync::atomic::{AtomicU8, Ordering};
 
     #[test]
     fn parse_ps_finds_bare_claude() {
@@ -539,17 +737,34 @@ mod tests {
         }
     }
 
+    const INVENTORY_HEALTHY: u8 = 0;
+    const INVENTORY_FAILS: u8 = 1;
+    const INVENTORY_EMPTY: u8 = 2;
+    static TEST_INVENTORY_MODE: AtomicU8 = AtomicU8::new(INVENTORY_HEALTHY);
+
+    fn test_inventory() -> Option<Vec<ProcessInfo>> {
+        match TEST_INVENTORY_MODE.load(Ordering::SeqCst) {
+            INVENTORY_FAILS => None,
+            INVENTORY_EMPTY => Some(Vec::new()),
+            _ => Some(vec![process_info(42)]),
+        }
+    }
+
     // Regression: latent since 9a66d1c. A timed-out `ps` became `vec![]`, which
     // every consumer read as "zero sessions" — trackers were pruned, the hub
     // bumped its version and the export wrote stall_no_active_process for every
     // member. A failed inventory read must report the previous inventory as
-    // degraded instead.
-    #[cfg(unix)]
+    // degraded instead. Drives the real `scan_processes`/`scan_process_ids`
+    // wiring (`LAST_GOOD_INVENTORY`) through the inventory seam.
     #[test]
     fn scan_processes_keeps_previous_inventory_on_degraded() {
-        let mut last_good = Vec::new();
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        TEST_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
+        set_inventory_provider_override(Some(test_inventory));
 
-        let healthy = resolve_process_scan(Some(vec![process_info(42)]), &mut last_good);
+        let healthy = scan_processes();
         assert_eq!(
             healthy,
             ProcessScan {
@@ -557,8 +772,10 @@ mod tests {
                 degraded: false,
             }
         );
+        assert_eq!(scan_process_ids(), Some(vec![42]));
 
-        let degraded = resolve_process_scan(None, &mut last_good);
+        TEST_INVENTORY_MODE.store(INVENTORY_FAILS, Ordering::SeqCst);
+        let degraded = scan_processes();
         assert_eq!(
             degraded,
             ProcessScan {
@@ -566,10 +783,21 @@ mod tests {
                 degraded: true,
             }
         );
-        assert_eq!(last_good, vec![process_info(42)]);
+        assert_eq!(
+            scan_process_ids(),
+            None,
+            "failed fingerprint read must report unreadable, not empty"
+        );
+        assert_eq!(
+            *LAST_GOOD_INVENTORY
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()),
+            vec![process_info(42)]
+        );
 
         // A healthy empty inventory is a real result, not a degraded one.
-        let emptied = resolve_process_scan(Some(vec![]), &mut last_good);
+        TEST_INVENTORY_MODE.store(INVENTORY_EMPTY, Ordering::SeqCst);
+        let emptied = scan_processes();
         assert_eq!(
             emptied,
             ProcessScan {
@@ -577,14 +805,95 @@ mod tests {
                 degraded: false,
             }
         );
-        assert!(last_good.is_empty());
+        assert!(LAST_GOOD_INVENTORY
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .is_empty());
+
+        set_inventory_provider_override(None);
+        TEST_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
     }
 
+    // Regression: `session_scanner.process_scan.degraded` was emitted on every
+    // failed read, one WARN + JSONL record per cycle for as long as the
+    // inventory stayed unreadable. Health is edge-triggered: one event on
+    // entry, a bounded reminder while it lasts, one `recovered` on exit.
+    #[test]
+    fn inventory_health_is_edge_triggered() {
+        let t0 = Instant::now();
+        let second = Duration::from_secs(1);
+        let mut health = InventoryHealth::new();
+
+        assert_eq!(health.note(true, t0), None);
+        assert_eq!(
+            health.note(false, t0),
+            Some(InventoryHealthEvent::Degraded {
+                failed_reads: 1,
+                degraded_for: Duration::ZERO,
+            })
+        );
+        assert_eq!(health.note(false, t0 + second), None);
+        assert_eq!(health.note(false, t0 + 2 * second), None);
+        assert_eq!(
+            health.note(false, t0 + DEGRADED_REMINDER_INTERVAL),
+            Some(InventoryHealthEvent::Degraded {
+                failed_reads: 4,
+                degraded_for: DEGRADED_REMINDER_INTERVAL,
+            })
+        );
+        assert_eq!(
+            health.note(false, t0 + DEGRADED_REMINDER_INTERVAL + second),
+            None
+        );
+        assert_eq!(
+            health.note(true, t0 + DEGRADED_REMINDER_INTERVAL + 2 * second),
+            Some(InventoryHealthEvent::Recovered {
+                failed_reads: 5,
+                degraded_for: DEGRADED_REMINDER_INTERVAL + 2 * second,
+            })
+        );
+        assert_eq!(
+            health.note(true, t0 + DEGRADED_REMINDER_INTERVAL + 3 * second),
+            None
+        );
+        assert_eq!(
+            health.note(false, t0 + DEGRADED_REMINDER_INTERVAL + 4 * second),
+            Some(InventoryHealthEvent::Degraded {
+                failed_reads: 1,
+                degraded_for: Duration::ZERO,
+            })
+        );
+    }
+
+    // The Linux inventory comes from /proc, not ps: a live child whose argv[0]
+    // is "claude" must show up in the fingerprint.
     #[cfg(target_os = "linux")]
     #[test]
     fn scan_process_ids_reads_live_inventory_without_ps() {
-        // The Linux inventory comes from /proc; it must be readable and sorted.
-        let pids = scan_process_ids().expect("/proc inventory readable");
+        use std::os::unix::process::CommandExt;
+
+        // The inventory seam is scanner-global; hold the lock so no test has
+        // an override installed while this reads the live inventory.
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut child = Command::new("sleep")
+            .arg0("claude")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleep as claude");
+        let pids = scan_process_ids();
+        kill_and_reap(&mut child);
+
+        let pids = pids.expect("/proc inventory readable");
+        assert!(
+            pids.contains(&child.id()),
+            "live /proc inventory must list the claude-named child {}",
+            child.id()
+        );
         assert!(pids.windows(2).all(|pair| pair[0] < pair[1]));
     }
 

@@ -30,6 +30,10 @@ pub mod proc_io;
 pub mod process;
 pub mod tmux;
 
+#[cfg(test)]
+pub(crate) use cache::{
+    clear_scan_cache, set_display_scan_compaction_hook, state_tracker_snapshot,
+};
 pub use cache::{latest_compaction_runtime_sessions, notify_tmux_changed};
 pub use cli_tool::CliTool;
 pub use scans::{
@@ -40,3 +44,8 @@ pub use types::{
     ActivityAttribution, ActivityConfidence, DisplaySession, RuntimeSession, SessionGroupKind,
     SessionState,
 };
+
+/// Serializes tests that drive the scanner's process-global state (scan
+/// cache, last-good inventories, hysteresis trackers, test overrides).
+#[cfg(test)]
+pub(crate) static SCANNER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
