@@ -2013,7 +2013,7 @@ describe('MeshTab', () => {
     await vi.advanceTimersByTimeAsync(200)
 
     expect(screen.getByTestId('mesh-node-role-card-role-name')).toHaveTextContent('Codex Architect')
-    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4')
+    expect(screen.getByTestId('mesh-node-role-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
     expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Idle')
     expect(screen.getByTestId('mesh-node-role-card-summary')).toHaveTextContent(
       'Architecture decisions and structural review'
@@ -2531,7 +2531,7 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-capture-role-name-input')).toHaveValue('frontend-dev')
     expect(screen.getByTestId('mesh-capture-role-id-input')).toHaveValue('frontend-dev')
     expect(screen.getByTestId('mesh-capture-role-tool-input')).toHaveValue('codex')
-    expect(screen.getByTestId('mesh-capture-role-model-input')).toHaveValue('gpt-5.4')
+    expect(screen.getByTestId('mesh-capture-role-model-input')).toHaveValue('gpt-5.4 high')
     expect(screen.getByTestId('mesh-capture-role-description-input')).toHaveValue(
       'Implements UI surface details for the mesh canvas.'
     )
@@ -2555,7 +2555,7 @@ describe('MeshTab', () => {
           kind: 'agent',
           defaults: expect.objectContaining({
             cliTool: 'codex',
-            model: 'gpt-5.4',
+            model: 'gpt-5.4 high',
           }),
         })
       )

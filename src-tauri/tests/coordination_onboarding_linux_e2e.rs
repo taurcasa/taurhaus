@@ -377,6 +377,9 @@ int main(int argc, char **argv) {{
         .expect("reviewer runtime should exist");
 
     let log = fs::read_to_string(&log_path).expect("read call log");
+    // tmux receives the rendered launch as a nested single-quoted shell word.
+    // Decode that one escaping layer before asserting the LaunchSpec output.
+    let rendered_log = log.replace("'\\''", "'");
     assert!(log.contains("tmux:has-session -t taurhaus"));
     assert!(log.contains("tmux:new-session -d -s taurhaus"));
     assert!(log.contains(
@@ -392,15 +395,19 @@ int main(int argc, char **argv) {{
     assert!(log.contains(&project_web.display().to_string()));
     assert!(log.contains(&project_api.display().to_string()));
 
-    assert!(log.contains(
+    assert!(rendered_log.contains(
         "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions"
     ));
-    assert!(log.contains("--team-name linux-onboarding-e2e"));
-    assert!(log.contains("--agent-name team-lead"));
-    assert!(log.contains("--agent-id team-lead@linux-onboarding-e2e"));
-    assert!(log.contains("--agent-type orchestrator"));
-    assert!(log.contains("codex --yolo -m "));
-    assert!(log.contains("gpt-5.3-codex"));
+    // Regression: 791f6be deliberately quoted LaunchSpec values and removed
+    // the invented gpt-5.3 alias, leaving this end-to-end guard stale.
+    assert!(rendered_log.contains("--team-name 'linux-onboarding-e2e'"));
+    assert!(rendered_log.contains("--agent-name 'team-lead'"));
+    assert!(rendered_log.contains("--agent-id 'team-lead@linux-onboarding-e2e'"));
+    assert!(rendered_log.contains("--agent-type 'orchestrator'"));
+    assert!(rendered_log.contains("-n 'team-lead'"));
+    assert!(rendered_log.contains("--model 'opus'"));
+    assert!(rendered_log.contains("codex --yolo -m 'gpt-5.3'"));
+    assert!(!rendered_log.contains("gpt-5.3-codex"));
     assert!(log.contains("gemini --yolo"));
     assert!(
         !log.contains("tmux:send-keys"),

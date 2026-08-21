@@ -1,6 +1,8 @@
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
-use crate::session_scanner::launch::{base_command, LaunchNote, LaunchSpec, ModelSpec};
+use crate::session_scanner::launch::{
+    base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
+};
 use serde_json::{Map, Value};
 
 use super::*;
@@ -107,7 +109,10 @@ pub(super) fn launch_cli_session_impl(
     let mut rendered_fields = Map::new();
     rendered_fields.insert("tool".to_string(), Value::String(tool.to_string()));
     rendered_fields.insert("mode".to_string(), Value::String(mode_name.clone()));
-    rendered_fields.insert("command".to_string(), Value::String(tool_cmd.clone()));
+    rendered_fields.insert(
+        "command".to_string(),
+        Value::String(redact_command_for_logging(&tool_cmd)),
+    );
     crate::commands::logging::emit_global(
         "info",
         "command_center",

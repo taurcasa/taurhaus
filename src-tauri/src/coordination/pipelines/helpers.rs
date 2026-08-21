@@ -21,7 +21,7 @@ use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
-    base_command, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+    base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
 };
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
@@ -423,7 +423,7 @@ fn render_team_launch_command(
     );
     fields.insert(
         "command".to_string(),
-        Value::String(rendered.command.clone()),
+        Value::String(redact_command_for_logging(&rendered.command)),
     );
     emit_global(
         "info",

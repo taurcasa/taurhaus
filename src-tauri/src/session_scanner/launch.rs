@@ -182,9 +182,9 @@ impl LaunchSpec<'_> {
             CliTool::Gemini => {
                 // unverified (S12): Gemini is not installed on the audit host.
                 if let Some(model) = self.model.model.as_deref() {
-                    if command_contains_flag(self.base, "-m") {
+                    if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
                         notes.push(LaunchNote::ModelIgnored {
-                            found: "-m".to_string(),
+                            found: found.to_string(),
                         });
                     } else {
                         append_flag(&mut command, "-m", model);
@@ -224,6 +224,90 @@ pub(crate) fn command_contains_flag(command: &str, flag: &str) -> bool {
 
 pub(crate) fn shell_escape(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Redact secret-like shell assignments before persisting a rendered command.
+/// The executable command remains untouched; this is only for structured logs.
+pub fn redact_command_for_logging(command: &str) -> String {
+    let mut redacted = String::with_capacity(command.len());
+    let mut cursor = 0;
+
+    while cursor < command.len() {
+        let character = command[cursor..]
+            .chars()
+            .next()
+            .expect("cursor remains on a character boundary");
+        if character.is_whitespace() {
+            redacted.push(character);
+            cursor += character.len_utf8();
+            continue;
+        }
+
+        let word_end = shell_word_end(command, cursor);
+        let word = &command[cursor..word_end];
+        if let Some((name, _)) = word.split_once('=') {
+            if is_secret_assignment_name(name) {
+                redacted.push_str(name);
+                redacted.push_str("=[REDACTED]");
+                cursor = word_end;
+                continue;
+            }
+        }
+
+        redacted.push_str(word);
+        cursor = word_end;
+    }
+
+    redacted
+}
+
+fn shell_word_end(command: &str, start: usize) -> usize {
+    let mut quote = None;
+    let mut escaped = false;
+
+    for (offset, character) in command[start..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match quote {
+            Some('\'') => {
+                if character == '\'' {
+                    quote = None;
+                }
+            }
+            Some('"') => match character {
+                '"' => quote = None,
+                '\\' => escaped = true,
+                _ => {}
+            },
+            Some(_) => unreachable!("only shell quote characters are stored"),
+            None => match character {
+                '\'' | '"' => quote = Some(character),
+                '\\' => escaped = true,
+                _ if character.is_whitespace() => return start + offset,
+                _ => {}
+            },
+        }
+    }
+
+    command.len()
+}
+
+fn is_secret_assignment_name(name: &str) -> bool {
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+    {
+        return false;
+    }
+
+    let uppercase = name.to_ascii_uppercase();
+    ["KEY", "TOKEN", "SECRET", "PASSWORD"]
+        .iter()
+        .any(|marker| uppercase.contains(marker))
 }
 
 fn first_present_flag<'a>(command: &str, flags: &'a [&str]) -> Option<&'a str> {
@@ -402,9 +486,11 @@ mod tests {
         assert!(rendered.command.contains("-n 'team-lead'"));
     }
 
+    // Regression: 791f6be replaced the captured renderer parity case with a
+    // no-op assertion whose input was already the expected output.
     #[test]
-    fn claude_team_context_matches_previous_with_claude_team_context_output() {
-        let previous_output = concat!(
+    fn claude_team_context_renders_exact_command() {
+        let expected = concat!(
             "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
             "claude --dangerously-skip-permissions ",
             "--team-name 'ledger-team' --agent-name 'team-lead' ",
@@ -414,7 +500,7 @@ mod tests {
         let rendered = LaunchSpec {
             tool: CliTool::Claude,
             mode: LaunchMode::Fresh,
-            base: previous_output,
+            base: "claude --dangerously-skip-permissions",
             model: ModelSpec::default(),
             team: Some(TeamContext {
                 team_name: "ledger-team",
@@ -424,7 +510,32 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, previous_output);
+        assert_eq!(rendered.command, expected);
+    }
+
+    #[test]
+    fn claude_render_is_idempotent_when_flags_already_present() {
+        let base = concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions ",
+            "--team-name 'ledger-team' --agent-name 'team-lead' ",
+            "--agent-id 'team-lead@ledger-team' --agent-type 'orchestrator' ",
+            "-n 'team-lead'"
+        );
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base,
+            model: ModelSpec::default(),
+            team: Some(TeamContext {
+                team_name: "ledger-team",
+                agent_name: "team-lead",
+                role: MemberRole::Lead,
+            }),
+        }
+        .render();
+
+        assert_eq!(rendered.command, base);
     }
 
     #[test]
@@ -455,5 +566,39 @@ mod tests {
 
         assert_eq!(rendered.command, "gemini --yolo -m 'gemini-3.1-pro'");
         assert!(rendered.notes.is_empty());
+    }
+
+    // Regression: 791f6be checked only Gemini's short model flag, so a
+    // free-form base using --model received a second model selection.
+    #[test]
+    fn gemini_render_respects_long_model_flag_and_notes_it() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Gemini,
+            mode: LaunchMode::Fresh,
+            base: "gemini --yolo --model gemini-2.5-pro",
+            model: model_spec("gemini-3.1-pro", None),
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "gemini --yolo --model gemini-2.5-pro");
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::ModelIgnored {
+                found: "--model".to_string()
+            }]
+        );
+    }
+
+    // Regression: 791f6be logged the free-form base verbatim, persisting API
+    // keys and other secret-like environment assignments in the JSONL sink.
+    #[test]
+    fn logged_command_redacts_secret_environment_assignments() {
+        assert_eq!(
+            redact_command_for_logging(
+                "OPENAI_API_KEY=sk-secret ACCOUNT_TOKEN='two words' SAFE=value codex --yolo"
+            ),
+            "OPENAI_API_KEY=[REDACTED] ACCOUNT_TOKEN=[REDACTED] SAFE=value codex --yolo"
+        );
     }
 }
