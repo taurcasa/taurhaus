@@ -41,10 +41,14 @@ impl DeliveryRenderer {
                 "mesh send {{recipient}} \"{{msg}}\" --team {team_name} --name {member_name} --summary \"brief\"\n",
                 "\n",
                 "Tasks:\n",
-                "mesh task list/get/update --team {team_name} --name {member_name}\n",
-                "mesh task list --team {team_name} --name {member_name}\n",
+                "mesh tasks --team {team_name} --name {member_name}\n",
                 "mesh task get <id> --team {team_name} --name {member_name}\n",
-                "mesh task update <id> --status completed --team {team_name} --name {member_name}\n",
+                "mesh task accept <id> --team {team_name} --name {member_name}\n",
+                "mesh task start <id> --team {team_name} --name {member_name} --active-form \"<working>\"\n",
+                "mesh task progress <id> --summary \"<update>\" --team {team_name} --name {member_name}\n",
+                "mesh task block <id> --reason \"<blocked>\" --team {team_name} --name {member_name}\n",
+                "mesh task review <id> --summary \"<handoff>\" --team {team_name} --name {member_name}\n",
+                "mesh task complete <id> --summary \"<result>\" --team {team_name} --name {member_name}\n",
                 "\n",
                 "Work contract:\n",
                 "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
@@ -350,11 +354,46 @@ mod tests {
         assert!(rendered.contains(
             "mesh send {recipient} \"{msg}\" --team architecture-final --name codex-reviewer --summary \"brief\""
         ));
+        assert!(rendered.contains("mesh tasks --team architecture-final --name codex-reviewer"));
+        assert!(
+            rendered.contains("mesh task get <id> --team architecture-final --name codex-reviewer")
+        );
         assert!(rendered
-            .contains("mesh task list/get/update --team architecture-final --name codex-reviewer"));
+            .contains("mesh task accept <id> --team architecture-final --name codex-reviewer"));
+        assert!(rendered.contains(
+            "mesh task start <id> --team architecture-final --name codex-reviewer --active-form \"<working>\""
+        ));
+        assert!(rendered.contains(
+            "mesh task progress <id> --summary \"<update>\" --team architecture-final --name codex-reviewer"
+        ));
+        assert!(rendered.contains(
+            "mesh task block <id> --reason \"<blocked>\" --team architecture-final --name codex-reviewer"
+        ));
+        assert!(rendered.contains(
+            "mesh task review <id> --summary \"<handoff>\" --team architecture-final --name codex-reviewer"
+        ));
+        assert!(rendered.contains(
+            "mesh task complete <id> --summary \"<result>\" --team architecture-final --name codex-reviewer"
+        ));
         assert!(rendered.contains("If context compaction happens and you have no unread messages"));
         assert!(rendered.contains("Do not assume you are done"));
         assert!(rendered.contains("If blocked, send blocker details to team-lead immediately."));
+    }
+
+    #[test]
+    fn rendered_onboarding_contains_no_task_list_or_task_update() {
+        // Regression: commit 5cebfef taught agents a nonexistent task-list command and a
+        // lead-only task-update command, so they could not inspect or complete assigned work
+        // (mesh-findings P4).
+        let rendered = DeliveryRenderer::render_onboarding(
+            "architecture-final",
+            "codex-reviewer",
+            "team-lead",
+            RoleContext::default(),
+        );
+
+        assert!(!rendered.contains("task list"));
+        assert!(!rendered.contains("task update"));
     }
 
     #[test]
@@ -378,10 +417,14 @@ mod tests {
             "mesh send {recipient} \"{msg}\" --team architecture-final --name codex-reviewer --summary \"brief\"\n",
             "\n",
             "Tasks:\n",
-            "mesh task list/get/update --team architecture-final --name codex-reviewer\n",
-            "mesh task list --team architecture-final --name codex-reviewer\n",
+            "mesh tasks --team architecture-final --name codex-reviewer\n",
             "mesh task get <id> --team architecture-final --name codex-reviewer\n",
-            "mesh task update <id> --status completed --team architecture-final --name codex-reviewer\n",
+            "mesh task accept <id> --team architecture-final --name codex-reviewer\n",
+            "mesh task start <id> --team architecture-final --name codex-reviewer --active-form \"<working>\"\n",
+            "mesh task progress <id> --summary \"<update>\" --team architecture-final --name codex-reviewer\n",
+            "mesh task block <id> --reason \"<blocked>\" --team architecture-final --name codex-reviewer\n",
+            "mesh task review <id> --summary \"<handoff>\" --team architecture-final --name codex-reviewer\n",
+            "mesh task complete <id> --summary \"<result>\" --team architecture-final --name codex-reviewer\n",
             "\n",
             "Work contract:\n",
             "Acknowledge assignment, execute, then report completion with artifacts and test results.\n",
