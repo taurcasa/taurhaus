@@ -77,8 +77,8 @@ Requirement (user, 2026-08-21): adapters are sliced by *capability*, not by tool
 | Capability | Claude Code | Codex | Gemini | Fallback |
 |---|---|---|---|---|
 | Model + effort | `--model`, `--effort` | `-m`, `-c model_reasoning_effort` | `-m` (**unverified**) | base command from `CliCommandSettings` unchanged |
-| Session identity / pane | sessions registry (`sessionId`, `tmux`, `cwd`; live `~/.claude-account2/sessions/121191.json`) | fd-verified rollout binding (`idle/codex.rs:313-359`) | transcript mtime | `/proc` + `tmux list-panes` |
-| Busy / idle | registry `status` busy/idle/shell, authoritative (S1) | `-c notify` turn-complete (PR 13); until then fd binding + time-normalised rchar | mtime + TCP:443 | rchar hysteresis |
+| Session identity / pane | sessions registry (`sessionId`, `tmux`, `cwd`; live `~/.claude-account2/sessions/121191.json`), read under the pid's own `CLAUDE_CONFIG_DIR` (PR 3) | fd-verified rollout binding (`idle/codex.rs:313-359`) | transcript mtime | `/proc` + `tmux list-panes` |
+| Busy / idle | registry `status` `busy`/`idle`/`waiting`(permission prompt)/`shell`, authoritative — skips rchar and hysteresis (PR 3, S1 measured) | `-c notify` turn-complete (PR 13); until then fd binding + time-normalised rchar | mtime + TCP:443 | rchar hysteresis |
 | Deliver operator notice | inbox append (native poller) | inbox append + `mesh daemon` wake; `codex queue` when ≥0.149, version-gated | inbox append + `mesh daemon` | none needed |
 | Peer display name | `-n <agent_name>` so ListAgents shows taurhaus names | n/a | n/a | n/a |
 | Compaction reinjection | `SessionStart(compact)` hook (today) | `SessionStart(compact)` hook via `~/.codex/hooks.json` (PR 9, S6) | none | hardened JSONL tailer, opt-in |
@@ -168,7 +168,7 @@ Rollout rule for every mesh change: bump → `just check` in mesh → taurhaus `
 
 | ID | Question | Probe | Blocks |
 |---|---|---|---|
-| S1 | Claude registry `status` cadence; is "waiting on permission" distinguishable? | `inotifywait` on `~/.claude-account2/sessions/<pid>.json` through prompt/tool/permission/idle | PR 3 weighting |
+| S1 | Claude registry `status` cadence; is "waiting on permission" distinguishable? | **Executed 2026-08-21 (PR 3)**: 50 ms stat-poll on `~/.claude-account2/sessions/<pid>.json` across a scratch session's full prompt → tool → permission-prompt → idle cycle | **Answered — yes, `status: "waiting"`.** See "S1 result" below; PR 3 shipped on it |
 | S2 | `list-clients` `focused` flag when attached from Windows Terminal via `wsl.exe`; two clients | switch with `prefix+s`, detach/attach, second client | PR 8 |
 | S3 | Is `CLAUDECODE=1` (`helpers.rs:412-414`) harmless on 2.1.238 or a nested-session signal? | launch with/without, inspect the registry entry | PR 4 |
 | S6 | Codex 0.147: does `SessionStart(source=compact)` fire, is `additionalContext` honoured, does `PostCompact` double-fire, is `session_id` the rollout id, trust UX | scratch `~/.codex/hooks.json` logging hook + forced compaction | PR 9 |
@@ -183,6 +183,14 @@ Rollout rule for every mesh change: bump → `just check` in mesh → taurhaus `
 | S14 | Does Claude Code's team inbox poller treat a `from: "taurhaus"` non-member append exactly like a teammate message (production path since 76c284e)? | append to a live Claude member's inbox, watch the session | PR 7 single writer |
 | S15 | pi as a long-tail harness: one v3 role (e.g. `quick-dev-codex`) on `gpt-5.6-terra` at a fixed effort via pi in a tmux pane with a `mesh daemon` (the floor) vs Codex CLI, same taureval cases and judge; compare score, cost, latency, and what the pi side lacked (hooks, transcript, idle cue) | taureval run with PR 11b's `run_config` (`adapter: pi` vs `codex-cli`), held-out cases, two arms | nothing in PR 0–15. Decision rule: vendor CLI where strong (Claude Code, Codex CLI); pi adapter only for models without a good CLI (Grok, Kimi, Gemini-vNext — later). If adopted, pi becomes a bundled, version-locked taurhaus deliverable like mesh and enters through the "Adding a CLI" checklist — the first real exercise of PR 15's registry |
 | S16 | Does Claude Code 2.1.238 preserve unknown member fields (`controlAuthTokenHash`, `lastActivity*`) and tolerate mesh-written `model/backendType` on the lead entry when it registers teammates or rewrites `config.json` (mesh-findings Q3)? | live Claude-lead team after PR 7's lead join: diff `config.json` across a teammate add and a session restart | PR 7 lead join stays vs PR 12 fallback |
+
+**S1 result (measured 2026-08-21, Claude Code 2.1.238, scratch session in tmux, 50 ms stat-poll, 10 registry writes over ~135 s).**
+
+- **"Waiting on permission" *is* distinguishable: `status: "waiting"`.** A pending Bash approval prompt moved the record `busy → waiting` 3.47 s after the turn started, and `waiting → idle` when the prompt was cancelled. Full status alphabet observed: `busy`, `idle`, `waiting`. `shell` was not reproduced in this run; PR 3 maps it defensively and treats any *unrecognised* status as "not authoritative" rather than guessing.
+- **Cadence is edge-driven, not a heartbeat.** `updatedAt`/`statusUpdatedAt` advance only on a status change (they were equal in every one of the 10 samples; one extra write just after startup carried both unchanged), and an idle session's record can be hours old — live `121191.json` is `idle` with `updatedAt` 19.4 h stale while the process is healthy. Consequence for PR 3: staleness is *not* evidence and must never be used as an expiry; the gate is registry presence + version, not freshness.
+- **Latency is well inside one scanner tick.** Each rewrite landed 11–64 ms after the embedded `updatedAt` (median ~40 ms), so even the 1500 ms idle cadence sees a transition on the next poll. No inotify watch is needed.
+- **Lifecycle.** `<pid>.json` appears only after the workspace-trust prompt is accepted (the `<pid>.<hash>.key` sidecar is written earlier) and is deleted on clean exit — so "record present" already implies "session initialised".
+- **Weighting decision.** Authoritative wins outright: PR 3 skips the rchar poll and the display hysteresis whenever the registry answers. `waiting` maps to `Idle` for now (the session is blocked on the human); a dedicated display state for it is a product decision, not a harness fix.
 
 Closed by review: S5 (`show-hooks -g` re-serialization) is moot because PR 1 matches on the embedded focus path, not the whole command string. Also closed: the mesh member daemon watches the inbox's parent directory non-recursively (`mesh/src/daemon.rs:697-706`), so a taurhaus append wakes it; PR 7 also adopts mesh's flock + inode re-check, so the unlocked tmp+rename question (`stores/inbox.rs:107-112`) is moot.
 

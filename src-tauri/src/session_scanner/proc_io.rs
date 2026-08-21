@@ -33,19 +33,45 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-/// Minimum rchar delta (bytes) per poll interval to trigger activity.
+/// Minimum sustained read rate (bytes/second) that counts as activity.
 ///
-/// 500 bytes gives clean separation with 2x margin above Claude's idle noise
-/// (0-240 bytes) and catches even the smallest Codex/Gemini bursts (7K+).
-const ACTIVE_IO_THRESHOLD: u64 = 500;
+/// Calibrated as the original 500 bytes per 500 ms poll: 2x margin above
+/// Claude's idle noise (0-240 bytes/500ms) and far below the smallest
+/// Codex/Gemini bursts (7K+). Expressed as a rate because the scanner cadence
+/// is not fixed — it flips between 500 ms and 1500 ms
+/// (`daemon::session_activity::{ACTIVE_SCAN_INTERVAL, IDLE_SCAN_INTERVAL}`).
+const ACTIVE_IO_RATE_BYTES_PER_SEC: u64 = 1_000;
 
 /// Per-PID tracking state for IO activity detection (Claude only).
 struct IoState {
     /// Previous rchar value (for computing delta).
     prev_rchar: u64,
+    /// When `prev_rchar` was sampled, so the delta can be turned into a rate.
+    sampled_at: Instant,
     /// Whether the PREVIOUS poll showed activity above threshold.
     was_active: bool,
+}
+
+/// Whether an rchar delta observed over `elapsed` clears the activity rate.
+fn is_active_rate(delta_bytes: u64, elapsed: Duration) -> bool {
+    let elapsed_ms = u64::try_from(elapsed.as_millis())
+        .unwrap_or(u64::MAX)
+        .max(1);
+    delta_bytes.saturating_mul(1_000) / elapsed_ms >= ACTIVE_IO_RATE_BYTES_PER_SEC
+}
+
+/// One hysteresis step: `(active_now, confirmed)` for a fresh rchar sample.
+fn hysteresis_step(previous: Option<&IoState>, current: u64, now: Instant) -> (bool, bool) {
+    match previous {
+        Some(state) => {
+            let delta = current.saturating_sub(state.prev_rchar);
+            let active_now = is_active_rate(delta, now.saturating_duration_since(state.sampled_at));
+            (active_now, active_now && state.was_active)
+        }
+        None => (false, false),
+    }
 }
 
 /// IO tracking state keyed by PID, protected by a mutex for thread safety.
@@ -69,24 +95,18 @@ pub fn is_process_active_hysteresis(pid: u32) -> bool {
         Some(v) => v,
         None => return false,
     };
+    let now = Instant::now();
 
     let mut guard = IO_STATE.lock().unwrap_or_else(|e| e.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
 
-    let (active_now, confirmed) = match map.get(&pid) {
-        Some(state) => {
-            let delta = current.saturating_sub(state.prev_rchar);
-            let active_now = delta >= ACTIVE_IO_THRESHOLD;
-            let confirmed = active_now && state.was_active;
-            (active_now, confirmed)
-        }
-        None => (false, false),
-    };
+    let (active_now, confirmed) = hysteresis_step(map.get(&pid), current, now);
 
     map.insert(
         pid,
         IoState {
             prev_rchar: current,
+            sampled_at: now,
             was_active: active_now,
         },
     );
@@ -145,73 +165,70 @@ mod tests {
 
     // -- Hysteresis tests (Claude) --
 
+    /// One poll against the real hysteresis step.
+    fn poll(state: &mut Option<IoState>, rchar: u64, at: Instant) -> bool {
+        let (active_now, confirmed) = hysteresis_step(state.as_ref(), rchar, at);
+        *state = Some(IoState {
+            prev_rchar: rchar,
+            sampled_at: at,
+            was_active: active_now,
+        });
+        confirmed
+    }
+
     #[test]
     fn hysteresis_requires_two_consecutive_active_polls() {
-        let mut map: HashMap<u32, IoState> = HashMap::new();
-        let pid = 888_888u32;
+        let start = Instant::now();
+        let mut state = None;
 
-        map.insert(
-            pid,
-            IoState {
-                prev_rchar: 1000,
-                was_active: false,
-            },
-        );
-
-        // Poll 2: large delta but previous was_active=false → not confirmed
-        let state = map.get(&pid).unwrap();
-        let delta = 2000u64.saturating_sub(state.prev_rchar);
-        let active_now = delta >= ACTIVE_IO_THRESHOLD;
-        let confirmed = active_now && state.was_active;
-        assert!(active_now);
-        assert!(!confirmed);
-
-        map.insert(
-            pid,
-            IoState {
-                prev_rchar: 2000,
-                was_active: active_now,
-            },
-        );
-
-        // Poll 3: still large delta AND previous was_active=true → confirmed
-        let state = map.get(&pid).unwrap();
-        let delta = 3000u64.saturating_sub(state.prev_rchar);
-        let active_now = delta >= ACTIVE_IO_THRESHOLD;
-        let confirmed = active_now && state.was_active;
-        assert!(active_now);
-        assert!(confirmed);
+        assert!(!poll(&mut state, 1000, start));
+        // Poll 2: large delta but the previous poll was quiet → not confirmed.
+        assert!(!poll(&mut state, 2000, start + Duration::from_millis(500)));
+        // Poll 3: still busy AND the previous poll was busy → confirmed.
+        assert!(poll(&mut state, 3000, start + Duration::from_millis(1000)));
     }
 
     #[test]
     fn single_spike_not_reported_as_active() {
-        let mut map: HashMap<u32, IoState> = HashMap::new();
-        let pid = 888_889u32;
+        let start = Instant::now();
+        let mut state = None;
 
-        map.insert(
-            pid,
-            IoState {
-                prev_rchar: 1000,
-                was_active: false,
-            },
-        );
+        assert!(!poll(&mut state, 1000, start));
+        assert!(!poll(&mut state, 2000, start + Duration::from_millis(500)));
+        assert!(!poll(&mut state, 2010, start + Duration::from_millis(1000)));
+    }
 
-        let state = map.get(&pid).unwrap();
-        let active_now = 2000u64.saturating_sub(state.prev_rchar) >= ACTIVE_IO_THRESHOLD;
-        let confirmed = active_now && state.was_active;
-        assert!(!confirmed);
-        map.insert(
-            pid,
-            IoState {
-                prev_rchar: 2000,
-                was_active: active_now,
-            },
-        );
+    // Regression: 9a66d1c compared a poll's raw rchar delta against a fixed
+    // 500-byte threshold, but the scanner cadence flips between 500 ms and
+    // 1500 ms (`daemon::session_activity::{ACTIVE,IDLE}_SCAN_INTERVAL`, dual
+    // cadence since 3291970). On the 1500 ms cadence the same 500 bytes is a
+    // third of the calibrated rate, so idle keep-alive traffic read as work.
+    #[test]
+    fn rchar_activity_is_normalised_to_bytes_per_second() {
+        // The calibration point: 500 bytes per 500 ms poll.
+        assert!(is_active_rate(500, Duration::from_millis(500)));
+        assert!(!is_active_rate(499, Duration::from_millis(500)));
 
-        let state = map.get(&pid).unwrap();
-        let active_now = 2010u64.saturating_sub(state.prev_rchar) >= ACTIVE_IO_THRESHOLD;
-        let confirmed = active_now && state.was_active;
-        assert!(!confirmed);
+        // The same 500 bytes over the idle cadence is a third of the rate.
+        assert!(!is_active_rate(500, Duration::from_millis(1500)));
+        assert!(is_active_rate(1500, Duration::from_millis(1500)));
+    }
+
+    #[test]
+    fn hysteresis_uses_the_actual_poll_interval() {
+        let start = Instant::now();
+
+        // 500 bytes twice on the 500 ms cadence: confirmed active.
+        let mut fast = None;
+        poll(&mut fast, 1_000, start);
+        poll(&mut fast, 1_500, start + Duration::from_millis(500));
+        assert!(poll(&mut fast, 2_000, start + Duration::from_millis(1000)));
+
+        // The same byte counts on the 1500 ms cadence: still idle.
+        let mut slow = None;
+        poll(&mut slow, 1_000, start);
+        poll(&mut slow, 1_500, start + Duration::from_millis(1500));
+        assert!(!poll(&mut slow, 2_000, start + Duration::from_millis(3000)));
     }
 
     // -- has_api_connections --
@@ -242,6 +259,7 @@ mod tests {
                 777_777,
                 IoState {
                     prev_rchar: 12345,
+                    sampled_at: Instant::now(),
                     was_active: false,
                 },
             );

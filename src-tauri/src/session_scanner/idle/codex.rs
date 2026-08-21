@@ -341,18 +341,26 @@ where
     }
 
     let candidates = codex_find_sessions_for_project(project_path, sessions_dir);
-    let resolved = match candidates.as_slice() {
-        [] => None,
-        [only] => Some(codex_result_from_file(only)),
-        _ => candidates
-            .into_iter()
-            .find(|path| file_open_by_pid(path))
-            .map(|path| codex_result_from_file(&path)),
+    // `fd_proven` is the difference between "this PID has the transcript open"
+    // and "this project has exactly one transcript". Only the former is durable
+    // enough to persist: a second pane in the same project would otherwise
+    // inherit the guess from the store.
+    let (resolved, fd_proven) = match candidates.as_slice() {
+        [] => (None, false),
+        [only] => (Some(codex_result_from_file(only)), file_open_by_pid(only)),
+        _ => match candidates.iter().find(|path| file_open_by_pid(path)) {
+            Some(path) => (Some(codex_result_from_file(path)), true),
+            None => (None, false),
+        },
     };
 
     match resolved {
         Some(result) => {
-            persist_binding(project_path, pid, pane_id, &result);
+            if fd_proven {
+                persist_binding(project_path, pid, pane_id, &result);
+            } else {
+                invalidate_binding(project_path, pid, pane_id);
+            }
             result
         }
         None => {
@@ -388,6 +396,7 @@ fn codex_result_from_file(path: &Path) -> IdleResult {
         session_id,
         jsonl_path: Some(file_path),
         last_output_age_secs: output_mtime.map(age_secs_since_mtime),
+        authoritative: false,
     }
 }
 
@@ -858,6 +867,50 @@ mod tests {
             reused.jsonl_path.as_deref(),
             Some(jsonl_path.to_string_lossy().as_ref())
         );
+    }
+
+    // Regression: a11c347 persisted a binding for any resolved transcript. With
+    // a single candidate the resolution is a project-level guess, not proof
+    // that this PID owns the file, so a second Codex pane in the same project
+    // inherited the first pane's transcript from the store.
+    #[test]
+    fn codex_single_candidate_binding_is_not_persisted_without_fd_proof() {
+        let _guard = CODEX_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = TempDir::new().unwrap();
+        setup_binding_store(&tmp);
+        let project = "/home/user/projects/myapp";
+        let today = chrono::Local::now().date_naive();
+        let date_dir = tmp
+            .path()
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+
+        let jsonl_path = create_codex_session(
+            &date_dir,
+            "rollout-2026-02-21T16-05-00-only-uuid.jsonl",
+            project,
+        );
+
+        // The single candidate still answers this poll...
+        let guessed =
+            codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|_| false);
+        assert_eq!(guessed.session_id.as_deref(), Some("only-uuid"));
+
+        // ...but nothing is written to the binding store without fd proof.
+        let key = binding_key(project, 42, Some("%1"));
+        with_binding_store(|bindings, _| {
+            assert!(!bindings.contains_key(&key));
+        });
+
+        // fd proof persists it.
+        let proven = codex_detect_idle_for_pid_with(project, 42, Some("%1"), tmp.path(), &|path| {
+            path == jsonl_path
+        });
+        assert_eq!(proven.session_id.as_deref(), Some("only-uuid"));
+        with_binding_store(|bindings, _| {
+            assert!(bindings.contains_key(&key));
+        });
     }
 
     #[test]

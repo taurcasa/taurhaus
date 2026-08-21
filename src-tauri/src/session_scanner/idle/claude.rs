@@ -1,20 +1,27 @@
+use super::claude_registry;
 use super::*;
+use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::cli_tool::{config_for, CliTool};
 use std::path::{Path, PathBuf};
 
-/// Resolves Claude Code session files from `~/.claude/projects/<slug>/`.
+/// Environment variable that moves a Claude session's whole config root.
+const CLAUDE_CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
+
+/// Resolves Claude Code session files from `<config dir>/projects/<slug>/`.
 ///
 /// Claude Code writes session transcripts as JSONL files. During compaction,
 /// a subagent writes to `<session-id>/subagents/agent-acompact-*.jsonl`.
 /// Both locations are checked for activity.
 pub struct ClaudeResolver {
-    /// `~/.claude/projects/` (or None if $HOME is unavailable).
+    /// Transcript root for the app's own config dir.
     base_dir: Option<PathBuf>,
 }
 
 impl ClaudeResolver {
     pub fn new() -> Self {
-        let base_dir = dirs::home_dir().map(|h| h.join(".claude").join("projects"));
-        Self { base_dir }
+        Self {
+            base_dir: Some(PlatformPaths::tool_session_root(CliTool::Claude)),
+        }
     }
 }
 
@@ -32,6 +39,55 @@ impl SessionResolver for ClaudeResolver {
         };
         claude_detect_idle(project_path, base)
     }
+}
+
+/// Per-process Claude detection.
+///
+/// Prefers the sessions registry the process itself writes; falls back to the
+/// transcript heuristic under that process's own config root.
+pub(super) fn claude_detect_runtime_idle(project_path: &str, pid: u32) -> IdleResult {
+    claude_detect_runtime_idle_with(project_path, pid, &process_env_var)
+}
+
+fn process_env_var(pid: u32, name: &str) -> Option<String> {
+    crate::platform::process_env_var(pid, name)
+}
+
+pub(super) fn claude_detect_runtime_idle_with<F>(
+    project_path: &str,
+    pid: u32,
+    env_lookup: &F,
+) -> IdleResult
+where
+    F: Fn(u32, &str) -> Option<String>,
+{
+    let config_dir = claude_config_dir_for_pid(pid, env_lookup);
+
+    if let Some(result) = claude_registry::detect_idle_from_registry(project_path, pid, &config_dir)
+    {
+        return result;
+    }
+
+    claude_detect_idle(
+        project_path,
+        &config_dir.join(config_for(CliTool::Claude).projects_subdir),
+    )
+}
+
+/// Config root a specific Claude process is using.
+///
+/// Sessions launched with `CLAUDE_CONFIG_DIR=<other root>` keep their registry
+/// records *and* their transcripts under that root. Resolving it per process is
+/// what makes a second-account session visible at all.
+pub(super) fn claude_config_dir_for_pid<F>(pid: u32, env_lookup: &F) -> PathBuf
+where
+    F: Fn(u32, &str) -> Option<String>,
+{
+    env_lookup(pid, CLAUDE_CONFIG_DIR_ENV)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(PlatformPaths::claude_dir)
 }
 
 /// Core Claude idle detection logic — shared by ClaudeResolver and detect_idle_in().
@@ -75,6 +131,7 @@ pub(super) fn claude_detect_idle(project_path: &str, projects_dir: &Path) -> Idl
         session_id,
         jsonl_path: Some(jsonl_path),
         last_output_age_secs,
+        authoritative: false,
     }
 }
 
@@ -89,6 +146,128 @@ mod tests {
     fn filetime_set_mtime(path: &Path, time: SystemTime) {
         let file = File::options().write(true).open(path).unwrap();
         file.set_modified(time).unwrap();
+    }
+
+    /// Env map stand-in for `/proc/<pid>/environ`.
+    fn env_map(pairs: &[(u32, &str, &str)]) -> impl Fn(u32, &str) -> Option<String> + use<> {
+        let owned: Vec<(u32, String, String)> = pairs
+            .iter()
+            .map(|(pid, key, value)| (*pid, key.to_string(), value.to_string()))
+            .collect();
+        move |pid, name| {
+            owned
+                .iter()
+                .find(|(entry_pid, key, _)| *entry_pid == pid && key == name)
+                .map(|(_, _, value)| value.clone())
+        }
+    }
+
+    fn write_registry_record(
+        config_dir: &Path,
+        pid: u32,
+        session_id: &str,
+        cwd: &str,
+        status: &str,
+    ) {
+        let dir = config_dir.join("sessions");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(format!("{pid}.json")),
+            format!(
+                r#"{{"pid":{pid},"sessionId":"{session_id}","cwd":"{cwd}","version":"2.1.238","tmux":"taurhaus:@3.%3","name":"taurhaus-00","status":"{status}","updatedAt":1787327562655}}"#
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_transcript(config_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
+        let dir = config_dir.join("projects").join(path_to_slug(cwd));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("{session_id}.jsonl"));
+        let mut f = File::create(&path).unwrap();
+        writeln!(f, "{{}}").unwrap();
+        f.sync_all().unwrap();
+        path
+    }
+
+    // Regression: 9a66d1c shipped `ClaudeResolver` with `~/.claude/projects`
+    // hardcoded (moved verbatim into this module by b7cf393). Every live Claude
+    // session on this host runs with `CLAUDE_CONFIG_DIR=~/.claude-account2`, so
+    // the transcript was never found and the session stayed permanently
+    // "uncertain" (yellow) in the sidebar.
+    #[test]
+    fn runtime_idle_reads_the_transcript_under_the_process_claude_config_dir() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join(".claude-account2");
+        let project = "/home/user/projects/foo";
+        let transcript = write_transcript(&config_dir, project, "session-under-account2");
+
+        let lookup = env_map(&[(
+            4242,
+            "CLAUDE_CONFIG_DIR",
+            config_dir.to_string_lossy().as_ref(),
+        )]);
+        let result = claude_detect_runtime_idle_with(project, 4242, &lookup);
+
+        assert_eq!(result.session_id.as_deref(), Some("session-under-account2"));
+        assert_eq!(
+            result.jsonl_path.as_deref(),
+            Some(transcript.to_string_lossy().as_ref())
+        );
+        assert_eq!(result.state, SessionState::Active);
+    }
+
+    #[test]
+    fn runtime_idle_prefers_the_sessions_registry_over_the_transcript_mtime() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join(".claude-account2");
+        let project = "/home/user/projects/foo";
+        // Fresh transcript: the mtime heuristic would say Active.
+        write_transcript(&config_dir, project, "registry-session");
+        write_registry_record(&config_dir, 4242, "registry-session", project, "idle");
+
+        let lookup = env_map(&[(
+            4242,
+            "CLAUDE_CONFIG_DIR",
+            config_dir.to_string_lossy().as_ref(),
+        )]);
+        let result = claude_detect_runtime_idle_with(project, 4242, &lookup);
+
+        assert_eq!(result.state, SessionState::Idle);
+        assert!(result.authoritative);
+        assert_eq!(result.session_id.as_deref(), Some("registry-session"));
+    }
+
+    #[test]
+    fn runtime_idle_without_a_registry_is_not_authoritative() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join(".claude-account2");
+        let project = "/home/user/projects/foo";
+        write_transcript(&config_dir, project, "heuristic-session");
+
+        let lookup = env_map(&[(
+            4242,
+            "CLAUDE_CONFIG_DIR",
+            config_dir.to_string_lossy().as_ref(),
+        )]);
+        let result = claude_detect_runtime_idle_with(project, 4242, &lookup);
+
+        assert!(!result.authoritative);
+    }
+
+    #[test]
+    fn claude_config_dir_falls_back_to_the_app_root_when_unset() {
+        let lookup = env_map(&[]);
+        assert_eq!(
+            claude_config_dir_for_pid(4242, &lookup),
+            PlatformPaths::claude_dir()
+        );
+
+        let blank = env_map(&[(4242, "CLAUDE_CONFIG_DIR", "   ")]);
+        assert_eq!(
+            claude_config_dir_for_pid(4242, &blank),
+            PlatformPaths::claude_dir()
+        );
     }
 
     #[test]
