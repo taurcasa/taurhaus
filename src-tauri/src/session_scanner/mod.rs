@@ -1,7 +1,7 @@
 //! Session scanner — detects CLI tool sessions running in tmux.
 //!
 //! Combines three detection strategies:
-//! 1. Process scanning (ps + /proc) — find supported CLI tool processes and project paths
+//! 1. Process scanning (`/proc` on Linux, `ps` on macOS; fail-soft) — find supported CLI tool processes and project paths
 //! 2. tmux mapping — map terminal TTYs to tmux pane/window IDs
 //! 3. Idle detection — check tool-specific transcript/runtime signals to determine active vs idle
 //!

@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::cache::{
     finalize_display_scan, publish_compaction_runtime_sessions, scan_inputs_with_cache,
-    ScanCompletionMetrics,
+    ScanCompletionMetrics, ScanInputs,
 };
 use super::classification::{
     classify_display_runtime_sessions_with, deduplicate_runtime_sessions,
@@ -39,11 +39,17 @@ pub fn scan_sessions_for_display() -> Vec<DisplaySession> {
     scan_sessions_for_authoritative_snapshot().0
 }
 
-/// Scan once and return both the UI-safe display view and the full runtime view.
+/// Scan once and return the UI-safe display view, the full runtime view, and
+/// whether the scan was degraded.
 ///
 /// This is the authoritative combined scan used by daemon-side snapshot
 /// production so consumers do not repeat process/tmux classification work.
-pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<RuntimeSession>) {
+///
+/// A degraded scan (`true`) means the process inventory could not be read:
+/// the sessions are re-classified from the previous inventory and must not
+/// drive pruning, versioning, or exports.
+pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<RuntimeSession>, bool)
+{
     #[cfg(target_os = "windows")]
     if let Some(display_sessions) = daemon::scan_display_sessions_via_daemon() {
         let runtime_sessions = daemon::scan_runtime_sessions_via_daemon().unwrap_or_default();
@@ -52,17 +58,24 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
             Some(&runtime_sessions),
             ScanCompletionMetrics::default(),
         );
-        return (display_sessions, runtime_sessions);
+        return (display_sessions, runtime_sessions, false);
     }
 
     let scan_started = Instant::now();
-    let (processes, pane_map, process_cache_hit, tmux_cache_hit, process_scan_ms, tmux_ms) =
-        scan_inputs_with_cache(
-            scan_started,
-            &process::scan_process_ids_cached,
-            &process::scan_processes,
-            &tmux::list_panes,
-        );
+    let ScanInputs {
+        processes,
+        pane_map,
+        process_cache_hit,
+        tmux_cache_hit,
+        process_scan_ms,
+        tmux_ms,
+        degraded,
+    } = scan_inputs_with_cache(
+        scan_started,
+        &process::scan_process_ids_cached,
+        &process::scan_processes,
+        &tmux::list_panes,
+    );
 
     let mut sessions_per_project_tool: HashMap<(String, CliTool), usize> = HashMap::new();
     for proc in &processes {
@@ -93,6 +106,7 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
         process_signal_ms = process_signal_ms.as_millis() as u64,
         ownership_ms = ownership_ms.as_millis() as u64,
         total_ms,
+        degraded,
         sessions = runtime_sessions.len(),
         "session_scanner metrics"
     );
@@ -115,10 +129,11 @@ pub fn scan_sessions_for_authoritative_snapshot() -> (Vec<DisplaySession>, Vec<R
             process_signal_ms: process_signal_ms.as_millis() as u64,
             ownership_ms: ownership_ms.as_millis() as u64,
             total_ms,
+            degraded,
         },
     );
 
-    (display_sessions, runtime_sessions)
+    (display_sessions, runtime_sessions, degraded)
 }
 
 /// Scan for runtime reconciliation/session-id detection without hiding session metadata.
@@ -133,7 +148,12 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
     }
 
     let scan_started = Instant::now();
-    let (processes, pane_map, ..) = scan_inputs_with_cache(
+    let ScanInputs {
+        processes,
+        pane_map,
+        degraded,
+        ..
+    } = scan_inputs_with_cache(
         scan_started,
         &process::scan_process_ids_cached,
         &process::scan_processes,
@@ -150,7 +170,9 @@ pub fn scan_sessions_for_runtime() -> Vec<RuntimeSession> {
         .collect();
 
     deduplicate_runtime_sessions(&mut sessions);
-    publish_compaction_runtime_sessions(&sessions);
+    if !degraded {
+        publish_compaction_runtime_sessions(&sessions);
+    }
     sessions
 }
 

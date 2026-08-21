@@ -116,12 +116,34 @@ impl ScannerCadence {
         }
 
         self.stable_idle_cycles = self.stable_idle_cycles.saturating_add(1);
+        self.hold_interval()
+    }
+
+    /// Current interval without advancing or resetting the idle streak.
+    fn hold_interval(&self) -> Duration {
         if self.stable_idle_cycles >= IDLE_STABLE_CYCLES_THRESHOLD {
             IDLE_SCAN_INTERVAL
         } else {
             ACTIVE_SCAN_INTERVAL
         }
     }
+}
+
+/// One scanner cycle's inputs, as folded into the hub by `commit_cycle`.
+struct ScanCycle {
+    display_sessions: Vec<DisplaySession>,
+    runtime_sessions: Vec<RuntimeSession>,
+    focus: Option<TmuxFocusState>,
+    foreground_project_path: Option<String>,
+    /// The process inventory could not be read; the sessions are not an observation.
+    degraded: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CycleDecision {
+    changed: bool,
+    export_due: bool,
+    interval: Duration,
 }
 
 /// Global daemon-owned session scanner with a versioned snapshot.
@@ -218,6 +240,46 @@ impl SessionActivityHub {
         }
     }
 
+    /// Fold one scan cycle into the hub state.
+    ///
+    /// Degraded cycles are inert: the previous snapshot stays, the version is
+    /// not bumped, no export is due, and the cadence holds its interval.
+    fn commit_cycle(
+        &self,
+        cycle: ScanCycle,
+        cadence: &mut ScannerCadence,
+        last_activity_export_at: Option<Instant>,
+        now: Instant,
+    ) -> CycleDecision {
+        if cycle.degraded {
+            return CycleDecision {
+                changed: false,
+                export_due: false,
+                interval: cadence.hold_interval(),
+            };
+        }
+
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = !state.initialized
+            || activity_changed(&state.display_sessions, &cycle.display_sessions);
+        // Keep latest metadata; only a change generates a new version/event.
+        state.display_sessions = cycle.display_sessions;
+        state.runtime_sessions = cycle.runtime_sessions;
+        state.focus = cycle.focus;
+        state.foreground_project_path = cycle.foreground_project_path;
+        if changed {
+            state.version = state.version.saturating_add(1);
+            state.initialized = true;
+            self.changed_cv.notify_all();
+        }
+
+        CycleDecision {
+            changed,
+            export_due: should_export_activity_snapshots(changed, last_activity_export_at, now),
+            interval: cadence.next_interval(changed, &state.display_sessions),
+        }
+    }
+
     fn ensure_scanner_thread(self: &Arc<Self>) {
         if self
             .scanner_started
@@ -235,30 +297,45 @@ impl SessionActivityHub {
 
             loop {
                 let loop_started_at = Instant::now();
-                let (mut display_sessions, mut runtime_sessions) =
+                let (mut display_sessions, mut runtime_sessions, degraded) =
                     crate::session_scanner::scan_sessions_for_authoritative_snapshot();
                 let teams_dir = default_activity_export_teams_dir();
-                enrich_sessions_with_team_membership(&teams_dir, &mut display_sessions);
-                enrich_runtime_sessions_with_team_membership(&teams_dir, &mut runtime_sessions);
-                let focus = tmux::read_focus_state(
-                    &crate::provider::platform_paths::PlatformPaths::app_data_root(),
-                );
-                let foreground_project_path = focus
-                    .as_ref()
-                    .and_then(|focus| tmux::resolve_focus_project_path(focus, &display_sessions));
-                let changed = {
-                    let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                    !state.initialized
-                        || activity_changed(&state.display_sessions, &display_sessions)
+                let cycle = if degraded {
+                    ScanCycle {
+                        display_sessions: Vec::new(),
+                        runtime_sessions: Vec::new(),
+                        focus: None,
+                        foreground_project_path: None,
+                        degraded: true,
+                    }
+                } else {
+                    enrich_sessions_with_team_membership(&teams_dir, &mut display_sessions);
+                    enrich_runtime_sessions_with_team_membership(&teams_dir, &mut runtime_sessions);
+                    let focus = tmux::read_focus_state(
+                        &crate::provider::platform_paths::PlatformPaths::app_data_root(),
+                    );
+                    let foreground_project_path = focus.as_ref().and_then(|focus| {
+                        tmux::resolve_focus_project_path(focus, &display_sessions)
+                    });
+                    ScanCycle {
+                        display_sessions,
+                        runtime_sessions,
+                        focus,
+                        foreground_project_path,
+                        degraded: false,
+                    }
                 };
-                if should_export_activity_snapshots(
-                    changed,
+
+                let decision = hub.commit_cycle(
+                    cycle,
+                    &mut cadence,
                     last_activity_export_at,
                     loop_started_at,
-                ) {
+                );
+                if decision.export_due {
                     let export_stats = export_activity_snapshots_for_sessions(
                         &teams_dir,
-                        &display_sessions,
+                        &hub.snapshot().sessions,
                         Utc::now(),
                     );
                     last_activity_export_at = Some(loop_started_at);
@@ -272,25 +349,7 @@ impl SessionActivityHub {
                     }
                 }
 
-                let mut state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                if changed {
-                    state.display_sessions = display_sessions;
-                    state.runtime_sessions = runtime_sessions;
-                    state.focus = focus;
-                    state.foreground_project_path = foreground_project_path;
-                    state.version = state.version.saturating_add(1);
-                    state.initialized = true;
-                    hub.changed_cv.notify_all();
-                } else {
-                    // Keep latest metadata without generating a new version/event.
-                    state.display_sessions = display_sessions;
-                    state.runtime_sessions = runtime_sessions;
-                    state.focus = focus;
-                    state.foreground_project_path = foreground_project_path;
-                }
-
-                let interval = cadence.next_interval(changed, &state.display_sessions);
-                next_tick += interval;
+                next_tick += decision.interval;
                 let now = Instant::now();
                 if next_tick > now {
                     thread::sleep(next_tick.duration_since(now));
@@ -362,6 +421,90 @@ mod tests {
         }
         assert_eq!(cadence.next_interval(false, &idle), IDLE_SCAN_INTERVAL);
         assert_eq!(cadence.next_interval(true, &idle), ACTIVE_SCAN_INTERVAL);
+    }
+
+    fn cycle(display_sessions: Vec<DisplaySession>, degraded: bool) -> ScanCycle {
+        ScanCycle {
+            display_sessions,
+            runtime_sessions: Vec::new(),
+            focus: None,
+            foreground_project_path: None,
+            degraded,
+        }
+    }
+
+    // Regression: latent since 9a66d1c. A timed-out `ps` produced an empty
+    // session list; the hub treated it as a change, bumped the version (the UI
+    // dropped every session icon), exported stall_no_active_process for every
+    // team member and snapped the cadence back to fast. A degraded cycle must
+    // leave the snapshot, version, export timer and cadence untouched.
+    #[test]
+    fn hub_does_not_bump_version_or_export_on_degraded() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let active = vec![session_with_state(SessionState::Active)];
+
+        let first = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, None, now);
+        assert!(first.changed);
+        assert!(first.export_due);
+        assert_eq!(hub.snapshot().version, 1);
+
+        let export_overdue = Some(now - ACTIVITY_EXPORT_REFRESH_INTERVAL - Duration::from_secs(1));
+        let degraded = hub.commit_cycle(
+            cycle(Vec::new(), true),
+            &mut cadence,
+            export_overdue,
+            now + Duration::from_secs(1),
+        );
+        assert_eq!(
+            degraded,
+            CycleDecision {
+                changed: false,
+                export_due: false,
+                interval: ACTIVE_SCAN_INTERVAL,
+            }
+        );
+        let snapshot = hub.snapshot();
+        assert_eq!(snapshot.version, 1);
+        assert_eq!(snapshot.sessions, active);
+        assert_eq!(hub.runtime_snapshot().display_sessions, active);
+        assert!(
+            !hub.wait_for_update(1, Duration::ZERO).changed,
+            "waiters must not wake on a degraded cycle"
+        );
+
+        // Control: a healthy empty scan is a real change.
+        let emptied = hub.commit_cycle(
+            cycle(Vec::new(), false),
+            &mut cadence,
+            Some(now),
+            now + Duration::from_secs(2),
+        );
+        assert!(emptied.changed);
+        assert!(emptied.export_due);
+        assert_eq!(hub.snapshot().version, 2);
+        assert!(hub.snapshot().sessions.is_empty());
+    }
+
+    #[test]
+    fn cadence_holds_interval_across_degraded_cycle() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let idle = vec![session_with_state(SessionState::Idle)];
+
+        let _ = hub.commit_cycle(cycle(idle.clone(), false), &mut cadence, None, now);
+        for _ in 0..IDLE_STABLE_CYCLES_THRESHOLD {
+            let _ = hub.commit_cycle(cycle(idle.clone(), false), &mut cadence, Some(now), now);
+        }
+        assert_eq!(cadence.hold_interval(), IDLE_SCAN_INTERVAL);
+
+        let degraded = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        assert_eq!(degraded.interval, IDLE_SCAN_INTERVAL);
+        let healthy = hub.commit_cycle(cycle(idle, false), &mut cadence, Some(now), now);
+        assert!(!healthy.changed);
+        assert_eq!(healthy.interval, IDLE_SCAN_INTERVAL);
     }
 
     #[test]

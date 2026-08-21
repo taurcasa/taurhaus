@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Session indicators no longer black out for seconds at a time** — the process inventory is fail-soft. The scanner reads `/proc/*/cmdline` directly on Linux (`ps` stays for macOS, now with its stdout drained concurrently so a large argv can no longer block it past the 2 s budget); a scan whose inventory cannot be read is reported as degraded and is inert: the previous inventory is kept, no activity trackers are pruned, the daemon hub neither bumps its snapshot version nor exports stall snapshots nor resets its cadence, and the frontend ignores snapshots without a sessions array instead of flushing activity stats. New structured events: `session_scanner.process_scan.degraded` and `activity.state.changed {pid, tool, from, to, source}`. Activity snapshot export also skips teams with no live tmux pane instead of probing every team that ever had a runtime record. Regression tests added.
+
 ## [0.6.5] - 2026-08-21
 
 Patch release: repairs the bundled mesh resource. The v0.6.4 Windows installer shipped `resources/mesh` as a directory instead of the mesh binary, which broke mesh installation on fresh installs (machines with an already-installed matching mesh were unaffected).

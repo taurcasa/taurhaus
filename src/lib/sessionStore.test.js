@@ -662,6 +662,51 @@ describe('sessionStore', () => {
     expect(session._presenceStatus).toBe('live')
   })
 
+  it('keeps trackers and sessions when a degraded snapshot without a sessions array arrives', async () => {
+    // Regression: latent since 9a66d1c (a timed-out `ps` made the backend report
+    // zero sessions); on the frontend a snapshot without a sessions array was
+    // coerced to `[]`, which flushed every tracker (recordSessionActivity +
+    // "skipping session activity persistence" warnings) and reset _lastTransition.
+    // A degraded snapshot carries no session change and must be inert.
+    const session = {
+      pid: 2100,
+      project_path: '/proj-degraded',
+      state: 'active',
+      tty: '/dev/pts/14',
+      args: 'claude',
+      cli_tool: 'claude',
+    }
+    ipc.listClaudeSessions
+      .mockResolvedValueOnce([session])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue([session])
+
+    store.startPolling()
+    await vi.advanceTimersByTimeAsync(0)
+    const before = store.getSessionStats(2100)
+    expect(before).toBeTruthy()
+    const lastTransitionBefore = store.getSessionForProject('/proj-degraded')._lastTransition
+
+    // Two degraded polls (undefined, null) must not flush or clear anything.
+    await vi.advanceTimersByTimeAsync(500)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(ipc.recordSessionActivity).not.toHaveBeenCalled()
+    expect(store.getSessionStats(2100)).toBe(before)
+    expect(store.getSessionForProject('/proj-degraded')).toBeTruthy()
+    expect(store.getSessionForProject('/proj-degraded')._lastTransition).toBe(lastTransitionBefore)
+
+    // A daemon payload without a sessions array is the same degraded shape.
+    store.applyDaemonSessionUpdate({ version: 7 })
+    expect(ipc.recordSessionActivity).not.toHaveBeenCalled()
+    expect(store.getSessionStats(2100)).toBe(before)
+
+    // The next good snapshot continues the same tracker (no reset of firstSeen).
+    await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionStats(2100)).toBe(before)
+    expect(store.getSessionForProject('/proj-degraded')._lastTransition).toBe(lastTransitionBefore)
+  })
+
   it('applies polling updates even without daemon bridge events', async () => {
     // Regression: indicators could stay stale when bridge events were absent;
     // polling fallback must still hydrate and refresh sessions.

@@ -1,9 +1,72 @@
 //! Linux platform implementation — process inspection via `/proc` filesystem.
 
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 
 use super::{InotifyProcessStats, InotifyUserStats};
+
+/// Upper bound for a single `/proc/{pid}/cmdline` read; `ps` applies the same cap.
+const MAX_CMDLINE_BYTES: u64 = 128 * 1024;
+
+/// List live processes as `(pid, args)` from `/proc/*/cmdline`, sorted by pid.
+///
+/// `args` joins argv with single spaces, matching `ps -o args`. Processes that
+/// disappear mid-read or have no command line (kernel threads, zombies) are
+/// skipped. Returns `None` only when `/proc` itself cannot be listed.
+pub fn list_processes() -> Option<Vec<(u32, String)>> {
+    let entries = fs::read_dir("/proc").ok()?;
+    let mut processes: Vec<(u32, String)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
+            let args = process_args(pid)?;
+            Some((pid, args))
+        })
+        .collect();
+    processes.sort_unstable_by_key(|(pid, _)| *pid);
+    Some(processes)
+}
+
+/// Read a process's command line from `/proc/{pid}/cmdline`, argv joined by spaces.
+///
+/// Returns `None` when the process is gone or has no command line.
+pub fn process_args(pid: u32) -> Option<String> {
+    let mut raw = Vec::new();
+    fs::File::open(format!("/proc/{pid}/cmdline"))
+        .ok()?
+        .take(MAX_CMDLINE_BYTES)
+        .read_to_end(&mut raw)
+        .ok()?;
+    let args = cmdline_to_args(&raw);
+    if args.is_empty() {
+        None
+    } else {
+        Some(args)
+    }
+}
+
+fn cmdline_to_args(raw: &[u8]) -> String {
+    String::from_utf8_lossy(raw)
+        .trim_end_matches('\0')
+        .split('\0')
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Read one variable from a process's initial environment (`/proc/{pid}/environ`).
+///
+/// Returns `None` when the process is gone, its environment is not readable
+/// (other user), or the variable is not set.
+pub fn process_env_var(pid: u32, name: &str) -> Option<String> {
+    let raw = fs::read(format!("/proc/{pid}/environ")).ok()?;
+    String::from_utf8_lossy(&raw).split('\0').find_map(|entry| {
+        entry
+            .strip_prefix(name)?
+            .strip_prefix('=')
+            .map(str::to_string)
+    })
+}
 
 /// Read the executable path of a process from `/proc/{pid}/exe`.
 pub fn process_exe(pid: u32) -> Option<PathBuf> {
@@ -307,6 +370,67 @@ pub fn watch_limit_help() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_processes_includes_current_process_with_its_args() {
+        let processes = list_processes().expect("/proc listable");
+        let own = std::process::id();
+        let (_, args) = processes
+            .iter()
+            .find(|(pid, _)| *pid == own)
+            .expect("own pid listed");
+        let own_argv0 = std::env::args().next().expect("argv[0]");
+        assert!(
+            args.starts_with(&own_argv0),
+            "args {args:?} should start with argv[0] {own_argv0:?}"
+        );
+        assert!(processes.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    }
+
+    #[test]
+    fn process_args_returns_none_for_nonexistent_pid() {
+        assert!(process_args(999_999_999).is_none());
+    }
+
+    #[test]
+    fn cmdline_to_args_joins_argv_with_spaces() {
+        assert_eq!(
+            cmdline_to_args(b"node\0/usr/bin/claude\0--resume\0"),
+            "node /usr/bin/claude --resume"
+        );
+        assert_eq!(cmdline_to_args(b""), "");
+        assert_eq!(cmdline_to_args(b"codex"), "codex");
+    }
+
+    #[test]
+    fn process_env_var_reads_child_environment() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .env("TAURHAUS_ENV_PROBE", "probe-42")
+            .spawn()
+            .expect("spawn sleep");
+        let pid = child.id();
+
+        // Until the child has exec'd, /proc/{pid}/environ still shows the
+        // parent's environment; wait for the new image to be in place.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut probe = process_env_var(pid, "TAURHAUS_ENV_PROBE");
+        while probe.is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            probe = process_env_var(pid, "TAURHAUS_ENV_PROBE");
+        }
+
+        assert_eq!(probe.as_deref(), Some("probe-42"));
+        assert_eq!(process_env_var(pid, "TAURHAUS_ENV_PROBE_MISSING"), None);
+
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn process_env_var_returns_none_for_nonexistent_pid() {
+        assert!(process_env_var(999_999_999, "PATH").is_none());
+    }
 
     #[test]
     fn process_cwd_returns_none_for_nonexistent_pid() {

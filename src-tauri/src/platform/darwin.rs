@@ -82,6 +82,11 @@ pub fn process_tty(pid: u32) -> Option<String> {
     None
 }
 
+/// Not implemented on macOS yet; callers fall back to defaults.
+pub fn process_env_var(_pid: u32, _name: &str) -> Option<String> {
+    None
+}
+
 pub fn process_inotify_stats(_pid: u32) -> Option<InotifyProcessStats> {
     None
 }

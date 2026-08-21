@@ -184,15 +184,39 @@ fn export_activity_snapshots_for_sessions_with_runtime(
             continue;
         }
 
-        stats.teams_exported += 1;
-        for member in &roster {
-            let member_name = &member.member_name;
-            let pane_probe = probe_member_pane_state(
-                runtime,
-                member.pane_id.as_deref(),
-                &team_name,
-                member_name,
+        // One existence probe per member; teams without any live pane are
+        // skipped entirely (their last snapshot goes stale, which readers
+        // already handle) instead of costing four tmux probes per member
+        // every refresh.
+        let live_panes: Vec<bool> = roster
+            .iter()
+            .map(|member| {
+                member.pane_id.as_deref().is_some_and(|pane_id| {
+                    probe_pane_exists(runtime, pane_id, &team_name, &member.member_name)
+                })
+            })
+            .collect();
+        if !live_panes.iter().any(|alive| *alive) {
+            tracing::debug!(
+                team_name = %team_name,
+                "skipping activity snapshot export: no live pane"
             );
+            continue;
+        }
+
+        stats.teams_exported += 1;
+        for (member, pane_alive) in roster.iter().zip(live_panes) {
+            let member_name = &member.member_name;
+            let pane_probe = if pane_alive {
+                probe_member_pane_state(
+                    runtime,
+                    member.pane_id.as_deref().unwrap_or_default(),
+                    &team_name,
+                    member_name,
+                )
+            } else {
+                PaneActivityProbe::default()
+            };
             let snapshot = build_member_activity_snapshot(
                 sessions_by_member
                     .get(&(team_name.clone(), member_name.clone()))
@@ -443,17 +467,13 @@ fn classify_activity_confidence(
     SnapshotActivityConfidence::Idle
 }
 
-fn probe_member_pane_state(
+fn probe_pane_exists(
     runtime: &dyn CoordinationRuntime,
-    pane_id: Option<&str>,
+    pane_id: &str,
     team_name: &str,
     member_name: &str,
-) -> PaneActivityProbe {
-    let Some(pane_id) = pane_id else {
-        return PaneActivityProbe::default();
-    };
-
-    let pane_exists = match runtime.pane_exists(pane_id) {
+) -> bool {
+    match runtime.pane_exists(pane_id) {
         Ok(exists) => exists,
         Err(error) => {
             tracing::warn!(
@@ -463,13 +483,18 @@ fn probe_member_pane_state(
                 error = %error,
                 "failed to probe pane existence during activity snapshot export"
             );
-            return PaneActivityProbe::default();
+            false
         }
-    };
-    if !pane_exists {
-        return PaneActivityProbe::default();
     }
+}
 
+/// Probe a pane that is known to exist for liveness and foreground command.
+fn probe_member_pane_state(
+    runtime: &dyn CoordinationRuntime,
+    pane_id: &str,
+    team_name: &str,
+    member_name: &str,
+) -> PaneActivityProbe {
     let pane_is_dead = match runtime.pane_is_dead(pane_id) {
         Ok(is_dead) => is_dead,
         Err(error) => {
@@ -644,7 +669,7 @@ mod tests {
 
     use super::*;
     use crate::coordination::domain::{HealthState, Member, MemberRole};
-    use crate::coordination::runtime::RecordingCoordinationRuntime;
+    use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
     use crate::coordination::stores::config::TeamConfig;
     use crate::coordination::stores::runtime::MemberRuntimeRecord;
     use crate::coordination::stores::MemberRuntimeStore;
@@ -750,7 +775,8 @@ mod tests {
         save_runtime(tmp.path(), team_name, member_name, "%12");
 
         let runtime = RecordingCoordinationRuntime::default();
-        runtime.set_pane_exists("%12", false);
+        runtime.set_pane_exists("%12", true);
+        runtime.set_pane_current_command("%12", Some("codex"));
         let stats = export_activity_snapshots_for_sessions_with_runtime(
             tmp.path(),
             &[sample_session(project_path, "%12", SessionState::Active)],
@@ -786,11 +812,11 @@ mod tests {
         );
         assert_eq!(
             parsed.get("pane_alive").and_then(Value::as_bool),
-            Some(false)
+            Some(true)
         );
         assert_eq!(
             parsed.get("activity_confidence").and_then(Value::as_str),
-            Some("dead")
+            Some("likely_working")
         );
     }
 
@@ -809,7 +835,8 @@ mod tests {
         save_runtime(tmp.path(), team_name, member_name, "%12");
 
         let runtime = RecordingCoordinationRuntime::default();
-        runtime.set_pane_exists("%12", false);
+        runtime.set_pane_exists("%12", true);
+        runtime.set_pane_shell("%12", true);
         let stats = export_activity_snapshots_for_sessions_with_runtime(
             tmp.path(),
             &[],
@@ -840,11 +867,47 @@ mod tests {
         );
         assert_eq!(
             parsed.get("pane_alive").and_then(Value::as_bool),
-            Some(false)
+            Some(true)
         );
         assert_eq!(
             parsed.get("activity_confidence").and_then(Value::as_str),
-            Some("dead")
+            Some("idle")
+        );
+    }
+
+    #[test]
+    fn skips_team_without_live_pane_after_one_existence_probe_per_member() {
+        // Teams that once ran but whose panes are gone used to be exported
+        // every refresh (4 tmux probes per member); they are skipped now and
+        // their last snapshot simply goes stale for readers.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "team-dead";
+        let member_name = "developer2";
+        let project_path = "/tmp/taurhaus";
+        TeamConfigStore::save(
+            tmp.path(),
+            team_name,
+            &sample_team_config(team_name, member_name, project_path),
+        )
+        .expect("config saved");
+        save_runtime(tmp.path(), team_name, member_name, "%12");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%12", false);
+        let stats = export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[sample_session(project_path, "%12", SessionState::Active)],
+            ts("2026-03-07T13:34:00+00:00"),
+            &runtime,
+        );
+
+        assert_eq!(stats, ActivitySnapshotExportStats::default());
+        assert!(!activity_snapshot_path(tmp.path(), team_name, member_name).exists());
+        assert_eq!(
+            runtime.calls(),
+            vec![RuntimeCall::CheckPaneExists {
+                pane_id: "%12".to_string()
+            }]
         );
     }
 
