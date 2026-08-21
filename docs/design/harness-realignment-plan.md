@@ -164,6 +164,15 @@ Rollout rule for every mesh change: bump → `just check` in mesh → taurhaus `
 - Mesh-side H1/H3/H4/H7/H8 and O1–O8: after PR 14, see "Mesh: changes folded in"; mesh `team-daemon restart-all` demotion (O8) waits for PR 7b to prove the taurhaus-owned supervision.
 - Grok/Kimi/Gemini-vNext adapters: not planned; the registry, the "Adding a CLI" checklist, the conformance suite (PR 15) and S15 are the deliverable.
 
+## Implementation ledger
+
+Who implemented and reviewed each PR, how many review rounds it took, and what the cross-family reviewer found. Filled in as PRs merge; this is the first real dataset for "which model is good at what" on production work.
+
+| PR | Implementer | Reviewers | Rounds | Majors found (by whom) | Merged |
+|---|---|---|---|---|---|
+| 2 fail-soft process inventory | Opus 5 | Fable ×2 (approve), Codex gpt-5.6 | 3 | 3 (Codex: degraded scans still mutated state; Windows daemon branch lacked the flag; re-confirmed) | #9 `ef55e83` |
+| 3 Claude registry identity | Opus 5 | Fable ×2 (approve), Codex gpt-5.6 | 2 | 2 (Codex: macOS ignored per-process `CLAUDE_CONFIG_DIR`; unknown status discarded identity) | #10 `28b474b` |
+
 ## Spikes / unknowns
 
 | ID | Question | Probe | Blocks |
