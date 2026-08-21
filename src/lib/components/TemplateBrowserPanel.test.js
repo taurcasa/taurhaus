@@ -50,6 +50,7 @@ const { open, save } = await import('@tauri-apps/plugin-dialog')
 const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
 import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 function deferred() {
   let resolve
@@ -286,6 +287,7 @@ describe('TemplateBrowserPanel', () => {
     render(TemplateBrowserPanel, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -309,7 +311,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('shows Roles/Presets/History tabs and tab switching works', async () => {
-    render(TemplateBrowserPanel, { props: { open: true, dark: true } })
+    render(TemplateBrowserPanel, { props: { open: true, dark: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('catalog-tab-roles')).toBeInTheDocument()
@@ -356,6 +358,7 @@ describe('TemplateBrowserPanel', () => {
     render(TemplateBrowserPanel, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -406,7 +409,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('renders with 420px panel width', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('slideover-panel')).toBeInTheDocument()
@@ -415,7 +418,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('shows preset CRUD actions only for custom presets', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -432,7 +435,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('opens TeamCustomizerPanel from the + Create preset action', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -446,7 +449,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('duplicate preset opens editor with copy name', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -460,7 +463,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('delete preset requires confirm and refreshes list after delete', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -480,7 +483,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('edit preset save calls upsert and refreshes presets', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -500,7 +503,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('shows create/edit/delete actions only for custom roles', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-template-card-claude-orchestrator')).toBeInTheDocument()
@@ -574,7 +577,7 @@ describe('TemplateBrowserPanel', () => {
         },
       ])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-create-button')).toBeInTheDocument()
@@ -621,7 +624,7 @@ describe('TemplateBrowserPanel', () => {
       ])
       .mockResolvedValue([])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-delete-custom-doc-writer')).toBeInTheDocument()
@@ -652,7 +655,7 @@ describe('TemplateBrowserPanel', () => {
       },
     ])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-custom-empty-state')).toBeInTheDocument()
@@ -663,7 +666,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('renders tool, focus area, and behavior summary on role cards', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-tool-badge-custom-doc-writer')).toBeInTheDocument()
@@ -677,7 +680,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('opens the role export dropdown from the card action row', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-export-trigger-custom-doc-writer')).toBeInTheDocument()
@@ -701,7 +704,7 @@ describe('TemplateBrowserPanel', () => {
       lossyFields: ['constraints'],
     })
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-export-trigger-custom-doc-writer')).toBeInTheDocument()
@@ -773,7 +776,7 @@ describe('TemplateBrowserPanel', () => {
         },
       ])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
@@ -842,7 +845,7 @@ describe('TemplateBrowserPanel', () => {
       },
     })
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
@@ -904,7 +907,7 @@ describe('TemplateBrowserPanel', () => {
       },
     })
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
@@ -941,7 +944,7 @@ describe('TemplateBrowserPanel', () => {
       .mockReturnValueOnce(oldPresets.promise)
       .mockReturnValueOnce(newPresets.promise)
 
-    const view = render(TemplateBrowserPanel, { props: { open: true } })
+    const view = render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
     await view.rerender({ open: false })
     await view.rerender({ open: true })
 

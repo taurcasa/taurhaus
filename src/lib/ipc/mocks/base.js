@@ -127,6 +127,21 @@ export const MOCK_SETTINGS = {
     platform: 'linux',
     default_emulator: 'manual',
     supported_emulators: ['manual'],
+    model_catalog: {
+      claude: [
+        { id: 'opus', label: 'Opus 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+        { id: 'sonnet', label: 'Sonnet', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+        { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+      ],
+      codex: [
+        { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low', deprecated: false, replacement: null },
+        { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium', deprecated: false, replacement: null },
+        { id: 'gpt-5.4', label: 'GPT-5.4', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium', deprecated: true, replacement: 'gpt-5.6-terra' },
+      ],
+      gemini: [
+        { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', efforts: [], defaultEffort: null, deprecated: false, replacement: null },
+      ],
+    },
     cli_command_defaults: {
       claude: {
         continue_cmd: 'claude --dangerously-skip-permissions --continue',

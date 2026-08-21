@@ -2,7 +2,13 @@
   import SlideOver from './SlideOver.svelte'
   import AgentCard from './AgentCard.svelte'
   import ValidationBar from './ValidationBar.svelte'
-  import { defaultModelForTool } from '../meshDefaults.js'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import {
+    EMPTY_MODEL_CATALOG,
+    defaultEffortFor,
+    defaultModelFor,
+    parseLegacyModel,
+  } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
@@ -15,12 +21,15 @@
     availableProjects = [],
     teamConfig = null,
     context = null,
+    modelCatalog = null,
     onClose = () => {},
     onSave = () => {},
     onReset = () => {},
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
   const inputTone = $derived(
     dark
       ? 'bg-zinc-950/50 border-white/[0.08] text-zinc-100 placeholder-zinc-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
@@ -67,10 +76,17 @@
   function selectedLeadDefaults() {
     const selectedRole = context?.selectedRole
     const tool = normalizeOptionalTool(selectedRole?.cliTool ?? selectedRole?.tool)
+    const parsed = parseLegacyModel(selectedRole?.model)
+    const model = parsed.model || (tool ? defaultModelFor(catalog, tool) : '')
 
     return {
       tool,
-      model: String(selectedRole?.model ?? (tool ? defaultModelForTool(tool) : '')),
+      model,
+      reasoningEffort:
+        selectedRole?.reasoningEffort ??
+        selectedRole?.reasoning_effort ??
+        parsed.reasoningEffort ??
+        (tool ? defaultEffortFor(catalog, tool, model) : null),
       roleId: selectedRole?.roleId ?? null,
       description: String(selectedRole?.name ?? 'Team lead'),
     }
@@ -84,6 +100,7 @@
       name: 'team-lead',
       tool: defaults.tool,
       model: defaults.model,
+      reasoningEffort: defaults.reasoningEffort,
       projectId: projectPath || projectOptions[0]?.id || '',
       description: defaults.description,
       roleId: defaults.roleId,
@@ -91,11 +108,13 @@
   }
 
   function defaultAgent(index) {
+    const model = defaultModelFor(catalog, 'codex')
     return {
       id: `agent-${index + 1}`,
       name: `agent-${index + 1}`,
       tool: 'codex',
-      model: defaultModelForTool('codex'),
+      model,
+      reasoningEffort: defaultEffortFor(catalog, 'codex', model),
       projectId: projectPath || projectOptions[0]?.id || '',
       description: '',
       roleId: null,
@@ -113,13 +132,13 @@
           id: String(incomingLead.id ?? 'lead'),
           name: String(incomingLead.name ?? 'team-lead'),
           tool: normalizeOptionalTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool),
-          model: String(
-            incomingLead.model ??
-            defaults.model ??
-            (normalizeOptionalTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool)
-              ? defaultModelForTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool)
-              : '')
-          ),
+          model: String(parseLegacyModel(incomingLead.model).model || defaults.model || ''),
+          reasoningEffort:
+            incomingLead.reasoningEffort ??
+            incomingLead.reasoning_effort ??
+            parseLegacyModel(incomingLead.model).reasoningEffort ??
+            defaults.reasoningEffort ??
+            null,
           projectId: String(incomingLead.projectId ?? incomingLead.project_id ?? projectPath ?? ''),
           description: String(incomingLead.description ?? defaults.description),
           roleId: incomingLead.roleId ?? defaults.roleId ?? null,
@@ -131,7 +150,12 @@
       id: String(agent.id ?? `agent-${index + 1}`),
       name: String(agent.name ?? `agent-${index + 1}`),
       tool: String(agent.tool ?? agent.cliTool ?? 'codex').toLowerCase(),
-      model: String(agent.model ?? defaultModelForTool('codex')),
+      model: String(parseLegacyModel(agent.model).model || ''),
+      reasoningEffort:
+        agent.reasoningEffort ??
+        agent.reasoning_effort ??
+        parseLegacyModel(agent.model).reasoningEffort ??
+        null,
       projectId: String(agent.projectId ?? agent.project_id ?? projectPath ?? ''),
       description: String(agent.description ?? ''),
       roleId: agent.roleId ?? null,
@@ -276,6 +300,7 @@
         name: String(lead?.name ?? '').trim(),
         cliTool: normalizeOptionalTool(lead?.tool),
         model: String(lead?.model ?? '').trim(),
+        reasoningEffort: lead?.reasoningEffort ?? null,
         projectId: String(lead?.projectId ?? '').trim(),
         description: String(lead?.description ?? '').trim(),
         roleId: lead?.roleId ?? null,
@@ -284,6 +309,7 @@
         name: String(agent.name ?? '').trim(),
         cliTool: String(agent.tool ?? 'codex').toLowerCase(),
         model: String(agent.model ?? '').trim(),
+        reasoningEffort: agent.reasoningEffort ?? null,
         projectId: String(agent.projectId ?? '').trim(),
         description: String(agent.description ?? '').trim(),
         roleId: agent.roleId ?? null,
@@ -358,6 +384,8 @@
             name={lead.name}
             tool={lead.tool}
             model={lead.model}
+            reasoningEffort={lead.reasoningEffort}
+            modelCatalog={catalog}
             projectId={lead.projectId}
             description={lead.description}
             {dark}
@@ -376,6 +404,8 @@
               name={agent.name}
               tool={agent.tool}
               model={agent.model}
+              reasoningEffort={agent.reasoningEffort}
+              modelCatalog={catalog}
               projectId={agent.projectId}
               description={agent.description}
               {dark}

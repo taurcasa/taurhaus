@@ -108,7 +108,8 @@ describe('TeamCustomizerPanel', () => {
         lead: expect.objectContaining({
           name: 'team-lead',
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           roleId: 'codex-product-lead',
         }),
       })
@@ -178,7 +179,8 @@ describe('TeamCustomizerPanel', () => {
       expect.objectContaining({
         lead: expect.objectContaining({
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           roleId: 'codex-orchestrator',
         }),
       })

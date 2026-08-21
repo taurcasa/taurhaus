@@ -51,6 +51,7 @@ const {
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 import { clearMeshCache, getMeshCache, resetMeshCache, setMeshCache } from '../meshCache.svelte.js'
 
 const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
@@ -129,8 +130,10 @@ function buildRuntimeSnapshot(overrides = {}) {
     teamRuntimeState: overrides.teamRuntimeState ?? 'active',
     warnings: overrides.warnings ?? [],
     teamStatus: {
+      // FastAgentSnapshot carries model and reasoning effort since PR 5a/5b, so the
+      // fast snapshot is no longer model-less on cold load.
       leadName: liveStatus.leadName,
-      members: liveStatus.members.map(({ model, ...member }) => member),
+      members: liveStatus.members,
     },
   })
 }
@@ -294,6 +297,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
         ...overrides,
       },
@@ -344,6 +348,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -484,6 +489,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -628,6 +634,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -702,6 +709,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -775,6 +783,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -831,6 +840,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -896,6 +906,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -987,6 +998,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1137,6 +1149,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1169,6 +1182,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1203,6 +1217,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1226,6 +1241,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1293,6 +1309,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1335,6 +1352,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: true,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1405,6 +1423,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1470,6 +1489,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1526,6 +1546,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1590,6 +1611,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1697,6 +1719,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1742,6 +1765,7 @@ describe('MeshTab', () => {
       const view = render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1827,6 +1851,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1874,6 +1899,7 @@ describe('MeshTab', () => {
       const view = render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1967,6 +1993,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2000,6 +2027,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2034,6 +2062,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2059,6 +2088,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/espn_fantasy_desktop',
       },
     })
@@ -2074,6 +2104,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2111,6 +2142,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2158,6 +2190,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2191,6 +2224,7 @@ describe('MeshTab', () => {
     const runtimeView = render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2225,6 +2259,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2254,6 +2289,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2315,6 +2351,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\user\\projects\\2ksim',
       },
     })
@@ -2352,6 +2389,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2372,6 +2410,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
         availableProjects: [{ id: 'proj-api', name: 'API' }],
       },
@@ -2420,6 +2459,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2510,6 +2550,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2555,7 +2596,8 @@ describe('MeshTab', () => {
           kind: 'agent',
           defaults: expect.objectContaining({
             cliTool: 'codex',
-            model: 'gpt-5.4 high',
+            model: 'gpt-5.4',
+            reasoningEffort: 'high',
           }),
         })
       )
@@ -2578,6 +2620,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2671,6 +2714,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2800,6 +2844,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2919,6 +2964,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -3034,6 +3080,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -3064,16 +3111,21 @@ describe('MeshTab', () => {
       roleId: 'v3-lead-claude',
     }))
     expect(request?.agents).toEqual([
+      // Regression: ff40911 stripped the effort suffix and 5d2ce27 aliased the
+      // model, so a roster asking for `high` launched at the user's global effort.
+      // The initialize payload now carries the split, canonical pair.
       expect.objectContaining({
         name: 'architect',
         cliTool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
         roleId: 'v3-architect-codex',
       }),
       expect.objectContaining({
         name: 'dev-1',
         cliTool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
         roleId: 'v3-developer-codex',
       }),
     ])
@@ -3085,6 +3137,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/mnt/c/projects/taurhaus',
       },
     })
@@ -3100,6 +3153,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/',
       },
     })
@@ -3115,6 +3169,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3157,6 +3212,7 @@ describe('MeshTab', () => {
     const runtimeView = render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3196,6 +3252,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3328,6 +3385,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3571,6 +3629,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })

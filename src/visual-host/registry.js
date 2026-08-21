@@ -2,6 +2,7 @@ import HoverCardHost from './hosts/HoverCardHost.svelte'
 import MeshCanvasHost from './hosts/MeshCanvasHost.svelte'
 import MeshNodeDetailHost from './hosts/MeshNodeDetailHost.svelte'
 import MeshTeamBuilderHost from './hosts/MeshTeamBuilderHost.svelte'
+import ModelSelectHost from './hosts/ModelSelectHost.svelte'
 import RosterDesignAHost from './hosts/RosterDesignAHost.svelte'
 import RosterDesignBHost from './hosts/RosterDesignBHost.svelte'
 import RosterDesignCHost from './hosts/RosterDesignCHost.svelte'
@@ -12,6 +13,7 @@ import { hoverCardScenarios } from '../test/visual/fixtures/hoverCard.fixtures.j
 import { meshCanvasScenarios } from '../test/visual/fixtures/meshCanvas.fixtures.js'
 import { meshNodeDetailScenarios } from '../test/visual/fixtures/meshNodeDetail.fixtures.js'
 import { meshTeamBuilderScenarios } from '../test/visual/fixtures/meshTeamBuilder.fixtures.js'
+import { modelSelectScenarios } from '../test/visual/fixtures/modelSelect.fixtures.js'
 import { rosterDesignScenarios } from '../test/visual/fixtures/rosterDesigns.fixtures.js'
 import { sidebarScenarios } from '../test/visual/fixtures/sidebar.fixtures.js'
 
@@ -79,6 +81,13 @@ export const visualRegistry = [
     component: SidebarHost,
     scenarios: sidebarScenarios,
     applyMocks: applySidebarMocks,
+  },
+  {
+    id: 'model-select',
+    label: 'ModelSelect',
+    component: ModelSelectHost,
+    scenarios: modelSelectScenarios,
+    applyMocks: applyNoopMocks,
   },
   {
     id: 'roster-design-a',

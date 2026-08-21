@@ -1,5 +1,7 @@
 <script>
   import { themeTokens } from '../themeTokens.js'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { EMPTY_MODEL_CATALOG } from '../modelCatalog.js'
   import { inferTeamName } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshRuntimeView from './MeshRuntimeView.svelte'
@@ -10,6 +12,7 @@
     dark = false,
     projectPath = '',
     availableProjects = [],
+    modelCatalog = null,
     onAddAgent: onAddAgentProp = () => {},
     onDisband: onDisbandProp = () => {},
     onRemoveAgent: onRemoveAgentProp = () => {},
@@ -17,6 +20,8 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
   let rootElement = $state(null)
   let isVisible = $state(true)
   let backgroundWorkEnabled = $state(true)
@@ -40,6 +45,7 @@
     getIsVisible: () => isVisible,
     getBackgroundWorkEnabled: () => backgroundWorkEnabled,
     getAvailableProjects: () => availableProjects,
+    getModelCatalog: () => catalog,
     onAddAgent: (report) => onAddAgentProp(report),
     onDisband: (result) => onDisbandProp(result),
     onRemoveAgent: (result) => onRemoveAgentProp(result),
@@ -158,6 +164,7 @@
   {#if mode === 'runtime'}
     <MeshRuntimeView
       {dark}
+      modelCatalog={catalog}
       teamName={resolvedTeamName}
       teamConfig={controller.teamConfig}
       selectedNode={controller.selectedNode}
@@ -197,6 +204,7 @@
     <MeshSetupView
       mode={mode}
       {dark}
+      modelCatalog={catalog}
       {projectPath}
       teamConfig={controller.teamConfig}
       teamName={resolvedTeamName}

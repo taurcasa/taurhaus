@@ -243,7 +243,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       roleName: '',
       name: '',
       tool: 'codex',
-      model: deps.defaultModelForTool('codex'),
+      model: deps.defaultModelFor('codex'),
+      reasoningEffort: deps.defaultEffortFor('codex', deps.defaultModelFor('codex')),
       projectId: defaultProject,
       description: '',
       instructions: '',
@@ -306,7 +307,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const role = state.roleTemplates.find((entry) => entry.roleId === selectedRoleId)
     if (!role) return
     const tool = deps.normalizeTool(role.cliTool || 'codex')
-    const model = role.model || deps.defaultModelForTool(tool)
+    const model = role.model || deps.defaultModelFor(tool)
+    const reasoningEffort = role.reasoningEffort ?? deps.defaultEffortFor(tool, model)
     const instructions = role.instructions || ''
     state.slideOverContext = {
       ...draft,
@@ -315,6 +317,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       name: deps.buildRuntimeAgentName(role, draft.projectId, state.teamConfig, deps.getProjectPath()),
       tool,
       model,
+      reasoningEffort,
       description: instructions,
       instructions,
       focusArea: role.focusArea || '',
@@ -334,7 +337,10 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const draft = state.addAgentDraft
     if (!draft) return
     const next = { ...draft, [field]: value }
-    if (field === 'tool') next.model = deps.defaultModelForTool(value)
+    if (field === 'tool') {
+      next.model = deps.defaultModelFor(value)
+      next.reasoningEffort = deps.defaultEffortFor(value, next.model)
+    }
     state.slideOverContext = next
   }
 
@@ -351,6 +357,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
           name: String(draft.name || '').trim(),
           cliTool: deps.normalizeTool(draft.tool),
           model: String(draft.model || '').trim(),
+          reasoningEffort: draft.reasoningEffort ?? null,
           projectId: String(draft.projectId || '').trim(),
           description: String(draft.description || '').trim() || null,
           roleId: String(draft.roleId || '').trim() || null,
@@ -391,7 +398,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       roleId: deps.slugifyRoleId(roleName),
       manualRoleId: false,
       tool: deps.normalizeTool(state.selectedNode.tool),
-      model: String(state.selectedNode.model || '').trim() || deps.defaultModelForTool(state.selectedNode.tool),
+      model: String(state.selectedNode.model || '').trim(),
+      reasoningEffort: state.selectedNode.reasoningEffort ?? null,
       description,
       includeInstructions: description.length > 0,
       includeBehavioralContract: deps.contractHasRules(normalizedContract),
@@ -435,7 +443,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
 
     state.captureRoleDialog = { ...draft, submitting: true, error: '' }
     try {
-      await deps.upsertRoleTemplate(deps.buildCapturedRoleTemplate(draft))
+      await deps.upsertRoleTemplate(deps.buildCapturedRoleTemplate(draft, deps.getModelCatalog()))
       state.runtimeMessage = 'Role saved to catalog'
       closeCaptureRoleDialog()
       void loadRoleTemplates()

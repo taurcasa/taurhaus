@@ -4,7 +4,8 @@ export function createMeshTabInit({ state, refs, deps, gate, setup }) {
     state.initProgress = deps.buildInitializationRequest(
       state.teamConfig,
       state.teamName,
-      deps.getProjectPath()
+      deps.getProjectPath(),
+      deps.getModelCatalog()
     )
     state.mode = 'initializing'
     state.selectedNodeId = null

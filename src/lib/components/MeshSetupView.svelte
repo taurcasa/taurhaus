@@ -14,6 +14,7 @@
     quickPresets = [],
     roleTemplates = [],
     availableProjects = [],
+    modelCatalog = null,
     onGateReady = () => {},
     onApplyPreset = () => {},
     onBrowseCatalog = () => {},
@@ -54,6 +55,7 @@
       roleTemplates={roleTemplates}
       presets={quickPresets}
       {availableProjects}
+      {modelCatalog}
       onBrowseCatalog={onBrowseCatalog}
       onTeamNameChange={onTeamNameChange}
       onDescriptionChange={onDescriptionChange}
@@ -82,6 +84,7 @@
       roleTemplates={roleTemplates}
       presets={quickPresets}
       {availableProjects}
+      {modelCatalog}
       onBrowseCatalog={onBrowseCatalog}
       onTeamNameChange={onTeamNameChange}
       onDescriptionChange={onDescriptionChange}

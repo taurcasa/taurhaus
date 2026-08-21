@@ -1,4 +1,4 @@
-import { defaultModelForTool } from '../meshDefaults.js'
+import { resolveRoleReasoningEffort } from '../meshDefaults.js'
 
 function normalizeBehavioralContractForEditor(contract) {
   if (Array.isArray(contract)) {
@@ -57,7 +57,8 @@ export function normalizeRoleTemplate(value) {
     name: value?.name ?? '',
     kind: String(value?.kind ?? 'agent').toLowerCase(),
     cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'claude').toLowerCase(),
-    model: value?.model ?? '',
+    model: value?.model ?? value?.defaults?.model ?? '',
+    reasoningEffort: resolveRoleReasoningEffort(value),
     focusArea: value?.focusArea ?? value?.focus_area ?? '',
     contextSummary: value?.contextSummary ?? value?.context_summary ?? '',
     behaviorSummary: value?.behaviorSummary ?? value?.behavior_summary ?? '',
@@ -187,7 +188,8 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
         id: `agent-${nextAgent}`,
         name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
         tool,
-        model: role?.model ?? (tool ? defaultModelForTool(tool) : ''),
+        model: role?.model ?? '',
+        reasoningEffort: role?.reasoningEffort ?? null,
         projectId: '',
         description: slot.roleId || '',
         roleId: slot.roleId ?? null,
@@ -207,7 +209,8 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
       id: 'lead',
       name: leadRole?.name || 'team-lead',
       tool: leadTool,
-      model: leadRole?.model ?? (leadTool ? defaultModelForTool(leadTool) : ''),
+      model: leadRole?.model ?? '',
+      reasoningEffort: leadRole?.reasoningEffort ?? null,
       projectId: '',
       description: draft.leadRoleId || 'Team lead',
       roleId: draft.leadRoleId || null,

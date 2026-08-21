@@ -1,30 +1,32 @@
 <script>
+  import ModelSelect from './ModelSelect.svelte'
   import SlideOver from './SlideOver.svelte'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { TOOL_OPTIONS } from '../meshDefaults.js'
+  import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
     open = false,
     dark = false,
     role = null,
+    modelCatalog = null,
     onSave = () => {},
     onCancel = () => {},
     onDelete = () => {}
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
-  const modelOptionsByTool = {
-    claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-    codex: ['gpt-5.4 high', 'gpt-5.3-codex', 'gpt-5.2', 'gpt-4o'],
-    gemini: ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-  }
-
-  const toolOptions = ['claude', 'codex', 'gemini']
+  const toolOptions = TOOL_OPTIONS
 
   let name = $state('')
   let roleId = $state('')
   let tool = $state('claude')
-  let model = $state('claude-opus-4-6')
+  let model = $state('')
+  let reasoningEffort = $state(null)
   let focusArea = $state('')
   let contextSummary = $state('')
   let behaviorSummary = $state('')
@@ -37,11 +39,13 @@
   const isBuiltIn = $derived(role?.builtIn || false)
   const isExisting = $derived(role !== null)
 
+  const resolvedModel = $derived(resolveMemberModel({ tool, model, reasoningEffort }, null, catalog))
+
   const canSave = $derived(
     name.trim().length > 0 &&
     roleId.trim().length > 0 &&
     tool.length > 0 &&
-    model.length > 0
+    resolvedModel.model.length > 0
   )
 
   const cardTone = $derived(
@@ -89,7 +93,8 @@
 
   function handleToolChange(e) {
     tool = e.target.value
-    model = modelOptionsByTool[tool][0]
+    model = ''
+    reasoningEffort = null
   }
 
   function addRule() {
@@ -120,7 +125,8 @@
       roleId,
       name,
       tool,
-      model,
+      model: resolvedModel.model,
+      reasoningEffort: resolvedModel.reasoningEffort,
       focusArea: optionalValue(focusArea),
       contextSummary: optionalValue(contextSummary),
       behaviorSummary: optionalValue(behaviorSummary),
@@ -135,7 +141,8 @@
         name = role.name || ''
         roleId = role.roleId || ''
         tool = role.tool || role.cliTool || 'claude'
-        model = role.model || modelOptionsByTool[tool][0]
+        model = role.model || ''
+        reasoningEffort = role.reasoningEffort ?? role.reasoning_effort ?? null
         focusArea = role.focusArea ?? role.focus_area ?? ''
         contextSummary = role.contextSummary ?? role.context_summary ?? ''
         behaviorSummary = role.behaviorSummary ?? role.behavior_summary ?? ''
@@ -146,7 +153,8 @@
         name = ''
         roleId = ''
         tool = 'claude'
-        model = 'claude-opus-4-6'
+        model = ''
+        reasoningEffort = null
         focusArea = ''
         contextSummary = ''
         behaviorSummary = ''
@@ -226,21 +234,21 @@
             <label class="text-[10px] font-medium uppercase tracking-wide {labelTone}" for="role-model">
               Model
             </label>
-            <div class="relative">
-              <select
-                id="role-model"
-                class="w-full h-9 px-2 rounded-lg border text-sm appearance-none transition-all outline-none {inputTone}"
-                bind:value={model}
-                data-testid="role-editor-model-select"
-              >
-                {#each modelOptionsByTool[tool] as opt}
-                  <option value={opt}>{opt}</option>
-                {/each}
-              </select>
-              <div class="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>
-              </div>
-            </div>
+            <ModelSelect
+              id="role-model"
+              {tool}
+              {model}
+              {reasoningEffort}
+              {catalog}
+              {dark}
+              compact
+              inputClass={inputTone}
+              testId="role-editor-model-select"
+              onchange={(next) => {
+                model = next.model
+                reasoningEffort = next.reasoningEffort
+              }}
+            />
           </div>
         </div>
       </div>

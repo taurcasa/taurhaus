@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import { readFileSync } from 'node:fs'
 
 import AgentCard from './AgentCard.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 describe('AgentCard', () => {
   it('renders name, tool, and model in read mode', () => {
@@ -12,13 +13,15 @@ describe('AgentCard', () => {
         testId: 'agent-card',
         name: 'dev-1',
         tool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
+        modelCatalog: TEST_MODEL_CATALOG,
         projectId: '/projects/taurhaus',
       },
     })
 
     expect(screen.getByTestId('agent-card-name')).toHaveTextContent('dev-1')
-    expect(screen.getByTestId('agent-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 high')
+    expect(screen.getByTestId('agent-card-tool-model')).toHaveTextContent('Codex · gpt-5.4 · high')
     expect(screen.getByTestId('agent-card-project')).toHaveTextContent('/projects/taurhaus')
   })
 
@@ -57,7 +60,9 @@ describe('AgentCard', () => {
         testId: 'agent-card',
         name: 'dev-1',
         tool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
+        modelCatalog: TEST_MODEL_CATALOG,
         projectId: '/projects/taurhaus',
         description: 'Initial',
         onSave,
@@ -72,7 +77,7 @@ describe('AgentCard', () => {
       target: { value: 'gemini' },
     })
     await fireEvent.change(screen.getByTestId('agent-card-model-select'), {
-      target: { value: 'gemini-2.5-pro' },
+      target: { value: 'gemini-3.1-pro' },
     })
     await fireEvent.input(screen.getByTestId('agent-card-project-input'), {
       target: { value: '/projects/api' },
@@ -86,7 +91,8 @@ describe('AgentCard', () => {
     expect(onSave).toHaveBeenCalledWith({
       name: 'api-dev',
       tool: 'gemini',
-      model: 'gemini-2.5-pro',
+      model: 'gemini-3.1-pro',
+      reasoningEffort: null,
       projectId: '/projects/api',
       description: 'Own API tasks',
     })

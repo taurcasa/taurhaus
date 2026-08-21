@@ -28,6 +28,8 @@
   } from './lib/shell/window.js'
   import { setProjectContext } from './lib/context/ProjectContext.js'
   import { setSessionContext } from './lib/context/SessionContext.js'
+  import { setModelCatalogContext } from './lib/context/ModelCatalogContext.js'
+  import { EMPTY_MODEL_CATALOG } from './lib/modelCatalog.js'
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
 
   let { initialDaemonStatus = undefined } = $props()
@@ -229,6 +231,11 @@
   })
   const sessionContext = setSessionContext(sessionContextValue)
 
+  // Model catalog is owned by the backend and reaches every roster/role editor
+  // through this context instead of a hardcoded frontend list.
+  let modelCatalogContextValue = $state({ catalog: EMPTY_MODEL_CATALOG })
+  setModelCatalogContext(modelCatalogContextValue)
+
   $effect(() => {
     projectContext.projects = projects
     projectContext.selectedProject = selectedProject
@@ -246,6 +253,16 @@
       return error
     }
     return String(error)
+  }
+
+  async function loadModelCatalogFromSettings() {
+    try {
+      const settings = await getSettings()
+      const catalog = settings?.terminal_contract?.model_catalog
+      if (catalog) modelCatalogContextValue.catalog = catalog
+    } catch (error) {
+      console.error('[settings] failed to load the model catalog:', error)
+    }
   }
 
   async function loadCodeThemeFromSettings() {
@@ -279,6 +296,10 @@
 
   $effect(() => {
     void checkFirstRun()
+  })
+
+  $effect(() => {
+    void loadModelCatalogFromSettings()
   })
 
   $effect(() => {

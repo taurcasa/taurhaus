@@ -32,6 +32,7 @@ const { open, save } = await import('@tauri-apps/plugin-dialog')
 const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
 import MeshTeamBuilder from './MeshTeamBuilder.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 const ROLE_VERSION_VISIBILITY_STORAGE_KEY =
   'taurhaus.mesh.builder.show-all-role-versions'
@@ -213,6 +214,7 @@ function builderProps(props = {}) {
     roleTemplates: sampleRoles(),
     presets: [],
     availableProjects: sampleAvailableProjects(),
+    modelCatalog: TEST_MODEL_CATALOG,
     onBrowseCatalog: vi.fn(),
     onTeamNameChange: vi.fn(),
     onDescriptionChange: vi.fn(),

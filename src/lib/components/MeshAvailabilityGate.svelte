@@ -1,12 +1,15 @@
 <script>
   import { checkMeshInstallStatus, coordinationPreflightCheck, installMesh } from '../ipc.js'
   import { describeMeshAvailabilityIssue } from '../errorCopy.js'
-  import { defaultModelForTool } from '../meshDefaults.js'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { EMPTY_MODEL_CATALOG, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
 
-  let { dark = false, projectPath = '', children } = $props()
+  let { dark = false, projectPath = '', modelCatalog = null, children } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
   let loading = $state(true)
   let meshStatus = $state(null)
@@ -29,7 +32,7 @@
       lead: {
         name: 'team-lead',
         cliTool: 'claude',
-        model: 'opus',
+        model: defaultModelFor(catalog, 'claude'),
         projectId,
         description: null,
       },
@@ -37,14 +40,14 @@
         {
           name: 'codex-check',
           cliTool: 'codex',
-          model: defaultModelForTool('codex'),
+          model: defaultModelFor(catalog, 'codex'),
           projectId,
           description: null,
         },
         {
           name: 'gemini-check',
           cliTool: 'gemini',
-          model: 'gemini-3.1-pro',
+          model: defaultModelFor(catalog, 'gemini'),
           projectId,
           description: null,
         },

@@ -4,7 +4,10 @@
     handleModalKeydown,
     registerModalLayer,
   } from '../a11y.js'
-  import { defaultModelForTool, MODEL_OPTIONS_BY_TOOL, normalizeTool } from '../meshDefaults.js'
+  import ModelSelect from './ModelSelect.svelte'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { normalizeTool } from '../meshDefaults.js'
+  import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -13,6 +16,7 @@
     role = null,
     saving = false,
     errorMessage = '',
+    modelCatalog = null,
     onSave = () => {},
     onCancel = () => {},
   } = $props()
@@ -26,7 +30,8 @@
   let roleId = $state('')
   let kind = $state('agent')
   let tool = $state('codex')
-  let model = $state(defaultModelForTool('codex'))
+  let model = $state('')
+  let reasoningEffort = $state(null)
   let focusArea = $state('')
   let contextSummary = $state('')
   let behaviorSummary = $state('')
@@ -34,6 +39,9 @@
   let manualId = $state(false)
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
+  const resolvedModel = $derived(resolveMemberModel({ tool, model, reasoningEffort }, null, catalog))
   const isExisting = $derived(Boolean(role?.roleId))
   const dialogTitle = $derived(isExisting ? 'Edit Role' : 'Create Role')
   const overlayTone = $derived(
@@ -76,15 +84,8 @@
       && String(name ?? '').trim().length > 0
       && String(roleId ?? '').trim().length > 0
       && String(tool ?? '').trim().length > 0
-      && String(model ?? '').trim().length > 0
+      && resolvedModel.model.length > 0
   )
-  const modelOptions = $derived.by(() => {
-    const options = MODEL_OPTIONS_BY_TOOL[normalizeTool(tool)] ?? []
-    if (model && !options.includes(model)) {
-      return [model, ...options]
-    }
-    return options
-  })
 
   function slugify(value) {
     return String(value ?? '')
@@ -138,7 +139,8 @@
 
   function handleToolChange(event) {
     tool = normalizeTool(event.currentTarget.value || 'codex')
-    model = defaultModelForTool(tool)
+    model = ''
+    reasoningEffort = null
   }
 
   function handleKindChange(event) {
@@ -152,7 +154,8 @@
       name: String(name ?? '').trim(),
       kind: kind === 'lead' ? 'lead' : 'agent',
       tool: normalizeTool(tool || 'codex'),
-      model: String(model ?? '').trim(),
+      model: resolvedModel.model,
+      reasoningEffort: resolvedModel.reasoningEffort,
       focusArea: optionalValue(focusArea),
       contextSummary: optionalValue(contextSummary),
       behaviorSummary: optionalValue(behaviorSummary),
@@ -168,9 +171,13 @@
       roleId = String(role.roleId ?? '').trim()
       kind = String(role.kind ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
       tool = normalizeTool(role.tool ?? role.cliTool ?? role.defaults?.cliTool ?? 'codex')
-      model = String(
-        role.model ?? role.defaults?.model ?? defaultModelForTool(tool)
-      ).trim()
+      model = String(role.model ?? role.defaults?.model ?? '').trim()
+      reasoningEffort =
+        role.reasoningEffort
+        ?? role.reasoning_effort
+        ?? role.defaults?.reasoningEffort
+        ?? role.defaults?.reasoning_effort
+        ?? null
       focusArea = String(role.focusArea ?? role.focus_area ?? '').trim()
       contextSummary = String(role.contextSummary ?? role.context_summary ?? '').trim()
       behaviorSummary = String(role.behaviorSummary ?? role.behavior_summary ?? '').trim()
@@ -183,7 +190,8 @@
     roleId = ''
     kind = 'agent'
     tool = 'codex'
-    model = defaultModelForTool('codex')
+    model = ''
+    reasoningEffort = null
     focusArea = ''
     contextSummary = ''
     behaviorSummary = ''
@@ -350,18 +358,22 @@
               </label>
             </div>
 
-            <label class="space-y-1.5">
+            <div class="space-y-1.5">
               <span class="text-[11px] font-medium {t.textMuted}">Model</span>
-              <select
-                class="h-11 w-full rounded-[16px] border px-3 text-[14px] outline-none {inputTone}"
-                bind:value={model}
-                data-testid="mesh-role-editor-model-input"
-              >
-                {#each modelOptions as option}
-                  <option value={option}>{option}</option>
-                {/each}
-              </select>
-            </label>
+              <ModelSelect
+                {tool}
+                {model}
+                {reasoningEffort}
+                {catalog}
+                {dark}
+                inputClass={inputTone}
+                testId="mesh-role-editor-model-input"
+                onchange={(next) => {
+                  model = next.model
+                  reasoningEffort = next.reasoningEffort
+                }}
+              />
+            </div>
           </section>
 
           <section class="space-y-4 rounded-[24px] border px-5 py-5 {sectionTone}" data-testid="mesh-role-editor-context">

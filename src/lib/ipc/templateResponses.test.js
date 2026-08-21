@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeRoleTemplateResponse } from './templateResponses.js'
+import { normalizeRoleTemplateResponse, normalizeTeamPresetResponse } from './templateResponses.js'
 
 describe('templateResponses normalizeRoleTemplateResponse', () => {
   it('normalizes expanded role schema fields from snake_case responses', () => {
@@ -31,5 +31,36 @@ describe('templateResponses normalizeRoleTemplateResponse', () => {
         role_purpose: 'Stay compact.',
       }),
     }))
+  })
+})
+
+describe('templateResponses reasoning effort', () => {
+  // Regression: commits ff40911 and 5d2ce27 folded the effort into the model
+  // string and the launcher stripped it, so a role asking for `high` ran at the
+  // user's global `xhigh`. Both spellings of the split field must survive.
+  it('reads role defaults effort in both spellings', () => {
+    expect(normalizeRoleTemplateResponse({
+      role_id: 'dev',
+      name: 'Dev',
+      defaults: { cli_tool: 'codex', model: 'gpt-5.4', reasoning_effort: 'high' },
+    }).defaults).toEqual(expect.objectContaining({ model: 'gpt-5.4', reasoningEffort: 'high' }))
+
+    expect(normalizeRoleTemplateResponse({
+      roleId: 'dev',
+      name: 'Dev',
+      defaults: { cliTool: 'codex', model: 'gpt-5.4', reasoningEffort: 'high' },
+    }).defaults).toEqual(expect.objectContaining({ model: 'gpt-5.4', reasoningEffort: 'high' }))
+  })
+
+  it('reads slot override effort in both spellings', () => {
+    expect(normalizeTeamPresetResponse({
+      preset_id: 'duo',
+      name: 'Duo',
+      lead_role_id: 'lead',
+      agent_slots: [
+        { role_id: 'dev', count: 1, overrides: { model: 'gpt-5.4', reasoning_effort: 'high' } },
+        { role_id: 'qa', count: 1, overrides: { model: 'gpt-5.6-terra', reasoningEffort: 'low' } },
+      ],
+    }).agentSlots.map((slot) => slot.overrides.reasoningEffort)).toEqual(['high', 'low'])
   })
 })

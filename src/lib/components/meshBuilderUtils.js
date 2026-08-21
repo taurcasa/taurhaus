@@ -1,8 +1,8 @@
 import {
   applyNamePattern,
-  defaultModelForTool,
   resolveDefaultNamePattern,
   resolveRoleModel,
+  resolveRoleReasoningEffort,
   resolveRoleTool,
 } from '../meshDefaults.js'
 import { createAgent, createLead, projectNameFromPath, slugifyRoleId } from './meshTabUtils.js'
@@ -53,13 +53,14 @@ function nextAgentNameForRole(role, projectPath, existingAgents = []) {
 
 export function createLeadFromRole(role, projectPath) {
   const tool = resolveRoleTool(role, 'claude')
-  const model = resolveRoleModel(role, tool)
+  const model = resolveRoleModel(role)
   return createLead(
     {
       id: 'lead',
       name: 'team-lead',
       tool,
       model,
+      reasoningEffort: resolveRoleReasoningEffort(role),
       status: 'offline',
       projectId: projectPath,
       roleId: role?.roleId ?? null,
@@ -78,7 +79,7 @@ export function createLeadFromRole(role, projectPath) {
 
 export function createAgentFromRole(role, projectPath, existingAgents = []) {
   const tool = resolveRoleTool(role, 'codex')
-  const model = resolveRoleModel(role, tool)
+  const model = resolveRoleModel(role)
   const name = nextAgentNameForRole(role, projectPath, existingAgents)
 
   return createAgent(
@@ -88,6 +89,7 @@ export function createAgentFromRole(role, projectPath, existingAgents = []) {
       name,
       tool,
       model,
+      reasoningEffort: resolveRoleReasoningEffort(role),
       status: 'offline',
       projectId: projectPath,
       roleId: role?.roleId ?? null,

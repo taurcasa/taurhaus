@@ -10,20 +10,22 @@
   } from '../ipc.js'
   import { themeTokens } from '../themeTokens.js'
   import {
-    MODEL_OPTIONS_BY_TOOL,
     applyNamePattern,
-    defaultModelForTool,
     normalizeTool,
     resolveDefaultNamePattern,
     resolveRoleModel,
+    resolveRoleReasoningEffort,
     resolveRoleTool,
   } from '../meshDefaults.js'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import { projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
+  import ModelSelect from './ModelSelect.svelte'
   import MeshRoleEditorDialog from './MeshRoleEditorDialog.svelte'
   import {
     latestRoleVersions,
@@ -46,6 +48,7 @@
     roleTemplates = [],
     presets = [],
     availableProjects = [],
+    modelCatalog = null,
     onBrowseCatalog = () => {},
     onTeamNameChange = () => {},
     onDescriptionChange = () => {},
@@ -65,6 +68,15 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
+
+  function memberModelLabel(member) {
+    const resolved = resolveMemberModel(member, null, catalog)
+    if (!resolved.model) return 'no model'
+    return resolved.reasoningEffort ? `${resolved.model} · ${resolved.reasoningEffort}` : resolved.model
+  }
+
   const panelTone = $derived(
     dark
       ? 'border-white/[0.08] bg-white/[0.03]'
@@ -178,9 +190,11 @@
       .filter((role) => role && (role.roleId || role.name))
       .map((role) => {
         const tool = resolveRoleTool(role, role.kind === 'lead' ? 'claude' : 'codex')
-        const model = resolveRoleModel(role, tool)
+        const model = resolveRoleModel(role)
+        const reasoningEffort = resolveRoleReasoningEffort(role)
         return {
           ...role,
+          reasoningEffort,
           roleId: String(role.roleId ?? ''),
           name: String(role.name ?? role.roleId ?? 'Unnamed role'),
           kind: String(role.kind ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent',
@@ -901,7 +915,8 @@
       name: String(detail.name ?? '').trim(),
       kind: String(detail.kind ?? detail.role ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent',
       tool,
-      model: String(detail.model ?? detail.defaults?.model ?? defaultModelForTool(tool)).trim(),
+      model: String(detail.model ?? detail.defaults?.model ?? '').trim(),
+      reasoningEffort: resolveRoleReasoningEffort(detail),
       focusArea: String(detail.focusArea ?? detail.focus_area ?? '').trim(),
       contextSummary: String(detail.contextSummary ?? detail.context_summary ?? '').trim(),
       behaviorSummary: buildBehaviorMarkdown(
@@ -1342,7 +1357,11 @@
       ? 'lead'
       : 'agent'
     const tool = normalizeTool(draft?.tool ?? source?.tool ?? source?.cliTool ?? 'codex')
-    const model = String(draft?.model ?? '').trim() || defaultModelForTool(tool)
+    const resolved = resolveMemberModel(
+      { tool, model: draft?.model, reasoningEffort: draft?.reasoningEffort },
+      null,
+      catalog
+    )
     const defaultNamePattern = source?.defaults?.defaultNamePattern
       ?? source?.defaults?.default_name_pattern
       ?? (kind === 'lead' ? 'team-lead' : `${roleId || 'agent'}-{n}`)
@@ -1361,7 +1380,8 @@
       kind,
       defaults: {
         cliTool: tool,
-        model,
+        model: resolved.model,
+        reasoningEffort: resolved.reasoningEffort,
         defaultNamePattern,
       },
       instructions: String(draft?.instructions ?? '').trim(),
@@ -2203,7 +2223,7 @@
                           <span class="truncate">{normalizedTeam.lead.name || 'team-lead'}</span>
                           <span class="{t.textMuted}">•</span>
                           <span class="truncate">
-                            {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {normalizedTeam.lead.model || defaultModelForTool(normalizedTeam.lead.tool)}
+                            {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {memberModelLabel(normalizedTeam.lead)}
                           </span>
                         </span>
                       </span>
@@ -2242,19 +2262,19 @@
                           data-testid="mesh-builder-lead-name-input"
                         />
                       </label>
-                      <label class="space-y-1">
+                      <div class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Model</span>
-                        <select
-                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
-                          value={normalizedTeam.lead.model ?? defaultModelForTool(normalizedTeam.lead.tool)}
-                          onchange={(event) => onUpdateLead({ model: event.currentTarget.value })}
-                          data-testid="mesh-builder-lead-model-input"
-                        >
-                          {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(normalizedTeam.lead.tool)] ?? [defaultModelForTool(normalizedTeam.lead.tool)] as option}
-                            <option value={option}>{option}</option>
-                          {/each}
-                        </select>
-                      </label>
+                        <ModelSelect
+                          tool={normalizeTool(normalizedTeam.lead.tool)}
+                          model={normalizedTeam.lead.model}
+                          reasoningEffort={normalizedTeam.lead.reasoningEffort ?? null}
+                          {catalog}
+                          {dark}
+                          inputClass={inputTone}
+                          testId="mesh-builder-lead-model-input"
+                          onchange={(next) => onUpdateLead(next)}
+                        />
+                      </div>
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
                         <div class="relative">
@@ -2339,7 +2359,7 @@
                             <span class="truncate">{agent.name}</span>
                             <span class="{t.textMuted}">•</span>
                             <span class="truncate">
-                              {getToolName(normalizeTool(agent.tool))} · {agent.model || defaultModelForTool(agent.tool)}
+                              {getToolName(normalizeTool(agent.tool))} · {memberModelLabel(agent)}
                             </span>
                           </span>
                         </span>
@@ -2379,19 +2399,19 @@
                           data-testid={`mesh-builder-agent-name-input-${agent.id}`}
                         />
                       </label>
-                      <label class="space-y-1">
+                      <div class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Model</span>
-                        <select
-                          class="h-10 w-full rounded-[14px] border px-3 text-sm outline-none {inputTone}"
-                          value={agent.model ?? defaultModelForTool(agent.tool)}
-                          onchange={(event) => onUpdateAgent(agent.id, { model: event.currentTarget.value })}
-                          data-testid={`mesh-builder-agent-model-input-${agent.id}`}
-                        >
-                          {#each MODEL_OPTIONS_BY_TOOL[normalizeTool(agent.tool)] ?? [defaultModelForTool(agent.tool)] as option}
-                            <option value={option}>{option}</option>
-                          {/each}
-                        </select>
-                      </label>
+                        <ModelSelect
+                          tool={normalizeTool(agent.tool)}
+                          model={agent.model}
+                          reasoningEffort={agent.reasoningEffort ?? null}
+                          {catalog}
+                          {dark}
+                          inputClass={inputTone}
+                          testId={`mesh-builder-agent-model-input-${agent.id}`}
+                          onchange={(next) => onUpdateAgent(agent.id, next)}
+                        />
+                      </div>
                       <label class="space-y-1">
                         <span class="text-[10px] {t.textMuted}">Project</span>
                         <div class="relative">
@@ -2480,6 +2500,7 @@
       node={roleDetailNode(selectedRoleDetail)}
       mode="builder"
       {dark}
+      modelCatalog={catalog}
       editing={roleDetailEditing}
       editDraft={roleDetailDraft}
       saving={roleEditorSaving}
@@ -2505,6 +2526,7 @@
     open={roleEditorOpen}
     role={roleEditorRole}
     {dark}
+    modelCatalog={catalog}
     saving={roleEditorSaving}
     errorMessage={roleEditorError}
     onSave={handleRoleEditorSave}

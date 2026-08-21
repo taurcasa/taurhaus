@@ -65,12 +65,36 @@ function normalizeToolCommands(raw, defaults = {}) {
   }
 }
 
+function normalizeModelCatalogEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const id = String(raw.id ?? '').trim()
+  if (!id) return null
+  const efforts = Array.isArray(raw.efforts)
+    ? raw.efforts.map((effort) => String(effort ?? '').trim()).filter(Boolean)
+    : []
+  const defaultEffort = raw.defaultEffort ?? raw.default_effort ?? null
+  const replacement = raw.replacement ?? null
+  return {
+    id,
+    label: String(raw.label ?? id).trim() || id,
+    efforts,
+    defaultEffort: defaultEffort == null ? null : String(defaultEffort).trim() || null,
+    deprecated: Boolean(raw.deprecated),
+    replacement: replacement == null ? null : String(replacement).trim() || null,
+  }
+}
+
+function normalizeModelCatalogEntries(raw, defaults = []) {
+  const entries = Array.isArray(raw) ? raw : defaults
+  return entries.map((entry) => normalizeModelCatalogEntry(entry)).filter(Boolean)
+}
+
 function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
   const catalog = raw && typeof raw === 'object' ? raw : defaults
   return {
-    claude: Array.isArray(catalog.claude) ? [...catalog.claude] : [...defaults.claude],
-    codex: Array.isArray(catalog.codex) ? [...catalog.codex] : [...defaults.codex],
-    gemini: Array.isArray(catalog.gemini) ? [...catalog.gemini] : [...defaults.gemini],
+    claude: normalizeModelCatalogEntries(catalog.claude, defaults.claude),
+    codex: normalizeModelCatalogEntries(catalog.codex, defaults.codex),
+    gemini: normalizeModelCatalogEntries(catalog.gemini, defaults.gemini),
   }
 }
 

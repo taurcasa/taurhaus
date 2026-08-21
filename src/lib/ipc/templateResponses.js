@@ -27,6 +27,7 @@ function normalizeSlotOverrides(value) {
   return {
     namePattern: value.namePattern ?? value.name_pattern ?? null,
     model: value.model ?? null,
+    reasoningEffort: value.reasoningEffort ?? value.reasoning_effort ?? null,
     instructionsReplace: value.instructionsReplace ?? value.instructions_replace ?? null,
     instructionsAppend: value.instructionsAppend ?? value.instructions_append ?? null,
     focusArea: value.focusArea ?? value.focus_area ?? null,

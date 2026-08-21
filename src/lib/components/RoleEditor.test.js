@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import RoleEditor from './RoleEditor.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 import { normalizeRoleTemplate } from './templateBrowserUtils.js'
 
 describe('RoleEditor', () => {
@@ -32,6 +33,7 @@ describe('RoleEditor', () => {
     render(RoleEditor, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -105,6 +107,7 @@ describe('RoleEditor', () => {
     render(RoleEditor, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -127,6 +130,7 @@ describe('RoleEditor', () => {
     render(RoleEditor, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -140,7 +144,7 @@ describe('RoleEditor', () => {
       target: { value: 'codex' },
     })
     await fireEvent.change(screen.getByTestId('role-editor-model-select'), {
-      target: { value: 'gpt-5.4 high' },
+      target: { value: 'gpt-5.6-terra' },
     })
 
     expect(saveButton).not.toBeDisabled()
@@ -151,6 +155,7 @@ describe('RoleEditor', () => {
     render(RoleEditor, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
         onSave,
       },
     })
@@ -162,7 +167,7 @@ describe('RoleEditor', () => {
       target: { value: 'codex' },
     })
     await fireEvent.change(screen.getByTestId('role-editor-model-select'), {
-      target: { value: 'gpt-5.4 high' },
+      target: { value: 'gpt-5.6-terra' },
     })
     await fireEvent.input(screen.getByTestId('role-editor-focus-area-input'), {
       target: { value: 'Frontend UI and component architecture' },
@@ -187,7 +192,8 @@ describe('RoleEditor', () => {
       roleId: 'frontend',
       name: 'Frontend',
       tool: 'codex',
-      model: 'gpt-5.4 high',
+      model: 'gpt-5.6-terra',
+      reasoningEffort: 'medium',
       focusArea: 'Frontend UI and component architecture',
       contextSummary: 'Maintains component patterns, tokens, and accessibility context.',
       behaviorSummary: 'Implements UI work independently; escalates architecture changes.',
@@ -203,6 +209,7 @@ describe('RoleEditor', () => {
     render(RoleEditor, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
         onSave,
       },
     })

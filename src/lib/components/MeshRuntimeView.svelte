@@ -1,11 +1,14 @@
 <script>
-  import { defaultModelForTool, modelsForTool, normalizeTool } from '../meshDefaults.js'
+  import { normalizeTool } from '../meshDefaults.js'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { EMPTY_MODEL_CATALOG } from '../modelCatalog.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
   import MeshCanvas from './MeshCanvas.svelte'
 import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MeshRuntimeBar from './MeshRuntimeBar.svelte'
+  import ModelSelect from './ModelSelect.svelte'
   import SlideOver from './SlideOver.svelte'
 
   let {
@@ -25,6 +28,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
     loadingRoles = false,
     captureRoleDraft = null,
     canSaveCapturedRole = false,
+    modelCatalog = null,
     onNodeClick = () => {},
     onOpenAddAgent = () => {},
     onRequestDisband = () => {},
@@ -47,6 +51,8 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
   let nodeDetailAnchor = $state(null)
   let detailOpenPerf = $state(null)
   const detailNode = $derived.by(() => {
@@ -101,7 +107,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
           name: String(role.name ?? role.roleId ?? role.role_id ?? 'Unnamed role'),
           kind: String(role.kind ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent',
           cliTool: tool,
-          model: String(role.model ?? role.defaults?.model ?? defaultModelForTool(tool)),
+          model: String(role.model ?? role.defaults?.model ?? ''),
           summary: String(
             role.behaviorSummary ??
             role.behavior_summary ??
@@ -365,6 +371,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
           node={detailNode}
           mode="runtime"
           {dark}
+          modelCatalog={catalog}
           anchor={nodeDetailAnchor}
           onVisible={handleDetailVisible}
           actions={{
@@ -674,23 +681,21 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
 
           <div class="space-y-1.5">
             <label for="mesh-add-agent-model-select-input" class="block text-[10px] font-bold uppercase tracking-wide {t.textMuted} px-1">Model</label>
-            <div class="relative">
-              <select
-                id="mesh-add-agent-model-select-input"
-                class="h-10 w-full rounded-lg border px-3 pr-8 text-sm transition-all outline-none appearance-none {fieldTone} {selectScheme} {addAgentDraft?.isLocked ? 'opacity-50 cursor-not-allowed' : ''}"
-                value={addAgentDraft?.model ?? defaultModelForTool(addAgentDraft?.tool ?? 'codex')}
-                onchange={(event) => onUpdateAddAgentField('model', event.currentTarget.value)}
-                disabled={addAgentDraft?.submitting || addAgentDraft?.isLocked}
-                data-testid="mesh-add-agent-model-select"
-              >
-                {#each modelsForTool(addAgentDraft?.tool ?? 'codex') as model}
-                  <option value={model}>{model}</option>
-                {/each}
-              </select>
-              <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>
-              </div>
-            </div>
+            <ModelSelect
+              id="mesh-add-agent-model-select-input"
+              tool={addAgentDraft?.tool ?? 'codex'}
+              model={addAgentDraft?.model}
+              reasoningEffort={addAgentDraft?.reasoningEffort ?? null}
+              {catalog}
+              {dark}
+              disabled={Boolean(addAgentDraft?.submitting || addAgentDraft?.isLocked)}
+              inputClass={`${fieldTone} ${selectScheme}`}
+              testId="mesh-add-agent-model-select"
+              onchange={(next) => {
+                onUpdateAddAgentField('model', next.model)
+                onUpdateAddAgentField('reasoningEffort', next.reasoningEffort)
+              }}
+            />
           </div>
         </div>
 

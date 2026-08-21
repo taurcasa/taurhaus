@@ -1,7 +1,10 @@
 <script>
   import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
-  import { defaultModelForTool, MODEL_OPTIONS_BY_TOOL, normalizeTool } from '../meshDefaults.js'
+  import ModelSelect from './ModelSelect.svelte'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { normalizeTool } from '../meshDefaults.js'
+  import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
 
   let {
@@ -15,8 +18,12 @@
     dirty = false,
     actions = {},
     anchor = null,
+    modelCatalog = null,
     onVisible = () => {},
   } = $props()
+
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
   let dialogEl = $state(null)
   let modalRootEl = $state(null)
@@ -57,8 +64,18 @@
   })
   const model = $derived.by(() =>
     isEditing
-      ? String(editDraft?.model ?? defaultModelForTool(editTool)).trim()
+      ? String(editDraft?.model ?? '').trim()
       : String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim()
+  )
+  const reasoningEffort = $derived.by(() =>
+    String(
+      (isEditing
+        ? editDraft?.reasoningEffort ?? editDraft?.reasoning_effort
+        : node?.reasoningEffort ?? node?.reasoning_effort) ?? ''
+    ).trim()
+  )
+  const modelDisplay = $derived(
+    model ? `${model}${reasoningEffort ? ` · ${reasoningEffort}` : ''}` : ''
   )
   const editKind = $derived.by(() =>
     String(editDraft?.kind ?? node?.role ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
@@ -147,13 +164,6 @@
       : []
   )
   const behavioralContract = $derived.by(() => normalizeBehavioralContract(node?.behavioralContract ?? node?.behavioral_contract))
-  const modelOptions = $derived.by(() => {
-    const options = MODEL_OPTIONS_BY_TOOL[editTool] ?? []
-    if (model && !options.includes(model)) {
-      return [model, ...options]
-    }
-    return options
-  })
   const instructionsVisible = $derived(
     !isEditing || Boolean(editDraft?.showInstructions) || String(editDraft?.instructions ?? '').trim().length > 0
   )
@@ -257,7 +267,7 @@
   const configurationEntries = $derived.by(() => {
     const entries = [
       { label: 'Tool', value: toolLabel, testId: null },
-      { label: 'Model', value: model || 'Not specified', testId: null },
+      { label: 'Model', value: modelDisplay || 'Not specified', testId: null },
     ]
 
     if (roleId) {
@@ -394,9 +404,11 @@
 
   function handleToolChange(value) {
     const nextTool = normalizeTool(value || 'codex')
+    const nextModel = defaultModelFor(catalog, nextTool)
     updateDraft({
       tool: nextTool,
-      model: defaultModelForTool(nextTool),
+      model: nextModel,
+      reasoningEffort: defaultEffortFor(catalog, nextTool, nextModel),
     })
   }
 
@@ -574,16 +586,20 @@
                     <option value="codex">Codex</option>
                     <option value="gemini">Gemini</option>
                   </select>
-                  <select
-                    class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
-                    value={model}
-                    onchange={(event) => updateDraft({ model: event.currentTarget.value })}
-                    data-testid="mesh-node-detail-model-input"
-                  >
-                    {#each modelOptions as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </select>
+                  <div class="w-[18rem] max-w-full">
+                    <ModelSelect
+                      tool={editTool}
+                      {model}
+                      reasoningEffort={reasoningEffort || null}
+                      {catalog}
+                      {dark}
+                      compact
+                      inputClass={selectPillTone}
+                      testId="mesh-node-detail-model-input"
+                      onchange={(next) =>
+                        updateDraft({ model: next.model, reasoningEffort: next.reasoningEffort })}
+                    />
+                  </div>
                   <select
                     class="h-9 rounded-xl border px-3 outline-none {selectPillTone}"
                     value={editKind}
@@ -621,7 +637,7 @@
               <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] {shellSecondaryTone}">
                 <span class="inline-flex items-center gap-2" data-testid="mesh-node-detail-tool-model">
                   <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
-                  {toolLabel}{model ? ` · ${model}` : ''}
+                  {toolLabel}{modelDisplay ? ` · ${modelDisplay}` : ''}
                 </span>
                 <span class="inline-flex items-center gap-2">
                     <span class="inline-block h-2 w-2 rounded-full {statusDotTone}" aria-hidden="true"></span>
