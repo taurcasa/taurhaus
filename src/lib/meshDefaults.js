@@ -1,22 +1,8 @@
 export const TOOL_OPTIONS = ['claude', 'codex', 'gemini']
 
-export const MODEL_OPTIONS_BY_TOOL = {
-  claude: ['opus', 'sonnet', 'haiku'],
-  codex: ['gpt-5.4 high', 'gpt-5.3-codex', 'gpt-5-mini'],
-  gemini: ['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'],
-}
-
 export function normalizeTool(tool) {
   const value = String(tool || '').trim().toLowerCase()
   return TOOL_OPTIONS.includes(value) ? value : 'claude'
-}
-
-export function modelsForTool(tool) {
-  return MODEL_OPTIONS_BY_TOOL[normalizeTool(tool)] ?? MODEL_OPTIONS_BY_TOOL.claude
-}
-
-export function defaultModelForTool(tool) {
-  return modelsForTool(tool)[0] ?? 'default'
 }
 
 export function applyNamePattern(pattern, n, projectName) {
@@ -75,9 +61,21 @@ export function resolveRoleTool(roleTemplate, fallbackTool = 'codex') {
   )
 }
 
-export function resolveRoleModel(roleTemplate, tool) {
-  const model = String(roleTemplate?.model ?? roleTemplate?.defaults?.model ?? '').trim()
-  return model || defaultModelForTool(tool)
+// Model resolution lives in modelCatalog.js; a role only reports what it declares.
+export function resolveRoleModel(roleTemplate) {
+  return String(roleTemplate?.model ?? roleTemplate?.defaults?.model ?? '').trim()
+}
+
+export function resolveRoleReasoningEffort(roleTemplate) {
+  return (
+    String(
+      roleTemplate?.reasoningEffort ??
+        roleTemplate?.reasoning_effort ??
+        roleTemplate?.defaults?.reasoningEffort ??
+        roleTemplate?.defaults?.reasoning_effort ??
+        ''
+    ).trim() || null
+  )
 }
 
 export function uniquifyMemberName(name, seenNames) {

@@ -114,7 +114,8 @@ function makeRoleTemplate(roleId, { name, instructions, version = '1.0.0' } = {}
     kind: 'agent',
     defaults: {
       cli_tool: 'codex',
-      model: 'gpt-5.4-high',
+      model: 'gpt-5.4',
+      reasoning_effort: 'high',
       default_name_pattern: `${roleId}-{n}`,
     },
     instructions: instructions ?? `Instructions for ${roleId}`,
@@ -776,9 +777,14 @@ describe('Template CRUD UI', () => {
         async () => {
           const toolValue = await (await $('[data-testid="mesh-add-agent-tool-select"]')).getValue()
           const modelValue = await (await $('[data-testid="mesh-add-agent-model-select"]')).getValue()
-          return toolValue === 'codex' && modelValue === 'gpt-5.4-high'
+          // The role declares `reasoning_effort: high`; autofill must carry it
+          // instead of substituting the catalog default.
+          const effortValue = await (
+            await $('[data-testid="mesh-add-agent-model-select-effort"]')
+          ).getValue()
+          return toolValue === 'codex' && modelValue === 'gpt-5.4' && effortValue === 'high'
         },
-        { ...WAIT_MEDIUM, timeoutMsg: 'Role-aware autofill did not set tool/model values' }
+        { ...WAIT_MEDIUM, timeoutMsg: 'Role-aware autofill did not set tool/model/effort values' }
       )
 
       const toolSelect = await $('[data-testid="mesh-add-agent-tool-select"]')

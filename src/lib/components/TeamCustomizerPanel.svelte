@@ -2,7 +2,14 @@
   import SlideOver from './SlideOver.svelte'
   import AgentCard from './AgentCard.svelte'
   import ValidationBar from './ValidationBar.svelte'
-  import { defaultModelForTool } from '../meshDefaults.js'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import {
+    EMPTY_MODEL_CATALOG,
+    defaultEffortFor,
+    defaultModelFor,
+    parseLegacyModel,
+    roleDeclaredEffort,
+  } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
@@ -15,12 +22,16 @@
     availableProjects = [],
     teamConfig = null,
     context = null,
+    modelCatalog = null,
+    roleTemplates = [],
     onClose = () => {},
     onSave = () => {},
     onReset = () => {},
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
   const inputTone = $derived(
     dark
       ? 'bg-zinc-950/50 border-white/[0.08] text-zinc-100 placeholder-zinc-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'
@@ -44,6 +55,10 @@
   let nextAgentId = $state(1)
   let hydratedConfig = $state(undefined)
   let hydratedSelectedRoleId = $state(undefined)
+  // Which model fields each row's card reported as changed, keyed by member id.
+  // The preset editor turns this into slot/lead overrides: a field nobody touched
+  // keeps whatever the preset already pinned (or stays inherited).
+  let touchedModelFields = $state({})
 
   let showSavePresetDialog = $state(false)
   let newPresetName = $state('')
@@ -59,6 +74,20 @@
       .filter((project) => project.id)
   )
 
+  // The effort a role-bound row actually launches with when it declares none
+  // itself: the backend refills it from the role template
+  // (`apply_role_template_defaults`, `hydrate_member_model_fields`), so the
+  // editor must show it instead of offering a clear it cannot deliver.
+  function effortFromRole(roleId) {
+    const id = String(roleId ?? '').trim()
+    if (!id) return null
+    return roleDeclaredEffort(
+      (roleTemplates ?? []).find(
+        (entry) => String(entry?.roleId ?? entry?.role_id ?? '').trim() === id
+      )
+    )
+  }
+
   function normalizeOptionalTool(value) {
     const normalized = String(value ?? '').trim().toLowerCase()
     return normalized || ''
@@ -67,10 +96,19 @@
   function selectedLeadDefaults() {
     const selectedRole = context?.selectedRole
     const tool = normalizeOptionalTool(selectedRole?.cliTool ?? selectedRole?.tool)
+    const parsed = parseLegacyModel(selectedRole?.model)
+    const model = parsed.model || (tool ? defaultModelFor(catalog, tool) : '')
+    const declaredEffort =
+      selectedRole?.reasoningEffort ?? selectedRole?.reasoning_effort ?? parsed.reasoningEffort
 
     return {
       tool,
-      model: String(selectedRole?.model ?? (tool ? defaultModelForTool(tool) : '')),
+      model,
+      // Only a catalog-supplied model brings the catalog's default effort: a role
+      // that names a model but no effort keeps inheriting the CLI global setting.
+      reasoningEffort:
+        declaredEffort ??
+        (!parsed.model && tool ? defaultEffortFor(catalog, tool, model) : null),
       roleId: selectedRole?.roleId ?? null,
       description: String(selectedRole?.name ?? 'Team lead'),
     }
@@ -84,6 +122,7 @@
       name: 'team-lead',
       tool: defaults.tool,
       model: defaults.model,
+      reasoningEffort: defaults.reasoningEffort,
       projectId: projectPath || projectOptions[0]?.id || '',
       description: defaults.description,
       roleId: defaults.roleId,
@@ -91,18 +130,41 @@
   }
 
   function defaultAgent(index) {
+    const model = defaultModelFor(catalog, 'codex')
     return {
       id: `agent-${index + 1}`,
       name: `agent-${index + 1}`,
       tool: 'codex',
-      model: defaultModelForTool('codex'),
+      model,
+      reasoningEffort: defaultEffortFor(catalog, 'codex', model),
       projectId: projectPath || projectOptions[0]?.id || '',
       description: '',
       roleId: null,
+      slotIndex: null,
+    }
+  }
+
+  function markModelFieldsTouched(memberId, fields) {
+    const previous = touchedModelFields[memberId] ?? { model: false, reasoningEffort: false }
+    touchedModelFields = {
+      ...touchedModelFields,
+      [memberId]: {
+        model: previous.model || Boolean(fields?.model),
+        reasoningEffort: previous.reasoningEffort || Boolean(fields?.reasoningEffort),
+      },
+    }
+  }
+
+  function touchedFieldsFor(memberId) {
+    const touched = touchedModelFields[memberId]
+    return {
+      model: Boolean(touched?.model),
+      reasoningEffort: Boolean(touched?.reasoningEffort),
     }
   }
 
   function hydrateFromConfig(config) {
+    touchedModelFields = {}
     localTeamName = String(config?.teamName ?? '').trim()
     localDescription = String(config?.description ?? '')
     const defaults = selectedLeadDefaults()
@@ -113,13 +175,13 @@
           id: String(incomingLead.id ?? 'lead'),
           name: String(incomingLead.name ?? 'team-lead'),
           tool: normalizeOptionalTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool),
-          model: String(
-            incomingLead.model ??
-            defaults.model ??
-            (normalizeOptionalTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool)
-              ? defaultModelForTool(incomingLead.tool ?? incomingLead.cliTool ?? defaults.tool)
-              : '')
-          ),
+          model: String(parseLegacyModel(incomingLead.model).model || defaults.model || ''),
+          reasoningEffort:
+            incomingLead.reasoningEffort ??
+            incomingLead.reasoning_effort ??
+            parseLegacyModel(incomingLead.model).reasoningEffort ??
+            defaults.reasoningEffort ??
+            null,
           projectId: String(incomingLead.projectId ?? incomingLead.project_id ?? projectPath ?? ''),
           description: String(incomingLead.description ?? defaults.description),
           roleId: incomingLead.roleId ?? defaults.roleId ?? null,
@@ -131,10 +193,18 @@
       id: String(agent.id ?? `agent-${index + 1}`),
       name: String(agent.name ?? `agent-${index + 1}`),
       tool: String(agent.tool ?? agent.cliTool ?? 'codex').toLowerCase(),
-      model: String(agent.model ?? defaultModelForTool('codex')),
+      model: String(parseLegacyModel(agent.model).model || ''),
+      reasoningEffort:
+        agent.reasoningEffort ??
+        agent.reasoning_effort ??
+        parseLegacyModel(agent.model).reasoningEffort ??
+        null,
       projectId: String(agent.projectId ?? agent.project_id ?? projectPath ?? ''),
       description: String(agent.description ?? ''),
       roleId: agent.roleId ?? null,
+      // Which preset slot this row came from, so a save can put the edit back on
+      // that slot's overrides instead of rebuilding the preset from role defaults.
+      slotIndex: Number.isInteger(agent.slotIndex) ? agent.slotIndex : null,
     }))
     nextAgentId = agents.length + 1
   }
@@ -198,6 +268,18 @@
     return 'codex-developer'
   }
 
+  // Without overrides the saved preset only remembers the role, so reloading it
+  // restores the role defaults and throws away the model and effort the roster
+  // actually selected. This is the "save as new preset" path: it snapshots a
+  // concrete roster, unlike editing an existing preset where an untouched row
+  // keeps inheriting from its role (see `agentSlotsFromCustomizer`).
+  function slotOverridesFor(agent) {
+    const model = String(agent?.model ?? '').trim()
+    const reasoningEffort = String(agent?.reasoningEffort ?? '').trim()
+    if (!model && !reasoningEffort) return null
+    return { model: model || null, reasoningEffort: reasoningEffort || null }
+  }
+
   function clearPresetSaveTimer() {
     if (!presetSaveTimer) return
     clearTimeout(presetSaveTimer)
@@ -228,7 +310,7 @@
         count: 1,
         projectBinding: 'lead_project',
         projectId: null,
-        overrides: null,
+        overrides: slotOverridesFor(agent),
       }))
 
       await upsertTeamPreset({
@@ -276,17 +358,22 @@
         name: String(lead?.name ?? '').trim(),
         cliTool: normalizeOptionalTool(lead?.tool),
         model: String(lead?.model ?? '').trim(),
+        reasoningEffort: lead?.reasoningEffort ?? null,
         projectId: String(lead?.projectId ?? '').trim(),
         description: String(lead?.description ?? '').trim(),
         roleId: lead?.roleId ?? null,
+        touched: touchedFieldsFor(lead?.id ?? 'lead'),
       },
       agents: agents.map((agent) => ({
         name: String(agent.name ?? '').trim(),
         cliTool: String(agent.tool ?? 'codex').toLowerCase(),
         model: String(agent.model ?? '').trim(),
+        reasoningEffort: agent.reasoningEffort ?? null,
         projectId: String(agent.projectId ?? '').trim(),
         description: String(agent.description ?? '').trim(),
         roleId: agent.roleId ?? null,
+        slotIndex: Number.isInteger(agent.slotIndex) ? agent.slotIndex : null,
+        touched: touchedFieldsFor(agent.id),
       })),
       ...payload,
     })
@@ -358,9 +445,13 @@
             name={lead.name}
             tool={lead.tool}
             model={lead.model}
+            reasoningEffort={lead.reasoningEffort}
+            inheritedEffort={effortFromRole(lead.roleId)}
+            modelCatalog={catalog}
             projectId={lead.projectId}
             description={lead.description}
             {dark}
+            onchange={(fields) => markModelFieldsTouched(lead.id ?? 'lead', fields)}
             onSave={updateLead}
           />
         </div>
@@ -376,9 +467,13 @@
               name={agent.name}
               tool={agent.tool}
               model={agent.model}
+              reasoningEffort={agent.reasoningEffort}
+              inheritedEffort={effortFromRole(agent.roleId)}
+              modelCatalog={catalog}
               projectId={agent.projectId}
               description={agent.description}
               {dark}
+              onchange={(fields) => markModelFieldsTouched(agent.id, fields)}
               onSave={(payload) => updateAgent(agent.id, payload)}
               onRemove={() => removeAgent(agent.id)}
             />

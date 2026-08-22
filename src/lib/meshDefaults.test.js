@@ -1,38 +1,26 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  MODEL_OPTIONS_BY_TOOL,
   TOOL_OPTIONS,
   applyNamePattern,
-  defaultModelForTool,
-  modelsForTool,
   normalizeTool,
   resolveDefaultNamePattern,
   resolveRoleModel,
+  resolveRoleReasoningEffort,
   resolveRoleTool,
   resolveSlotNamePattern,
   uniquifyMemberName,
 } from './meshDefaults.js'
 
 describe('meshDefaults', () => {
-  // Regression: 791f6be removed the explicit Codex effort from the primary
-  // builder default, so UI-created members inherited the user's global xhigh.
-  it('exposes canonical tool/model defaults', () => {
+  it('exposes the canonical tool list', () => {
     expect(TOOL_OPTIONS).toEqual(['claude', 'codex', 'gemini'])
-    expect(MODEL_OPTIONS_BY_TOOL.claude).toEqual(['opus', 'sonnet', 'haiku'])
-    expect(MODEL_OPTIONS_BY_TOOL.codex).toEqual(['gpt-5.4 high', 'gpt-5.3-codex', 'gpt-5-mini'])
-    expect(MODEL_OPTIONS_BY_TOOL.gemini).toEqual(['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'])
   })
 
-  it('normalizes tool values and provides model fallbacks', () => {
+  it('normalizes tool values', () => {
     expect(normalizeTool('CoDeX')).toBe('codex')
     expect(normalizeTool('')).toBe('claude')
     expect(normalizeTool('unknown')).toBe('claude')
-
-    expect(modelsForTool('gemini')).toEqual(['gemini-3.1-pro', 'gemini-2.5-pro', 'gemini-2.0-flash'])
-    expect(modelsForTool('wat')).toEqual(['opus', 'sonnet', 'haiku'])
-    expect(defaultModelForTool('codex')).toBe('gpt-5.4 high')
-    expect(defaultModelForTool('wat')).toBe('opus')
   })
 
   it('resolves role defaults from camel/snake payload variants', () => {
@@ -51,9 +39,16 @@ describe('meshDefaults', () => {
 
     expect(resolveRoleTool(role, 'codex')).toBe('gemini')
     expect(resolveRoleTool({}, 'codex')).toBe('codex')
-    expect(resolveRoleModel({ model: 'gemini-2.5-pro' }, 'gemini')).toBe('gemini-2.5-pro')
-    expect(resolveRoleModel({ model: '' }, 'gemini')).toBe('gemini-3.1-pro')
-    expect(resolveRoleModel({}, 'codex')).toBe('gpt-5.4 high')
+    // Regression: two hardcoded model lists (meshDefaults.js, RoleEditor.svelte)
+    // shadowed the backend catalog; a role now reports only what it declares and
+    // the catalog supplies the default.
+    expect(resolveRoleModel({ model: 'gemini-3.1-pro' })).toBe('gemini-3.1-pro')
+    expect(resolveRoleModel({ model: '' })).toBe('')
+    expect(resolveRoleModel({})).toBe('')
+    expect(resolveRoleModel({ defaults: { model: 'gpt-5.6-terra' } })).toBe('gpt-5.6-terra')
+    expect(resolveRoleReasoningEffort({ defaults: { reasoning_effort: 'high' } })).toBe('high')
+    expect(resolveRoleReasoningEffort({ reasoningEffort: 'low' })).toBe('low')
+    expect(resolveRoleReasoningEffort({})).toBeNull()
   })
 
   it('applies deterministic member naming', () => {

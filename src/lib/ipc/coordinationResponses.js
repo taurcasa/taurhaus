@@ -166,6 +166,9 @@ function normalizeCoordinationMember(value) {
   const model = String(value.model ?? '').trim()
   if (model) normalized.model = model
 
+  const reasoningEffort = String(value.reasoningEffort ?? value.reasoning_effort ?? '').trim()
+  if (reasoningEffort) normalized.reasoningEffort = reasoningEffort
+
   const instructions = value.instructions ?? null
   if (instructions) normalized.instructions = instructions
 

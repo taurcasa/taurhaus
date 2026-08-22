@@ -2072,6 +2072,61 @@ fn role_hydration_cli_mismatch_uses_the_requested_tools_catalog_default() {
     assert_eq!(hydrated.agents[0].model, "opus");
 }
 
+// Regression: b345de1 (PR 5c) gave presets a lead pin for model and effort, but
+// preset-driven request hydration composed with `CompositionOverrides::default()`,
+// so a minimal initialize payload launched the lead on the lead role's defaults and
+// silently dropped the pin the preset stores.
+#[test]
+fn initialize_request_hydration_applies_the_preset_lead_pin() {
+    let tmp = TempDir::new().expect("tempdir");
+    let presets_dir = tmp.path().join("templates").join("presets");
+    std::fs::create_dir_all(&presets_dir).expect("presets dir");
+    std::fs::write(
+        presets_dir.join("lead-pinned.yaml"),
+        concat!(
+            "schema:\n",
+            "  kind: team_preset\n",
+            "  version: 1\n",
+            "preset_id: lead-pinned\n",
+            "name: Lead Pinned\n",
+            "description: Lead pinned to a model and effort\n",
+            "version: \"1.0.0\"\n",
+            "lead_role_id: v3-lead-claude\n",
+            "lead_overrides:\n",
+            "  model: claude-sonnet-4-5\n",
+            "  reasoning_effort: xhigh\n",
+            "agent_slots:\n",
+            "  - role_id: quick-dev-codex\n",
+            "    count: 1\n",
+            "    project_binding: lead_project\n",
+            "defaults:\n",
+            "  team_name_pattern: \"{project}-team\"\n",
+            "  tmux_layout: tiled\n",
+        ),
+    )
+    .expect("write preset");
+
+    let state = test_state(tmp.path().join("teams"));
+    let mut request = sample_preflight_request();
+    request.preset_id = Some("lead-pinned".to_string());
+    request.lead.cli_tool.clear();
+    request.lead.model.clear();
+    request.lead.reasoning_effort = None;
+    request.lead.role_id = None;
+    request.lead.role_name = None;
+    request.agents.truncate(1);
+    request.agents[0].cli_tool.clear();
+    request.agents[0].model.clear();
+    request.agents[0].role_id = None;
+    request.agents[0].role_name = None;
+
+    let hydrated = hydrate_initialize_request_role_metadata(&state, request)
+        .expect("preset hydration should succeed");
+
+    assert_eq!(hydrated.lead.model, "claude-sonnet-4-5");
+    assert_eq!(hydrated.lead.reasoning_effort.as_deref(), Some("xhigh"));
+}
+
 #[test]
 fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload() {
     let tmp = TempDir::new().expect("tempdir");

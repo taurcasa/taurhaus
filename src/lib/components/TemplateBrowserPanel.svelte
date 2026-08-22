@@ -12,6 +12,7 @@
   let {
     open = false,
     dark = false,
+    modelCatalog = null,
     onClose = () => {},
     onSelectPreset = () => {},
     onSelectRole = () => {},
@@ -159,6 +160,7 @@
 <RoleEditor
   open={controller.roleEditorOpen}
   {dark}
+  {modelCatalog}
   role={controller.roleEditorRole}
   onSave={controller.handleRoleSave}
   onCancel={controller.resetRoleEditor}
@@ -172,6 +174,8 @@
 <TeamCustomizerPanel
   open={controller.presetEditorOpen}
   {dark}
+  {modelCatalog}
+  roleTemplates={controller.roleTemplates}
   teamConfig={controller.presetEditorTeamConfig}
   onClose={controller.closePresetEditor}
   onSave={controller.savePresetFromCustomizer}

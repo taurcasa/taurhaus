@@ -32,6 +32,7 @@ const { open, save } = await import('@tauri-apps/plugin-dialog')
 const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
 import MeshTeamBuilder from './MeshTeamBuilder.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 const ROLE_VERSION_VISIBILITY_STORAGE_KEY =
   'taurhaus.mesh.builder.show-all-role-versions'
@@ -213,6 +214,7 @@ function builderProps(props = {}) {
     roleTemplates: sampleRoles(),
     presets: [],
     availableProjects: sampleAvailableProjects(),
+    modelCatalog: TEST_MODEL_CATALOG,
     onBrowseCatalog: vi.fn(),
     onTeamNameChange: vi.fn(),
     onDescriptionChange: vi.fn(),
@@ -585,6 +587,41 @@ describe('MeshTeamBuilder', () => {
     expect(onRefreshRoleTemplates).toHaveBeenCalledTimes(1)
   })
 
+  // Regression: b345de1 (PR 5c) added an effort control to the inline role editor
+  // but left `reasoningEffort` out of `serializeRoleDetailDraft`, so changing only
+  // the effort never flipped the draft to dirty and the unsaved marker stayed
+  // hidden.
+  it('marks the role detail dirty when only the reasoning effort changes', async () => {
+    getRoleTemplate.mockResolvedValue({
+      ...sampleRoles().find((role) => role.roleId === 'agent-codex'),
+      model: 'gpt-5.4',
+      defaults: {
+        cliTool: 'codex',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
+        defaultNamePattern: 'agent-codex-{n}',
+      },
+    })
+
+    renderBuilder()
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-role-info-agent-codex'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-edit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-model-input-effort')).toHaveValue('high')
+    })
+    expect(screen.queryByTestId('mesh-node-detail-unsaved-dot')).not.toBeInTheDocument()
+
+    await fireEvent.change(screen.getByTestId('mesh-node-detail-model-input-effort'), {
+      target: { value: 'xhigh' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-unsaved-dot')).toBeInTheDocument()
+    })
+  })
+
   it('switches from role detail into edit mode and saves role changes', async () => {
     const onRefreshRoleTemplates = vi.fn().mockResolvedValue(undefined)
     getRoleTemplate.mockResolvedValue({
@@ -937,5 +974,77 @@ describe('MeshTeamBuilder', () => {
       '2 agents · 1 lead'
     )
     expect(screen.queryByTestId('mesh-template-preset-built-in-research-pod')).not.toBeInTheDocument()
+  })
+})
+
+describe('MeshTeamBuilder role-inherited reasoning effort', () => {
+  function optionValues(select) {
+    return Array.from(select.querySelectorAll('option')).map((option) => option.value)
+  }
+
+  function roleBoundTeamConfig() {
+    return {
+      description: '',
+      lead: {
+        id: 'lead',
+        name: 'team-lead',
+        roleId: 'lead-codex',
+        roleName: 'Codex Product Lead',
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: null,
+        projectId: '/projects/taurhaus',
+      },
+      agents: [
+        {
+          id: 'agent-codex-1',
+          name: 'builder-1',
+          roleId: 'agent-codex',
+          roleName: 'Codex Developer',
+          tool: 'codex',
+          model: 'gpt-5.6-terra',
+          reasoningEffort: null,
+          projectId: '/projects/taurhaus',
+        },
+      ],
+    }
+  }
+
+  // Regression: b345de1 (PR 5c) offered an empty "default" effort option on every
+  // roster row. Picking it sent reasoning_effort: null, which the backend refills
+  // from the member's role template (`apply_role_template_defaults`,
+  // request_normalization.rs), so a role declaring "high" still launched at high
+  // while the row claimed the CLI global applied.
+  it('shows the role-declared effort instead of a misleading default option', async () => {
+    renderBuilder({ teamConfig: roleBoundTeamConfig() })
+
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+
+    const effort = await screen.findByTestId('mesh-builder-agent-model-input-agent-codex-1-effort')
+    expect(effort).toHaveValue('high')
+    expect(optionValues(effort)).not.toContain('')
+  })
+
+  it('shows the lead role-declared effort the same way', async () => {
+    renderBuilder({ teamConfig: roleBoundTeamConfig() })
+
+    await fireEvent.click(screen.getByLabelText('Edit lead details'))
+
+    const effort = await screen.findByTestId('mesh-builder-lead-model-input-effort')
+    expect(effort).toHaveValue('high')
+    expect(optionValues(effort)).not.toContain('')
+  })
+
+  it('keeps the inherit-global option for a member whose role declares no effort', async () => {
+    const config = roleBoundTeamConfig()
+    config.agents[0].roleId = 'agent-gemini'
+    config.agents[0].tool = 'codex'
+    renderBuilder({ teamConfig: config })
+
+    await fireEvent.click(screen.getByLabelText('Edit builder-1 details'))
+
+    const effort = await screen.findByTestId('mesh-builder-agent-model-input-agent-codex-1-effort')
+    expect(optionValues(effort)).toContain('')
+    expect(effort).toHaveValue('')
   })
 })

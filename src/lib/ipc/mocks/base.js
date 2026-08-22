@@ -96,6 +96,23 @@ export const MOCK_RELATIONSHIPS = [
   { id: 'rel-2', source_project_id: 'mock-1', target_project_id: 'mock-4', relationship_type: 'references', detection_source: 'claude_md', dismissed: false, first_detected_at: '2026-01-15T00:00:00Z', last_seen_at: '2026-02-17T00:00:00Z' },
 ]
 
+/** Browser-mode stand-in for the backend `ModelCatalog` on the terminal contract. */
+export const MOCK_MODEL_CATALOG = {
+  claude: [
+    { id: 'opus', label: 'Opus 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+    { id: 'sonnet', label: 'Sonnet', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+  ],
+  codex: [
+    { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low', deprecated: false, replacement: null },
+    { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium', deprecated: false, replacement: null },
+    { id: 'gpt-5.4', label: 'GPT-5.4', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium', deprecated: true, replacement: 'gpt-5.6-terra' },
+  ],
+  gemini: [
+    { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', efforts: [], defaultEffort: null, deprecated: false, replacement: null },
+  ],
+}
+
 export const MOCK_SETTINGS = {
   scan_directories: ['~/projects'],
   thresholds: { active_days: 7, recent_days: 30, stale_days: 90 },
@@ -127,6 +144,7 @@ export const MOCK_SETTINGS = {
     platform: 'linux',
     default_emulator: 'manual',
     supported_emulators: ['manual'],
+    model_catalog: MOCK_MODEL_CATALOG,
     cli_command_defaults: {
       claude: {
         continue_cmd: 'claude --dangerously-skip-permissions --continue',

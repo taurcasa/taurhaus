@@ -51,6 +51,7 @@ const {
 } = await import('../ipc.js')
 
 import MeshTab from './MeshTab.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 import { clearMeshCache, getMeshCache, resetMeshCache, setMeshCache } from '../meshCache.svelte.js'
 
 const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
@@ -129,8 +130,10 @@ function buildRuntimeSnapshot(overrides = {}) {
     teamRuntimeState: overrides.teamRuntimeState ?? 'active',
     warnings: overrides.warnings ?? [],
     teamStatus: {
+      // FastAgentSnapshot carries model and reasoning effort since PR 5a/5b, so the
+      // fast snapshot is no longer model-less on cold load.
       leadName: liveStatus.leadName,
-      members: liveStatus.members.map(({ model, ...member }) => member),
+      members: liveStatus.members,
     },
   })
 }
@@ -294,6 +297,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
         ...overrides,
       },
@@ -344,6 +348,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -484,6 +489,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -628,6 +634,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -702,6 +709,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -775,6 +783,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -831,6 +840,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -896,6 +906,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -987,6 +998,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1137,6 +1149,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1169,6 +1182,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1203,6 +1217,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1226,6 +1241,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1293,6 +1309,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -1335,6 +1352,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: true,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1405,6 +1423,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1470,6 +1489,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1526,6 +1546,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1590,6 +1611,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1697,6 +1719,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1742,6 +1765,7 @@ describe('MeshTab', () => {
       const view = render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1827,6 +1851,7 @@ describe('MeshTab', () => {
       render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1874,6 +1899,7 @@ describe('MeshTab', () => {
       const view = render(MeshTab, {
         props: {
           dark: false,
+          modelCatalog: TEST_MODEL_CATALOG,
           projectPath: '/projects/taurhaus',
         },
       })
@@ -1967,6 +1993,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2000,6 +2027,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2034,6 +2062,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2059,6 +2088,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/espn_fantasy_desktop',
       },
     })
@@ -2074,6 +2104,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2111,6 +2142,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2158,6 +2190,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2191,6 +2224,7 @@ describe('MeshTab', () => {
     const runtimeView = render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2225,6 +2259,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2254,6 +2289,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2315,6 +2351,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '\\\\wsl.localhost\\Ubuntu\\home\\user\\projects\\2ksim',
       },
     })
@@ -2352,6 +2389,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2372,6 +2410,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
         availableProjects: [{ id: 'proj-api', name: 'API' }],
       },
@@ -2420,6 +2459,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2447,6 +2487,9 @@ describe('MeshTab', () => {
     })
   })
 
+  // Regression: b345de1 (PR 5c) read the effort from `role.reasoningEffort` while
+  // the role response keeps it under `defaults`, so hot-adding a role that
+  // declares `high` autofilled and submitted the catalog default instead.
   it('preserves selected role metadata when hot-adding a runtime agent', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
@@ -2460,7 +2503,8 @@ describe('MeshTab', () => {
         name: 'Codex Architect',
         kind: 'agent',
         cliTool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        defaults: { cliTool: 'codex', model: 'gpt-5.4', reasoningEffort: 'high' },
         focusArea: 'Architecture decisions and structural review',
         contextSummary: 'Carries long-lived context around module boundaries and reviews.',
         behaviorSummary: 'Handles pattern choices and escalates direction changes.',
@@ -2477,6 +2521,10 @@ describe('MeshTab', () => {
     })
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-codex-architect'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('gpt-5.4')
+      expect(screen.getByTestId('mesh-add-agent-model-select-effort')).toHaveValue('high')
+    })
     await fireEvent.input(screen.getByTestId('mesh-add-agent-name-input'), {
       target: { value: 'review-architect' },
     })
@@ -2491,6 +2539,9 @@ describe('MeshTab', () => {
           teamName: 'architecture-final',
           agent: expect.objectContaining({
             name: 'review-architect',
+            cliTool: 'codex',
+            model: 'gpt-5.4',
+            reasoningEffort: 'high',
             roleId: 'codex-architect',
             roleName: 'Codex Architect',
             focusArea: 'Architecture decisions and structural review',
@@ -2504,12 +2555,50 @@ describe('MeshTab', () => {
     })
   })
 
+  // Regression: b345de1 (PR 5c) offered an empty "default" reasoning-effort option
+  // on the runtime add-agent form too. Choosing it sent reasoningEffort: null,
+  // which `hydrate_member_model_fields` (member_activation.rs) refills from the
+  // selected role template, so the member still started at the role's effort.
+  it('hides the inherit-global effort option for a role that declares one', async () => {
+    await renderRuntime({
+      availableProjects: [{ id: 'proj-core', name: 'Core' }],
+    })
+    listRoleTemplates.mockReset()
+    listRoleTemplates.mockResolvedValueOnce([
+      {
+        roleId: 'codex-architect',
+        name: 'Codex Architect',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.4',
+        defaults: { cliTool: 'codex', model: 'gpt-5.4', reasoningEffort: 'high' },
+        behaviorSummary: 'Handles pattern choices and escalates direction changes.',
+        instructions: 'Own structural review',
+      },
+    ])
+
+    await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-role-card-codex-architect')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-codex-architect'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-add-agent-model-select-effort')).toHaveValue('high')
+    })
+    const effortOptions = Array.from(
+      screen.getByTestId('mesh-add-agent-model-select-effort').querySelectorAll('option')
+    ).map((option) => option.value)
+    expect(effortOptions).not.toContain('')
+  })
+
   it('captures runtime node as role and saves through upsertRoleTemplate', async () => {
     coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(buildRuntimeSnapshot())
 
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -2555,7 +2644,8 @@ describe('MeshTab', () => {
           kind: 'agent',
           defaults: expect.objectContaining({
             cliTool: 'codex',
-            model: 'gpt-5.4 high',
+            model: 'gpt-5.4',
+            reasoningEffort: 'high',
           }),
         })
       )
@@ -2578,6 +2668,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2671,6 +2762,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2708,6 +2800,59 @@ describe('MeshTab', () => {
           agents: expect.arrayContaining([
             expect.objectContaining({ cliTool: '', model: '' }),
           ]),
+        })
+      )
+    })
+  })
+
+  // Regression: b345de1 (PR 5c) let the advanced preset editor pin the lead's model
+  // and effort, but the quick-preset launch only forwarded the role id and slots, so
+  // composition rebuilt the lead from the role defaults and the pin never launched.
+  it('forwards a preset lead override to composition', async () => {
+    listTeamPresets.mockResolvedValueOnce([
+      {
+        presetId: 'lead-pinned-team',
+        name: 'Lead Pinned Team',
+        description: 'Lead pinned to a model and effort',
+        leadRoleId: 'codex-orchestrator',
+        roleCount: 1,
+        agentCount: 1,
+        tools: ['codex'],
+      },
+    ])
+    getTeamPreset.mockResolvedValueOnce({
+      presetId: 'lead-pinned-team',
+      name: 'Lead Pinned Team',
+      leadRoleId: 'codex-orchestrator',
+      leadOverrides: { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+      agentSlots: [{ roleId: 'agent-default', count: 1 }],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [],
+      warnings: [],
+      validationErrors: [],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-preset-lead-pinned-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-lead-pinned-team'))
+
+    await waitFor(() => {
+      expect(composeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leadRoleId: 'codex-orchestrator',
+          overrides: expect.objectContaining({
+            lead: expect.objectContaining({ model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' }),
+          }),
         })
       )
     })
@@ -2800,6 +2945,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2919,6 +3065,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -2998,7 +3145,8 @@ describe('MeshTab', () => {
           roleId: 'v3-architect-codex',
           roleKind: 'agent',
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           instructions: 'Own structural review',
           capabilities: [],
           projectBinding: 'lead_project',
@@ -3009,7 +3157,8 @@ describe('MeshTab', () => {
           roleId: 'v3-developer-codex',
           roleKind: 'agent',
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           instructions: 'Own implementation',
           capabilities: [],
           projectBinding: 'lead_project',
@@ -3020,7 +3169,8 @@ describe('MeshTab', () => {
           roleId: 'v3-developer-codex',
           roleKind: 'agent',
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           instructions: 'Own implementation',
           capabilities: [],
           projectBinding: 'lead_project',
@@ -3034,6 +3184,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/my-app',
       },
     })
@@ -3064,19 +3215,153 @@ describe('MeshTab', () => {
       roleId: 'v3-lead-claude',
     }))
     expect(request?.agents).toEqual([
+      // Regression: ff40911 stripped the effort suffix and 5d2ce27 aliased the
+      // model, so a roster asking for `high` launched at the user's global effort.
+      // The initialize payload now carries the split, canonical pair.
       expect.objectContaining({
         name: 'architect',
         cliTool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
         roleId: 'v3-architect-codex',
       }),
       expect.objectContaining({
         name: 'dev-1',
         cliTool: 'codex',
-        model: 'gpt-5.4 high',
+        model: 'gpt-5.4',
+        reasoningEffort: 'high',
         roleId: 'v3-developer-codex',
       }),
     ])
+  })
+
+  // Regression: b345de1 (PR 5c) let the builder edit the model and effort per
+  // member but still saved every slot with `overrides: null`, so reloading the
+  // saved preset restored the role defaults and lost the selection.
+  it('saves the builder roster model and effort as slot overrides', async () => {
+    upsertTeamPreset.mockResolvedValue(undefined)
+    getTeamPreset.mockResolvedValueOnce({
+      presetId: 'full-team',
+      name: 'Full Team',
+      leadRoleId: 'v3-lead-claude',
+      agentSlots: [{ roleId: 'v3-developer-codex', count: 1 }],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [
+        {
+          name: 'team-lead',
+          roleId: 'v3-lead-claude',
+          roleKind: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+        {
+          name: 'dev-1',
+          roleId: 'v3-developer-codex',
+          roleKind: 'agent',
+          cliTool: 'codex',
+          model: 'gpt-5.4',
+          reasoningEffort: 'xhigh',
+          capabilities: [],
+          projectBinding: 'lead_project',
+          projectId: null,
+        },
+      ],
+      warnings: [],
+      validationErrors: [],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-full-team'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-builder-save-preset')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-builder-save-preset'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leadRoleId: 'v3-lead-claude',
+          agentSlots: [
+            expect.objectContaining({
+              roleId: 'v3-developer-codex',
+              overrides: { model: 'gpt-5.4', reasoningEffort: 'xhigh' },
+            }),
+          ],
+        })
+      )
+    })
+  })
+
+  // Regression: b345de1 (PR 5c) normalized the runtime effort but dropped it in
+  // the `createAgent` mapping and in `MeshRuntimeView`'s `detailNode`, so the
+  // effort the backend reported never reached the node detail for either role.
+  it('shows the reported reasoning effort in the runtime node detail', async () => {
+    coordinationGetProjectMeshSnapshot.mockResolvedValueOnce(
+      buildRuntimeSnapshot({
+        members: [
+          {
+            name: 'team-lead',
+            role: 'lead',
+            cliTool: 'claude',
+            model: 'opus',
+            reasoningEffort: 'high',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'active',
+            paneId: '%1',
+          },
+          {
+            name: 'frontend-dev',
+            role: 'member',
+            cliTool: 'codex',
+            model: 'gpt-5.6-terra',
+            reasoningEffort: 'xhigh',
+            projectId: '/projects/taurhaus',
+            sessionStatus: 'idle',
+            paneId: '%2',
+          },
+        ],
+      })
+    )
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-runtime')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-tool-model')).toHaveTextContent(
+        'gpt-5.6-terra · xhigh'
+      )
+    })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-lead'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-detail-tool-model')).toHaveTextContent('opus · high')
+    })
   })
 
   it('matches teams when lead project path uses windows drive notation', async () => {
@@ -3085,6 +3370,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/mnt/c/projects/taurhaus',
       },
     })
@@ -3100,6 +3386,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/',
       },
     })
@@ -3115,6 +3402,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3157,6 +3445,7 @@ describe('MeshTab', () => {
     const runtimeView = render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3196,6 +3485,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3328,6 +3618,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })
@@ -3571,6 +3862,7 @@ describe('MeshTab', () => {
     render(MeshTab, {
       props: {
         dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
         projectPath: '/projects/taurhaus',
       },
     })

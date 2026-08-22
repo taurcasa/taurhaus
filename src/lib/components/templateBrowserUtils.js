@@ -1,4 +1,5 @@
-import { defaultModelForTool } from '../meshDefaults.js'
+import { resolveRoleModel, resolveRoleReasoningEffort } from '../meshDefaults.js'
+import { parseLegacyModel } from '../modelCatalog.js'
 
 function normalizeBehavioralContractForEditor(contract) {
   if (Array.isArray(contract)) {
@@ -57,7 +58,8 @@ export function normalizeRoleTemplate(value) {
     name: value?.name ?? '',
     kind: String(value?.kind ?? 'agent').toLowerCase(),
     cliTool: String(value?.cliTool ?? value?.cli_tool ?? 'claude').toLowerCase(),
-    model: value?.model ?? '',
+    model: value?.model ?? value?.defaults?.model ?? '',
+    reasoningEffort: resolveRoleReasoningEffort(value),
     focusArea: value?.focusArea ?? value?.focus_area ?? '',
     contextSummary: value?.contextSummary ?? value?.context_summary ?? '',
     behaviorSummary: value?.behaviorSummary ?? value?.behavior_summary ?? '',
@@ -134,8 +136,49 @@ export function defaultAgentRoleId(roleTemplates = [], leadRoleId = defaultLeadR
   )
 }
 
+/**
+ * A preset slot can pin its own model/effort on top of the role defaults. Losing
+ * those on the way into the editor silently rewrites the preset on the next save,
+ * so they are normalized (camelCase, legacy combined models split) and kept
+ * alongside every other override field the slot carries.
+ */
+export function normalizeSlotOverridesForDraft(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const { reasoningEffort, reasoning_effort: snakeEffort, ...rest } = value
+  const parsed = parseLegacyModel(value.model)
+  const model = parsed.model || null
+  const effort = String(reasoningEffort ?? snakeEffort ?? '').trim() || parsed.reasoningEffort || null
+
+  const normalized = { ...rest, model, reasoningEffort: effort }
+  const pinsSomething = Object.values(normalized).some(
+    (entry) => entry !== null && entry !== undefined && entry !== ''
+  )
+  return pinsSomething ? normalized : null
+}
+
+/**
+ * What a role template contributes to a member that pins nothing: its model and
+ * its effort, with the pre-PR-5a combined spelling ("gpt-5.4 high") split the
+ * way the Rust `ModelSpec::parse_legacy` splits it. This is what an unpinned row
+ * renders from; what a save writes back comes from the row's own overrides, never
+ * from comparing the rendered value with these defaults.
+ */
+export function roleModelDefaults(role) {
+  const parsed = parseLegacyModel(resolveRoleModel(role))
+  return {
+    model: parsed.model,
+    reasoningEffort: resolveRoleReasoningEffort(role) ?? parsed.reasoningEffort,
+  }
+}
+
 export function normalizePresetDraft(source = {}, roleTemplates = [], teamPresets = []) {
   const leadRoleId = source?.leadRoleId ?? source?.lead_role_id ?? defaultLeadRoleId(roleTemplates)
+  // The lead pins its own model/effort the same way a slot does; the editor renders
+  // and saves it, and composition applies it as `CompositionOverrides::lead`.
+  const leadOverrides = normalizeSlotOverridesForDraft(
+    source?.leadOverrides ?? source?.lead_overrides
+  )
   const slots = Array.isArray(source?.agentSlots ?? source?.agent_slots)
     ? (source?.agentSlots ?? source?.agent_slots)
     : []
@@ -146,12 +189,14 @@ export function normalizePresetDraft(source = {}, roleTemplates = [], teamPreset
       count: Math.max(1, Number(slot?.count ?? 1)),
       projectBinding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
       projectId: slot?.projectId ?? slot?.project_id ?? null,
+      overrides: normalizeSlotOverridesForDraft(slot?.overrides),
     }))
     : [{
       roleId: fallbackAgentRoleId,
       count: 1,
       projectBinding: 'lead_project',
       projectId: null,
+      overrides: null,
     }]
 
   return {
@@ -160,6 +205,7 @@ export function normalizePresetDraft(source = {}, roleTemplates = [], teamPreset
     description: source?.description ?? 'Custom team preset',
     version: source?.version ?? '1.0.0',
     leadRoleId,
+    leadOverrides,
     agentSlots,
     defaults: {
       teamNamePattern: source?.defaults?.teamNamePattern ?? source?.defaults?.team_name_pattern ?? '{project}-team',
@@ -175,8 +221,11 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
   const agents = []
   let nextAgent = 1
 
-  for (const slot of draft.agentSlots) {
+  for (const [slotIndex, slot] of draft.agentSlots.entries()) {
     const role = roleTemplates.find((entry) => entry.roleId === slot.roleId) ?? null
+    const roleDefaults = roleModelDefaults(role)
+    const overrideModel = String(slot.overrides?.model ?? '').trim()
+    const overrideEffort = String(slot.overrides?.reasoningEffort ?? '').trim()
     for (let idx = 0; idx < slot.count; idx += 1) {
       const previous = agentRoleCounts.get(slot.roleId) ?? 0
       agentRoleCounts.set(slot.roleId, previous + 1)
@@ -187,17 +236,22 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
         id: `agent-${nextAgent}`,
         name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
         tool,
-        model: role?.model ?? (tool ? defaultModelForTool(tool) : ''),
+        model: overrideModel || roleDefaults.model,
+        reasoningEffort: overrideEffort || (overrideModel ? null : roleDefaults.reasoningEffort),
         projectId: '',
         description: slot.roleId || '',
         roleId: slot.roleId ?? null,
         roleName: role?.name ?? null,
+        slotIndex,
       })
       nextAgent += 1
     }
   }
 
   const leadTool = String(leadRole?.cliTool ?? '').trim().toLowerCase()
+  const leadDefaults = roleModelDefaults(leadRole)
+  const leadOverrideModel = String(draft.leadOverrides?.model ?? '').trim()
+  const leadOverrideEffort = String(draft.leadOverrides?.reasoningEffort ?? '').trim()
 
   return {
     teamName: draft.name,
@@ -207,7 +261,9 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
       id: 'lead',
       name: leadRole?.name || 'team-lead',
       tool: leadTool,
-      model: leadRole?.model ?? (leadTool ? defaultModelForTool(leadTool) : ''),
+      model: leadOverrideModel || leadDefaults.model,
+      reasoningEffort:
+        leadOverrideEffort || (leadOverrideModel ? null : leadDefaults.reasoningEffort),
       projectId: '',
       description: draft.leadRoleId || 'Team lead',
       roleId: draft.leadRoleId || null,

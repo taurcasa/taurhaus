@@ -1,5 +1,5 @@
 import { BEHAVIORAL_CONTRACT_MODES, normalizeBehavioralContract } from './normalize.js'
-import { defaultModelForTool } from '../meshDefaults.js'
+import { parseLegacyModel } from '../modelCatalog.js'
 
 function optionalTrimmedString(value) {
   const normalized = String(value ?? '').trim()
@@ -28,13 +28,15 @@ export function normalizeRoleTemplateInput(roleData) {
     explicitCliTool ??
       (roleKind === 'lead' ? '' : 'codex')
   ).toLowerCase()
-  const explicitModel = source.model ?? source.defaults?.model
-  const model = String(
-    explicitModel ??
-      (roleKind === 'lead'
-        ? ''
-        : defaultModelForTool(cliTool || 'codex'))
-  )
+  // Canonical on-disk form is a bare model id plus `reasoning_effort`; legacy
+  // combined strings ("gpt-5.4 high") are split on the way out. An unset model
+  // stays unset — the backend applies its own catalog default.
+  const explicitModel = parseLegacyModel(source.model ?? source.defaults?.model)
+  const model = explicitModel.model
+  const reasoningEffort =
+    optionalTrimmedString(source.reasoningEffort ?? source.reasoning_effort) ??
+    optionalTrimmedString(source.defaults?.reasoningEffort ?? source.defaults?.reasoning_effort) ??
+    explicitModel.reasoningEffort
   const roleId = String(source.roleId ?? '').trim()
   const capabilities = Array.isArray(source.capabilities)
     ? source.capabilities.map((capability) => String(capability ?? '').trim()).filter(Boolean)
@@ -58,8 +60,7 @@ export function normalizeRoleTemplateInput(roleData) {
     defaults: {
       cliTool,
       model,
-      reasoningEffort:
-        source.defaults?.reasoningEffort ?? source.defaults?.reasoning_effort ?? null,
+      reasoning_effort: reasoningEffort,
       defaultNamePattern: String(
         source.defaults?.defaultNamePattern ??
           (roleKind === 'lead' ? 'team-lead' : `${roleId || 'agent'}-{n}`)
@@ -94,6 +95,21 @@ export function normalizeRoleTemplateInput(roleData) {
   }
 }
 
+function normalizeSlotOverridesInput(overrides) {
+  if (!overrides || typeof overrides !== 'object') return null
+
+  const { reasoningEffort, reasoning_effort: snakeEffort, ...rest } = overrides
+  const parsed = parseLegacyModel(overrides.model)
+  const effort =
+    optionalTrimmedString(reasoningEffort ?? snakeEffort) ?? parsed.reasoningEffort
+
+  return {
+    ...rest,
+    model: parsed.model || null,
+    reasoning_effort: effort,
+  }
+}
+
 export function normalizeTeamPresetInput(presetData) {
   const source =
     presetData && typeof presetData === 'object' && presetData.preset
@@ -110,7 +126,7 @@ export function normalizeTeamPresetInput(presetData) {
     count: Math.max(1, Number(slot?.count ?? 1) || 1),
     projectBinding: slot?.projectBinding ?? 'lead_project',
     projectId: slot?.projectId ?? null,
-    overrides: slot?.overrides ?? null,
+    overrides: normalizeSlotOverridesInput(slot?.overrides),
   }))
 
   return {
@@ -123,6 +139,9 @@ export function normalizeTeamPresetInput(presetData) {
     description: String(source.description ?? '').trim(),
     version: String(source.version ?? '1.0.0'),
     leadRoleId: String(source.leadRoleId ?? '').trim(),
+    // The preset's own pin for its lead, in the same canonical shape as a slot
+    // override (`TeamPreset::lead_overrides`).
+    leadOverrides: normalizeSlotOverridesInput(source.leadOverrides ?? source.lead_overrides),
     agentSlots,
     defaults: {
       teamNamePattern: String(source.defaults?.teamNamePattern ?? '{project}-team'),

@@ -118,7 +118,13 @@ fn hydrate_initialize_request_from_preset(
         &preset.lead_role_id,
         &preset.agent_slots,
         &catalog.roles,
-        &CompositionOverrides::default(),
+        // The preset can pin its lead's model/effort on top of the lead role
+        // (`TeamPreset::lead_overrides`); composition only applies it when the
+        // request carries it as the lead override.
+        &CompositionOverrides {
+            lead: preset.lead_overrides.clone(),
+            ..CompositionOverrides::default()
+        },
     );
 
     if !composition.validation_errors.is_empty() {

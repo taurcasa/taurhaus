@@ -1367,10 +1367,13 @@ describe('ipc module', () => {
       expect(tauriCore.invoke).toHaveBeenCalledTimes(1)
       expect(tauriCore.invoke).toHaveBeenCalledWith('templates_list_roles_full')
       expect(result).toEqual([
+        // Regression: ff40911 and 5d2ce27 stored the effort inside the model
+        // string; the response normalizer now splits it into the canonical pair.
         expect.objectContaining({
           roleId: 'codex-developer',
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           focusArea: 'Scoped implementation',
           contextSummary: 'Owns code changes, tests, and debugging within assigned scope.',
           behaviorSummary: 'Implements narrowly and escalates blockers instead of broadening scope.',

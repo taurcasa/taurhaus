@@ -599,6 +599,11 @@ pub struct TeamPreset {
     pub version: String,
     #[serde(alias = "lead_role_id")]
     pub lead_role_id: String,
+    /// What the preset pins for its lead on top of the lead role's own defaults.
+    /// The advanced preset editor edits the lead's model/effort, and composition
+    /// applies this as `CompositionOverrides::lead`.
+    #[serde(default, alias = "lead_overrides")]
+    pub lead_overrides: Option<SlotOverrides>,
     #[serde(default, alias = "agent_slots")]
     pub agent_slots: Vec<AgentSlot>,
     pub defaults: TeamPresetDefaults,
@@ -606,6 +611,9 @@ pub struct TeamPreset {
 
 impl TeamPreset {
     pub fn normalize_model_fields(&mut self) {
+        if let Some(overrides) = &mut self.lead_overrides {
+            overrides.normalize_model_fields();
+        }
         for slot in &mut self.agent_slots {
             if let Some(overrides) = &mut slot.overrides {
                 overrides.normalize_model_fields();
@@ -656,6 +664,9 @@ impl TeamPreset {
                 "preset '{}' must include at least one agent slot",
                 self.preset_id
             ));
+        }
+        if let Some(overrides) = self.lead_overrides.as_ref() {
+            overrides.validate("lead_overrides", &mut errors);
         }
         for (idx, slot) in self.agent_slots.iter().enumerate() {
             slot.validate(idx, &mut errors);
@@ -1043,6 +1054,7 @@ mod tests {
             description: "Sample preset description".to_string(),
             version: "1.0.0".to_string(),
             lead_role_id: "lead-role".to_string(),
+            lead_overrides: None,
             agent_slots: vec![AgentSlot {
                 role_id: "sample-role".to_string(),
                 count: 2,
@@ -1464,6 +1476,7 @@ mod tests {
             description: "Collision test".to_string(),
             version: "1.0.0".to_string(),
             lead_role_id: "lead".to_string(),
+            lead_overrides: None,
             agent_slots: vec![
                 AgentSlot {
                     role_id: "agent".to_string(),
@@ -1527,6 +1540,7 @@ mod tests {
             description: "missing project id".to_string(),
             version: "1.0.0".to_string(),
             lead_role_id: "lead".to_string(),
+            lead_overrides: None,
             agent_slots: vec![AgentSlot {
                 role_id: "agent".to_string(),
                 count: 1,
@@ -1646,6 +1660,87 @@ mod tests {
         assert!(!overrides.contains_key("behavior_summary"));
         assert!(overrides.contains_key("behavioralContractAppend"));
         assert!(!overrides.contains_key("behavioral_contract_append"));
+    }
+
+    #[test]
+    fn team_preset_keeps_lead_overrides_in_both_spellings() {
+        // The advanced preset editor pins the lead's model/effort, so the preset has
+        // to carry that pin: camelCase over IPC, snake_case in the on-disk YAML.
+        let camel: TeamPreset = serde_json::from_value(serde_json::json!({
+            "schema": { "kind": "team_preset", "version": 1 },
+            "presetId": "lead-pinned",
+            "name": "Lead Pinned",
+            "description": "Lead pinned to a model",
+            "version": "1.0.0",
+            "leadRoleId": "lead",
+            "leadOverrides": { "model": "gpt-5.6-terra", "reasoningEffort": "xhigh" },
+            "agentSlots": [{
+                "roleId": "agent",
+                "count": 1,
+                "projectBinding": "lead_project",
+                "projectId": null,
+                "overrides": null
+            }],
+            "defaults": { "teamNamePattern": "{project}-team", "tmuxLayout": "tiled" }
+        }))
+        .expect("deserialize camelCase preset");
+        let lead = camel
+            .lead_overrides
+            .as_ref()
+            .expect("camelCase lead overrides");
+        assert_eq!(lead.model.as_deref(), Some("gpt-5.6-terra"));
+        assert_eq!(lead.reasoning_effort.as_deref(), Some("xhigh"));
+
+        let snake: TeamPreset = serde_json::from_value(serde_json::json!({
+            "schema": { "kind": "team_preset", "version": 1 },
+            "preset_id": "lead-pinned",
+            "name": "Lead Pinned",
+            "description": "Lead pinned to a model",
+            "version": "1.0.0",
+            "lead_role_id": "lead",
+            "lead_overrides": { "model": "gpt-5.4 high" },
+            "agent_slots": [{
+                "role_id": "agent",
+                "count": 1,
+                "project_binding": "lead_project",
+                "project_id": null,
+                "overrides": null
+            }],
+            "defaults": { "team_name_pattern": "{project}-team", "tmux_layout": "tiled" }
+        }))
+        .expect("deserialize snake_case preset");
+        let mut normalized = snake.clone();
+        normalized.normalize_model_fields();
+        let lead = normalized
+            .lead_overrides
+            .as_ref()
+            .expect("snake_case lead overrides");
+        assert_eq!(lead.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(lead.reasoning_effort.as_deref(), Some("high"));
+
+        snake.validate().expect("lead overrides stay valid");
+    }
+
+    #[test]
+    fn team_preset_without_lead_overrides_deserializes() {
+        let preset: TeamPreset = serde_json::from_value(serde_json::json!({
+            "schema": { "kind": "team_preset", "version": 1 },
+            "presetId": "plain",
+            "name": "Plain",
+            "description": "No lead pin",
+            "version": "1.0.0",
+            "leadRoleId": "lead",
+            "agentSlots": [{
+                "roleId": "agent",
+                "count": 1,
+                "projectBinding": "lead_project",
+                "projectId": null,
+                "overrides": null
+            }],
+            "defaults": { "teamNamePattern": "{project}-team", "tmuxLayout": "tiled" }
+        }))
+        .expect("deserialize preset without lead overrides");
+        assert!(preset.lead_overrides.is_none());
     }
 
     #[test]

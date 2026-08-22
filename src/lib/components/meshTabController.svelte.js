@@ -21,7 +21,12 @@ import {
   normalizeResumeTeamReport,
 } from '../ipc/coordinationResponses.js'
 import { clearMeshCache, getMeshCacheEntry, setMeshCache } from '../meshCache.svelte.js'
-import { defaultModelForTool, normalizeTool } from '../meshDefaults.js'
+import {
+  normalizeTool,
+  resolveRoleModel,
+  resolveRoleReasoningEffort,
+} from '../meshDefaults.js'
+import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
 import { normalizeProjectOption } from '../projectOptions.js'
 import {
   buildCapturedRoleTemplate,
@@ -60,6 +65,7 @@ export function createMeshTabController({
   getIsVisible = () => true,
   getBackgroundWorkEnabled = () => true,
   getAvailableProjects,
+  getModelCatalog = () => EMPTY_MODEL_CATALOG,
   onAddAgent,
   onDisband,
   onRemoveAgent,
@@ -100,8 +106,10 @@ export function createMeshTabController({
       composeTeam,
       createAgentFromRole,
       createLeadFromRole,
-      defaultModelForTool,
+      defaultEffortFor: (tool, model) => defaultEffortFor(getModelCatalog(), tool, model),
+      defaultModelFor: (tool) => defaultModelFor(getModelCatalog(), tool),
       emptyBuilderConfig,
+      getModelCatalog,
       getAvailableProjects,
       getProjectPath,
       getTeamPreset,
@@ -114,6 +122,8 @@ export function createMeshTabController({
       normalizeRoleKind,
       normalizeTool,
       onAddAgent,
+      resolveRoleModel,
+      resolveRoleReasoningEffort,
       quickPresets: QUICK_PRESETS,
       slugifyRoleId,
       upsertRoleTemplate,
@@ -129,6 +139,7 @@ export function createMeshTabController({
     deps: {
       buildInitializationRequest,
       createLead,
+      getModelCatalog,
       getProjectPath,
       inferTeamName,
     },

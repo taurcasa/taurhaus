@@ -1,14 +1,18 @@
 import {
   TOOL_OPTIONS,
   applyNamePattern,
-  defaultModelForTool,
   normalizeTool,
-  resolveRoleModel,
+  resolveRoleReasoningEffort,
   resolveRoleTool,
   resolveSlotNamePattern,
   uniquifyMemberName,
 } from '../meshDefaults.js'
+import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
 import { normalizeProjectPath as normalizeSharedProjectPath } from '../pathUtils.js'
+
+function optionalEffort(value) {
+  return String(value ?? '').trim() || null
+}
 
 function normalizeStatus(status) {
   const value = String(status || '').trim().toLowerCase()
@@ -93,7 +97,8 @@ export function createLead(overrides = {}, projectPath = '') {
     id: String(overrides.id ?? 'lead'),
     name: String(overrides.name ?? 'team-lead'),
     tool: normalizedTool,
-    model: String(overrides.model ?? (normalizedTool ? defaultModelForTool(normalizedTool) : '')),
+    model: String(overrides.model ?? ''),
+    reasoningEffort: optionalEffort(overrides.reasoningEffort ?? overrides.reasoning_effort),
     status: normalizeStatus(overrides.status),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: false,
@@ -117,7 +122,8 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     id: String(overrides.id ?? `agent-${index + 1}`),
     name: String(overrides.name ?? `agent-${index + 1}`),
     tool: normalizedTool,
-    model: String(overrides.model ?? defaultModelForTool(normalizedTool)),
+    model: String(overrides.model ?? ''),
+    reasoningEffort: optionalEffort(overrides.reasoningEffort ?? overrides.reasoning_effort),
     status: normalizeStatus(overrides.status),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: Boolean(overrides.isCrossProject ?? overrides.is_cross_project),
@@ -199,7 +205,7 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
     resolvedLead?.cli_tool ??
     resolvePresetLeadTool(preset)
   )
-  const leadModel = String(resolvedLead?.model ?? (leadTool ? defaultModelForTool(leadTool) : ''))
+  const leadModel = String(resolvedLead?.model ?? '')
 
   const lead = createLead(
     {
@@ -207,6 +213,7 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
       name: String(resolvedLead?.name ?? leadName),
       tool: leadTool,
       model: String(leadModel),
+      reasoningEffort: resolveRoleReasoningEffort(resolvedLead),
       status: 'offline',
       projectId: projectPath,
       roleId: (resolvedLead?.roleId ?? resolvedLead?.role_id ?? leadRoleId) || null,
@@ -232,7 +239,8 @@ export function buildTeamConfigFromPreset(preset, compositionResult = null, proj
           id: member?.name ?? `agent-${index + 1}`,
           name: member?.name ?? `agent-${index + 1}`,
           tool: member?.cliTool ?? member?.cli_tool ?? tools[(index + 1) % tools.length] ?? 'codex',
-          model: member?.model ?? defaultModelForTool(member?.cliTool ?? member?.cli_tool ?? 'codex'),
+          model: member?.model ?? '',
+          reasoningEffort: resolveRoleReasoningEffort(member),
           status: 'offline',
           projectId: member?.projectId ?? member?.project_id ?? projectPath,
           roleId: member?.roleId ?? member?.role_id ?? null,
@@ -341,7 +349,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     name: String(member?.name ?? `member-${index + 1}`),
     role: String(member?.role ?? '').toLowerCase(),
     tool: normalizeTool(member?.cliTool),
-    model: String(member?.model || defaultModelForTool(member?.cliTool)),
+    model: String(member?.model || ''),
+    reasoningEffort: optionalEffort(member?.reasoningEffort ?? member?.reasoning_effort),
     status: normalizeStatus(member?.sessionStatus),
     projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
     description: member?.description ?? null,
@@ -370,7 +379,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
       id: String(normalizedLeadMember?.name ?? 'lead'),
       name: normalizedLeadMember?.name ?? fallbackLeadName,
       tool: normalizedLeadMember?.tool ?? 'claude',
-      model: normalizedLeadMember?.model ?? defaultModelForTool(normalizedLeadMember?.tool ?? 'claude'),
+      model: normalizedLeadMember?.model ?? '',
+      reasoningEffort: normalizedLeadMember?.reasoningEffort ?? null,
       status: normalizedLeadMember?.status ?? 'active',
       projectId: normalizedLeadMember?.projectId ?? projectPath,
       description: normalizedLeadMember?.description ?? 'Team lead',
@@ -397,6 +407,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
           name: member.name,
           tool: member.tool,
           model: member.model,
+          reasoningEffort: member.reasoningEffort,
           status: member.status,
           projectId: member.projectId,
           isCrossProject: member.isCrossProject,
@@ -428,7 +439,12 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
   }
 }
 
-export function buildInitializationRequest(config, teamName, projectPath = '') {
+export function buildInitializationRequest(
+  config,
+  teamName,
+  projectPath = '',
+  catalog = EMPTY_MODEL_CATALOG
+) {
   const lead = config?.lead
   const agents = Array.isArray(config?.agents) ? config.agents : []
   const isPresetInitialization = config?.initializationMode === 'preset' && String(config?.presetId ?? '').trim()
@@ -472,6 +488,10 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
     }
   }
 
+  const leadModel = normalizeOptionalTool(lead?.tool)
+    ? resolveMemberModel(lead, null, catalog)
+    : { model: String(lead?.model ?? ''), reasoningEffort: optionalEffort(lead?.reasoningEffort) }
+
   return {
     teamName: teamName.trim() || inferTeamName(projectPath),
     teamDescription: String(config?.description ?? '').trim() || null,
@@ -479,7 +499,8 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
     lead: {
       name: lead?.name ?? 'team-lead',
       cliTool: normalizeOptionalTool(lead?.tool),
-      model: lead?.model ?? (normalizeOptionalTool(lead?.tool) ? defaultModelForTool(lead?.tool) : ''),
+      model: leadModel.model,
+      reasoningEffort: leadModel.reasoningEffort,
       projectId: lead?.projectId || projectPath,
       description: lead?.description ?? 'Team lead',
       roleId: lead?.roleId ?? null,
@@ -491,21 +512,25 @@ export function buildInitializationRequest(config, teamName, projectPath = '') {
       behavioralContract: lead?.behavioralContract ?? null,
       capabilities: Array.isArray(lead?.capabilities) ? lead.capabilities : null,
     },
-    agents: agents.map((agent, index) => ({
-      name: agent?.name || `agent-${index + 1}`,
-      cliTool: normalizeTool(agent?.tool),
-      model: agent?.model ?? defaultModelForTool(agent?.tool),
-      projectId: agent?.projectId || projectPath,
-      description: agent?.description ?? null,
-      roleId: agent?.roleId ?? null,
-      roleName: agent?.roleName ?? null,
-      focusArea: agent?.focusArea ?? null,
-      contextSummary: agent?.contextSummary ?? null,
-      behaviorSummary: agent?.behaviorSummary ?? null,
-      instructions: agent?.instructions ?? null,
-      behavioralContract: agent?.behavioralContract ?? null,
-      capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
-    })),
+    agents: agents.map((agent, index) => {
+      const agentModel = resolveMemberModel(agent, null, catalog)
+      return {
+        name: agent?.name || `agent-${index + 1}`,
+        cliTool: normalizeTool(agent?.tool),
+        model: agentModel.model,
+        reasoningEffort: agentModel.reasoningEffort,
+        projectId: agent?.projectId || projectPath,
+        description: agent?.description ?? null,
+        roleId: agent?.roleId ?? null,
+        roleName: agent?.roleName ?? null,
+        focusArea: agent?.focusArea ?? null,
+        contextSummary: agent?.contextSummary ?? null,
+        behaviorSummary: agent?.behaviorSummary ?? null,
+        instructions: agent?.instructions ?? null,
+        behavioralContract: agent?.behavioralContract ?? null,
+        capabilities: Array.isArray(agent?.capabilities) ? agent.capabilities : null,
+      }
+    }),
   }
 }
 
@@ -579,7 +604,7 @@ function normalizeCapabilities(capabilities, tool) {
   return [`${normalizeTool(tool)}-workflow`]
 }
 
-export function buildCapturedRoleTemplate(draft) {
+export function buildCapturedRoleTemplate(draft, catalog = EMPTY_MODEL_CATALOG) {
   const roleKind = draft.roleKind === 'lead' ? 'lead' : 'agent'
   const trimmedName = String(draft.name || '').trim()
   const normalizedRoleId = slugifyRoleId(draft.roleId)
@@ -589,6 +614,7 @@ export function buildCapturedRoleTemplate(draft) {
   const instructionsFromNode = includeInstructions ? String(draft.description || '').trim() : ''
   const instructions = instructionsFromNode || `Captured runtime role for ${trimmedName}.`
 
+  const capturedModel = resolveMemberModel(draft, null, catalog)
   const currentContract = normalizeBehavioralContract(draft.behavioralContract)
   const behavioralContract = includeBehavioralContract && contractHasRules(currentContract)
     ? currentContract
@@ -605,7 +631,8 @@ export function buildCapturedRoleTemplate(draft) {
     kind: roleKind,
     defaults: {
       cliTool: normalizeTool(draft.tool),
-      model: String(draft.model || '').trim() || defaultModelForTool(draft.tool),
+      model: capturedModel.model,
+      reasoningEffort: capturedModel.reasoningEffort,
       defaultNamePattern: roleKind === 'lead' ? 'team-lead' : 'agent-{n}',
     },
     instructions,

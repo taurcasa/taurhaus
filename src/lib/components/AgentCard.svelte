@@ -1,30 +1,45 @@
 <script>
-  import { MODEL_OPTIONS_BY_TOOL } from '../meshDefaults.js'
+  import ModelSelect from './ModelSelect.svelte'
+  import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { TOOL_OPTIONS } from '../meshDefaults.js'
+  import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
 
   let {
     name = '',
     tool = 'claude',
     model = '',
+    reasoningEffort = null,
+    // The effort the bound role declares: the backend refills an unset effort
+    // from it, so the row must not offer to clear what it cannot clear.
+    inheritedEffort = null,
     projectId = '',
     role = 'agent',
     description = '',
     editing = false,
+    modelCatalog = null,
+    // Reports which model fields the user actually changed before this card was
+    // saved. The preset editor writes an override only for a field the user
+    // touched (or one the slot already pinned) - a rendered value that happens to
+    // equal a role default is inheritance, not intent.
+    onchange = () => {},
     onSave = () => {},
     onRemove = () => {},
     dark = false,
     testId = 'agent-card',
   } = $props()
 
-  const modelOptionsByTool = MODEL_OPTIONS_BY_TOOL
+  const modelCatalogContext = getModelCatalogContext()
+  const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
-  const toolOptions = ['claude', 'codex', 'gemini']
+  const toolOptions = TOOL_OPTIONS
 
   function draftFromValues(values = {}) {
     return {
       name: String(values.name ?? ''),
       tool: String(values.tool ?? 'claude').toLowerCase(),
       model: String(values.model ?? ''),
+      reasoningEffort: values.reasoningEffort ?? null,
       projectId: String(values.projectId ?? ''),
       description: String(values.description ?? ''),
     }
@@ -32,6 +47,9 @@
 
   let isEditing = $state(false)
   let draft = $state(draftFromValues())
+  // The model/effort this editing session started from, so a save can report what
+  // the user changed rather than what the values happen to equal.
+  let editBaseline = $state({ model: '', reasoningEffort: null })
   let initialized = false
 
   const isLead = $derived(String(role ?? '').toLowerCase() === 'lead')
@@ -59,10 +77,22 @@
   )
   const labelTone = $derived(dark ? 'text-zinc-500' : 'text-brand-700')
   const normalizedTool = $derived(toolOptions.includes(draft.tool) ? draft.tool : 'claude')
-  const modelOptions = $derived(modelOptionsByTool[normalizedTool] ?? modelOptionsByTool.claude)
+  const resolvedModel = $derived(
+    resolveMemberModel(
+      { tool: normalizedTool, model: draft.model, reasoningEffort: draft.reasoningEffort },
+      null,
+      catalog
+    )
+  )
+  const displayModel = $derived(
+    resolvedModel.model
+      ? `${resolvedModel.model}${resolvedModel.reasoningEffort ? ` · ${resolvedModel.reasoningEffort}` : ''}`
+      : 'model'
+  )
 
   function resetDraft() {
-    draft = draftFromValues({ name, tool, model, projectId, description })
+    draft = draftFromValues({ name, tool, model, reasoningEffort, projectId, description })
+    editBaseline = { model: draft.model, reasoningEffort: draft.reasoningEffort }
   }
 
   function startEditing() {
@@ -77,11 +107,11 @@
 
   function handleToolChange(value) {
     const nextTool = String(value || 'claude').toLowerCase()
-    const nextModels = modelOptionsByTool[nextTool] ?? modelOptionsByTool.claude
     draft = {
       ...draft,
       tool: nextTool,
-      model: nextModels.includes(draft.model) ? draft.model : nextModels[0],
+      model: '',
+      reasoningEffort: null,
     }
   }
 
@@ -89,10 +119,17 @@
     const payload = {
       name: draft.name.trim(),
       tool: normalizedTool,
-      model: draft.model.trim(),
+      model: resolvedModel.model,
+      reasoningEffort: resolvedModel.reasoningEffort,
       projectId: draft.projectId.trim(),
       description: draft.description.trim(),
     }
+    // Reported on commit, never on every keystroke: a cancelled edit must not
+    // leave a field marked as touched.
+    onchange({
+      model: draft.model !== editBaseline.model,
+      reasoningEffort: (draft.reasoningEffort ?? null) !== (editBaseline.reasoningEffort ?? null),
+    })
     onSave(payload)
     isEditing = false
   }
@@ -119,7 +156,7 @@
           {name || (isLead ? 'team-lead' : 'Unnamed agent')}
         </p>
         <p class="truncate text-[11px] {mutedTone}" data-testid={`${testId}-tool-model`}>
-          {getToolName(normalizedTool)} · {draft.model || model || 'model'}
+          {getToolName(normalizedTool)} · {displayModel}
         </p>
         <p class="truncate text-[11px] {mutedTone}" data-testid={`${testId}-project`}>
           {projectId || 'No project'}
@@ -177,21 +214,23 @@
           </select>
         </label>
 
-        <label class="space-y-1">
+        <div class="space-y-1">
           <span class="text-[10px] font-medium uppercase tracking-wide {labelTone}">Model</span>
-          <select
-            class="w-full rounded-md border px-2 py-1.5 text-xs {inputTone}"
-            value={draft.model || modelOptions[0]}
-            onchange={(event) => {
-              draft = { ...draft, model: event.currentTarget.value }
+          <ModelSelect
+            tool={normalizedTool}
+            model={draft.model}
+            reasoningEffort={draft.reasoningEffort}
+            {inheritedEffort}
+            {catalog}
+            {dark}
+            compact
+            inputClass={inputTone}
+            testId={`${testId}-model-select`}
+            onchange={(next) => {
+              draft = { ...draft, model: next.model, reasoningEffort: next.reasoningEffort }
             }}
-            data-testid={`${testId}-model-select`}
-          >
-            {#each modelOptions as option}
-              <option value={option}>{option}</option>
-            {/each}
-          </select>
-        </label>
+          />
+        </div>
       </div>
 
       <label class="space-y-1">

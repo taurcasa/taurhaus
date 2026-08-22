@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import TeamCustomizerPanel from './TeamCustomizerPanel.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 function baseTeamConfig() {
   return {
@@ -108,7 +109,8 @@ describe('TeamCustomizerPanel', () => {
         lead: expect.objectContaining({
           name: 'team-lead',
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           roleId: 'codex-product-lead',
         }),
       })
@@ -178,9 +180,53 @@ describe('TeamCustomizerPanel', () => {
       expect.objectContaining({
         lead: expect.objectContaining({
           cliTool: 'codex',
-          model: 'gpt-5.4 high',
+          model: 'gpt-5.4',
+          reasoningEffort: 'high',
           roleId: 'codex-orchestrator',
         }),
+      })
+    )
+  })
+
+  // Regression: 3a7188a (PR 5c review round 3). The preset editor writes an override
+  // only for a field the user actually changed, so the panel has to carry that intent
+  // per row into the save payload.
+  it('reports which model fields each row changed in the save payload', async () => {
+    const onSave = vi.fn()
+
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: baseTeamConfig(),
+        projectPath: '/projects/taurhaus',
+        modelCatalog: TEST_MODEL_CATALOG,
+        onSave,
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-lead-edit')).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-edit'))
+    await fireEvent.change(screen.getByTestId('team-customizer-lead-model-select-effort'), {
+      target: { value: 'high' },
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-save'))
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lead: expect.objectContaining({
+          reasoningEffort: 'high',
+          touched: { model: false, reasoningEffort: true },
+        }),
+        agents: [
+          expect.objectContaining({
+            name: 'dev-1',
+            touched: { model: false, reasoningEffort: false },
+          }),
+        ],
       })
     )
   })

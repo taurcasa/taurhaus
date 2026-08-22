@@ -50,6 +50,7 @@ const { open, save } = await import('@tauri-apps/plugin-dialog')
 const { writeTextFile } = await import('@tauri-apps/plugin-fs')
 
 import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
+import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
 
 function deferred() {
   let resolve
@@ -95,6 +96,19 @@ describe('TemplateBrowserPanel', () => {
         capabilities: ['planning', 'coordination'],
         builtIn: true,
         readOnly: true,
+      },
+      {
+        roleId: 'codex-implementer',
+        name: 'Codex Implementer',
+        kind: 'agent',
+        cliTool: 'codex',
+        model: 'gpt-5.6-sol',
+        focusArea: 'Implementation',
+        contextSummary: 'Implements backend slices.',
+        behaviorSummary: 'Writes code without owning direction.',
+        capabilities: ['implementation'],
+        builtIn: false,
+        readOnly: false,
       },
       {
         roleId: 'custom-doc-writer',
@@ -161,9 +175,66 @@ describe('TemplateBrowserPanel', () => {
         tools: ['codex'],
         builtIn: false,
       },
+      {
+        presetId: 'lead-pinned-team',
+        name: 'Lead Pinned Team',
+        description: 'Codex lead pinned to a model and effort',
+        leadRoleId: 'codex-orchestrator',
+        roleCount: 1,
+        agentCount: 1,
+        tools: ['codex'],
+        builtIn: false,
+      },
+      {
+        presetId: 'effort-pinned-team',
+        name: 'Effort Pinned Team',
+        description: 'One agent slot pinned to an effort only',
+        leadRoleId: 'codex-orchestrator',
+        roleCount: 1,
+        agentCount: 1,
+        tools: ['codex'],
+        builtIn: false,
+      },
     ])
 
     getTeamPreset.mockImplementation(async (id) => {
+      if (id === 'lead-pinned-team') {
+        return {
+          presetId: id,
+          name: 'Lead Pinned Team',
+          description: 'Preset details',
+          leadRoleId: 'codex-orchestrator',
+          // Both pins repeat what the roles already default to: they are still the
+          // user's explicit choice and an unchanged save must keep them.
+          leadOverrides: { model: 'gpt-5.4', reasoningEffort: 'high' },
+          agentSlots: [
+            {
+              roleId: 'codex-implementer',
+              count: 1,
+              overrides: { model: 'gpt-5.6-sol', reasoningEffort: null },
+            },
+          ],
+          defaults: {
+            teamNamePattern: '{project}-team',
+            tmuxLayout: 'tiled',
+          },
+        }
+      }
+      if (id === 'effort-pinned-team') {
+        return {
+          presetId: id,
+          name: 'Effort Pinned Team',
+          description: 'Preset details',
+          leadRoleId: 'codex-orchestrator',
+          agentSlots: [
+            { roleId: 'codex-implementer', count: 1, overrides: { reasoningEffort: 'xhigh' } },
+          ],
+          defaults: {
+            teamNamePattern: '{project}-team',
+            tmuxLayout: 'tiled',
+          },
+        }
+      }
       if (id === 'backend-codex-team') {
         return {
           presetId: id,
@@ -183,7 +254,13 @@ describe('TemplateBrowserPanel', () => {
           name: 'Backend Sprint Team',
           description: 'Preset details',
           leadRoleId: 'claude-orchestrator',
-          agentSlots: [{ roleId: 'custom-doc-writer', count: 2 }],
+          agentSlots: [
+            {
+              roleId: 'custom-doc-writer',
+              count: 2,
+              overrides: { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+            },
+          ],
           defaults: {
             teamNamePattern: '{project}-team',
             tmuxLayout: 'tiled',
@@ -286,6 +363,7 @@ describe('TemplateBrowserPanel', () => {
     render(TemplateBrowserPanel, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -309,7 +387,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('shows Roles/Presets/History tabs and tab switching works', async () => {
-    render(TemplateBrowserPanel, { props: { open: true, dark: true } })
+    render(TemplateBrowserPanel, { props: { open: true, dark: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('catalog-tab-roles')).toBeInTheDocument()
@@ -356,6 +434,7 @@ describe('TemplateBrowserPanel', () => {
     render(TemplateBrowserPanel, {
       props: {
         open: true,
+        modelCatalog: TEST_MODEL_CATALOG,
       },
     })
 
@@ -406,7 +485,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('renders with 420px panel width', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('slideover-panel')).toBeInTheDocument()
@@ -415,7 +494,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('shows preset CRUD actions only for custom presets', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -432,7 +511,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('opens TeamCustomizerPanel from the + Create preset action', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -446,7 +525,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('duplicate preset opens editor with copy name', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -460,7 +539,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('delete preset requires confirm and refreshes list after delete', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -480,7 +559,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('edit preset save calls upsert and refreshes presets', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
     await waitFor(() => {
@@ -499,8 +578,264 @@ describe('TemplateBrowserPanel', () => {
     })
   })
 
+  // Regression: b345de1 (PR 5c) routed preset editing through TeamCustomizerPanel
+  // but `savePresetFromCustomizer` submitted the normalized draft slots, which had
+  // already lost `overrides`, and ignored the customizer's edited agents entirely.
+  // Editing a preset therefore erased its pinned model/effort and discarded every
+  // change made in the editor.
+  it('round-trips preset slot overrides through the customizer save', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-sprint-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-sprint-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-agent-agent-1-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
+
+    const modelSelect = await screen.findByTestId('team-customizer-agent-agent-1-model-select')
+    expect(modelSelect).toHaveValue('gpt-5.6-terra')
+
+    await fireEvent.change(modelSelect, { target: { value: 'gemini-3.1-pro' } })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-save'))
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'backend-sprint-team',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [
+        expect.objectContaining({
+          roleId: 'custom-doc-writer',
+          count: 1,
+          overrides: expect.objectContaining({ model: 'gemini-3.1-pro', reasoningEffort: null }),
+        }),
+        expect.objectContaining({
+          roleId: 'custom-doc-writer',
+          count: 1,
+          overrides: expect.objectContaining({ model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' }),
+        }),
+      ],
+    }))
+  })
+
+  // Regression: c1603fe (PR 5c review round 2) rebuilt the preset slots from the
+  // customizer rows, and `presetDraftToTeamConfig` renders a slot that pins
+  // nothing from its role defaults. Opening a preset and pressing Save therefore
+  // wrote those role defaults back as slot overrides, so the preset silently
+  // stopped following later edits to the role's model or effort.
+  it('keeps an unpinned slot unpinned when the preset is opened and saved unchanged', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-codex-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-codex-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'backend-codex-team',
+      leadRoleId: 'codex-orchestrator',
+      agentSlots: [
+        expect.objectContaining({ roleId: 'custom-doc-writer', count: 2, overrides: null }),
+      ],
+    }))
+  })
+
+  // Regression: 3a7188a (PR 5c review round 3) decided which slot overrides to keep
+  // by comparing the rendered value with the role default, so an explicit pin that
+  // happened to equal the role default was deleted by an unchanged save and the
+  // preset silently started following later role edits again.
+  it('keeps pins that equal the role defaults when the preset is saved unchanged', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-lead-pinned-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-lead-pinned-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'lead-pinned-team',
+      leadRoleId: 'codex-orchestrator',
+      leadOverrides: expect.objectContaining({ model: 'gpt-5.4', reasoningEffort: 'high' }),
+      agentSlots: [
+        expect.objectContaining({
+          roleId: 'codex-implementer',
+          count: 1,
+          overrides: expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: null }),
+        }),
+      ],
+    }))
+  })
+
+  // Regression: 3a7188a (PR 5c review round 3). Overrides express user intent, so a
+  // row the user never touched must stay exactly as loaded - unpinned rows unpinned -
+  // while the row the user did edit pins what the editor showed.
+  it('pins only the slot the user edited and leaves its untouched sibling alone', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-codex-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-codex-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-agent-agent-1-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
+    await fireEvent.change(
+      await screen.findByTestId('team-customizer-agent-agent-1-model-select'),
+      { target: { value: 'gemini-3.1-pro' } }
+    )
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-save'))
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'backend-codex-team',
+      agentSlots: [
+        expect.objectContaining({
+          roleId: 'custom-doc-writer',
+          count: 1,
+          overrides: expect.objectContaining({ model: 'gemini-3.1-pro', reasoningEffort: null }),
+        }),
+        expect.objectContaining({ roleId: 'custom-doc-writer', count: 1, overrides: null }),
+      ],
+    }))
+  })
+
+  // Regression: 3a7188a (PR 5c review round 3). Choosing the inherit option is an
+  // explicit intent to stop pinning, so it has to delete the loaded override rather
+  // than round-trip it back into the preset.
+  it('removes a slot effort pin when the user clears the effort select', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-effort-pinned-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-effort-pinned-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-agent-agent-1-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
+
+    const effortSelect = await screen.findByTestId('team-customizer-agent-agent-1-model-select-effort')
+    expect(effortSelect).toHaveValue('xhigh')
+    await fireEvent.change(effortSelect, { target: { value: '' } })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-save'))
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'effort-pinned-team',
+      agentSlots: [
+        expect.objectContaining({ roleId: 'codex-implementer', count: 1, overrides: null }),
+      ],
+    }))
+  })
+
+  // Regression: b345de1 (PR 5c) gave the advanced preset editor an editable lead
+  // card, but `savePresetFromCustomizer` only read the lead role id, so the edit was
+  // accepted in the UI and dropped on save.
+  it('persists a lead effort edit through the preset save', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-codex-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-codex-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-lead-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-edit'))
+
+    const effortSelect = await screen.findByTestId('team-customizer-lead-model-select-effort')
+    expect(effortSelect).toHaveValue('high')
+    await fireEvent.change(effortSelect, { target: { value: 'xhigh' } })
+    await fireEvent.click(screen.getByTestId('team-customizer-lead-save'))
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'backend-codex-team',
+      leadRoleId: 'codex-orchestrator',
+      leadOverrides: expect.objectContaining({ model: null, reasoningEffort: 'xhigh' }),
+    }))
+  })
+
+  // Regression: c1603fe (PR 5c review round 2) taught `ModelSelect` to withhold the
+  // empty "default" effort option when a role declares one, but only wired
+  // `inheritedEffort` at the builder. The advanced preset editor kept offering
+  // "default" for a role-bound member, and picking it emitted null while the
+  // backend refilled the role's effort - the editor promised a clear it cannot do.
+  it('does not offer an effort default the role reapplies in the advanced preset editor', async () => {
+    getTeamPreset.mockResolvedValue({
+      presetId: 'backend-codex-team',
+      name: 'Backend Sprint Team (Codex Lead)',
+      description: 'Preset details',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [{ roleId: 'codex-orchestrator', count: 1 }],
+      defaults: {
+        teamNamePattern: '{project}-team',
+        tmuxLayout: 'tiled',
+      },
+    })
+
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-codex-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-codex-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-agent-agent-1-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
+
+    const effortSelect = await screen.findByTestId('team-customizer-agent-agent-1-model-select-effort')
+    expect(effortSelect).toHaveValue('high')
+    const offered = Array.from(effortSelect.options).map((option) => option.value)
+    expect(offered).not.toContain('')
+  })
+
   it('shows create/edit/delete actions only for custom roles', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-template-card-claude-orchestrator')).toBeInTheDocument()
@@ -574,7 +909,7 @@ describe('TemplateBrowserPanel', () => {
         },
       ])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-create-button')).toBeInTheDocument()
@@ -621,7 +956,7 @@ describe('TemplateBrowserPanel', () => {
       ])
       .mockResolvedValue([])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-delete-custom-doc-writer')).toBeInTheDocument()
@@ -652,7 +987,7 @@ describe('TemplateBrowserPanel', () => {
       },
     ])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-custom-empty-state')).toBeInTheDocument()
@@ -663,7 +998,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('renders tool, focus area, and behavior summary on role cards', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-tool-badge-custom-doc-writer')).toBeInTheDocument()
@@ -677,7 +1012,7 @@ describe('TemplateBrowserPanel', () => {
   })
 
   it('opens the role export dropdown from the card action row', async () => {
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-export-trigger-custom-doc-writer')).toBeInTheDocument()
@@ -701,7 +1036,7 @@ describe('TemplateBrowserPanel', () => {
       lossyFields: ['constraints'],
     })
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-export-trigger-custom-doc-writer')).toBeInTheDocument()
@@ -773,7 +1108,7 @@ describe('TemplateBrowserPanel', () => {
         },
       ])
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
@@ -842,7 +1177,7 @@ describe('TemplateBrowserPanel', () => {
       },
     })
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
@@ -904,7 +1239,7 @@ describe('TemplateBrowserPanel', () => {
       },
     })
 
-    render(TemplateBrowserPanel, { props: { open: true } })
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 
     await waitFor(() => {
       expect(screen.getByTestId('role-import-button')).toBeInTheDocument()
@@ -941,7 +1276,7 @@ describe('TemplateBrowserPanel', () => {
       .mockReturnValueOnce(oldPresets.promise)
       .mockReturnValueOnce(newPresets.promise)
 
-    const view = render(TemplateBrowserPanel, { props: { open: true } })
+    const view = render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
     await view.rerender({ open: false })
     await view.rerender({ open: true })
 

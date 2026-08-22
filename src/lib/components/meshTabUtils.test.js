@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { TEST_MODEL_CATALOG as CATALOG } from '../../test/fixtures/modelCatalog.js'
 import {
   buildInitializationRequest,
   buildTeamConfigFromPreset,
@@ -388,5 +389,88 @@ describe('meshTabUtils cross-project metadata', () => {
       tool: '',
       model: '',
     }))
+  })
+})
+
+describe('meshTabUtils reasoning effort', () => {
+  // Regression: b345de1 (PR 5c) normalized the member effort in
+  // `buildTeamConfigFromRuntimeStatus` and forwarded it for the lead only, so
+  // every non-lead runtime node reached the canvas and the node detail without
+  // the effort the backend reported.
+  it('forwards the runtime effort for the lead and for every agent', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          reasoningEffort: 'high',
+          sessionStatus: 'active',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cli_tool: 'codex',
+          model: 'gpt-5.6-terra',
+          reasoning_effort: 'xhigh',
+          sessionStatus: 'active',
+        },
+      ],
+    })
+
+    expect(config.lead.reasoningEffort).toBe('high')
+    expect(config.agents).toEqual([
+      expect.objectContaining({ id: 'frontend-dev', model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' }),
+    ])
+  })
+
+  // Regression: b345de1 (PR 5c) resolved a missing effort to the catalog's
+  // `defaultEffort` for every member, so initialize pinned an effort the user
+  // never chose. The backend leaves it unset so the CLI's global setting applies.
+  it('leaves an unset effort unset in the initialize payload', () => {
+    const request = buildInitializationRequest(
+      {
+        initializationMode: 'custom',
+        lead: { name: 'team-lead', tool: 'claude', model: 'opus', projectId: '/projects/taurhaus' },
+        agents: [
+          { name: 'dev-1', tool: 'codex', model: 'gpt-5.4', projectId: '/projects/taurhaus' },
+          {
+            name: 'dev-2',
+            tool: 'codex',
+            model: 'gpt-5.6-terra',
+            reasoningEffort: 'xhigh',
+            projectId: '/projects/taurhaus',
+          },
+        ],
+      },
+      'taurhaus-team',
+      '/projects/taurhaus',
+      CATALOG
+    )
+
+    expect(request.lead.reasoningEffort).toBeNull()
+    expect(request.agents.map((agent) => [agent.model, agent.reasoningEffort])).toEqual([
+      ['gpt-5.4', null],
+      ['gpt-5.6-terra', 'xhigh'],
+    ])
+  })
+
+  it('uses the catalog default model and effort when the member declares no model', () => {
+    const request = buildInitializationRequest(
+      {
+        initializationMode: 'custom',
+        lead: { name: 'team-lead', tool: 'claude', projectId: '/projects/taurhaus' },
+        agents: [{ name: 'dev-1', tool: 'codex', projectId: '/projects/taurhaus' }],
+      },
+      'taurhaus-team',
+      '/projects/taurhaus',
+      CATALOG
+    )
+
+    expect(request.agents[0]).toEqual(
+      expect.objectContaining({ model: 'gpt-5.6-sol', reasoningEffort: 'low' })
+    )
   })
 })

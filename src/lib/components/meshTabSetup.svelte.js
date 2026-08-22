@@ -1,4 +1,13 @@
 export function createMeshTabSetup({ state, refs, deps, gate }) {
+  // A saved preset has to remember what the roster actually selected; without
+  // overrides, reloading it restores the role defaults and drops the choice.
+  function slotOverridesForMember(member) {
+    const model = String(member?.model ?? '').trim()
+    const reasoningEffort = String(member?.reasoningEffort ?? '').trim()
+    if (!model && !reasoningEffort) return null
+    return { model: model || null, reasoningEffort: reasoningEffort || null }
+  }
+
   function detachPresetConfig(config) {
     if (!config || config.initializationMode !== 'preset') return config
     return {
@@ -43,10 +52,15 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       const agentSlots = Array.isArray(resolvedPreset?.agentSlots) ? resolvedPreset.agentSlots : []
 
       if (leadRoleId) {
+        // A preset can pin its lead's model/effort (`TeamPreset::lead_overrides`);
+        // composition only applies it when the request carries it as the lead
+        // override, otherwise the launched lead falls back to the role defaults.
+        const leadOverrides = resolvedPreset?.leadOverrides ?? resolvedPreset?.lead_overrides ?? null
         compositionResult = await deps.composeTeam({
           leadRoleId,
           agentSlots,
           overrides: {
+            ...(leadOverrides ? { lead: leadOverrides } : {}),
             projectName: deps.inferTeamName(deps.getProjectPath()).replace(/-team$/, ''),
           },
         })
@@ -209,7 +223,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
           count: 1,
           projectBinding: 'lead_project',
           projectId: null,
-          overrides: null,
+          overrides: slotOverridesForMember(agent),
         })),
         defaults: {
           teamNamePattern: '{project}-team',
@@ -243,7 +257,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       roleName: '',
       name: '',
       tool: 'codex',
-      model: deps.defaultModelForTool('codex'),
+      model: deps.defaultModelFor('codex'),
+      reasoningEffort: deps.defaultEffortFor('codex', deps.defaultModelFor('codex')),
       projectId: defaultProject,
       description: '',
       instructions: '',
@@ -306,7 +321,14 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const role = state.roleTemplates.find((entry) => entry.roleId === selectedRoleId)
     if (!role) return
     const tool = deps.normalizeTool(role.cliTool || 'codex')
-    const model = role.model || deps.defaultModelForTool(tool)
+    // The role response keeps the effort under `defaults` unless it was lifted;
+    // read both. A role that names a model but no effort inherits the CLI's
+    // global setting, so only a catalog-supplied model brings a catalog effort.
+    const roleModel = deps.resolveRoleModel(role)
+    const model = roleModel || deps.defaultModelFor(tool)
+    const reasoningEffort =
+      deps.resolveRoleReasoningEffort(role)
+      ?? (roleModel ? null : deps.defaultEffortFor(tool, model))
     const instructions = role.instructions || ''
     state.slideOverContext = {
       ...draft,
@@ -315,6 +337,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       name: deps.buildRuntimeAgentName(role, draft.projectId, state.teamConfig, deps.getProjectPath()),
       tool,
       model,
+      reasoningEffort,
       description: instructions,
       instructions,
       focusArea: role.focusArea || '',
@@ -334,7 +357,10 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     const draft = state.addAgentDraft
     if (!draft) return
     const next = { ...draft, [field]: value }
-    if (field === 'tool') next.model = deps.defaultModelForTool(value)
+    if (field === 'tool') {
+      next.model = deps.defaultModelFor(value)
+      next.reasoningEffort = deps.defaultEffortFor(value, next.model)
+    }
     state.slideOverContext = next
   }
 
@@ -351,6 +377,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
           name: String(draft.name || '').trim(),
           cliTool: deps.normalizeTool(draft.tool),
           model: String(draft.model || '').trim(),
+          reasoningEffort: draft.reasoningEffort ?? null,
           projectId: String(draft.projectId || '').trim(),
           description: String(draft.description || '').trim() || null,
           roleId: String(draft.roleId || '').trim() || null,
@@ -391,7 +418,8 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       roleId: deps.slugifyRoleId(roleName),
       manualRoleId: false,
       tool: deps.normalizeTool(state.selectedNode.tool),
-      model: String(state.selectedNode.model || '').trim() || deps.defaultModelForTool(state.selectedNode.tool),
+      model: String(state.selectedNode.model || '').trim(),
+      reasoningEffort: state.selectedNode.reasoningEffort ?? null,
       description,
       includeInstructions: description.length > 0,
       includeBehavioralContract: deps.contractHasRules(normalizedContract),
@@ -435,7 +463,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
 
     state.captureRoleDialog = { ...draft, submitting: true, error: '' }
     try {
-      await deps.upsertRoleTemplate(deps.buildCapturedRoleTemplate(draft))
+      await deps.upsertRoleTemplate(deps.buildCapturedRoleTemplate(draft, deps.getModelCatalog()))
       state.runtimeMessage = 'Role saved to catalog'
       closeCaptureRoleDialog()
       void loadRoleTemplates()
