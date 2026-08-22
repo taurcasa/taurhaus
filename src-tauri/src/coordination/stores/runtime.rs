@@ -32,6 +32,10 @@ pub struct MemberRuntimeRecord {
     pub cli_tool: Option<CliTool>,
     pub project_path: Option<PathBuf>,
     pub pane_id: Option<String>,
+    #[serde(default)]
+    pub pane_pid: Option<u32>,
+    #[serde(default)]
+    pub pane_start_time: Option<u64>,
     pub session_id: Option<String>,
     pub jsonl_path: Option<PathBuf>,
     pub daemon_pid: Option<u32>,
@@ -335,6 +339,10 @@ fn parse_runtime_record(
         project_path: Option<PathBuf>,
         #[serde(default, alias = "paneId")]
         pane_id: Option<String>,
+        #[serde(default, alias = "panePid")]
+        pane_pid: Option<u32>,
+        #[serde(default, alias = "paneStartTime")]
+        pane_start_time: Option<u64>,
         #[serde(default, alias = "sessionId")]
         session_id: Option<String>,
         #[serde(default, alias = "jsonlPath")]
@@ -362,6 +370,8 @@ fn parse_runtime_record(
         cli_tool: wire.cli_tool,
         project_path: wire.project_path,
         pane_id: wire.pane_id,
+        pane_pid: wire.pane_pid,
+        pane_start_time: wire.pane_start_time,
         session_id: wire.session_id,
         jsonl_path: wire.jsonl_path,
         daemon_pid: wire.daemon_pid,
@@ -589,6 +599,8 @@ mod tests {
             cli_tool: Some(CliTool::Codex),
             project_path: Some(PathBuf::from("/tmp/taurhaus")),
             pane_id: Some("%12".to_string()),
+            pane_pid: Some(1200),
+            pane_start_time: Some(1_755_000_000),
             session_id: Some("session-123".to_string()),
             jsonl_path: Some(PathBuf::from("/tmp/taurhaus/.codex/session.jsonl")),
             daemon_pid: Some(4242),
@@ -676,6 +688,8 @@ mod tests {
 
         assert_eq!(loaded.cli_tool, None);
         assert_eq!(loaded.project_path, None);
+        assert_eq!(loaded.pane_pid, None);
+        assert_eq!(loaded.pane_start_time, None);
         assert_eq!(loaded.session_id.as_deref(), Some("session-123"));
         assert_eq!(loaded.jsonl_path, None);
     }
@@ -816,6 +830,8 @@ mod tests {
             cli_tool: None,
             project_path: None,
             pane_id: None,
+            pane_pid: None,
+            pane_start_time: None,
             session_id: None,
             jsonl_path: None,
             daemon_pid: None,

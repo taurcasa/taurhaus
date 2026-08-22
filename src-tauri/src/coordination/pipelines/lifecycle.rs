@@ -251,6 +251,12 @@ impl CoordinationOrchestrator {
         if let Some(pane_id) = patch.pane_id {
             runtime.pane_id = pane_id;
         }
+        if let Some(pane_pid) = patch.pane_pid {
+            runtime.pane_pid = pane_pid;
+        }
+        if let Some(pane_start_time) = patch.pane_start_time {
+            runtime.pane_start_time = pane_start_time;
+        }
         if let Some(session_id) = patch.session_id {
             runtime.session_id = session_id;
         }

@@ -25,6 +25,9 @@ use crate::coordination::stores::{
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::{
+    ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
+};
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {
@@ -2207,6 +2210,8 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         cli_tool: None,
         project_path: None,
         pane_id: Some("%7".to_string()),
+        pane_pid: None,
+        pane_start_time: None,
         session_id: None,
         jsonl_path: None,
         daemon_pid: None,
@@ -2271,6 +2276,7 @@ fn liveness_reconcile_marks_missing_pane_id_offline() {
             RuntimeCall::CheckPaneExists { .. }
                 | RuntimeCall::CheckPaneDead { .. }
                 | RuntimeCall::CheckPaneShell { .. }
+                | RuntimeCall::InspectPane { .. }
         )),
         "missing pane id should not query tmux pane state"
     );
@@ -2308,7 +2314,7 @@ fn liveness_reconcile_marks_missing_pane_target_offline() {
     let calls = runtime.calls();
     assert!(calls
         .iter()
-        .any(|call| matches!(call, RuntimeCall::CheckPaneExists { pane_id } if pane_id == "%9")));
+        .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")));
     assert!(
         !calls.iter().any(|call| matches!(
             call,
@@ -2351,7 +2357,7 @@ fn liveness_reconcile_marks_dead_pane_offline() {
     let calls = runtime.calls();
     assert!(calls
         .iter()
-        .any(|call| matches!(call, RuntimeCall::CheckPaneDead { pane_id } if pane_id == "%9")));
+        .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")));
     assert!(
         !calls
             .iter()
@@ -2383,6 +2389,7 @@ fn liveness_reconcile_marks_shell_pane_offline() {
     runtime.set_pane_exists("%9", true);
     runtime.set_pane_dead("%9", false);
     runtime.set_pane_shell("%9", true);
+    runtime.set_pane_current_command("%9", Some("bash"));
 
     orchestrator
         .reconcile_team_liveness(team_name)
@@ -2394,7 +2401,7 @@ fn liveness_reconcile_marks_shell_pane_offline() {
     assert!(runtime
         .calls()
         .iter()
-        .any(|call| matches!(call, RuntimeCall::CheckPaneShell { pane_id } if pane_id == "%9")));
+        .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")));
 }
 
 #[test]
@@ -2433,6 +2440,21 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
         "active CLI pane should not be marked offline"
     );
     let calls = runtime.calls();
+    // Regression: 39eeb33 made four tmux subprocess calls before every
+    // liveness decision even though InspectPane returns the same state.
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9"))
+            .count(),
+        1
+    );
+    assert!(calls.iter().all(|call| !matches!(
+        call,
+        RuntimeCall::CheckPaneExists { .. }
+            | RuntimeCall::CheckPaneDead { .. }
+            | RuntimeCall::CheckPaneShell { .. }
+    )));
     assert!(
         calls
             .iter()
@@ -2446,6 +2468,177 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
         )),
         "healthy member should not trigger daemon restart/cleanup"
     );
+}
+
+#[test]
+fn liveness_reconcile_quarantines_foreign_member_without_blocking_team_daemon() {
+    // Regression: aecc8ac let one non-lead foreign pane permanently block the
+    // whole team's daemon and left the stale pane binding latched forever.
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("pane-foreign-events.jsonl");
+    let log_state = taurhaus_lib::logging::LogFileState::new(log_path.clone()).expect("log state");
+    taurhaus_lib::logging::install_global_sink(&log_state);
+
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+    write_lead_credential(tmp.path(), team_name, "team-lead");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("stale-codex-session".to_string());
+    record.pane_id = Some("%9".to_string());
+    record.daemon_pid = Some(4242);
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    let config = TeamConfigStore::load(tmp.path(), team_name).expect("load config");
+    TeamConfigStore::save(tmp.path(), team_name, &config).expect("sync pane metadata");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pane_current_command("%9", Some("claude"));
+    runtime.set_pid_running(4242, true);
+    runtime.set_team_daemon_current_mesh_binary(team_name, false);
+
+    orchestrator
+        .trigger_team_self_heal(team_name)
+        .expect("first self-heal should succeed");
+    orchestrator
+        .trigger_team_self_heal(team_name)
+        .expect("second self-heal should be idempotent");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, None);
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid: 4242 })));
+    assert_eq!(updated.pane_id, None);
+    assert_eq!(updated.pane_pid, None);
+    assert_eq!(updated.pane_start_time, None);
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+    let config_raw = std::fs::read_to_string(tmp.path().join(team_name).join("config.json"))
+        .expect("read config");
+    let config: serde_json::Value = serde_json::from_str(&config_raw).expect("parse config");
+    let member = config["members"]
+        .as_array()
+        .expect("members")
+        .iter()
+        .find(|candidate| candidate["name"] == member_name)
+        .expect("member config");
+    assert!(member.get("tmuxPaneId").is_none());
+
+    log_state
+        .flush_for_test()
+        .expect("flush structured log sink");
+    let events = std::fs::read_to_string(log_path)
+        .expect("read structured log")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse log record"))
+        .filter(|record| {
+            record["event"] == "coordination.pane.foreign"
+                && record["team"] == team_name
+                && record["member"] == member_name
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["team"], team_name);
+    assert_eq!(events[0]["member"], member_name);
+    assert_eq!(events[0]["pane_id"], "%9");
+    assert!(events[0]["reason"]
+        .as_str()
+        .is_some_and(|reason| reason.contains("claude")));
+}
+
+#[test]
+fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
+    // Regression: aecc8ac compared a cached scanner pane with another pane's
+    // persisted PID identity, marking a just-resumed healthy member dead.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.pane_id = Some("%20".to_string());
+    record.pane_pid = Some(2020);
+    record.pane_start_time = Some(220);
+    record.daemon_pid = Some(4242);
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pane_identity("%20", Some(2020), Some(220));
+    runtime.set_pane_current_command("%20", Some("codex"));
+    runtime.set_pane_current_command("%9", Some("claude"));
+
+    let cached_snapshot = RuntimeSession {
+        pid: 9009,
+        project_path: "/tmp/taurhaus".to_string(),
+        tty: "/dev/pts/9".to_string(),
+        args: "claude".to_string(),
+        cli_tool: CliTool::Codex,
+        tmux_session: Some("taurhaus".to_string()),
+        tmux_window: Some("1".to_string()),
+        tmux_pane: Some("%9".to_string()),
+        tmux_window_name: Some("stale".to_string()),
+        state: SessionState::Active,
+        session_id: Some("cached-session".to_string()),
+        jsonl_path: None,
+        recent_io: false,
+        last_output_age_secs: None,
+        activity_confidence: ActivityConfidence::High,
+        activity_attribution: ActivityAttribution::Attributed,
+        project_unattributed_active: false,
+        group_kind: SessionGroupKind::MeshTeam,
+        group_id: Some(team_name.to_string()),
+        group_label: Some(team_name.to_string()),
+        member_name: Some(member_name.to_string()),
+    };
+
+    let reconciled = orchestrator
+        .reconcile_team_presence_for_live_status_with_runtime_sessions(
+            team_name,
+            &[cached_snapshot],
+        )
+        .expect("presence reconcile");
+
+    assert!(reconciled.is_empty());
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload"),
+        record
+    );
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::TerminatePid { pid: 4242 })));
 }
 
 #[test]
@@ -3316,6 +3509,9 @@ fn inbox_delivery_ensures_the_non_claude_member_daemon() {
     member_runtime.pane_id = Some("%31".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &member_runtime)
         .expect("save runtime");
+    // The tmux floor permits unknown foreground commands such as `cat`; only
+    // a known mismatched agent CLI proves that a legacy pane is foreign.
+    runtime.set_pane_current_command("%31", Some("cat"));
 
     orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
@@ -3338,6 +3534,62 @@ fn inbox_delivery_ensures_the_non_claude_member_daemon() {
     let saved_runtime =
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
     assert_eq!(saved_runtime.daemon_pid, Some(10000));
+    assert_eq!(
+        MeshInboxStore::load(tmp.path(), team_name, member_name)
+            .expect("inbox")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
+    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+    // taurrust/gotaurus/espn pointed at claude panes.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+        tmp.path().to_path_buf(),
+    ));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "foreign-inbox-wake";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    member_runtime.pane_id = Some("%31".to_string());
+    member_runtime.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &member_runtime)
+        .expect("save runtime");
+    runtime.set_pane_current_command("%31", Some("claude"));
+
+    orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            message: "do not wake the foreign pane".to_string(),
+            sender_name: None,
+            operational_context: None,
+        }))
+        .expect("durable inbox delivery should still succeed");
+
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    let saved_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
+    assert_eq!(saved_runtime.health, HealthState::SessionDead);
+    assert_eq!(saved_runtime.daemon_pid, None);
     assert_eq!(
         MeshInboxStore::load(tmp.path(), team_name, member_name)
             .expect("inbox")

@@ -17,9 +17,14 @@ use super::tmux::{
     create_tmux_pane_with_layout, is_shell_command, run_tmux, run_tmux_output, tmux_target_for_pane,
 };
 use super::{
-    CoordinationRuntime, DetectedRuntimeSession, SESSION_DETECT_ATTEMPTS, SESSION_DETECT_INTERVAL,
-    TMUX_POST_ENTER_DELAY, TMUX_TEXT_TO_ENTER_DELAY,
+    CoordinationRuntime, DetectedRuntimeSession, LivePane, SESSION_DETECT_ATTEMPTS,
+    SESSION_DETECT_INTERVAL, TMUX_POST_ENTER_DELAY, TMUX_TEXT_TO_ENTER_DELAY,
 };
+
+// tmux 3.4 does not define `pane_start_time`; the empty slot keeps the wire
+// shape stable while Linux fills it from /proc process start ticks below.
+// macOS and Windows therefore retain only the pane PID portion of identity.
+const LIVE_PANE_FORMAT: &str = "#{pane_id}\t#{pane_pid}\t#{pane_start_time}\t#{pane_dead}\t#{pane_current_command}\t#{pane_current_path}";
 
 #[derive(Debug, Default)]
 pub struct SystemCoordinationRuntime;
@@ -342,15 +347,16 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         if project_id.trim().is_empty() {
             return Ok(false);
         }
-        let pane_path = run_tmux(&[
-            "display-message".to_string(),
-            "-p".to_string(),
-            "-t".to_string(),
-            tmux_target_for_pane(pane_id),
-            "#{pane_current_path}".to_string(),
-        ])?;
-        Ok(crate::provider::path::normalize_project_path(&pane_path)
-            == crate::provider::path::normalize_project_path(project_id))
+        let Some(live_pane) = self.live_pane(pane_id)? else {
+            return Ok(false);
+        };
+        let Some(pane_path) = live_pane.current_path else {
+            return Ok(false);
+        };
+        Ok(
+            crate::provider::path::normalize_project_path(&pane_path.display().to_string())
+                == crate::provider::path::normalize_project_path(project_id),
+        )
     }
 
     fn find_existing_mesh_daemon_pids(
@@ -438,6 +444,30 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         }
     }
 
+    fn live_pane(&self, pane_id: &str) -> Result<Option<LivePane>, CoordinationError> {
+        let out = run_tmux_output(&[
+            "display-message".to_string(),
+            "-p".to_string(),
+            "-t".to_string(),
+            tmux_target_for_pane(pane_id),
+            LIVE_PANE_FORMAT.to_string(),
+        ])?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        let Some(mut live_pane) =
+            parse_live_pane_output(&String::from_utf8_lossy(&out.stdout), pane_id)?
+        else {
+            return Ok(None);
+        };
+        if live_pane.pane_start_time.is_none() {
+            live_pane.pane_start_time = live_pane
+                .pane_pid
+                .and_then(taurhaus_lib::platform::process_start_ticks);
+        }
+        Ok(Some(live_pane))
+    }
+
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {
         run_tmux(&[
             "kill-pane".to_string(),
@@ -513,6 +543,46 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
     }
 }
 
+fn parse_live_pane(raw: &str) -> Option<LivePane> {
+    let mut fields = raw.trim_end_matches(['\r', '\n']).splitn(6, '\t');
+    let pane_id = fields.next()?.trim();
+    if pane_id.is_empty() {
+        return None;
+    }
+    let pane_pid = fields.next()?.trim().parse::<u32>().ok();
+    let pane_start_time = fields.next()?.trim().parse::<u64>().ok();
+    let is_dead = matches!(fields.next()?.trim(), "1" | "true");
+    let current_command = non_empty(fields.next()?);
+    let current_path = non_empty(fields.next()?).map(PathBuf::from);
+    Some(LivePane {
+        pane_id: pane_id.to_string(),
+        pane_pid,
+        pane_start_time,
+        current_command,
+        current_path,
+        is_dead,
+    })
+}
+
+fn parse_live_pane_output(raw: &str, pane_id: &str) -> Result<Option<LivePane>, CoordinationError> {
+    if raw
+        .chars()
+        .all(|character| character == '\t' || character.is_whitespace())
+    {
+        return Ok(None);
+    }
+    parse_live_pane(raw).map(Some).ok_or_else(|| {
+        CoordinationError::Backend(format!(
+            "tmux returned malformed pane identity for {pane_id}"
+        ))
+    })
+}
+
+fn non_empty(raw: &str) -> Option<String> {
+    let value = raw.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,6 +611,36 @@ mod tests {
             session_id: Some("fresh-session".to_string()),
             jsonl_path: Some(PathBuf::from("/tmp/fresh-session.jsonl")),
         }
+    }
+
+    #[test]
+    fn live_pane_parser_captures_tmux_identity_and_foreground_command() {
+        // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+        // taurrust/gotaurus/espn pointed at claude panes.
+        let pane = parse_live_pane("%9\t4242\t1755000000\t0\tclaude\t/tmp/taurhaus\n")
+            .expect("parse live pane");
+
+        assert_eq!(pane.pane_id, "%9");
+        assert_eq!(pane.pane_pid, Some(4242));
+        assert_eq!(pane.pane_start_time, Some(1_755_000_000));
+        assert_eq!(pane.current_command.as_deref(), Some("claude"));
+        assert_eq!(pane.current_path, Some(PathBuf::from("/tmp/taurhaus")));
+        assert!(!pane.is_dead);
+    }
+
+    #[test]
+    fn vanished_pane_output_is_not_a_malformed_identity_error() {
+        // Regression: aecc8ac treated tmux's successful empty response for a
+        // vanished pane as malformed, aborting resume and team-daemon repair.
+        assert!(parse_live_pane("\t\t\t\t\t\n").is_none());
+        assert!(parse_live_pane_output("\t\t\t\t\t\n", "%20")
+            .expect("vanished pane is not an error")
+            .is_none());
+    }
+
+    #[test]
+    fn nonempty_malformed_pane_output_remains_an_error() {
+        assert!(parse_live_pane_output("%20\tbroken\n", "%20").is_err());
     }
 
     /// Degraded scans hand back the last good snapshot, which still maps the

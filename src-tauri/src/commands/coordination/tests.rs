@@ -2790,6 +2790,7 @@ fn live_status_uses_lightweight_presence_reconcile_without_heavy_daemon_calls() 
             RuntimeCall::CheckPaneExists { .. }
                 | RuntimeCall::CheckPaneDead { .. }
                 | RuntimeCall::CheckPaneShell { .. }
+                | RuntimeCall::InspectPane { .. }
         )
     }));
 }

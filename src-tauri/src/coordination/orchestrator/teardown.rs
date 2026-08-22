@@ -10,7 +10,10 @@ use crate::coordination::requests::{
     AddAgentRequest, InitializeTeamRequest, ResumeMemberRequest, ResumeTeamRequest, TeardownMode,
     TeardownRequest,
 };
-use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
+use crate::coordination::runtime::{
+    pane_belongs_to_member, quarantine_foreign_member, PaneOwnership,
+};
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
@@ -284,6 +287,25 @@ impl CoordinationOrchestrator {
     }
 
     pub(crate) fn ensure_team_daemon_running_best_effort(&self, team_name: &str) -> bool {
+        match self.quarantine_foreign_pane_before_team_daemon(team_name) {
+            Ok(Some(reason)) => {
+                tracing::warn!(
+                    team = %team_name,
+                    reason,
+                    "skipping team daemon restart because a member pane is foreign"
+                );
+                return false;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    error = %err,
+                    "failed to verify pane ownership before team daemon restart"
+                );
+                return false;
+            }
+        }
         let operator_name = match self.team_daemon_operator_name(team_name) {
             Ok(operator_name) => operator_name,
             Err(err) => {
@@ -348,6 +370,14 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
     ) -> Result<(bool, Option<String>), CoordinationError> {
+        if let Some(reason) = self.quarantine_foreign_pane_before_team_daemon(team_name)? {
+            return Ok((
+                false,
+                Some(format!(
+                    "team daemon skipped because a member pane is foreign: {reason}"
+                )),
+            ));
+        }
         let operator_name = self.team_daemon_operator_name(team_name)?;
         if let Some(reason) = self.team_daemon_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
@@ -386,6 +416,71 @@ impl CoordinationOrchestrator {
                 Ok((false, Some(err.to_string())))
             }
         }
+    }
+
+    fn quarantine_foreign_pane_before_team_daemon(
+        &self,
+        team_name: &str,
+    ) -> Result<Option<String>, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let operator_name = config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone());
+        let members = config
+            .members
+            .into_iter()
+            .map(|member| (member.name.clone(), member))
+            .collect::<HashMap<_, _>>();
+        let mut first_foreign = None;
+        for (member_name, mut record) in MemberRuntimeStore::load_all(&self.teams_dir, team_name)? {
+            let Some(member) = members.get(&member_name) else {
+                continue;
+            };
+            let Some(pane_id) = record.pane_id.clone() else {
+                continue;
+            };
+            let live_pane = match self.runtime.live_pane(&pane_id) {
+                Ok(Some(live_pane)) => live_pane,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pane_id = %pane_id,
+                        error = %error,
+                        "pane ownership probe failed before team daemon restart; proceeding with other members"
+                    );
+                    continue;
+                }
+            };
+            if live_pane.is_dead {
+                continue;
+            }
+            record.cli_tool.get_or_insert(member.cli_tool);
+            record
+                .project_path
+                .get_or_insert_with(|| member.project_path.clone());
+            let PaneOwnership::Foreign { reason } = pane_belongs_to_member(&record, &live_pane)
+            else {
+                continue;
+            };
+
+            let quarantined = quarantine_foreign_member(
+                &self.teams_dir,
+                self.runtime.as_ref(),
+                team_name,
+                &member_name,
+                &record,
+                &live_pane,
+                &reason,
+            )?;
+            if quarantined && operator_name.as_deref() == Some(member_name.as_str()) {
+                first_foreign.get_or_insert_with(|| format!("{member_name}:{pane_id}:{reason}"));
+            }
+        }
+        Ok(first_foreign)
     }
 
     pub(crate) fn ensure_team_daemon_for_wrapper_best_effort(&self, team_name: &str) {

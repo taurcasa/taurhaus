@@ -13,7 +13,9 @@ use crate::coordination::requests::{
     AddAgentReport, AddAgentRequest, DeliveryRequest, InitializeTeamRequest, MemberActivationStage,
     OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest, StepProgress, StepStatus,
 };
-use crate::coordination::runtime::{resolve_or_create_pane_for_member, PaneResolution};
+use crate::coordination::runtime::{
+    emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
+};
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
@@ -665,12 +667,81 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 self.runtime_state.reused_pane = pane_resolution.reused_pane;
                 if pane_resolution.created_new_pane {
                     self.runtime_state.created_pane_id = Some(pane_resolution.pane_id.clone());
-                    if runtime_record.pane_id.is_some() && !pane_resolution.reused_pane {
-                        self.warnings.push(format!(
-                            "existing pane was not reusable for '{}'; created a new pane",
-                            prepared.member.name
-                        ));
+                }
+                if let Some(reason) = pane_resolution.foreign_pane_reason.as_deref() {
+                    if let Some(stale_pane_id) = runtime_record.pane_id.as_deref() {
+                        let should_emit = runtime_record.health != HealthState::SessionDead
+                            || runtime_record.daemon_pid.is_some();
+                        let mut stale_runtime = runtime_record.clone();
+                        stale_runtime.health = HealthState::SessionDead;
+                        stale_runtime.session_id = None;
+                        stale_runtime.jsonl_path = None;
+                        let mut daemon_stop_error = None;
+                        if let Some(pid) = stale_runtime.daemon_pid {
+                            self.runtime_state.foreign_daemon_stopped = match self
+                                .orchestrator
+                                .runtime
+                                .is_process_running_by_pid(pid)
+                            {
+                                Ok(false) => true,
+                                Ok(true) | Err(_) => {
+                                    match self.orchestrator.runtime.terminate_process_by_pid(pid) {
+                                        Ok(()) => true,
+                                        Err(err) => {
+                                            daemon_stop_error = Some(format!(
+                                                "failed to terminate foreign-pane daemon pid {pid}: {err}"
+                                            ));
+                                            false
+                                        }
+                                    }
+                                }
+                            };
+                        } else {
+                            self.runtime_state.foreign_daemon_stopped = true;
+                        }
+                        stale_runtime.daemon_pid = None;
+                        if let Err(err) = self.orchestrator.runtime.clear_mesh_daemon_pid_file(
+                            &prepared.activation_context.team_name,
+                            &prepared.member.name,
+                        ) {
+                            self.warnings.push(format!(
+                                "failed to clear foreign-pane daemon pid file: {err}"
+                            ));
+                        }
+                        if let Err(err) = MemberRuntimeStore::save(
+                            &self.orchestrator.teams_dir,
+                            &prepared.activation_context.team_name,
+                            &prepared.member.name,
+                            &stale_runtime,
+                        ) {
+                            self.cleanup_failure();
+                            return Err(("resolve_pane".to_string(), err));
+                        }
+                        if should_emit {
+                            emit_foreign_pane_event(
+                                &prepared.activation_context.team_name,
+                                &prepared.member.name,
+                                stale_pane_id,
+                                reason,
+                            );
+                        }
+                        if let Some(message) = daemon_stop_error {
+                            self.cleanup_failure();
+                            return Err((
+                                "resolve_pane".to_string(),
+                                CoordinationError::Backend(message),
+                            ));
+                        }
                     }
+                }
+                if pane_resolution.created_new_pane
+                    && runtime_record.pane_id.is_some()
+                    && !pane_resolution.reused_pane
+                {
+                    self.warnings.push(format!(
+                        "existing pane was not reusable for '{}'; created a new pane",
+                        prepared.member.name
+                    ));
                 }
                 let message = if pane_resolution.reused_pane {
                     format!("reused pane {}", pane_resolution.pane_id)
@@ -703,6 +774,19 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             &prepared.activation_context,
             pane_id,
             MemberSessionPhase::LaunchOnly(self.cli_commands),
+        ) {
+            self.cleanup_failure();
+            self.emit_stage(
+                MemberActivationStage::LaunchSession,
+                StepStatus::Failed,
+                Some(err.to_string()),
+            );
+            return Err(("launch_session".to_string(), err));
+        }
+        if let Err(err) = capture_member_pane_identity(
+            self.orchestrator.runtime.as_ref(),
+            pane_id,
+            &mut self.runtime_state,
         ) {
             self.cleanup_failure();
             self.emit_stage(
@@ -946,10 +1030,14 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                     prepared.member.cli_tool,
                     pane_id,
                     MemberDaemonStartPolicy::ReplaceStalePid {
-                        previous_daemon_pid: prepared
-                            .previous_runtime
-                            .as_ref()
-                            .and_then(|runtime| runtime.daemon_pid),
+                        previous_daemon_pid: if self.runtime_state.foreign_daemon_stopped {
+                            None
+                        } else {
+                            prepared
+                                .previous_runtime
+                                .as_ref()
+                                .and_then(|runtime| runtime.daemon_pid)
+                        },
                     },
                 ),
         };

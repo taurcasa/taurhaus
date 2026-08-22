@@ -8,8 +8,11 @@ use crate::coordination::activity_schema::{
     MemberActivitySnapshot, SnapshotActivityConfidence, ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
 };
 use crate::coordination::roster::get_team_roster_with_attachments;
-use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
-use crate::coordination::stores::TeamConfigStore;
+use crate::coordination::runtime::{
+    pane_belongs_to_member, quarantine_foreign_member, CoordinationRuntime, LivePane,
+    PaneOwnership, SystemCoordinationRuntime,
+};
+use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
@@ -29,6 +32,9 @@ struct SessionMembershipMetadata {
 struct PaneActivityProbe {
     pane_alive: bool,
     active_non_shell_process: bool,
+    pane_foreign: bool,
+    foreign_reason: Option<String>,
+    foreign_live_pane: Option<LivePane>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -167,19 +173,18 @@ fn export_activity_snapshots_for_sessions_with_runtime(
             continue;
         }
 
-        // One existence probe per member; teams without any live pane are
+        // One identity probe per member; teams without any live pane are
         // skipped entirely (their last snapshot goes stale, which readers
-        // already handle) instead of costing four tmux probes per member
-        // every refresh.
-        let live_panes: Vec<bool> = roster
+        // already handle) instead of spawning several tmux probes per member.
+        let live_panes: Vec<Option<LivePane>> = roster
             .iter()
             .map(|member| {
-                member.pane_id.as_deref().is_some_and(|pane_id| {
-                    probe_pane_exists(runtime, pane_id, &team_name, &member.member_name)
+                member.pane_id.as_deref().and_then(|pane_id| {
+                    probe_live_pane(runtime, pane_id, &team_name, &member.member_name)
                 })
             })
             .collect();
-        if !live_panes.iter().any(|alive| *alive) {
+        if !live_panes.iter().any(Option::is_some) {
             tracing::debug!(
                 team_name = %team_name,
                 "skipping activity snapshot export: no live pane"
@@ -188,18 +193,49 @@ fn export_activity_snapshots_for_sessions_with_runtime(
         }
 
         stats.teams_exported += 1;
-        for (member, pane_alive) in roster.iter().zip(live_panes) {
+        for (member, live_pane) in roster.iter().zip(live_panes) {
             let member_name = &member.member_name;
-            let pane_probe = if pane_alive {
-                probe_member_pane_state(
-                    runtime,
-                    member.pane_id.as_deref().unwrap_or_default(),
-                    &team_name,
-                    member_name,
-                )
-            } else {
-                PaneActivityProbe::default()
-            };
+            let runtime_record = member.runtime_record().map(|mut record| {
+                record.cli_tool = Some(member.configured_cli_tool);
+                record.project_path = Some(member.configured_project_path.clone());
+                record
+            });
+            let pane_probe = runtime_record
+                .as_ref()
+                .zip(live_pane.as_ref())
+                .map_or_else(PaneActivityProbe::default, |(record, live_pane)| {
+                    probe_member_pane_state(record, live_pane)
+                });
+            if pane_probe.pane_foreign {
+                if let (Some(record), Some(live_pane), Some(reason)) = (
+                    runtime_record.as_ref(),
+                    pane_probe.foreign_live_pane.as_ref(),
+                    pane_probe.foreign_reason.as_deref(),
+                ) {
+                    match quarantine_foreign_member(
+                        teams_dir,
+                        runtime,
+                        &team_name,
+                        member_name,
+                        record,
+                        live_pane,
+                        reason,
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(error) => {
+                            tracing::warn!(
+                                team_name = %team_name,
+                                member_name = %member_name,
+                                pane_id = %live_pane.pane_id,
+                                error = %error,
+                                "failed to quarantine foreign pane during activity snapshot export"
+                            );
+                            continue;
+                        }
+                    }
+                }
+            }
             let snapshot = build_member_activity_snapshot(
                 sessions_by_member
                     .get(&(team_name.clone(), member_name.clone()))
@@ -390,6 +426,21 @@ fn build_member_activity_snapshot(
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,
 ) -> MemberActivitySnapshot {
+    if pane_probe.pane_foreign {
+        return MemberActivitySnapshot {
+            version: ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+            observed_at: observed_at.to_rfc3339(),
+            stall_recent_activity: false,
+            stall_no_output: true,
+            stall_no_active_process: true,
+            active_non_shell_process: false,
+            recent_io: false,
+            pane_alive: false,
+            pane_foreign: true,
+            last_output_age_secs: None,
+            activity_confidence: SnapshotActivityConfidence::Dead,
+        };
+    }
     let has_active_session = session.is_some_and(|session| session.state == SessionState::Active);
     let has_any_session = session.is_some();
     let recent_io = session.is_some_and(|session| session.recent_io);
@@ -406,6 +457,7 @@ fn build_member_activity_snapshot(
         active_non_shell_process: pane_probe.active_non_shell_process,
         recent_io,
         pane_alive: pane_probe.pane_alive,
+        pane_foreign: false,
         last_output_age_secs,
         activity_confidence,
     }
@@ -450,87 +502,54 @@ fn classify_activity_confidence(
     SnapshotActivityConfidence::Idle
 }
 
-fn probe_pane_exists(
+fn probe_live_pane(
     runtime: &dyn CoordinationRuntime,
     pane_id: &str,
     team_name: &str,
     member_name: &str,
-) -> bool {
-    match runtime.pane_exists(pane_id) {
-        Ok(exists) => exists,
+) -> Option<LivePane> {
+    match runtime.live_pane(pane_id) {
+        Ok(live_pane) => live_pane,
         Err(error) => {
             tracing::warn!(
                 team_name = %team_name,
                 member_name = %member_name,
                 pane_id = %pane_id,
                 error = %error,
-                "failed to probe pane existence during activity snapshot export"
+                "failed to inspect pane during activity snapshot export"
             );
-            false
+            None
         }
     }
 }
 
-/// Probe a pane that is known to exist for liveness and foreground command.
 fn probe_member_pane_state(
-    runtime: &dyn CoordinationRuntime,
-    pane_id: &str,
-    team_name: &str,
-    member_name: &str,
+    record: &MemberRuntimeRecord,
+    live_pane: &LivePane,
 ) -> PaneActivityProbe {
-    let pane_is_dead = match runtime.pane_is_dead(pane_id) {
-        Ok(is_dead) => is_dead,
-        Err(error) => {
-            tracing::warn!(
-                team_name = %team_name,
-                member_name = %member_name,
-                pane_id = %pane_id,
-                error = %error,
-                "failed to probe pane death during activity snapshot export"
-            );
-            return PaneActivityProbe::default();
-        }
-    };
-    if pane_is_dead {
+    if live_pane.is_dead {
         return PaneActivityProbe::default();
     }
 
-    let pane_is_shell = match runtime.pane_is_shell(pane_id) {
-        Ok(is_shell) => is_shell,
-        Err(error) => {
-            tracing::warn!(
-                team_name = %team_name,
-                member_name = %member_name,
-                pane_id = %pane_id,
-                error = %error,
-                "failed to probe pane shell state during activity snapshot export"
-            );
-            return PaneActivityProbe {
-                pane_alive: true,
-                active_non_shell_process: false,
-            };
-        }
-    };
-    let pane_current_command = match runtime.pane_current_command(pane_id) {
-        Ok(command) => command,
-        Err(error) => {
-            tracing::warn!(
-                team_name = %team_name,
-                member_name = %member_name,
-                pane_id = %pane_id,
-                error = %error,
-                "failed to probe pane current command during activity snapshot export"
-            );
-            None
-        }
-    };
+    if let PaneOwnership::Foreign { reason } = pane_belongs_to_member(record, live_pane) {
+        return PaneActivityProbe {
+            pane_foreign: true,
+            foreign_reason: Some(reason),
+            foreign_live_pane: Some(live_pane.clone()),
+            ..Default::default()
+        };
+    }
 
     PaneActivityProbe {
         pane_alive: true,
-        active_non_shell_process: !pane_is_shell
-            && pane_current_command
+        active_non_shell_process: !live_pane.is_shell()
+            && live_pane
+                .current_command
                 .as_ref()
                 .is_some_and(|command| !command.trim().is_empty()),
+        pane_foreign: false,
+        foreign_reason: None,
+        foreign_live_pane: None,
     }
 }
 
@@ -712,6 +731,8 @@ mod tests {
                 cli_tool: None,
                 project_path: None,
                 pane_id: Some(pane_id.to_string()),
+                pane_pid: None,
+                pane_start_time: None,
                 session_id: None,
                 jsonl_path: None,
                 daemon_pid: Some(42),
@@ -806,6 +827,14 @@ mod tests {
             parsed.get("activity_confidence").and_then(Value::as_str),
             Some("likely_working")
         );
+        // Regression: 39eeb33 added a fourth tmux subprocess to every exporter
+        // refresh even though the identity probe already returns all pane state.
+        assert_eq!(
+            runtime.calls(),
+            vec![RuntimeCall::InspectPane {
+                pane_id: "%12".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -825,6 +854,7 @@ mod tests {
         let runtime = RecordingCoordinationRuntime::default();
         runtime.set_pane_exists("%12", true);
         runtime.set_pane_shell("%12", true);
+        runtime.set_pane_current_command("%12", Some("bash"));
         let stats = export_activity_snapshots_for_sessions_with_runtime(
             tmp.path(),
             &[],
@@ -864,7 +894,7 @@ mod tests {
     }
 
     #[test]
-    fn skips_team_without_live_pane_after_one_existence_probe_per_member() {
+    fn skips_team_without_live_pane_after_one_identity_probe_per_member() {
         // Teams that once ran but whose panes are gone used to be exported
         // every refresh (4 tmux probes per member); they are skipped now and
         // their last snapshot simply goes stale for readers.
@@ -893,10 +923,128 @@ mod tests {
         assert!(!activity_snapshot_path(tmp.path(), team_name, member_name).exists());
         assert_eq!(
             runtime.calls(),
-            vec![RuntimeCall::CheckPaneExists {
+            vec![RuntimeCall::InspectPane {
                 pane_id: "%12".to_string()
             }]
         );
+    }
+
+    #[test]
+    fn exporter_writes_foreign_pane_snapshot_once_then_skips() {
+        // Regression: 39eeb33 refreshed a dead foreign-pane snapshot every 30s,
+        // keeping mesh's uncooldowned DeadPane escalation fresh indefinitely.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "team-foreign";
+        let member_name = "developer2";
+        let project_path = "/tmp/taurhaus";
+        TeamConfigStore::save(
+            tmp.path(),
+            team_name,
+            &sample_team_config(team_name, member_name, project_path),
+        )
+        .expect("config saved");
+        save_runtime(tmp.path(), team_name, member_name, "%12");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%12", true);
+        runtime.set_pane_dead("%12", false);
+        runtime.set_pane_shell("%12", false);
+        runtime.set_pane_current_command("%12", Some("claude"));
+
+        let first = export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[sample_session(project_path, "%12", SessionState::Active)],
+            ts("2026-03-07T13:34:00+00:00"),
+            &runtime,
+        );
+        assert_eq!(first.members_written, 1);
+
+        let snapshot_path = activity_snapshot_path(tmp.path(), team_name, member_name);
+        let raw = fs::read_to_string(&snapshot_path).expect("foreign snapshot written");
+        let parsed: Value = serde_json::from_str(&raw).expect("valid json");
+        assert_eq!(
+            parsed.get("pane_foreign").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            parsed.get("pane_alive").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            parsed
+                .get("active_non_shell_process")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            parsed.get("activity_confidence").and_then(Value::as_str),
+            Some("dead")
+        );
+        let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("foreign runtime marked dead");
+        assert_eq!(updated.health, HealthState::SessionDead);
+
+        let second = export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[sample_session(project_path, "%12", SessionState::Active)],
+            ts("2026-03-07T13:35:00+00:00"),
+            &runtime,
+        );
+        assert_eq!(second, ActivitySnapshotExportStats::default());
+        let unchanged = fs::read_to_string(snapshot_path).expect("foreign snapshot retained");
+        assert_eq!(unchanged, raw);
+    }
+
+    #[test]
+    fn stale_foreign_observation_does_not_quarantine_resumed_runtime() {
+        // Regression: aecc8ac applied an exporter verdict after releasing its
+        // stale roster read, overwriting and killing a concurrently resumed member.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "team-race";
+        let member_name = "developer2";
+        save_runtime(tmp.path(), team_name, member_name, "%12");
+        let observed = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("load observed runtime");
+        let live_pane = LivePane {
+            pane_id: "%12".to_string(),
+            pane_pid: None,
+            pane_start_time: None,
+            current_command: Some("claude".to_string()),
+            current_path: None,
+            is_dead: false,
+        };
+
+        let mut resumed =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load runtime");
+        resumed.pane_id = Some("%20".to_string());
+        resumed.pane_pid = Some(2020);
+        resumed.pane_start_time = Some(220);
+        resumed.daemon_pid = Some(99);
+        resumed.health = HealthState::Healthy;
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &resumed)
+            .expect("save resumed runtime");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pid_running(99, true);
+        let quarantined = quarantine_foreign_member(
+            tmp.path(),
+            &runtime,
+            team_name,
+            member_name,
+            &observed,
+            &live_pane,
+            "cli_tool_mismatch",
+        )
+        .expect("stale quarantine is harmless");
+
+        assert!(!quarantined);
+        let current = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("load current runtime");
+        assert_eq!(current, resumed);
+        assert!(runtime
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::TerminatePid { pid: 99 })));
     }
 
     #[test]
@@ -910,6 +1058,7 @@ mod tests {
             &PaneActivityProbe {
                 pane_alive: true,
                 active_non_shell_process: true,
+                ..Default::default()
             },
             ts("2026-03-07T13:34:00+00:00"),
         );
@@ -934,6 +1083,7 @@ mod tests {
             &PaneActivityProbe {
                 pane_alive: true,
                 active_non_shell_process: false,
+                ..Default::default()
             },
             ts("2026-03-07T13:35:00+00:00"),
         );
