@@ -69,36 +69,28 @@ impl CoordinationOrchestrator {
             let mut foreign_live_pane: Option<LivePane> = None;
             let offline_detected = match pane_id.as_deref() {
                 None => true,
-                Some(pane_id) => {
-                    if !self.runtime.pane_exists(pane_id)?
-                        || self.runtime.pane_is_dead(pane_id)?
-                        || self.runtime.pane_is_shell(pane_id)?
-                    {
-                        true
-                    } else {
-                        match self.runtime.live_pane(pane_id)? {
-                            None => true,
-                            Some(live_pane) => {
-                                let mut ownership_record = runtime.clone();
-                                ownership_record.cli_tool.get_or_insert(member.cli_tool);
-                                ownership_record
-                                    .project_path
-                                    .get_or_insert_with(|| member.project_path.clone());
-                                if ownership_record.pane_id.is_none() {
-                                    ownership_record.pane_id = Some(pane_id.to_string());
-                                }
-                                match pane_belongs_to_member(&ownership_record, &live_pane) {
-                                    PaneOwnership::Owned => false,
-                                    PaneOwnership::Foreign { reason } => {
-                                        foreign_reason = Some(reason);
-                                        foreign_live_pane = Some(live_pane);
-                                        true
-                                    }
-                                }
+                Some(pane_id) => match self.runtime.live_pane(pane_id)? {
+                    None => true,
+                    Some(live_pane) if live_pane.is_dead || live_pane.is_shell() => true,
+                    Some(live_pane) => {
+                        let mut ownership_record = runtime.clone();
+                        ownership_record.cli_tool.get_or_insert(member.cli_tool);
+                        ownership_record
+                            .project_path
+                            .get_or_insert_with(|| member.project_path.clone());
+                        if ownership_record.pane_id.is_none() {
+                            ownership_record.pane_id = Some(pane_id.to_string());
+                        }
+                        match pane_belongs_to_member(&ownership_record, &live_pane) {
+                            PaneOwnership::Owned => false,
+                            PaneOwnership::Foreign { reason } => {
+                                foreign_reason = Some(reason);
+                                foreign_live_pane = Some(live_pane);
+                                true
                             }
                         }
                     }
-                }
+                },
             };
 
             if let (Some(reason), Some(live_pane)) =
@@ -196,27 +188,19 @@ impl CoordinationOrchestrator {
             let mut foreign_live_pane: Option<LivePane> = None;
             let (offline_detected, reason) = match runtime.pane_id.as_deref() {
                 None => (true, "missing_pane_id"),
-                Some(pane_id) => {
-                    if !self.runtime.pane_exists(pane_id)? {
-                        (true, "pane_missing")
-                    } else if self.runtime.pane_is_dead(pane_id)? {
-                        (true, "pane_dead")
-                    } else if self.runtime.pane_is_shell(pane_id)? {
-                        (true, "pane_shell")
-                    } else {
-                        match self.runtime.live_pane(pane_id)? {
-                            None => (true, "pane_missing"),
-                            Some(live_pane) => match pane_belongs_to_member(&runtime, &live_pane) {
-                                PaneOwnership::Owned => (false, "pane_active"),
-                                PaneOwnership::Foreign { reason } => {
-                                    foreign_reason = Some(reason);
-                                    foreign_live_pane = Some(live_pane);
-                                    (true, "pane_foreign")
-                                }
-                            },
+                Some(pane_id) => match self.runtime.live_pane(pane_id)? {
+                    None => (true, "pane_missing"),
+                    Some(live_pane) if live_pane.is_dead => (true, "pane_dead"),
+                    Some(live_pane) if live_pane.is_shell() => (true, "pane_shell"),
+                    Some(live_pane) => match pane_belongs_to_member(&runtime, &live_pane) {
+                        PaneOwnership::Owned => (false, "pane_active"),
+                        PaneOwnership::Foreign { reason } => {
+                            foreign_reason = Some(reason);
+                            foreign_live_pane = Some(live_pane);
+                            (true, "pane_foreign")
                         }
-                    }
-                }
+                    },
+                },
             };
 
             if offline_detected {

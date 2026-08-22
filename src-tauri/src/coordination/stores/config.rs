@@ -372,51 +372,79 @@ impl TeamConfigStore {
                     ))
                 })?;
 
-        retry_file_operation(
-            "write",
-            &tmp_path,
-            None,
-            &SAVE_RETRY_BACKOFFS,
-            || write_file_synced(&tmp_path, &payload),
-            |err| log_config_store_io_error("write", &tmp_path, err, None),
-        )
-        .map_err(CoordinationError::Io)?;
-
-        if let Err(err) = retry_file_operation(
-            "rename",
+        persist_config_payload(
+            teams_dir,
+            team_name,
             &target_path,
-            Some(&tmp_path),
-            &SAVE_RETRY_BACKOFFS,
-            || fs::rename(&tmp_path, &target_path),
-            |rename_err| {
-                log_config_store_io_error("rename", &target_path, rename_err, Some(&tmp_path))
-            },
-        ) {
-            if is_atomic_write_fallback_error(&err) {
-                tracing::warn!(
-                    team_name = team_name,
-                    target = %target_path.display(),
-                    raw_os_error = ?err.raw_os_error(),
-                    "atomic rename failed for team config save; falling back to direct write"
-                );
-                retry_file_operation(
-                    "write",
-                    &target_path,
-                    None,
-                    &SAVE_RETRY_BACKOFFS,
-                    || write_file_synced(&target_path, &payload),
-                    |write_err| log_config_store_io_error("write", &target_path, write_err, None),
-                )
-                .map_err(CoordinationError::Io)?;
-                let _ = fs::remove_file(&tmp_path);
-                return ensure_saved_config_visible(teams_dir, team_name, &target_path, &payload);
-            }
-            // Best-effort cleanup for failed atomic swap.
-            let _ = fs::remove_file(&tmp_path);
-            return Err(CoordinationError::Io(err));
+            &tmp_path,
+            &payload,
+            &target_lock,
+        )
+    }
+
+    /// Clear one member's derived tmux binding while holding the config lock
+    /// across the read-modify-write cycle.
+    pub fn clear_member_pane_binding(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+    ) -> Result<bool, CoordinationError> {
+        let team_dir = team_dir(teams_dir, team_name);
+        let target_path = config_path(teams_dir, team_name);
+        let tmp_path = team_dir.join(CONFIG_TMP_FILENAME);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
+            .inspect_err(|err| log_config_store_error("lock", &target_path, err, None))?;
+        let current_raw = target_lock.read_contents()?;
+        if current_raw.trim().is_empty() {
+            return Err(CoordinationError::NotFound(format!(
+                "team config not found for '{team_name}' at {}",
+                target_path.display()
+            )));
         }
 
-        ensure_saved_config_visible(teams_dir, team_name, &target_path, &payload)
+        let mut current: Value = serde_json::from_str(&current_raw).map_err(|err| {
+            CoordinationError::StoreError(format!(
+                "failed to parse config.json for '{team_name}': {err}"
+            ))
+        })?;
+        let members = current
+            .get_mut("members")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| {
+                CoordinationError::StoreError(format!(
+                    "team config for '{team_name}' does not contain a members array"
+                ))
+            })?;
+        let Some(member) = members
+            .iter_mut()
+            .find(|member| member.get("name").and_then(Value::as_str) == Some(member_name))
+        else {
+            return Ok(false);
+        };
+        let member = member.as_object_mut().ok_or_else(|| {
+            CoordinationError::StoreError(format!(
+                "member '{member_name}' in team '{team_name}' is not an object"
+            ))
+        })?;
+        let changed = member.remove("tmuxPaneId").is_some();
+        if !changed {
+            return Ok(false);
+        }
+
+        let payload = serde_json::to_string_pretty(&current).map_err(|err| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize team config for '{team_name}': {err}"
+            ))
+        })?;
+        persist_config_payload(
+            teams_dir,
+            team_name,
+            &target_path,
+            &tmp_path,
+            &payload,
+            &target_lock,
+        )?;
+        Ok(true)
     }
 
     /// List team names by scanning direct child directories under `teams_dir`.
@@ -501,6 +529,59 @@ impl TeamConfigStore {
             Err(err) => Err(CoordinationError::Io(err)),
         }
     }
+}
+
+fn persist_config_payload(
+    teams_dir: &Path,
+    team_name: &str,
+    target_path: &Path,
+    tmp_path: &Path,
+    payload: &str,
+    _target_lock: &super::lock::TargetFileLock,
+) -> Result<(), CoordinationError> {
+    retry_file_operation(
+        "write",
+        tmp_path,
+        None,
+        &SAVE_RETRY_BACKOFFS,
+        || write_file_synced(tmp_path, payload),
+        |err| log_config_store_io_error("write", tmp_path, err, None),
+    )
+    .map_err(CoordinationError::Io)?;
+
+    if let Err(err) = retry_file_operation(
+        "rename",
+        target_path,
+        Some(tmp_path),
+        &SAVE_RETRY_BACKOFFS,
+        || fs::rename(tmp_path, target_path),
+        |rename_err| log_config_store_io_error("rename", target_path, rename_err, Some(tmp_path)),
+    ) {
+        if is_atomic_write_fallback_error(&err) {
+            tracing::warn!(
+                team_name = team_name,
+                target = %target_path.display(),
+                raw_os_error = ?err.raw_os_error(),
+                "atomic rename failed for team config save; falling back to direct write"
+            );
+            retry_file_operation(
+                "write",
+                target_path,
+                None,
+                &SAVE_RETRY_BACKOFFS,
+                || write_file_synced(target_path, payload),
+                |write_err| log_config_store_io_error("write", target_path, write_err, None),
+            )
+            .map_err(CoordinationError::Io)?;
+            let _ = fs::remove_file(tmp_path);
+            return ensure_saved_config_visible(teams_dir, team_name, target_path, payload);
+        }
+        // Best-effort cleanup for failed atomic swap.
+        let _ = fs::remove_file(tmp_path);
+        return Err(CoordinationError::Io(err));
+    }
+
+    ensure_saved_config_visible(teams_dir, team_name, target_path, payload)
 }
 
 fn mesh_agent_id(team_name: &str, member_name: &str) -> String {
@@ -1331,6 +1412,48 @@ mod tests {
         let loaded = TeamConfigStore::load(teams_dir, team_name).expect("load should succeed");
 
         assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn clear_member_pane_binding_preserves_current_config_fields() {
+        // Regression: 39eeb33 cleared quarantine metadata through an unlocked
+        // typed load+save, so a concurrent roster or metadata edit could be reverted.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "pane-quarantine";
+        TeamConfigStore::save(tmp.path(), team_name, &sample_config(team_name)).expect("save");
+
+        let path = config_path(tmp.path(), team_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read config"))
+                .expect("parse config");
+        current["freshTeamField"] = serde_json::json!({ "keep": true });
+        current["members"][0]["instructions"] = Value::String("new instructions".to_string());
+        current["members"][0]["tmuxPaneId"] = Value::String("%9".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize current config"),
+        )
+        .expect("write current config");
+
+        let mut expected = current;
+        expected["members"][0]
+            .as_object_mut()
+            .expect("member object")
+            .remove("tmuxPaneId");
+
+        assert!(
+            TeamConfigStore::clear_member_pane_binding(tmp.path(), team_name, "team-lead")
+                .expect("clear binding")
+        );
+        let saved: Value = serde_json::from_str(
+            &fs::read_to_string(&path).expect("read config after targeted update"),
+        )
+        .expect("parse targeted update");
+        assert_eq!(saved, expected);
+        assert!(
+            !TeamConfigStore::clear_member_pane_binding(tmp.path(), team_name, "team-lead")
+                .expect("repeat clear is idempotent")
+        );
     }
 
     #[test]

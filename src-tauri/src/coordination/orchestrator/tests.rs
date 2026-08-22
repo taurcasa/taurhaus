@@ -2276,6 +2276,7 @@ fn liveness_reconcile_marks_missing_pane_id_offline() {
             RuntimeCall::CheckPaneExists { .. }
                 | RuntimeCall::CheckPaneDead { .. }
                 | RuntimeCall::CheckPaneShell { .. }
+                | RuntimeCall::InspectPane { .. }
         )),
         "missing pane id should not query tmux pane state"
     );
@@ -2313,7 +2314,7 @@ fn liveness_reconcile_marks_missing_pane_target_offline() {
     let calls = runtime.calls();
     assert!(calls
         .iter()
-        .any(|call| matches!(call, RuntimeCall::CheckPaneExists { pane_id } if pane_id == "%9")));
+        .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")));
     assert!(
         !calls.iter().any(|call| matches!(
             call,
@@ -2356,7 +2357,7 @@ fn liveness_reconcile_marks_dead_pane_offline() {
     let calls = runtime.calls();
     assert!(calls
         .iter()
-        .any(|call| matches!(call, RuntimeCall::CheckPaneDead { pane_id } if pane_id == "%9")));
+        .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")));
     assert!(
         !calls
             .iter()
@@ -2388,6 +2389,7 @@ fn liveness_reconcile_marks_shell_pane_offline() {
     runtime.set_pane_exists("%9", true);
     runtime.set_pane_dead("%9", false);
     runtime.set_pane_shell("%9", true);
+    runtime.set_pane_current_command("%9", Some("bash"));
 
     orchestrator
         .reconcile_team_liveness(team_name)
@@ -2399,7 +2401,7 @@ fn liveness_reconcile_marks_shell_pane_offline() {
     assert!(runtime
         .calls()
         .iter()
-        .any(|call| matches!(call, RuntimeCall::CheckPaneShell { pane_id } if pane_id == "%9")));
+        .any(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9")));
 }
 
 #[test]
@@ -2438,6 +2440,21 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
         "active CLI pane should not be marked offline"
     );
     let calls = runtime.calls();
+    // Regression: 39eeb33 made four tmux subprocess calls before every
+    // liveness decision even though InspectPane returns the same state.
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::InspectPane { pane_id } if pane_id == "%9"))
+            .count(),
+        1
+    );
+    assert!(calls.iter().all(|call| !matches!(
+        call,
+        RuntimeCall::CheckPaneExists { .. }
+            | RuntimeCall::CheckPaneDead { .. }
+            | RuntimeCall::CheckPaneShell { .. }
+    )));
     assert!(
         calls
             .iter()

@@ -224,6 +224,14 @@ pub struct LivePane {
     pub is_dead: bool,
 }
 
+impl LivePane {
+    pub fn is_shell(&self) -> bool {
+        self.current_command
+            .as_deref()
+            .is_some_and(tmux::is_shell_command)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneOwnership {
     Owned,
@@ -377,25 +385,15 @@ pub fn quarantine_foreign_member(
         );
     }
 
-    match TeamConfigStore::load(teams_dir, team_name) {
-        Ok(config) => {
-            if let Err(error) = TeamConfigStore::save(teams_dir, team_name, &config) {
-                tracing::warn!(
-                    team = %team_name,
-                    member = %member_name,
-                    error = %error,
-                    "failed to clear foreign pane metadata from team config"
-                );
-            }
-        }
-        Err(error) => {
-            tracing::warn!(
-                team = %team_name,
-                member = %member_name,
-                error = %error,
-                "failed to load team config while clearing foreign pane metadata"
-            );
-        }
+    if let Err(error) =
+        TeamConfigStore::clear_member_pane_binding(teams_dir, team_name, member_name)
+    {
+        tracing::warn!(
+            team = %team_name,
+            member = %member_name,
+            error = %error,
+            "failed to clear foreign pane metadata from team config"
+        );
     }
 
     // Clearing the binding under the runtime lock makes this transition
