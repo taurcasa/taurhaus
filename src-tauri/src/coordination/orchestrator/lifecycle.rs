@@ -160,6 +160,8 @@ impl CoordinationOrchestrator {
             cli_tool: Some(member.cli_tool),
             project_path: Some(member.project_path.clone()),
             pane_id: None,
+            pane_pid: None,
+            pane_start_time: None,
             session_id: None,
             jsonl_path: None,
             daemon_pid: None,

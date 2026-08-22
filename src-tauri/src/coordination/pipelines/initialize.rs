@@ -376,6 +376,8 @@ impl CoordinationOrchestrator {
                     cli_tool: Some(member.cli_tool),
                     project_path: Some(member.project_path.clone()),
                     pane_id: None,
+                    pane_pid: None,
+                    pane_start_time: None,
                     session_id: None,
                     jsonl_path: None,
                     daemon_pid: None,
@@ -416,6 +418,7 @@ impl CoordinationOrchestrator {
             &launch_cmd,
         )?;
         runtime_state.pane_id = Some(pane_id.clone());
+        capture_member_pane_identity(self.runtime.as_ref(), &pane_id, runtime_state)?;
         runtime_state.session_id = None;
         runtime_state.jsonl_path = None;
         runtime_state.daemon_pid = None;
@@ -425,6 +428,8 @@ impl CoordinationOrchestrator {
             context,
             RuntimeCommitPatch {
                 pane_id: Some(Some(pane_id.clone())),
+                pane_pid: Some(runtime_state.pane_pid),
+                pane_start_time: Some(runtime_state.pane_start_time),
                 session_id: Some(None),
                 jsonl_path: Some(None),
                 daemon_pid: Some(None),

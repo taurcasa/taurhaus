@@ -7,6 +7,9 @@ use crate::coordination::audit::{
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::operational_context::apply_delivery_context;
 use crate::coordination::requests::{DeliveryMethod, DeliveryRequest, DeliveryResult};
+use crate::coordination::runtime::{
+    emit_foreign_pane_event, pane_belongs_to_member, PaneOwnership,
+};
 use crate::coordination::stores::MemberRuntimeStore;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -180,7 +183,8 @@ impl CoordinationOrchestrator {
         team_name: &str,
         member_name: &str,
     ) -> Option<u32> {
-        let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) else {
+        let Ok(mut runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)
+        else {
             tracing::warn!(
                 team = %team_name,
                 member = %member_name,
@@ -188,7 +192,7 @@ impl CoordinationOrchestrator {
             );
             return None;
         };
-        let Some(pane_id) = runtime.pane_id.as_deref() else {
+        let Some(pane_id) = runtime.pane_id.clone() else {
             tracing::warn!(
                 team = %team_name,
                 member = %member_name,
@@ -196,6 +200,69 @@ impl CoordinationOrchestrator {
             );
             return None;
         };
+
+        let live_pane = match self.runtime.live_pane(&pane_id) {
+            Ok(Some(live_pane)) if !live_pane.is_dead => live_pane,
+            Ok(Some(_)) | Ok(None) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    "inbox append succeeded but member pane was unavailable for daemon wake"
+                );
+                return None;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "inbox append succeeded but pane ownership could not be verified for daemon wake"
+                );
+                return None;
+            }
+        };
+        if let PaneOwnership::Foreign { reason } = pane_belongs_to_member(&runtime, &live_pane) {
+            let should_emit =
+                runtime.health != crate::coordination::domain::HealthState::SessionDead;
+            runtime.health = crate::coordination::domain::HealthState::SessionDead;
+            runtime.session_id = None;
+            runtime.jsonl_path = None;
+            if let Some(pid) = runtime.daemon_pid {
+                if self.runtime.is_process_running_by_pid(pid).unwrap_or(false) {
+                    let _ = self.runtime.terminate_process_by_pid(pid);
+                }
+            }
+            runtime.daemon_pid = None;
+            if let Err(err) = self
+                .runtime
+                .clear_mesh_daemon_pid_file(team_name, member_name)
+            {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "failed to clear foreign-pane daemon pid file after inbox append"
+                );
+            }
+            if let Err(err) =
+                MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)
+            {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pane_id = %pane_id,
+                    error = %err,
+                    "failed to persist foreign pane state after inbox append"
+                );
+            }
+            if should_emit {
+                emit_foreign_pane_event(team_name, member_name, &pane_id, &reason);
+            }
+            return None;
+        }
 
         let daemon_is_live = runtime
             .daemon_pid
@@ -206,13 +273,13 @@ impl CoordinationOrchestrator {
 
         let existing_pid = self
             .runtime
-            .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+            .find_existing_mesh_daemon_pids(&pane_id, team_name, member_name)
             .ok()
             .and_then(|pids| pids.into_iter().next());
         let daemon_pid = existing_pid.or_else(|| {
             match self
                 .runtime
-                .spawn_mesh_daemon(pane_id, team_name, member_name)
+                .spawn_mesh_daemon(&pane_id, team_name, member_name)
             {
                 Ok(pid) => Some(pid),
                 Err(err) => {

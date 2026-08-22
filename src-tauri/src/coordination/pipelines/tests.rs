@@ -385,6 +385,7 @@ fn staged_runtime_commit_merges_partial_updates_without_syncing_team_metadata() 
                 daemon_pid: Some(None),
                 attached_at: Some(Some(Utc::now())),
                 health: Some(HealthState::Healthy),
+                ..Default::default()
             },
         )
         .expect("commit pane");
@@ -472,6 +473,7 @@ fn finalized_runtime_commit_syncs_team_metadata() {
                 daemon_pid: Some(Some(9001)),
                 attached_at: Some(Some(Utc::now())),
                 health: Some(HealthState::Healthy),
+                ..Default::default()
             },
         )
         .expect("commit runtime");
@@ -562,6 +564,8 @@ fn finalized_runtime_commit_preserves_mesh_owned_member_fields() {
 
 #[test]
 fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
+    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+    // taurrust/gotaurus/espn pointed at claude panes.
     let cli_commands = CliCommandSettings::default();
 
     let initialize_tmp = TempDir::new().expect("tempdir");
@@ -604,6 +608,11 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
         Some(std::path::Path::new("/tmp/initialize.jsonl"))
     );
     assert_eq!(initialize_runtime_record.health, HealthState::Healthy);
+    assert_eq!(initialize_runtime_record.pane_pid, Some(1001));
+    assert_eq!(
+        initialize_runtime_record.pane_start_time,
+        Some(1_755_000_001)
+    );
 
     let add_agent_tmp = TempDir::new().expect("tempdir");
     let add_agent_backend = Arc::new(FakeBackend::default());
@@ -656,6 +665,11 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
         Some(std::path::Path::new("/tmp/add-agent.jsonl"))
     );
     assert_eq!(add_agent_runtime_record.health, HealthState::Healthy);
+    assert_eq!(add_agent_runtime_record.pane_pid, Some(1001));
+    assert_eq!(
+        add_agent_runtime_record.pane_start_time,
+        Some(1_755_000_001)
+    );
 
     let resume_tmp = TempDir::new().expect("tempdir");
     let resume_backend = Arc::new(FakeBackend::default());
@@ -666,6 +680,7 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
         Some("session-resume"),
         Some("/tmp/resume.jsonl"),
     );
+    resume_runtime.set_pane_identity("%11", Some(2011), Some(1_755_000_011));
     let mut resume_orchestrator = new_orchestrator(&resume_tmp, resume_backend, resume_runtime);
     resume_orchestrator
         .create_team("resume-team", None)
@@ -713,6 +728,8 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
         Some(std::path::Path::new("/tmp/resume.jsonl"))
     );
     assert_eq!(resume_runtime_record.health, HealthState::Healthy);
+    assert_eq!(resume_runtime_record.pane_pid, Some(2011));
+    assert_eq!(resume_runtime_record.pane_start_time, Some(1_755_000_011));
 }
 
 #[test]
@@ -3021,6 +3038,8 @@ fn resume_pipeline_non_claude_lead_uses_sidecar_lifecycle_with_session_capture()
 
 #[test]
 fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
+    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+    // taurrust/gotaurus/espn pointed at claude panes.
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -3057,7 +3076,7 @@ fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
 
     runtime.set_pane_exists("%77", true);
     runtime.set_pane_dead("%77", false);
-    runtime.set_pane_ownership("%77", false);
+    runtime.set_pane_current_command("%77", Some("claude"));
 
     let report = orchestrator
         .resume_member("architecture-final", "builder")
@@ -3069,6 +3088,8 @@ fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
     let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder")
         .expect("updated runtime");
     assert_eq!(updated.pane_id.as_deref(), Some("test-pane-1"));
+    assert_eq!(updated.pane_pid, Some(1001));
+    assert_eq!(updated.pane_start_time, Some(1_755_000_001));
     assert_eq!(updated.daemon_pid, Some(10000));
 
     let raw_config = fs::read_to_string(tmp.path().join("architecture-final").join("config.json"))
@@ -3081,6 +3102,71 @@ fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
         .find(|member| member["name"].as_str() == Some("builder"))
         .expect("builder entry");
     assert_eq!(builder["tmuxPaneId"].as_str(), Some("test-pane-1"));
+}
+
+#[test]
+fn resume_foreign_pane_launch_failure_leaves_runtime_dead_without_daemon() {
+    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+    // taurrust/gotaurus/espn pointed at claude panes.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+
+    orchestrator
+        .create_team("architecture-final", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "architecture-final",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add member");
+
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder").expect("runtime");
+    member_runtime.pane_id = Some("%77".to_string());
+    member_runtime.daemon_pid = Some(55);
+    member_runtime.health = HealthState::SessionDead;
+    member_runtime.session_id = Some("stale-session".to_string());
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "builder", &member_runtime)
+        .expect("save runtime");
+
+    runtime.set_pane_exists("%77", true);
+    runtime.set_pane_current_command("%77", Some("claude"));
+    runtime.set_pid_running(55, true);
+    runtime.set_send_keys_failures("test-pane-1", usize::MAX, "launch failed");
+
+    let report = orchestrator
+        .resume_member("architecture-final", "builder")
+        .expect("resume report");
+    assert!(!report.resumed);
+    assert_eq!(report.failed_step.as_deref(), Some("launch_session"));
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "architecture-final", "builder")
+        .expect("updated runtime");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, None);
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid: 55 })));
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
 }
 
 #[test]

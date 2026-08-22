@@ -48,6 +48,10 @@ pub mod session_scanner {
         pub use taurhaus_lib::session_scanner::cli_tool::CliTool;
     }
 
+    pub mod process {
+        pub use taurhaus_lib::session_scanner::process::detect_cli_tool;
+    }
+
     pub mod compaction_extractor {
         pub use taurhaus_lib::session_scanner::compaction_extractor::*;
     }

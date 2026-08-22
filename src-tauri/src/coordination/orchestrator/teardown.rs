@@ -4,13 +4,16 @@ use std::sync::{Mutex, OnceLock};
 
 use serde_json::{Map, Value};
 
-use crate::coordination::domain::MemberRole;
+use crate::coordination::domain::{HealthState, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
     AddAgentRequest, InitializeTeamRequest, ResumeMemberRequest, ResumeTeamRequest, TeardownMode,
     TeardownRequest,
 };
-use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
+use crate::coordination::runtime::{
+    emit_foreign_pane_event, pane_belongs_to_member, PaneOwnership,
+};
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
@@ -284,6 +287,25 @@ impl CoordinationOrchestrator {
     }
 
     pub(crate) fn ensure_team_daemon_running_best_effort(&self, team_name: &str) -> bool {
+        match self.quarantine_foreign_pane_before_team_daemon(team_name) {
+            Ok(Some(reason)) => {
+                tracing::warn!(
+                    team = %team_name,
+                    reason,
+                    "skipping team daemon restart because a member pane is foreign"
+                );
+                return false;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    error = %err,
+                    "failed to verify pane ownership before team daemon restart"
+                );
+                return false;
+            }
+        }
         let operator_name = match self.team_daemon_operator_name(team_name) {
             Ok(operator_name) => operator_name,
             Err(err) => {
@@ -348,6 +370,14 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
     ) -> Result<(bool, Option<String>), CoordinationError> {
+        if let Some(reason) = self.quarantine_foreign_pane_before_team_daemon(team_name)? {
+            return Ok((
+                false,
+                Some(format!(
+                    "team daemon skipped because a member pane is foreign: {reason}"
+                )),
+            ));
+        }
         let operator_name = self.team_daemon_operator_name(team_name)?;
         if let Some(reason) = self.team_daemon_skip_reason(team_name, &operator_name)? {
             self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
@@ -386,6 +416,78 @@ impl CoordinationOrchestrator {
                 Ok((false, Some(err.to_string())))
             }
         }
+    }
+
+    fn quarantine_foreign_pane_before_team_daemon(
+        &self,
+        team_name: &str,
+    ) -> Result<Option<String>, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let members = config
+            .members
+            .into_iter()
+            .map(|member| (member.name.clone(), member))
+            .collect::<HashMap<_, _>>();
+        let mut first_foreign = None;
+        for (member_name, mut record) in MemberRuntimeStore::load_all(&self.teams_dir, team_name)? {
+            let Some(member) = members.get(&member_name) else {
+                continue;
+            };
+            let Some(pane_id) = record.pane_id.clone() else {
+                continue;
+            };
+            let Some(live_pane) = self.runtime.live_pane(&pane_id)? else {
+                continue;
+            };
+            if live_pane.is_dead {
+                continue;
+            }
+            record.cli_tool.get_or_insert(member.cli_tool);
+            record
+                .project_path
+                .get_or_insert_with(|| member.project_path.clone());
+            let PaneOwnership::Foreign { reason } = pane_belongs_to_member(&record, &live_pane)
+            else {
+                continue;
+            };
+
+            let should_emit =
+                record.health != HealthState::SessionDead || record.daemon_pid.is_some();
+            if let Some(pid) = record.daemon_pid {
+                if self.runtime.is_process_running_by_pid(pid).unwrap_or(false) {
+                    if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member_name,
+                            pid,
+                            error = %err,
+                            "failed to terminate foreign-pane daemon before team daemon restart"
+                        );
+                    }
+                }
+            }
+            record.health = HealthState::SessionDead;
+            record.session_id = None;
+            record.jsonl_path = None;
+            record.daemon_pid = None;
+            MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &record)?;
+            if let Err(err) = self
+                .runtime
+                .clear_mesh_daemon_pid_file(team_name, &member_name)
+            {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    error = %err,
+                    "failed to clear foreign-pane daemon pid file before team daemon restart"
+                );
+            }
+            if should_emit {
+                emit_foreign_pane_event(team_name, &member_name, &pane_id, &reason);
+            }
+            first_foreign.get_or_insert_with(|| format!("{member_name}:{pane_id}:{reason}"));
+        }
+        Ok(first_foreign)
     }
 
     pub(crate) fn ensure_team_daemon_for_wrapper_best_effort(&self, team_name: &str) {

@@ -2207,6 +2207,8 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         cli_tool: None,
         project_path: None,
         pane_id: Some("%7".to_string()),
+        pane_pid: None,
+        pane_start_time: None,
         session_id: None,
         jsonl_path: None,
         daemon_pid: None,
@@ -2446,6 +2448,90 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
         )),
         "healthy member should not trigger daemon restart/cleanup"
     );
+}
+
+#[test]
+fn liveness_reconcile_rejects_foreign_cli_pane_without_restarting_daemons() {
+    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+    // taurrust/gotaurus/espn pointed at claude panes.
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("pane-foreign-events.jsonl");
+    let log_state = taurhaus_lib::logging::LogFileState::new(log_path.clone()).expect("log state");
+    taurhaus_lib::logging::install_global_sink(&log_state);
+
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(
+            team_name,
+            member_with_project("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+    write_lead_credential(tmp.path(), team_name, "team-lead");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.session_id = Some("stale-codex-session".to_string());
+    record.pane_id = Some("%9".to_string());
+    record.daemon_pid = Some(4242);
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_shell("%9", false);
+    runtime.set_pane_current_command("%9", Some("claude"));
+    runtime.set_pid_running(4242, true);
+    runtime.set_team_daemon_current_mesh_binary(team_name, false);
+
+    orchestrator
+        .trigger_team_self_heal(team_name)
+        .expect("first self-heal should succeed");
+    orchestrator
+        .trigger_team_self_heal(team_name)
+        .expect("second self-heal should be idempotent");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.health, HealthState::SessionDead);
+    assert_eq!(updated.session_id, None);
+    assert_eq!(updated.daemon_pid, None);
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::TerminatePid { pid: 4242 })));
+    assert!(runtime.calls().iter().all(|call| !matches!(
+        call,
+        RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnTeamDaemon { .. }
+    )));
+
+    log_state
+        .flush_for_test()
+        .expect("flush structured log sink");
+    let events = std::fs::read_to_string(log_path)
+        .expect("read structured log")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse log record"))
+        .filter(|record| {
+            record["event"] == "coordination.pane.foreign"
+                && record["team"] == team_name
+                && record["member"] == member_name
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["team"], team_name);
+    assert_eq!(events[0]["member"], member_name);
+    assert_eq!(events[0]["pane_id"], "%9");
+    assert!(events[0]["reason"]
+        .as_str()
+        .is_some_and(|reason| reason.contains("claude")));
 }
 
 #[test]
@@ -3338,6 +3424,62 @@ fn inbox_delivery_ensures_the_non_claude_member_daemon() {
     let saved_runtime =
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
     assert_eq!(saved_runtime.daemon_pid, Some(10000));
+    assert_eq!(
+        MeshInboxStore::load(tmp.path(), team_name, member_name)
+            .expect("inbox")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn inbox_delivery_does_not_wake_a_foreign_cli_pane() {
+    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+    // taurrust/gotaurus/espn pointed at claude panes.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+        tmp.path().to_path_buf(),
+    ));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "foreign-inbox-wake";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    member_runtime.pane_id = Some("%31".to_string());
+    member_runtime.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &member_runtime)
+        .expect("save runtime");
+    runtime.set_pane_current_command("%31", Some("claude"));
+
+    orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            message: "do not wake the foreign pane".to_string(),
+            sender_name: None,
+            operational_context: None,
+        }))
+        .expect("durable inbox delivery should still succeed");
+
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    let saved_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
+    assert_eq!(saved_runtime.health, HealthState::SessionDead);
+    assert_eq!(saved_runtime.daemon_pid, None);
     assert_eq!(
         MeshInboxStore::load(tmp.path(), team_name, member_name)
             .expect("inbox")

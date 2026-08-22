@@ -30,12 +30,15 @@ const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
 #[derive(Debug, Default, Clone)]
 pub(super) struct MemberActivationRuntimeState {
     pub(super) pane_id: Option<String>,
+    pub(super) pane_pid: Option<u32>,
+    pub(super) pane_start_time: Option<u64>,
     pub(super) session_id: Option<String>,
     pub(super) jsonl_path: Option<PathBuf>,
     pub(super) daemon_pid: Option<u32>,
     pub(super) new_daemon_pid: Option<u32>,
     pub(super) created_pane_id: Option<String>,
     pub(super) reused_pane: bool,
+    pub(super) foreign_daemon_stopped: bool,
     pub(super) attached_at: Option<chrono::DateTime<Utc>>,
     pub(super) health: Option<HealthState>,
     pub(super) mesh_joined: bool,
@@ -51,6 +54,8 @@ pub(crate) type ResumeProgressEmitter<'a> =
 #[derive(Debug, Default, Clone)]
 pub(super) struct RuntimeCommitPatch {
     pub(super) pane_id: Option<Option<String>>,
+    pub(super) pane_pid: Option<Option<u32>>,
+    pub(super) pane_start_time: Option<Option<u64>>,
     pub(super) session_id: Option<Option<String>>,
     pub(super) jsonl_path: Option<Option<PathBuf>>,
     pub(super) daemon_pid: Option<Option<u32>>,
@@ -62,6 +67,8 @@ impl RuntimeCommitPatch {
     pub(super) fn from_pending_runtime_state(state: &PendingRuntimeState) -> Self {
         Self {
             pane_id: Some(state.pane_id.clone()),
+            pane_pid: Some(state.pane_pid),
+            pane_start_time: Some(state.pane_start_time),
             session_id: Some(state.session_id.clone()),
             jsonl_path: Some(state.jsonl_path.clone()),
             daemon_pid: Some(state.daemon_pid),
@@ -77,6 +84,8 @@ impl RuntimeCommitPatch {
     ) -> Self {
         Self {
             pane_id: Some(state.pane_id.clone()),
+            pane_pid: Some(state.pane_pid),
+            pane_start_time: Some(state.pane_start_time),
             session_id: Some(state.session_id.clone()),
             jsonl_path: Some(state.jsonl_path.clone()),
             daemon_pid: Some(state.daemon_pid),
@@ -200,6 +209,8 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         cli_tool: None,
         project_path: None,
         pane_id: None,
+        pane_pid: None,
+        pane_start_time: None,
         session_id: None,
         jsonl_path: None,
         daemon_pid: None,
@@ -259,6 +270,26 @@ pub(super) fn run_member_session_phase(
             detect_member_session_identity(runtime, context, pane_id)
         }
     }
+}
+
+pub(super) fn capture_member_pane_identity(
+    runtime: &dyn CoordinationRuntime,
+    pane_id: &str,
+    runtime_state: &mut MemberActivationRuntimeState,
+) -> Result<(), CoordinationError> {
+    let live_pane = runtime.live_pane(pane_id)?.ok_or_else(|| {
+        CoordinationError::Backend(format!(
+            "tmux pane {pane_id} disappeared before its identity could be captured"
+        ))
+    })?;
+    if live_pane.is_dead {
+        return Err(CoordinationError::Backend(format!(
+            "tmux pane {pane_id} was dead before its identity could be captured"
+        )));
+    }
+    runtime_state.pane_pid = live_pane.pane_pid;
+    runtime_state.pane_start_time = live_pane.pane_start_time;
+    Ok(())
 }
 
 pub(super) fn should_use_mesh_sidecar_for_cli_tool(cli_tool: CliTool) -> bool {

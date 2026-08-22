@@ -8,8 +8,11 @@ use crate::coordination::activity_schema::{
     MemberActivitySnapshot, SnapshotActivityConfidence, ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
 };
 use crate::coordination::roster::get_team_roster_with_attachments;
-use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
-use crate::coordination::stores::TeamConfigStore;
+use crate::coordination::runtime::{
+    emit_foreign_pane_event, pane_belongs_to_member, CoordinationRuntime, PaneOwnership,
+    SystemCoordinationRuntime,
+};
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
@@ -29,6 +32,8 @@ struct SessionMembershipMetadata {
 struct PaneActivityProbe {
     pane_alive: bool,
     active_non_shell_process: bool,
+    pane_foreign: bool,
+    foreign_reason: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -190,16 +195,38 @@ fn export_activity_snapshots_for_sessions_with_runtime(
         stats.teams_exported += 1;
         for (member, pane_alive) in roster.iter().zip(live_panes) {
             let member_name = &member.member_name;
+            let runtime_record = member.runtime_record().map(|mut record| {
+                record.cli_tool = Some(member.configured_cli_tool);
+                record.project_path = Some(member.configured_project_path.clone());
+                record
+            });
             let pane_probe = if pane_alive {
-                probe_member_pane_state(
-                    runtime,
-                    member.pane_id.as_deref().unwrap_or_default(),
-                    &team_name,
-                    member_name,
-                )
+                runtime_record
+                    .as_ref()
+                    .map_or_else(PaneActivityProbe::default, |record| {
+                        probe_member_pane_state(runtime, record, &team_name, member_name)
+                    })
             } else {
                 PaneActivityProbe::default()
             };
+            if pane_probe.pane_foreign
+                && foreign_snapshot_already_written(teams_dir, &team_name, member_name)
+            {
+                continue;
+            }
+            if pane_probe.pane_foreign {
+                mark_foreign_runtime_record(
+                    teams_dir,
+                    runtime,
+                    &team_name,
+                    member_name,
+                    member.pane_id.as_deref().unwrap_or_default(),
+                    pane_probe
+                        .foreign_reason
+                        .as_deref()
+                        .unwrap_or("pane_identity_mismatch"),
+                );
+            }
             let snapshot = build_member_activity_snapshot(
                 sessions_by_member
                     .get(&(team_name.clone(), member_name.clone()))
@@ -390,6 +417,21 @@ fn build_member_activity_snapshot(
     pane_probe: &PaneActivityProbe,
     observed_at: DateTime<Utc>,
 ) -> MemberActivitySnapshot {
+    if pane_probe.pane_foreign {
+        return MemberActivitySnapshot {
+            version: ACTIVITY_SNAPSHOT_SCHEMA_VERSION,
+            observed_at: observed_at.to_rfc3339(),
+            stall_recent_activity: false,
+            stall_no_output: true,
+            stall_no_active_process: true,
+            active_non_shell_process: false,
+            recent_io: false,
+            pane_alive: false,
+            pane_foreign: true,
+            last_output_age_secs: None,
+            activity_confidence: SnapshotActivityConfidence::Dead,
+        };
+    }
     let has_active_session = session.is_some_and(|session| session.state == SessionState::Active);
     let has_any_session = session.is_some();
     let recent_io = session.is_some_and(|session| session.recent_io);
@@ -406,6 +448,7 @@ fn build_member_activity_snapshot(
         active_non_shell_process: pane_probe.active_non_shell_process,
         recent_io,
         pane_alive: pane_probe.pane_alive,
+        pane_foreign: false,
         last_output_age_secs,
         activity_confidence,
     }
@@ -474,10 +517,13 @@ fn probe_pane_exists(
 /// Probe a pane that is known to exist for liveness and foreground command.
 fn probe_member_pane_state(
     runtime: &dyn CoordinationRuntime,
-    pane_id: &str,
+    record: &MemberRuntimeRecord,
     team_name: &str,
     member_name: &str,
 ) -> PaneActivityProbe {
+    let Some(pane_id) = record.pane_id.as_deref() else {
+        return PaneActivityProbe::default();
+    };
     let pane_is_dead = match runtime.pane_is_dead(pane_id) {
         Ok(is_dead) => is_dead,
         Err(error) => {
@@ -507,30 +553,109 @@ fn probe_member_pane_state(
             );
             return PaneActivityProbe {
                 pane_alive: true,
-                active_non_shell_process: false,
+                ..Default::default()
             };
         }
     };
-    let pane_current_command = match runtime.pane_current_command(pane_id) {
-        Ok(command) => command,
+    let live_pane = match runtime.live_pane(pane_id) {
+        Ok(Some(live_pane)) => live_pane,
+        Ok(None) => return PaneActivityProbe::default(),
         Err(error) => {
             tracing::warn!(
                 team_name = %team_name,
                 member_name = %member_name,
                 pane_id = %pane_id,
                 error = %error,
-                "failed to probe pane current command during activity snapshot export"
+                "failed to inspect pane identity during activity snapshot export"
             );
-            None
+            return PaneActivityProbe::default();
         }
     };
+    if let PaneOwnership::Foreign { reason } = pane_belongs_to_member(record, &live_pane) {
+        return PaneActivityProbe {
+            pane_foreign: true,
+            foreign_reason: Some(reason),
+            ..Default::default()
+        };
+    }
 
     PaneActivityProbe {
         pane_alive: true,
         active_non_shell_process: !pane_is_shell
-            && pane_current_command
+            && live_pane
+                .current_command
                 .as_ref()
                 .is_some_and(|command| !command.trim().is_empty()),
+        pane_foreign: false,
+        foreign_reason: None,
+    }
+}
+
+fn foreign_snapshot_already_written(teams_dir: &Path, team_name: &str, member_name: &str) -> bool {
+    let path = activity_snapshot_path(teams_dir, team_name, member_name);
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|snapshot| {
+            snapshot
+                .get("pane_foreign")
+                .and_then(serde_json::Value::as_bool)
+        })
+        == Some(true)
+}
+
+fn mark_foreign_runtime_record(
+    teams_dir: &Path,
+    runtime: &dyn CoordinationRuntime,
+    team_name: &str,
+    member_name: &str,
+    pane_id: &str,
+    reason: &str,
+) {
+    let mut daemon_pid = None;
+    let mut should_emit = false;
+    let update = MemberRuntimeStore::update(teams_dir, team_name, member_name, |record| {
+        should_emit = record.health != crate::coordination::domain::HealthState::SessionDead
+            || record.daemon_pid.is_some();
+        daemon_pid = record.daemon_pid;
+        record.health = crate::coordination::domain::HealthState::SessionDead;
+        record.session_id = None;
+        record.jsonl_path = None;
+        record.daemon_pid = None;
+    });
+    if let Err(error) = update {
+        tracing::warn!(
+            team_name = %team_name,
+            member_name = %member_name,
+            pane_id = %pane_id,
+            error = %error,
+            "failed to mark foreign pane runtime dead during activity snapshot export"
+        );
+        return;
+    }
+    if let Some(pid) = daemon_pid {
+        if runtime.is_process_running_by_pid(pid).unwrap_or(false) {
+            if let Err(error) = runtime.terminate_process_by_pid(pid) {
+                tracing::warn!(
+                    team_name = %team_name,
+                    member_name = %member_name,
+                    pid,
+                    error = %error,
+                    "failed to terminate foreign-pane member daemon during activity export"
+                );
+            }
+        }
+    }
+    if let Err(error) = runtime.clear_mesh_daemon_pid_file(team_name, member_name) {
+        tracing::warn!(
+            team_name = %team_name,
+            member_name = %member_name,
+            error = %error,
+            "failed to clear foreign-pane daemon pid file during activity export"
+        );
+    }
+    if should_emit {
+        emit_foreign_pane_event(team_name, member_name, pane_id, reason);
     }
 }
 
@@ -712,6 +837,8 @@ mod tests {
                 cli_tool: None,
                 project_path: None,
                 pane_id: Some(pane_id.to_string()),
+                pane_pid: None,
+                pane_start_time: None,
                 session_id: None,
                 jsonl_path: None,
                 daemon_pid: Some(42),
@@ -900,6 +1027,74 @@ mod tests {
     }
 
     #[test]
+    fn exporter_writes_foreign_pane_snapshot_once_then_skips() {
+        // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+        // taurrust/gotaurus/espn pointed at claude panes.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "team-foreign";
+        let member_name = "developer2";
+        let project_path = "/tmp/taurhaus";
+        TeamConfigStore::save(
+            tmp.path(),
+            team_name,
+            &sample_team_config(team_name, member_name, project_path),
+        )
+        .expect("config saved");
+        save_runtime(tmp.path(), team_name, member_name, "%12");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%12", true);
+        runtime.set_pane_dead("%12", false);
+        runtime.set_pane_shell("%12", false);
+        runtime.set_pane_current_command("%12", Some("claude"));
+
+        let first = export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[sample_session(project_path, "%12", SessionState::Active)],
+            ts("2026-03-07T13:34:00+00:00"),
+            &runtime,
+        );
+        assert_eq!(first.members_written, 1);
+
+        let snapshot_path = activity_snapshot_path(tmp.path(), team_name, member_name);
+        let raw = fs::read_to_string(&snapshot_path).expect("foreign snapshot written");
+        let parsed: Value = serde_json::from_str(&raw).expect("valid json");
+        assert_eq!(
+            parsed.get("pane_foreign").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            parsed.get("pane_alive").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            parsed
+                .get("active_non_shell_process")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            parsed.get("activity_confidence").and_then(Value::as_str),
+            Some("dead")
+        );
+        let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("foreign runtime marked dead");
+        assert_eq!(updated.health, HealthState::SessionDead);
+
+        let second = export_activity_snapshots_for_sessions_with_runtime(
+            tmp.path(),
+            &[sample_session(project_path, "%12", SessionState::Active)],
+            ts("2026-03-07T13:35:00+00:00"),
+            &runtime,
+        );
+        assert_eq!(second.members_written, 0);
+        assert_eq!(
+            fs::read_to_string(snapshot_path).expect("foreign snapshot retained"),
+            raw
+        );
+    }
+
+    #[test]
     fn member_snapshot_marks_recent_io_as_active() {
         let mut session = sample_session("/tmp/taurhaus", "%12", SessionState::Active);
         session.recent_io = true;
@@ -910,6 +1105,7 @@ mod tests {
             &PaneActivityProbe {
                 pane_alive: true,
                 active_non_shell_process: true,
+                ..Default::default()
             },
             ts("2026-03-07T13:34:00+00:00"),
         );
@@ -934,6 +1130,7 @@ mod tests {
             &PaneActivityProbe {
                 pane_alive: true,
                 active_non_shell_process: false,
+                ..Default::default()
             },
             ts("2026-03-07T13:35:00+00:00"),
         );

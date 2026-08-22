@@ -12,6 +12,7 @@ pub(crate) struct MemberActivitySnapshot {
     pub active_non_shell_process: bool,
     pub recent_io: bool,
     pub pane_alive: bool,
+    pub pane_foreign: bool,
     pub last_output_age_secs: Option<u64>,
     pub activity_confidence: SnapshotActivityConfidence,
 }

@@ -368,6 +368,8 @@ mod tests {
             cli_tool: Some(member.cli_tool),
             project_path: Some(member.project_path.clone()),
             pane_id: Some("%7".to_string()),
+            pane_pid: None,
+            pane_start_time: None,
             session_id: Some("session-1".to_string()),
             jsonl_path: None,
             daemon_pid: None,

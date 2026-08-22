@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
 
-use super::{CoordinationRuntime, DetectedRuntimeSession};
+use super::{CoordinationRuntime, DetectedRuntimeSession, LivePane};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeCall {
@@ -67,6 +67,9 @@ pub enum RuntimeCall {
     CheckPaneCurrentCommand {
         pane_id: String,
     },
+    InspectPane {
+        pane_id: String,
+    },
     KillPane {
         pane_id: String,
     },
@@ -98,6 +101,9 @@ pub struct RecordingCoordinationRuntime {
     pane_dead: Mutex<HashMap<String, bool>>,
     pane_shell: Mutex<HashMap<String, bool>>,
     pane_command: Mutex<HashMap<String, Option<String>>>,
+    pane_pid: Mutex<HashMap<String, Option<u32>>>,
+    pane_start_time: Mutex<HashMap<String, Option<u64>>>,
+    pane_path: Mutex<HashMap<String, Option<PathBuf>>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
     send_keys_failures_remaining: Mutex<HashMap<String, usize>>,
     send_keys_failure_message: Mutex<HashMap<String, String>>,
@@ -151,9 +157,32 @@ impl RecordingCoordinationRuntime {
         }
     }
 
+    pub fn set_pane_identity(
+        &self,
+        pane_id: &str,
+        pane_pid: Option<u32>,
+        pane_start_time: Option<u64>,
+    ) {
+        if let Ok(mut map) = self.pane_pid.lock() {
+            map.insert(pane_id.to_string(), pane_pid);
+        }
+        if let Ok(mut map) = self.pane_start_time.lock() {
+            map.insert(pane_id.to_string(), pane_start_time);
+        }
+    }
+
+    pub fn set_pane_current_path(&self, pane_id: &str, path: Option<&str>) {
+        if let Ok(mut map) = self.pane_path.lock() {
+            map.insert(pane_id.to_string(), path.map(PathBuf::from));
+        }
+    }
+
     pub fn set_pane_ownership(&self, pane_id: &str, matches_project: bool) {
         if let Ok(mut map) = self.pane_ownership.lock() {
             map.insert(pane_id.to_string(), matches_project);
+        }
+        if !matches_project {
+            self.set_pane_current_path(pane_id, Some("/recording-runtime/foreign-project"));
         }
     }
 
@@ -260,6 +289,12 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         self.set_pane_dead(&pane_id, false);
         self.set_pane_shell(&pane_id, false);
         self.set_pane_ownership(&pane_id, true);
+        self.set_pane_identity(
+            &pane_id,
+            Some(idx as u32 + 1000),
+            Some(idx as u64 + 1_755_000_000),
+        );
+        self.set_pane_current_path(&pane_id, Some(project_id));
         Ok(pane_id)
     }
 
@@ -306,6 +341,12 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         self.set_pane_dead(&pane_id, false);
         self.set_pane_shell(&pane_id, false);
         self.set_pane_ownership(&pane_id, true);
+        self.set_pane_identity(
+            &pane_id,
+            Some(idx as u32 + 1000),
+            Some(idx as u64 + 1_755_000_000),
+        );
+        self.set_pane_current_path(&pane_id, Some(project_id));
         Ok(pane_id)
     }
 
@@ -542,6 +583,59 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
             .and_then(|map| map.get(pane_id).cloned())
             .flatten();
         Ok(command)
+    }
+
+    fn live_pane(&self, pane_id: &str) -> Result<Option<LivePane>, CoordinationError> {
+        self.push_call(RuntimeCall::InspectPane {
+            pane_id: pane_id.to_string(),
+        });
+        let exists = self
+            .pane_exists
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .unwrap_or(true);
+        if !exists {
+            return Ok(None);
+        }
+        let pane_pid = self
+            .pane_pid
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .flatten();
+        let pane_start_time = self
+            .pane_start_time
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .flatten();
+        let current_command = self
+            .pane_command
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).cloned())
+            .flatten();
+        let current_path = self
+            .pane_path
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).cloned())
+            .flatten();
+        let is_dead = self
+            .pane_dead
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).copied())
+            .unwrap_or(false);
+        Ok(Some(LivePane {
+            pane_id: pane_id.to_string(),
+            pane_pid,
+            pane_start_time,
+            current_command,
+            current_path,
+            is_dead,
+        }))
     }
 
     fn kill_aitx_pane(&self, pane_id: &str) -> Result<(), CoordinationError> {

@@ -4,6 +4,9 @@ use chrono::Utc;
 
 use crate::coordination::domain::HealthState;
 use crate::coordination::errors::CoordinationError;
+use crate::coordination::runtime::{
+    emit_foreign_pane_event, pane_belongs_to_member, PaneOwnership,
+};
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::validate_team_name;
 use crate::session_scanner::cli_tool::CliTool;
@@ -59,16 +62,39 @@ impl CoordinationOrchestrator {
 
             let snapshot_pane_id = runtime_sessions_by_member
                 .get(&member_name)
-                .and_then(|session| session.tmux_pane.as_deref());
-            let pane_id = snapshot_pane_id.or(runtime.pane_id.as_deref());
+                .and_then(|session| session.tmux_pane.clone());
+            let pane_id = snapshot_pane_id.clone().or_else(|| runtime.pane_id.clone());
 
-            let offline_detected = match pane_id {
+            let mut foreign_reason = None;
+            let offline_detected = match pane_id.as_deref() {
                 None => true,
                 Some(pane_id) => {
-                    if !self.runtime.pane_exists(pane_id)? || self.runtime.pane_is_dead(pane_id)? {
+                    if !self.runtime.pane_exists(pane_id)?
+                        || self.runtime.pane_is_dead(pane_id)?
+                        || self.runtime.pane_is_shell(pane_id)?
+                    {
                         true
                     } else {
-                        self.runtime.pane_is_shell(pane_id)?
+                        match self.runtime.live_pane(pane_id)? {
+                            None => true,
+                            Some(live_pane) => {
+                                let mut ownership_record = runtime.clone();
+                                ownership_record.cli_tool.get_or_insert(member.cli_tool);
+                                ownership_record
+                                    .project_path
+                                    .get_or_insert_with(|| member.project_path.clone());
+                                if ownership_record.pane_id.is_none() {
+                                    ownership_record.pane_id = Some(pane_id.to_string());
+                                }
+                                match pane_belongs_to_member(&ownership_record, &live_pane) {
+                                    PaneOwnership::Owned => false,
+                                    PaneOwnership::Foreign { reason } => {
+                                        foreign_reason = Some(reason);
+                                        true
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             };
@@ -81,7 +107,7 @@ impl CoordinationOrchestrator {
             runtime.session_id = None;
             runtime.jsonl_path = None;
             if runtime.pane_id.is_none() {
-                runtime.pane_id = snapshot_pane_id.map(ToOwned::to_owned);
+                runtime.pane_id = snapshot_pane_id;
             }
 
             if member.cli_tool != CliTool::Claude {
@@ -112,8 +138,24 @@ impl CoordinationOrchestrator {
                 }
                 runtime.daemon_pid = None;
             }
+            if foreign_reason.is_some() {
+                if let Err(err) = self
+                    .runtime
+                    .clear_mesh_daemon_pid_file(team_name, &member_name)
+                {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        error = %err,
+                        "failed to clear foreign-pane daemon pid file during live-status reconciliation"
+                    );
+                }
+            }
 
             MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+            if let (Some(pane_id), Some(reason)) = (pane_id.as_deref(), foreign_reason.as_deref()) {
+                emit_foreign_pane_event(team_name, &member_name, pane_id, reason);
+            }
             reconciled_members.insert(member_name);
         }
 
@@ -148,6 +190,7 @@ impl CoordinationOrchestrator {
                 metadata_backfilled = true;
             }
 
+            let mut foreign_reason = None;
             let (offline_detected, reason) = match runtime.pane_id.as_deref() {
                 None => (true, "missing_pane_id"),
                 Some(pane_id) => {
@@ -158,13 +201,29 @@ impl CoordinationOrchestrator {
                     } else if self.runtime.pane_is_shell(pane_id)? {
                         (true, "pane_shell")
                     } else {
-                        (false, "pane_active")
+                        match self.runtime.live_pane(pane_id)? {
+                            None => (true, "pane_missing"),
+                            Some(live_pane) => match pane_belongs_to_member(&runtime, &live_pane) {
+                                PaneOwnership::Owned => (false, "pane_active"),
+                                PaneOwnership::Foreign { reason } => {
+                                    foreign_reason = Some(reason);
+                                    (true, "pane_foreign")
+                                }
+                            },
+                        }
                     }
                 }
             };
 
             if offline_detected {
-                if runtime.health == HealthState::SessionDead && !metadata_backfilled {
+                let should_emit_foreign = foreign_reason.is_some()
+                    && (runtime.health != HealthState::SessionDead || runtime.daemon_pid.is_some());
+                let foreign_requires_cleanup =
+                    foreign_reason.is_some() && runtime.daemon_pid.is_some();
+                if runtime.health == HealthState::SessionDead
+                    && !metadata_backfilled
+                    && !foreign_requires_cleanup
+                {
                     continue;
                 }
 
@@ -200,8 +259,28 @@ impl CoordinationOrchestrator {
                         runtime.daemon_pid = None;
                     }
                 }
+                if foreign_reason.is_some() {
+                    if let Err(err) = self
+                        .runtime
+                        .clear_mesh_daemon_pid_file(team_name, &member_name)
+                    {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member_name,
+                            error = %err,
+                            "failed to clear foreign-pane daemon pid file during liveness reconciliation"
+                        );
+                    }
+                }
 
                 MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+                if should_emit_foreign {
+                    if let (Some(pane_id), Some(foreign_reason)) =
+                        (runtime.pane_id.as_deref(), foreign_reason.as_deref())
+                    {
+                        emit_foreign_pane_event(team_name, &member_name, pane_id, foreign_reason);
+                    }
+                }
                 tracing::info!(
                     team = %team_name,
                     member = %member_name,
