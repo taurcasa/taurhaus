@@ -177,7 +177,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 4 ModelSpec + LaunchSpec | Codex gpt-5.6 | Opus ×2 | 2 | 5 (Opus: 2 blockers — stale integration test after quoting change, tautological parity test; 3 majors incl. UI default dropping effort) | #13 |
 | 5a/5b model+effort backend, catalog, S8 | Codex gpt-5.6 | Opus ×2 | 4 (3 Codex fix rounds + orchestrator cut) | 8 (Opus: 2 blockers — `external` placeholder rendered as model, catalog default effort overriding global; majors — template root, un-resumable on template error, editor round-trip dropping effort, closed-catalog effort drop) | #14 |
 | 5c frontend catalog + ModelSelect | Opus 5 | Codex ×2 | 5 (4 fix rounds) | 10 (Codex: effort dropped on hot-add/composition/runtime/save-as-preset; preset override semantics ×3 rounds; lead effort edits lost) | #15 |
-| 6 compaction hardening + teams-dir authority | Codex gpt-5.6 | Opus ×2 | tbd | tbd | — |
+| 6 compaction hardening, teams-dir authority, stall_detector deletion, flake fix | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds) | 6 (Opus: 1 blocker — app-side compaction owner unreachable on Linux/macOS; unbounded extractor maps; watcher `?` residue; two owners after daemon recovery; unguarded sink install) | #16 |
 
 ## Spikes / unknowns
 
