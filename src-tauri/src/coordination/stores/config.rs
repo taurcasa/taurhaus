@@ -1,6 +1,6 @@
 //! Team configuration store.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -46,6 +46,8 @@ pub struct TeamConfig {
     pub description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub members: Vec<Member>,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +63,8 @@ struct MeshCompatibleTeamConfigWire {
     #[serde(rename = "leadSessionId", skip_serializing_if = "Option::is_none")]
     lead_session_id: Option<String>,
     members: Vec<MeshCompatibleMemberWire>,
+    #[serde(flatten, skip_serializing_if = "BTreeMap::is_empty")]
+    extra: BTreeMap<String, Value>,
 }
 
 /// Mesh-compatible member wire format.
@@ -132,6 +136,8 @@ struct MeshCompatibleMemberWire {
     backend_type: Option<String>,
     #[serde(rename = "isActive", skip_serializing_if = "Option::is_none")]
     is_active: Option<bool>,
+    #[serde(flatten, skip_serializing_if = "BTreeMap::is_empty")]
+    extra: BTreeMap<String, Value>,
 }
 
 /// Team discovery entry used for project-anchor restoration.
@@ -162,6 +168,8 @@ struct MeshTeamConfigWire {
     created_at: Option<i64>,
     #[serde(default)]
     members: Vec<MeshMemberWire>,
+    #[serde(flatten, default)]
+    extra: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +227,8 @@ struct MeshMemberWire {
     model: Option<String>,
     #[serde(default, alias = "reasoningEffort")]
     reasoning_effort: Option<String>,
+    #[serde(flatten, default)]
+    extra: BTreeMap<String, Value>,
 }
 
 /// Native config member wire format.
@@ -275,6 +285,8 @@ struct NativeMemberWire {
     model: Option<String>,
     #[serde(default, alias = "reasoningEffort")]
     reasoning_effort: Option<String>,
+    #[serde(flatten, default)]
+    extra: BTreeMap<String, Value>,
 }
 
 impl TeamConfigStore {
@@ -298,15 +310,6 @@ impl TeamConfigStore {
         team_name: &str,
         config: &TeamConfig,
     ) -> Result<(), CoordinationError> {
-        let lock_path = team_dir(teams_dir, team_name).join(".lock");
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
-            log_config_store_error("lock", &lock_path, err, None);
-        })?;
-
-        let mut normalized = config.clone();
-        normalized.schema_version = 1;
-        normalized.name = team_name.to_string();
-
         let team_dir = team_dir(teams_dir, team_name);
         fs::create_dir_all(&team_dir).map_err(|err| {
             let coordination_err = CoordinationError::Io(err);
@@ -315,6 +318,13 @@ impl TeamConfigStore {
         })?;
 
         let target_path = config_path(teams_dir, team_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
+            .inspect_err(|err| log_config_store_error("lock", &target_path, err, None))?;
+        let mut normalized = config.clone();
+        normalized.schema_version = 1;
+        normalized.name = team_name.to_string();
+        merge_current_extension_fields(&mut normalized, &target_lock.read_contents()?, team_name)?;
+
         let tmp_path = team_dir.join(CONFIG_TMP_FILENAME);
         let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, team_name) {
             Ok(records) => records.into_iter().collect::<HashMap<_, _>>(),
@@ -693,6 +703,26 @@ fn mesh_compatible_wire(
         .map(|member| {
             let project_path = member.project_path.clone();
             let runtime = runtime_by_member.get(&member.name);
+            let backend_type = if member.role == MemberRole::Lead {
+                None
+            } else {
+                Some("external".to_string())
+            };
+            let is_active = if member.role == MemberRole::Lead {
+                None
+            } else {
+                Some(true)
+            };
+            let mut extra = member.extra.clone();
+            for key in ["agentId", "joinedAt", "tmuxPaneId"] {
+                extra.remove(key);
+            }
+            if backend_type.is_some() {
+                extra.remove("backendType");
+            }
+            if is_active.is_some() {
+                extra.remove("isActive");
+            }
             MeshCompatibleMemberWire {
                 name: member.name.clone(),
                 role: member.role,
@@ -727,19 +757,26 @@ fn mesh_compatible_wire(
                 project_path_camel: project_path.clone(),
                 cwd: project_path,
                 tmux_pane_id: runtime.and_then(|state| state.pane_id.clone()),
-                backend_type: if member.role == MemberRole::Lead {
-                    None
-                } else {
-                    Some("external".to_string())
-                },
-                is_active: if member.role == MemberRole::Lead {
-                    None
-                } else {
-                    Some(true)
-                },
+                backend_type,
+                is_active,
+                extra,
             }
         })
         .collect();
+
+    let mut extra = config.extra.clone();
+    for key in [
+        "schema_version",
+        "name",
+        "description",
+        "created_at",
+        "createdAt",
+        "leadAgentId",
+        "leadSessionId",
+        "members",
+    ] {
+        extra.remove(key);
+    }
 
     MeshCompatibleTeamConfigWire {
         schema_version: config.schema_version,
@@ -750,7 +787,32 @@ fn mesh_compatible_wire(
         lead_agent_id,
         lead_session_id,
         members,
+        extra,
     }
+}
+
+fn merge_current_extension_fields(
+    config: &mut TeamConfig,
+    current_raw: &str,
+    team_name: &str,
+) -> Result<(), CoordinationError> {
+    if current_raw.trim().is_empty() {
+        return Ok(());
+    }
+
+    let current = parse_team_config(current_raw, team_name)?;
+    config.extra.extend(current.extra);
+    let current_members = current
+        .members
+        .into_iter()
+        .map(|member| (member.name.clone(), member.extra))
+        .collect::<HashMap<_, _>>();
+    for member in &mut config.members {
+        if let Some(current_extra) = current_members.get(&member.name) {
+            member.extra.extend(current_extra.clone());
+        }
+    }
+    Ok(())
 }
 
 fn parse_team_config(raw: &str, team_name: &str) -> Result<TeamConfig, CoordinationError> {
@@ -779,6 +841,8 @@ fn parse_native_config(value: Value, team_name: &str) -> Result<TeamConfig, Coor
         created_at: DateTime<Utc>,
         #[serde(default)]
         members: Vec<NativeMemberWire>,
+        #[serde(flatten, default)]
+        extra: BTreeMap<String, Value>,
     }
 
     let wire: NativeTeamConfigWire = serde_json::from_value(value).map_err(|err| {
@@ -799,6 +863,7 @@ fn parse_native_config(value: Value, team_name: &str) -> Result<TeamConfig, Coor
         description: wire.description,
         created_at: wire.created_at,
         members,
+        extra: extension_fields_only(wire.extra, TEAM_AUTHORED_KEYS),
     })
 }
 
@@ -826,6 +891,7 @@ fn parse_mesh_config(value: Value, team_name: &str) -> Result<TeamConfig, Coordi
         description: wire.description,
         created_at,
         members,
+        extra: extension_fields_only(wire.extra, TEAM_AUTHORED_KEYS),
     })
 }
 
@@ -878,6 +944,7 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
         reasoning_effort,
         project_path,
         cli_tool,
+        extra: extension_fields_only(member.extra, MEMBER_AUTHORED_KEYS),
     })
 }
 
@@ -919,7 +986,78 @@ fn native_member_to_domain(member: NativeMemberWire) -> Result<Member, Coordinat
         reasoning_effort,
         project_path,
         cli_tool: member.cli_tool,
+        extra: extension_fields_only(member.extra, MEMBER_AUTHORED_KEYS),
     })
+}
+
+const TEAM_AUTHORED_KEYS: &[&str] = &[
+    "schema_version",
+    "schemaVersion",
+    "name",
+    "description",
+    "created_at",
+    "createdAt",
+    "leadAgentId",
+    "leadSessionId",
+    "members",
+];
+
+const MEMBER_AUTHORED_KEYS: &[&str] = &[
+    "name",
+    "role",
+    "type",
+    "agentType",
+    "role_id",
+    "roleId",
+    "role_name",
+    "roleName",
+    "focus_area",
+    "focusArea",
+    "context_summary",
+    "contextSummary",
+    "behavior_summary",
+    "behaviorSummary",
+    "communication_style",
+    "communicationStyle",
+    "runtime_compact_summary",
+    "runtimeCompactSummary",
+    "instructions",
+    "behavioral_contract",
+    "behavioralContract",
+    "quality_gates",
+    "qualityGates",
+    "handoff_expectations",
+    "handoffExpectations",
+    "definition_of_done",
+    "definitionOfDone",
+    "phase_scope",
+    "phaseScope",
+    "mode",
+    "inherits_from",
+    "inheritsFrom",
+    "required_artifacts",
+    "requiredArtifacts",
+    "capabilities",
+    "project_path",
+    "projectPath",
+    "cwd",
+    "cli_tool",
+    "model",
+    "reasoning_effort",
+    "reasoningEffort",
+    "agentId",
+    "joinedAt",
+    "tmuxPaneId",
+];
+
+fn extension_fields_only(
+    mut fields: BTreeMap<String, Value>,
+    authored_keys: &[&str],
+) -> BTreeMap<String, Value> {
+    for key in authored_keys {
+        fields.remove(*key);
+    }
+    fields
 }
 
 fn normalize_persisted_model_fields(
@@ -1013,7 +1151,9 @@ mod tests {
                 reasoning_effort: Some("high".to_string()),
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             }],
+            extra: Default::default(),
         }
     }
 
@@ -1051,7 +1191,9 @@ mod tests {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             }],
+            extra: Default::default(),
         }
     }
 
@@ -1156,6 +1298,115 @@ mod tests {
             value["members"][0]["handoffExpectations"][0],
             "Report verification evidence"
         );
+    }
+
+    #[test]
+    fn save_after_injected_mesh_fields_preserves_all_unknown_fields() {
+        // Regression: mesh-findings P1; live espn-fantasy-desktop-team lost every
+        // controlAuthTokenHash except the resumed member's on a taurhaus save.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "mesh-round-trip";
+        TeamConfigStore::save(tmp.path(), team_name, &sample_config(team_name)).expect("save");
+
+        let path = config_path(tmp.path(), team_name);
+        let mut value: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read config"))
+                .expect("parse config");
+        value["claudeCodeExtension"] = serde_json::json!({ "preserve": true });
+        let member = value["members"][0].as_object_mut().expect("member object");
+        member.insert(
+            "controlAuthTokenHash".to_string(),
+            Value::String("sha256:lead-token".to_string()),
+        );
+        member.insert(
+            "lastActivityAt".to_string(),
+            serde_json::json!(1772399807000_u64),
+        );
+        member.insert(
+            "lastActivityReason".to_string(),
+            Value::String("tool_call".to_string()),
+        );
+        member.insert(
+            "statusState".to_string(),
+            Value::String("working".to_string()),
+        );
+        member.insert(
+            "statusReason".to_string(),
+            Value::String("implementing".to_string()),
+        );
+        member.insert(
+            "statusSetAt".to_string(),
+            serde_json::json!(1772399807100_u64),
+        );
+        member.insert("isActive".to_string(), Value::Bool(false));
+        member.insert(
+            "futureMeshField".to_string(),
+            serde_json::json!({ "nested": [1, 2, 3] }),
+        );
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&value).expect("serialize injected config"),
+        )
+        .expect("write injected config");
+
+        let loaded = TeamConfigStore::load(tmp.path(), team_name).expect("load injected config");
+        TeamConfigStore::save(tmp.path(), team_name, &loaded).expect("resave injected config");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read round-tripped config"))
+                .expect("parse round-tripped config");
+        assert_eq!(
+            saved["claudeCodeExtension"],
+            serde_json::json!({ "preserve": true })
+        );
+        assert_eq!(
+            saved["members"][0]["controlAuthTokenHash"],
+            "sha256:lead-token"
+        );
+        assert_eq!(saved["members"][0]["lastActivityAt"], 1772399807000_u64);
+        assert_eq!(saved["members"][0]["lastActivityReason"], "tool_call");
+        assert_eq!(saved["members"][0]["statusState"], "working");
+        assert_eq!(saved["members"][0]["statusReason"], "implementing");
+        assert_eq!(saved["members"][0]["statusSetAt"], 1772399807100_u64);
+        assert_eq!(saved["members"][0]["isActive"], false);
+        assert_eq!(
+            saved["members"][0]["futureMeshField"],
+            serde_json::json!({ "nested": [1, 2, 3] })
+        );
+    }
+
+    #[test]
+    fn save_merges_unknown_fields_written_by_a_second_writer_after_load() {
+        // Regression: mesh-findings P1; taurhaus serialized a stale domain copy
+        // over mesh's credential write because the two writers locked different files.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "two-writer-round-trip";
+        TeamConfigStore::save(tmp.path(), team_name, &sample_config(team_name)).expect("save");
+        let stale = TeamConfigStore::load(tmp.path(), team_name).expect("stale load");
+
+        let path = config_path(tmp.path(), team_name);
+        let mut mesh_value: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read config"))
+                .expect("parse config");
+        mesh_value["members"][0]["controlAuthTokenHash"] =
+            Value::String("sha256:concurrent-token".to_string());
+        mesh_value["members"][0]["lastActivityAt"] = serde_json::json!(1772399808000_u64);
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&mesh_value).expect("serialize mesh write"),
+        )
+        .expect("write mesh update");
+
+        TeamConfigStore::save(tmp.path(), team_name, &stale).expect("save stale taurhaus copy");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read final config"))
+                .expect("parse final config");
+        assert_eq!(
+            saved["members"][0]["controlAuthTokenHash"],
+            "sha256:concurrent-token"
+        );
+        assert_eq!(saved["members"][0]["lastActivityAt"], 1772399808000_u64);
     }
 
     #[test]
@@ -1815,7 +2066,9 @@ mod tests {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/agent-a"),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             }],
+            extra: Default::default(),
         };
 
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save");

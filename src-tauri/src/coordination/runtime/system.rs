@@ -174,7 +174,9 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
         run_mesh(
             &[
@@ -183,8 +185,12 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
                 team_name,
                 "--name",
                 member_name,
+                "--type",
+                member_type,
                 "--model",
                 model,
+                "--claude-dir",
+                claude_dir,
             ],
             Some(project_id),
         )

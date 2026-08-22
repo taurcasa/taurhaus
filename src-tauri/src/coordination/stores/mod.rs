@@ -25,7 +25,7 @@ pub use compaction_signal::{
 };
 pub use config::{DiscoveredTeam, TeamConfig, TeamConfigStore};
 #[allow(unused_imports)]
-pub use inbox::{MeshInboxMessage, MeshInboxStore};
+pub use inbox::{MeshInboxMessage, MeshInboxStore, OPERATOR_SENDER_NAME};
 #[allow(unused_imports)]
 pub use operational::{
     read_snapshot, write_snapshot, OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,

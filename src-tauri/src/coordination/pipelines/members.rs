@@ -572,10 +572,17 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         let pane_id = self.acquire_pane(prepared)?;
         self.launch_session(prepared, &pane_id)?;
         self.capture_session_identity(prepared, &pane_id)?;
-        self.join_mesh(prepared)?;
+        let deferred_claude_lead_join =
+            prepared.member.cli_tool == CliTool::Claude && prepared.member.role == MemberRole::Lead;
+        if !deferred_claude_lead_join {
+            self.join_mesh(prepared)?;
+        }
         self.start_member_daemon(prepared, &pane_id)?;
         self.deliver_onboarding(prepared)?;
         self.commit_runtime(prepared)?;
+        if deferred_claude_lead_join {
+            self.join_mesh(prepared)?;
+        }
         Ok(pane_id)
     }
 
@@ -832,32 +839,28 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         prepared: &PreparedMemberActivation,
     ) -> Result<(), (String, CoordinationError)> {
         self.emit_stage(MemberActivationStage::JoinMesh, StepStatus::Running, None);
-        if prepared.member.cli_tool == CliTool::Claude {
-            self.record_step_success("join_mesh", "not required for claude");
-            self.emit_stage(
-                MemberActivationStage::JoinMesh,
-                StepStatus::Succeeded,
-                Some("not required for claude".to_string()),
-            );
-            return Ok(());
-        }
-
         let project_id = prepared.member.project_path.display().to_string();
         match join_mesh_if_required(
             self.orchestrator.runtime.as_ref(),
             &prepared.activation_context.team_name,
             &prepared.member.name,
             project_id.as_str(),
+            prepared.member.role,
             prepared.member.cli_tool,
             &prepared.activation_context.member.model,
         ) {
             Ok(joined) => {
                 self.runtime_state.mesh_joined = joined;
-                self.record_step_success("join_mesh", "mesh joined");
+                let message = if joined {
+                    "mesh joined"
+                } else {
+                    "not required for non-lead claude member"
+                };
+                self.record_step_success("join_mesh", message);
                 self.emit_stage(
                     MemberActivationStage::JoinMesh,
                     StepStatus::Succeeded,
-                    Some("mesh joined".to_string()),
+                    Some(message.to_string()),
                 );
                 Ok(())
             }

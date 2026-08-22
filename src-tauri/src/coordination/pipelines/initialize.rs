@@ -361,6 +361,7 @@ impl CoordinationOrchestrator {
                 description: team_description,
                 created_at,
                 members: members.clone(),
+                extra: Default::default(),
             },
         )?;
 

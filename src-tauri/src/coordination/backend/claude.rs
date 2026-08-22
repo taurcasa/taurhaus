@@ -14,7 +14,6 @@ use crate::coordination::requests::{
 };
 use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 
-const DEFAULT_OPERATOR_NAME: &str = "taurhaus";
 const OPERATOR_NOTICE_SUMMARY: &str = "operator_notice";
 
 /// Claude-native backend implemented through the shared inbox file contract.
@@ -32,17 +31,12 @@ impl ClaudeNativeBackend {
         &self,
         payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        let sender_name = payload
-            .sender_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|sender| !sender.is_empty())
-            .unwrap_or(DEFAULT_OPERATOR_NAME);
-        let message = MeshInboxMessage::new(
-            sender_name,
+        let message = MeshInboxMessage::operator_originated(
+            &payload.member_name,
             payload.message,
             Some(OPERATOR_NOTICE_SUMMARY.to_string()),
             Utc::now(),
+            payload.sender_name.as_deref(),
         );
         MeshInboxStore::append(
             &self.teams_dir,
@@ -112,8 +106,8 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let backend = ClaudeNativeBackend::new(tmp.path().to_path_buf());
 
-        // Regression: Claude-side task delivery used to report success without
-        // writing the actionable notice into the member inbox at all.
+        // Regression: commit 76c284e established the Claude-only team auth path;
+        // operator delivery must remain a direct inbox append from the lead.
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 team_name: "taurhaus-team".to_string(),
@@ -156,6 +150,9 @@ mod tests {
         let inbox = MeshInboxStore::load(tmp.path(), "taurhaus-team", "product-check-1")
             .expect("load inbox");
         assert_eq!(inbox.len(), 1);
-        assert_eq!(inbox[0].from, DEFAULT_OPERATOR_NAME);
+        assert_eq!(
+            inbox[0].from,
+            crate::coordination::stores::OPERATOR_SENDER_NAME
+        );
     }
 }

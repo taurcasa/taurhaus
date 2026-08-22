@@ -42,6 +42,7 @@ fn coordination_modules_are_visible_from_crate_root() {
         reasoning_effort: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: taurhaus_lib::session_scanner::cli_tool::CliTool::Codex,
+        extra: Default::default(),
     };
     let _event = taurhaus_lib::coordination::audit::AuditEvent::TeamCreated(
         taurhaus_lib::coordination::audit::TeamCreatedEvent {

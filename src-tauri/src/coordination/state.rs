@@ -355,6 +355,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from(project_path),
             cli_tool: tool,
+            extra: Default::default(),
         }
     }
 
@@ -370,9 +371,20 @@ mod tests {
                     .expect("timestamp")
                     .with_timezone(&chrono::Utc),
                 members,
+                extra: Default::default(),
             },
         )
         .expect("team fixture saved");
+    }
+
+    fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str) {
+        let dir = teams_dir.join(team_name).join("state").join("control_auth");
+        std::fs::create_dir_all(&dir).expect("credential dir");
+        std::fs::write(
+            dir.join("team-lead.json"),
+            r#"{"name":"team-lead","token":"test-token"}"#,
+        )
+        .expect("lead credential");
     }
 
     #[derive(Debug, Default)]
@@ -449,10 +461,18 @@ mod tests {
             team_name: &str,
             member_name: &str,
             project_id: &str,
+            member_type: &str,
             model: &str,
+            claude_dir: &str,
         ) -> Result<(), CoordinationError> {
-            self.inner
-                .join_mesh(team_name, member_name, project_id, model)
+            self.inner.join_mesh(
+                team_name,
+                member_name,
+                project_id,
+                member_type,
+                model,
+                claude_dir,
+            )
         }
 
         fn spawn_mesh_daemon(
@@ -807,6 +827,7 @@ mod tests {
                 Ok(())
             })
             .expect("seed team");
+        write_lead_credential(tmp.path(), "architecture-final");
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
@@ -882,6 +903,7 @@ mod tests {
                 Ok(())
             })
             .expect("seed team");
+        write_lead_credential(tmp.path(), "idle-team");
 
         state.orchestrator.lock().expect("state mutex").take();
 
@@ -941,6 +963,7 @@ mod tests {
                 Ok(())
             })
             .expect("seed team");
+        write_lead_credential(tmp.path(), "architecture-final");
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
@@ -1028,6 +1051,7 @@ mod tests {
                 Ok(())
             })
             .expect("seed team");
+        write_lead_credential(tmp.path(), "architecture-final");
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")
@@ -1122,6 +1146,7 @@ mod tests {
                 Ok(())
             })
             .expect("seed team");
+        write_lead_credential(tmp.path(), "architecture-final");
 
         let mut runtime_record =
             MemberRuntimeStore::load(tmp.path(), "architecture-final", "existing-dev")

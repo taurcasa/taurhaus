@@ -188,6 +188,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 

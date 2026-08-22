@@ -54,6 +54,7 @@ impl CoordinationOrchestrator {
             description: description.clone(),
             created_at: now,
             members: Vec::new(),
+            extra: Default::default(),
         };
         TeamConfigStore::save(&self.teams_dir, name, &config)?;
 

@@ -446,6 +446,7 @@ mod tests {
             reasoning_effort: Some("high".to_string()),
             project_path: PathBuf::from("/home/user/projects/taurhaus"),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 
@@ -521,6 +522,7 @@ mod tests {
             reasoning_effort: role.defaults.reasoning_effort.clone(),
             project_path: PathBuf::from("/home/user/projects/taurhaus"),
             cli_tool: role.defaults.cli_tool,
+            extra: Default::default(),
         }
     }
 

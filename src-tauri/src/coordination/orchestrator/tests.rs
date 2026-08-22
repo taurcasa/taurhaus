@@ -7,6 +7,7 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::coordination::backend::fake::FakeBackend;
+use crate::coordination::backend::MeshBridgedBackend;
 use crate::coordination::backend::{BackendKind, CoordinationBackend};
 use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -19,7 +20,9 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
-use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::{
+    MemberRuntimeRecord, MemberRuntimeStore, MeshInboxStore, TeamConfigStore,
+};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -48,7 +51,18 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
         reasoning_effort: None,
         project_path: PathBuf::from("/tmp/taurhaus"),
         cli_tool: tool,
+        extra: Default::default(),
     }
+}
+
+fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str, lead_name: &str) {
+    let credential_dir = teams_dir.join(team_name).join("state").join("control_auth");
+    std::fs::create_dir_all(&credential_dir).expect("credential dir");
+    std::fs::write(
+        credential_dir.join(format!("{lead_name}.json")),
+        format!(r#"{{"name":"{lead_name}","token":"test-token"}}"#),
+    )
+    .expect("lead credential");
 }
 
 fn new_orchestrator(tmp: &TempDir) -> CoordinationOrchestrator {
@@ -119,6 +133,38 @@ impl CoordinationBackend for UndeliveredBackend {
 }
 
 #[derive(Debug)]
+struct InboxFileBackend;
+
+impl CoordinationBackend for InboxFileBackend {
+    fn kind(&self) -> BackendKind {
+        BackendKind::MeshBridged
+    }
+
+    fn capabilities(&self) -> crate::coordination::backend::BackendCapabilities {
+        crate::coordination::backend::BackendCapabilities::mesh_bridged()
+    }
+
+    fn launch(&self, _req: LaunchRequest) -> Result<LaunchResult, CoordinationError> {
+        unreachable!("launch is not used in this test")
+    }
+
+    fn deliver(&self, _req: DeliveryRequest) -> Result<DeliveryResult, CoordinationError> {
+        Ok(DeliveryResult {
+            delivered: true,
+            method: DeliveryMethod::InboxFile,
+        })
+    }
+
+    fn probe(&self, _req: ProbeRequest) -> Result<ProbeResult, CoordinationError> {
+        unreachable!("probe is not used in this test")
+    }
+
+    fn teardown(&self, _req: TeardownRequest) -> Result<TeardownResult, CoordinationError> {
+        unreachable!("teardown is not used in this test")
+    }
+}
+
+#[derive(Debug)]
 struct MeshPreAddRuntime {
     inner: RecordingCoordinationRuntime,
     teams_dir: PathBuf,
@@ -165,10 +211,18 @@ impl CoordinationRuntime for MeshPreAddRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner
-            .join_mesh(team_name, member_name, project_id, model)?;
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )?;
 
         let mut config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         if !config
@@ -200,6 +254,7 @@ impl CoordinationRuntime for MeshPreAddRuntime {
                 cli_tool: CliTool::Codex,
                 model: Some(model.to_string()),
                 reasoning_effort: None,
+                extra: Default::default(),
             });
             TeamConfigStore::save(&self.teams_dir, team_name, &config)?;
         }
@@ -310,10 +365,18 @@ impl CoordinationRuntime for PaneOwnershipRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner
-            .join_mesh(team_name, member_name, project_id, model)
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )
     }
 
     fn spawn_mesh_daemon(
@@ -419,7 +482,9 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
         if !std::path::Path::new(project_id).is_dir() {
             return Err(CoordinationError::Io(std::io::Error::new(
@@ -427,8 +492,14 @@ impl CoordinationRuntime for ProjectPathCheckingRuntime {
                 format!("project path does not exist: {project_id}"),
             )));
         }
-        self.inner
-            .join_mesh(team_name, member_name, project_id, model)
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )
     }
 
     fn spawn_mesh_daemon(
@@ -534,15 +605,23 @@ impl CoordinationRuntime for SelectiveJoinFailureRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
         if self.fail_members.contains(member_name) {
             return Err(CoordinationError::Backend(format!(
                 "programmed join_mesh failure for '{member_name}'"
             )));
         }
-        self.inner
-            .join_mesh(team_name, member_name, project_id, model)
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )
     }
 
     fn spawn_mesh_daemon(
@@ -662,10 +741,18 @@ impl CoordinationRuntime for ClaudeLaunchRosterRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner
-            .join_mesh(team_name, member_name, project_id, model)
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )
     }
 
     fn spawn_mesh_daemon(
@@ -870,12 +957,14 @@ fn create_running_team(orchestrator: &mut CoordinationOrchestrator, team_name: &
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
     orchestrator
         .add_member(team_name, sample_member("existing-dev", CliTool::Codex))
         .expect("add existing member");
+    write_lead_credential(&orchestrator.teams_dir, team_name, "team-lead");
 }
 
 fn member_with_project(name: &str, role: MemberRole, tool: CliTool, project_path: &str) -> Member {
@@ -903,6 +992,7 @@ fn member_with_project(name: &str, role: MemberRole, tool: CliTool, project_path
         reasoning_effort: None,
         project_path: PathBuf::from(project_path),
         cli_tool: tool,
+        extra: Default::default(),
     }
 }
 
@@ -951,6 +1041,7 @@ fn create_resumable_team(
     for member_name in ["team-lead", "builder", "reviewer"] {
         mark_member_offline(tmp, team_name, member_name);
     }
+    write_lead_credential(tmp.path(), team_name, "team-lead");
 }
 
 fn assert_conflict(err: CoordinationError) {
@@ -1029,7 +1120,11 @@ fn resume_team_lead_first_then_same_project_then_cross_project() {
         .collect();
     assert_eq!(
         join_order,
-        vec!["builder".to_string(), "reviewer".to_string()]
+        vec![
+            "team-lead".to_string(),
+            "builder".to_string(),
+            "reviewer".to_string()
+        ]
     );
     let team_daemon_spawns = calls
         .iter()
@@ -1280,6 +1375,7 @@ fn disband_team_stops_team_daemon_best_effort() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -1610,6 +1706,7 @@ fn remove_member_cleans_runtime() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -1674,6 +1771,7 @@ fn remove_member_tears_down_runtime_resources() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -1762,6 +1860,7 @@ fn remove_member_discovers_and_terminates_daemon_when_runtime_pid_is_missing() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -1846,6 +1945,7 @@ fn remove_member_discovers_and_terminates_daemon_from_pidfile_when_runtime_attac
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -1919,6 +2019,7 @@ fn remove_member_rejects_lead_removal() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -1977,6 +2078,7 @@ fn remove_member_skips_pane_kill_on_ownership_mismatch() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/lead"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add lead");
@@ -2613,6 +2715,7 @@ fn trigger_team_self_heal_cycles_stale_team_daemon_and_restarts_drifted_member_d
     orchestrator
         .add_member(team_name, sample_member(member_name, CliTool::Codex))
         .expect("add should succeed");
+    write_lead_credential(tmp.path(), team_name, "team-lead");
 
     let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
     record.health = HealthState::Healthy;
@@ -3133,6 +3236,173 @@ fn deliver_operator_notice_succeeds() {
 }
 
 #[test]
+fn delivery_audit_reports_the_inbox_file_method_that_actually_ran() {
+    // Regression: mesh-findings H6; the MeshBridged audit path reported
+    // TmuxInjection even when operator traffic was durably appended to an inbox.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(InboxFileBackend);
+    let mut orchestrator = new_orchestrator_with_backend(&tmp, backend);
+    let team_name = "truthful-delivery-audit";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+
+    let result = orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            message: "status?".to_string(),
+            sender_name: None,
+            operational_context: None,
+        }))
+        .expect("deliver");
+    assert_eq!(result.method, DeliveryMethod::InboxFile);
+
+    let audit = orchestrator.drain_audit_log();
+    let attempted = audit.iter().find_map(|event| match event {
+        AuditEvent::DeliveryAttempted(event) => Some(event.method),
+        _ => None,
+    });
+    let succeeded = audit.iter().find_map(|event| match event {
+        AuditEvent::DeliverySucceeded(event) => Some(event.method),
+        _ => None,
+    });
+    assert_eq!(attempted, Some(DeliveryMethod::InboxFile));
+    assert_eq!(succeeded, Some(DeliveryMethod::InboxFile));
+}
+
+#[test]
+fn inbox_delivery_ensures_the_non_claude_member_daemon() {
+    // Regression: mesh-findings H2; bypassing `mesh send` also bypassed its
+    // wake path unless Taurhaus explicitly ensured the recipient daemon.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend: Arc<dyn CoordinationBackend> = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+        tmp.path().to_path_buf(),
+    ));
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "direct-inbox-wake";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+    let mut member_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    member_runtime.pane_id = Some("%31".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &member_runtime)
+        .expect("save runtime");
+
+    orchestrator
+        .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+            member_name: member_name.to_string(),
+            team_name: team_name.to_string(),
+            message: "wake".to_string(),
+            sender_name: None,
+            operational_context: None,
+        }))
+        .expect("deliver");
+
+    assert!(runtime.calls().iter().any(|call| matches!(
+        call,
+        RuntimeCall::SpawnDaemon {
+            pane_id,
+            team_name: recorded_team,
+            member_name: recorded_member,
+        } if pane_id == "%31" && recorded_team == team_name && recorded_member == member_name
+    )));
+    let saved_runtime =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("saved runtime");
+    assert_eq!(saved_runtime.daemon_pid, Some(10000));
+    assert_eq!(
+        MeshInboxStore::load(tmp.path(), team_name, member_name)
+            .expect("inbox")
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn team_daemon_is_skipped_without_the_lead_control_credential() {
+    // Regression: commit 76c284e skipped mesh join for Claude leads, while the
+    // liveness loop kept attempting an unauthenticated team-daemon start.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "claude-only-no-auth";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    let mut lead = sample_member("team-lead", CliTool::Claude);
+    lead.role = MemberRole::Lead;
+    orchestrator.add_member(team_name, lead).expect("add lead");
+
+    let (started, warning) = orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("credential absence is a skip, not an error");
+
+    assert!(!started);
+    assert!(warning
+        .as_deref()
+        .is_some_and(|message| message.contains("control credential")));
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+}
+
+#[test]
+fn missing_team_daemon_credential_emits_one_reason_event_per_team() {
+    // Regression: commit 76c284e left Claude-only teams retrying an
+    // unauthenticated team daemon without one actionable skip event.
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("events.jsonl");
+    let log_state = taurhaus_lib::logging::LogFileState::new(log_path.clone()).expect("log state");
+    taurhaus_lib::logging::install_global_sink(&log_state);
+
+    let (mut orchestrator, _) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "claude-only-skip-event";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    let mut lead = sample_member("team-lead", CliTool::Claude);
+    lead.role = MemberRole::Lead;
+    orchestrator.add_member(team_name, lead).expect("add lead");
+
+    orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("first skip");
+    orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("second skip");
+    log_state
+        .flush_for_test()
+        .expect("flush structured log sink");
+
+    let events = std::fs::read_to_string(log_path)
+        .expect("read structured log")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("parse log record"))
+        .filter(|record| {
+            record["event"] == "coordination.team_daemon.skipped"
+                && record["team_name"] == team_name
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["reason"], "missing_lead_control_credential");
+}
+
+#[test]
 fn deliver_to_nonexistent_member_fails() {
     let tmp = TempDir::new().expect("tempdir");
     let mut orchestrator = new_orchestrator(&tmp);
@@ -3544,6 +3814,7 @@ fn initialize_team_ensures_team_daemon_running() {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
     let request = initialize_request("architecture-final-init");
+    write_lead_credential(tmp.path(), "architecture-final-init", "team-lead");
 
     orchestrator
         .initialize_team(&request)
@@ -3974,6 +4245,7 @@ fn add_agent_join_mesh_uses_selected_project_path() {
                 member_name,
                 project_id,
                 model,
+                ..
             } => Some((team_name, member_name, project_id, model)),
             _ => None,
         })
