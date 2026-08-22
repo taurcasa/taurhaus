@@ -28,6 +28,21 @@ use crate::session_scanner::cli_tool::CliTool;
 use crate::templates::storage::TemplateStore;
 use crate::templates::types::BehavioralContract;
 
+#[test]
+fn optional_pane_identity_capture_failure_does_not_abort_activation() {
+    // Regression: aecc8ac made optional pane identity capture fatal after the
+    // member CLI had already launched, causing cleanup to kill a working pane.
+    let runtime = RecordingCoordinationRuntime::default();
+    runtime.set_pane_exists("%gone", false);
+    let mut state = MemberActivationRuntimeState::default();
+
+    capture_member_pane_identity(&runtime, "%gone", &mut state)
+        .expect("optional identity capture should fail soft");
+
+    assert_eq!(state.pane_pid, None);
+    assert_eq!(state.pane_start_time, None);
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DeliveryTimelineEvent {
     JoinMesh(String),

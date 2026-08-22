@@ -3,16 +3,16 @@
 //! This isolates host-level operations (tmux, mesh, process control) behind a
 //! single interface so tests can run against a deterministic runtime double.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
 use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
-use crate::coordination::domain::Member;
+use crate::coordination::domain::{HealthState, Member};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::stores::MemberRuntimeRecord;
+use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::process::detect_cli_tool;
 
@@ -232,28 +232,15 @@ pub enum PaneOwnership {
 
 /// Verify that a live tmux pane is still the pane recorded for a member.
 ///
-/// New records use tmux's pane PID/start time as the primary identity. A known
-/// foreground agent CLI that differs from the configured tool also rejects the
-/// pane, including for legacy records. Unknown commands such as `cat` cannot
-/// disprove ownership and remain eligible for the universal tmux floor.
+/// New records use the pane PID and, on Linux, the process start ticks as the
+/// decisive identity. Legacy records fall back to the configured tool and
+/// project path. Unknown commands such as `cat` cannot disprove ownership and
+/// remain eligible for the universal tmux floor.
 pub fn pane_belongs_to_member(record: &MemberRuntimeRecord, live_pane: &LivePane) -> PaneOwnership {
     if record.pane_id.as_deref() != Some(live_pane.pane_id.as_str()) {
         return PaneOwnership::Foreign {
             reason: "pane_id_mismatch".to_string(),
         };
-    }
-
-    if let (Some(expected), Some(found)) = (
-        record.project_path.as_deref(),
-        live_pane.current_path.as_deref(),
-    ) {
-        if crate::provider::path::normalize_project_path(&expected.display().to_string())
-            != crate::provider::path::normalize_project_path(&found.display().to_string())
-        {
-            return PaneOwnership::Foreign {
-                reason: "project_path_mismatch".to_string(),
-            };
-        }
     }
 
     if let Some(expected) = record.pane_pid {
@@ -270,6 +257,9 @@ pub fn pane_belongs_to_member(record: &MemberRuntimeRecord, live_pane: &LivePane
             };
         }
     }
+    if record.pane_pid.is_some() || record.pane_start_time.is_some() {
+        return PaneOwnership::Owned;
+    }
 
     if let (Some(expected_tool), Some(found_tool)) = (
         record.cli_tool,
@@ -285,7 +275,135 @@ pub fn pane_belongs_to_member(record: &MemberRuntimeRecord, live_pane: &LivePane
         }
     }
 
+    if let (Some(expected), Some(found)) = (
+        record.project_path.as_deref(),
+        live_pane.current_path.as_deref(),
+    ) {
+        if crate::provider::path::normalize_project_path(&expected.display().to_string())
+            != crate::provider::path::normalize_project_path(&found.display().to_string())
+        {
+            return PaneOwnership::Foreign {
+                reason: "project_path_mismatch".to_string(),
+            };
+        }
+    }
+
     PaneOwnership::Owned
+}
+
+/// Atomically quarantine a member only if its persisted pane binding still
+/// matches the record and live pane used to reach the foreign verdict.
+pub fn quarantine_foreign_member(
+    teams_dir: &Path,
+    runtime: &dyn CoordinationRuntime,
+    team_name: &str,
+    member_name: &str,
+    observed_record: &MemberRuntimeRecord,
+    live_pane: &LivePane,
+    reason: &str,
+) -> Result<bool, CoordinationError> {
+    let mut applied = false;
+    let mut daemon_pid = None;
+    let observed_pane_id = observed_record.pane_id.as_deref();
+
+    MemberRuntimeStore::update(teams_dir, team_name, member_name, |record| {
+        let same_observation = observed_pane_id == Some(live_pane.pane_id.as_str())
+            && record.pane_id == observed_record.pane_id
+            && record.pane_pid == observed_record.pane_pid
+            && record.pane_start_time == observed_record.pane_start_time
+            && record.attached_at == observed_record.attached_at;
+        if !same_observation {
+            return;
+        }
+
+        applied = true;
+        daemon_pid = record.daemon_pid;
+        if record.cli_tool.is_none() {
+            record.cli_tool = observed_record.cli_tool;
+        }
+        if record.project_path.is_none() {
+            record.project_path = observed_record.project_path.clone();
+        }
+        record.health = HealthState::SessionDead;
+        record.pane_id = None;
+        record.pane_pid = None;
+        record.pane_start_time = None;
+        record.session_id = None;
+        record.jsonl_path = None;
+        record.daemon_pid = None;
+    })?;
+
+    if !applied {
+        tracing::debug!(
+            team = %team_name,
+            member = %member_name,
+            pane_id = %live_pane.pane_id,
+            "ignored stale foreign-pane observation after runtime binding changed"
+        );
+        return Ok(false);
+    }
+
+    if let Some(pid) = daemon_pid {
+        match runtime.is_process_running_by_pid(pid) {
+            Ok(true) => {
+                if let Err(error) = runtime.terminate_process_by_pid(pid) {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid,
+                        error = %error,
+                        "failed to terminate foreign-pane member daemon"
+                    );
+                }
+            }
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    pid,
+                    error = %error,
+                    "failed to verify foreign-pane member daemon pid"
+                );
+            }
+        }
+    }
+    if let Err(error) = runtime.clear_mesh_daemon_pid_file(team_name, member_name) {
+        tracing::warn!(
+            team = %team_name,
+            member = %member_name,
+            error = %error,
+            "failed to clear foreign-pane daemon pid file"
+        );
+    }
+
+    match TeamConfigStore::load(teams_dir, team_name) {
+        Ok(config) => {
+            if let Err(error) = TeamConfigStore::save(teams_dir, team_name, &config) {
+                tracing::warn!(
+                    team = %team_name,
+                    member = %member_name,
+                    error = %error,
+                    "failed to clear foreign pane metadata from team config"
+                );
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                error = %error,
+                "failed to load team config while clearing foreign pane metadata"
+            );
+        }
+    }
+
+    // Clearing the binding under the runtime lock makes this transition
+    // idempotent: later observations cannot apply again, even when the record
+    // was already SessionDead before pane reuse was discovered.
+    emit_foreign_pane_event(team_name, member_name, &live_pane.pane_id, reason);
+
+    Ok(true)
 }
 
 pub fn emit_foreign_pane_event(team_name: &str, member_name: &str, pane_id: &str, reason: &str) {
@@ -418,8 +536,19 @@ pub fn resolve_or_create_pane_for_member(
     ownership_record
         .project_path
         .get_or_insert_with(|| member.project_path.clone());
-    let Some(live_pane) = runtime.live_pane(existing_pane_id)? else {
-        return create_new();
+    let live_pane = match runtime.live_pane(existing_pane_id) {
+        Ok(Some(live_pane)) => live_pane,
+        Ok(None) => return create_new(),
+        Err(err) => {
+            tracing::warn!(
+                pane_id = %existing_pane_id,
+                member = %member.name,
+                team_project = %project_id,
+                error = %err,
+                "resume pane resolution: pane identity check failed, creating new pane"
+            );
+            return create_new();
+        }
     };
     match pane_belongs_to_member(&ownership_record, &live_pane) {
         PaneOwnership::Owned => Ok(PaneResolution {
@@ -647,17 +776,39 @@ mod tests {
     }
 
     #[test]
-    fn matching_pane_identity_with_foreign_cli_is_foreign() {
-        // Regression: mesh-findings P3, tmux reused pane ids; daemons for
-        // taurrust/gotaurus/espn pointed at claude panes.
+    fn matching_primary_identity_ignores_foreground_cwd_changes() {
+        // Regression: aecc8ac checked pane_current_path before the recorded
+        // PID identity, so `cd` into a project subdirectory killed a healthy daemon.
         let mut record = sample_runtime_with_pane("agent-a", "%9");
         record.cli_tool = Some(CliTool::Codex);
+        record.project_path = Some(PathBuf::from("/tmp/project"));
         record.pane_pid = Some(1200);
         record.pane_start_time = Some(1_755_000_000);
         let live_pane = LivePane {
             pane_id: "%9".to_string(),
             pane_pid: Some(1200),
             pane_start_time: Some(1_755_000_000),
+            current_command: Some("codex".to_string()),
+            current_path: Some(PathBuf::from("/tmp/project/subdirectory")),
+            is_dead: false,
+        };
+
+        assert_eq!(
+            pane_belongs_to_member(&record, &live_pane),
+            PaneOwnership::Owned
+        );
+    }
+
+    #[test]
+    fn matching_pane_identity_with_foreign_cli_is_foreign() {
+        // Regression: mesh-findings P3, tmux reused pane ids; daemons for
+        // taurrust/gotaurus/espn pointed at claude panes.
+        let mut record = sample_runtime_with_pane("agent-a", "%9");
+        record.cli_tool = Some(CliTool::Codex);
+        let live_pane = LivePane {
+            pane_id: "%9".to_string(),
+            pane_pid: None,
+            pane_start_time: None,
             current_command: Some("claude".to_string()),
             current_path: None,
             is_dead: false,
@@ -667,6 +818,63 @@ mod tests {
             pane_belongs_to_member(&record, &live_pane),
             PaneOwnership::Foreign { ref reason } if reason.contains("expected=codex found=claude")
         ));
+    }
+
+    #[test]
+    fn already_dead_record_emits_foreign_event_once_when_binding_is_cleared() {
+        // Regression: aecc8ac suppressed the first foreign-pane event when an
+        // earlier missing-pane pass had already marked the stale record dead.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let log_path = tmp.path().join("pane-foreign-events.jsonl");
+        let log_state =
+            taurhaus_lib::logging::LogFileState::new(log_path.clone()).expect("log state");
+        taurhaus_lib::logging::install_global_sink(&log_state);
+        let runtime = RecordingCoordinationRuntime::default();
+        let record = sample_runtime_with_pane("agent-a", "%9");
+        MemberRuntimeStore::save(tmp.path(), "team-a", "agent-a", &record).expect("save runtime");
+        let live_pane = LivePane {
+            pane_id: "%9".to_string(),
+            pane_pid: None,
+            pane_start_time: None,
+            current_command: Some("claude".to_string()),
+            current_path: None,
+            is_dead: false,
+        };
+
+        assert!(quarantine_foreign_member(
+            tmp.path(),
+            &runtime,
+            "team-a",
+            "agent-a",
+            &record,
+            &live_pane,
+            "cli_tool_mismatch",
+        )
+        .expect("first quarantine"));
+        assert!(!quarantine_foreign_member(
+            tmp.path(),
+            &runtime,
+            "team-a",
+            "agent-a",
+            &record,
+            &live_pane,
+            "cli_tool_mismatch",
+        )
+        .expect("repeat quarantine"));
+
+        log_state.flush_for_test().expect("flush log");
+        let event_count = std::fs::read_to_string(log_path)
+            .expect("read log")
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|event| {
+                event["event"] == "coordination.pane.foreign"
+                    && event["team"] == "team-a"
+                    && event["member"] == "agent-a"
+            })
+            .count();
+        assert_eq!(event_count, 1);
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -875,6 +1083,26 @@ mod tests {
         assert!(!calls
             .iter()
             .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%9")));
+    }
+
+    #[test]
+    fn resolve_or_create_pane_identity_probe_failure_creates_new_pane() {
+        // Regression: aecc8ac propagated a live-pane probe error even though
+        // resume had historically failed soft by creating a fresh pane.
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pane_exists("%9", true);
+        runtime.set_pane_dead("%9", false);
+        runtime.set_live_pane_failure("%9", "transient tmux failure");
+        let member = sample_member("agent-a", "/tmp/project");
+        let record = sample_runtime_with_pane("agent-a", "%9");
+
+        let resolution =
+            resolve_or_create_pane_for_member(&runtime, &member, Some(&record), "new_window")
+                .expect("probe failure should fall back to a new pane");
+
+        assert!(resolution.created_new_pane);
+        assert!(!resolution.reused_pane);
+        assert_eq!(resolution.pane_id, "test-pane-1");
     }
 
     #[test]

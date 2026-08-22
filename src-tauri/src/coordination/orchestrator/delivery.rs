@@ -8,7 +8,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::operational_context::apply_delivery_context;
 use crate::coordination::requests::{DeliveryMethod, DeliveryRequest, DeliveryResult};
 use crate::coordination::runtime::{
-    emit_foreign_pane_event, pane_belongs_to_member, PaneOwnership,
+    pane_belongs_to_member, quarantine_foreign_member, PaneOwnership,
 };
 use crate::coordination::stores::MemberRuntimeStore;
 use crate::session_scanner::cli_tool::CliTool;
@@ -183,8 +183,7 @@ impl CoordinationOrchestrator {
         team_name: &str,
         member_name: &str,
     ) -> Option<u32> {
-        let Ok(mut runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)
-        else {
+        let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) else {
             tracing::warn!(
                 team = %team_name,
                 member = %member_name,
@@ -224,42 +223,22 @@ impl CoordinationOrchestrator {
             }
         };
         if let PaneOwnership::Foreign { reason } = pane_belongs_to_member(&runtime, &live_pane) {
-            let should_emit =
-                runtime.health != crate::coordination::domain::HealthState::SessionDead;
-            runtime.health = crate::coordination::domain::HealthState::SessionDead;
-            runtime.session_id = None;
-            runtime.jsonl_path = None;
-            if let Some(pid) = runtime.daemon_pid {
-                if self.runtime.is_process_running_by_pid(pid).unwrap_or(false) {
-                    let _ = self.runtime.terminate_process_by_pid(pid);
-                }
-            }
-            runtime.daemon_pid = None;
-            if let Err(err) = self
-                .runtime
-                .clear_mesh_daemon_pid_file(team_name, member_name)
-            {
+            if let Err(err) = quarantine_foreign_member(
+                &self.teams_dir,
+                self.runtime.as_ref(),
+                team_name,
+                member_name,
+                &runtime,
+                &live_pane,
+                &reason,
+            ) {
                 tracing::warn!(
                     team = %team_name,
                     member = %member_name,
                     pane_id = %pane_id,
                     error = %err,
-                    "failed to clear foreign-pane daemon pid file after inbox append"
+                    "failed to quarantine foreign pane after inbox append"
                 );
-            }
-            if let Err(err) =
-                MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)
-            {
-                tracing::warn!(
-                    team = %team_name,
-                    member = %member_name,
-                    pane_id = %pane_id,
-                    error = %err,
-                    "failed to persist foreign pane state after inbox append"
-                );
-            }
-            if should_emit {
-                emit_foreign_pane_event(team_name, member_name, &pane_id, &reason);
             }
             return None;
         }

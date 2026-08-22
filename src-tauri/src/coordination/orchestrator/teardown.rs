@@ -4,14 +4,14 @@ use std::sync::{Mutex, OnceLock};
 
 use serde_json::{Map, Value};
 
-use crate::coordination::domain::{HealthState, MemberRole};
+use crate::coordination::domain::MemberRole;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{
     AddAgentRequest, InitializeTeamRequest, ResumeMemberRequest, ResumeTeamRequest, TeardownMode,
     TeardownRequest,
 };
 use crate::coordination::runtime::{
-    emit_foreign_pane_event, pane_belongs_to_member, PaneOwnership,
+    pane_belongs_to_member, quarantine_foreign_member, PaneOwnership,
 };
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
 
@@ -423,6 +423,11 @@ impl CoordinationOrchestrator {
         team_name: &str,
     ) -> Result<Option<String>, CoordinationError> {
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let operator_name = config
+            .members
+            .iter()
+            .find(|member| member.role == MemberRole::Lead)
+            .map(|member| member.name.clone());
         let members = config
             .members
             .into_iter()
@@ -436,8 +441,19 @@ impl CoordinationOrchestrator {
             let Some(pane_id) = record.pane_id.clone() else {
                 continue;
             };
-            let Some(live_pane) = self.runtime.live_pane(&pane_id)? else {
-                continue;
+            let live_pane = match self.runtime.live_pane(&pane_id) {
+                Ok(Some(live_pane)) => live_pane,
+                Ok(None) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pane_id = %pane_id,
+                        error = %error,
+                        "pane ownership probe failed before team daemon restart; proceeding with other members"
+                    );
+                    continue;
+                }
             };
             if live_pane.is_dead {
                 continue;
@@ -451,41 +467,18 @@ impl CoordinationOrchestrator {
                 continue;
             };
 
-            let should_emit =
-                record.health != HealthState::SessionDead || record.daemon_pid.is_some();
-            if let Some(pid) = record.daemon_pid {
-                if self.runtime.is_process_running_by_pid(pid).unwrap_or(false) {
-                    if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                        tracing::warn!(
-                            team = %team_name,
-                            member = %member_name,
-                            pid,
-                            error = %err,
-                            "failed to terminate foreign-pane daemon before team daemon restart"
-                        );
-                    }
-                }
+            let quarantined = quarantine_foreign_member(
+                &self.teams_dir,
+                self.runtime.as_ref(),
+                team_name,
+                &member_name,
+                &record,
+                &live_pane,
+                &reason,
+            )?;
+            if quarantined && operator_name.as_deref() == Some(member_name.as_str()) {
+                first_foreign.get_or_insert_with(|| format!("{member_name}:{pane_id}:{reason}"));
             }
-            record.health = HealthState::SessionDead;
-            record.session_id = None;
-            record.jsonl_path = None;
-            record.daemon_pid = None;
-            MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &record)?;
-            if let Err(err) = self
-                .runtime
-                .clear_mesh_daemon_pid_file(team_name, &member_name)
-            {
-                tracing::warn!(
-                    team = %team_name,
-                    member = %member_name,
-                    error = %err,
-                    "failed to clear foreign-pane daemon pid file before team daemon restart"
-                );
-            }
-            if should_emit {
-                emit_foreign_pane_event(team_name, &member_name, &pane_id, &reason);
-            }
-            first_foreign.get_or_insert_with(|| format!("{member_name}:{pane_id}:{reason}"));
         }
         Ok(first_foreign)
     }

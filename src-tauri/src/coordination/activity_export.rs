@@ -9,10 +9,10 @@ use crate::coordination::activity_schema::{
 };
 use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{
-    emit_foreign_pane_event, pane_belongs_to_member, CoordinationRuntime, PaneOwnership,
-    SystemCoordinationRuntime,
+    pane_belongs_to_member, quarantine_foreign_member, CoordinationRuntime, LivePane,
+    PaneOwnership, SystemCoordinationRuntime,
 };
-use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
 use crate::provider::path::normalize_project_path;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::{
@@ -34,6 +34,7 @@ struct PaneActivityProbe {
     active_non_shell_process: bool,
     pane_foreign: bool,
     foreign_reason: Option<String>,
+    foreign_live_pane: Option<LivePane>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -184,7 +185,16 @@ fn export_activity_snapshots_for_sessions_with_runtime(
                 })
             })
             .collect();
-        if !live_panes.iter().any(|alive| *alive) {
+        let refresh_foreign_snapshots = roster
+            .iter()
+            .map(|member| {
+                member.pane_id.is_none()
+                    && foreign_snapshot_already_written(teams_dir, &team_name, &member.member_name)
+            })
+            .collect::<Vec<_>>();
+        if !live_panes.iter().any(|alive| *alive)
+            && !refresh_foreign_snapshots.iter().any(|refresh| *refresh)
+        {
             tracing::debug!(
                 team_name = %team_name,
                 "skipping activity snapshot export: no live pane"
@@ -193,14 +203,21 @@ fn export_activity_snapshots_for_sessions_with_runtime(
         }
 
         stats.teams_exported += 1;
-        for (member, pane_alive) in roster.iter().zip(live_panes) {
+        for ((member, pane_alive), refresh_foreign_snapshot) in
+            roster.iter().zip(live_panes).zip(refresh_foreign_snapshots)
+        {
             let member_name = &member.member_name;
             let runtime_record = member.runtime_record().map(|mut record| {
                 record.cli_tool = Some(member.configured_cli_tool);
                 record.project_path = Some(member.configured_project_path.clone());
                 record
             });
-            let pane_probe = if pane_alive {
+            let pane_probe = if refresh_foreign_snapshot {
+                PaneActivityProbe {
+                    pane_foreign: true,
+                    ..Default::default()
+                }
+            } else if pane_alive {
                 runtime_record
                     .as_ref()
                     .map_or_else(PaneActivityProbe::default, |record| {
@@ -209,23 +226,35 @@ fn export_activity_snapshots_for_sessions_with_runtime(
             } else {
                 PaneActivityProbe::default()
             };
-            if pane_probe.pane_foreign
-                && foreign_snapshot_already_written(teams_dir, &team_name, member_name)
-            {
-                continue;
-            }
             if pane_probe.pane_foreign {
-                mark_foreign_runtime_record(
-                    teams_dir,
-                    runtime,
-                    &team_name,
-                    member_name,
-                    member.pane_id.as_deref().unwrap_or_default(),
-                    pane_probe
-                        .foreign_reason
-                        .as_deref()
-                        .unwrap_or("pane_identity_mismatch"),
-                );
+                if let (Some(record), Some(live_pane), Some(reason)) = (
+                    runtime_record.as_ref(),
+                    pane_probe.foreign_live_pane.as_ref(),
+                    pane_probe.foreign_reason.as_deref(),
+                ) {
+                    match quarantine_foreign_member(
+                        teams_dir,
+                        runtime,
+                        &team_name,
+                        member_name,
+                        record,
+                        live_pane,
+                        reason,
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(error) => {
+                            tracing::warn!(
+                                team_name = %team_name,
+                                member_name = %member_name,
+                                pane_id = %live_pane.pane_id,
+                                error = %error,
+                                "failed to quarantine foreign pane during activity snapshot export"
+                            );
+                            continue;
+                        }
+                    }
+                }
             }
             let snapshot = build_member_activity_snapshot(
                 sessions_by_member
@@ -575,6 +604,7 @@ fn probe_member_pane_state(
         return PaneActivityProbe {
             pane_foreign: true,
             foreign_reason: Some(reason),
+            foreign_live_pane: Some(live_pane),
             ..Default::default()
         };
     }
@@ -588,6 +618,7 @@ fn probe_member_pane_state(
                 .is_some_and(|command| !command.trim().is_empty()),
         pane_foreign: false,
         foreign_reason: None,
+        foreign_live_pane: None,
     }
 }
 
@@ -602,61 +633,6 @@ fn foreign_snapshot_already_written(teams_dir: &Path, team_name: &str, member_na
                 .and_then(serde_json::Value::as_bool)
         })
         == Some(true)
-}
-
-fn mark_foreign_runtime_record(
-    teams_dir: &Path,
-    runtime: &dyn CoordinationRuntime,
-    team_name: &str,
-    member_name: &str,
-    pane_id: &str,
-    reason: &str,
-) {
-    let mut daemon_pid = None;
-    let mut should_emit = false;
-    let update = MemberRuntimeStore::update(teams_dir, team_name, member_name, |record| {
-        should_emit = record.health != crate::coordination::domain::HealthState::SessionDead
-            || record.daemon_pid.is_some();
-        daemon_pid = record.daemon_pid;
-        record.health = crate::coordination::domain::HealthState::SessionDead;
-        record.session_id = None;
-        record.jsonl_path = None;
-        record.daemon_pid = None;
-    });
-    if let Err(error) = update {
-        tracing::warn!(
-            team_name = %team_name,
-            member_name = %member_name,
-            pane_id = %pane_id,
-            error = %error,
-            "failed to mark foreign pane runtime dead during activity snapshot export"
-        );
-        return;
-    }
-    if let Some(pid) = daemon_pid {
-        if runtime.is_process_running_by_pid(pid).unwrap_or(false) {
-            if let Err(error) = runtime.terminate_process_by_pid(pid) {
-                tracing::warn!(
-                    team_name = %team_name,
-                    member_name = %member_name,
-                    pid,
-                    error = %error,
-                    "failed to terminate foreign-pane member daemon during activity export"
-                );
-            }
-        }
-    }
-    if let Err(error) = runtime.clear_mesh_daemon_pid_file(team_name, member_name) {
-        tracing::warn!(
-            team_name = %team_name,
-            member_name = %member_name,
-            error = %error,
-            "failed to clear foreign-pane daemon pid file during activity export"
-        );
-    }
-    if should_emit {
-        emit_foreign_pane_event(team_name, member_name, pane_id, reason);
-    }
 }
 
 fn write_member_activity_snapshot(
@@ -1027,9 +1003,9 @@ mod tests {
     }
 
     #[test]
-    fn exporter_writes_foreign_pane_snapshot_once_then_skips() {
-        // Regression: mesh-findings P3, tmux reused pane ids; daemons for
-        // taurrust/gotaurus/espn pointed at claude panes.
+    fn exporter_refreshes_foreign_pane_snapshot_without_repeating_quarantine() {
+        // Regression: aecc8ac froze the one foreign snapshot's observed_at,
+        // allowing mesh's freshness gate to forget the dead-pane verdict.
         let tmp = TempDir::new().expect("tempdir");
         let team_name = "team-foreign";
         let member_name = "developer2";
@@ -1087,11 +1063,66 @@ mod tests {
             ts("2026-03-07T13:35:00+00:00"),
             &runtime,
         );
-        assert_eq!(second.members_written, 0);
+        assert_eq!(second.members_written, 1);
+        let refreshed = fs::read_to_string(snapshot_path).expect("foreign snapshot refreshed");
+        assert_ne!(refreshed, raw);
+        let refreshed: Value = serde_json::from_str(&refreshed).expect("valid refreshed snapshot");
         assert_eq!(
-            fs::read_to_string(snapshot_path).expect("foreign snapshot retained"),
-            raw
+            refreshed.get("observed_at").and_then(Value::as_str),
+            Some("2026-03-07T13:35:00+00:00")
         );
+    }
+
+    #[test]
+    fn stale_foreign_observation_does_not_quarantine_resumed_runtime() {
+        // Regression: aecc8ac applied an exporter verdict after releasing its
+        // stale roster read, overwriting and killing a concurrently resumed member.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "team-race";
+        let member_name = "developer2";
+        save_runtime(tmp.path(), team_name, member_name, "%12");
+        let observed = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("load observed runtime");
+        let live_pane = LivePane {
+            pane_id: "%12".to_string(),
+            pane_pid: None,
+            pane_start_time: None,
+            current_command: Some("claude".to_string()),
+            current_path: None,
+            is_dead: false,
+        };
+
+        let mut resumed =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load runtime");
+        resumed.pane_id = Some("%20".to_string());
+        resumed.pane_pid = Some(2020);
+        resumed.pane_start_time = Some(220);
+        resumed.daemon_pid = Some(99);
+        resumed.health = HealthState::Healthy;
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &resumed)
+            .expect("save resumed runtime");
+
+        let runtime = RecordingCoordinationRuntime::default();
+        runtime.set_pid_running(99, true);
+        let quarantined = quarantine_foreign_member(
+            tmp.path(),
+            &runtime,
+            team_name,
+            member_name,
+            &observed,
+            &live_pane,
+            "cli_tool_mismatch",
+        )
+        .expect("stale quarantine is harmless");
+
+        assert!(!quarantined);
+        let current = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("load current runtime");
+        assert_eq!(current, resumed);
+        assert!(runtime
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::TerminatePid { pid: 99 })));
     }
 
     #[test]

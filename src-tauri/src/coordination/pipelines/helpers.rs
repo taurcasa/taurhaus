@@ -277,15 +277,38 @@ pub(super) fn capture_member_pane_identity(
     pane_id: &str,
     runtime_state: &mut MemberActivationRuntimeState,
 ) -> Result<(), CoordinationError> {
-    let live_pane = runtime.live_pane(pane_id)?.ok_or_else(|| {
-        CoordinationError::Backend(format!(
-            "tmux pane {pane_id} disappeared before its identity could be captured"
-        ))
-    })?;
-    if live_pane.is_dead {
-        return Err(CoordinationError::Backend(format!(
-            "tmux pane {pane_id} was dead before its identity could be captured"
-        )));
+    runtime_state.pane_pid = None;
+    runtime_state.pane_start_time = None;
+    let live_pane = match runtime.live_pane(pane_id) {
+        Ok(Some(live_pane)) if !live_pane.is_dead => live_pane,
+        Ok(Some(_)) => {
+            tracing::warn!(
+                pane_id = %pane_id,
+                "launched tmux pane was dead before optional identity capture"
+            );
+            return Ok(());
+        }
+        Ok(None) => {
+            tracing::warn!(
+                pane_id = %pane_id,
+                "launched tmux pane disappeared before optional identity capture"
+            );
+            return Ok(());
+        }
+        Err(error) => {
+            tracing::warn!(
+                pane_id = %pane_id,
+                error = %error,
+                "failed to capture optional tmux pane identity"
+            );
+            return Ok(());
+        }
+    };
+    if live_pane.pane_pid.is_none() {
+        tracing::warn!(
+            pane_id = %pane_id,
+            "tmux pane identity capture returned no pane pid"
+        );
     }
     runtime_state.pane_pid = live_pane.pane_pid;
     runtime_state.pane_start_time = live_pane.pane_start_time;

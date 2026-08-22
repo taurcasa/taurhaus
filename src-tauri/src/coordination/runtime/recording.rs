@@ -104,6 +104,7 @@ pub struct RecordingCoordinationRuntime {
     pane_pid: Mutex<HashMap<String, Option<u32>>>,
     pane_start_time: Mutex<HashMap<String, Option<u64>>>,
     pane_path: Mutex<HashMap<String, Option<PathBuf>>>,
+    live_pane_failure_message: Mutex<HashMap<String, String>>,
     pane_ownership: Mutex<HashMap<String, bool>>,
     send_keys_failures_remaining: Mutex<HashMap<String, usize>>,
     send_keys_failure_message: Mutex<HashMap<String, String>>,
@@ -174,6 +175,12 @@ impl RecordingCoordinationRuntime {
     pub fn set_pane_current_path(&self, pane_id: &str, path: Option<&str>) {
         if let Ok(mut map) = self.pane_path.lock() {
             map.insert(pane_id.to_string(), path.map(PathBuf::from));
+        }
+    }
+
+    pub fn set_live_pane_failure(&self, pane_id: &str, message: &str) {
+        if let Ok(mut map) = self.live_pane_failure_message.lock() {
+            map.insert(pane_id.to_string(), message.to_string());
         }
     }
 
@@ -589,6 +596,14 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         self.push_call(RuntimeCall::InspectPane {
             pane_id: pane_id.to_string(),
         });
+        if let Some(message) = self
+            .live_pane_failure_message
+            .lock()
+            .ok()
+            .and_then(|map| map.get(pane_id).cloned())
+        {
+            return Err(CoordinationError::Backend(message));
+        }
         let exists = self
             .pane_exists
             .lock()

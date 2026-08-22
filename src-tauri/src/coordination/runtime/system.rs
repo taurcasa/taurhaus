@@ -21,6 +21,9 @@ use super::{
     SESSION_DETECT_INTERVAL, TMUX_POST_ENTER_DELAY, TMUX_TEXT_TO_ENTER_DELAY,
 };
 
+// tmux 3.4 does not define `pane_start_time`; the empty slot keeps the wire
+// shape stable while Linux fills it from /proc process start ticks below.
+// macOS and Windows therefore retain only the pane PID portion of identity.
 const LIVE_PANE_FORMAT: &str = "#{pane_id}\t#{pane_pid}\t#{pane_start_time}\t#{pane_dead}\t#{pane_current_command}\t#{pane_current_path}";
 
 #[derive(Debug, Default)]
@@ -452,12 +455,11 @@ impl CoordinationRuntime for SystemCoordinationRuntime {
         if !out.status.success() {
             return Ok(None);
         }
-        let mut live_pane =
-            parse_live_pane(&String::from_utf8_lossy(&out.stdout)).ok_or_else(|| {
-                CoordinationError::Backend(format!(
-                    "tmux returned malformed pane identity for {pane_id}"
-                ))
-            })?;
+        let Some(mut live_pane) =
+            parse_live_pane_output(&String::from_utf8_lossy(&out.stdout), pane_id)?
+        else {
+            return Ok(None);
+        };
         if live_pane.pane_start_time.is_none() {
             live_pane.pane_start_time = live_pane
                 .pane_pid
@@ -562,6 +564,20 @@ fn parse_live_pane(raw: &str) -> Option<LivePane> {
     })
 }
 
+fn parse_live_pane_output(raw: &str, pane_id: &str) -> Result<Option<LivePane>, CoordinationError> {
+    if raw
+        .chars()
+        .all(|character| character == '\t' || character.is_whitespace())
+    {
+        return Ok(None);
+    }
+    parse_live_pane(raw).map(Some).ok_or_else(|| {
+        CoordinationError::Backend(format!(
+            "tmux returned malformed pane identity for {pane_id}"
+        ))
+    })
+}
+
 fn non_empty(raw: &str) -> Option<String> {
     let value = raw.trim();
     (!value.is_empty()).then(|| value.to_string())
@@ -610,6 +626,21 @@ mod tests {
         assert_eq!(pane.current_command.as_deref(), Some("claude"));
         assert_eq!(pane.current_path, Some(PathBuf::from("/tmp/taurhaus")));
         assert!(!pane.is_dead);
+    }
+
+    #[test]
+    fn vanished_pane_output_is_not_a_malformed_identity_error() {
+        // Regression: aecc8ac treated tmux's successful empty response for a
+        // vanished pane as malformed, aborting resume and team-daemon repair.
+        assert!(parse_live_pane("\t\t\t\t\t\n").is_none());
+        assert!(parse_live_pane_output("\t\t\t\t\t\n", "%20")
+            .expect("vanished pane is not an error")
+            .is_none());
+    }
+
+    #[test]
+    fn nonempty_malformed_pane_output_remains_an_error() {
+        assert!(parse_live_pane_output("%20\tbroken\n", "%20").is_err());
     }
 
     /// Degraded scans hand back the last good snapshot, which still maps the

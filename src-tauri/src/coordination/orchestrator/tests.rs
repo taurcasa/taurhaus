@@ -25,6 +25,9 @@ use crate::coordination::stores::{
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::{
+    ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
+};
 
 fn sample_member(name: &str, tool: CliTool) -> Member {
     Member {
@@ -2451,9 +2454,9 @@ fn liveness_reconcile_keeps_alive_cli_pane_healthy() {
 }
 
 #[test]
-fn liveness_reconcile_rejects_foreign_cli_pane_without_restarting_daemons() {
-    // Regression: mesh-findings P3, tmux reused pane ids; daemons for
-    // taurrust/gotaurus/espn pointed at claude panes.
+fn liveness_reconcile_quarantines_foreign_member_without_blocking_team_daemon() {
+    // Regression: aecc8ac let one non-lead foreign pane permanently block the
+    // whole team's daemon and left the stale pane binding latched forever.
     let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().expect("tempdir");
     let log_path = tmp.path().join("pane-foreign-events.jsonl");
@@ -2484,6 +2487,8 @@ fn liveness_reconcile_rejects_foreign_cli_pane_without_restarting_daemons() {
     record.pane_id = Some("%9".to_string());
     record.daemon_pid = Some(4242);
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    let config = TeamConfigStore::load(tmp.path(), team_name).expect("load config");
+    TeamConfigStore::save(tmp.path(), team_name, &config).expect("sync pane metadata");
 
     runtime.set_pane_exists("%9", true);
     runtime.set_pane_dead("%9", false);
@@ -2507,10 +2512,27 @@ fn liveness_reconcile_rejects_foreign_cli_pane_without_restarting_daemons() {
         .calls()
         .iter()
         .any(|call| matches!(call, RuntimeCall::TerminatePid { pid: 4242 })));
-    assert!(runtime.calls().iter().all(|call| !matches!(
-        call,
-        RuntimeCall::SpawnDaemon { .. } | RuntimeCall::SpawnTeamDaemon { .. }
-    )));
+    assert_eq!(updated.pane_id, None);
+    assert_eq!(updated.pane_pid, None);
+    assert_eq!(updated.pane_start_time, None);
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })));
+    assert!(runtime
+        .calls()
+        .iter()
+        .any(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+    let config_raw = std::fs::read_to_string(tmp.path().join(team_name).join("config.json"))
+        .expect("read config");
+    let config: serde_json::Value = serde_json::from_str(&config_raw).expect("parse config");
+    let member = config["members"]
+        .as_array()
+        .expect("members")
+        .iter()
+        .find(|candidate| candidate["name"] == member_name)
+        .expect("member config");
+    assert!(member.get("tmuxPaneId").is_none());
 
     log_state
         .flush_for_test()
@@ -2532,6 +2554,74 @@ fn liveness_reconcile_rejects_foreign_cli_pane_without_restarting_daemons() {
     assert!(events[0]["reason"]
         .as_str()
         .is_some_and(|reason| reason.contains("claude")));
+}
+
+#[test]
+fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
+    // Regression: aecc8ac compared a cached scanner pane with another pane's
+    // persisted PID identity, marking a just-resumed healthy member dead.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "architecture-final";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.health = HealthState::Healthy;
+    record.pane_id = Some("%20".to_string());
+    record.pane_pid = Some(2020);
+    record.pane_start_time = Some(220);
+    record.daemon_pid = Some(4242);
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pane_identity("%20", Some(2020), Some(220));
+    runtime.set_pane_current_command("%20", Some("codex"));
+    runtime.set_pane_current_command("%9", Some("claude"));
+
+    let cached_snapshot = RuntimeSession {
+        pid: 9009,
+        project_path: "/tmp/taurhaus".to_string(),
+        tty: "/dev/pts/9".to_string(),
+        args: "claude".to_string(),
+        cli_tool: CliTool::Codex,
+        tmux_session: Some("taurhaus".to_string()),
+        tmux_window: Some("1".to_string()),
+        tmux_pane: Some("%9".to_string()),
+        tmux_window_name: Some("stale".to_string()),
+        state: SessionState::Active,
+        session_id: Some("cached-session".to_string()),
+        jsonl_path: None,
+        recent_io: false,
+        last_output_age_secs: None,
+        activity_confidence: ActivityConfidence::High,
+        activity_attribution: ActivityAttribution::Attributed,
+        project_unattributed_active: false,
+        group_kind: SessionGroupKind::MeshTeam,
+        group_id: Some(team_name.to_string()),
+        group_label: Some(team_name.to_string()),
+        member_name: Some(member_name.to_string()),
+    };
+
+    let reconciled = orchestrator
+        .reconcile_team_presence_for_live_status_with_runtime_sessions(
+            team_name,
+            &[cached_snapshot],
+        )
+        .expect("presence reconcile");
+
+    assert!(reconciled.is_empty());
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload"),
+        record
+    );
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::TerminatePid { pid: 4242 })));
 }
 
 #[test]
@@ -3402,6 +3492,9 @@ fn inbox_delivery_ensures_the_non_claude_member_daemon() {
     member_runtime.pane_id = Some("%31".to_string());
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &member_runtime)
         .expect("save runtime");
+    // The tmux floor permits unknown foreground commands such as `cat`; only
+    // a known mismatched agent CLI proves that a legacy pane is foreign.
+    runtime.set_pane_current_command("%31", Some("cat"));
 
     orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
