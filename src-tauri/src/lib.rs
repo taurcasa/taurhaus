@@ -402,13 +402,14 @@ mod tests {
 
     #[test]
     fn coordination_cli_log_sink_installs_jsonl_emitter() {
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let _guard = acquire_env_guard();
         let temp = TempDir::new().expect("tempdir");
         let data_dir = temp.path().join("data");
         fs::create_dir_all(&data_dir).expect("data dir");
         std::env::set_var("TAURHAUS_DATA_DIR", &data_dir);
 
-        let _state = init_coordination_cli_log_sink().expect("log state");
+        let state = init_coordination_cli_log_sink().expect("log state");
         crate::commands::logging::emit_global(
             "info",
             "coordination",
@@ -417,18 +418,9 @@ mod tests {
             Default::default(),
         );
 
+        state.flush_for_test().expect("flush structured log sink");
         let log_path = data_dir.join("taurhaus.log.jsonl");
-        let mut contents = String::new();
-        for _ in 0..50 {
-            contents = fs::read_to_string(&log_path).unwrap_or_default();
-            if contents
-                .lines()
-                .any(|line| line.contains("\"event\":\"test.cli_hook_logging\""))
-            {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
+        let contents = fs::read_to_string(&log_path).expect("read structured log");
         let entry: Value = serde_json::from_str(
             contents
                 .lines()

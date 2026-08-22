@@ -28,11 +28,13 @@ use crate::coordination::stores::{
     TeamConfigStore,
 };
 
-const EXTRACTOR_SCHEMA_VERSION: u32 = 1;
+const EXTRACTOR_SCHEMA_VERSION: u32 = 2;
 const EXTRACTOR_STATE_FILENAME: &str = "extractor-state.json";
 const PAIRED_SIGNAL_WINDOW_MS: i64 = 2_000;
 const DEFAULT_EXTRACTOR_RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
 const EXTRACTOR_HEARTBEAT_INTERVAL_SECS: i64 = 60;
+const EXTRACTOR_CHECKPOINT_RETENTION_SECS: i64 = 60;
+const EXTRACTOR_CHECKPOINT_REFRESH_SECS: i64 = 30;
 
 struct CompactionSignalExtractorService {
     shutdown: Arc<AtomicBool>,
@@ -89,6 +91,8 @@ struct ParsedSignalBoundary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ExtractorFileCheckpoint {
     offset: u64,
+    #[serde(default)]
+    last_seen_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -430,6 +434,11 @@ fn extract_compaction_signals_for_team(
             continue;
         }
         let path_key = transcript.jsonl_path.display().to_string();
+        if let Some(checkpoint) = state.file_offsets.get_mut(&path_key) {
+            if checkpoint_last_seen_refresh_is_due(checkpoint.last_seen_at, emitted_at) {
+                checkpoint.last_seen_at = Some(emitted_at);
+            }
+        }
         let file_len = match fs::metadata(&transcript.jsonl_path) {
             Ok(metadata) => metadata.len(),
             Err(error) => {
@@ -455,7 +464,10 @@ fn extract_compaction_signals_for_team(
             None => {
                 state.file_offsets.insert(
                     path_key.clone(),
-                    ExtractorFileCheckpoint { offset: file_len },
+                    ExtractorFileCheckpoint {
+                        offset: file_len,
+                        last_seen_at: Some(emitted_at),
+                    },
                 );
                 state.last_error_by_file.remove(&path_key);
                 continue;
@@ -488,6 +500,7 @@ fn extract_compaction_signals_for_team(
             path_key.clone(),
             ExtractorFileCheckpoint {
                 offset: committed_offset,
+                last_seen_at: Some(emitted_at),
             },
         );
         state.last_error_by_file.remove(&path_key);
@@ -559,13 +572,14 @@ fn extract_compaction_signals_for_team(
 
     state
         .file_offsets
-        .retain(|path, _| checkpoint_path_is_known(Path::new(path)));
+        .retain(|_, checkpoint| checkpoint_is_within_retention_window(checkpoint, emitted_at));
+    let retained_paths = state.file_offsets.keys().cloned().collect::<HashSet<_>>();
     state
         .last_emitted_boundary_by_file
-        .retain(|path, _| checkpoint_path_is_known(Path::new(path)));
+        .retain(|path, _| retained_paths.contains(path));
     state
         .last_error_by_file
-        .retain(|path, _| checkpoint_path_is_known(Path::new(path)));
+        .retain(|path, _| retained_paths.contains(path));
     if extractor_heartbeat_is_due(state.heartbeat_at, emitted_at) {
         state.heartbeat_at = Some(emitted_at);
     }
@@ -579,11 +593,22 @@ fn extract_compaction_signals_for_team(
     })
 }
 
-fn checkpoint_path_is_known(path: &Path) -> bool {
-    match fs::symlink_metadata(path) {
-        Ok(_) => true,
-        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
-    }
+fn checkpoint_is_within_retention_window(
+    checkpoint: &ExtractorFileCheckpoint,
+    now: DateTime<Utc>,
+) -> bool {
+    checkpoint.last_seen_at.is_some_and(|last_seen_at| {
+        now.signed_duration_since(last_seen_at).num_seconds() <= EXTRACTOR_CHECKPOINT_RETENTION_SECS
+    })
+}
+
+fn checkpoint_last_seen_refresh_is_due(
+    previous: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> bool {
+    previous.is_none_or(|previous| {
+        now.signed_duration_since(previous).num_seconds() >= EXTRACTOR_CHECKPOINT_REFRESH_SECS
+    })
 }
 
 fn extractor_heartbeat_is_due(previous: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
@@ -866,11 +891,17 @@ fn load_extractor_state(
         Err(err) => return Err(CoordinationError::Io(err)),
     };
 
-    serde_json::from_str(&raw).map_err(|error| {
+    let mut state: ExtractorState = serde_json::from_str(&raw).map_err(|error| {
         CoordinationError::StoreError(format!(
             "failed to parse compaction extractor state for team '{team_name}': {error}"
         ))
-    })
+    })?;
+    for checkpoint in state.file_offsets.values_mut() {
+        if checkpoint.last_seen_at.is_none() {
+            checkpoint.last_seen_at = state.heartbeat_at;
+        }
+    }
+    Ok(state)
 }
 
 fn save_extractor_state(
@@ -1091,7 +1122,14 @@ mod tests {
             version: EXTRACTOR_SCHEMA_VERSION,
             file_offsets: BTreeMap::from([(
                 "/tmp/session.jsonl".to_string(),
-                ExtractorFileCheckpoint { offset: 42 },
+                ExtractorFileCheckpoint {
+                    offset: 42,
+                    last_seen_at: Some(
+                        Utc.with_ymd_and_hms(2026, 3, 8, 20, 5, 0)
+                            .single()
+                            .expect("datetime"),
+                    ),
+                },
             )]),
             last_emitted_boundary_by_file: BTreeMap::from([(
                 "/tmp/session.jsonl".to_string(),
@@ -1405,7 +1443,14 @@ mod tests {
             version: EXTRACTOR_SCHEMA_VERSION,
             file_offsets: BTreeMap::from([(
                 path_key.clone(),
-                ExtractorFileCheckpoint { offset: 42 },
+                ExtractorFileCheckpoint {
+                    offset: 42,
+                    last_seen_at: Some(
+                        Utc.with_ymd_and_hms(2026, 3, 8, 19, 0, 0)
+                            .single()
+                            .expect("datetime"),
+                    ),
+                },
             )]),
             last_emitted_boundary_by_file: BTreeMap::from([(
                 path_key.clone(),
@@ -1438,6 +1483,43 @@ mod tests {
         assert!(pruned.file_offsets.is_empty());
         assert!(pruned.last_emitted_boundary_by_file.is_empty());
         assert!(pruned.last_error_by_file.is_empty());
+        assert!(
+            load_compaction_extractor_diagnostics_at(&teams_dir, "taurhaus-team")
+                .expect("load diagnostics")
+                .active_files
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn extractor_prunes_stale_checkpoint_while_transcript_still_exists() {
+        // Regression: 9f723d3 retained every checkpoint whose transcript still existed,
+        // so historical rollout files made state, diagnostics, and per-pass stats grow forever.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let stale_path = tmp.path().join("stale-session.jsonl");
+        write_jsonl(
+            &stale_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+        let transcript = sample_transcript("taurhaus-team", &stale_path);
+        let first_seen = Utc
+            .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+            .single()
+            .expect("datetime");
+        extract_compaction_signals_for_team(&teams_dir, "taurhaus-team", &[transcript], first_seen)
+            .expect("prime state");
+
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[],
+            first_seen + chrono::Duration::minutes(2),
+        )
+        .expect("prune stale checkpoint");
+
+        let pruned = load_extractor_state(&teams_dir, "taurhaus-team").expect("load state");
+        assert!(pruned.file_offsets.is_empty());
         assert!(
             load_compaction_extractor_diagnostics_at(&teams_dir, "taurhaus-team")
                 .expect("load diagnostics")
