@@ -535,7 +535,7 @@ mod tests {
         };
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
+            crate::daemon::server::run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
         });
         wait_for_port(port, Duration::from_secs(3));
         TestDaemon {

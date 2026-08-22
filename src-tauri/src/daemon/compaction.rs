@@ -33,6 +33,10 @@ pub struct DaemonCompactionRuntime {
 impl DaemonCompactionRuntime {
     pub fn maybe_start() -> Result<Option<Self>, CoordinationError> {
         let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
+        Self::maybe_start_at(teams_dir)
+    }
+
+    pub(crate) fn maybe_start_at(teams_dir: PathBuf) -> Result<Option<Self>, CoordinationError> {
         let runtime = Self::start_with_processor(
             teams_dir,
             crate::session_scanner::latest_compaction_runtime_sessions(),

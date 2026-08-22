@@ -248,6 +248,14 @@ pub fn stop_compaction_extractor_service_for_test() {
     stop_compaction_extractor_service();
 }
 
+#[cfg(test)]
+pub fn compaction_extractor_service_is_running_for_test() -> bool {
+    extractor_service_slot()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .is_some()
+}
+
 fn run_extractor_service_loop(
     teams_dir: PathBuf,
     mut active_sessions: Vec<RuntimeSession>,

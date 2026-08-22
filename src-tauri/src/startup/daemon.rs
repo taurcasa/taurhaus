@@ -141,6 +141,11 @@ pub(crate) fn spawn_background_bootstrap(
 
                 if connected {
                     tracing::info!("Background bootstrap: daemon connected");
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    crate::startup::compaction::release_app_owned_compaction(
+                        &app,
+                        "daemon_recovered",
+                    );
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
                         true,

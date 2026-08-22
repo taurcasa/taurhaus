@@ -81,6 +81,15 @@ pub fn run(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
+    run_with_compaction_teams_dir(config, shutdown, provider, None)
+}
+
+fn run_with_compaction_teams_dir(
+    config: &DaemonConfig,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+    compaction_teams_dir: Option<std::path::PathBuf>,
+) -> std::io::Result<()> {
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, Duration::from_millis(750));
 
@@ -105,9 +114,21 @@ pub fn run(
     };
     listener.set_nonblocking(true)?;
 
+    let start_time = Instant::now();
+    let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
+    let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
+    let watch_registry =
+        crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
+
     let compaction_shutdown = shutdown.clone();
     let compaction_handle = std::thread::spawn(move || {
-        let _runtime = match crate::daemon::compaction::DaemonCompactionRuntime::maybe_start() {
+        let start_result = match compaction_teams_dir {
+            Some(teams_dir) => {
+                crate::daemon::compaction::DaemonCompactionRuntime::maybe_start_at(teams_dir)
+            }
+            None => crate::daemon::compaction::DaemonCompactionRuntime::maybe_start(),
+        };
+        let _runtime = match start_result {
             Ok(runtime) => runtime,
             Err(error) => {
                 crate::coordination::compaction_events::emit_compaction_owner_failed(
@@ -126,12 +147,6 @@ pub fn run(
             std::thread::sleep(Duration::from_millis(50));
         }
     });
-
-    let start_time = Instant::now();
-    let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
-    let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
-    let watch_registry =
-        crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
 
     tracing::info!(port = config.port, "daemon listening");
     emit_daemon_watch_telemetry("startup", &watch_registry);
@@ -219,6 +234,23 @@ pub fn run(
     let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn run_for_test(
+    config: &DaemonConfig,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+) -> std::io::Result<()> {
+    // Regression: 9f723d3 removed the off-WSL compaction gate, so in-process
+    // daemon tests began rewriting the developer's real Claude teams state.
+    let claude_root = tempfile::tempdir()?;
+    run_with_compaction_teams_dir(
+        config,
+        shutdown,
+        provider,
+        Some(claude_root.path().join("teams")),
+    )
 }
 
 /// Read a newline-terminated line from a `BufReader`, respecting a max byte limit.
@@ -513,8 +545,9 @@ mod tests {
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
-        let handle =
-            std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
+        let handle = std::thread::spawn(move || {
+            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+        });
         let server = TestServer {
             port,
             shutdown,
@@ -965,8 +998,9 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle =
-            std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
+        let handle = std::thread::spawn(move || {
+            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+        });
 
         assert!(
             wait_for_server_accepting(port, std::time::Duration::from_secs(2)),

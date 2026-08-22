@@ -954,7 +954,7 @@ mod tests {
             if startup_delay > Duration::ZERO {
                 std::thread::sleep(startup_delay);
             }
-            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
+            crate::daemon::server::run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
         });
         TestDaemon {
             shutdown,
