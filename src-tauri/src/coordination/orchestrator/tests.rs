@@ -56,6 +56,20 @@ fn sample_member(name: &str, tool: CliTool) -> Member {
 }
 
 fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str, lead_name: &str) {
+    if let Ok(mut config) = TeamConfigStore::load(teams_dir, team_name) {
+        let lead = config
+            .members
+            .iter_mut()
+            .find(|member| member.name == lead_name)
+            .expect("lead member");
+        lead.extra.insert(
+            "controlAuthTokenHash".to_string(),
+            serde_json::Value::String("sha256:test-token".to_string()),
+        );
+        lead.extra
+            .insert("isActive".to_string(), serde_json::Value::Bool(true));
+        TeamConfigStore::save(teams_dir, team_name, &config).expect("save lead auth hash");
+    }
     let credential_dir = teams_dir.join(team_name).join("state").join("control_auth");
     std::fs::create_dir_all(&credential_dir).expect("credential dir");
     std::fs::write(
@@ -3361,6 +3375,45 @@ fn team_daemon_is_skipped_without_the_lead_control_credential() {
 }
 
 #[test]
+fn team_daemon_is_skipped_when_the_credential_file_has_no_config_hash() {
+    // Regression: 694b130 gated only on state/control_auth/<lead>.json even
+    // though mesh authenticates team-daemon against controlAuthTokenHash too.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "claude-lead-missing-hash";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    let mut lead = sample_member("team-lead", CliTool::Claude);
+    lead.role = MemberRole::Lead;
+    orchestrator.add_member(team_name, lead).expect("add lead");
+    let credential_dir = tmp
+        .path()
+        .join(team_name)
+        .join("state")
+        .join("control_auth");
+    std::fs::create_dir_all(&credential_dir).expect("credential dir");
+    std::fs::write(
+        credential_dir.join("team-lead.json"),
+        r#"{"name":"team-lead","token":"test-token"}"#,
+    )
+    .expect("credential file");
+
+    let (started, warning) = orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("missing config hash is a skip, not an error");
+
+    assert!(!started);
+    assert!(warning
+        .as_deref()
+        .is_some_and(|message| message.contains("controlAuthTokenHash")));
+    assert!(runtime
+        .calls()
+        .iter()
+        .all(|call| !matches!(call, RuntimeCall::SpawnTeamDaemon { .. })));
+}
+
+#[test]
 fn missing_team_daemon_credential_emits_one_reason_event_per_team() {
     // Regression: commit 76c284e left Claude-only teams retrying an
     // unauthenticated team daemon without one actionable skip event.
@@ -3385,6 +3438,35 @@ fn missing_team_daemon_credential_emits_one_reason_event_per_team() {
     orchestrator
         .ensure_team_daemon_for_wrapper(team_name)
         .expect("second skip");
+
+    let mut config = TeamConfigStore::load(tmp.path(), team_name).expect("load config");
+    config.members[0].extra.insert(
+        "controlAuthTokenHash".to_string(),
+        serde_json::Value::String("sha256:test-token".to_string()),
+    );
+    TeamConfigStore::save(tmp.path(), team_name, &config).expect("save hash");
+    let credential_dir = tmp
+        .path()
+        .join(team_name)
+        .join("state")
+        .join("control_auth");
+    std::fs::create_dir_all(&credential_dir).expect("credential dir");
+    let credential_path = credential_dir.join("team-lead.json");
+    std::fs::write(
+        &credential_path,
+        r#"{"name":"team-lead","token":"test-token"}"#,
+    )
+    .expect("credential file");
+    orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("authenticated transition");
+    std::fs::remove_file(&credential_path).expect("remove credential");
+    orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("new degraded transition");
+    orchestrator
+        .ensure_team_daemon_for_wrapper(team_name)
+        .expect("deduplicated degraded state");
     log_state
         .flush_for_test()
         .expect("flush structured log sink");
@@ -3398,8 +3480,11 @@ fn missing_team_daemon_credential_emits_one_reason_event_per_team() {
                 && record["team_name"] == team_name
         })
         .collect::<Vec<_>>();
-    assert_eq!(events.len(), 1);
+    // Regression: 694b130 used a monotonic process-global set, suppressing all
+    // later skip events after a team recovered and degraded again.
+    assert_eq!(events.len(), 2);
     assert_eq!(events[0]["reason"], "missing_lead_control_credential");
+    assert_eq!(events[1]["reason"], "missing_lead_control_credential");
 }
 
 #[test]
@@ -3813,6 +3898,7 @@ fn initialize_team_full_success_path() {
 fn initialize_team_ensures_team_daemon_running() {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    runtime.set_mesh_join_teams_dir(tmp.path());
     let request = initialize_request("architecture-final-init");
     write_lead_credential(tmp.path(), "architecture-final-init", "team-lead");
 

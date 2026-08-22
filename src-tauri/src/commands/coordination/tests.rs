@@ -44,7 +44,9 @@ fn test_state(teams_dir: PathBuf) -> CoordinationState {
     CoordinationState::with_components_and_runtime(
         teams_dir,
         BackendSelector::m0(),
-        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|_kind, _teams_dir| {
+            Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+        }),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     )
 }
@@ -56,7 +58,9 @@ fn test_state_with_runtime(
     CoordinationState::with_components_and_runtime(
         teams_dir,
         BackendSelector::m0(),
-        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|_kind, _teams_dir| {
+            Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+        }),
         Arc::new(move || runtime.clone()),
     )
 }
@@ -566,7 +570,7 @@ fn initialize_failure_after_team_creation_does_not_get_rewritten_to_config_missi
         BackendSelector::m0(),
         Arc::new({
             let fake = fake.clone();
-            move |_kind| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+            move |_kind, _teams_dir| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
         }),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     );
@@ -3072,7 +3076,7 @@ fn add_agent_pipeline_failure_does_not_mask_error_with_member_not_found() {
         BackendSelector::m0(),
         Arc::new({
             let fake = fake.clone();
-            move |_kind| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+            move |_kind, _teams_dir| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
         }),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     );

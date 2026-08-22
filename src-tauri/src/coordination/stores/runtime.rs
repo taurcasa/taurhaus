@@ -75,75 +75,37 @@ impl MemberRuntimeStore {
             log_runtime_store_error("lock", &lock_path, err, None);
         })?;
 
-        let mut normalized = record.clone();
-        normalized.schema_version = RUNTIME_SCHEMA_VERSION;
-        normalized.member_name = member_name.to_string();
+        save_runtime_record_locked(teams_dir, team_name, member_name, record)
+    }
 
-        let runtime_dir = runtime_dir_path(teams_dir, team_name);
-        fs::create_dir_all(&runtime_dir).map_err(|err| {
-            let coordination_err = CoordinationError::Io(err);
-            log_runtime_store_error("create_dir", &runtime_dir, &coordination_err, None);
-            coordination_err
+    /// Update a runtime record while holding the team lock across read and write.
+    pub fn update<F>(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        update: F,
+    ) -> Result<MemberRuntimeRecord, CoordinationError>
+    where
+        F: FnOnce(&mut MemberRuntimeRecord),
+    {
+        let lock_path = team_dir(teams_dir, team_name).join(".lock");
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
+            log_runtime_store_error("lock", &lock_path, err, None);
         })?;
-
-        let target_path = runtime_record_path(teams_dir, team_name, member_name);
-        let tmp_path = runtime_tmp_path(teams_dir, team_name, member_name);
-        let payload = serde_json::to_string_pretty(&normalized).map_err(|err| {
-            CoordinationError::StoreError(format!(
-                "failed to serialize runtime record for '{member_name}': {err}"
-            ))
-        })?;
-
-        retry_file_operation(
-            "write",
-            &tmp_path,
-            None,
-            &SAVE_RETRY_BACKOFFS,
-            || write_file_synced(&tmp_path, &payload),
-            |err| log_runtime_store_io_error("write", &tmp_path, err, None),
-        )
-        .map_err(CoordinationError::Io)?;
-
-        if let Err(err) = retry_file_operation(
-            "rename",
-            &target_path,
-            Some(&tmp_path),
-            &SAVE_RETRY_BACKOFFS,
-            || fs::rename(&tmp_path, &target_path),
-            |err| log_runtime_store_io_error("rename", &target_path, err, Some(&tmp_path)),
-        ) {
-            if is_atomic_write_fallback_error(&err) {
-                tracing::warn!(
-                    member_name,
-                    team_name,
-                    target = %target_path.display(),
-                    raw_os_error = ?err.raw_os_error(),
-                    "atomic runtime rename failed on team state save; falling back to direct write"
-                );
-                retry_file_operation(
-                    "write",
-                    &target_path,
-                    None,
-                    &SAVE_RETRY_BACKOFFS,
-                    || write_file_synced(&target_path, &payload),
-                    |write_err| log_runtime_store_io_error("write", &target_path, write_err, None),
-                )
-                .map_err(CoordinationError::Io)?;
-                let _ = fs::remove_file(&tmp_path);
-            } else {
-                let _ = fs::remove_file(&tmp_path);
-                return Err(CoordinationError::Io(err));
-            }
-        }
-
-        prune_state_if_session_mismatch(
-            teams_dir,
-            team_name,
-            member_name,
-            normalized.session_id.as_deref(),
-        )?;
-
-        Ok(())
+        let path = runtime_record_path(teams_dir, team_name, member_name);
+        let raw =
+            super::lock::read_to_string_with_retry(&path).map_err(|err| match err.kind() {
+                std::io::ErrorKind::NotFound => CoordinationError::NotFound(format!(
+                    "runtime state not found for member '{member_name}' in team '{team_name}'"
+                )),
+                _ => CoordinationError::Io(err),
+            })?;
+        let mut record = parse_runtime_record(&raw, team_name, member_name)?;
+        update(&mut record);
+        record.schema_version = RUNTIME_SCHEMA_VERSION;
+        record.member_name = member_name.to_string();
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record)?;
+        Ok(record)
     }
 
     /// List runtime member names from `<teams_dir>/<team_name>/runtime/*.json`.
@@ -279,6 +241,83 @@ impl MemberRuntimeStore {
     }
 }
 
+fn save_runtime_record_locked(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    record: &MemberRuntimeRecord,
+) -> Result<(), CoordinationError> {
+    let mut normalized = record.clone();
+    normalized.schema_version = RUNTIME_SCHEMA_VERSION;
+    normalized.member_name = member_name.to_string();
+
+    let runtime_dir = runtime_dir_path(teams_dir, team_name);
+    fs::create_dir_all(&runtime_dir).map_err(|err| {
+        let coordination_err = CoordinationError::Io(err);
+        log_runtime_store_error("create_dir", &runtime_dir, &coordination_err, None);
+        coordination_err
+    })?;
+
+    let target_path = runtime_record_path(teams_dir, team_name, member_name);
+    let tmp_path = runtime_tmp_path(teams_dir, team_name, member_name);
+    let payload = serde_json::to_string_pretty(&normalized).map_err(|err| {
+        CoordinationError::StoreError(format!(
+            "failed to serialize runtime record for '{member_name}': {err}"
+        ))
+    })?;
+
+    retry_file_operation(
+        "write",
+        &tmp_path,
+        None,
+        &SAVE_RETRY_BACKOFFS,
+        || write_file_synced(&tmp_path, &payload),
+        |err| log_runtime_store_io_error("write", &tmp_path, err, None),
+    )
+    .map_err(CoordinationError::Io)?;
+
+    if let Err(err) = retry_file_operation(
+        "rename",
+        &target_path,
+        Some(&tmp_path),
+        &SAVE_RETRY_BACKOFFS,
+        || fs::rename(&tmp_path, &target_path),
+        |err| log_runtime_store_io_error("rename", &target_path, err, Some(&tmp_path)),
+    ) {
+        if is_atomic_write_fallback_error(&err) {
+            tracing::warn!(
+                member_name,
+                team_name,
+                target = %target_path.display(),
+                raw_os_error = ?err.raw_os_error(),
+                "atomic runtime rename failed on team state save; falling back to direct write"
+            );
+            retry_file_operation(
+                "write",
+                &target_path,
+                None,
+                &SAVE_RETRY_BACKOFFS,
+                || write_file_synced(&target_path, &payload),
+                |write_err| log_runtime_store_io_error("write", &target_path, write_err, None),
+            )
+            .map_err(CoordinationError::Io)?;
+            let _ = fs::remove_file(&tmp_path);
+        } else {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(CoordinationError::Io(err));
+        }
+    }
+
+    prune_state_if_session_mismatch(
+        teams_dir,
+        team_name,
+        member_name,
+        normalized.session_id.as_deref(),
+    )?;
+
+    Ok(())
+}
+
 fn parse_runtime_record(
     raw: &str,
     team_name: &str,
@@ -365,7 +404,7 @@ fn runtime_tmp_path(teams_dir: &Path, team_name: &str, member_name: &str) -> Pat
 }
 
 fn is_transient_lock_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(5 | 32))
+    super::lock::is_transient_file_lock_error(err)
 }
 
 fn is_atomic_write_fallback_error(err: &std::io::Error) -> bool {
@@ -580,6 +619,32 @@ mod tests {
             .expect("load should succeed");
 
         assert_eq!(loaded, record);
+    }
+
+    #[test]
+    fn locked_update_preserves_fields_outside_the_patch() {
+        // Regression: 694b130 made inbox wake load and save the whole runtime
+        // record, reverting concurrent pane/session/health updates.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "runtime-update";
+        let member_name = "builder";
+        let record = sample_record(member_name);
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+
+        let updated = MemberRuntimeStore::update(tmp.path(), team_name, member_name, |runtime| {
+            runtime.daemon_pid = Some(9001);
+            runtime.last_seen_at = Some(ts("2026-03-01T21:06:00Z"));
+        })
+        .expect("locked update");
+
+        assert_eq!(updated.daemon_pid, Some(9001));
+        assert_eq!(updated.pane_id, record.pane_id);
+        assert_eq!(updated.session_id, record.session_id);
+        assert_eq!(updated.health, record.health);
+        assert_eq!(
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load updated"),
+            updated
+        );
     }
 
     #[test]

@@ -720,6 +720,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
     let initialize_tmp = TempDir::new().expect("tempdir");
     let initialize_backend = Arc::new(FakeBackend::default());
     let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    initialize_runtime.set_mesh_join_teams_dir(initialize_tmp.path());
     let credential_dir = initialize_tmp
         .path()
         .join("initialize-claude")
@@ -2436,6 +2437,98 @@ fn resume_pipeline_claude_lead_joins_mesh_but_skips_member_daemon() {
         backend.call_counts().1,
         1,
         "lead should receive onboarding delivery"
+    );
+}
+
+#[test]
+fn claude_lead_join_failure_is_nonfatal_after_activation_commit() {
+    // Regression: 694b130 deferred the Claude-lead join until after commit but
+    // kept the fatal cleanup path, killing an already-persisted activation.
+    let initialize_tmp = TempDir::new().expect("tempdir");
+    let initialize_backend = Arc::new(FakeBackend::default());
+    let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    initialize_runtime.set_join_mesh_failure("simulated lead credential failure");
+    let mut initialize_orchestrator = new_orchestrator(
+        &initialize_tmp,
+        initialize_backend,
+        initialize_runtime.clone(),
+    );
+
+    let initialize_report = initialize_orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "lead-join-initialize".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+                agents: vec![],
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert!(
+        initialize_report.failed_step.is_none(),
+        "credential refresh must not fail initialization: {initialize_report:?}"
+    );
+    let initialize_join_step = initialize_report
+        .steps
+        .iter()
+        .find(|step| step.step == "join_mesh")
+        .expect("initialize join step");
+    assert_eq!(initialize_join_step.status, StepStatus::Succeeded);
+    assert!(initialize_join_step
+        .message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("simulated lead credential failure"));
+    assert!(
+        TeamConfigStore::load(initialize_tmp.path(), "lead-join-initialize").is_ok(),
+        "the committed team remains usable"
+    );
+
+    let resume_tmp = TempDir::new().expect("tempdir");
+    let resume_backend = Arc::new(FakeBackend::default());
+    let resume_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    resume_runtime.set_join_mesh_failure("simulated lead credential failure");
+    let mut resume_orchestrator =
+        new_orchestrator(&resume_tmp, resume_backend, resume_runtime.clone());
+    resume_orchestrator
+        .create_team("lead-join-resume", None)
+        .expect("create team");
+    resume_orchestrator
+        .add_member(
+            "lead-join-resume",
+            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+    mark_member_offline(&resume_tmp, "lead-join-resume", "team-lead", "%stale", None);
+    resume_runtime.set_pane_ownership("%stale", false);
+
+    let resume_report = resume_orchestrator
+        .resume_member("lead-join-resume", "team-lead")
+        .expect("resume report");
+    assert!(
+        resume_report.resumed,
+        "credential refresh must not roll back resume: {resume_report:?}"
+    );
+    assert!(resume_report
+        .warnings
+        .iter()
+        .any(|warning| { warning.contains("simulated lead credential failure") }));
+    assert!(
+        resume_runtime
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::KillPane { .. })),
+        "best-effort credential refresh must not kill the committed pane"
+    );
+    let persisted = MemberRuntimeStore::load(resume_tmp.path(), "lead-join-resume", "team-lead")
+        .expect("persisted runtime");
+    assert_eq!(persisted.health, HealthState::Healthy);
+    assert_eq!(
+        persisted.pane_id.as_deref(),
+        resume_report.pane_id.as_deref()
     );
 }
 

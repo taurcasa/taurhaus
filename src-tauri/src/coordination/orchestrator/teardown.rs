@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
@@ -14,8 +14,10 @@ use crate::coordination::stores::{MemberRuntimeRecord, TeamConfigStore};
 
 use super::{CoordinationOrchestrator, RemoveMemberStepResult};
 
-static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+static TEAM_DAEMON_SKIP_EVENTS: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
 const MISSING_LEAD_CREDENTIAL_REASON: &str = "missing_lead_control_credential";
+const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_hash";
+const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(super) struct TeardownDiagnostics {
@@ -293,10 +295,23 @@ impl CoordinationOrchestrator {
                 return false;
             }
         };
-        if !self.team_daemon_credential_exists(team_name, &operator_name) {
-            self.emit_team_daemon_skipped_once(team_name, &operator_name);
+        let skip_reason = match self.team_daemon_skip_reason(team_name, &operator_name) {
+            Ok(reason) => reason,
+            Err(err) => {
+                tracing::warn!(
+                    team = %team_name,
+                    operator = %operator_name,
+                    error = %err,
+                    "failed to verify team daemon authentication state"
+                );
+                return false;
+            }
+        };
+        if let Some(reason) = skip_reason {
+            self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
             return false;
         }
+        self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self.runtime.spawn_team_daemon(team_name, &operator_name) {
             Ok(pid) => {
                 tracing::info!(
@@ -334,15 +349,23 @@ impl CoordinationOrchestrator {
         team_name: &str,
     ) -> Result<(bool, Option<String>), CoordinationError> {
         let operator_name = self.team_daemon_operator_name(team_name)?;
-        if !self.team_daemon_credential_exists(team_name, &operator_name) {
-            self.emit_team_daemon_skipped_once(team_name, &operator_name);
-            return Ok((
-                false,
-                Some(format!(
-                    "team daemon skipped: lead control credential is missing for '{operator_name}'"
-                )),
-            ));
+        if let Some(reason) = self.team_daemon_skip_reason(team_name, &operator_name)? {
+            self.emit_team_daemon_skipped_once(team_name, &operator_name, reason);
+            let detail = match reason {
+                MISSING_LEAD_CREDENTIAL_REASON => {
+                    format!("lead control credential is missing for '{operator_name}'")
+                }
+                MISSING_LEAD_CONFIG_HASH_REASON => {
+                    format!("lead controlAuthTokenHash is missing for '{operator_name}'")
+                }
+                INACTIVE_LEAD_REASON => {
+                    format!("lead control identity is inactive for '{operator_name}'")
+                }
+                _ => format!("lead authentication is unavailable for '{operator_name}'"),
+            };
+            return Ok((false, Some(format!("team daemon skipped: {detail}"))));
         }
+        self.clear_team_daemon_skip_state(team_name, &operator_name);
         match self.runtime.spawn_team_daemon(team_name, &operator_name) {
             Ok(pid) => {
                 tracing::info!(
@@ -419,17 +442,63 @@ impl CoordinationOrchestrator {
             .join(format!("{operator_name}.json"))
     }
 
-    fn team_daemon_credential_exists(&self, team_name: &str, operator_name: &str) -> bool {
-        self.team_daemon_credential_path(team_name, operator_name)
+    fn team_daemon_skip_reason(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+    ) -> Result<Option<&'static str>, CoordinationError> {
+        if !self
+            .team_daemon_credential_path(team_name, operator_name)
             .is_file()
+        {
+            return Ok(Some(MISSING_LEAD_CREDENTIAL_REASON));
+        }
+
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let lead = config
+            .members
+            .iter()
+            .find(|member| member.name == operator_name)
+            .ok_or_else(|| {
+                CoordinationError::Conflict(format!(
+                    "team '{team_name}' has no configured lead member '{operator_name}'"
+                ))
+            })?;
+        let has_hash = lead
+            .extra
+            .get("controlAuthTokenHash")
+            .and_then(Value::as_str)
+            .is_some_and(|hash| !hash.trim().is_empty());
+        if !has_hash {
+            return Ok(Some(MISSING_LEAD_CONFIG_HASH_REASON));
+        }
+        if lead.extra.get("isActive").and_then(Value::as_bool) == Some(false) {
+            return Ok(Some(INACTIVE_LEAD_REASON));
+        }
+        Ok(None)
     }
 
-    fn emit_team_daemon_skipped_once(&self, team_name: &str, operator_name: &str) {
+    fn emit_team_daemon_skipped_once(
+        &self,
+        team_name: &str,
+        operator_name: &str,
+        reason: &'static str,
+    ) {
         let credential_path = self.team_daemon_credential_path(team_name, operator_name);
-        let emitted = TEAM_DAEMON_SKIP_EVENTS.get_or_init(|| Mutex::new(HashSet::new()));
+        let emitted = TEAM_DAEMON_SKIP_EVENTS.get_or_init(|| Mutex::new(HashMap::new()));
         let should_emit = emitted
             .lock()
-            .map(|mut paths| paths.insert(credential_path.clone()))
+            .map(|mut paths| {
+                if paths
+                    .get(&credential_path)
+                    .is_some_and(|previous| previous == reason)
+                {
+                    false
+                } else {
+                    paths.insert(credential_path.clone(), reason.to_string());
+                    true
+                }
+            })
             .unwrap_or(true);
         if !should_emit {
             return;
@@ -438,9 +507,9 @@ impl CoordinationOrchestrator {
         tracing::info!(
             team = %team_name,
             operator = %operator_name,
-            reason = MISSING_LEAD_CREDENTIAL_REASON,
+            reason,
             credential_path = %credential_path.display(),
-            "team daemon skipped because the lead control credential is missing"
+            "team daemon skipped because lead authentication is unavailable"
         );
         let mut fields = Map::new();
         fields.insert("team_name".into(), Value::String(team_name.to_string()));
@@ -448,10 +517,7 @@ impl CoordinationOrchestrator {
             "operator_name".into(),
             Value::String(operator_name.to_string()),
         );
-        fields.insert(
-            "reason".into(),
-            Value::String(MISSING_LEAD_CREDENTIAL_REASON.to_string()),
-        );
+        fields.insert("reason".into(), Value::String(reason.to_string()));
         fields.insert(
             "credential_path".into(),
             Value::String(credential_path.display().to_string()),
@@ -460,9 +526,18 @@ impl CoordinationOrchestrator {
             "info",
             "coordination",
             "coordination.team_daemon.skipped",
-            Some("Team daemon skipped because the lead credential is missing".to_string()),
+            Some("Team daemon skipped because lead authentication is unavailable".to_string()),
             fields,
         );
+    }
+
+    fn clear_team_daemon_skip_state(&self, team_name: &str, operator_name: &str) {
+        let credential_path = self.team_daemon_credential_path(team_name, operator_name);
+        if let Some(emitted) = TEAM_DAEMON_SKIP_EVENTS.get() {
+            if let Ok(mut paths) = emitted.lock() {
+                paths.remove(&credential_path);
+            }
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 //! Shared coordination app state with lazy orchestrator bootstrap.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
@@ -18,8 +18,9 @@ use crate::coordination::stores::TeamConfigStore;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
-type BackendFactory =
-    dyn Fn(BackendKind) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> + Send + Sync;
+type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationBackend>, CoordinationError>
+    + Send
+    + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -175,7 +176,7 @@ impl CoordinationState {
 
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select(CliTool::Codex);
-        let backend = (self.backend_factory)(kind)?;
+        let backend = (self.backend_factory)(kind, &self.teams_dir)?;
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
             CoordinationOrchestrator::new_with_runtime(self.teams_dir.clone(), backend, runtime);
@@ -212,7 +213,7 @@ impl CoordinationState {
 
     fn build_background_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
         let kind = self.backend_selector.select(CliTool::Codex);
-        let backend = (self.backend_factory)(kind)?;
+        let backend = (self.backend_factory)(kind, &self.teams_dir)?;
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
             CoordinationOrchestrator::new_with_runtime(self.teams_dir.clone(), backend, runtime);
@@ -248,10 +249,13 @@ fn ensure_startup_claude_compact_hook(
 
 fn default_backend_factory(
     kind: BackendKind,
+    teams_dir: &Path,
 ) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> {
     let backend: Arc<dyn CoordinationBackend> = match kind {
-        BackendKind::MeshBridged => Arc::new(MeshBridgedBackend::default()),
-        BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend::new(PlatformPaths::teams_dir())),
+        BackendKind::MeshBridged => Arc::new(MeshBridgedBackend::new_with_teams_dir(
+            teams_dir.to_path_buf(),
+        )),
+        BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend::new(teams_dir.to_path_buf())),
     };
     Ok(backend)
 }
@@ -324,7 +328,7 @@ mod tests {
     }
 
     fn fake_factory_with_counter(counter: Arc<AtomicUsize>) -> Arc<BackendFactory> {
-        Arc::new(move |_kind| {
+        Arc::new(move |_kind, _teams_dir| {
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
         })
@@ -378,6 +382,19 @@ mod tests {
     }
 
     fn write_lead_credential(teams_dir: &std::path::Path, team_name: &str) {
+        let mut config = TeamConfigStore::load(teams_dir, team_name).expect("team config");
+        let lead = config
+            .members
+            .iter_mut()
+            .find(|member| member.role == MemberRole::Lead)
+            .expect("lead member");
+        lead.extra.insert(
+            "controlAuthTokenHash".to_string(),
+            serde_json::Value::String("sha256:test-token".to_string()),
+        );
+        lead.extra
+            .insert("isActive".to_string(), serde_json::Value::Bool(true));
+        TeamConfigStore::save(teams_dir, team_name, &config).expect("save lead auth hash");
         let dir = teams_dir.join(team_name).join("state").join("control_auth");
         std::fs::create_dir_all(&dir).expect("credential dir");
         std::fs::write(
@@ -594,11 +611,67 @@ mod tests {
     }
 
     #[test]
+    fn default_backend_delivery_uses_the_state_teams_dir() {
+        // Regression: 694b130 gave MeshBridgedBackend its own PlatformPaths root,
+        // so state-scoped delivery silently appended outside the owning store.
+        let _guard = acquire_env_test_guard();
+        let tmp = TempDir::new().expect("tempdir");
+        let platform_claude_dir = tmp.path().join("platform-claude");
+        let teams_dir = tmp.path().join("state-teams");
+        std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, &platform_claude_dir);
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = CoordinationState::with_components_and_runtime(
+            teams_dir.clone(),
+            BackendSelector::m0(),
+            Arc::new(default_backend_factory),
+            Arc::new(move || runtime.clone()),
+        );
+
+        let result = state.with_orchestrator(|orchestrator| {
+            orchestrator.create_team("root-authority", None)?;
+            orchestrator.add_member(
+                "root-authority",
+                sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/project"),
+            )?;
+            orchestrator.deliver_message(DeliveryRequest::operator_notice(
+                OperatorNoticeDelivery {
+                    team_name: "root-authority".to_string(),
+                    member_name: "builder".to_string(),
+                    message: "status?".to_string(),
+                    sender_name: None,
+                    operational_context: None,
+                },
+            ))?;
+            Ok(())
+        });
+        std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
+        result.expect("delivery succeeds");
+
+        assert!(
+            teams_dir
+                .join("root-authority")
+                .join("inboxes")
+                .join("builder.json")
+                .is_file(),
+            "delivery must append beneath CoordinationState::teams_dir"
+        );
+        assert!(
+            !platform_claude_dir
+                .join("teams")
+                .join("root-authority")
+                .join("inboxes")
+                .join("builder.json")
+                .exists(),
+            "delivery must not resolve an independent platform root"
+        );
+    }
+
+    #[test]
     fn bootstrap_failure_from_factory_is_propagated() {
         let state = CoordinationState::with_components(
             PathBuf::from("/tmp/teams"),
             BackendSelector::m0(),
-            Arc::new(|_kind| {
+            Arc::new(|_kind, _teams_dir| {
                 Err(CoordinationError::Backend(
                     "simulated backend factory failure".to_string(),
                 ))
@@ -649,7 +722,7 @@ mod tests {
         let state = CoordinationState::with_components(
             PathBuf::from("/tmp/teams"),
             BackendSelector::m0(),
-            Arc::new(move |_kind| {
+            Arc::new(move |_kind, _teams_dir| {
                 calls_clone.fetch_add(1, Ordering::SeqCst);
                 Err(CoordinationError::Backend(
                     "mesh unavailable until first command".to_string(),
@@ -801,7 +874,9 @@ mod tests {
         let state = CoordinationState::with_components_and_runtime(
             tmp.path().to_path_buf(),
             BackendSelector::m0(),
-            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
             Arc::new({
                 let runtime = runtime.clone();
                 move || runtime.clone()
@@ -877,7 +952,9 @@ mod tests {
         let state = CoordinationState::with_components_and_runtime(
             tmp.path().to_path_buf(),
             BackendSelector::m0(),
-            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
             Arc::new({
                 let runtime = runtime.clone();
                 move || runtime.clone()
@@ -937,7 +1014,9 @@ mod tests {
         let state = CoordinationState::with_components_and_runtime(
             tmp.path().to_path_buf(),
             BackendSelector::m0(),
-            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
             Arc::new({
                 let runtime = runtime.clone();
                 move || runtime.clone()
@@ -1023,7 +1102,7 @@ mod tests {
         let state = CoordinationState::with_components_and_runtime(
             tmp.path().to_path_buf(),
             BackendSelector::m0(),
-            Arc::new(move |_kind| {
+            Arc::new(move |_kind, _teams_dir| {
                 Ok(Arc::new(fake_for_factory.clone()) as Arc<dyn CoordinationBackend>)
             }),
             Arc::new({
@@ -1120,7 +1199,9 @@ mod tests {
         let state = CoordinationState::with_components_and_runtime(
             tmp.path().to_path_buf(),
             BackendSelector::m0(),
-            Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
             Arc::new({
                 let runtime = runtime.clone();
                 move || runtime.clone()

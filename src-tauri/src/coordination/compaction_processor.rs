@@ -722,31 +722,35 @@ mod tests {
 
         append_codex_inbox_message(teams_dir, team_name, member_name, &card, now)
             .expect("append compaction card");
-        let compaction = MeshInboxStore::load(teams_dir, team_name, member_name)
-            .expect("load compaction")
-            .remove(0);
-        let mut operator = MeshInboxMessage::operator_originated(
-            member_name,
-            rendered,
-            Some("operator_notice".to_string()),
-            now,
-            None,
-        );
-        operator.id.clone_from(&compaction.id);
-        MeshInboxStore::append(teams_dir, team_name, member_name, &operator)
-            .expect("append operator notice");
+        let backend =
+            crate::coordination::backend::ClaudeNativeBackend::new(teams_dir.to_path_buf());
+        crate::coordination::backend::CoordinationBackend::deliver(
+            &backend,
+            crate::coordination::requests::DeliveryRequest::operator_notice(
+                crate::coordination::requests::OperatorNoticeDelivery {
+                    member_name: member_name.to_string(),
+                    team_name: team_name.to_string(),
+                    message: rendered,
+                    sender_name: None,
+                    operational_context: None,
+                },
+            ),
+        )
+        .expect("deliver operator notice through real backend");
 
         let records = MeshInboxStore::load(teams_dir, team_name, member_name).expect("load inbox");
         let mut compaction_value = serde_json::to_value(&records[0]).expect("serialize compaction");
         let mut operator_value = serde_json::to_value(&records[1]).expect("serialize operator");
-        compaction_value
-            .as_object_mut()
-            .expect("compaction object")
-            .remove("summary");
-        operator_value
-            .as_object_mut()
-            .expect("operator object")
-            .remove("summary");
+        for key in ["id", "timestamp", "text", "summary"] {
+            compaction_value
+                .as_object_mut()
+                .expect("compaction object")
+                .remove(key);
+            operator_value
+                .as_object_mut()
+                .expect("operator object")
+                .remove(key);
+        }
         assert_eq!(compaction_value, operator_value);
         assert_eq!(
             records[0].from,

@@ -103,13 +103,16 @@ impl CoordinationOrchestrator {
                     return Err(error);
                 }
 
-                if result.method == DeliveryMethod::InboxFile && member_cli_tool != CliTool::Claude
+                let ensured_daemon_pid = if result.method == DeliveryMethod::InboxFile
+                    && member_cli_tool != CliTool::Claude
                 {
                     self.ensure_member_daemon_after_inbox_append_best_effort(
                         &team_name_owned,
                         &member_name_owned,
-                    );
-                }
+                    )
+                } else {
+                    None
+                };
 
                 self.audit_log
                     .push(AuditEvent::DeliverySucceeded(DeliverySucceededEvent {
@@ -136,23 +139,24 @@ impl CoordinationOrchestrator {
                     }
                 }
 
-                if let Ok(mut runtime) =
-                    MemberRuntimeStore::load(&self.teams_dir, &team_name_owned, &member_name_owned)
-                {
-                    runtime.last_seen_at = Some(Utc::now());
-                    if let Err(err) = MemberRuntimeStore::save(
-                        &self.teams_dir,
-                        &team_name_owned,
-                        &member_name_owned,
-                        &runtime,
-                    ) {
-                        tracing::warn!(
-                            team_name = %team_name_owned,
-                            member_name = %member_name_owned,
-                            error = %err,
-                            "failed to persist runtime last_seen after successful delivery"
-                        );
-                    }
+                let delivered_at = Utc::now();
+                if let Err(err) = MemberRuntimeStore::update(
+                    &self.teams_dir,
+                    &team_name_owned,
+                    &member_name_owned,
+                    |runtime| {
+                        runtime.last_seen_at = Some(delivered_at);
+                        if let Some(daemon_pid) = ensured_daemon_pid {
+                            runtime.daemon_pid = Some(daemon_pid);
+                        }
+                    },
+                ) {
+                    tracing::warn!(
+                        team_name = %team_name_owned,
+                        member_name = %member_name_owned,
+                        error = %err,
+                        "failed to persist runtime delivery state after successful delivery"
+                    );
                 }
 
                 Ok(result)
@@ -175,15 +179,14 @@ impl CoordinationOrchestrator {
         &self,
         team_name: &str,
         member_name: &str,
-    ) {
-        let Ok(mut runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name)
-        else {
+    ) -> Option<u32> {
+        let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) else {
             tracing::warn!(
                 team = %team_name,
                 member = %member_name,
                 "inbox append succeeded but member runtime was unavailable for daemon wake"
             );
-            return;
+            return None;
         };
         let Some(pane_id) = runtime.pane_id.as_deref() else {
             tracing::warn!(
@@ -191,14 +194,14 @@ impl CoordinationOrchestrator {
                 member = %member_name,
                 "inbox append succeeded but member has no pane for daemon wake"
             );
-            return;
+            return None;
         };
 
         let daemon_is_live = runtime
             .daemon_pid
             .is_some_and(|pid| self.runtime.is_process_running_by_pid(pid).unwrap_or(false));
         if daemon_is_live {
-            return;
+            return None;
         }
 
         let existing_pid = self
@@ -224,21 +227,7 @@ impl CoordinationOrchestrator {
                 }
             }
         });
-        let Some(daemon_pid) = daemon_pid else {
-            return;
-        };
-        runtime.daemon_pid = Some(daemon_pid);
-        if let Err(err) =
-            MemberRuntimeStore::save(&self.teams_dir, team_name, member_name, &runtime)
-        {
-            tracing::warn!(
-                team = %team_name,
-                member = %member_name,
-                pid = daemon_pid,
-                error = %err,
-                "member daemon was ensured but its runtime pid could not be persisted"
-            );
-        }
+        daemon_pid
     }
 
     /// Record a lease-claim audit event.

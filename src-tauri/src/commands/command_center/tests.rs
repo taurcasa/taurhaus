@@ -98,7 +98,9 @@ fn test_coordination_state(
     CoordinationState::with_components_and_runtime(
         teams_dir.to_path_buf(),
         BackendSelector::m0(),
-        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|_kind, _teams_dir| {
+            Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+        }),
         Arc::new(move || runtime.clone() as Arc<dyn CoordinationRuntime>),
     )
 }

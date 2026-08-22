@@ -470,7 +470,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         mut self,
         stage: InitializeMemberActivationStage,
         per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
-    ) -> Result<(), (String, CoordinationError)> {
+    ) -> Result<Option<String>, (String, CoordinationError)> {
         let prepared = match self.prepare_initialize() {
             Ok(prepared) => prepared,
             Err(err) => return Err(("add_lead".to_string(), err)),
@@ -479,13 +479,13 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         match stage {
             InitializeMemberActivationStage::CreatePanes => {
                 if self.initialize_member_skips_launch() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 self.initialize_create_pane_and_launch(&prepared, per_project_anchor_panes)
             }
             InitializeMemberActivationStage::LaunchSessions => {
                 if self.initialize_member_skips_launch() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 self.initialize_capture_session_identity(&prepared)
             }
@@ -517,7 +517,8 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 }
                 Ok(())
             }
-        }
+        }?;
+        Ok(self.warnings.into_iter().next())
     }
 
     fn prepare_initialize(&mut self) -> Result<PreparedMemberActivation, CoordinationError> {
@@ -865,6 +866,27 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 Ok(())
             }
             Err(err) => {
+                if prepared.member.cli_tool == CliTool::Claude
+                    && prepared.member.role == MemberRole::Lead
+                {
+                    let message = format!(
+                        "Claude lead mesh credential refresh failed; continuing without team daemon: {err}"
+                    );
+                    tracing::warn!(
+                        team = %prepared.activation_context.team_name,
+                        member = %prepared.member.name,
+                        error = %err,
+                        "Claude lead activation committed without a refreshed mesh credential"
+                    );
+                    self.warnings.push(message.clone());
+                    self.record_step_success("join_mesh", &message);
+                    self.emit_stage(
+                        MemberActivationStage::JoinMesh,
+                        StepStatus::Succeeded,
+                        Some(message),
+                    );
+                    return Ok(());
+                }
                 self.cleanup_failure();
                 self.emit_stage(
                     MemberActivationStage::JoinMesh,

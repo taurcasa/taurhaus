@@ -3,6 +3,8 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 use fs2::FileExt;
 
@@ -10,9 +12,43 @@ use crate::coordination::errors::CoordinationError;
 
 const LOCK_FILENAME: &str = ".lock";
 const INODE_RETRY_LIMIT: usize = 50;
+const READ_RETRY_BACKOFFS: [Duration; 3] = [
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(500),
+];
 
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+}
+
+pub(super) fn is_transient_file_lock_error(err: &std::io::Error) -> bool {
+    matches!(err.raw_os_error(), Some(5 | 32 | 33))
+}
+
+pub(super) fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> {
+    let mut retry_index = 0;
+    loop {
+        match fs::read_to_string(path) {
+            Ok(contents) => return Ok(contents),
+            Err(err) if is_transient_file_lock_error(&err) => {
+                let Some(delay) = READ_RETRY_BACKOFFS.get(retry_index).copied() else {
+                    return Err(err);
+                };
+                retry_index += 1;
+                tracing::warn!(
+                    path = %path.display(),
+                    attempt = retry_index,
+                    max_attempts = READ_RETRY_BACKOFFS.len() + 1,
+                    retry_in_ms = delay.as_millis() as u64,
+                    raw_os_error = ?err.raw_os_error(),
+                    "target file is temporarily locked; retrying read"
+                );
+                thread::sleep(delay);
+            }
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 /// Acquire an exclusive advisory lock on a team directory.
@@ -131,6 +167,15 @@ mod tests {
     fn non_unsupported_lock_error_is_rejected() {
         let err = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
         assert!(!is_windows_unsupported_lock_error(&err));
+    }
+
+    #[test]
+    fn windows_lock_violation_is_a_transient_file_lock() {
+        // Regression: 694b130 introduced target-file locks but omitted Windows
+        // ERROR_LOCK_VIOLATION (33) from the unlocked-reader retry policy.
+        assert!(is_transient_file_lock_error(
+            &std::io::Error::from_raw_os_error(33)
+        ));
     }
 
     #[test]

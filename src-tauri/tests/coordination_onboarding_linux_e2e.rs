@@ -23,7 +23,7 @@ use coordination::backend::MeshBridgedBackend;
 use coordination::orchestrator::CoordinationOrchestrator;
 use coordination::requests::{AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::runtime::SystemCoordinationRuntime;
-use coordination::stores::MemberRuntimeStore;
+use coordination::stores::{MemberRuntimeStore, MeshInboxStore, OPERATOR_SENDER_NAME};
 
 const LOG_ENV: &str = "TAURHAUS_ONBOARDING_E2E_LOG";
 const COUNTER_ENV: &str = "TAURHAUS_ONBOARDING_E2E_COUNTER";
@@ -354,7 +354,7 @@ int main(int argc, char **argv) {{
 
     let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
         teams_dir.clone(),
-        Arc::new(MeshBridgedBackend::default()),
+        Arc::new(MeshBridgedBackend::new_with_teams_dir(teams_dir.clone())),
         Arc::new(SystemCoordinationRuntime),
     );
     let request = make_request(
@@ -381,6 +381,19 @@ int main(int argc, char **argv) {{
             .expect("frontend runtime should exist");
     let reviewer_runtime = MemberRuntimeStore::load(&teams_dir, "linux-onboarding-e2e", "reviewer")
         .expect("reviewer runtime should exist");
+    for member_name in ["team-lead", "frontend-dev", "reviewer"] {
+        let inbox = MeshInboxStore::load(&teams_dir, "linux-onboarding-e2e", member_name)
+            .expect("onboarding inbox should exist beneath the orchestrator teams root");
+        assert_eq!(inbox.len(), 1, "one onboarding record for {member_name}");
+        assert_ne!(
+            inbox[0].from, member_name,
+            "operator onboarding must never self-send"
+        );
+        assert!(
+            inbox[0].from == OPERATOR_SENDER_NAME || inbox[0].from == "team-lead",
+            "onboarding sender should be the operator identity or configured lead"
+        );
+    }
 
     let log = fs::read_to_string(&log_path).expect("read call log");
     // tmux receives the rendered launch as a nested single-quoted shell word.

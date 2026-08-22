@@ -31,7 +31,7 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 ];
 
 fn is_transient_lock_error(err: &std::io::Error) -> bool {
-    matches!(err.raw_os_error(), Some(5 | 32))
+    super::lock::is_transient_file_lock_error(err)
 }
 
 fn is_atomic_write_fallback_error(err: &std::io::Error) -> bool {
@@ -293,13 +293,22 @@ impl TeamConfigStore {
     /// Load a single team configuration from `<teams_dir>/<team_name>/config.json`.
     pub fn load(teams_dir: &Path, team_name: &str) -> Result<TeamConfig, CoordinationError> {
         let config_path = config_path(teams_dir, team_name);
-        let raw = fs::read_to_string(&config_path).map_err(|err| match err.kind() {
+        let raw = super::lock::read_to_string_with_retry(&config_path).map_err(|err| match err
+            .kind()
+        {
             std::io::ErrorKind::NotFound => CoordinationError::NotFound(format!(
                 "team config not found for '{team_name}' at {}",
                 config_path.display()
             )),
             _ => CoordinationError::Io(err),
         })?;
+
+        if raw.trim().is_empty() {
+            return Err(CoordinationError::NotFound(format!(
+                "team config is empty for '{team_name}' at {}",
+                config_path.display()
+            )));
+        }
 
         parse_team_config(&raw, team_name)
     }
@@ -317,13 +326,9 @@ impl TeamConfigStore {
             coordination_err
         })?;
 
-        let target_path = config_path(teams_dir, team_name);
-        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
-            .inspect_err(|err| log_config_store_error("lock", &target_path, err, None))?;
         let mut normalized = config.clone();
         normalized.schema_version = 1;
         normalized.name = team_name.to_string();
-        merge_current_extension_fields(&mut normalized, &target_lock.read_contents()?, team_name)?;
 
         let tmp_path = team_dir.join(CONFIG_TMP_FILENAME);
         let runtime_by_member = match MemberRuntimeStore::load_all(teams_dir, team_name) {
@@ -337,6 +342,28 @@ impl TeamConfigStore {
                 HashMap::new()
             }
         };
+        let target_path = config_path(teams_dir, team_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
+            .inspect_err(|err| log_config_store_error("lock", &target_path, err, None))?;
+        match target_lock.read_contents() {
+            Ok(current_raw) => {
+                if let Err(err) =
+                    merge_current_extension_fields(&mut normalized, &current_raw, team_name)
+                {
+                    log_config_store_error("merge_extensions", &target_path, &err, None);
+                }
+            }
+            Err(err)
+                if matches!(
+                    &err,
+                    CoordinationError::Io(io_err)
+                        if io_err.kind() == std::io::ErrorKind::InvalidData
+                ) =>
+            {
+                log_config_store_error("merge_extensions", &target_path, &err, None);
+            }
+            Err(err) => return Err(err),
+        }
         let payload =
             serde_json::to_string_pretty(&mesh_compatible_wire(&normalized, &runtime_by_member))
                 .map_err(|err| {
@@ -1244,6 +1271,32 @@ mod tests {
     }
 
     #[test]
+    fn retry_file_operation_retries_windows_lock_violation() {
+        // Regression: 694b130 locked config.json itself while unlocked Windows
+        // readers treated ERROR_LOCK_VIOLATION (33) as a permanent I/O failure.
+        let mut attempts = 0;
+        let result = retry_file_operation_with_sleep(
+            "read",
+            Path::new("C:/tmp/config.json"),
+            None,
+            &[Duration::ZERO],
+            &mut || {
+                attempts += 1;
+                if attempts == 1 {
+                    Err(std::io::Error::from_raw_os_error(33))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut |_| {},
+            |_| {},
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(attempts, 2);
+    }
+
+    #[test]
     fn retry_file_operation_stops_after_retry_budget_is_exhausted() {
         let mut attempts = 0;
         let mut slept = Vec::new();
@@ -1595,6 +1648,50 @@ mod tests {
             }
             other => panic!("expected store error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn save_repairs_an_unparseable_existing_config() {
+        // Regression: 694b130 made extension-field preservation fatal, wedging
+        // every later save when config.json was partial, foreign, or corrupt.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "repair-corrupt-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+        fs::write(dir.join(CONFIG_FILENAME), "{ truncated").expect("write corrupt config");
+        let replacement = sample_config(team_name);
+
+        TeamConfigStore::save(tmp.path(), team_name, &replacement)
+            .expect("a valid taurhaus save should repair corrupt config.json");
+
+        assert_eq!(
+            TeamConfigStore::load(tmp.path(), team_name).expect("load repaired config"),
+            replacement
+        );
+
+        fs::write(dir.join(CONFIG_FILENAME), [0xff, 0xfe]).expect("write non-UTF-8 config");
+        TeamConfigStore::save(tmp.path(), team_name, &replacement)
+            .expect("a valid taurhaus save should repair non-UTF-8 config.json");
+        assert_eq!(
+            TeamConfigStore::load(tmp.path(), team_name).expect("load UTF-8 repaired config"),
+            replacement
+        );
+    }
+
+    #[test]
+    fn empty_config_is_treated_as_not_found() {
+        // Regression: 694b130 could create config.json before a failed save,
+        // leaving an empty file that blocked later team creation as corruption.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "empty-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+        fs::write(dir.join(CONFIG_FILENAME), "").expect("write empty config");
+
+        assert!(matches!(
+            TeamConfigStore::load(tmp.path(), team_name),
+            Err(CoordinationError::NotFound(_))
+        ));
     }
 
     #[test]

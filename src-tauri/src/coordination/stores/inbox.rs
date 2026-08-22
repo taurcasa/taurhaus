@@ -103,7 +103,7 @@ impl MeshInboxStore {
         member_name: &str,
     ) -> Result<Vec<MeshInboxMessage>, CoordinationError> {
         let path = inbox_path(teams_dir, team_name, member_name);
-        let raw = match fs::read_to_string(&path) {
+        let raw = match super::lock::read_to_string_with_retry(&path) {
             Ok(raw) => raw,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(err) => return Err(CoordinationError::Io(err)),

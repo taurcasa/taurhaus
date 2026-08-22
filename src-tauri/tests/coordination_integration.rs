@@ -204,7 +204,9 @@ fn test_state(teams_dir: PathBuf) -> CoordinationState {
     CoordinationState::with_components_and_runtime(
         teams_dir,
         BackendSelector::m0(),
-        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|_kind, _teams_dir| {
+            Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+        }),
         Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
     )
 }
@@ -217,7 +219,9 @@ fn test_state_with_runtime(
     let state = CoordinationState::with_components_and_runtime(
         teams_dir,
         BackendSelector::m0(),
-        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|_kind, _teams_dir| {
+            Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+        }),
         Arc::new(move || runtime_for_factory.clone() as Arc<dyn CoordinationRuntime>),
     );
     (state, runtime)
