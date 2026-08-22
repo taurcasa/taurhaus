@@ -312,7 +312,7 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
 fn run_claude_compact_hook_cli() -> i32 {
     let _log_state = init_coordination_cli_log_sink();
     let response = (|| -> Result<String, crate::coordination::errors::CoordinationError> {
-        let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
+        let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
         let hook_response = crate::coordination::claude_hooks::handle_session_start_hook_stdin(
             io::stdin(),
             &teams_dir,

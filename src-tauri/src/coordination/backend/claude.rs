@@ -60,7 +60,7 @@ impl ClaudeNativeBackend {
 
 impl Default for ClaudeNativeBackend {
     fn default() -> Self {
-        Self::new(crate::coordination::stores::operational::default_operational_teams_dir())
+        Self::new(crate::provider::platform_paths::PlatformPaths::teams_dir())
     }
 }
 

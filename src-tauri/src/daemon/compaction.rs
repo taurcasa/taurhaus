@@ -32,11 +32,7 @@ pub struct DaemonCompactionRuntime {
 
 impl DaemonCompactionRuntime {
     pub fn maybe_start() -> Result<Option<Self>, CoordinationError> {
-        if !running_under_wsl() {
-            return Ok(None);
-        }
-
-        let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
+        let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
         let runtime = Self::start_with_processor(
             teams_dir,
             crate::session_scanner::latest_compaction_runtime_sessions(),
@@ -132,10 +128,6 @@ impl Drop for DaemonCompactionRuntime {
         }
         compaction_extractor::stop_compaction_extractor_service();
     }
-}
-
-fn running_under_wsl() -> bool {
-    cfg!(target_os = "linux") && std::env::var_os("WSL_DISTRO_NAME").is_some()
 }
 
 fn update_team_watchers(

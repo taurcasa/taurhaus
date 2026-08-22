@@ -19,12 +19,15 @@ pub struct CompactionWatcherState {
     _watcher_service: CompactionSignalWatcherService,
 }
 
-pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> {
-    if cfg!(target_os = "windows") {
+pub(crate) fn initialize(
+    app: &mut tauri::App,
+    daemon_configured: bool,
+) -> Result<(), CoordinationError> {
+    if daemon_configured {
         return Ok(());
     }
 
-    let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
+    let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
     // Continuity read: this only seeds the extractor's set of Codex transcripts
     // to tail; every later healthy scan republishes that set and supersedes
     // the seed, so a degraded seed is the last good set, not a binding.

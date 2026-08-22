@@ -428,6 +428,7 @@ mod tests {
 
     #[test]
     fn emit_compaction_unresolved_writes_structured_event() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().expect("tempdir");
         let log_path = tmp.path().join("compaction-events.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");

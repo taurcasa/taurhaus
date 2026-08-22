@@ -7,9 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::mesh_cli;
+use crate::provider::platform_paths::PlatformPaths;
 
-const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const OPERATIONAL_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,11 +134,8 @@ impl OperationalContextSnapshotStore {
 }
 
 pub fn read_snapshot(team_name: &str, member_name: &str) -> Option<OperationalContextSnapshot> {
-    match OperationalContextSnapshotStore::load(
-        &default_operational_teams_dir(),
-        team_name,
-        member_name,
-    ) {
+    match OperationalContextSnapshotStore::load(&PlatformPaths::teams_dir(), team_name, member_name)
+    {
         Ok(snapshot) => snapshot,
         Err(error) => {
             tracing::warn!(
@@ -154,22 +150,7 @@ pub fn read_snapshot(team_name: &str, member_name: &str) -> Option<OperationalCo
 }
 
 pub fn write_snapshot(snapshot: &OperationalContextSnapshot) -> Result<(), CoordinationError> {
-    OperationalContextSnapshotStore::save(&default_operational_teams_dir(), snapshot)
-}
-
-pub(crate) fn default_operational_teams_dir() -> PathBuf {
-    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
-        if !path.is_empty() {
-            return PathBuf::from(path).join("teams");
-        }
-    }
-    if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
-        return path;
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"))
-        .join(".claude")
-        .join("teams")
+    OperationalContextSnapshotStore::save(&PlatformPaths::teams_dir(), snapshot)
 }
 
 fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {

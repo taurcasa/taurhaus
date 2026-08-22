@@ -83,7 +83,7 @@ pub(crate) fn persist_task_scan_with_generation(
         scan_result,
         generation_state,
         scan_generation,
-        &crate::coordination::stores::operational::default_operational_teams_dir(),
+        &crate::provider::platform_paths::PlatformPaths::teams_dir(),
     );
 }
 

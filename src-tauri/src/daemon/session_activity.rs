@@ -7,9 +7,10 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 
 use crate::coordination::activity_export::{
-    default_activity_export_teams_dir, enrich_runtime_sessions_with_team_membership,
-    enrich_sessions_with_team_membership, export_activity_snapshots_for_sessions,
+    enrich_runtime_sessions_with_team_membership, enrich_sessions_with_team_membership,
+    export_activity_snapshots_for_sessions,
 };
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::tmux::{self, TmuxFocusState};
 use crate::session_scanner::SessionState;
@@ -343,7 +344,7 @@ impl SessionActivityHub {
 
             loop {
                 let loop_started_at = Instant::now();
-                let teams_dir = default_activity_export_teams_dir();
+                let teams_dir = PlatformPaths::teams_dir();
                 let cycle = scan_cycle(&teams_dir);
 
                 let decision = hub.commit_cycle(

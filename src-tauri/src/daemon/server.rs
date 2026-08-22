@@ -83,8 +83,6 @@ pub fn run(
 ) -> std::io::Result<()> {
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, Duration::from_millis(750));
-    let _compaction_runtime = crate::daemon::compaction::DaemonCompactionRuntime::maybe_start()
-        .map_err(std::io::Error::other)?;
 
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
@@ -106,6 +104,18 @@ pub fn run(
         listener
     };
     listener.set_nonblocking(true)?;
+
+    let _compaction_runtime =
+        match crate::daemon::compaction::DaemonCompactionRuntime::maybe_start() {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "daemon compaction initialization failed after bind; server remains available"
+                );
+                None
+            }
+        };
 
     let start_time = Instant::now();
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
@@ -480,6 +490,13 @@ mod tests {
 
     fn start_server(config: DaemonConfig) -> TestServer {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        start_server_with_heavy_guard(config, heavy_guard)
+    }
+
+    fn start_server_with_heavy_guard(
+        config: DaemonConfig,
+        heavy_guard: crate::test_support::HeavyTestGuard,
+    ) -> TestServer {
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
@@ -512,6 +529,24 @@ mod tests {
             idle_timeout_secs: None,
             auth_token: None,
         })
+    }
+
+    fn start_test_server_with_heavy_guard(
+        heavy_guard: crate::test_support::HeavyTestGuard,
+    ) -> TestServer {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        start_server_with_heavy_guard(
+            DaemonConfig {
+                port,
+                bind_addr: "127.0.0.1".to_string(),
+                idle_timeout_secs: None,
+                auth_token: None,
+            },
+            heavy_guard,
+        )
     }
 
     fn send_request(
@@ -566,6 +601,8 @@ mod tests {
 
     #[test]
     fn server_start_eagerly_emits_session_scan_cycles() {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _global_log_guard = crate::test_support::acquire_global_log_test_guard();
         let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let log_dir = tempfile::TempDir::new().expect("tempdir");
         let log_path = log_dir.path().join("taurhaus.log.jsonl");
@@ -573,7 +610,7 @@ mod tests {
             crate::commands::logging::LogFileState::new(log_path.clone()).expect("log state");
         crate::commands::logging::install_global_sink(&log_state);
 
-        let server = start_test_server();
+        let server = start_test_server_with_heavy_guard(heavy_guard);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
         let mut observed = false;
 
@@ -596,6 +633,8 @@ mod tests {
 
     #[test]
     fn server_emits_state_changed_inotify_telemetry_after_watch_registration() {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _global_log_guard = crate::test_support::acquire_global_log_test_guard();
         let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let log_dir = tempfile::TempDir::new().expect("tempdir");
         let log_path = log_dir.path().join("taurhaus.log.jsonl");
@@ -609,7 +648,7 @@ mod tests {
         let watched = project_dir.path().join("watched");
         std::fs::create_dir_all(&watched).expect("watched dir");
 
-        let server = start_test_server();
+        let server = start_test_server_with_heavy_guard(heavy_guard);
         let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).expect("connect");

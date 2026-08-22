@@ -42,7 +42,12 @@ pub(super) fn run_startup_orchestration(
     );
 
     #[cfg(feature = "mesh-bridged-backend")]
-    crate::startup::compaction::initialize(app)?;
+    if let Err(error) = crate::startup::compaction::initialize(app, context.daemon_addr.is_some()) {
+        tracing::warn!(
+            error = %error,
+            "app-owned compaction initialization failed; startup continues"
+        );
+    }
 
     let search_started_at = Instant::now();
     let search_doc_count = match crate::startup::search::initialize(app, context) {
