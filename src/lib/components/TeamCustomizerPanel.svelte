@@ -8,6 +8,7 @@
     defaultEffortFor,
     defaultModelFor,
     parseLegacyModel,
+    roleDeclaredEffort,
   } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
@@ -22,6 +23,7 @@
     teamConfig = null,
     context = null,
     modelCatalog = null,
+    roleTemplates = [],
     onClose = () => {},
     onSave = () => {},
     onReset = () => {},
@@ -67,6 +69,20 @@
       .map((project) => normalizeProjectOption(project, { stringLabel: 'raw', objectFallbackLabel: 'raw' }))
       .filter((project) => project.id)
   )
+
+  // The effort a role-bound row actually launches with when it declares none
+  // itself: the backend refills it from the role template
+  // (`apply_role_template_defaults`, `hydrate_member_model_fields`), so the
+  // editor must show it instead of offering a clear it cannot deliver.
+  function effortFromRole(roleId) {
+    const id = String(roleId ?? '').trim()
+    if (!id) return null
+    return roleDeclaredEffort(
+      (roleTemplates ?? []).find(
+        (entry) => String(entry?.roleId ?? entry?.role_id ?? '').trim() === id
+      )
+    )
+  }
 
   function normalizeOptionalTool(value) {
     const normalized = String(value ?? '').trim().toLowerCase()
@@ -402,6 +418,7 @@
             tool={lead.tool}
             model={lead.model}
             reasoningEffort={lead.reasoningEffort}
+            inheritedEffort={effortFromRole(lead.roleId)}
             modelCatalog={catalog}
             projectId={lead.projectId}
             description={lead.description}
@@ -422,6 +439,7 @@
               tool={agent.tool}
               model={agent.model}
               reasoningEffort={agent.reasoningEffort}
+              inheritedEffort={effortFromRole(agent.roleId)}
               modelCatalog={catalog}
               projectId={agent.projectId}
               description={agent.description}

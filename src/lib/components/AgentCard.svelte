@@ -10,6 +10,9 @@
     tool = 'claude',
     model = '',
     reasoningEffort = null,
+    // The effort the bound role declares: the backend refills an unset effort
+    // from it, so the row must not offer to clear what it cannot clear.
+    inheritedEffort = null,
     projectId = '',
     role = 'agent',
     description = '',
@@ -202,6 +205,7 @@
             tool={normalizedTool}
             model={draft.model}
             reasoningEffort={draft.reasoningEffort}
+            {inheritedEffort}
             {catalog}
             {dark}
             compact

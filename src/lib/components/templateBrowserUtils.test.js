@@ -90,11 +90,14 @@ describe('templateBrowserUtils normalizeRoleTemplate', () => {
       ]
     )
 
+    // The legacy combined spelling is split here, the same way the roster splits
+    // it downstream, so both directions of the editor read one role default.
     expect(teamConfig.lead).toEqual(expect.objectContaining({
       roleId: 'codex-orchestrator',
       roleName: 'Codex Orchestrator',
       tool: 'codex',
-      model: 'gpt-5.4 high',
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
     }))
   })
 })

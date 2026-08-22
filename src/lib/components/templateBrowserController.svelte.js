@@ -20,6 +20,7 @@ import {
   normalizeSlotOverridesForDraft,
   normalizeTeamPreset,
   presetDraftToTeamConfig,
+  roleModelDefaults,
 } from './templateBrowserUtils.js'
 
 function importSourceLabel(role) {
@@ -42,8 +43,13 @@ function importSourceLabel(role) {
  * override fields of the slot it came from and contributes its own model/effort;
  * consecutive rows that agree on role and overrides collapse back into one slot,
  * and a row that diverges splits the slot instead of losing the difference.
+ *
+ * A field that still equals the role's own default pins nothing: an unpinned slot
+ * is rendered from exactly those values (`presetDraftToTeamConfig`), so writing
+ * them straight back would turn inheritance into a pin and freeze the preset
+ * against every later edit of the role.
  */
-function agentSlotsFromCustomizer(agents, draft, fallbackRoleId) {
+function agentSlotsFromCustomizer(agents, draft, fallbackRoleId, roleTemplates = []) {
   const slots = []
 
   for (const agent of agents) {
@@ -51,10 +57,14 @@ function agentSlotsFromCustomizer(agents, draft, fallbackRoleId) {
     if (!roleId) continue
 
     const baseSlot = Number.isInteger(agent?.slotIndex) ? draft.agentSlots[agent.slotIndex] : null
+    const roleDefaults = roleModelDefaults(roleTemplates.find((role) => role.roleId === roleId))
+    const model = String(agent?.model ?? '').trim()
+    const reasoningEffort = String(agent?.reasoningEffort ?? '').trim()
     const overrides = normalizeSlotOverridesForDraft({
       ...(baseSlot?.overrides ?? {}),
-      model: agent?.model ?? null,
-      reasoningEffort: agent?.reasoningEffort ?? null,
+      model: model === roleDefaults.model ? null : model || null,
+      reasoningEffort:
+        reasoningEffort === (roleDefaults.reasoningEffort ?? '') ? null : reasoningEffort || null,
     })
 
     const previous = slots[slots.length - 1]
@@ -472,7 +482,8 @@ export function createTemplateBrowserController({ getOpen }) {
     const editedSlots = agentSlotsFromCustomizer(
       Array.isArray(payload?.agents) ? payload.agents : [],
       draft,
-      defaultAgentRoleId(roleTemplates, leadRoleId)
+      defaultAgentRoleId(roleTemplates, leadRoleId),
+      roleTemplates
     )
 
     errorMessage = ''

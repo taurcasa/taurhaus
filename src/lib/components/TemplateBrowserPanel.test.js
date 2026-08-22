@@ -555,6 +555,74 @@ describe('TemplateBrowserPanel', () => {
     }))
   })
 
+  // Regression: c1603fe (PR 5c review round 2) rebuilt the preset slots from the
+  // customizer rows, and `presetDraftToTeamConfig` renders a slot that pins
+  // nothing from its role defaults. Opening a preset and pressing Save therefore
+  // wrote those role defaults back as slot overrides, so the preset silently
+  // stopped following later edits to the role's model or effort.
+  it('keeps an unpinned slot unpinned when the preset is opened and saved unchanged', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-codex-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-codex-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-save')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-save'))
+
+    await waitFor(() => {
+      expect(upsertTeamPreset).toHaveBeenCalledTimes(1)
+    })
+    expect(upsertTeamPreset.mock.calls[0][0]).toEqual(expect.objectContaining({
+      presetId: 'backend-codex-team',
+      leadRoleId: 'codex-orchestrator',
+      agentSlots: [
+        expect.objectContaining({ roleId: 'custom-doc-writer', count: 2, overrides: null }),
+      ],
+    }))
+  })
+
+  // Regression: c1603fe (PR 5c review round 2) taught `ModelSelect` to withhold the
+  // empty "default" effort option when a role declares one, but only wired
+  // `inheritedEffort` at the builder. The advanced preset editor kept offering
+  // "default" for a role-bound member, and picking it emitted null while the
+  // backend refilled the role's effort - the editor promised a clear it cannot do.
+  it('does not offer an effort default the role reapplies in the advanced preset editor', async () => {
+    getTeamPreset.mockResolvedValue({
+      presetId: 'backend-codex-team',
+      name: 'Backend Sprint Team (Codex Lead)',
+      description: 'Preset details',
+      leadRoleId: 'claude-orchestrator',
+      agentSlots: [{ roleId: 'codex-orchestrator', count: 1 }],
+      defaults: {
+        teamNamePattern: '{project}-team',
+        tmuxLayout: 'tiled',
+      },
+    })
+
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await fireEvent.click(screen.getByTestId('catalog-tab-presets'))
+    await waitFor(() => {
+      expect(screen.getByTestId('template-preset-edit-backend-codex-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('template-preset-edit-backend-codex-team'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('team-customizer-agent-agent-1-edit')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
+
+    const effortSelect = await screen.findByTestId('team-customizer-agent-agent-1-model-select-effort')
+    expect(effortSelect).toHaveValue('high')
+    const offered = Array.from(effortSelect.options).map((option) => option.value)
+    expect(offered).not.toContain('')
+  })
+
   it('shows create/edit/delete actions only for custom roles', async () => {
     render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 

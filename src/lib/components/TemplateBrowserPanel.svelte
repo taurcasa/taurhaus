@@ -175,6 +175,7 @@
   open={controller.presetEditorOpen}
   {dark}
   {modelCatalog}
+  roleTemplates={controller.roleTemplates}
   teamConfig={controller.presetEditorTeamConfig}
   onClose={controller.closePresetEditor}
   onSave={controller.savePresetFromCustomizer}

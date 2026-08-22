@@ -112,6 +112,29 @@ describe('AgentCard', () => {
     expect(screen.queryByTestId('agent-card-edit-form')).not.toBeInTheDocument()
   })
 
+  // Regression: c1603fe (PR 5c review round 2) taught ModelSelect to withhold the
+  // empty "default" effort option where a role declares one, but this card passed
+  // no `inheritedEffort`, so the advanced preset editor kept offering a clear the
+  // backend undoes by refilling the role's effort.
+  it('withholds the effort default when the bound role declares one', async () => {
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: null,
+        inheritedEffort: 'high',
+        modelCatalog: TEST_MODEL_CATALOG,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+
+    const effortSelect = screen.getByTestId('agent-card-model-select-effort')
+    expect(effortSelect).toHaveValue('high')
+    expect(Array.from(effortSelect.options).map((option) => option.value)).not.toContain('')
+  })
+
   it('uses tokenized color styles instead of hardcoded literals', () => {
     const source = readFileSync(`${process.cwd()}/src/lib/components/AgentCard.svelte`, 'utf8')
     expect(source).toContain('var(--agent-card-border-light)')

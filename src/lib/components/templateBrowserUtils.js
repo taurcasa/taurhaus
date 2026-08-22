@@ -1,4 +1,4 @@
-import { resolveRoleReasoningEffort } from '../meshDefaults.js'
+import { resolveRoleModel, resolveRoleReasoningEffort } from '../meshDefaults.js'
 import { parseLegacyModel } from '../modelCatalog.js'
 
 function normalizeBehavioralContractForEditor(contract) {
@@ -157,6 +157,21 @@ export function normalizeSlotOverridesForDraft(value) {
   return pinsSomething ? normalized : null
 }
 
+/**
+ * What a role template contributes to a member that pins nothing: its model and
+ * its effort, with the pre-PR-5a combined spelling ("gpt-5.4 high") split the
+ * way the Rust `ModelSpec::parse_legacy` splits it. Both directions of the
+ * preset editor read the defaults from here, so a roster row rendered from a
+ * role still compares equal to that role when the editor is saved.
+ */
+export function roleModelDefaults(role) {
+  const parsed = parseLegacyModel(resolveRoleModel(role))
+  return {
+    model: parsed.model,
+    reasoningEffort: resolveRoleReasoningEffort(role) ?? parsed.reasoningEffort,
+  }
+}
+
 export function normalizePresetDraft(source = {}, roleTemplates = [], teamPresets = []) {
   const leadRoleId = source?.leadRoleId ?? source?.lead_role_id ?? defaultLeadRoleId(roleTemplates)
   const slots = Array.isArray(source?.agentSlots ?? source?.agent_slots)
@@ -202,6 +217,7 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
 
   for (const [slotIndex, slot] of draft.agentSlots.entries()) {
     const role = roleTemplates.find((entry) => entry.roleId === slot.roleId) ?? null
+    const roleDefaults = roleModelDefaults(role)
     const overrideModel = String(slot.overrides?.model ?? '').trim()
     const overrideEffort = String(slot.overrides?.reasoningEffort ?? '').trim()
     for (let idx = 0; idx < slot.count; idx += 1) {
@@ -214,8 +230,8 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
         id: `agent-${nextAgent}`,
         name: slot.count > 1 ? `${roleName}-${roleSequence}` : roleName,
         tool,
-        model: overrideModel || role?.model || '',
-        reasoningEffort: overrideEffort || (overrideModel ? null : role?.reasoningEffort ?? null),
+        model: overrideModel || roleDefaults.model,
+        reasoningEffort: overrideEffort || (overrideModel ? null : roleDefaults.reasoningEffort),
         projectId: '',
         description: slot.roleId || '',
         roleId: slot.roleId ?? null,
@@ -227,6 +243,7 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
   }
 
   const leadTool = String(leadRole?.cliTool ?? '').trim().toLowerCase()
+  const leadDefaults = roleModelDefaults(leadRole)
 
   return {
     teamName: draft.name,
@@ -236,8 +253,8 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
       id: 'lead',
       name: leadRole?.name || 'team-lead',
       tool: leadTool,
-      model: leadRole?.model ?? '',
-      reasoningEffort: leadRole?.reasoningEffort ?? null,
+      model: leadDefaults.model,
+      reasoningEffort: leadDefaults.reasoningEffort,
       projectId: '',
       description: draft.leadRoleId || 'Team lead',
       roleId: draft.leadRoleId || null,
