@@ -1,8 +1,11 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
+use crate::coordination::compaction_events::{
+    emit_compaction_owner_failed, emit_compaction_owner_selected,
+};
 use crate::coordination::compaction_processor::{
     CompactionSignalProcessOutcome, CompactionSignalProcessor,
 };
@@ -19,14 +22,77 @@ pub struct CompactionWatcherState {
     _watcher_service: CompactionSignalWatcherService,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompactionOwner {
+    App,
+    DaemonPending,
+    Daemon,
+}
+
+pub(crate) fn configured_compaction_owner(
+    daemon_configured: bool,
+    daemon_connected: bool,
+) -> CompactionOwner {
+    match (daemon_configured, daemon_connected) {
+        (false, _) => CompactionOwner::App,
+        (true, false) => CompactionOwner::DaemonPending,
+        (true, true) => CompactionOwner::Daemon,
+    }
+}
+
+pub(crate) fn compaction_owner_after_daemon_bootstrap(daemon_connected: bool) -> CompactionOwner {
+    if daemon_connected {
+        CompactionOwner::Daemon
+    } else {
+        CompactionOwner::App
+    }
+}
+
 pub(crate) fn initialize(
     app: &mut tauri::App,
     daemon_configured: bool,
+    daemon_connected: bool,
 ) -> Result<(), CoordinationError> {
-    if daemon_configured {
+    match configured_compaction_owner(daemon_configured, daemon_connected) {
+        CompactionOwner::App => {}
+        CompactionOwner::DaemonPending => {
+            emit_compaction_owner_selected("daemon", "pending", "daemon_bootstrap_pending");
+            return Ok(());
+        }
+        CompactionOwner::Daemon => {
+            emit_compaction_owner_selected("daemon", "active", "daemon_connected_at_startup");
+            return Ok(());
+        }
+    }
+
+    let state = start_app_owned_runtime()?;
+    app.manage(state);
+    emit_compaction_owner_selected("app", "active", "daemon_not_configured");
+    Ok(())
+}
+
+pub(crate) fn initialize_app_owned_fallback(
+    app: &AppHandle,
+    reason: &str,
+) -> Result<(), CoordinationError> {
+    if app.try_state::<CompactionWatcherState>().is_some() {
+        emit_compaction_owner_selected("app", "active", reason);
         return Ok(());
     }
 
+    let state = match start_app_owned_runtime() {
+        Ok(state) => state,
+        Err(error) => {
+            emit_compaction_owner_failed("app", reason, &error.to_string());
+            return Err(error);
+        }
+    };
+    app.manage(state);
+    emit_compaction_owner_selected("app", "active", reason);
+    Ok(())
+}
+
+fn start_app_owned_runtime() -> Result<CompactionWatcherState, CoordinationError> {
     let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
     // Continuity read: this only seeds the extractor's set of Codex transcripts
     // to tail; every later healthy scan republishes that set and supersedes
@@ -37,11 +103,16 @@ pub(crate) fn initialize(
         initial_sessions,
     )?;
 
-    let watcher_service = start_team_watcher_service(&teams_dir)?;
-    app.manage(CompactionWatcherState {
+    let watcher_service = match start_team_watcher_service(&teams_dir) {
+        Ok(watcher_service) => watcher_service,
+        Err(error) => {
+            compaction_extractor::stop_compaction_extractor_service();
+            return Err(error);
+        }
+    };
+    Ok(CompactionWatcherState {
         _watcher_service: watcher_service,
-    });
-    Ok(())
+    })
 }
 
 fn start_team_watcher_service(
@@ -80,7 +151,6 @@ mod tests {
 
     use std::io::Write;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
     use chrono::{DateTime, Utc};
@@ -103,8 +173,6 @@ mod tests {
     use crate::session_scanner::{
         ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
     };
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn timestamp(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -268,7 +336,9 @@ mod tests {
 
     #[test]
     fn extractor_watcher_processor_pipeline_delivers_inbox_message() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        // Regression: a89ea4c kept a process-global extractor singleton but serialized
+        // startup and daemon compaction tests with different module-local mutexes.
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         stop_compaction_extractor_service_for_test();
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -348,7 +418,7 @@ mod tests {
 
     #[test]
     fn start_team_watcher_service_skips_orphaned_team_dirs_without_failing() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
@@ -359,5 +429,19 @@ mod tests {
 
         let _watcher_service =
             start_team_watcher_service(&teams_dir).expect("start watcher service");
+    }
+
+    #[test]
+    fn failed_daemon_bootstrap_returns_compaction_ownership_to_app() {
+        // Regression: a89ea4c treated the presence of a disconnected daemon provider
+        // as ownership, leaving no extractor or watcher when daemon bootstrap failed.
+        assert_eq!(
+            configured_compaction_owner(true, false),
+            CompactionOwner::DaemonPending
+        );
+        assert_eq!(
+            compaction_owner_after_daemon_bootstrap(false),
+            CompactionOwner::App
+        );
     }
 }

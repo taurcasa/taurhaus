@@ -413,6 +413,7 @@ fn extract_compaction_signals_for_team(
     emitted_at: DateTime<Utc>,
 ) -> Result<TeamExtractionStats, CoordinationError> {
     let mut state = load_extractor_state(teams_dir, team_name)?;
+    let previous_state = state.clone();
     let mut seen_paths = HashSet::new();
     let mut emitted_signal_count = 0usize;
 
@@ -548,12 +549,38 @@ fn extract_compaction_signals_for_team(
         }
     }
 
-    state.heartbeat_at = Some(emitted_at);
-    save_extractor_state(teams_dir, team_name, &state)?;
+    state
+        .file_offsets
+        .retain(|path, _| checkpoint_path_is_known(Path::new(path)));
+    state
+        .last_emitted_boundary_by_file
+        .retain(|path, _| checkpoint_path_is_known(Path::new(path)));
+    state
+        .last_error_by_file
+        .retain(|path, _| checkpoint_path_is_known(Path::new(path)));
+    if extractor_heartbeat_is_due(state.heartbeat_at, emitted_at) {
+        state.heartbeat_at = Some(emitted_at);
+    }
+    if state != previous_state {
+        save_extractor_state(teams_dir, team_name, &state)?;
+    }
 
     Ok(TeamExtractionStats {
         tracked_file_count: state.file_offsets.len(),
         emitted_signal_count,
+    })
+}
+
+fn checkpoint_path_is_known(path: &Path) -> bool {
+    match fs::symlink_metadata(path) {
+        Ok(_) => true,
+        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+    }
+}
+
+fn extractor_heartbeat_is_due(previous: Option<DateTime<Utc>>, now: DateTime<Utc>) -> bool {
+    previous.is_none_or(|previous| {
+        now.signed_duration_since(previous).num_seconds() >= EXTRACTOR_HEARTBEAT_INTERVAL_SECS
     })
 }
 
@@ -614,6 +641,7 @@ fn sync_managed_codex_runtime_bindings(sessions: &[RuntimeSession], teams_dir: &
     let codex_sessions = sessions
         .iter()
         .filter(|session| session.cli_tool == CliTool::Codex)
+        .filter(|session| runtime_session_has_compaction_identity(session))
         .cloned()
         .collect::<Vec<_>>();
     let team_names = match TeamConfigStore::list(teams_dir) {
@@ -667,6 +695,10 @@ fn sync_managed_codex_runtime_bindings(sessions: &[RuntimeSession], teams_dir: &
             }
         }
     }
+}
+
+fn runtime_session_has_compaction_identity(session: &RuntimeSession) -> bool {
+    session.session_id.is_some() || session.jsonl_path.is_some()
 }
 
 fn select_runtime_session_for_member<'a>(
@@ -1354,6 +1386,96 @@ mod tests {
     }
 
     #[test]
+    fn extractor_prunes_checkpoints_after_transcript_is_deleted() {
+        // Regression: a89ea4c removed active-scan pruning without adding a bounded
+        // replacement, so deleted rollout paths accumulated forever in state and diagnostics.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let deleted_path = tmp.path().join("deleted-session.jsonl");
+        let path_key = deleted_path.display().to_string();
+        let state = ExtractorState {
+            version: EXTRACTOR_SCHEMA_VERSION,
+            file_offsets: BTreeMap::from([(
+                path_key.clone(),
+                ExtractorFileCheckpoint { offset: 42 },
+            )]),
+            last_emitted_boundary_by_file: BTreeMap::from([(
+                path_key.clone(),
+                ExtractorRecentBoundary {
+                    timestamp: Utc
+                        .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+                        .single()
+                        .expect("datetime"),
+                    jsonl_offset: 42,
+                    signal_kind: CompactionSignalKind::Compacted,
+                },
+            )]),
+            last_processed_signal: None,
+            heartbeat_at: None,
+            last_error_by_file: BTreeMap::from([(path_key, "deleted".to_string())]),
+        };
+        save_extractor_state(&teams_dir, "taurhaus-team", &state).expect("seed state");
+
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[],
+            Utc.with_ymd_and_hms(2026, 3, 8, 20, 1, 0)
+                .single()
+                .expect("datetime"),
+        )
+        .expect("prune deleted transcript");
+
+        let pruned = load_extractor_state(&teams_dir, "taurhaus-team").expect("load state");
+        assert!(pruned.file_offsets.is_empty());
+        assert!(pruned.last_emitted_boundary_by_file.is_empty());
+        assert!(pruned.last_error_by_file.is_empty());
+        assert!(
+            load_compaction_extractor_diagnostics_at(&teams_dir, "taurhaus-team")
+                .expect("load diagnostics")
+                .active_files
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn extractor_does_not_rewrite_unchanged_state_before_next_heartbeat() {
+        // Regression: a89ea4c rewrote the full extractor checkpoint map on every notify
+        // event by updating heartbeat_at even when no transcript state had changed.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let jsonl_path = tmp.path().join("session.jsonl");
+        let transcript = sample_transcript("taurhaus-team", &jsonl_path);
+        write_jsonl(
+            &jsonl_path,
+            &[r#"{"timestamp":"2026-03-08T20:00:00Z","type":"message"}"#],
+        );
+        let first = Utc
+            .with_ymd_and_hms(2026, 3, 8, 20, 0, 1)
+            .single()
+            .expect("datetime");
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            std::slice::from_ref(&transcript),
+            first,
+        )
+        .expect("prime state");
+        let state_path = extractor_state_path(&teams_dir, "taurhaus-team");
+        let before = fs::read(&state_path).expect("read initial state");
+
+        extract_compaction_signals_for_team(
+            &teams_dir,
+            "taurhaus-team",
+            &[transcript],
+            first + chrono::Duration::seconds(1),
+        )
+        .expect("unchanged pass");
+
+        assert_eq!(fs::read(state_path).expect("read unchanged state"), before);
+    }
+
+    #[test]
     fn empty_scan_does_not_clear_known_runtime_binding() {
         // Regression: a11c347d assigned None from an unmatched scan into the persisted
         // session/jsonl binding even though the managed pane still existed.
@@ -1378,6 +1500,61 @@ mod tests {
             .expect("reload runtime");
         assert_eq!(stored.session_id.as_deref(), Some("sess-123"));
         assert_eq!(stored.jsonl_path.as_deref(), Some(jsonl_path.as_path()));
+    }
+
+    #[test]
+    fn runtime_binding_ignores_candidate_without_identity_or_transcript() {
+        // Regression: a89ea4c removed the candidate prefilter, allowing a session with
+        // no id and no transcript to shadow an id-less session that had a real rollout path.
+        let runtime = crate::coordination::stores::MemberRuntimeRecord {
+            schema_version: 3,
+            member_name: "architect".to_string(),
+            cli_tool: Some(CliTool::Codex),
+            project_path: Some(PathBuf::from("/home/user/projects/taurhaus")),
+            pane_id: None,
+            session_id: None,
+            jsonl_path: None,
+            daemon_pid: None,
+            health: crate::coordination::domain::HealthState::Healthy,
+            delivery_lease: None,
+            attached_at: None,
+            last_seen_at: None,
+        };
+        let session = |jsonl_path: Option<&str>| RuntimeSession {
+            pid: 42,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: None,
+            tmux_window: None,
+            tmux_pane: None,
+            tmux_window_name: None,
+            state: super::super::SessionState::Active,
+            session_id: None,
+            jsonl_path: jsonl_path.map(ToOwned::to_owned),
+            recent_io: false,
+            last_output_age_secs: None,
+            activity_confidence: super::super::ActivityConfidence::Low,
+            activity_attribution: super::super::ActivityAttribution::Unattributed,
+            project_unattributed_active: false,
+            group_kind: super::super::SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        };
+        let sessions = [session(None), session(Some("/tmp/real-rollout.jsonl"))];
+        let candidates = sessions
+            .iter()
+            .filter(|session| runtime_session_has_compaction_identity(session))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            select_runtime_session_for_member(&runtime, &candidates)
+                .and_then(|matched| matched.jsonl_path.as_deref()),
+            Some("/tmp/real-rollout.jsonl")
+        );
     }
 
     #[test]

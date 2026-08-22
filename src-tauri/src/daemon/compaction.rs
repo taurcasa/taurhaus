@@ -48,6 +48,11 @@ impl DaemonCompactionRuntime {
                 },
             ),
         )?;
+        crate::coordination::compaction_events::emit_compaction_owner_selected(
+            "daemon",
+            "active",
+            "daemon_runtime_started",
+        );
         Ok(Some(runtime))
     }
 
@@ -241,7 +246,6 @@ mod tests {
 
     use std::io::Write;
     use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard};
     use std::time::Instant;
 
     use chrono::{DateTime, Utc};
@@ -259,34 +263,28 @@ mod tests {
         ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
     };
 
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
     /// Guards for one compaction test.
     ///
     /// These tests install the process-global compaction extractor service, so
-    /// they need the heavy-test guard as well as their own lock: every test
-    /// that spawns a real daemon server takes that guard, and
+    /// they need the heavy-test guard as well as the shared extractor guard:
+    /// every test that spawns a real daemon server takes both, and
     /// `daemon::server::run` calls `DaemonCompactionRuntime::maybe_start()`,
     /// which replaces the global extractor with one rooted at the real teams
     /// dir. Without the guard a spawned daemon can swap the extractor out from
     /// under a running compaction test.
     ///
-    /// Regression: `daemon::compaction::tests` ran with only `TEST_LOCK` while
-    /// `daemon::launcher`/`daemon::server`/`daemon::event_listener` tests spawn
-    /// daemons under the heavy guard. The race stayed hidden while the daemon
-    /// hub's first scan cycle took longer than `server::run`'s 750 ms startup
-    /// wait, so the extractor swap landed after delivery. Making degraded scan
-    /// cycles inert (this branch) let the first cycle commit in ~10 ms, moving
-    /// the swap to just after the test installed its own extractor and making
+    /// Regression: a89ea4c widened a pre-existing race where daemon and startup
+    /// compaction tests used distinct module-local locks while real server tests
+    /// replaced the same global extractor. The resulting swap made
     /// `daemon_compaction_runtime_bootstrap_and_watchers_deliver_codex_compaction`
     /// time out whenever it shared a run with a daemon-spawning test.
-    ///
-    /// `TEST_LOCK` is taken poison-tolerantly so one failing test reports its
-    /// own cause instead of cascading `PoisonError` into the others.
-    fn compaction_test_guards() -> (crate::test_support::HeavyTestGuard, MutexGuard<'static, ()>) {
+    fn compaction_test_guards() -> (
+        crate::test_support::HeavyTestGuard,
+        crate::test_support::CompactionExtractorTestGuard,
+    ) {
         let heavy = crate::test_support::acquire_heavy_test_guard();
-        let lock = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
-        (heavy, lock)
+        let extractor = crate::test_support::acquire_compaction_extractor_test_guard();
+        (heavy, extractor)
     }
 
     fn accept_signal(

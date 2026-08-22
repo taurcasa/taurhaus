@@ -14,8 +14,8 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::compaction_events::{
-    emit_compaction_signal_consumed, emit_compaction_signal_replayed,
-    emit_compaction_watcher_missed_event_recovered, signal_event,
+    emit_compaction_signal_consumed, emit_compaction_signal_failed,
+    emit_compaction_signal_replayed, emit_compaction_watcher_missed_event_recovered, signal_event,
     CompactionWatcherMissedEventRecovered,
 };
 use crate::coordination::errors::CoordinationError;
@@ -219,7 +219,7 @@ impl CompactionSignalWatcherCore {
                         error,
                         "compaction signal processor failed; committing failed signal and continuing"
                     );
-                    emit_compaction_signal_consumed(signal_from_record(&item.record));
+                    emit_compaction_signal_failed(signal_from_record(&item.record), &error);
                 }
             }
 
@@ -527,21 +527,14 @@ fn run_watcher_service_loop(args: SignalWatcherServiceLoopArgs) -> Result<(), Co
     )
     .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
     let mut team_watchers = HashMap::<String, ManagedTeamSignalWatcher>::new();
-    match reconcile_team_watchers(
+    reconcile_team_watchers(
         &mut watcher,
         &mut team_watchers,
         &desired_team_names,
         &teams_dir,
         &processor,
-    ) {
-        Ok(()) => {
-            let _ = ready_tx.send(Ok(()));
-        }
-        Err(error) => {
-            let _ = ready_tx.send(Err(error.to_string()));
-            return Err(error);
-        }
-    }
+    );
+    let _ = ready_tx.send(Ok(()));
     let mut last_reconcile = Instant::now();
 
     while !shutdown.load(Ordering::Relaxed) {
@@ -557,15 +550,14 @@ fn run_watcher_service_loop(args: SignalWatcherServiceLoopArgs) -> Result<(), Co
             }
             Ok(SignalWatcherServiceMessage::SetTeams { team_names, ack_tx }) => {
                 desired_team_names = team_names;
-                let result = reconcile_team_watchers(
+                reconcile_team_watchers(
                     &mut watcher,
                     &mut team_watchers,
                     &desired_team_names,
                     &teams_dir,
                     &processor,
-                )
-                .map_err(|error| error.to_string());
-                let _ = ack_tx.send(result);
+                );
+                let _ = ack_tx.send(Ok(()));
             }
             #[cfg(test)]
             Ok(SignalWatcherServiceMessage::SnapshotTeams { ack_tx }) => {
@@ -578,6 +570,13 @@ fn run_watcher_service_loop(args: SignalWatcherServiceLoopArgs) -> Result<(), Co
         }
 
         if last_reconcile.elapsed() >= config.reconciliation_interval {
+            reconcile_team_watchers(
+                &mut watcher,
+                &mut team_watchers,
+                &desired_team_names,
+                &teams_dir,
+                &processor,
+            );
             for team_watcher in team_watchers.values_mut() {
                 if !team_watcher.file_watch_active && team_watcher.signal_path.exists() {
                     team_watcher.file_watch_active =
@@ -612,7 +611,7 @@ fn reconcile_team_watchers(
     desired_team_names: &BTreeSet<String>,
     teams_dir: &Path,
     processor: &Arc<dyn CompactionSignalProcessor>,
-) -> Result<(), CoordinationError> {
+) {
     let stale_team_names = team_watchers
         .keys()
         .filter(|team_name| !desired_team_names.contains(*team_name))
@@ -632,17 +631,49 @@ fn reconcile_team_watchers(
             continue;
         }
         let mut team_watcher =
-            ManagedTeamSignalWatcher::new_at(teams_dir, team_name.clone(), processor.clone())?;
-        fs::create_dir_all(&team_watcher.signal_dir)?;
-        watcher
-            .watch(&team_watcher.signal_dir, RecursiveMode::NonRecursive)
-            .map_err(|error| CoordinationError::StoreError(error.to_string()))?;
+            match ManagedTeamSignalWatcher::new_at(teams_dir, team_name.clone(), processor.clone())
+            {
+                Ok(team_watcher) => team_watcher,
+                Err(error) => {
+                    tracing::warn!(
+                        team_name,
+                        error = %error,
+                        "failed to initialize team compaction watcher; other teams remain active"
+                    );
+                    continue;
+                }
+            };
+        if let Err(error) = fs::create_dir_all(&team_watcher.signal_dir) {
+            tracing::warn!(
+                team_name,
+                error = %error,
+                "failed to create team compaction signal directory; other teams remain active"
+            );
+            continue;
+        }
+        if let Err(error) = watcher.watch(&team_watcher.signal_dir, RecursiveMode::NonRecursive) {
+            tracing::warn!(
+                team_name,
+                error = %error,
+                "failed to register team compaction directory watch; other teams remain active"
+            );
+            continue;
+        }
         team_watcher.file_watch_active = try_watch_signal_file(watcher, &team_watcher.signal_path);
-        team_watcher.core.process_available_signals(true)?;
+        if let Err(error) = team_watcher.core.process_available_signals(true) {
+            if team_watcher.file_watch_active {
+                let _ = watcher.unwatch(&team_watcher.signal_path);
+            }
+            let _ = watcher.unwatch(&team_watcher.signal_dir);
+            tracing::warn!(
+                team_name,
+                error = %error,
+                "failed to replay team compaction signals; other teams remain active"
+            );
+            continue;
+        }
         team_watchers.insert(team_name.clone(), team_watcher);
     }
-
-    Ok(())
 }
 
 fn process_signal_event(
@@ -839,6 +870,9 @@ mod tests {
 
     use std::sync::Arc;
 
+    use crate::commands::logging::{
+        clear_test_tap, install_global_sink, install_test_tap, LogFileState,
+    };
     use chrono::TimeZone;
     use uuid::Uuid;
 
@@ -1017,10 +1051,18 @@ mod tests {
     fn watcher_survives_failed_signal_and_processes_the_next_record() {
         // Regression: ef3c9906 consolidated team watchers behind one service but kept `?`
         // propagation, so one CompactionSignalProcessOutcome::Failed killed every watcher.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
+        let log_state = LogFileState::new(tmp.path().join("watcher.log.jsonl")).expect("log state");
+        install_global_sink(&log_state);
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        install_test_tap(event_tx);
         let processor = Arc::new(FailFirstProcessor::default());
-        let first = sample_signal();
-        let second = sample_signal();
+        let session_id = format!("watcher-failure-{}", Uuid::new_v4());
+        let mut first = sample_signal();
+        first.session_id = session_id.clone();
+        let mut second = sample_signal();
+        second.session_id = session_id.clone();
         CompactionSignalLog::append(tmp.path(), "taurhaus-team", &first)
             .expect("append first signal");
         CompactionSignalLog::append(tmp.path(), "taurhaus-team", &second)
@@ -1044,6 +1086,56 @@ mod tests {
                 .map(|signal| signal.signal_id)
                 .collect::<Vec<_>>(),
             vec![first.signal_id, second.signal_id]
+        );
+        let events = event_rx.try_iter().collect::<Vec<_>>();
+        clear_test_tap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event["event"] == "compaction.signal_failed"
+                    && event["fields"]["session_id"] == session_id),
+            "failed delivery must be distinguishable in the structured sink: {events:?}"
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    event["event"] == "compaction.signal_consumed"
+                        && event["fields"]["session_id"] == session_id
+                })
+                .count(),
+            1,
+            "only the successfully processed signal is consumed"
+        );
+    }
+
+    #[test]
+    fn watcher_startup_skips_broken_team_and_keeps_healthy_team() {
+        // Regression: a89ea4c left `?` propagation in team reconciliation, so one
+        // unreadable team aborted startup before any later team could be watched.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let broken_compaction_dir = tmp.path().join("alpha").join("state").join("compaction");
+        std::fs::create_dir_all(broken_compaction_dir.parent().expect("state dir"))
+            .expect("create state dir");
+        std::fs::write(&broken_compaction_dir, b"not a directory")
+            .expect("create broken compaction path");
+
+        let service = CompactionSignalWatcherService::start_at(
+            tmp.path(),
+            ["alpha", "beta"],
+            Arc::new(RecordingProcessor::default()),
+            CompactionSignalWatcherConfig {
+                reconciliation_interval: Duration::from_secs(60),
+                loop_tick: Duration::from_millis(25),
+            },
+        )
+        .expect("one broken team must not abort watcher startup");
+
+        assert_eq!(
+            service
+                .watched_team_names_for_test()
+                .expect("snapshot watched teams"),
+            BTreeSet::from(["beta".to_string()])
         );
     }
 

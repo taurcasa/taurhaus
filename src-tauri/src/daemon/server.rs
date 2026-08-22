@@ -105,10 +105,16 @@ pub fn run(
     };
     listener.set_nonblocking(true)?;
 
-    let _compaction_runtime =
-        match crate::daemon::compaction::DaemonCompactionRuntime::maybe_start() {
+    let compaction_shutdown = shutdown.clone();
+    let compaction_handle = std::thread::spawn(move || {
+        let _runtime = match crate::daemon::compaction::DaemonCompactionRuntime::maybe_start() {
             Ok(runtime) => runtime,
             Err(error) => {
+                crate::coordination::compaction_events::emit_compaction_owner_failed(
+                    "daemon",
+                    "daemon_runtime_initialization",
+                    &error.to_string(),
+                );
                 tracing::warn!(
                     error = %error,
                     "daemon compaction initialization failed after bind; server remains available"
@@ -116,6 +122,10 @@ pub fn run(
                 None
             }
         };
+        while !compaction_shutdown.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    });
 
     let start_time = Instant::now();
     let last_activity = Arc::new(AtomicU64::new(epoch_secs()));
@@ -205,6 +215,7 @@ pub fn run(
     }
 
     shutdown.store(true, Ordering::Relaxed);
+    let _ = compaction_handle.join();
     let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())
@@ -465,6 +476,7 @@ mod tests {
         port: u16,
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
+        _extractor_guard: crate::test_support::CompactionExtractorTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
     }
 
@@ -497,6 +509,7 @@ mod tests {
         config: DaemonConfig,
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestServer {
+        let extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
@@ -506,6 +519,7 @@ mod tests {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
+            _extractor_guard: extractor_guard,
             handle: Some(handle),
         };
 
@@ -938,6 +952,7 @@ mod tests {
         // Regression: a fixed 100ms startup sleep was not enough under load,
         // causing occasional ConnectionRefused before the listener was ready.
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();

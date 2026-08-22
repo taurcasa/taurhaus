@@ -556,8 +556,16 @@ fn cwd_matches_member(cwd: Option<&Path>, member_project_path: &Path) -> bool {
         return true;
     };
 
-    path::normalize_project_path(&cwd.to_string_lossy())
+    if path::normalize_project_path(&cwd.to_string_lossy())
         == path::normalize_project_path(&member_project_path.to_string_lossy())
+    {
+        return true;
+    }
+
+    match (fs::canonicalize(cwd), fs::canonicalize(member_project_path)) {
+        (Ok(canonical_cwd), Ok(canonical_member)) => canonical_cwd == canonical_member,
+        _ => false,
+    }
 }
 
 fn write_hook_script(
@@ -1275,6 +1283,7 @@ mod tests {
         // Regression: 0b87699b made record_delivery resolve ~/.claude/teams again,
         // ignoring the teams_dir already passed to the Claude hook bridge.
         let guard = acquire_env_test_guard();
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let passed_teams_dir = tmp.path().join("passed-teams");
         let unrelated_claude_dir = tmp.path().join("unrelated-claude");
@@ -1319,6 +1328,20 @@ mod tests {
             Some(Path::new("/home/user/projects/taurhaus")),
             Path::new(r"\\wsl.localhost\Ubuntu\home\user\projects\taurhaus"),
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cwd_match_falls_back_to_canonical_paths_for_symlinked_roots() {
+        // Regression: a89ea4c replaced canonicalization with string-only normalization,
+        // so Claude hooks stopped matching projects reached through a symlink.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let real_project = tmp.path().join("real-project");
+        let linked_project = tmp.path().join("linked-project");
+        fs::create_dir_all(&real_project).expect("real project");
+        std::os::unix::fs::symlink(&real_project, &linked_project).expect("project symlink");
+
+        assert!(cwd_matches_member(Some(&linked_project), &real_project));
     }
 
     #[test]

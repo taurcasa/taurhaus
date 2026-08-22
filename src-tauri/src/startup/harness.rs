@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use super::compaction::{configured_compaction_owner, CompactionOwner};
 use super::orchestration::daemon_watch_bootstrap_enabled;
 use super::telemetry;
 use super::SetupContext;
@@ -96,7 +97,11 @@ where
         daemon_watch_bootstrap_enabled(context),
     );
 
-    if context.daemon_addr.is_none() {
+    if configured_compaction_owner(
+        context.daemon_addr.is_some(),
+        context.daemon_connected_at_startup,
+    ) == CompactionOwner::App
+    {
         if let Err(error) = initialize_compaction() {
             tracing::warn!(
                 error = %error,

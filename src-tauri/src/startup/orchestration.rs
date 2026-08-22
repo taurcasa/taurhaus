@@ -42,7 +42,11 @@ pub(super) fn run_startup_orchestration(
     );
 
     #[cfg(feature = "mesh-bridged-backend")]
-    if let Err(error) = crate::startup::compaction::initialize(app, context.daemon_addr.is_some()) {
+    if let Err(error) = crate::startup::compaction::initialize(
+        app,
+        context.daemon_addr.is_some(),
+        context.daemon_connected_at_startup,
+    ) {
         tracing::warn!(
             error = %error,
             "app-owned compaction initialization failed; startup continues"

@@ -4,6 +4,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 
 static HEAVY_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static GLOBAL_LOG_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static COMPACTION_EXTRACTOR_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Guard that serializes heavy integration-style tests (daemon sockets,
 /// filesystem watchers) both within a process and across test binaries.
@@ -14,6 +15,11 @@ pub struct HeavyTestGuard {
 
 /// Guard that serializes tests mutating the process-global structured log sink.
 pub struct GlobalLogTestGuard {
+    _in_process: MutexGuard<'static, ()>,
+}
+
+/// Guard that serializes tests mutating the process-global compaction extractor.
+pub struct CompactionExtractorTestGuard {
     _in_process: MutexGuard<'static, ()>,
 }
 
@@ -61,6 +67,16 @@ pub fn acquire_global_log_test_guard() -> GlobalLogTestGuard {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     GlobalLogTestGuard {
+        _in_process: in_process,
+    }
+}
+
+/// Acquire the shared guard for tests that start or stop the compaction extractor service.
+pub fn acquire_compaction_extractor_test_guard() -> CompactionExtractorTestGuard {
+    let in_process = COMPACTION_EXTRACTOR_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    CompactionExtractorTestGuard {
         _in_process: in_process,
     }
 }
