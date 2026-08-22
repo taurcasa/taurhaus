@@ -146,10 +146,18 @@ impl CoordinationRuntime for SequencedRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
-        self.inner
-            .join_mesh(team_name, member_name, project_id, model)?;
+        self.inner.join_mesh(
+            team_name,
+            member_name,
+            project_id,
+            member_type,
+            model,
+            claude_dir,
+        )?;
         self.push_event(DeliveryTimelineEvent::JoinMesh(member_name.to_string()));
         Ok(())
     }
@@ -258,6 +266,7 @@ fn member(name: &str, role: MemberRole, cli_tool: CliTool, project: &str) -> Mem
         reasoning_effort: None,
         project_path: PathBuf::from(project),
         cli_tool,
+        extra: Default::default(),
     }
 }
 
@@ -490,6 +499,68 @@ fn finalized_runtime_commit_syncs_team_metadata() {
 }
 
 #[test]
+fn finalized_runtime_commit_preserves_mesh_owned_member_fields() {
+    // Regression: mesh-findings P1; sync_team_config_metadata erased the live
+    // controlAuthTokenHash written by mesh while refreshing tmux metadata.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "metadata-round-trip";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let path = tmp.path().join(team_name).join("config.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).expect("read config"))
+            .expect("parse config");
+    value["members"][0]["controlAuthTokenHash"] =
+        serde_json::Value::String("sha256:mesh-token".to_string());
+    value["members"][0]["statusState"] = serde_json::Value::String("working".to_string());
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&value).expect("serialize injected config"),
+    )
+    .expect("write injected config");
+
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_add_agent(team_name, "team-lead", &member_config)
+        .expect("context");
+    orchestrator
+        .commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%22".to_string())),
+                health: Some(HealthState::Healthy),
+                ..Default::default()
+            },
+        )
+        .expect("finalized runtime commit");
+
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(path).expect("read saved config"))
+            .expect("parse saved config");
+    assert_eq!(
+        saved["members"][0]["controlAuthTokenHash"],
+        "sha256:mesh-token"
+    );
+    assert_eq!(saved["members"][0]["statusState"], "working");
+}
+
+#[test]
 fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
     let cli_commands = CliCommandSettings::default();
 
@@ -649,6 +720,18 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
     let initialize_tmp = TempDir::new().expect("tempdir");
     let initialize_backend = Arc::new(FakeBackend::default());
     let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    initialize_runtime.set_mesh_join_teams_dir(initialize_tmp.path());
+    let credential_dir = initialize_tmp
+        .path()
+        .join("initialize-claude")
+        .join("state")
+        .join("control_auth");
+    fs::create_dir_all(&credential_dir).expect("credential dir");
+    fs::write(
+        credential_dir.join("team-lead.json"),
+        r#"{"name":"team-lead","token":"test-token"}"#,
+    )
+    .expect("lead credential");
     let mut initialize_orchestrator = new_orchestrator(
         &initialize_tmp,
         initialize_backend,
@@ -671,13 +754,49 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
         initialize_claude_report.failed_step.is_none(),
         "initialize Claude should succeed: {initialize_claude_report:?}"
     );
-    assert!(
-        initialize_runtime.calls().iter().all(|call| !matches!(
-            call,
-            RuntimeCall::JoinMesh { .. } | RuntimeCall::SpawnDaemon { .. }
-        )),
-        "initialize Claude members should skip mesh join and daemon start"
+    // Regression: commit 76c284e made Claude members inbox-native but also
+    // skipped the Claude lead's mesh join, so team-daemon auth never existed.
+    let initialize_claude_calls = initialize_runtime.calls();
+    let lead_join_indexes = initialize_claude_calls
+        .iter()
+        .enumerate()
+        .filter_map(|(index, call)| {
+            matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead")
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lead_join_indexes.len(),
+        1,
+        "Claude lead joins mesh exactly once"
     );
+    let lead_join = initialize_claude_calls
+        .iter()
+        .find(|call| matches!(call, RuntimeCall::JoinMesh { member_name, .. } if member_name == "team-lead"))
+        .expect("Claude lead join call");
+    assert!(matches!(
+        lead_join,
+        RuntimeCall::JoinMesh {
+            member_type,
+            model,
+            claude_dir,
+            ..
+        } if member_type == "lead"
+            && model == "claude-opus-4-6"
+            && claude_dir == &crate::coordination::runtime::resolve_mesh_cli_claude_dir_arg()
+                .expect("Claude config dir")
+    ));
+    assert!(
+        initialize_claude_calls
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::SpawnDaemon { .. })),
+        "Claude members stay member-daemon-less"
+    );
+    let team_daemon_index = initialize_claude_calls
+        .iter()
+        .position(|call| matches!(call, RuntimeCall::SpawnTeamDaemon { operator_name, .. } if operator_name == "team-lead"))
+        .expect("team daemon start");
+    assert!(lead_join_indexes[0] < team_daemon_index);
 
     let initialize_sidecar_tmp = TempDir::new().expect("tempdir");
     let initialize_sidecar_backend = Arc::new(FakeBackend::default());
@@ -1091,7 +1210,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
 }
 
 #[test]
-fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
+fn join_mesh_if_required_skips_non_lead_claude_and_joins_required_members() {
     let runtime = RecordingCoordinationRuntime::default();
 
     let claude_joined = join_mesh_if_required(
@@ -1099,6 +1218,7 @@ fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
         "architecture-final",
         "team-lead",
         "/tmp/lead",
+        MemberRole::Agent,
         CliTool::Claude,
         "opus",
     )
@@ -1108,12 +1228,13 @@ fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
         "architecture-final",
         "builder",
         "/tmp/builder",
+        MemberRole::Agent,
         CliTool::Codex,
         "gpt-5.6-sol",
     )
     .expect("codex join result");
 
-    assert!(!claude_joined, "Claude should keep the no-op join behavior");
+    assert!(!claude_joined, "non-lead Claude members do not mesh join");
     assert!(codex_joined, "mesh-sidecar members should still join Mesh");
 
     let calls = runtime.calls();
@@ -1132,6 +1253,7 @@ fn join_mesh_if_required_skips_claude_and_joins_mesh_sidecar_members() {
             member_name,
             project_id,
             model,
+            ..
         } if team_name == "architecture-final"
             && member_name == "builder"
             && project_id == "/tmp/builder"
@@ -2029,6 +2151,7 @@ fn load_resume_member_state_preserves_role_template_context() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/builder"),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             },
         )
         .expect("add member");
@@ -2226,7 +2349,7 @@ fn resume_falls_back_when_user_role_is_corrupt() {
 }
 
 #[test]
-fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
+fn resume_pipeline_claude_lead_joins_mesh_but_skips_member_daemon() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -2267,11 +2390,15 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
         .find(|step| step.step == "join_mesh")
         .expect("join step");
     assert_eq!(join_step.status, StepStatus::Succeeded);
-    assert!(join_step
-        .message
-        .as_deref()
-        .unwrap_or_default()
-        .contains("not required"));
+    assert_eq!(join_step.message.as_deref(), Some("mesh joined"));
+    assert_eq!(
+        runtime
+            .calls()
+            .iter()
+            .filter(|call| matches!(call, RuntimeCall::JoinMesh { member_name, member_type, .. } if member_name == "team-lead" && member_type == "lead"))
+            .count(),
+        1
+    );
     let daemon_step = report
         .steps
         .iter()
@@ -2305,14 +2432,103 @@ fn resume_pipeline_claude_lead_skips_mesh_daemon_but_receives_onboarding() {
     assert!(launch.contains("--agent-type 'orchestrator'"));
     assert!(!calls
         .iter()
-        .any(|call| matches!(call, RuntimeCall::JoinMesh { .. })));
-    assert!(!calls
-        .iter()
         .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })));
     assert_eq!(
         backend.call_counts().1,
         1,
         "lead should receive onboarding delivery"
+    );
+}
+
+#[test]
+fn claude_lead_join_failure_is_nonfatal_after_activation_commit() {
+    // Regression: 694b130 deferred the Claude-lead join until after commit but
+    // kept the fatal cleanup path, killing an already-persisted activation.
+    let initialize_tmp = TempDir::new().expect("tempdir");
+    let initialize_backend = Arc::new(FakeBackend::default());
+    let initialize_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    initialize_runtime.set_join_mesh_failure("simulated lead credential failure");
+    let mut initialize_orchestrator = new_orchestrator(
+        &initialize_tmp,
+        initialize_backend,
+        initialize_runtime.clone(),
+    );
+
+    let initialize_report = initialize_orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "lead-join-initialize".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "claude", "claude-opus-4-6", "/tmp/lead"),
+                agents: vec![],
+            },
+            &CliCommandSettings::default(),
+            "new_window",
+        )
+        .expect("initialize report");
+    assert!(
+        initialize_report.failed_step.is_none(),
+        "credential refresh must not fail initialization: {initialize_report:?}"
+    );
+    let initialize_join_step = initialize_report
+        .steps
+        .iter()
+        .find(|step| step.step == "join_mesh")
+        .expect("initialize join step");
+    assert_eq!(initialize_join_step.status, StepStatus::Succeeded);
+    assert!(initialize_join_step
+        .message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("simulated lead credential failure"));
+    assert!(
+        TeamConfigStore::load(initialize_tmp.path(), "lead-join-initialize").is_ok(),
+        "the committed team remains usable"
+    );
+
+    let resume_tmp = TempDir::new().expect("tempdir");
+    let resume_backend = Arc::new(FakeBackend::default());
+    let resume_runtime = Arc::new(RecordingCoordinationRuntime::default());
+    resume_runtime.set_join_mesh_failure("simulated lead credential failure");
+    let mut resume_orchestrator =
+        new_orchestrator(&resume_tmp, resume_backend, resume_runtime.clone());
+    resume_orchestrator
+        .create_team("lead-join-resume", None)
+        .expect("create team");
+    resume_orchestrator
+        .add_member(
+            "lead-join-resume",
+            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+    mark_member_offline(&resume_tmp, "lead-join-resume", "team-lead", "%stale", None);
+    resume_runtime.set_pane_ownership("%stale", false);
+
+    let resume_report = resume_orchestrator
+        .resume_member("lead-join-resume", "team-lead")
+        .expect("resume report");
+    assert!(
+        resume_report.resumed,
+        "credential refresh must not roll back resume: {resume_report:?}"
+    );
+    assert!(resume_report
+        .warnings
+        .iter()
+        .any(|warning| { warning.contains("simulated lead credential failure") }));
+    assert!(
+        resume_runtime
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::KillPane { .. })),
+        "best-effort credential refresh must not kill the committed pane"
+    );
+    let persisted = MemberRuntimeStore::load(resume_tmp.path(), "lead-join-resume", "team-lead")
+        .expect("persisted runtime");
+    assert_eq!(persisted.health, HealthState::Healthy);
+    assert_eq!(
+        persisted.pane_id.as_deref(),
+        resume_report.pane_id.as_deref()
     );
 }
 
@@ -2432,6 +2648,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/research"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add member");
@@ -2597,6 +2814,7 @@ fn resume_pipeline_claude_member_with_role_context_sends_role_context_message() 
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/research"),
                 cli_tool: CliTool::Claude,
+                extra: Default::default(),
             },
         )
         .expect("add member");

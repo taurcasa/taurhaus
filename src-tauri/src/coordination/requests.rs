@@ -679,6 +679,7 @@ mod tests {
                 reasoning_effort: None,
                 project_path: PathBuf::from("/tmp/taurhaus"),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             },
             team_name: "architecture-final".to_string(),
             pane_target: Some("main.%0".to_string()),

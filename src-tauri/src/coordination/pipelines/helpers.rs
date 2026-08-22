@@ -276,14 +276,29 @@ pub(super) fn join_mesh_if_required(
     team_name: &str,
     member_name: &str,
     project_id: &str,
+    role: MemberRole,
     cli_tool: CliTool,
     model: &str,
 ) -> Result<bool, CoordinationError> {
-    if !should_use_mesh_sidecar_for_cli_tool(cli_tool) {
+    if cli_tool == CliTool::Claude && role != MemberRole::Lead {
         return Ok(false);
     }
 
-    runtime.join_mesh(team_name, member_name, project_id, model)?;
+    let member_type = if role == MemberRole::Lead {
+        "lead"
+    } else {
+        "general-purpose"
+    };
+    let claude_dir = crate::coordination::runtime::resolve_mesh_cli_claude_dir_arg()
+        .ok_or_else(|| CoordinationError::Backend("Claude config directory unavailable".into()))?;
+    runtime.join_mesh(
+        team_name,
+        member_name,
+        project_id,
+        member_type,
+        model,
+        claude_dir.as_str(),
+    )?;
     Ok(true)
 }
 
@@ -638,5 +653,6 @@ pub(super) fn member_from_agent_setup(
         reasoning_effort: declared_model.reasoning_effort,
         project_path: PathBuf::from(&setup.project_id),
         cli_tool: parse_cli_tool(&setup.cli_tool)?,
+        extra: Default::default(),
     })
 }

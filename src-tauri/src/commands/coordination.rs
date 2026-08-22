@@ -942,6 +942,7 @@ fn coordination_add_member_impl(
                 reasoning_effort: None,
                 project_path,
                 cli_tool,
+                extra: Default::default(),
             };
             orchestrator.add_member(&team_name, member)
         })

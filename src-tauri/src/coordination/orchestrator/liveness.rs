@@ -459,11 +459,10 @@ impl CoordinationOrchestrator {
         }
 
         let refreshed_status = self.get_team_status_fast(team_name)?;
-        let team_daemon_ensured = team_daemon_binary_drifted
+        let should_ensure_team_daemon = team_daemon_binary_drifted
             || team_should_ensure_daemon(&refreshed_status.members_runtime);
-        if team_daemon_ensured {
-            self.ensure_team_daemon_running_best_effort(team_name);
-        }
+        let team_daemon_ensured =
+            should_ensure_team_daemon && self.ensure_team_daemon_running_best_effort(team_name);
 
         Ok(TeamSelfHealResult {
             team_name: team_name.to_string(),

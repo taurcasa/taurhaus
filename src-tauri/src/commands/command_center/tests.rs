@@ -98,7 +98,9 @@ fn test_coordination_state(
     CoordinationState::with_components_and_runtime(
         teams_dir.to_path_buf(),
         BackendSelector::m0(),
-        Arc::new(|_kind| Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)),
+        Arc::new(|_kind, _teams_dir| {
+            Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+        }),
         Arc::new(move || runtime.clone() as Arc<dyn CoordinationRuntime>),
     )
 }
@@ -245,7 +247,9 @@ fn save_team_member(
                 reasoning_effort: None,
                 project_path: project_path.into(),
                 cli_tool,
+                extra: Default::default(),
             }],
+            extra: Default::default(),
         },
     )
     .expect("save team config");
@@ -261,6 +265,7 @@ fn save_team_members(teams_dir: &Path, team_name: &str, members: Vec<Member>) {
             description: None,
             created_at: chrono::Utc::now(),
             members,
+            extra: Default::default(),
         },
     )
     .expect("save team config");
@@ -774,6 +779,7 @@ fn enrich_sessions_with_team_membership_distinguishes_same_tool_members_by_pane(
                 reasoning_effort: None,
                 project_path: "/home/dev/projects/taurhaus".into(),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             },
             Member {
                 name: "developer2".to_string(),
@@ -799,6 +805,7 @@ fn enrich_sessions_with_team_membership_distinguishes_same_tool_members_by_pane(
                 reasoning_effort: None,
                 project_path: "/home/dev/projects/taurhaus".into(),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             },
         ],
     );
@@ -1291,7 +1298,10 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         team_name: "architecture-final".to_string(),
         member_name: "developer2".to_string(),
         project_id: "/tmp/project".to_string(),
+        member_type: "general-purpose".to_string(),
         model: "gpt-5.6-sol".to_string(),
+        claude_dir: crate::coordination::runtime::resolve_mesh_cli_claude_dir_arg()
+            .expect("Claude config dir"),
     }));
 }
 
@@ -1347,6 +1357,7 @@ fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
                 reasoning_effort: None,
                 project_path: "/tmp/project".into(),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             },
             Member {
                 name: "developer2".to_string(),
@@ -1372,6 +1383,7 @@ fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
                 reasoning_effort: None,
                 project_path: "/tmp/project".into(),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             },
         ],
     );

@@ -1,11 +1,8 @@
 //! Mesh-bridged backend adapter.
 
+use std::path::PathBuf;
 #[cfg(feature = "mesh-bridged-backend")]
 use std::process::Command;
-#[cfg(feature = "mesh-bridged-backend")]
-use std::thread;
-#[cfg(feature = "mesh-bridged-backend")]
-use std::time::Duration;
 
 #[cfg(feature = "mesh-bridged-backend")]
 use std::sync::Arc;
@@ -15,24 +12,20 @@ use crate::coordination::errors::CoordinationError;
 #[cfg(feature = "mesh-bridged-backend")]
 use crate::coordination::mesh_cli::{self, CommandInvocation};
 use crate::coordination::requests::{
-    DeliveryRequest, DeliveryResult, LaunchRequest, LaunchResult, OperatorNoticeDelivery,
-    ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
+    DeliveryMethod, DeliveryRequest, DeliveryResult, LaunchRequest, LaunchResult,
+    OperatorNoticeDelivery, ProbeRequest, ProbeResult, TeardownRequest, TeardownResult,
 };
 #[cfg(feature = "mesh-bridged-backend")]
 use crate::coordination::runtime::{
     apply_background_command_settings, mesh_command_invocation_for_member,
 };
+use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 use crate::session_scanner::cli_tool::CliTool;
+use chrono::Utc;
 
 #[cfg(not(feature = "mesh-bridged-backend"))]
 const FEATURE_NAME: &str = "mesh-bridged-backend";
-const COORDINATOR_AGENT_NAME: &str = "taurhaus-orchestrator";
-const FALLBACK_OPERATOR_NAME: &str = "team-lead";
-#[cfg(feature = "mesh-bridged-backend")]
 const NOTICE_SUMMARY: &str = "operator_notice";
-#[cfg(feature = "mesh-bridged-backend")]
-const OPERATOR_NOTICE_RETRY_DELAYS: [Duration; 2] =
-    [Duration::from_millis(150), Duration::from_millis(350)];
 pub const MESH_MISSING_ERROR: &str =
     "Mesh CLI not found. Install it to enable multi-agent collaboration.";
 pub const TMUX_MISSING_ERROR: &str = "tmux is required for multi-agent sessions.";
@@ -322,7 +315,7 @@ impl MeshCommandRunner for SystemMeshCommandRunner {
 pub struct MeshBridgedBackend {
     #[cfg(feature = "mesh-bridged-backend")]
     runner: Arc<dyn MeshCommandRunner>,
-    coordinator_name: String,
+    teams_dir: PathBuf,
 }
 
 impl Default for MeshBridgedBackend {
@@ -334,7 +327,7 @@ impl Default for MeshBridgedBackend {
 impl std::fmt::Debug for MeshBridgedBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MeshBridgedBackend")
-            .field("coordinator_name", &self.coordinator_name)
+            .field("teams_dir", &self.teams_dir)
             .finish()
     }
 }
@@ -344,7 +337,15 @@ impl MeshBridgedBackend {
         Self {
             #[cfg(feature = "mesh-bridged-backend")]
             runner: Arc::new(SystemMeshCommandRunner),
-            coordinator_name: COORDINATOR_AGENT_NAME.to_string(),
+            teams_dir: crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        }
+    }
+
+    pub fn new_with_teams_dir(teams_dir: PathBuf) -> Self {
+        Self {
+            #[cfg(feature = "mesh-bridged-backend")]
+            runner: Arc::new(SystemMeshCommandRunner),
+            teams_dir,
         }
     }
 
@@ -352,8 +353,16 @@ impl MeshBridgedBackend {
     pub fn with_runner(runner: Arc<dyn MeshCommandRunner>) -> Self {
         Self {
             runner,
-            coordinator_name: COORDINATOR_AGENT_NAME.to_string(),
+            teams_dir: crate::provider::platform_paths::PlatformPaths::teams_dir(),
         }
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    pub fn with_runner_and_teams_dir(
+        runner: Arc<dyn MeshCommandRunner>,
+        teams_dir: PathBuf,
+    ) -> Self {
+        Self { runner, teams_dir }
     }
 
     #[cfg(not(feature = "mesh-bridged-backend"))]
@@ -404,75 +413,27 @@ impl MeshBridgedBackend {
         Err(Self::mesh_disabled_error())
     }
 
-    #[cfg(feature = "mesh-bridged-backend")]
     fn send_operator_notice(
         &self,
         payload: OperatorNoticeDelivery,
     ) -> Result<DeliveryResult, CoordinationError> {
-        fn push_unique_sender(candidates: &mut Vec<String>, sender: &str) {
-            if sender.trim().is_empty() {
-                return;
-            }
-            if candidates.iter().any(|candidate| candidate == sender) {
-                return;
-            }
-            candidates.push(sender.to_string());
-        }
-
-        let mut sender_candidates = Vec::new();
-        if let Some(sender_name) = payload.sender_name.as_deref() {
-            push_unique_sender(&mut sender_candidates, sender_name.trim());
-        }
-        push_unique_sender(&mut sender_candidates, self.coordinator_name.as_str());
-        push_unique_sender(&mut sender_candidates, FALLBACK_OPERATOR_NAME);
-        push_unique_sender(&mut sender_candidates, payload.member_name.as_str());
-
-        let mut last_stderr = String::new();
-        for retry_delay in OPERATOR_NOTICE_RETRY_DELAYS
-            .iter()
-            .copied()
-            .map(Some)
-            .chain(std::iter::once(None))
-        {
-            for sender_name in &sender_candidates {
-                let out = self.run_mesh(&[
-                    "send",
-                    &payload.member_name,
-                    &payload.message,
-                    "--team",
-                    &payload.team_name,
-                    "--name",
-                    sender_name.as_str(),
-                    "--summary",
-                    NOTICE_SUMMARY,
-                ])?;
-                if out.success {
-                    return Ok(DeliveryResult {
-                        delivered: true,
-                        method: crate::coordination::requests::DeliveryMethod::TmuxInjection,
-                    });
-                }
-
-                last_stderr = out.stderr;
-            }
-
-            if let Some(delay) = retry_delay {
-                thread::sleep(delay);
-            }
-        }
-
-        Err(CoordinationError::Backend(format!(
-            "mesh send failed for '{}' in '{}': {}",
-            payload.member_name, payload.team_name, last_stderr
-        )))
-    }
-
-    #[cfg(not(feature = "mesh-bridged-backend"))]
-    fn send_operator_notice(
-        &self,
-        _payload: OperatorNoticeDelivery,
-    ) -> Result<DeliveryResult, CoordinationError> {
-        Err(Self::mesh_disabled_error())
+        let message = MeshInboxMessage::operator_originated(
+            &payload.member_name,
+            payload.message,
+            Some(NOTICE_SUMMARY.to_string()),
+            Utc::now(),
+            payload.sender_name.as_deref(),
+        );
+        MeshInboxStore::append(
+            &self.teams_dir,
+            &payload.team_name,
+            &payload.member_name,
+            &message,
+        )?;
+        Ok(DeliveryResult {
+            delivered: true,
+            method: DeliveryMethod::InboxFile,
+        })
     }
 }
 
@@ -552,6 +513,7 @@ mod tests {
     #[cfg(feature = "mesh-bridged-backend")]
     use std::sync::Arc;
     use std::sync::Mutex;
+    use tempfile::TempDir;
 
     use crate::coordination::backend::fake::FakeBackend;
     use crate::coordination::domain::{Member, MemberRole};
@@ -734,6 +696,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 
@@ -770,15 +733,12 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "mesh-bridged-backend")]
     #[test]
-    fn operator_notice_invokes_mesh_send() {
-        let runner = MockRunner::with_outcomes(vec![MeshCommandOutput {
-            success: true,
-            stdout: "sent".to_string(),
-            stderr: String::new(),
-        }]);
-        let backend = MeshBridgedBackend::with_runner(runner.clone());
+    fn operator_notice_appends_directly_and_reports_inbox_file() {
+        // Regression: the operator path reported tmux injection even though
+        // durable delivery is the recipient's inbox file.
+        let tmp = TempDir::new().expect("tempdir");
+        let backend = MeshBridgedBackend::new_with_teams_dir(tmp.path().to_path_buf());
 
         let result = backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
@@ -788,245 +748,40 @@ mod tests {
                 sender_name: None,
                 operational_context: None,
             }))
-            .expect("delivery should succeed");
+            .expect("delivery");
 
-        assert!(result.delivered);
-        assert_eq!(
-            result.method,
-            crate::coordination::requests::DeliveryMethod::TmuxInjection
-        );
-        assert_eq!(
-            runner.calls(),
-            vec![vec![
-                "send",
-                "codex-reviewer",
-                "check in",
-                "--team",
-                "architecture-final",
-                "--name",
-                COORDINATOR_AGENT_NAME,
-                "--summary",
-                NOTICE_SUMMARY
-            ]]
-        );
+        assert_eq!(result.method, DeliveryMethod::InboxFile);
+        let inbox = MeshInboxStore::load(tmp.path(), "architecture-final", "codex-reviewer")
+            .expect("inbox");
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].text, "check in");
+        assert_eq!(inbox[0].summary.as_deref(), Some(NOTICE_SUMMARY));
     }
 
-    #[cfg(feature = "mesh-bridged-backend")]
     #[test]
-    fn operator_notice_retries_with_fallback_sender_when_coordinator_missing() {
-        let runner = MockRunner::with_outcomes(vec![
-            MeshCommandOutput {
-                success: false,
-                stdout: String::new(),
-                stderr: "error: agent 'taurhaus-orchestrator' not found (no inbox)".to_string(),
-            },
-            MeshCommandOutput {
-                success: true,
-                stdout: "sent".to_string(),
-                stderr: String::new(),
-            },
-        ]);
-        let backend = MeshBridgedBackend::with_runner(runner.clone());
+    fn operator_notice_never_uses_recipient_as_sender() {
+        // Regression: mesh-findings P1 delivery audit; the sender fallback
+        // chain ended in a self-send, forging recipient activity and identity.
+        let tmp = TempDir::new().expect("tempdir");
+        let backend = MeshBridgedBackend::new_with_teams_dir(tmp.path().to_path_buf());
 
-        let result = backend
+        backend
             .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: "codex-reviewer".to_string(),
                 team_name: "architecture-final".to_string(),
                 message: "check in".to_string(),
-                sender_name: None,
+                sender_name: Some("codex-reviewer".to_string()),
                 operational_context: None,
             }))
-            .expect("delivery should succeed after fallback retry");
+            .expect("delivery");
 
-        assert!(result.delivered);
+        let inbox = MeshInboxStore::load(tmp.path(), "architecture-final", "codex-reviewer")
+            .expect("inbox");
         assert_eq!(
-            result.method,
-            crate::coordination::requests::DeliveryMethod::TmuxInjection
+            inbox[0].from,
+            crate::coordination::stores::OPERATOR_SENDER_NAME
         );
-        assert_eq!(
-            runner.calls(),
-            vec![
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    COORDINATOR_AGENT_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ],
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    FALLBACK_OPERATOR_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ]
-            ]
-        );
-    }
-
-    #[cfg(feature = "mesh-bridged-backend")]
-    #[test]
-    fn operator_notice_retries_with_fallback_sender_when_team_lookup_fails() {
-        let runner = MockRunner::with_outcomes(vec![
-            MeshCommandOutput {
-                success: false,
-                stdout: String::new(),
-                stderr: "error: team 'architecture-final' not found".to_string(),
-            },
-            MeshCommandOutput {
-                success: true,
-                stdout: "sent".to_string(),
-                stderr: String::new(),
-            },
-        ]);
-        let backend = MeshBridgedBackend::with_runner(runner.clone());
-
-        let result = backend
-            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: "codex-reviewer".to_string(),
-                team_name: "architecture-final".to_string(),
-                message: "check in".to_string(),
-                sender_name: None,
-                operational_context: None,
-            }))
-            .expect("delivery should succeed after retry");
-
-        assert!(result.delivered);
-        assert_eq!(
-            result.method,
-            crate::coordination::requests::DeliveryMethod::TmuxInjection
-        );
-        assert_eq!(
-            runner.calls(),
-            vec![
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    COORDINATOR_AGENT_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ],
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    FALLBACK_OPERATOR_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ]
-            ]
-        );
-    }
-
-    #[cfg(feature = "mesh-bridged-backend")]
-    // Regression: commit 3b17397 fixed the resume race where onboarding send
-    // could win the recipient inbox bootstrap and fail with "no inbox". Keep
-    // retrying the full sender pass until the inbox is ready.
-    #[test]
-    fn operator_notice_retries_full_sender_pass_when_recipient_inbox_is_not_ready_yet() {
-        let runner = MockRunner::with_outcomes(vec![
-            MeshCommandOutput {
-                success: false,
-                stdout: String::new(),
-                stderr: "error: agent 'codex-reviewer' not found (no inbox)".to_string(),
-            },
-            MeshCommandOutput {
-                success: false,
-                stdout: String::new(),
-                stderr: "error: agent 'codex-reviewer' not found (no inbox)".to_string(),
-            },
-            MeshCommandOutput {
-                success: false,
-                stdout: String::new(),
-                stderr: "error: agent 'codex-reviewer' not found (no inbox)".to_string(),
-            },
-            MeshCommandOutput {
-                success: true,
-                stdout: "sent".to_string(),
-                stderr: String::new(),
-            },
-        ]);
-        let backend = MeshBridgedBackend::with_runner(runner.clone());
-
-        let result = backend
-            .deliver(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
-                member_name: "codex-reviewer".to_string(),
-                team_name: "architecture-final".to_string(),
-                message: "check in".to_string(),
-                sender_name: None,
-                operational_context: None,
-            }))
-            .expect("delivery should succeed after retry once the inbox is ready");
-
-        assert!(result.delivered);
-        assert_eq!(
-            result.method,
-            crate::coordination::requests::DeliveryMethod::TmuxInjection
-        );
-        assert_eq!(
-            runner.calls(),
-            vec![
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    COORDINATOR_AGENT_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ],
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    FALLBACK_OPERATOR_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ],
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    "codex-reviewer",
-                    "--summary",
-                    NOTICE_SUMMARY
-                ],
-                vec![
-                    "send",
-                    "codex-reviewer",
-                    "check in",
-                    "--team",
-                    "architecture-final",
-                    "--name",
-                    COORDINATOR_AGENT_NAME,
-                    "--summary",
-                    NOTICE_SUMMARY
-                ]
-            ]
-        );
+        assert_ne!(inbox[0].from, "codex-reviewer");
     }
 
     #[test]

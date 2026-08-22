@@ -416,6 +416,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from("/tmp/review"),
             cli_tool: CliTool::Claude,
+            extra: Default::default(),
         };
 
         let context =
@@ -484,6 +485,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from("/tmp/review"),
             cli_tool: CliTool::Claude,
+            extra: Default::default(),
         };
 
         hydrate_member_model_fields(&mut member, Some(&role));

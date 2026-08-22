@@ -41,8 +41,7 @@ pub(super) fn delivery_operational_context(
 
 pub(super) fn default_method_for_backend(kind: BackendKind) -> DeliveryMethod {
     match kind {
-        BackendKind::ClaudeNative => DeliveryMethod::NativeMessageApi,
-        BackendKind::MeshBridged => DeliveryMethod::TmuxInjection,
+        BackendKind::ClaudeNative | BackendKind::MeshBridged => DeliveryMethod::InboxFile,
     }
 }
 

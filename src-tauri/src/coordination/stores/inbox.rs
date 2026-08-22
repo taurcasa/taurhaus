@@ -1,6 +1,8 @@
 //! Mesh inbox file store shared with non-Claude agent delivery.
 
+use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -11,6 +13,7 @@ use crate::coordination::errors::CoordinationError;
 use taurhaus_lib::logging::emit_global;
 
 const INBOXES_DIRNAME: &str = "inboxes";
+pub const OPERATOR_SENDER_NAME: &str = "taurhaus";
 
 /// Message entry stored in `teams/<team>/inboxes/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +35,10 @@ pub struct MeshInboxMessage {
     pub acked_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub acked_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_relay: Option<Value>,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, Value>,
 }
 
 impl MeshInboxMessage {
@@ -47,6 +54,40 @@ impl MeshInboxMessage {
             priority: None,
             acked_at: None,
             acked_by: None,
+            external_relay: None,
+            extra: BTreeMap::new(),
+        }
+    }
+
+    pub fn operator_originated(
+        recipient_name: &str,
+        text: String,
+        summary: Option<String>,
+        now: DateTime<Utc>,
+        sender_name: Option<&str>,
+    ) -> Self {
+        let sender_name = sender_name
+            .map(str::trim)
+            .filter(|sender| !sender.is_empty() && *sender != recipient_name)
+            .unwrap_or(OPERATOR_SENDER_NAME);
+        Self::new(sender_name, text, summary, now)
+    }
+
+    fn remove_authored_keys_from_extra(&mut self) {
+        for key in [
+            "id",
+            "from",
+            "text",
+            "timestamp",
+            "read",
+            "summary",
+            "color",
+            "priority",
+            "ackedAt",
+            "ackedBy",
+            "externalRelay",
+        ] {
+            self.extra.remove(key);
         }
     }
 }
@@ -62,7 +103,7 @@ impl MeshInboxStore {
         member_name: &str,
     ) -> Result<Vec<MeshInboxMessage>, CoordinationError> {
         let path = inbox_path(teams_dir, team_name, member_name);
-        let raw = match fs::read_to_string(&path) {
+        let raw = match super::lock::read_to_string_with_retry(&path) {
             Ok(raw) => raw,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(err) => return Err(CoordinationError::Io(err)),
@@ -72,16 +113,7 @@ impl MeshInboxStore {
             return Ok(Vec::new());
         }
 
-        match serde_json::from_str(&raw) {
-            Ok(messages) => Ok(messages),
-            Err(err) => Err(handle_corrupt_inbox_file(
-                teams_dir,
-                &path,
-                team_name,
-                member_name,
-                &err.to_string(),
-            )),
-        }
+        parse_inbox_contents(teams_dir, &path, team_name, member_name, &raw)
     }
 
     pub fn append(
@@ -90,13 +122,23 @@ impl MeshInboxStore {
         member_name: &str,
         message: &MeshInboxMessage,
     ) -> Result<(), CoordinationError> {
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name)?;
-
         let inbox_dir = inboxes_dir(teams_dir, team_name);
         fs::create_dir_all(&inbox_dir)?;
 
-        let mut messages = Self::load(teams_dir, team_name, member_name)?;
-        messages.push(message.clone());
+        let target_path = inbox_path(teams_dir, team_name, member_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)?;
+        let raw = target_lock.read_contents()?;
+        let mut messages = if raw.trim().is_empty() {
+            Vec::new()
+        } else {
+            parse_inbox_contents(teams_dir, &target_path, team_name, member_name, &raw)?
+        };
+        let mut message = message.clone();
+        message.remove_authored_keys_from_extra();
+        for existing in &mut messages {
+            existing.remove_authored_keys_from_extra();
+        }
+        messages.push(message);
 
         let payload = serde_json::to_string_pretty(&messages).map_err(|err| {
             CoordinationError::StoreError(format!(
@@ -104,15 +146,28 @@ impl MeshInboxStore {
             ))
         })?;
 
-        let target_path = inbox_path(teams_dir, team_name, member_name);
         let tmp_path = inbox_tmp_path(teams_dir, team_name, member_name);
-        fs::write(&tmp_path, payload)?;
+        let mut tmp_file = fs::File::create(&tmp_path)?;
+        tmp_file.write_all(payload.as_bytes())?;
+        tmp_file.sync_all()?;
         if let Err(err) = fs::rename(&tmp_path, &target_path) {
             let _ = fs::remove_file(&tmp_path);
             return Err(CoordinationError::Io(err));
         }
         Ok(())
     }
+}
+
+fn parse_inbox_contents(
+    teams_dir: &Path,
+    path: &Path,
+    team_name: &str,
+    member_name: &str,
+    raw: &str,
+) -> Result<Vec<MeshInboxMessage>, CoordinationError> {
+    serde_json::from_str(raw).map_err(|err| {
+        handle_corrupt_inbox_file(teams_dir, path, team_name, member_name, &err.to_string())
+    })
 }
 
 fn inboxes_dir(teams_dir: &Path, team_name: &str) -> PathBuf {
@@ -240,6 +295,61 @@ mod tests {
         let loaded = MeshInboxStore::load(&teams_dir, "t", "agent").expect("load inbox");
 
         assert_eq!(loaded, vec![message]);
+    }
+
+    #[test]
+    fn append_preserves_external_relay_and_unknown_message_fields() {
+        // Regression: mesh-findings P11; taurhaus re-serialized the inbox array
+        // through a closed struct and erased mesh's externalRelay metadata.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let inbox_dir = teams_dir.join("t").join("inboxes");
+        fs::create_dir_all(&inbox_dir).expect("inbox dir");
+        let path = inbox_dir.join("agent.json");
+        fs::write(
+            &path,
+            r#"[{
+  "id": "relay-1",
+  "from": "remote-lead",
+  "text": "cross-team update",
+  "timestamp": "2026-03-08T19:00:00.000Z",
+  "read": false,
+  "externalRelay": {
+    "sourceTeam": "remote-team",
+    "sourceSender": "remote-lead",
+    "crossTeamMessageId": "xteam-1",
+    "transport": "filesystem"
+  },
+  "futureMessageField": { "preserve": true }
+}]"#,
+        )
+        .expect("write relay inbox");
+        let appended = MeshInboxMessage::new(
+            "taurhaus",
+            "operator update".to_string(),
+            Some("operator_notice".to_string()),
+            DateTime::parse_from_rfc3339("2026-03-08T19:01:00Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+
+        MeshInboxStore::append(&teams_dir, "t", "agent", &appended).expect("append inbox");
+
+        let value: Value = serde_json::from_str(&fs::read_to_string(path).expect("read inbox"))
+            .expect("parse inbox");
+        assert_eq!(
+            value[0]["externalRelay"],
+            serde_json::json!({
+                "sourceTeam": "remote-team",
+                "sourceSender": "remote-lead",
+                "crossTeamMessageId": "xteam-1",
+                "transport": "filesystem"
+            })
+        );
+        assert_eq!(
+            value[0]["futureMessageField"],
+            serde_json::json!({ "preserve": true })
+        );
     }
 
     #[test]

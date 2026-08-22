@@ -936,6 +936,7 @@ mod tests {
             reasoning_effort: None,
             project_path: project_path.to_path_buf(),
             cli_tool: CliTool::Claude,
+            extra: Default::default(),
         }
     }
 
@@ -951,6 +952,7 @@ mod tests {
                     .expect("timestamp")
                     .with_timezone(&Utc),
                 members: vec![member.clone()],
+                extra: Default::default(),
             },
         )
         .expect("save team");
@@ -1438,6 +1440,7 @@ mod tests {
                     .expect("timestamp")
                     .with_timezone(&Utc),
                 members: vec![architect.clone(), reviewer.clone()],
+                extra: Default::default(),
             },
         )
         .expect("save team");

@@ -328,6 +328,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from(project_path),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 
@@ -371,6 +372,7 @@ mod tests {
             description: None,
             created_at: timestamp("2026-03-08T14:00:00Z"),
             members: vec![member.clone()],
+            extra: Default::default(),
         };
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save team config");
 

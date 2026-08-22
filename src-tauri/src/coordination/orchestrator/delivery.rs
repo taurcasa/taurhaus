@@ -6,7 +6,7 @@ use crate::coordination::audit::{
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::operational_context::apply_delivery_context;
-use crate::coordination::requests::{DeliveryRequest, DeliveryResult};
+use crate::coordination::requests::{DeliveryMethod, DeliveryRequest, DeliveryResult};
 use crate::coordination::stores::MemberRuntimeStore;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -59,14 +59,15 @@ impl CoordinationOrchestrator {
             )));
         }
 
+        let member_cli_tool = config
+            .members
+            .iter()
+            .find(|member| member.name == member_name)
+            .map(|member| member.cli_tool)
+            .expect("validated member must exist");
         let effective_backend = match &self.claude_backend {
             Some(claude_be) => {
-                let member_cli_tool = config
-                    .members
-                    .iter()
-                    .find(|m| m.name == member_name)
-                    .map(|m| m.cli_tool);
-                if member_cli_tool == Some(CliTool::Claude) {
+                if member_cli_tool == CliTool::Claude {
                     claude_be.clone()
                 } else {
                     self.backend.clone()
@@ -102,6 +103,17 @@ impl CoordinationOrchestrator {
                     return Err(error);
                 }
 
+                let ensured_daemon_pid = if result.method == DeliveryMethod::InboxFile
+                    && member_cli_tool != CliTool::Claude
+                {
+                    self.ensure_member_daemon_after_inbox_append_best_effort(
+                        &team_name_owned,
+                        &member_name_owned,
+                    )
+                } else {
+                    None
+                };
+
                 self.audit_log
                     .push(AuditEvent::DeliverySucceeded(DeliverySucceededEvent {
                         team_name: team_name_owned.clone(),
@@ -127,23 +139,24 @@ impl CoordinationOrchestrator {
                     }
                 }
 
-                if let Ok(mut runtime) =
-                    MemberRuntimeStore::load(&self.teams_dir, &team_name_owned, &member_name_owned)
-                {
-                    runtime.last_seen_at = Some(Utc::now());
-                    if let Err(err) = MemberRuntimeStore::save(
-                        &self.teams_dir,
-                        &team_name_owned,
-                        &member_name_owned,
-                        &runtime,
-                    ) {
-                        tracing::warn!(
-                            team_name = %team_name_owned,
-                            member_name = %member_name_owned,
-                            error = %err,
-                            "failed to persist runtime last_seen after successful delivery"
-                        );
-                    }
+                let delivered_at = Utc::now();
+                if let Err(err) = MemberRuntimeStore::update(
+                    &self.teams_dir,
+                    &team_name_owned,
+                    &member_name_owned,
+                    |runtime| {
+                        runtime.last_seen_at = Some(delivered_at);
+                        if let Some(daemon_pid) = ensured_daemon_pid {
+                            runtime.daemon_pid = Some(daemon_pid);
+                        }
+                    },
+                ) {
+                    tracing::warn!(
+                        team_name = %team_name_owned,
+                        member_name = %member_name_owned,
+                        error = %err,
+                        "failed to persist runtime delivery state after successful delivery"
+                    );
                 }
 
                 Ok(result)
@@ -160,6 +173,61 @@ impl CoordinationOrchestrator {
                 Err(err)
             }
         }
+    }
+
+    fn ensure_member_daemon_after_inbox_append_best_effort(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Option<u32> {
+        let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, member_name) else {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                "inbox append succeeded but member runtime was unavailable for daemon wake"
+            );
+            return None;
+        };
+        let Some(pane_id) = runtime.pane_id.as_deref() else {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                "inbox append succeeded but member has no pane for daemon wake"
+            );
+            return None;
+        };
+
+        let daemon_is_live = runtime
+            .daemon_pid
+            .is_some_and(|pid| self.runtime.is_process_running_by_pid(pid).unwrap_or(false));
+        if daemon_is_live {
+            return None;
+        }
+
+        let existing_pid = self
+            .runtime
+            .find_existing_mesh_daemon_pids(pane_id, team_name, member_name)
+            .ok()
+            .and_then(|pids| pids.into_iter().next());
+        let daemon_pid = existing_pid.or_else(|| {
+            match self
+                .runtime
+                .spawn_mesh_daemon(pane_id, team_name, member_name)
+            {
+                Ok(pid) => Some(pid),
+                Err(err) => {
+                    tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pane_id = %pane_id,
+                        error = %err,
+                        "inbox append succeeded but member daemon wake could not be ensured"
+                    );
+                    None
+                }
+            }
+        });
+        daemon_pid
     }
 
     /// Record a lease-claim audit event.

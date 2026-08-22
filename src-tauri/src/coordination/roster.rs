@@ -1,9 +1,10 @@
 //! Authoritative team roster + runtime attachment join.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 
 use crate::coordination::domain::{DeliveryLease, HealthState, Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
@@ -45,6 +46,7 @@ pub struct TeamMemberView {
     pub reasoning_effort: Option<String>,
     pub configured_cli_tool: CliTool,
     pub configured_project_path: PathBuf,
+    pub extra: BTreeMap<String, Value>,
     pub session_id: Option<String>,
     pub pane_id: Option<String>,
     pub jsonl_path: Option<PathBuf>,
@@ -85,6 +87,7 @@ impl TeamMemberView {
             reasoning_effort: self.reasoning_effort.clone(),
             project_path: self.configured_project_path.clone(),
             cli_tool: self.configured_cli_tool,
+            extra: self.extra.clone(),
         }
     }
 
@@ -197,6 +200,7 @@ fn build_team_member_view(
         reasoning_effort: member.reasoning_effort,
         configured_cli_tool: member.cli_tool,
         configured_project_path: member.project_path,
+        extra: member.extra,
         session_id: runtime
             .as_ref()
             .and_then(|record| record.session_id.clone()),
@@ -316,6 +320,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 
@@ -329,6 +334,7 @@ mod tests {
                 description: Some("team".to_string()),
                 created_at: ts("2026-03-08T21:00:00Z"),
                 members,
+                extra: Default::default(),
             },
         )
         .expect("save team");

@@ -361,6 +361,7 @@ impl CoordinationOrchestrator {
                 description: team_description,
                 created_at,
                 members: members.clone(),
+                extra: Default::default(),
             },
         )?;
 
@@ -489,8 +490,9 @@ impl CoordinationOrchestrator {
         F: FnOnce(&mut CoordinationOrchestrator) -> Result<(), CoordinationError>,
     {
         emit_initialize_step_progress(step, StepStatus::Running, None, emit_progress);
+        let mut best_effort_message = None;
         for (member, role) in initialize_members {
-            SharedMemberActivationExecutor::for_initialize(
+            if let Some(message) = SharedMemberActivationExecutor::for_initialize(
                 self,
                 request,
                 member,
@@ -498,12 +500,17 @@ impl CoordinationOrchestrator {
                 cli_commands,
                 tmux_layout,
             )
-            .run_initialize_stage(activation_stage, per_project_anchor_panes)?;
+            .run_initialize_stage(activation_stage, per_project_anchor_panes)?
+            {
+                best_effort_message = Some(message);
+            }
         }
         after_stage(self).map_err(|err| (step.to_string(), err))?;
         mark_initialize_step_succeeded(
             step,
-            initialize_stage_success_message(step),
+            best_effort_message
+                .as_deref()
+                .unwrap_or_else(|| initialize_stage_success_message(step)),
             succeeded_steps,
             steps,
             emit_progress,

@@ -29,7 +29,9 @@ pub enum RuntimeCall {
         team_name: String,
         member_name: String,
         project_id: String,
+        member_type: String,
         model: String,
+        claude_dir: String,
     },
     SpawnDaemon {
         pane_id: String,
@@ -99,6 +101,8 @@ pub struct RecordingCoordinationRuntime {
     pane_ownership: Mutex<HashMap<String, bool>>,
     send_keys_failures_remaining: Mutex<HashMap<String, usize>>,
     send_keys_failure_message: Mutex<HashMap<String, String>>,
+    join_mesh_failure_message: Mutex<Option<String>>,
+    mesh_join_teams_dir: Mutex<Option<PathBuf>>,
     pid_running: Mutex<HashMap<u32, bool>>,
     pid_current_mesh_binary: Mutex<HashMap<u32, bool>>,
     team_daemon_current_mesh_binary: Mutex<HashMap<String, bool>>,
@@ -159,6 +163,18 @@ impl RecordingCoordinationRuntime {
         }
         if let Ok(mut map) = self.send_keys_failure_message.lock() {
             map.insert(pane_id.to_string(), message.to_string());
+        }
+    }
+
+    pub fn set_join_mesh_failure(&self, message: &str) {
+        if let Ok(mut failure) = self.join_mesh_failure_message.lock() {
+            *failure = Some(message.to_string());
+        }
+    }
+
+    pub fn set_mesh_join_teams_dir(&self, teams_dir: &std::path::Path) {
+        if let Ok(mut root) = self.mesh_join_teams_dir.lock() {
+            *root = Some(teams_dir.to_path_buf());
         }
     }
 
@@ -327,14 +343,64 @@ impl CoordinationRuntime for RecordingCoordinationRuntime {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError> {
         self.push_call(RuntimeCall::JoinMesh {
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),
             project_id: project_id.to_string(),
+            member_type: member_type.to_string(),
             model: model.to_string(),
+            claude_dir: claude_dir.to_string(),
         });
+        if let Ok(failure) = self.join_mesh_failure_message.lock() {
+            if let Some(message) = failure.as_ref() {
+                return Err(CoordinationError::Backend(message.clone()));
+            }
+        }
+        if let Some(teams_dir) = self
+            .mesh_join_teams_dir
+            .lock()
+            .ok()
+            .and_then(|root| root.clone())
+        {
+            let config_path = teams_dir.join(team_name).join("config.json");
+            let raw = std::fs::read_to_string(&config_path).map_err(CoordinationError::Io)?;
+            let mut config: serde_json::Value = serde_json::from_str(&raw).map_err(|err| {
+                CoordinationError::StoreError(format!(
+                    "recording runtime could not parse config for mesh join: {err}"
+                ))
+            })?;
+            let member = config["members"]
+                .as_array_mut()
+                .and_then(|members| {
+                    members
+                        .iter_mut()
+                        .find(|member| member["name"].as_str() == Some(member_name))
+                })
+                .and_then(serde_json::Value::as_object_mut)
+                .ok_or_else(|| {
+                    CoordinationError::StoreError(format!(
+                        "recording runtime could not find mesh member '{member_name}'"
+                    ))
+                })?;
+            member.insert(
+                "controlAuthTokenHash".to_string(),
+                serde_json::Value::String("sha256:recording-runtime".to_string()),
+            );
+            member.insert("isActive".to_string(), serde_json::Value::Bool(true));
+            std::fs::write(
+                &config_path,
+                serde_json::to_string_pretty(&config).map_err(|err| {
+                    CoordinationError::StoreError(format!(
+                        "recording runtime could not serialize mesh join config: {err}"
+                    ))
+                })?,
+            )
+            .map_err(CoordinationError::Io)?;
+        }
         Ok(())
     }
 

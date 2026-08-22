@@ -470,7 +470,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         mut self,
         stage: InitializeMemberActivationStage,
         per_project_anchor_panes: &mut std::collections::HashMap<String, String>,
-    ) -> Result<(), (String, CoordinationError)> {
+    ) -> Result<Option<String>, (String, CoordinationError)> {
         let prepared = match self.prepare_initialize() {
             Ok(prepared) => prepared,
             Err(err) => return Err(("add_lead".to_string(), err)),
@@ -479,13 +479,13 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         match stage {
             InitializeMemberActivationStage::CreatePanes => {
                 if self.initialize_member_skips_launch() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 self.initialize_create_pane_and_launch(&prepared, per_project_anchor_panes)
             }
             InitializeMemberActivationStage::LaunchSessions => {
                 if self.initialize_member_skips_launch() {
-                    return Ok(());
+                    return Ok(None);
                 }
                 self.initialize_capture_session_identity(&prepared)
             }
@@ -517,7 +517,8 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 }
                 Ok(())
             }
-        }
+        }?;
+        Ok(self.warnings.into_iter().next())
     }
 
     fn prepare_initialize(&mut self) -> Result<PreparedMemberActivation, CoordinationError> {
@@ -572,10 +573,17 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         let pane_id = self.acquire_pane(prepared)?;
         self.launch_session(prepared, &pane_id)?;
         self.capture_session_identity(prepared, &pane_id)?;
-        self.join_mesh(prepared)?;
+        let deferred_claude_lead_join =
+            prepared.member.cli_tool == CliTool::Claude && prepared.member.role == MemberRole::Lead;
+        if !deferred_claude_lead_join {
+            self.join_mesh(prepared)?;
+        }
         self.start_member_daemon(prepared, &pane_id)?;
         self.deliver_onboarding(prepared)?;
         self.commit_runtime(prepared)?;
+        if deferred_claude_lead_join {
+            self.join_mesh(prepared)?;
+        }
         Ok(pane_id)
     }
 
@@ -832,36 +840,53 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         prepared: &PreparedMemberActivation,
     ) -> Result<(), (String, CoordinationError)> {
         self.emit_stage(MemberActivationStage::JoinMesh, StepStatus::Running, None);
-        if prepared.member.cli_tool == CliTool::Claude {
-            self.record_step_success("join_mesh", "not required for claude");
-            self.emit_stage(
-                MemberActivationStage::JoinMesh,
-                StepStatus::Succeeded,
-                Some("not required for claude".to_string()),
-            );
-            return Ok(());
-        }
-
         let project_id = prepared.member.project_path.display().to_string();
         match join_mesh_if_required(
             self.orchestrator.runtime.as_ref(),
             &prepared.activation_context.team_name,
             &prepared.member.name,
             project_id.as_str(),
+            prepared.member.role,
             prepared.member.cli_tool,
             &prepared.activation_context.member.model,
         ) {
             Ok(joined) => {
                 self.runtime_state.mesh_joined = joined;
-                self.record_step_success("join_mesh", "mesh joined");
+                let message = if joined {
+                    "mesh joined"
+                } else {
+                    "not required for non-lead claude member"
+                };
+                self.record_step_success("join_mesh", message);
                 self.emit_stage(
                     MemberActivationStage::JoinMesh,
                     StepStatus::Succeeded,
-                    Some("mesh joined".to_string()),
+                    Some(message.to_string()),
                 );
                 Ok(())
             }
             Err(err) => {
+                if prepared.member.cli_tool == CliTool::Claude
+                    && prepared.member.role == MemberRole::Lead
+                {
+                    let message = format!(
+                        "Claude lead mesh credential refresh failed; continuing without team daemon: {err}"
+                    );
+                    tracing::warn!(
+                        team = %prepared.activation_context.team_name,
+                        member = %prepared.member.name,
+                        error = %err,
+                        "Claude lead activation committed without a refreshed mesh credential"
+                    );
+                    self.warnings.push(message.clone());
+                    self.record_step_success("join_mesh", &message);
+                    self.emit_stage(
+                        MemberActivationStage::JoinMesh,
+                        StepStatus::Succeeded,
+                        Some(message),
+                    );
+                    return Ok(());
+                }
                 self.cleanup_failure();
                 self.emit_stage(
                     MemberActivationStage::JoinMesh,

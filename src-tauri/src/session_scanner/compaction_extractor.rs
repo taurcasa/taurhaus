@@ -1063,7 +1063,9 @@ mod tests {
                 reasoning_effort: None,
                 project_path: PathBuf::from(project_path),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             }],
+            extra: Default::default(),
         };
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save config");
         MemberRuntimeStore::save(

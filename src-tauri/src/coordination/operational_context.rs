@@ -313,7 +313,9 @@ mod tests {
                 reasoning_effort: None,
                 project_path: "proj-web".into(),
                 cli_tool: CliTool::Codex,
+                extra: Default::default(),
             }],
+            extra: Default::default(),
         };
 
         TeamConfigStore::save(teams_dir, "architecture-final", &config).expect("save team");

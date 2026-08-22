@@ -480,7 +480,9 @@ mod tests {
                     reasoning_effort: None,
                     project_path: "proj-web".into(),
                     cli_tool: CliTool::Codex,
+                    extra: Default::default(),
                 }],
+                extra: Default::default(),
             },
         )
         .expect("save team");
@@ -599,7 +601,9 @@ mod tests {
                     reasoning_effort: None,
                     project_path: "proj-web".into(),
                     cli_tool: CliTool::Codex,
+                    extra: Default::default(),
                 }],
+                extra: Default::default(),
             },
         )
         .expect("save team");

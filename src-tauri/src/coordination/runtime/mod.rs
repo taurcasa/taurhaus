@@ -17,7 +17,10 @@ mod recording;
 mod system;
 mod tmux;
 
-pub(crate) use process::{apply_background_command_settings, mesh_command_invocation_for_member};
+pub(crate) use process::{
+    apply_background_command_settings, mesh_command_invocation_for_member,
+    resolve_mesh_cli_claude_dir_arg,
+};
 pub use recording::{RecordingCoordinationRuntime, RuntimeCall};
 /// Test seam used by the scanner tests; the integration-test shim crates
 /// compile this module too and do not use it.
@@ -113,7 +116,9 @@ pub trait CoordinationRuntime: Send + Sync {
         team_name: &str,
         member_name: &str,
         project_id: &str,
+        member_type: &str,
         model: &str,
+        claude_dir: &str,
     ) -> Result<(), CoordinationError>;
 
     fn spawn_mesh_daemon(
@@ -392,6 +397,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from(project_path),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 
@@ -629,7 +635,14 @@ mod tests {
             .send_tmux_keys_with_enter(&pane, "codex --yolo")
             .expect("keys");
         runtime
-            .join_mesh("alpha", "agent-a", "/tmp/project", "gpt-5.6-sol")
+            .join_mesh(
+                "alpha",
+                "agent-a",
+                "/tmp/project",
+                "general-purpose",
+                "gpt-5.6-sol",
+                "/tmp/claude",
+            )
             .expect("join");
         assert!(runtime
             .pane_belongs_to_project(&pane, "/tmp/project")
@@ -659,7 +672,9 @@ mod tests {
                     team_name: "alpha".to_string(),
                     member_name: "agent-a".to_string(),
                     project_id: "/tmp/project".to_string(),
+                    member_type: "general-purpose".to_string(),
                     model: "gpt-5.6-sol".to_string(),
+                    claude_dir: "/tmp/claude".to_string(),
                 },
                 RuntimeCall::CheckPaneOwnership {
                     pane_id: "test-pane-1".to_string(),

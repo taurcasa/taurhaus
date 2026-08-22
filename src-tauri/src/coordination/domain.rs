@@ -1,9 +1,11 @@
 //! Domain models for team coordination.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::session_scanner::cli_tool::CliTool;
 use crate::templates::types::{BehavioralContract, RuntimeCompactSummary};
@@ -46,6 +48,8 @@ pub struct Member {
     pub reasoning_effort: Option<String>,
     pub project_path: PathBuf,
     pub cli_tool: CliTool,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// Team role for a logical member.
@@ -145,6 +149,7 @@ mod tests {
             reasoning_effort: Some("high".to_string()),
             project_path: PathBuf::from("/tmp/taurhaus"),
             cli_tool: CliTool::Codex,
+            extra: BTreeMap::new(),
         };
 
         let encoded = serde_json::to_string(&member).expect("member should serialize");

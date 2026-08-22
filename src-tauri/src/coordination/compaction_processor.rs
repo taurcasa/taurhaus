@@ -270,11 +270,12 @@ fn append_codex_inbox_message(
                 member_name, team_name
             ))
         })?;
-    let inbox_message = MeshInboxMessage::new(
-        "taurhaus",
+    let inbox_message = MeshInboxMessage::operator_originated(
+        member_name,
         rendered_payload,
         Some("post_compaction_context".to_string()),
         now,
+        None,
     );
     MeshInboxStore::append(teams_dir, team_name, member_name, &inbox_message)
 }
@@ -600,6 +601,7 @@ mod tests {
             reasoning_effort: None,
             project_path: PathBuf::from(project_path),
             cli_tool: CliTool::Codex,
+            extra: Default::default(),
         }
     }
 
@@ -651,6 +653,7 @@ mod tests {
             description: None,
             created_at: timestamp("2026-03-08T14:00:00Z"),
             members: vec![member.clone()],
+            extra: Default::default(),
         };
         TeamConfigStore::save(teams_dir, team_name, &config).expect("save team config");
 
@@ -700,6 +703,63 @@ mod tests {
             transcript_timestamp: timestamp("2026-03-08T13:46:41.037Z"),
             signal_kind: CompactionSignalKind::Compacted,
         }
+    }
+
+    #[test]
+    fn compaction_card_and_operator_notice_share_the_same_inbox_record_contract() {
+        // Regression: mesh-findings P1/H2; compaction and operator delivery had
+        // independent inbox writers and could drift in sender or wire fields.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "wire-parity";
+        let member_name = "developer2";
+        let now = timestamp("2026-03-08T14:10:05Z");
+        let member = sample_member(member_name, "/tmp/project");
+        let snapshot = sample_snapshot(team_name, member_name, "/tmp/project");
+        let card = CompactionReinjectionService::compose_at(&member, &snapshot, now);
+        let rendered =
+            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render card");
+
+        append_codex_inbox_message(teams_dir, team_name, member_name, &card, now)
+            .expect("append compaction card");
+        let backend =
+            crate::coordination::backend::ClaudeNativeBackend::new(teams_dir.to_path_buf());
+        crate::coordination::backend::CoordinationBackend::deliver(
+            &backend,
+            crate::coordination::requests::DeliveryRequest::operator_notice(
+                crate::coordination::requests::OperatorNoticeDelivery {
+                    member_name: member_name.to_string(),
+                    team_name: team_name.to_string(),
+                    message: rendered,
+                    sender_name: None,
+                    operational_context: None,
+                },
+            ),
+        )
+        .expect("deliver operator notice through real backend");
+
+        let records = MeshInboxStore::load(teams_dir, team_name, member_name).expect("load inbox");
+        let mut compaction_value = serde_json::to_value(&records[0]).expect("serialize compaction");
+        let mut operator_value = serde_json::to_value(&records[1]).expect("serialize operator");
+        for key in ["id", "timestamp", "text", "summary"] {
+            compaction_value
+                .as_object_mut()
+                .expect("compaction object")
+                .remove(key);
+            operator_value
+                .as_object_mut()
+                .expect("operator object")
+                .remove(key);
+        }
+        assert_eq!(compaction_value, operator_value);
+        assert_eq!(
+            records[0].from,
+            crate::coordination::stores::OPERATOR_SENDER_NAME
+        );
+        assert_eq!(
+            records[1].from,
+            crate::coordination::stores::OPERATOR_SENDER_NAME
+        );
     }
 
     #[test]
@@ -829,6 +889,7 @@ mod tests {
                 description: None,
                 created_at: timestamp("2026-03-08T14:00:00Z"),
                 members: vec![pane_match.clone(), other_match.clone()],
+                extra: Default::default(),
             },
         )
         .expect("save team config");

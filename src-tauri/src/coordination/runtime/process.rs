@@ -324,7 +324,7 @@ fn resolve_host_claude_dir() -> Option<PathBuf> {
     Some(PlatformPaths::claude_dir())
 }
 
-pub(super) fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
+pub(crate) fn resolve_mesh_cli_claude_dir_arg() -> Option<String> {
     resolve_host_claude_dir().map(|path| mesh_cli_claude_dir_arg_from_path(&path))
 }
 
