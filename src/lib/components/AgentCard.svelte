@@ -18,6 +18,11 @@
     description = '',
     editing = false,
     modelCatalog = null,
+    // Reports which model fields the user actually changed before this card was
+    // saved. The preset editor writes an override only for a field the user
+    // touched (or one the slot already pinned) - a rendered value that happens to
+    // equal a role default is inheritance, not intent.
+    onchange = () => {},
     onSave = () => {},
     onRemove = () => {},
     dark = false,
@@ -42,6 +47,9 @@
 
   let isEditing = $state(false)
   let draft = $state(draftFromValues())
+  // The model/effort this editing session started from, so a save can report what
+  // the user changed rather than what the values happen to equal.
+  let editBaseline = $state({ model: '', reasoningEffort: null })
   let initialized = false
 
   const isLead = $derived(String(role ?? '').toLowerCase() === 'lead')
@@ -84,6 +92,7 @@
 
   function resetDraft() {
     draft = draftFromValues({ name, tool, model, reasoningEffort, projectId, description })
+    editBaseline = { model: draft.model, reasoningEffort: draft.reasoningEffort }
   }
 
   function startEditing() {
@@ -115,6 +124,12 @@
       projectId: draft.projectId.trim(),
       description: draft.description.trim(),
     }
+    // Reported on commit, never on every keystroke: a cancelled edit must not
+    // leave a field marked as touched.
+    onchange({
+      model: draft.model !== editBaseline.model,
+      reasoningEffort: (draft.reasoningEffort ?? null) !== (editBaseline.reasoningEffort ?? null),
+    })
     onSave(payload)
     isEditing = false
   }

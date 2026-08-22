@@ -52,10 +52,15 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
       const agentSlots = Array.isArray(resolvedPreset?.agentSlots) ? resolvedPreset.agentSlots : []
 
       if (leadRoleId) {
+        // A preset can pin its lead's model/effort (`TeamPreset::lead_overrides`);
+        // composition only applies it when the request carries it as the lead
+        // override, otherwise the launched lead falls back to the role defaults.
+        const leadOverrides = resolvedPreset?.leadOverrides ?? resolvedPreset?.lead_overrides ?? null
         compositionResult = await deps.composeTeam({
           leadRoleId,
           agentSlots,
           overrides: {
+            ...(leadOverrides ? { lead: leadOverrides } : {}),
             projectName: deps.inferTeamName(deps.getProjectPath()).replace(/-team$/, ''),
           },
         })

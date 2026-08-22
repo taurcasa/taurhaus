@@ -69,6 +69,44 @@ describe('templateResponses reasoning effort', () => {
   })
 })
 
+describe('templateResponses lead overrides', () => {
+  // Regression: b345de1 (PR 5c). A preset that pins the lead's model/effort must
+  // render that pin in the editor; the whitelist-shaped response normalizer dropped
+  // the field, so the editor showed the role default and re-saved it.
+  it('reads the lead override in both spellings', () => {
+    expect(normalizeTeamPresetResponse({
+      presetId: 'duo',
+      name: 'Duo',
+      leadRoleId: 'lead',
+      leadOverrides: { model: 'gpt-5.6-terra', reasoning_effort: 'xhigh' },
+      agentSlots: [],
+    }).leadOverrides).toEqual(expect.objectContaining({
+      model: 'gpt-5.6-terra',
+      reasoningEffort: 'xhigh',
+    }))
+
+    expect(normalizeTeamPresetResponse({
+      preset_id: 'duo',
+      name: 'Duo',
+      lead_role_id: 'lead',
+      lead_overrides: { model: 'gpt-5.4 high' },
+      agent_slots: [],
+    }).leadOverrides).toEqual(expect.objectContaining({
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+    }))
+  })
+
+  it('keeps an absent lead override null', () => {
+    expect(normalizeTeamPresetResponse({
+      presetId: 'duo',
+      name: 'Duo',
+      leadRoleId: 'lead',
+      agentSlots: [],
+    }).leadOverrides).toBeNull()
+  })
+})
+
 describe('templateResponses legacy combined models', () => {
   // Regression: ff40911 and 5d2ce27 stored the effort inside the model string
   // ("gpt-5.4 high"); stores written before PR 5a still hold that form, and an

@@ -147,6 +147,31 @@ describe('templatePayloads normalizeTeamPresetInput', () => {
     ])
   })
 
+  // Regression: b345de1 (PR 5c). The advanced preset editor edits the lead's model
+  // and effort, so the request has to carry the lead pin in the canonical wire
+  // spelling instead of dropping it on the way to the backend.
+  it('emits the lead override with the canonical effort spelling', () => {
+    expect(normalizeTeamPresetInput({
+      presetId: 'duo',
+      name: 'Duo',
+      leadRoleId: 'lead',
+      leadOverrides: { model: 'gpt-5.4 high' },
+      agentSlots: [{ roleId: 'dev', count: 1 }],
+    }).leadOverrides).toEqual(expect.objectContaining({
+      model: 'gpt-5.4',
+      reasoning_effort: 'high',
+    }))
+  })
+
+  it('keeps an absent lead override null', () => {
+    expect(normalizeTeamPresetInput({
+      presetId: 'solo',
+      name: 'Solo',
+      leadRoleId: 'lead',
+      agentSlots: [{ roleId: 'dev', count: 1 }],
+    }).leadOverrides).toBeNull()
+  })
+
   it('keeps null overrides null', () => {
     expect(normalizeTeamPresetInput({
       presetId: 'solo',

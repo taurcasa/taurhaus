@@ -135,6 +135,72 @@ describe('AgentCard', () => {
     expect(Array.from(effortSelect.options).map((option) => option.value)).not.toContain('')
   })
 
+  // Regression: 3a7188a (PR 5c review round 3) rebuilt preset slot overrides by
+  // comparing rendered values with role defaults. Overrides are user intent, so the
+  // card reports which model fields the user actually changed instead.
+  it('reports the model fields changed in this editing session on save', async () => {
+    const onchange = vi.fn()
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        modelCatalog: TEST_MODEL_CATALOG,
+        onchange,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+    await fireEvent.change(screen.getByTestId('agent-card-model-select-effort'), {
+      target: { value: 'xhigh' },
+    })
+    await fireEvent.click(screen.getByTestId('agent-card-save'))
+
+    expect(onchange).toHaveBeenCalledWith({ model: false, reasoningEffort: true })
+  })
+
+  it('reports no changed model fields when an untouched card is saved', async () => {
+    const onchange = vi.fn()
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        modelCatalog: TEST_MODEL_CATALOG,
+        onchange,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+    await fireEvent.click(screen.getByTestId('agent-card-save'))
+
+    expect(onchange).toHaveBeenCalledWith({ model: false, reasoningEffort: false })
+  })
+
+  it('reports nothing when the edit is cancelled', async () => {
+    const onchange = vi.fn()
+    render(AgentCard, {
+      props: {
+        testId: 'agent-card',
+        tool: 'codex',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        modelCatalog: TEST_MODEL_CATALOG,
+        onchange,
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('agent-card-edit'))
+    await fireEvent.change(screen.getByTestId('agent-card-model-select-effort'), {
+      target: { value: 'xhigh' },
+    })
+    await fireEvent.click(screen.getByTestId('agent-card-cancel'))
+
+    expect(onchange).not.toHaveBeenCalled()
+  })
+
   it('uses tokenized color styles instead of hardcoded literals', () => {
     const source = readFileSync(`${process.cwd()}/src/lib/components/AgentCard.svelte`, 'utf8')
     expect(source).toContain('var(--agent-card-border-light)')

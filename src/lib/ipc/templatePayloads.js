@@ -139,6 +139,9 @@ export function normalizeTeamPresetInput(presetData) {
     description: String(source.description ?? '').trim(),
     version: String(source.version ?? '1.0.0'),
     leadRoleId: String(source.leadRoleId ?? '').trim(),
+    // The preset's own pin for its lead, in the same canonical shape as a slot
+    // override (`TeamPreset::lead_overrides`).
+    leadOverrides: normalizeSlotOverridesInput(source.leadOverrides ?? source.lead_overrides),
     agentSlots,
     defaults: {
       teamNamePattern: String(source.defaults?.teamNamePattern ?? '{project}-team'),

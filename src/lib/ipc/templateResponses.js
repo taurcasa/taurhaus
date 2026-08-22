@@ -184,6 +184,7 @@ export function normalizeTeamPresetResponse(value) {
     description: value.description ?? '',
     version: value.version ?? null,
     leadRoleId: value.leadRoleId ?? value.lead_role_id ?? '',
+    leadOverrides: normalizeSlotOverrides(value.leadOverrides ?? value.lead_overrides),
     agentSlots,
     defaults: value.defaults && typeof value.defaults === 'object'
       ? {

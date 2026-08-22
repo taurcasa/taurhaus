@@ -2805,6 +2805,59 @@ describe('MeshTab', () => {
     })
   })
 
+  // Regression: b345de1 (PR 5c) let the advanced preset editor pin the lead's model
+  // and effort, but the quick-preset launch only forwarded the role id and slots, so
+  // composition rebuilt the lead from the role defaults and the pin never launched.
+  it('forwards a preset lead override to composition', async () => {
+    listTeamPresets.mockResolvedValueOnce([
+      {
+        presetId: 'lead-pinned-team',
+        name: 'Lead Pinned Team',
+        description: 'Lead pinned to a model and effort',
+        leadRoleId: 'codex-orchestrator',
+        roleCount: 1,
+        agentCount: 1,
+        tools: ['codex'],
+      },
+    ])
+    getTeamPreset.mockResolvedValueOnce({
+      presetId: 'lead-pinned-team',
+      name: 'Lead Pinned Team',
+      leadRoleId: 'codex-orchestrator',
+      leadOverrides: { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+      agentSlots: [{ roleId: 'agent-default', count: 1 }],
+    })
+    composeTeam.mockResolvedValueOnce({
+      roster: [],
+      warnings: [],
+      validationErrors: [],
+    })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
+        projectPath: '/projects/my-app',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-template-preset-lead-pinned-team')).toBeInTheDocument()
+    })
+    await fireEvent.click(screen.getByTestId('mesh-template-preset-lead-pinned-team'))
+
+    await waitFor(() => {
+      expect(composeTeam).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leadRoleId: 'codex-orchestrator',
+          overrides: expect.objectContaining({
+            lead: expect.objectContaining({ model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' }),
+          }),
+        })
+      )
+    })
+  })
+
   it('loads quick preset members into the editable roster before initialization', async () => {
     coordinationInitializeTeam.mockClear()
     getTeamPreset.mockResolvedValueOnce({

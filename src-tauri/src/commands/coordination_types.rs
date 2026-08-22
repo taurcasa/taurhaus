@@ -46,7 +46,10 @@ pub struct AgentSetupConfig {
     pub name: String,
     pub cli_tool: String,
     pub model: String,
-    #[serde(default)]
+    // Both wire spellings arrive here: the camelCase IPC contract sends
+    // `reasoningEffort`, while the request-shaped payload builders send the
+    // canonical `reasoning_effort` next to `model`.
+    #[serde(default, alias = "reasoning_effort")]
     pub reasoning_effort: Option<String>,
     pub project_id: String,
     pub description: Option<String>,
@@ -334,3 +337,7 @@ pub struct FeatureAvailabilityReport {
     pub tmux_available: bool,
     pub blocking_errors: Vec<String>,
 }
+
+#[cfg(test)]
+#[path = "coordination_types/tests.rs"]
+mod tests;

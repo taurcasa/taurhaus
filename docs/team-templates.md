@@ -128,7 +128,7 @@ Then support it with:
 The current template system remains structurally the same, but the role schema now explicitly carries both context-steering and workflow fields:
 
 - **Role template**: tool/model defaults, `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`, instructions, behavioral contract, capabilities, constraints, and optional import provenance
-- **Team preset**: one lead role plus agent slots and preset-specific overrides
+- **Team preset**: one lead role plus agent slots and preset-specific overrides. A preset can also pin the lead itself with `lead_overrides` (`model`, `reasoning_effort`); composition applies it on top of the lead role's defaults, and the advanced preset editor writes it when you edit the lead card.
 - **Composition**: resolved roster produced from the selected lead and slots
 
 That means this guide changes both **how to think about roles** and what concrete fields you should author.

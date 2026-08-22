@@ -55,6 +55,10 @@
   let nextAgentId = $state(1)
   let hydratedConfig = $state(undefined)
   let hydratedSelectedRoleId = $state(undefined)
+  // Which model fields each row's card reported as changed, keyed by member id.
+  // The preset editor turns this into slot/lead overrides: a field nobody touched
+  // keeps whatever the preset already pinned (or stays inherited).
+  let touchedModelFields = $state({})
 
   let showSavePresetDialog = $state(false)
   let newPresetName = $state('')
@@ -140,7 +144,27 @@
     }
   }
 
+  function markModelFieldsTouched(memberId, fields) {
+    const previous = touchedModelFields[memberId] ?? { model: false, reasoningEffort: false }
+    touchedModelFields = {
+      ...touchedModelFields,
+      [memberId]: {
+        model: previous.model || Boolean(fields?.model),
+        reasoningEffort: previous.reasoningEffort || Boolean(fields?.reasoningEffort),
+      },
+    }
+  }
+
+  function touchedFieldsFor(memberId) {
+    const touched = touchedModelFields[memberId]
+    return {
+      model: Boolean(touched?.model),
+      reasoningEffort: Boolean(touched?.reasoningEffort),
+    }
+  }
+
   function hydrateFromConfig(config) {
+    touchedModelFields = {}
     localTeamName = String(config?.teamName ?? '').trim()
     localDescription = String(config?.description ?? '')
     const defaults = selectedLeadDefaults()
@@ -246,7 +270,9 @@
 
   // Without overrides the saved preset only remembers the role, so reloading it
   // restores the role defaults and throws away the model and effort the roster
-  // actually selected.
+  // actually selected. This is the "save as new preset" path: it snapshots a
+  // concrete roster, unlike editing an existing preset where an untouched row
+  // keeps inheriting from its role (see `agentSlotsFromCustomizer`).
   function slotOverridesFor(agent) {
     const model = String(agent?.model ?? '').trim()
     const reasoningEffort = String(agent?.reasoningEffort ?? '').trim()
@@ -336,6 +362,7 @@
         projectId: String(lead?.projectId ?? '').trim(),
         description: String(lead?.description ?? '').trim(),
         roleId: lead?.roleId ?? null,
+        touched: touchedFieldsFor(lead?.id ?? 'lead'),
       },
       agents: agents.map((agent) => ({
         name: String(agent.name ?? '').trim(),
@@ -346,6 +373,7 @@
         description: String(agent.description ?? '').trim(),
         roleId: agent.roleId ?? null,
         slotIndex: Number.isInteger(agent.slotIndex) ? agent.slotIndex : null,
+        touched: touchedFieldsFor(agent.id),
       })),
       ...payload,
     })
@@ -423,6 +451,7 @@
             projectId={lead.projectId}
             description={lead.description}
             {dark}
+            onchange={(fields) => markModelFieldsTouched(lead.id ?? 'lead', fields)}
             onSave={updateLead}
           />
         </div>
@@ -444,6 +473,7 @@
               projectId={agent.projectId}
               description={agent.description}
               {dark}
+              onchange={(fields) => markModelFieldsTouched(agent.id, fields)}
               onSave={(payload) => updateAgent(agent.id, payload)}
               onRemove={() => removeAgent(agent.id)}
             />

@@ -160,9 +160,9 @@ export function normalizeSlotOverridesForDraft(value) {
 /**
  * What a role template contributes to a member that pins nothing: its model and
  * its effort, with the pre-PR-5a combined spelling ("gpt-5.4 high") split the
- * way the Rust `ModelSpec::parse_legacy` splits it. Both directions of the
- * preset editor read the defaults from here, so a roster row rendered from a
- * role still compares equal to that role when the editor is saved.
+ * way the Rust `ModelSpec::parse_legacy` splits it. This is what an unpinned row
+ * renders from; what a save writes back comes from the row's own overrides, never
+ * from comparing the rendered value with these defaults.
  */
 export function roleModelDefaults(role) {
   const parsed = parseLegacyModel(resolveRoleModel(role))
@@ -174,6 +174,11 @@ export function roleModelDefaults(role) {
 
 export function normalizePresetDraft(source = {}, roleTemplates = [], teamPresets = []) {
   const leadRoleId = source?.leadRoleId ?? source?.lead_role_id ?? defaultLeadRoleId(roleTemplates)
+  // The lead pins its own model/effort the same way a slot does; the editor renders
+  // and saves it, and composition applies it as `CompositionOverrides::lead`.
+  const leadOverrides = normalizeSlotOverridesForDraft(
+    source?.leadOverrides ?? source?.lead_overrides
+  )
   const slots = Array.isArray(source?.agentSlots ?? source?.agent_slots)
     ? (source?.agentSlots ?? source?.agent_slots)
     : []
@@ -200,6 +205,7 @@ export function normalizePresetDraft(source = {}, roleTemplates = [], teamPreset
     description: source?.description ?? 'Custom team preset',
     version: source?.version ?? '1.0.0',
     leadRoleId,
+    leadOverrides,
     agentSlots,
     defaults: {
       teamNamePattern: source?.defaults?.teamNamePattern ?? source?.defaults?.team_name_pattern ?? '{project}-team',
@@ -244,6 +250,8 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
 
   const leadTool = String(leadRole?.cliTool ?? '').trim().toLowerCase()
   const leadDefaults = roleModelDefaults(leadRole)
+  const leadOverrideModel = String(draft.leadOverrides?.model ?? '').trim()
+  const leadOverrideEffort = String(draft.leadOverrides?.reasoningEffort ?? '').trim()
 
   return {
     teamName: draft.name,
@@ -253,8 +261,9 @@ export function presetDraftToTeamConfig(presetDraft, roleTemplates = []) {
       id: 'lead',
       name: leadRole?.name || 'team-lead',
       tool: leadTool,
-      model: leadDefaults.model,
-      reasoningEffort: leadDefaults.reasoningEffort,
+      model: leadOverrideModel || leadDefaults.model,
+      reasoningEffort:
+        leadOverrideEffort || (leadOverrideModel ? null : leadDefaults.reasoningEffort),
       projectId: '',
       description: draft.leadRoleId || 'Team lead',
       roleId: draft.leadRoleId || null,

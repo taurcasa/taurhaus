@@ -20,7 +20,6 @@ import {
   normalizeSlotOverridesForDraft,
   normalizeTeamPreset,
   presetDraftToTeamConfig,
-  roleModelDefaults,
 } from './templateBrowserUtils.js'
 
 function importSourceLabel(role) {
@@ -39,17 +38,32 @@ function importSourceLabel(role) {
 }
 
 /**
+ * What a saved row pins for model and effort. An override is user intent, never a
+ * comparison against the role defaults: a field the user changed in this editing
+ * session is written as the editor showed it (clearing the effort removes the pin),
+ * and a field nobody touched keeps exactly what was loaded - including a pin that
+ * happens to equal the role default today.
+ */
+function modelOverridesFor(row, loadedOverrides) {
+  const touched = row?.touched ?? {}
+  const model = String(row?.model ?? '').trim()
+  const reasoningEffort = String(row?.reasoningEffort ?? '').trim()
+
+  return {
+    model: touched.model ? model || null : (loadedOverrides?.model ?? null),
+    reasoningEffort: touched.reasoningEffort
+      ? reasoningEffort || null
+      : (loadedOverrides?.reasoningEffort ?? null),
+  }
+}
+
+/**
  * Turns the customizer roster back into preset slots. Each row keeps the other
  * override fields of the slot it came from and contributes its own model/effort;
  * consecutive rows that agree on role and overrides collapse back into one slot,
  * and a row that diverges splits the slot instead of losing the difference.
- *
- * A field that still equals the role's own default pins nothing: an unpinned slot
- * is rendered from exactly those values (`presetDraftToTeamConfig`), so writing
- * them straight back would turn inheritance into a pin and freeze the preset
- * against every later edit of the role.
  */
-function agentSlotsFromCustomizer(agents, draft, fallbackRoleId, roleTemplates = []) {
+function agentSlotsFromCustomizer(agents, draft, fallbackRoleId) {
   const slots = []
 
   for (const agent of agents) {
@@ -57,14 +71,9 @@ function agentSlotsFromCustomizer(agents, draft, fallbackRoleId, roleTemplates =
     if (!roleId) continue
 
     const baseSlot = Number.isInteger(agent?.slotIndex) ? draft.agentSlots[agent.slotIndex] : null
-    const roleDefaults = roleModelDefaults(roleTemplates.find((role) => role.roleId === roleId))
-    const model = String(agent?.model ?? '').trim()
-    const reasoningEffort = String(agent?.reasoningEffort ?? '').trim()
     const overrides = normalizeSlotOverridesForDraft({
       ...(baseSlot?.overrides ?? {}),
-      model: model === roleDefaults.model ? null : model || null,
-      reasoningEffort:
-        reasoningEffort === (roleDefaults.reasoningEffort ?? '') ? null : reasoningEffort || null,
+      ...modelOverridesFor(agent, baseSlot?.overrides),
     })
 
     const previous = slots[slots.length - 1]
@@ -479,11 +488,16 @@ export function createTemplateBrowserController({ getOpen }) {
       : ensureUniquePresetId(name, teamPresets)
     const draft = buildPresetDraft({ ...presetEditorDraft, presetId: desiredId, name, description })
     const leadRoleId = String(payload?.lead?.roleId ?? '').trim() || draft.leadRoleId
+    // The lead card is editable in this editor, so its model/effort is read the
+    // same way an agent row's is and stored as the preset's lead pin.
+    const leadOverrides = normalizeSlotOverridesForDraft({
+      ...(draft.leadOverrides ?? {}),
+      ...modelOverridesFor(payload?.lead, draft.leadOverrides),
+    })
     const editedSlots = agentSlotsFromCustomizer(
       Array.isArray(payload?.agents) ? payload.agents : [],
       draft,
-      defaultAgentRoleId(roleTemplates, leadRoleId),
-      roleTemplates
+      defaultAgentRoleId(roleTemplates, leadRoleId)
     )
 
     errorMessage = ''
@@ -495,6 +509,7 @@ export function createTemplateBrowserController({ getOpen }) {
         description: draft.description,
         version: draft.version,
         leadRoleId,
+        leadOverrides,
         agentSlots: editedSlots.length > 0 ? editedSlots : draft.agentSlots,
         defaults: draft.defaults,
       })

@@ -218,6 +218,52 @@ describe('templateBrowserUtils preset slot overrides', () => {
     ])
   })
 
+  // Regression: b345de1 (PR 5c). The advanced preset editor renders an editable lead
+  // card, so the preset has to carry the lead's own pin and render it back; without
+  // it the editor showed the role default and every lead edit was lost on save.
+  it('keeps lead overrides on the normalized draft in both spellings', () => {
+    expect(normalizePresetDraft(
+      {
+        leadRoleId: 'codex-orchestrator',
+        leadOverrides: { model: 'gpt-5.6-terra', reasoning_effort: 'xhigh' },
+        agentSlots: [{ roleId: 'codex-developer', count: 1 }],
+      },
+      roleTemplates
+    ).leadOverrides).toEqual(expect.objectContaining({
+      model: 'gpt-5.6-terra',
+      reasoningEffort: 'xhigh',
+    }))
+
+    expect(normalizePresetDraft(
+      {
+        lead_role_id: 'codex-orchestrator',
+        lead_overrides: { model: 'gpt-5.4 high' },
+        agentSlots: [{ roleId: 'codex-developer', count: 1 }],
+      },
+      roleTemplates
+    ).leadOverrides).toEqual(expect.objectContaining({
+      model: 'gpt-5.4',
+      reasoningEffort: 'high',
+    }))
+  })
+
+  it('applies lead overrides over the lead role defaults in the customizer config', () => {
+    const teamConfig = presetDraftToTeamConfig(
+      {
+        leadRoleId: 'codex-orchestrator',
+        leadOverrides: { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh' },
+        agentSlots: [{ roleId: 'codex-developer', count: 1 }],
+      },
+      roleTemplates
+    )
+
+    expect(teamConfig.lead).toEqual(expect.objectContaining({
+      roleId: 'codex-orchestrator',
+      model: 'gpt-5.6-terra',
+      reasoningEffort: 'xhigh',
+    }))
+  })
+
   it('keeps the role defaults for a slot without overrides', () => {
     const teamConfig = presetDraftToTeamConfig(
       {
