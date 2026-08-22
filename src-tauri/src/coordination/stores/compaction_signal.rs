@@ -8,10 +8,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::mesh_cli;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
-const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const COMPACTION_SIGNAL_SCHEMA_VERSION: u32 = 1;
 const COMPACTION_SIGNAL_FILENAME: &str = "codex-compaction-signals.jsonl";
 
@@ -157,44 +156,21 @@ pub fn append_signal(
     team_name: &str,
     record: &CompactionSignalRecord,
 ) -> Result<u64, CoordinationError> {
-    CompactionSignalLog::append(&default_compaction_signal_teams_dir(), team_name, record)
+    CompactionSignalLog::append(&PlatformPaths::teams_dir(), team_name, record)
 }
 
 pub fn read_signals_from_offset(
     team_name: &str,
     byte_offset: u64,
 ) -> Result<Vec<CompactionSignalRecord>, CoordinationError> {
-    CompactionSignalLog::read_from_offset(
-        &default_compaction_signal_teams_dir(),
-        team_name,
-        byte_offset,
-    )
+    CompactionSignalLog::read_from_offset(&PlatformPaths::teams_dir(), team_name, byte_offset)
 }
 
 pub fn read_signal_items_from_offset(
     team_name: &str,
     byte_offset: u64,
 ) -> Result<Vec<CompactionSignalReadItem>, CoordinationError> {
-    CompactionSignalLog::read_items_from_offset(
-        &default_compaction_signal_teams_dir(),
-        team_name,
-        byte_offset,
-    )
-}
-
-pub(crate) fn default_compaction_signal_teams_dir() -> PathBuf {
-    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
-        if !path.is_empty() {
-            return PathBuf::from(path).join("teams");
-        }
-    }
-    if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
-        return path;
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"))
-        .join(".claude")
-        .join("teams")
+    CompactionSignalLog::read_items_from_offset(&PlatformPaths::teams_dir(), team_name, byte_offset)
 }
 
 fn compaction_signal_dir(teams_dir: &Path, team_name: &str) -> PathBuf {

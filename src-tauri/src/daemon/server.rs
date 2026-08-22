@@ -81,10 +81,17 @@ pub fn run(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
+    run_with_compaction_teams_dir(config, shutdown, provider, None)
+}
+
+fn run_with_compaction_teams_dir(
+    config: &DaemonConfig,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+    compaction_teams_dir: Option<std::path::PathBuf>,
+) -> std::io::Result<()> {
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, Duration::from_millis(750));
-    let _compaction_runtime = crate::daemon::compaction::DaemonCompactionRuntime::maybe_start()
-        .map_err(std::io::Error::other)?;
 
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
@@ -112,6 +119,34 @@ pub fn run(
     let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
     let watch_registry =
         crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
+
+    let compaction_shutdown = shutdown.clone();
+    let compaction_handle = std::thread::spawn(move || {
+        let start_result = match compaction_teams_dir {
+            Some(teams_dir) => {
+                crate::daemon::compaction::DaemonCompactionRuntime::maybe_start_at(teams_dir)
+            }
+            None => crate::daemon::compaction::DaemonCompactionRuntime::maybe_start(),
+        };
+        let _runtime = match start_result {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                crate::coordination::compaction_events::emit_compaction_owner_failed(
+                    "daemon",
+                    "daemon_runtime_initialization",
+                    &error.to_string(),
+                );
+                tracing::warn!(
+                    error = %error,
+                    "daemon compaction initialization failed after bind; server remains available"
+                );
+                None
+            }
+        };
+        while !compaction_shutdown.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    });
 
     tracing::info!(port = config.port, "daemon listening");
     emit_daemon_watch_telemetry("startup", &watch_registry);
@@ -195,9 +230,27 @@ pub fn run(
     }
 
     shutdown.store(true, Ordering::Relaxed);
+    let _ = compaction_handle.join();
     let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn run_for_test(
+    config: &DaemonConfig,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+) -> std::io::Result<()> {
+    // Regression: 9f723d3 removed the off-WSL compaction gate, so in-process
+    // daemon tests began rewriting the developer's real Claude teams state.
+    let claude_root = tempfile::tempdir()?;
+    run_with_compaction_teams_dir(
+        config,
+        shutdown,
+        provider,
+        Some(claude_root.path().join("teams")),
+    )
 }
 
 /// Read a newline-terminated line from a `BufReader`, respecting a max byte limit.
@@ -455,6 +508,7 @@ mod tests {
         port: u16,
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
+        _extractor_guard: crate::test_support::CompactionExtractorTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
     }
 
@@ -480,15 +534,25 @@ mod tests {
 
     fn start_server(config: DaemonConfig) -> TestServer {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        start_server_with_heavy_guard(config, heavy_guard)
+    }
+
+    fn start_server_with_heavy_guard(
+        config: DaemonConfig,
+        heavy_guard: crate::test_support::HeavyTestGuard,
+    ) -> TestServer {
+        let extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
-        let handle =
-            std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
+        let handle = std::thread::spawn(move || {
+            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+        });
         let server = TestServer {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
+            _extractor_guard: extractor_guard,
             handle: Some(handle),
         };
 
@@ -512,6 +576,24 @@ mod tests {
             idle_timeout_secs: None,
             auth_token: None,
         })
+    }
+
+    fn start_test_server_with_heavy_guard(
+        heavy_guard: crate::test_support::HeavyTestGuard,
+    ) -> TestServer {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        start_server_with_heavy_guard(
+            DaemonConfig {
+                port,
+                bind_addr: "127.0.0.1".to_string(),
+                idle_timeout_secs: None,
+                auth_token: None,
+            },
+            heavy_guard,
+        )
     }
 
     fn send_request(
@@ -566,6 +648,8 @@ mod tests {
 
     #[test]
     fn server_start_eagerly_emits_session_scan_cycles() {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _global_log_guard = crate::test_support::acquire_global_log_test_guard();
         let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let log_dir = tempfile::TempDir::new().expect("tempdir");
         let log_path = log_dir.path().join("taurhaus.log.jsonl");
@@ -573,7 +657,7 @@ mod tests {
             crate::commands::logging::LogFileState::new(log_path.clone()).expect("log state");
         crate::commands::logging::install_global_sink(&log_state);
 
-        let server = start_test_server();
+        let server = start_test_server_with_heavy_guard(heavy_guard);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
         let mut observed = false;
 
@@ -596,6 +680,8 @@ mod tests {
 
     #[test]
     fn server_emits_state_changed_inotify_telemetry_after_watch_registration() {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _global_log_guard = crate::test_support::acquire_global_log_test_guard();
         let _log_guard = LOG_LOCK.lock().unwrap_or_else(|err| err.into_inner());
         let log_dir = tempfile::TempDir::new().expect("tempdir");
         let log_path = log_dir.path().join("taurhaus.log.jsonl");
@@ -609,7 +695,7 @@ mod tests {
         let watched = project_dir.path().join("watched");
         std::fs::create_dir_all(&watched).expect("watched dir");
 
-        let server = start_test_server();
+        let server = start_test_server_with_heavy_guard(heavy_guard);
         let port = server.port;
 
         let mut stream = TcpStream::connect(format!("127.0.0.1:{port}")).expect("connect");
@@ -899,6 +985,7 @@ mod tests {
         // Regression: a fixed 100ms startup sleep was not enough under load,
         // causing occasional ConnectionRefused before the listener was ready.
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -911,8 +998,9 @@ mod tests {
             auth_token: None,
         };
         let shutdown_clone = shutdown.clone();
-        let handle =
-            std::thread::spawn(move || run(&config, shutdown_clone, Arc::new(LocalProvider)));
+        let handle = std::thread::spawn(move || {
+            run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+        });
 
         assert!(
             wait_for_server_accepting(port, std::time::Duration::from_secs(2)),

@@ -807,6 +807,8 @@ where
 }
 
 fn handle_daemon_recovered(app: &AppHandle) {
+    #[cfg(feature = "mesh-bridged-backend")]
+    crate::startup::compaction::release_app_owned_compaction(app, "daemon_recovered");
     respawn_daemon_watches(app);
     crate::startup::watchers::repair_tmux_focus_hooks();
     {

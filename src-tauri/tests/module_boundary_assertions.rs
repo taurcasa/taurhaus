@@ -188,3 +188,29 @@ fn tmux_focus_reconciliation_uses_one_global_hook_probe() {
         "one reconciliation cycle must inspect global tmux hooks only once"
     );
 }
+
+#[test]
+fn coordination_cli_log_sink_test_uses_shared_global_guard() {
+    // Regression: ede23e50 added a test that replaces the process-global log sink
+    // while holding only a module-local environment lock, racing every guarded log test.
+    let source = read_source("src/lib.rs");
+    let test_body = source
+        .split("fn coordination_cli_log_sink_installs_jsonl_emitter()")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("fn claude_compact_hook_stdout_writer_emits_only_json_payload()")
+                .next()
+        })
+        .expect("coordination CLI log-sink test body");
+
+    let guard = test_body
+        .find("acquire_global_log_test_guard()")
+        .expect("global log-sink tests must acquire the shared guard");
+    let install = test_body
+        .find("init_coordination_cli_log_sink()")
+        .expect("test should install the coordination CLI log sink");
+    assert!(
+        guard < install,
+        "the shared global-log guard must be acquired before the sink is replaced"
+    );
+}

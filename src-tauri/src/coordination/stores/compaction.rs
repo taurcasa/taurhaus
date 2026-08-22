@@ -5,13 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::coordination::compaction_events::{emit_compaction_delivery, CompactionDeliveryEvent};
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::mesh_cli;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const COMPACTION_SCHEMA_VERSION: u32 = 1;
 pub const COMPACTION_FRESHNESS_WINDOW_SECS: i64 = 15;
 const RESERVED_COMPACTION_STATE_BASENAMES: &[&str] = &["extractor-state", "signal-watcher-state"];
@@ -176,7 +175,7 @@ pub fn is_already_handled(
     session_id: &str,
     compaction_timestamp: DateTime<Utc>,
 ) -> bool {
-    match MemberCompactionStore::load(&default_compaction_teams_dir(), team_name, member_name) {
+    match MemberCompactionStore::load(&PlatformPaths::teams_dir(), team_name, member_name) {
         Ok(Some(state)) => is_already_handled_state(&state, tool, session_id, compaction_timestamp),
         Ok(None) => false,
         Err(error) => {
@@ -193,7 +192,8 @@ pub fn is_already_handled(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn record_delivery(
+pub fn record_delivery_at(
+    teams_dir: &Path,
     team_name: &str,
     member_name: &str,
     tool: CliTool,
@@ -208,12 +208,7 @@ pub fn record_delivery(
         last_compaction_timestamp: compaction_timestamp,
         last_delivery_result: result,
     };
-    MemberCompactionStore::save(
-        &default_compaction_teams_dir(),
-        team_name,
-        member_name,
-        &state,
-    )?;
+    MemberCompactionStore::save(teams_dir, team_name, member_name, &state)?;
     emit_compaction_delivery_event(
         team_name,
         member_name,
@@ -343,21 +338,6 @@ fn is_already_handled_state(
     state.last_session_id == session_id && state.last_compaction_timestamp == compaction_timestamp
 }
 
-fn default_compaction_teams_dir() -> PathBuf {
-    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
-        if !path.is_empty() {
-            return PathBuf::from(path).join("teams");
-        }
-    }
-    if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
-        return path;
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"))
-        .join(".claude")
-        .join("teams")
-}
-
 fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
@@ -436,6 +416,8 @@ mod tests {
     use std::ffi::OsString;
     use std::sync::{LazyLock, Mutex, MutexGuard};
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
+
+    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
     fn timestamp(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -603,12 +585,12 @@ mod tests {
     }
 
     #[test]
-    fn record_delivery_persists_stale_result_to_default_store_path() {
-        let guard = acquire_env_test_guard();
+    fn record_delivery_at_persists_stale_result_to_passed_store_path() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        guard.set_override(tmp.path());
+        let teams_dir = tmp.path().join("teams");
 
-        record_delivery(
+        record_delivery_at(
+            &teams_dir,
             "taurhaus-team",
             "developer1",
             CliTool::Codex,
@@ -618,10 +600,9 @@ mod tests {
         )
         .expect("record delivery");
 
-        let stored =
-            MemberCompactionStore::load(&tmp.path().join("teams"), "taurhaus-team", "developer1")
-                .expect("load state")
-                .expect("state should exist");
+        let stored = MemberCompactionStore::load(&teams_dir, "taurhaus-team", "developer1")
+            .expect("load state")
+            .expect("state should exist");
 
         assert_eq!(stored.last_delivery_result, CompactionDeliveryResult::Stale);
         assert_eq!(stored.last_session_id, "session-1");
@@ -704,6 +685,7 @@ mod tests {
 
     #[test]
     fn emit_compaction_delivery_event_includes_skip_and_fail_reason() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let log_path = tmp.path().join("compaction-delivery.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");

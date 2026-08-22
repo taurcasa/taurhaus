@@ -125,6 +125,52 @@ pub fn emit_compaction_signal_consumed(event: CompactionSignalEvent) {
     );
 }
 
+pub fn emit_compaction_signal_failed(event: CompactionSignalEvent, error_message: &str) {
+    let mut fields = signal_fields(event);
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "compaction.signal_failed",
+        Some("Compaction signal processing failed and was committed".to_string()),
+        fields,
+    );
+}
+
+pub fn emit_compaction_owner_selected(owner: &str, status: &str, reason: &str) {
+    let mut fields = Map::new();
+    fields.insert("owner".to_string(), Value::String(owner.to_string()));
+    fields.insert("status".to_string(), Value::String(status.to_string()));
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    emit_global(
+        "info",
+        "coordination",
+        "compaction.owner.selected",
+        Some("Compaction pipeline owner selected".to_string()),
+        fields,
+    );
+}
+
+pub fn emit_compaction_owner_failed(owner: &str, reason: &str, error_message: &str) {
+    let mut fields = Map::new();
+    fields.insert("owner".to_string(), Value::String(owner.to_string()));
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    fields.insert(
+        "error.message".to_string(),
+        Value::String(error_message.to_string()),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "compaction.owner.failed",
+        Some("Compaction pipeline owner failed to start".to_string()),
+        fields,
+    );
+}
+
 pub fn emit_compaction_signal_replayed(event: CompactionSignalEvent) {
     emit_global(
         "info",
@@ -428,6 +474,7 @@ mod tests {
 
     #[test]
     fn emit_compaction_unresolved_writes_structured_event() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().expect("tempdir");
         let log_path = tmp.path().join("compaction-events.log.jsonl");
         let log_state = LogFileState::new(log_path.clone()).expect("log state");

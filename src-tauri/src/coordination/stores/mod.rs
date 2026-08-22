@@ -14,7 +14,7 @@ pub use active_project::ActiveProjectTeamStore;
 #[allow(unused_imports)]
 pub use compaction::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_already_handled,
-    is_stale_compaction, record_delivery, CompactionDeliveryResult, MemberCompactionState,
+    is_stale_compaction, record_delivery_at, CompactionDeliveryResult, MemberCompactionState,
     MemberCompactionStore, COMPACTION_FRESHNESS_WINDOW_SECS,
 };
 #[allow(unused_imports)]

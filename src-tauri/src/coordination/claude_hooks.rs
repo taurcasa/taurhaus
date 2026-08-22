@@ -14,8 +14,8 @@ use crate::coordination::domain::Member;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::stores::{
-    record_delivery, CompactionDeliveryResult, MemberRuntimeStore, OperationalContextSnapshotStore,
-    TeamConfigStore,
+    record_delivery_at, CompactionDeliveryResult, MemberRuntimeStore,
+    OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path;
 use crate::session_scanner::cli_tool::CliTool;
@@ -171,7 +171,8 @@ pub fn handle_session_start_hook(
     let Some(snapshot) =
         OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
     else {
-        record_delivery(
+        record_delivery_at(
+            teams_dir,
             &matched.team_name,
             &matched.member.name,
             CliTool::Claude,
@@ -199,7 +200,8 @@ pub fn handle_session_start_hook(
     };
 
     if !CompactionReinjectionService::snapshot_has_resumable_task(&snapshot) {
-        record_delivery(
+        record_delivery_at(
+            teams_dir,
             &matched.team_name,
             &matched.member.name,
             CliTool::Claude,
@@ -244,7 +246,8 @@ pub fn handle_session_start_hook(
             ))
         })?;
 
-    record_delivery(
+    record_delivery_at(
+        teams_dir,
         &matched.team_name,
         &matched.member.name,
         CliTool::Claude,
@@ -553,11 +556,16 @@ fn cwd_matches_member(cwd: Option<&Path>, member_project_path: &Path) -> bool {
         return true;
     };
 
-    normalize_path(cwd) == normalize_path(member_project_path)
-}
+    if path::normalize_project_path(&cwd.to_string_lossy())
+        == path::normalize_project_path(&member_project_path.to_string_lossy())
+    {
+        return true;
+    }
 
-fn normalize_path(path: &Path) -> PathBuf {
-    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    match (fs::canonicalize(cwd), fs::canonicalize(member_project_path)) {
+        (Ok(canonical_cwd), Ok(canonical_member)) => canonical_cwd == canonical_member,
+        _ => false,
+    }
 }
 
 fn write_hook_script(
@@ -1110,8 +1118,11 @@ mod tests {
             handle_session_start_hook(&payload, tmp.path()).expect("hook should succeed");
         assert!(response.hook_specific_output.is_some());
 
-        let contents =
-            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.delivered\"");
+        let contents = read_log_after_flush(
+            &log_state,
+            &log_path,
+            "\"event\":\"compaction.claude_hook.delivered\"",
+        );
         assert!(contents.contains("\"event\":\"compaction.claude_hook.received\""));
         assert!(contents.contains("\"event\":\"compaction.claude_hook.resolved\""));
         assert!(contents.contains("\"event\":\"compaction.claude_hook.delivered\""));
@@ -1231,6 +1242,8 @@ mod tests {
 
     #[test]
     fn compact_hook_skips_when_snapshot_missing() {
+        // Regression: 0b87699b asserted against a process-global async sink by
+        // polling for one second, which raced under full parallel test load.
         let guard = acquire_env_test_guard();
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -1257,9 +1270,78 @@ mod tests {
         .expect("hook should succeed");
 
         assert_eq!(response, ClaudeHookResponse::default());
-        let contents =
-            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.skipped\"");
+        let contents = read_log_after_flush(
+            &log_state,
+            &log_path,
+            "\"event\":\"compaction.claude_hook.skipped\"",
+        );
         assert!(contents.contains("\"skip_reason\":\"missing_operational_snapshot\""));
+    }
+
+    #[test]
+    fn compact_hook_records_delivery_under_passed_teams_dir() {
+        // Regression: 0b87699b made record_delivery resolve ~/.claude/teams again,
+        // ignoring the teams_dir already passed to the Claude hook bridge.
+        let guard = acquire_env_test_guard();
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let passed_teams_dir = tmp.path().join("passed-teams");
+        let unrelated_claude_dir = tmp.path().join("unrelated-claude");
+        guard.set_override(&unrelated_claude_dir);
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = sample_member(&project);
+        write_team_fixture(&passed_teams_dir, "taurhaus-team", &member, "sess-123");
+
+        let response = handle_session_start_hook(
+            &json!({
+                "hookEventName": "SessionStart",
+                "sessionId": "sess-123",
+                "source": "compact",
+                "cwd": project,
+            })
+            .to_string(),
+            &passed_teams_dir,
+        )
+        .expect("hook should skip cleanly without a snapshot");
+
+        assert_eq!(response, ClaudeHookResponse::default());
+        assert!(
+            MemberCompactionStore::load(&passed_teams_dir, "taurhaus-team", &member.name,)
+                .expect("load passed-root state")
+                .is_some()
+        );
+        assert!(MemberCompactionStore::load(
+            &unrelated_claude_dir.join("teams"),
+            "taurhaus-team",
+            &member.name,
+        )
+        .expect("load unrelated-root state")
+        .is_none());
+    }
+
+    #[test]
+    fn cwd_match_normalizes_wsl_unc_and_linux_project_paths() {
+        // Regression: 0b87699b used filesystem canonicalization for hook matching,
+        // which cannot equate the app's WSL UNC path with Claude's Linux cwd.
+        assert!(cwd_matches_member(
+            Some(Path::new("/home/user/projects/taurhaus")),
+            Path::new(r"\\wsl.localhost\Ubuntu\home\user\projects\taurhaus"),
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cwd_match_falls_back_to_canonical_paths_for_symlinked_roots() {
+        // Regression: a89ea4c replaced canonicalization with string-only normalization,
+        // so Claude hooks stopped matching projects reached through a symlink.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let real_project = tmp.path().join("real-project");
+        let linked_project = tmp.path().join("linked-project");
+        fs::create_dir_all(&real_project).expect("real project");
+        std::os::unix::fs::symlink(&real_project, &linked_project).expect("project symlink");
+
+        assert!(cwd_matches_member(Some(&linked_project), &real_project));
     }
 
     #[test]
@@ -1300,8 +1382,11 @@ mod tests {
 
         assert_eq!(response, ClaudeHookResponse::default());
 
-        let contents =
-            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.skipped\"");
+        let contents = read_log_after_flush(
+            &log_state,
+            &log_path,
+            "\"event\":\"compaction.claude_hook.skipped\"",
+        );
         assert!(contents.contains("\"skip_reason\":\"no_resumable_task_context\""));
     }
 
@@ -1321,8 +1406,11 @@ mod tests {
             .to_string()
             .contains("invalid Claude SessionStart hook payload"));
 
-        let contents =
-            wait_for_log_contains(&log_path, "\"event\":\"compaction.claude_hook.failed\"");
+        let contents = read_log_after_flush(
+            &log_state,
+            &log_path,
+            "\"event\":\"compaction.claude_hook.failed\"",
+        );
         assert!(contents.contains("\"failure_stage\":\"parse_payload\""));
         assert!(contents.contains("\"event\":\"compaction.claude_hook.parse_payload_debug\""));
         assert!(contents.contains("\"raw_payload\":\"{\""));
@@ -1599,15 +1687,15 @@ mod tests {
         assert!(team_has_managed_claude_member(tmp.path(), "taurhaus-team").expect("team loads"));
     }
 
-    fn wait_for_log_contains(path: &Path, needle: &str) -> String {
-        for _ in 0..50 {
-            if let Ok(contents) = fs::read_to_string(path) {
-                if contents.contains(needle) {
-                    return contents;
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        fs::read_to_string(path).unwrap_or_default()
+    fn read_log_after_flush(log_state: &LogFileState, path: &Path, needle: &str) -> String {
+        log_state
+            .flush_for_test()
+            .expect("flush structured log sink");
+        let contents = fs::read_to_string(path).expect("read structured log");
+        assert!(
+            contents.contains(needle),
+            "expected structured log to contain {needle}: {contents}"
+        );
+        contents
     }
 }

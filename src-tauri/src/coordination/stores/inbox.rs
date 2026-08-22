@@ -218,14 +218,10 @@ fn emit_inbox_corruption_event(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{LazyLock, Mutex};
-
     use tempfile::TempDir;
 
     use super::*;
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
-
-    static LOG_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
     fn append_and_load_round_trip() {
@@ -278,7 +274,7 @@ mod tests {
 
     #[test]
     fn load_returns_error_and_quarantines_corrupt_inbox() {
-        let _log_guard = LOG_LOCK.lock().expect("log lock");
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
         let inbox_dir = teams_dir.join("t").join("inboxes");

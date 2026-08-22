@@ -19,6 +19,7 @@ use crate::coordination::stores::{
     OperationalContextSnapshot, OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path::normalize_project_path;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
 const SKIP_REASON_ALREADY_HANDLED: &str = "already_handled";
@@ -68,7 +69,7 @@ pub struct CompactionSignalProcessor;
 impl CompactionSignalProcessor {
     pub fn process_signal(signal: &CompactionSignalRecord) -> CompactionSignalProcessOutcome {
         let runtime = SystemCoordinationRuntime;
-        let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
+        let teams_dir = PlatformPaths::teams_dir();
         Self::process_signal_at(signal, &teams_dir, &runtime, Utc::now())
     }
 

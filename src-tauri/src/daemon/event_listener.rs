@@ -506,6 +506,7 @@ mod tests {
         port: u16,
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
+        _extractor_guard: crate::test_support::CompactionExtractorTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
     }
 
@@ -520,6 +521,7 @@ mod tests {
 
     fn start_daemon() -> TestDaemon {
         let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -533,13 +535,14 @@ mod tests {
         };
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            crate::daemon::server::run(&config, shutdown_clone, Arc::new(LocalProvider))
+            crate::daemon::server::run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
         });
         wait_for_port(port, Duration::from_secs(3));
         TestDaemon {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
+            _extractor_guard: extractor_guard,
             handle: Some(handle),
         }
     }

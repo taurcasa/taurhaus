@@ -38,23 +38,6 @@ pub struct ActivitySnapshotExportStats {
     pub write_failures: usize,
 }
 
-pub(crate) fn default_activity_export_teams_dir() -> std::path::PathBuf {
-    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
-
-    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
-        if !path.is_empty() {
-            return std::path::PathBuf::from(path).join("teams");
-        }
-    }
-    if let Some(path) = crate::coordination::mesh_cli::resolve_windows_mesh_teams_dir() {
-        return path;
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| std::env::temp_dir().join("taurhaus-home"))
-        .join(".claude")
-        .join("teams")
-}
-
 pub(crate) fn enrich_sessions_with_team_membership(
     teams_dir: &Path,
     sessions: &mut [DisplaySession],

@@ -25,7 +25,7 @@ static TEST_RECORD_TAP: OnceLock<RwLock<Option<std::sync::mpsc::Sender<Value>>>>
 
 #[derive(Clone)]
 struct LogEmitter {
-    sender: Sender<LogRecord>,
+    sender: Sender<LogWriterMessage>,
     run_id: Arc<str>,
 }
 
@@ -45,6 +45,11 @@ struct LogRecord {
     message: Option<String>,
     #[serde(flatten)]
     fields: Map<String, Value>,
+}
+
+enum LogWriterMessage {
+    Record(LogRecord),
+    Flush(mpsc::SyncSender<std::io::Result<()>>),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -90,6 +95,12 @@ impl LogFileState {
         fields: Map<String, Value>,
     ) {
         self.emitter.emit(level, component, event, message, fields);
+    }
+
+    /// Wait until every record already sent to this sink is durable enough to read.
+    #[doc(hidden)]
+    pub fn flush_for_test(&self) -> std::io::Result<()> {
+        self.emitter.flush_for_test()
     }
 }
 
@@ -147,13 +158,25 @@ impl LogEmitter {
             fields,
         };
 
-        if let Err(error) = self.sender.send(record) {
+        if let Err(error) = self.sender.send(LogWriterMessage::Record(record)) {
             if should_emit_write_warning(now_millis()) {
                 tracing::warn!(error = %error, "failed to enqueue structured log event");
             }
         }
         #[cfg(test)]
         emit_test_tap(level, component, event, tap_message, tap_fields);
+    }
+
+    fn flush_for_test(&self) -> std::io::Result<()> {
+        let (ack_tx, ack_rx) = mpsc::sync_channel(1);
+        self.sender
+            .send(LogWriterMessage::Flush(ack_tx))
+            .map_err(|error| {
+                std::io::Error::new(std::io::ErrorKind::BrokenPipe, error.to_string())
+            })?;
+        ack_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::TimedOut, error.to_string()))?
     }
 }
 
@@ -444,16 +467,23 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
 
 fn spawn_writer(log_path: PathBuf, run_id: String) -> std::io::Result<LogEmitter> {
     let writer = JsonlFileWriter::new(log_path, ROTATION_BYTES, RETENTION_DAYS)?;
-    let (sender, receiver) = mpsc::channel::<LogRecord>();
+    let (sender, receiver) = mpsc::channel::<LogWriterMessage>();
 
     std::thread::Builder::new()
         .name("taurhaus-jsonl-log-writer".to_string())
         .spawn(move || {
             let mut writer = writer;
-            while let Ok(record) = receiver.recv() {
-                if let Err(error) = writer.write_record(&record) {
-                    if should_emit_write_warning(now_millis()) {
-                        tracing::warn!(error = %error, "failed to write structured log event");
+            while let Ok(message) = receiver.recv() {
+                match message {
+                    LogWriterMessage::Record(record) => {
+                        if let Err(error) = writer.write_record(&record) {
+                            if should_emit_write_warning(now_millis()) {
+                                tracing::warn!(error = %error, "failed to write structured log event");
+                            }
+                        }
+                    }
+                    LogWriterMessage::Flush(ack_tx) => {
+                        let _ = ack_tx.send(writer.file.flush());
                     }
                 }
             }

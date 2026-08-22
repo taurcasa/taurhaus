@@ -12,16 +12,15 @@ use crate::coordination::claude_hooks::{
     ensure_compact_hook_installed, team_has_managed_claude_member,
 };
 use crate::coordination::errors::CoordinationError;
-use crate::coordination::mesh_cli;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::TeamConfigStore;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
 type BackendFactory =
     dyn Fn(BackendKind) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> + Send + Sync;
 type RuntimeFactory = dyn Fn() -> Arc<dyn CoordinationRuntime> + Send + Sync;
-const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BackgroundSelfHealPassResult {
@@ -60,7 +59,7 @@ impl CoordinationState {
     /// Build default app state without performing backend checks at startup.
     pub fn for_app_startup() -> Self {
         Self::with_components_and_runtime(
-            default_teams_dir(),
+            PlatformPaths::teams_dir(),
             BackendSelector::m0(),
             Arc::new(default_backend_factory),
             Arc::new(default_runtime_factory),
@@ -252,35 +251,13 @@ fn default_backend_factory(
 ) -> Result<Arc<dyn CoordinationBackend>, CoordinationError> {
     let backend: Arc<dyn CoordinationBackend> = match kind {
         BackendKind::MeshBridged => Arc::new(MeshBridgedBackend::default()),
-        BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend::new(default_teams_dir())),
+        BackendKind::ClaudeNative => Arc::new(ClaudeNativeBackend::new(PlatformPaths::teams_dir())),
     };
     Ok(backend)
 }
 
 fn default_runtime_factory() -> Arc<dyn CoordinationRuntime> {
     Arc::new(SystemCoordinationRuntime)
-}
-
-fn default_teams_dir() -> PathBuf {
-    if let Some(path) = std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV) {
-        if !path.is_empty() {
-            return PathBuf::from(path).join("teams");
-        }
-    }
-    if let Some(path) = mesh_cli::resolve_windows_mesh_teams_dir() {
-        return path;
-    }
-    let base = if let Some(home_dir) = dirs::home_dir() {
-        home_dir
-    } else {
-        let fallback = std::env::temp_dir().join("taurhaus-home");
-        tracing::warn!(
-            fallback = %fallback.display(),
-            "home directory unavailable; falling back to temp directory for coordination teams path"
-        );
-        fallback
-    };
-    base.join(".claude").join("teams")
 }
 
 fn apply_self_heal_result(summary: &mut BackgroundSelfHealPassResult, result: &TeamSelfHealResult) {
@@ -313,6 +290,7 @@ mod tests {
     use crate::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
     use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 
+    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
     static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     struct EnvTestGuard {
@@ -776,21 +754,21 @@ mod tests {
     }
 
     #[test]
-    fn default_teams_dir_uses_claude_override_when_set() {
+    fn platform_paths_teams_dir_uses_claude_override_when_set() {
         let _guard = acquire_env_test_guard();
         let override_dir = TempDir::new().expect("tempdir");
         std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, override_dir.path());
-        let resolved = default_teams_dir();
+        let resolved = PlatformPaths::teams_dir();
         std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
 
         assert_eq!(resolved, override_dir.path().join("teams"));
     }
 
     #[test]
-    fn default_teams_dir_ignores_empty_override() {
+    fn platform_paths_teams_dir_ignores_empty_override() {
         let _guard = acquire_env_test_guard();
         std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, "");
-        let resolved = default_teams_dir();
+        let resolved = PlatformPaths::teams_dir();
         std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV);
 
         assert!(resolved.ends_with(PathBuf::from(".claude").join("teams")));

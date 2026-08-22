@@ -1,8 +1,11 @@
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
+use crate::coordination::compaction_events::{
+    emit_compaction_owner_failed, emit_compaction_owner_selected,
+};
 use crate::coordination::compaction_processor::{
     CompactionSignalProcessOutcome, CompactionSignalProcessor,
 };
@@ -16,29 +19,203 @@ use crate::session_scanner::scan_sessions_for_runtime;
 use crate::session_scanner::compaction_watcher::CompactionSignalWatcher;
 
 pub struct CompactionWatcherState {
+    ownership: Mutex<ManagedCompactionOwnership>,
+}
+
+struct AppOwnedCompactionRuntime {
     _watcher_service: CompactionSignalWatcherService,
 }
 
-pub(crate) fn initialize(app: &mut tauri::App) -> Result<(), CoordinationError> {
-    if cfg!(target_os = "windows") {
-        return Ok(());
+struct ManagedCompactionOwnership {
+    runtime: Option<AppOwnedCompactionRuntime>,
+    daemon_selected: bool,
+}
+
+impl CompactionWatcherState {
+    fn inactive() -> Self {
+        Self {
+            ownership: Mutex::new(ManagedCompactionOwnership {
+                runtime: None,
+                daemon_selected: false,
+            }),
+        }
     }
 
-    let teams_dir = crate::coordination::stores::operational::default_operational_teams_dir();
+    fn activate(
+        &self,
+        start: impl FnOnce() -> Result<AppOwnedCompactionRuntime, CoordinationError>,
+    ) -> Result<(), CoordinationError> {
+        let mut ownership = self
+            .ownership
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if ownership.daemon_selected || ownership.runtime.is_some() {
+            return Ok(());
+        }
+
+        ownership.runtime = Some(start()?);
+        Ok(())
+    }
+
+    fn release(&self) -> bool {
+        let runtime = {
+            let mut ownership = self
+                .ownership
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            ownership.daemon_selected = true;
+            ownership.runtime.take()
+        };
+        let released = runtime.is_some();
+        drop(runtime);
+        if released {
+            compaction_extractor::stop_compaction_extractor_service();
+        }
+        released
+    }
+
+    fn owner(&self) -> CompactionOwner {
+        let ownership = self
+            .ownership
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if ownership.runtime.is_some() {
+            CompactionOwner::App
+        } else if ownership.daemon_selected {
+            CompactionOwner::Daemon
+        } else {
+            CompactionOwner::DaemonPending
+        }
+    }
+}
+
+impl Drop for CompactionWatcherState {
+    fn drop(&mut self) {
+        let runtime = self
+            .ownership
+            .get_mut()
+            .unwrap_or_else(|error| error.into_inner())
+            .runtime
+            .take();
+        let was_active = runtime.is_some();
+        drop(runtime);
+        if was_active {
+            compaction_extractor::stop_compaction_extractor_service();
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CompactionOwner {
+    App,
+    DaemonPending,
+    Daemon,
+}
+
+pub(crate) fn configured_compaction_owner(
+    daemon_configured: bool,
+    daemon_connected: bool,
+) -> CompactionOwner {
+    match (daemon_configured, daemon_connected) {
+        (false, _) => CompactionOwner::App,
+        (true, false) => CompactionOwner::DaemonPending,
+        (true, true) => CompactionOwner::Daemon,
+    }
+}
+
+pub(crate) fn compaction_owner_after_daemon_bootstrap(daemon_connected: bool) -> CompactionOwner {
+    if daemon_connected {
+        CompactionOwner::Daemon
+    } else {
+        CompactionOwner::App
+    }
+}
+
+pub(crate) fn initialize(
+    app: &mut tauri::App,
+    daemon_configured: bool,
+    daemon_connected: bool,
+) -> Result<(), CoordinationError> {
+    ensure_managed_state(app.handle());
+    match configured_compaction_owner(daemon_configured, daemon_connected) {
+        CompactionOwner::App => {
+            initialize_app_owned_fallback(app.handle(), "daemon_not_configured")
+        }
+        CompactionOwner::DaemonPending => {
+            let state = app.state::<CompactionWatcherState>();
+            if state.owner() == CompactionOwner::DaemonPending {
+                emit_compaction_owner_selected("daemon", "pending", "daemon_bootstrap_pending");
+            }
+            Ok(())
+        }
+        CompactionOwner::Daemon => {
+            release_app_owned_compaction(app.handle(), "daemon_connected_at_startup");
+            Ok(())
+        }
+    }
+}
+
+pub(crate) fn initialize_app_owned_fallback(
+    app: &AppHandle,
+    reason: &str,
+) -> Result<(), CoordinationError> {
+    ensure_managed_state(app);
+    let state = app.state::<CompactionWatcherState>();
+
+    match state.activate(start_app_owned_runtime) {
+        Ok(()) => {
+            if state.owner() == CompactionOwner::App {
+                emit_compaction_owner_selected("app", "active", reason);
+            }
+            Ok(())
+        }
+        Err(error) => {
+            emit_compaction_owner_failed("app", reason, &error.to_string());
+            Err(error)
+        }
+    }
+}
+
+pub(crate) fn release_app_owned_compaction<R: tauri::Runtime>(app: &AppHandle<R>, reason: &str) {
+    ensure_managed_state(app);
+    app.state::<CompactionWatcherState>().release();
+    emit_compaction_owner_selected("daemon", "active", reason);
+}
+
+fn ensure_managed_state<R: tauri::Runtime>(app: &AppHandle<R>) {
+    if app.try_state::<CompactionWatcherState>().is_none() {
+        let _ = app.manage(CompactionWatcherState::inactive());
+    }
+}
+
+fn start_app_owned_runtime() -> Result<AppOwnedCompactionRuntime, CoordinationError> {
+    let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
     // Continuity read: this only seeds the extractor's set of Codex transcripts
     // to tail; every later healthy scan republishes that set and supersedes
     // the seed, so a degraded seed is the last good set, not a binding.
     let (initial_sessions, _degraded) = scan_sessions_for_runtime();
+    start_app_owned_runtime_at(&teams_dir, initial_sessions)
+}
+
+fn start_app_owned_runtime_at(
+    teams_dir: &Path,
+    initial_sessions: Vec<crate::session_scanner::RuntimeSession>,
+) -> Result<AppOwnedCompactionRuntime, CoordinationError> {
     compaction_extractor::start_compaction_extractor_service_at(
-        teams_dir.clone(),
+        teams_dir.to_path_buf(),
         initial_sessions,
     )?;
 
-    let watcher_service = start_team_watcher_service(&teams_dir)?;
-    app.manage(CompactionWatcherState {
+    let watcher_service = match start_team_watcher_service(teams_dir) {
+        Ok(watcher_service) => watcher_service,
+        Err(error) => {
+            compaction_extractor::stop_compaction_extractor_service();
+            return Err(error);
+        }
+    };
+    Ok(AppOwnedCompactionRuntime {
         _watcher_service: watcher_service,
-    });
-    Ok(())
+    })
 }
 
 fn start_team_watcher_service(
@@ -77,7 +254,6 @@ mod tests {
 
     use std::io::Write;
     use std::path::{Path, PathBuf};
-    use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
     use chrono::{DateTime, Utc};
@@ -100,8 +276,6 @@ mod tests {
     use crate::session_scanner::{
         ActivityAttribution, ActivityConfidence, RuntimeSession, SessionGroupKind, SessionState,
     };
-
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn timestamp(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
@@ -265,7 +439,9 @@ mod tests {
 
     #[test]
     fn extractor_watcher_processor_pipeline_delivers_inbox_message() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        // Regression: a89ea4c kept a process-global extractor singleton but serialized
+        // startup and daemon compaction tests with different module-local mutexes.
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         stop_compaction_extractor_service_for_test();
 
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -345,7 +521,7 @@ mod tests {
 
     #[test]
     fn start_team_watcher_service_skips_orphaned_team_dirs_without_failing() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let teams_dir = tmp.path().join("teams");
@@ -356,5 +532,63 @@ mod tests {
 
         let _watcher_service =
             start_team_watcher_service(&teams_dir).expect("start watcher service");
+    }
+
+    #[test]
+    fn failed_daemon_bootstrap_returns_compaction_ownership_to_app() {
+        // Regression: a89ea4c treated the presence of a disconnected daemon provider
+        // as ownership, leaving no extractor or watcher when daemon bootstrap failed.
+        assert_eq!(
+            configured_compaction_owner(true, false),
+            CompactionOwner::DaemonPending
+        );
+        assert_eq!(
+            compaction_owner_after_daemon_bootstrap(false),
+            CompactionOwner::App
+        );
+    }
+
+    #[test]
+    fn daemon_recovery_revokes_app_owned_compaction_fallback() {
+        // Regression: 9f723d3 made daemon-bootstrap failure fall back to an app-owned
+        // compaction runtime, but neither recovery path revoked it when the daemon
+        // later connected, leaving both processes tailing and rewriting the same files.
+        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
+        stop_compaction_extractor_service_for_test();
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        std::fs::create_dir_all(&teams_dir).expect("create teams dir");
+        let state = CompactionWatcherState::inactive();
+        state
+            .activate(|| start_app_owned_runtime_at(&teams_dir, Vec::new()))
+            .expect("start app-owned fallback");
+        assert_eq!(state.owner(), CompactionOwner::App);
+        assert!(
+            crate::session_scanner::compaction_extractor::compaction_extractor_service_is_running_for_test()
+        );
+
+        assert!(state.release());
+        assert_eq!(state.owner(), CompactionOwner::Daemon);
+        assert!(
+            !crate::session_scanner::compaction_extractor::compaction_extractor_service_is_running_for_test()
+        );
+        state
+            .activate(|| start_app_owned_runtime_at(&teams_dir, Vec::new()))
+            .expect("late fallback is ignored after daemon selection");
+        assert_eq!(state.owner(), CompactionOwner::Daemon);
+        assert!(
+            !crate::session_scanner::compaction_extractor::compaction_extractor_service_is_running_for_test()
+        );
+
+        for recovery_path in [
+            include_str!("daemon.rs"),
+            include_str!("../daemon_lifecycle.rs"),
+        ] {
+            assert!(
+                recovery_path.contains("release_app_owned_compaction"),
+                "every daemon recovery path must revoke the app-owned fallback"
+            );
+        }
     }
 }

@@ -66,6 +66,7 @@ pub(crate) fn spawn_background_bootstrap(
                         true,
                         "daemon_provider_missing_local_fallback",
                     );
+                    start_local_compaction_fallback(&app, "daemon_provider_missing_local_fallback");
                     emit_startup_event(
                         "warn",
                         "startup.daemon_bootstrap.failed",
@@ -92,6 +93,7 @@ pub(crate) fn spawn_background_bootstrap(
                             fields
                         },
                     );
+                    bootstrap_complete.store(true, Ordering::Release);
                     return;
                 };
 
@@ -103,6 +105,7 @@ pub(crate) fn spawn_background_bootstrap(
                         true,
                         "daemon_install_failed_local_fallback",
                     );
+                    start_local_compaction_fallback(&app, "daemon_install_failed_local_fallback");
                     emit_startup_event(
                         "warn",
                         "startup.daemon_bootstrap.failed",
@@ -124,6 +127,7 @@ pub(crate) fn spawn_background_bootstrap(
                             fields
                         },
                     );
+                    bootstrap_complete.store(true, Ordering::Release);
                     return;
                 }
 
@@ -137,6 +141,11 @@ pub(crate) fn spawn_background_bootstrap(
 
                 if connected {
                     tracing::info!("Background bootstrap: daemon connected");
+                    #[cfg(feature = "mesh-bridged-backend")]
+                    crate::startup::compaction::release_app_owned_compaction(
+                        &app,
+                        "daemon_recovered",
+                    );
                     crate::startup::watchers::refresh_auxiliary_watches(
                         &app,
                         true,
@@ -176,6 +185,7 @@ pub(crate) fn spawn_background_bootstrap(
                         true,
                         "daemon_failed_local_fallback",
                     );
+                    start_local_compaction_fallback(&app, "daemon_failed_local_fallback");
                     emit_startup_event(
                         "warn",
                         "startup.daemon_bootstrap.failed",
@@ -473,6 +483,26 @@ fn emit_frontend_event(app: &AppHandle, event_name: &'static str, payload: serde
         );
     }
 }
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn start_local_compaction_fallback(app: &AppHandle, reason: &str) {
+    if crate::startup::compaction::compaction_owner_after_daemon_bootstrap(false)
+        != crate::startup::compaction::CompactionOwner::App
+    {
+        return;
+    }
+
+    if let Err(error) = crate::startup::compaction::initialize_app_owned_fallback(app, reason) {
+        tracing::warn!(
+            reason,
+            error = %error,
+            "app-owned compaction fallback failed after daemon bootstrap failure"
+        );
+    }
+}
+
+#[cfg(not(feature = "mesh-bridged-backend"))]
+fn start_local_compaction_fallback(_app: &AppHandle, _reason: &str) {}
 
 #[cfg(test)]
 mod tests {
