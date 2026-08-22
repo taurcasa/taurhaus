@@ -15,7 +15,7 @@ use crate::coordination::runtime::{
 use crate::coordination::state::CoordinationState;
 use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfig};
 use crate::session_scanner::launch::base_command;
-use crate::session_scanner::tmux::TmuxFocusState;
+use crate::session_scanner::tmux::TmuxFocus;
 use crate::session_scanner::{DisplaySession, SessionGroupKind, SessionState};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -200,11 +200,11 @@ fn active_session_for(path: &str) -> DisplaySession {
     }
 }
 
-fn attached_focus(session_name: &str, window: &str) -> TmuxFocusState {
-    TmuxFocusState {
-        session: Some(session_name.to_string()),
-        window: Some(window.to_string()),
-        timestamp: Some(123),
+fn attached_focus(session_name: &str, window_index: &str) -> TmuxFocus {
+    TmuxFocus {
+        session: session_name.to_string(),
+        window_index: window_index.to_string(),
+        pane_id: String::new(),
     }
 }
 
@@ -376,123 +376,66 @@ fn promote_activity_from_sessions_does_not_overpromote_recent_project_for_unattr
     assert_eq!(detail.activity_state, crate::models::ActivityState::Recent);
 }
 
+// Regression: commits a53ad31 (hook removal) and f9c1e89 (None => remove-all).
+// Foreground focus used to arrive through tmux hooks writing a file the app
+// read; the app now answers from the daemon hub's own snapshot.
 #[test]
-fn foreground_project_resolution_maps_focus_to_registered_project() {
+fn get_foreground_project_impl_answers_from_the_hub_snapshot() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
-    let sessions = vec![active_session_for("/tmp/project")];
-
-    let project_id = resolve_foreground_project_id_from_sessions(
-        &db,
-        &attached_focus("taurhaus", "work"),
-        &sessions,
-    )
-    .expect("resolve foreground project");
-
-    assert_eq!(project_id, Some("p1".to_string()));
-}
-
-#[test]
-fn foreground_project_resolution_matches_equivalent_normalized_paths() {
-    let (db, _db_file) = setup_db_with_project("p1", r"\\wsl.localhost\Ubuntu\home\user\project");
-    let sessions = vec![active_session_for("//wsl$/Ubuntu/home/user/project/")];
-
-    let project_id = resolve_foreground_project_id_from_sessions(
-        &db,
-        &attached_focus("taurhaus", "work"),
-        &sessions,
-    )
-    .expect("resolve normalized foreground project");
-
-    assert_eq!(project_id, Some("p1".to_string()));
-}
-
-#[test]
-fn foreground_project_resolution_returns_none_for_unknown_window() {
-    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
-    let sessions = vec![active_session_for("/tmp/project")];
-
-    let project_id = resolve_foreground_project_id_from_sessions(
-        &db,
-        &attached_focus("taurhaus", "missing"),
-        &sessions,
-    )
-    .expect("resolve foreground project");
-
-    assert_eq!(project_id, None);
-}
-
-#[test]
-fn foreground_project_resolution_returns_none_without_attached_client() {
-    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
-    let sessions = vec![active_session_for("/tmp/project")];
-
-    let project_id =
-        resolve_foreground_project_id_from_sessions(&db, &TmuxFocusState::detached(), &sessions)
-            .expect("resolve foreground project");
-
-    assert_eq!(project_id, None);
-}
-
-#[test]
-fn get_foreground_project_impl_falls_back_to_local_file_when_daemon_snapshot_focus_none() {
-    // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
-    // made a missing daemon focus suppress the app-owned local focus signal.
-    let data_dir = TempDir::new().expect("temp data dir");
-    let focus_path = crate::session_scanner::tmux::focus_file_path(data_dir.path());
-    crate::session_scanner::tmux::write_focus_state(
-        &focus_path,
-        &attached_focus("taurhaus", "work"),
-    )
-    .expect("write local focus state");
-    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": {
+            "version": 5,
+            "display_sessions": [],
+            "runtime_sessions": [],
+            "focus": {"session": "taurhaus", "window": "2", "pane_id": "%9"},
+            "foreground_project_path": "/tmp/project"
+        },
+        "error": null
+    }));
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: Some(
-            crate::provider::daemon_client::DaemonProvider::new_disconnected("127.0.0.1:1"),
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
         ),
         wsl_distro: None,
     };
-    let snapshot = crate::daemon::protocol::RuntimeSessionSnapshotResult {
-        version: 1,
-        display_sessions: vec![active_session_for("/tmp/project")],
-        runtime_sessions: Vec::new(),
-        focus: None,
-        foreground_project_path: None,
-        degraded: false,
-    };
 
-    assert!(should_fall_back_to_local_focus(&snapshot));
-
-    let project_id =
-        resolve_foreground_project_from_daemon_snapshot(data_dir.path(), &db, &provider, snapshot)
-            .expect("resolve local focus fallback");
+    let project_id = get_foreground_project_impl(&db, &provider).expect("resolve foreground");
 
     assert_eq!(project_id, Some("p1".to_string()));
-
-    let detached_snapshot = crate::daemon::protocol::RuntimeSessionSnapshotResult {
-        version: 2,
-        display_sessions: vec![active_session_for("/tmp/project")],
-        runtime_sessions: Vec::new(),
-        focus: Some(TmuxFocusState::detached()),
-        foreground_project_path: None,
-        degraded: false,
-    };
-    assert!(
-        should_fall_back_to_local_focus(&detached_snapshot),
-        "a stale detached daemon focus must not suppress the app-owned focus file"
+    let request = daemon.last_request.lock().expect("request slot").clone();
+    assert_eq!(
+        request.expect("daemon request").method,
+        protocol::method::GET_RUNTIME_SESSION_SNAPSHOT
     );
+}
 
-    let stale_snapshot = crate::daemon::protocol::RuntimeSessionSnapshotResult {
-        version: 3,
-        display_sessions: vec![active_session_for("/tmp/project")],
-        runtime_sessions: Vec::new(),
-        focus: Some(attached_focus("taurhaus", "missing")),
-        foreground_project_path: None,
-        degraded: false,
+#[test]
+fn get_foreground_project_impl_returns_none_without_hub_focus() {
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let daemon = start_stub_daemon(serde_json::json!({
+        "result": {
+            "version": 5,
+            "display_sessions": [],
+            "runtime_sessions": [],
+            "focus": null,
+            "foreground_project_path": null
+        },
+        "error": null
+    }));
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
     };
-    assert!(
-        should_fall_back_to_local_focus(&stale_snapshot),
-        "an unresolvable daemon focus must not suppress the app-owned focus file"
+
+    assert_eq!(
+        get_foreground_project_impl(&db, &provider).expect("resolve foreground"),
+        None
     );
 }
 

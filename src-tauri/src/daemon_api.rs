@@ -12,10 +12,8 @@ pub fn read_auth_token_for_distro(wsl_distro: Option<&str>) -> Option<String> {
     crate::daemon::auth::read_auth_token_for_distro(wsl_distro)
 }
 
-pub fn data_identity_paths() -> (std::path::PathBuf, std::path::PathBuf) {
-    let data_root = crate::provider::platform_paths::PlatformPaths::app_data_root();
-    let focus_path = data_root.join("tmux-focus.json");
-    (data_root, focus_path)
+pub fn data_identity_paths() -> std::path::PathBuf {
+    crate::provider::platform_paths::PlatformPaths::app_data_root()
 }
 
 fn json_number_u64(value: u64) -> Value {

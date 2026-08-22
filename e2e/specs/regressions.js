@@ -158,13 +158,17 @@ describe('Regressions', () => {
   describe('event pipeline live coverage (commit a53ad31 regression)', () => {
     // Regression: commit a53ad31 removed tmux focus hook installation during
     // the session-control cleanup, so tmux window switches no longer updated
-    // tmux-focus.json or the sidebar foreground indicator. The earlier #1364
+    // tmux-focus.json or the sidebar foreground indicator; commit f9c1e89 made
+    // an unknown focus path remove every taurhaus hook. The earlier #1364
     // follow-up misdiagnosed the issue as a frontend listener problem because
     // it never verified the running app end to end.
     //
-    // The tmux producer path is now covered in Rust plus attached-client
-    // manual verification. This E2E block keeps the live file and task update
-    // paths honest in the packaged app without a page reload.
+    // The hook -> file -> inotify chain is gone: the daemon hub probes
+    // `tmux list-clients` once per scanner cycle, resolves the focused window
+    // to a project, and the `tmux-focus-changed` event carries `project_id`
+    // (asserted in the Rust hub/bridge tests and the Shell unit tests). This
+    // block asserts the retired file is no longer an input, and keeps the live
+    // file and task update paths honest in the packaged app without a reload.
 
     const readmePath = join(TAURHAUS_PROJECT_PATH, 'README.md')
     let originalReadme = null
@@ -181,6 +185,37 @@ describe('Regressions', () => {
       if (originalReadme !== null) {
         writeFileSync(readmePath, originalReadme, 'utf8')
       }
+    })
+
+    it('ignores a stale tmux-focus.json instead of driving the foreground indicator', async function () {
+      if (!mainApp) return this.skip()
+
+      const dataDir = process.env.TAURHAUS_DATA_DIR
+      if (!dataDir) return this.skip()
+
+      await selectProjectByName('taurhaus')
+      await waitForProjectsLoaded()
+
+      const baseline = await browser.execute(
+        () => document.querySelectorAll('[data-testid="sidebar-foreground-indicator"]').length
+      )
+
+      const focusFile = join(dataDir, 'tmux-focus.json')
+      writeFileSync(
+        focusFile,
+        JSON.stringify({ session: 'taurhaus', window: '0', timestamp: Date.now() }),
+        'utf8'
+      )
+
+      // Well past the retired inotify -> Tauri event latency.
+      await browser.pause(2_000)
+
+      const afterWrite = await browser.execute(
+        () => document.querySelectorAll('[data-testid="sidebar-foreground-indicator"]').length
+      )
+      expect(afterWrite).toBe(baseline)
+
+      rmSync(focusFile, { force: true })
     })
 
     it('refreshes README content after a live file edit without reloading the app', async function () {

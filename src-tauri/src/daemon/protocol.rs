@@ -131,9 +131,6 @@ pub struct PingResult {
     /// Canonical app-data root used by the daemon. Additive for older daemons.
     #[serde(default)]
     pub data_root: String,
-    /// Tmux focus file derived from `data_root`. Additive for older daemons.
-    #[serde(default)]
-    pub focus_path: String,
 }
 
 /// `git_status` params
@@ -339,6 +336,12 @@ pub struct WaitSessionUpdatesResult {
     pub changed: bool,
     /// Full session snapshot for the reported version.
     pub sessions: Vec<crate::session_scanner::DisplaySession>,
+    /// tmux focus as of this version. Additive: older daemons omit it.
+    #[serde(default)]
+    pub focus: Option<crate::session_scanner::tmux::TmuxFocus>,
+    /// Project path the focused tmux window belongs to, resolved by the hub.
+    #[serde(default)]
+    pub focus_project_path: Option<String>,
 }
 
 /// `get_runtime_session_snapshot` result.
@@ -347,7 +350,11 @@ pub struct RuntimeSessionSnapshotResult {
     pub version: u64,
     pub display_sessions: Vec<crate::session_scanner::DisplaySession>,
     pub runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
-    pub focus: Option<crate::session_scanner::tmux::TmuxFocusState>,
+    /// tmux focus owned by the daemon hub. Serializes with the legacy
+    /// `session`/`window` keys so an older app still decodes it.
+    #[serde(default)]
+    pub focus: Option<crate::session_scanner::tmux::TmuxFocus>,
+    /// Legacy wire name for the hub's `focus_project_path`.
     pub foreground_project_path: Option<String>,
     /// The daemon scanner's latest cycle could not read its process inventory:
     /// the sessions are the hub's last good snapshot, not an observation, and
@@ -542,13 +549,12 @@ mod tests {
     #[test]
     fn ping_result_roundtrip() {
         // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
-        // exposed that daemon pings did not identify their data/focus path authority.
+        // exposed that daemon pings did not identify their data root authority.
         let ping = PingResult {
             version: "0.1.0".to_string(),
             protocol_version: PROTOCOL_VERSION,
             uptime_secs: 120,
             data_root: "/tmp/taurhaus-data".to_string(),
-            focus_path: "/tmp/taurhaus-data/tmux-focus.json".to_string(),
         };
         let json = serde_json::to_string(&ping).unwrap();
         let roundtrip: PingResult = serde_json::from_str(&json).unwrap();
@@ -563,7 +569,6 @@ mod tests {
         let r: PingResult = serde_json::from_str(json).unwrap();
         assert_eq!(r.protocol_version, 0);
         assert!(r.data_root.is_empty());
-        assert!(r.focus_path.is_empty());
     }
 
     #[test]
@@ -817,6 +822,8 @@ mod tests {
             version: 7,
             changed: true,
             sessions: vec![],
+            focus: None,
+            focus_project_path: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: WaitSessionUpdatesResult = serde_json::from_str(&json).unwrap();
@@ -851,5 +858,72 @@ mod tests {
         let r: RuntimeSessionSnapshotResult = serde_json::from_str(json).unwrap();
         assert_eq!(r.version, 2);
         assert!(!r.degraded);
+    }
+
+    fn focus_fixture() -> crate::session_scanner::tmux::TmuxFocus {
+        crate::session_scanner::tmux::TmuxFocus {
+            session: "taurhaus".to_string(),
+            window_index: "2".to_string(),
+            pane_id: "%9".to_string(),
+        }
+    }
+
+    #[test]
+    fn wait_session_updates_result_roundtrips_focus() {
+        let result = WaitSessionUpdatesResult {
+            version: 7,
+            changed: true,
+            sessions: Vec::new(),
+            focus: Some(focus_fixture()),
+            focus_project_path: Some("/projects/mesh".to_string()),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert_eq!(
+            serde_json::from_str::<WaitSessionUpdatesResult>(&json).unwrap(),
+            result
+        );
+    }
+
+    #[test]
+    fn wait_session_updates_result_decodes_without_focus() {
+        // Old daemons omit the focus fields entirely.
+        let json = r#"{"version":3,"changed":false,"sessions":[]}"#;
+        let result: WaitSessionUpdatesResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.focus, None);
+        assert_eq!(result.focus_project_path, None);
+    }
+
+    #[test]
+    fn runtime_session_snapshot_result_roundtrips_focus() {
+        let result = RuntimeSessionSnapshotResult {
+            version: 4,
+            display_sessions: Vec::new(),
+            runtime_sessions: Vec::new(),
+            focus: Some(focus_fixture()),
+            foreground_project_path: Some("/projects/mesh".to_string()),
+            degraded: false,
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["focus"]["session"], "taurhaus");
+        assert_eq!(json["focus"]["window"], "2");
+        assert_eq!(
+            serde_json::from_value::<RuntimeSessionSnapshotResult>(json).unwrap(),
+            result
+        );
+    }
+
+    #[test]
+    fn runtime_session_snapshot_result_decodes_legacy_focus_payload() {
+        // A daemon built before the hub-owned probe sends the hook file shape.
+        let json = r#"{"version":1,"display_sessions":[],"runtime_sessions":[],"focus":{"session":"taurhaus","window":"2","timestamp":123},"foreground_project_path":null}"#;
+        let result: RuntimeSessionSnapshotResult = serde_json::from_str(json).unwrap();
+        let focus = result.focus.expect("legacy focus decodes");
+        assert_eq!(focus.session, "taurhaus");
+        assert_eq!(focus.window_index, "2");
+        assert_eq!(focus.pane_id, "");
+
+        let detached = r#"{"version":1,"display_sessions":[],"runtime_sessions":[],"focus":{"session":null,"window":null,"timestamp":null},"foreground_project_path":null}"#;
+        let result: RuntimeSessionSnapshotResult = serde_json::from_str(detached).unwrap();
+        assert_eq!(result.focus.expect("detached focus decodes").session, "");
     }
 }

@@ -372,6 +372,9 @@ describe('Shell mesh focus integration', () => {
   })
 
   it('updates foreground project from tmux focus events and clears it on detach', async () => {
+    // Regression: commits a53ad31 and f9c1e89. The focus event used to carry raw
+    // tmux coordinates from a hook-written file; the daemon hub now resolves the
+    // project and the event carries project_id.
     ipc.isTauri.mockReturnValue(true)
     const handlers = new Map()
     eventApi.listen.mockImplementation((eventName, handler) => {
@@ -386,7 +389,7 @@ describe('Shell mesh focus integration', () => {
     })
 
     await handlers.get('tmux-focus-changed')({
-      payload: { session: 'taurhaus', window: '2' },
+      payload: { session: 'taurhaus', window: '2', pane_id: '%9', project_id: 'proj-2' },
     })
 
     await waitFor(() => {
@@ -432,32 +435,6 @@ describe('Shell mesh focus integration', () => {
     // Regression: after the Shell controller split, real-time updates stopped because
     // Tauri listeners were being managed from a reactive effect instead of a mount lifecycle.
     expect(eventApi.listen).toHaveBeenCalledTimes(7)
-  })
-
-  it('falls back to getForegroundProject once when a tmux focus event cannot be resolved locally', async () => {
-    ipc.isTauri.mockReturnValue(true)
-    ipc.getForegroundProject.mockResolvedValueOnce(null).mockResolvedValueOnce('proj-2')
-    mockSessionMap = new Map()
-    const handlers = new Map()
-    eventApi.listen.mockImplementation((eventName, handler) => {
-      handlers.set(eventName, handler)
-      return Promise.resolve(() => {})
-    })
-
-    render(Shell)
-
-    await waitFor(() => {
-      expect(handlers.has('tmux-focus-changed')).toBe(true)
-    })
-
-    await handlers.get('tmux-focus-changed')({
-      payload: { session: 'taurhaus', window: '2' },
-    })
-
-    await waitFor(() => {
-      expect(ipc.getForegroundProject).toHaveBeenCalledTimes(2)
-      expect(latestSidebarProps.foregroundProjectId).toBe('proj-2')
-    })
   })
 
   it('retries a deferred project load after daemon reconnects during a project switch', async () => {

@@ -8,9 +8,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::bootstrap;
 use crate::commands::projects::DbState;
-use crate::sentinels::{
-    CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX, TMUX_FOCUS_PROJECT_ID,
-};
+use crate::sentinels::{CLAUDE_TASKS_PROJECT_ID, INTERNAL_PROJECT_ID_PREFIX};
 use crate::{db, fs, search, services, ProviderState, SearchState};
 
 /// Look up a project's path from the database, returning None on any error.
@@ -510,7 +508,7 @@ pub(crate) fn process_watch_events(
     // Main event loop. Block until the first event arrives or the channel closes.
     while let Ok(first) = rx.recv() {
         // Fast-path: internal watch events (task directory) bypass batching.
-        if handle_internal_event(&app, &task_trigger_tx, &first, "first_event") {
+        if handle_internal_event(&task_trigger_tx, &first, "first_event") {
             continue;
         }
 
@@ -527,7 +525,7 @@ pub(crate) fn process_watch_events(
             let timeout = (MAX_WAIT - elapsed).min(QUIET_WINDOW);
             match rx.recv_timeout(timeout) {
                 Ok(event) => {
-                    if handle_internal_event(&app, &task_trigger_tx, &event, "batched_event") {
+                    if handle_internal_event(&task_trigger_tx, &event, "batched_event") {
                     } else {
                         batch.accumulate(event);
                     }
@@ -941,7 +939,6 @@ fn internal_task_trigger(event: &fs::watcher::WatchEvent) -> crate::bootstrap::T
 }
 
 fn handle_internal_event(
-    app: &AppHandle,
     task_trigger_tx: &std::sync::mpsc::Sender<crate::bootstrap::TaskScanTrigger>,
     event: &fs::watcher::WatchEvent,
     source: &'static str,
@@ -951,35 +948,6 @@ fn handle_internal_event(
     match event {
         WatchEvent::FileChanged { project_id, .. } if project_id == CLAUDE_TASKS_PROJECT_ID => {
             enqueue_task_trigger(task_trigger_tx, internal_task_trigger(event), source);
-            true
-        }
-        WatchEvent::FileChanged { project_id, paths } if project_id == TMUX_FOCUS_PROJECT_ID => {
-            let Some(focus_path) = paths.iter().find(|path| {
-                path.file_name()
-                    .and_then(|value| value.to_str())
-                    .is_some_and(|value| value == "tmux-focus.json")
-            }) else {
-                return true;
-            };
-            let focus_state = crate::session_scanner::tmux::read_focus_state_from_path(focus_path);
-            if focus_state.is_none() {
-                tracing::debug!(
-                    path = %focus_path.display(),
-                    "Skipping tmux focus event because focus file was unreadable"
-                );
-                return true;
-            }
-            tracing::info!(
-                path = %focus_path.display(),
-                session = ?focus_state.as_ref().and_then(|state| state.session.clone()),
-                window = ?focus_state.as_ref().and_then(|state| state.window.clone()),
-                "Observed tmux focus file change"
-            );
-            emit_frontend_event(
-                app,
-                "tmux-focus-changed",
-                serde_json::to_value(focus_state).unwrap_or(serde_json::Value::Null),
-            );
             true
         }
         WatchEvent::GitChanged { project_id }

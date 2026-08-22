@@ -1,7 +1,6 @@
 //! tmux mapper — map terminal TTYs to tmux pane/window IDs.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,25 +21,156 @@ pub struct TmuxPane {
     pub session_name: String,
 }
 
-/// Persisted foreground tmux focus state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TmuxFocusState {
-    #[serde(default)]
-    pub session: Option<String>,
-    #[serde(default)]
-    pub window: Option<String>,
-    #[serde(default)]
-    pub timestamp: Option<u64>,
+/// An attached tmux client, as reported by `tmux list-clients`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TmuxClient {
+    /// Raw client flags (`attached`, `focused`, `UTF-8`, ...).
+    pub flags: Vec<String>,
+    pub session: String,
+    pub window_index: String,
+    pub pane_id: String,
+    /// `client_activity` epoch seconds; the tie-break between clients.
+    pub activity: u64,
 }
 
-impl TmuxFocusState {
-    pub fn detached() -> Self {
-        Self {
-            session: None,
-            window: None,
-            timestamp: None,
-        }
+impl TmuxClient {
+    fn has_flag(&self, flag: &str) -> bool {
+        self.flags.iter().any(|value| value == flag)
     }
+
+    /// The terminal reports this client's window as focused.
+    pub fn is_focused(&self) -> bool {
+        self.has_flag("focused")
+    }
+
+    fn is_attached(&self) -> bool {
+        self.has_flag("attached")
+    }
+}
+
+/// The tmux session/window/pane the user is looking at.
+///
+/// Wire compatibility: `window_index` serializes as `window`, the key old apps
+/// read, and every field tolerates a legacy `null` (the detached hook payload).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TmuxFocus {
+    #[serde(default, deserialize_with = "null_as_empty_string")]
+    pub session: String,
+    #[serde(rename = "window", default, deserialize_with = "null_as_empty_string")]
+    pub window_index: String,
+    #[serde(default, deserialize_with = "null_as_empty_string")]
+    pub pane_id: String,
+}
+
+fn null_as_empty_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+const LIST_CLIENTS_FORMAT: &str =
+    "#{client_flags}\t#{session_name}\t#{window_index}\t#{pane_id}\t#{client_activity}";
+
+/// List the tmux clients attached to the server.
+///
+/// Returns an empty list when tmux is unreachable (no server, timeout): the
+/// hub reads that as "nothing is focused", never as an error.
+pub fn list_clients() -> Vec<TmuxClient> {
+    #[cfg(test)]
+    if let Some(scripted) = list_clients_override() {
+        return scripted();
+    }
+
+    let Some(output) =
+        super::process::run_with_timeout("tmux", &["list-clients", "-F", LIST_CLIENTS_FORMAT])
+    else {
+        return Vec::new();
+    };
+    parse_list_clients(&output)
+}
+
+/// Test seam: stands in for the tmux client probe so the hub cycle can be
+/// driven through focus changes without a tmux server.
+#[cfg(test)]
+pub(crate) type ListClientsOverride = fn() -> Vec<TmuxClient>;
+#[cfg(test)]
+static LIST_CLIENTS_OVERRIDE: std::sync::Mutex<Option<ListClientsOverride>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_list_clients_override(scripted: Option<ListClientsOverride>) {
+    *LIST_CLIENTS_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = scripted;
+}
+
+#[cfg(test)]
+fn list_clients_override() -> Option<ListClientsOverride> {
+    *LIST_CLIENTS_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
+/// Parse `tmux list-clients -F` output (tab-separated, 5 fields per line).
+///
+/// Lines that are not a client record are skipped.
+pub fn parse_list_clients(output: &str) -> Vec<TmuxClient> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.trim_end_matches(['\r', '\n']).splitn(5, '\t');
+            let flags = fields.next()?;
+            let session = fields.next()?.trim();
+            let window_index = fields.next()?.trim();
+            let pane_id = fields.next()?.trim();
+            let activity = fields.next()?.trim().parse::<u64>().ok()?;
+            if session.is_empty() || window_index.is_empty() || pane_id.is_empty() {
+                return None;
+            }
+
+            Some(TmuxClient {
+                flags: flags
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|flag| !flag.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+                session: session.to_string(),
+                window_index: window_index.to_string(),
+                pane_id: pane_id.to_string(),
+                activity,
+            })
+        })
+        .collect()
+}
+
+/// Whether any client reports its window as focused — someone is looking.
+pub fn any_client_focused(clients: &[TmuxClient]) -> bool {
+    clients.iter().any(TmuxClient::is_focused)
+}
+
+/// Resolve the focused session/window/pane from the attached clients.
+///
+/// The focused client wins; ties and unfocused terminals fall back to the most
+/// recently active attached client. No attached client means no focus.
+pub fn focus_from_clients(clients: &[TmuxClient]) -> Option<TmuxFocus> {
+    let focused = clients
+        .iter()
+        .filter(|client| client.is_focused())
+        .max_by_key(|client| client.activity);
+    let client = focused.or_else(|| {
+        clients
+            .iter()
+            .filter(|client| client.is_attached())
+            .max_by_key(|client| client.activity)
+    })?;
+
+    Some(TmuxFocus {
+        session: client.session.clone(),
+        window_index: client.window_index.clone(),
+        pane_id: client.pane_id.clone(),
+    })
 }
 
 /// List all tmux panes and build a TTY → TmuxPane lookup.
@@ -103,37 +233,15 @@ pub fn parse_tmux_output(output: &str) -> HashMap<String, TmuxPane> {
         .collect()
 }
 
-pub fn focus_file_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("tmux-focus.json")
-}
-
-pub fn read_focus_state_from_path(path: &Path) -> Option<TmuxFocusState> {
-    let raw = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&raw).ok()
-}
-
-pub fn read_focus_state(data_dir: &Path) -> Option<TmuxFocusState> {
-    let path = focus_file_path(data_dir);
-    read_focus_state_from_path(&path)
-}
-
-pub fn write_focus_state(path: &Path, state: &TmuxFocusState) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("Failed to create tmux focus parent directory: {error}"))?;
-    }
-    let payload = serde_json::to_string(state)
-        .map_err(|error| format!("Failed to serialize tmux focus state: {error}"))?;
-    std::fs::write(path, payload)
-        .map_err(|error| format!("Failed to write tmux focus state: {error}"))
-}
-
+/// Map a focused tmux session/window onto a known session's project path.
+///
+/// Matches on window index, falling back to the taurhaus-managed window name.
 pub fn resolve_focus_project_path(
-    focus: &TmuxFocusState,
+    focus: &TmuxFocus,
     sessions: &[DisplaySession],
 ) -> Option<String> {
-    let session_name = focus.session.as_deref()?.trim();
-    let window = focus.window.as_deref()?.trim();
+    let session_name = focus.session.trim();
+    let window = focus.window_index.trim();
     if session_name.is_empty() || window.is_empty() {
         return None;
     }
@@ -285,67 +393,215 @@ bad line
         assert!(map.contains_key("/dev/pts/1"));
     }
 
+    fn client(
+        flags: &[&str],
+        session: &str,
+        window: &str,
+        pane: &str,
+        activity: u64,
+    ) -> TmuxClient {
+        TmuxClient {
+            flags: flags.iter().map(|flag| flag.to_string()).collect(),
+            session: session.to_string(),
+            window_index: window.to_string(),
+            pane_id: pane.to_string(),
+            activity,
+        }
+    }
+
+    #[test]
+    fn parse_list_clients_reads_a_single_focused_client() {
+        // Live on this host (tmux 3.4, Windows Terminal -> wsl.exe client).
+        let output = "attached,focused,UTF-8\ttaurhaus\t0\t%3\t1787359665\n";
+
+        assert_eq!(
+            parse_list_clients(output),
+            vec![client(
+                &["attached", "focused", "UTF-8"],
+                "taurhaus",
+                "0",
+                "%3",
+                1_787_359_665
+            )]
+        );
+    }
+
+    #[test]
+    fn parse_list_clients_ignores_garbage_and_empty_lines() {
+        let output = "attached,focused\ttaurhaus\t0\t%3\t10\nnot a client line\n\n\t\t\t\t\n";
+
+        assert_eq!(
+            parse_list_clients(output),
+            vec![client(&["attached", "focused"], "taurhaus", "0", "%3", 10)]
+        );
+    }
+
+    #[test]
+    fn parse_list_clients_returns_empty_for_no_clients() {
+        assert!(parse_list_clients("").is_empty());
+    }
+
+    #[test]
+    fn focus_from_clients_prefers_the_most_recently_active_focused_client() {
+        // Verified on this host: two attached clients can both report `focused`;
+        // the tie-break is `client_activity`.
+        let clients = vec![
+            client(&["attached", "focused"], "taurhaus", "0", "%0", 100),
+            client(&["attached", "focused"], "beta", "2", "%7", 200),
+        ];
+
+        assert_eq!(
+            focus_from_clients(&clients),
+            Some(TmuxFocus {
+                session: "beta".to_string(),
+                window_index: "2".to_string(),
+                pane_id: "%7".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn focus_from_clients_prefers_focused_over_more_recent_unfocused() {
+        let clients = vec![
+            client(&["attached", "focused"], "taurhaus", "0", "%0", 100),
+            client(&["attached"], "beta", "2", "%7", 900),
+        ];
+
+        assert_eq!(
+            focus_from_clients(&clients).map(|focus| focus.session),
+            Some("taurhaus".to_string())
+        );
+    }
+
+    #[test]
+    fn focus_from_clients_falls_back_to_the_most_recent_attached_client() {
+        let clients = vec![
+            client(&["attached"], "taurhaus", "0", "%0", 100),
+            client(&["attached"], "beta", "2", "%7", 200),
+        ];
+
+        assert_eq!(
+            focus_from_clients(&clients).map(|focus| focus.pane_id),
+            Some("%7".to_string())
+        );
+    }
+
+    #[test]
+    fn focus_from_clients_returns_none_without_an_attached_client() {
+        assert_eq!(focus_from_clients(&[]), None);
+        assert_eq!(
+            focus_from_clients(&[client(&["UTF-8"], "taurhaus", "0", "%0", 100)]),
+            None
+        );
+    }
+
+    #[test]
+    fn any_client_focused_reports_whether_someone_is_looking() {
+        assert!(any_client_focused(&[client(
+            &["attached", "focused"],
+            "taurhaus",
+            "0",
+            "%0",
+            1
+        )]));
+        assert!(!any_client_focused(&[client(
+            &["attached"],
+            "taurhaus",
+            "0",
+            "%0",
+            1
+        )]));
+        assert!(!any_client_focused(&[]));
+    }
+
+    fn focus_on(session: &str, window_index: &str) -> TmuxFocus {
+        TmuxFocus {
+            session: session.to_string(),
+            window_index: window_index.to_string(),
+            pane_id: "%1".to_string(),
+        }
+    }
+
+    #[test]
+    fn resolve_focus_matches_window_index() {
+        let mut indexed_only = session_for("/projects/mesh", Some("taurhaus"), None);
+        indexed_only.tmux_window = Some("2".to_string());
+
+        assert_eq!(
+            resolve_focus_project_path(&focus_on("taurhaus", "2"), &[indexed_only]),
+            Some("/projects/mesh".to_string())
+        );
+    }
+
     #[test]
     fn resolve_focus_matches_taurhaus_managed_window_name() {
-        let focus = TmuxFocusState {
-            session: Some("taurhaus".to_string()),
-            window: Some("mesh".to_string()),
-            timestamp: Some(123),
-        };
         let sessions = vec![
             session_for("/projects/other", Some("taurhaus"), Some("other")),
             session_for("/projects/mesh", Some("taurhaus"), Some("mesh")),
         ];
 
         assert_eq!(
-            resolve_focus_project_path(&focus, &sessions),
+            resolve_focus_project_path(&focus_on("taurhaus", "mesh"), &sessions),
             Some("/projects/mesh".to_string())
         );
     }
 
     #[test]
     fn resolve_focus_returns_none_for_unknown_window() {
-        let focus = TmuxFocusState {
-            session: Some("taurhaus".to_string()),
-            window: Some("missing".to_string()),
-            timestamp: Some(123),
-        };
         let sessions = vec![session_for(
             "/projects/mesh",
             Some("taurhaus"),
             Some("mesh"),
         )];
 
-        assert_eq!(resolve_focus_project_path(&focus, &sessions), None);
-    }
-
-    #[test]
-    fn resolve_focus_returns_none_without_attached_client() {
-        let sessions = vec![session_for(
-            "/projects/mesh",
-            Some("taurhaus"),
-            Some("mesh"),
-        )];
         assert_eq!(
-            resolve_focus_project_path(&TmuxFocusState::detached(), &sessions),
+            resolve_focus_project_path(&focus_on("taurhaus", "missing"), &sessions),
             None
         );
     }
 
     #[test]
-    fn resolve_focus_matches_window_index_when_name_is_unavailable() {
-        let mut indexed_only = session_for("/projects/mesh", Some("taurhaus"), None);
-        indexed_only.tmux_window = Some("2".to_string());
-
-        let focus = TmuxFocusState {
-            session: Some("taurhaus".to_string()),
-            window: Some("2".to_string()),
-            timestamp: Some(123),
-        };
+    fn resolve_focus_returns_none_for_empty_focus_fields() {
+        let sessions = vec![session_for(
+            "/projects/mesh",
+            Some("taurhaus"),
+            Some("mesh"),
+        )];
 
         assert_eq!(
-            resolve_focus_project_path(&focus, &[indexed_only]),
-            Some("/projects/mesh".to_string())
+            resolve_focus_project_path(&focus_on("", ""), &sessions),
+            None
         );
+    }
+
+    #[test]
+    fn tmux_focus_decodes_legacy_session_window_payload() {
+        // Old daemons wrote `{"session":..,"window":..,"timestamp":..}`; a new app
+        // must still decode their snapshot instead of dropping it wholesale.
+        let legacy: TmuxFocus =
+            serde_json::from_str(r#"{"session":"taurhaus","window":"2","timestamp":123}"#).unwrap();
+        assert_eq!(legacy, focus_on_index("taurhaus", "2"));
+
+        let detached: TmuxFocus =
+            serde_json::from_str(r#"{"session":null,"window":null,"timestamp":null}"#).unwrap();
+        assert_eq!(detached.session, "");
+        assert_eq!(detached.window_index, "");
+    }
+
+    fn focus_on_index(session: &str, window_index: &str) -> TmuxFocus {
+        TmuxFocus {
+            session: session.to_string(),
+            window_index: window_index.to_string(),
+            pane_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn tmux_focus_keeps_the_session_and_window_wire_keys() {
+        // Old apps read only `session`/`window`; the daemon must keep emitting them.
+        let json = serde_json::to_value(focus_on("taurhaus", "2")).unwrap();
+        assert_eq!(json["session"], "taurhaus");
+        assert_eq!(json["window"], "2");
+        assert_eq!(json["pane_id"], "%1");
     }
 }

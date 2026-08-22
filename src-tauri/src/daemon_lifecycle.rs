@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::commands;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
+use crate::session_scanner::tmux::TmuxFocus;
 use crate::session_scanner::DisplaySession;
 use crate::{
     daemon, db, fs, models, provider, services, watch_targets, ProviderState, WatcherState,
@@ -810,7 +811,6 @@ fn handle_daemon_recovered(app: &AppHandle) {
     #[cfg(feature = "mesh-bridged-backend")]
     crate::startup::compaction::release_app_owned_compaction(app, "daemon_recovered");
     respawn_daemon_watches(app);
-    crate::startup::watchers::repair_tmux_focus_hooks();
     {
         let app_for_reseed = app.clone();
         std::thread::spawn(move || {
@@ -883,6 +883,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
         let mut since_version: u64 = 0;
         let mut observed_connected = false;
         let mut recovery_tracker = SessionBridgeRecoveryTracker::default();
+        let mut last_focus: Option<FocusEmission> = None;
         tracing::info!("session updates bridge thread started");
 
         loop {
@@ -949,6 +950,17 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                         }
 
                         since_version = update.version;
+                        if take_focus_change(
+                            &mut last_focus,
+                            update.focus.as_ref(),
+                            update.focus_project_path.as_deref(),
+                        ) {
+                            emit_tmux_focus_changed(
+                                &app,
+                                update.focus.as_ref(),
+                                update.focus_project_path.as_deref(),
+                            );
+                        }
                         if update.changed {
                             let mut sessions = update.sessions;
                             let session_count = sessions.len();
@@ -992,6 +1004,81 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
             std::thread::sleep(RETRY_DELAY);
         }
     });
+}
+
+/// The focus the bridge last handed the frontend.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FocusEmission {
+    focus: Option<TmuxFocus>,
+    project_path: Option<String>,
+}
+
+/// Whether the hub's focus moved since the last emission, recording the new one.
+///
+/// The hub reports focus on every long-poll response; the app only wants the
+/// transitions.
+fn take_focus_change(
+    last: &mut Option<FocusEmission>,
+    focus: Option<&TmuxFocus>,
+    project_path: Option<&str>,
+) -> bool {
+    let next = FocusEmission {
+        focus: focus.cloned(),
+        project_path: project_path.map(str::to_string),
+    };
+    if last.as_ref() == Some(&next) {
+        return false;
+    }
+    *last = Some(next);
+    true
+}
+
+/// `tmux-focus-changed` payload; `null` means nothing is focused.
+fn tmux_focus_event_payload(
+    focus: Option<&TmuxFocus>,
+    project_id: Option<&str>,
+) -> serde_json::Value {
+    match focus {
+        Some(focus) => serde_json::json!({
+            "session": focus.session,
+            "window": focus.window_index,
+            "pane_id": focus.pane_id,
+            "project_id": project_id,
+        }),
+        None => serde_json::Value::Null,
+    }
+}
+
+/// Emit the focus transition, resolving the project id app-side.
+fn emit_tmux_focus_changed(app: &AppHandle, focus: Option<&TmuxFocus>, project_path: Option<&str>) {
+    let project_id = project_path.and_then(|project_path| {
+        let provider = app.state::<ProviderState>();
+        let localized = crate::commands::command_center::localize_daemon_project_path(
+            &provider,
+            project_path.to_string(),
+        );
+        let db = app.state::<crate::commands::projects::DbState>();
+        match crate::commands::command_center::resolve_project_id_from_path(&db, &localized) {
+            Ok(project_id) => project_id,
+            Err(error) => {
+                tracing::debug!(error = %error, "tmux focus project lookup failed");
+                None
+            }
+        }
+    });
+
+    tracing::debug!(
+        session = ?focus.map(|focus| focus.session.as_str()),
+        window = ?focus.map(|focus| focus.window_index.as_str()),
+        pane_id = ?focus.map(|focus| focus.pane_id.as_str()),
+        project_id = ?project_id,
+        "tmux focus changed"
+    );
+    emit_frontend_event(
+        app,
+        "tmux-focus-changed",
+        tmux_focus_event_payload(focus, project_id.as_deref()),
+    );
 }
 
 /// Fetch the current runtime session snapshot via a short-lived direct connection.
@@ -1458,5 +1545,54 @@ mod tests {
     #[test]
     fn daemon_claude_tasks_watch_remains_enabled_without_local_windows_path() {
         assert!(!prefer_local_claude_tasks_watch_for_host(true, false));
+    }
+
+    fn focus(session: &str, window_index: &str, pane_id: &str) -> TmuxFocus {
+        TmuxFocus {
+            session: session.to_string(),
+            window_index: window_index.to_string(),
+            pane_id: pane_id.to_string(),
+        }
+    }
+
+    // Regression: commits a53ad31 and f9c1e89. The focus signal used to reach
+    // the app through tmux hooks writing a file; it is now a hub snapshot field
+    // that arrives on every long-poll response, so the bridge must emit the
+    // Tauri event only when the focus actually changed.
+    #[test]
+    fn focus_bridge_emits_once_per_change() {
+        let mut last = None;
+
+        assert!(take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "2", "%9")),
+            Some("/projects/mesh"),
+        ));
+        assert!(!take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "2", "%9")),
+            Some("/projects/mesh"),
+        ));
+        assert!(take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "3", "%11")),
+            Some("/projects/other"),
+        ));
+        assert!(take_focus_change(&mut last, None, None));
+        assert!(!take_focus_change(&mut last, None, None));
+    }
+
+    #[test]
+    fn focus_event_payload_carries_the_resolved_project_id() {
+        let payload = tmux_focus_event_payload(Some(&focus("taurhaus", "2", "%9")), Some("p1"));
+        assert_eq!(payload["session"], "taurhaus");
+        assert_eq!(payload["window"], "2");
+        assert_eq!(payload["pane_id"], "%9");
+        assert_eq!(payload["project_id"], "p1");
+
+        let unresolved = tmux_focus_event_payload(Some(&focus("taurhaus", "2", "%9")), None);
+        assert!(unresolved["project_id"].is_null());
+
+        assert!(tmux_focus_event_payload(None, None).is_null());
     }
 }

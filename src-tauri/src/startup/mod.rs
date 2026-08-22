@@ -64,7 +64,6 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
     tracing::info!(db_path = %context.db_path.display(), "database initialized");
     Ok(())
 }
-pub(crate) use setup::resolve_app_data_dir;
 pub(crate) use setup::resolve_claude_tasks_dir;
 
 #[cfg(test)]

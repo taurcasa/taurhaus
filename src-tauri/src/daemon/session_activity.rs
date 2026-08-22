@@ -12,7 +12,7 @@ use crate::coordination::activity_export::{
 };
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
-use crate::session_scanner::tmux::{self, TmuxFocusState};
+use crate::session_scanner::tmux::{self, TmuxFocus};
 use crate::session_scanner::SessionState;
 use crate::session_scanner::{DisplaySession, RuntimeSession};
 
@@ -36,8 +36,8 @@ pub struct RuntimeSessionSnapshot {
     pub version: u64,
     pub display_sessions: Vec<DisplaySession>,
     pub runtime_sessions: Vec<RuntimeSession>,
-    pub focus: Option<TmuxFocusState>,
-    pub foreground_project_path: Option<String>,
+    pub focus: Option<TmuxFocus>,
+    pub focus_project_path: Option<String>,
     /// The latest scanner cycle was degraded: the sessions are the last good
     /// snapshot kept for continuity, not an observation.
     pub degraded: bool,
@@ -47,6 +47,9 @@ pub struct RuntimeSessionSnapshot {
 pub struct SessionUpdate {
     pub changed: bool,
     pub snapshot: SessionSnapshot,
+    /// tmux focus as of `snapshot.version`, read under the same lock.
+    pub focus: Option<TmuxFocus>,
+    pub focus_project_path: Option<String>,
 }
 
 #[derive(Default)]
@@ -55,8 +58,8 @@ struct HubState {
     version: u64,
     display_sessions: Vec<DisplaySession>,
     runtime_sessions: Vec<RuntimeSession>,
-    focus: Option<TmuxFocusState>,
-    foreground_project_path: Option<String>,
+    focus: Option<TmuxFocus>,
+    focus_project_path: Option<String>,
     /// Set by a degraded cycle, cleared by the next healthy commit. Lives
     /// outside the versioned snapshot: a degraded cycle wakes no waiter.
     degraded: bool,
@@ -91,6 +94,27 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
     }
 }
 
+/// The focus half of the hub's change signature.
+///
+/// A focus-only move (window, pane, or the project it resolves to) is a real
+/// change: it bumps the version and wakes the app's long poll.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FocusSignature {
+    session: Option<String>,
+    window_index: Option<String>,
+    pane_id: Option<String>,
+    project_path: Option<String>,
+}
+
+fn focus_signature(focus: Option<&TmuxFocus>, project_path: Option<&str>) -> FocusSignature {
+    FocusSignature {
+        session: focus.map(|focus| focus.session.clone()),
+        window_index: focus.map(|focus| focus.window_index.clone()),
+        pane_id: focus.map(|focus| focus.pane_id.clone()),
+        project_path: project_path.map(str::to_string),
+    }
+}
+
 fn activity_changed(prev: &[DisplaySession], next: &[DisplaySession]) -> bool {
     let mut prev_sig: Vec<SessionEventSignature> = prev.iter().map(event_signature).collect();
     let mut next_sig: Vec<SessionEventSignature> = next.iter().map(event_signature).collect();
@@ -115,10 +139,15 @@ struct ScannerCadence {
 }
 
 impl ScannerCadence {
-    fn next_interval(&mut self, changed: bool, sessions: &[DisplaySession]) -> Duration {
+    fn next_interval(
+        &mut self,
+        changed: bool,
+        sessions: &[DisplaySession],
+        focused: bool,
+    ) -> Duration {
         let all_idle = sessions.iter().all(|s| s.state == SessionState::Idle);
 
-        if changed || !all_idle {
+        if changed || focused || !all_idle {
             self.stable_idle_cycles = 0;
             return ACTIVE_SCAN_INTERVAL;
         }
@@ -141,8 +170,10 @@ impl ScannerCadence {
 struct ScanCycle {
     display_sessions: Vec<DisplaySession>,
     runtime_sessions: Vec<RuntimeSession>,
-    focus: Option<TmuxFocusState>,
-    foreground_project_path: Option<String>,
+    focus: Option<TmuxFocus>,
+    focus_project_path: Option<String>,
+    /// Some client reports its window as focused: someone is looking.
+    focused: bool,
     /// The process inventory could not be read; the sessions are not an observation.
     degraded: bool,
 }
@@ -154,8 +185,9 @@ struct CycleDecision {
     interval: Duration,
 }
 
-/// Run one scanner cycle: scan, then enrich with team membership and read
-/// the tmux focus state. A degraded scan produces an inert cycle.
+/// Run one scanner cycle: scan, then enrich with team membership and probe
+/// tmux for the focused client. A degraded scan produces an inert cycle: no
+/// tmux probe, and the hub keeps its last known focus.
 fn scan_cycle(teams_dir: &Path) -> ScanCycle {
     let (mut display_sessions, mut runtime_sessions, degraded) =
         crate::session_scanner::scan_sessions_for_authoritative_snapshot();
@@ -164,24 +196,38 @@ fn scan_cycle(teams_dir: &Path) -> ScanCycle {
             display_sessions: Vec::new(),
             runtime_sessions: Vec::new(),
             focus: None,
-            foreground_project_path: None,
+            focus_project_path: None,
+            focused: false,
             degraded: true,
         };
     }
 
     enrich_sessions_with_team_membership(teams_dir, &mut display_sessions);
     enrich_runtime_sessions_with_team_membership(teams_dir, &mut runtime_sessions);
-    let focus =
-        tmux::read_focus_state(&crate::provider::platform_paths::PlatformPaths::app_data_root());
-    let foreground_project_path = focus
+    let clients = tmux::list_clients();
+    let focus = tmux::focus_from_clients(&clients);
+    let focus_project_path = focus
         .as_ref()
         .and_then(|focus| tmux::resolve_focus_project_path(focus, &display_sessions));
     ScanCycle {
         display_sessions,
         runtime_sessions,
         focus,
-        foreground_project_path,
+        focus_project_path,
+        focused: tmux::any_client_focused(&clients),
         degraded: false,
+    }
+}
+
+fn session_update(state: &HubState, changed: bool) -> SessionUpdate {
+    SessionUpdate {
+        changed,
+        snapshot: SessionSnapshot {
+            version: state.version,
+            sessions: state.display_sessions.clone(),
+        },
+        focus: state.focus.clone(),
+        focus_project_path: state.focus_project_path.clone(),
     }
 }
 
@@ -232,7 +278,7 @@ impl SessionActivityHub {
             display_sessions: guard.display_sessions.clone(),
             runtime_sessions: guard.runtime_sessions.clone(),
             focus: guard.focus.clone(),
-            foreground_project_path: guard.foreground_project_path.clone(),
+            focus_project_path: guard.focus_project_path.clone(),
             degraded: guard.degraded,
         }
     }
@@ -246,23 +292,11 @@ impl SessionActivityHub {
         let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
 
         if guard.version > since_version {
-            return SessionUpdate {
-                changed: true,
-                snapshot: SessionSnapshot {
-                    version: guard.version,
-                    sessions: guard.display_sessions.clone(),
-                },
-            };
+            return session_update(&guard, true);
         }
 
         if wait_for.is_zero() {
-            return SessionUpdate {
-                changed: false,
-                snapshot: SessionSnapshot {
-                    version: guard.version,
-                    sessions: guard.display_sessions.clone(),
-                },
-            };
+            return session_update(&guard, false);
         }
 
         let (guard, _timeout) = self
@@ -271,13 +305,7 @@ impl SessionActivityHub {
             .unwrap_or_else(|e| e.into_inner());
 
         let changed = guard.version > since_version;
-        SessionUpdate {
-            changed,
-            snapshot: SessionSnapshot {
-                version: guard.version,
-                sessions: guard.display_sessions.clone(),
-            },
-        }
+        session_update(&guard, changed)
     }
 
     /// Fold one scan cycle into the hub state.
@@ -307,12 +335,14 @@ impl SessionActivityHub {
 
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let changed = !state.initialized
-            || activity_changed(&state.display_sessions, &cycle.display_sessions);
+            || activity_changed(&state.display_sessions, &cycle.display_sessions)
+            || focus_signature(state.focus.as_ref(), state.focus_project_path.as_deref())
+                != focus_signature(cycle.focus.as_ref(), cycle.focus_project_path.as_deref());
         // Keep latest metadata; only a change generates a new version/event.
         state.display_sessions = cycle.display_sessions;
         state.runtime_sessions = cycle.runtime_sessions;
         state.focus = cycle.focus;
-        state.foreground_project_path = cycle.foreground_project_path;
+        state.focus_project_path = cycle.focus_project_path;
         state.degraded = false;
         if changed {
             state.version = state.version.saturating_add(1);
@@ -323,7 +353,7 @@ impl SessionActivityHub {
         CycleDecision {
             changed,
             export_due: should_export_activity_snapshots(changed, last_activity_export_at, now),
-            interval: cadence.next_interval(changed, &state.display_sessions),
+            interval: cadence.next_interval(changed, &state.display_sessions, cycle.focused),
         }
     }
 
@@ -388,7 +418,7 @@ mod tests {
     use super::*;
     use crate::session_scanner::idle::{set_binding_store_path_for_test, CODEX_TEST_LOCK};
     use crate::session_scanner::{clear_scan_cache, process, SCANNER_TEST_LOCK};
-    use std::sync::atomic::AtomicU8;
+    use std::sync::atomic::{AtomicU8, AtomicUsize};
     use tempfile::TempDir;
 
     fn session_with_state(state: SessionState) -> DisplaySession {
@@ -421,7 +451,10 @@ mod tests {
         let active = vec![session_with_state(SessionState::Active)];
 
         for _ in 0..40 {
-            assert_eq!(cadence.next_interval(false, &active), ACTIVE_SCAN_INTERVAL);
+            assert_eq!(
+                cadence.next_interval(false, &active, false),
+                ACTIVE_SCAN_INTERVAL
+            );
         }
     }
 
@@ -431,9 +464,15 @@ mod tests {
         let idle = vec![session_with_state(SessionState::Idle)];
 
         for _ in 0..(IDLE_STABLE_CYCLES_THRESHOLD - 1) {
-            assert_eq!(cadence.next_interval(false, &idle), ACTIVE_SCAN_INTERVAL);
+            assert_eq!(
+                cadence.next_interval(false, &idle, false),
+                ACTIVE_SCAN_INTERVAL
+            );
         }
-        assert_eq!(cadence.next_interval(false, &idle), IDLE_SCAN_INTERVAL);
+        assert_eq!(
+            cadence.next_interval(false, &idle, false),
+            IDLE_SCAN_INTERVAL
+        );
     }
 
     #[test]
@@ -442,10 +481,16 @@ mod tests {
         let idle = vec![session_with_state(SessionState::Idle)];
 
         for _ in 0..IDLE_STABLE_CYCLES_THRESHOLD {
-            let _ = cadence.next_interval(false, &idle);
+            let _ = cadence.next_interval(false, &idle, false);
         }
-        assert_eq!(cadence.next_interval(false, &idle), IDLE_SCAN_INTERVAL);
-        assert_eq!(cadence.next_interval(true, &idle), ACTIVE_SCAN_INTERVAL);
+        assert_eq!(
+            cadence.next_interval(false, &idle, false),
+            IDLE_SCAN_INTERVAL
+        );
+        assert_eq!(
+            cadence.next_interval(true, &idle, false),
+            ACTIVE_SCAN_INTERVAL
+        );
     }
 
     fn cycle(display_sessions: Vec<DisplaySession>, degraded: bool) -> ScanCycle {
@@ -453,7 +498,8 @@ mod tests {
             display_sessions,
             runtime_sessions: Vec::new(),
             focus: None,
-            foreground_project_path: None,
+            focus_project_path: None,
+            focused: false,
             degraded,
         }
     }
@@ -685,5 +731,200 @@ mod tests {
         let now = Instant::now();
         let last = now - ACTIVITY_EXPORT_REFRESH_INTERVAL + Duration::from_secs(1);
         assert!(!should_export_activity_snapshots(false, Some(last), now));
+    }
+
+    fn focus_at(session: &str, window_index: &str, pane_id: &str) -> TmuxFocus {
+        TmuxFocus {
+            session: session.to_string(),
+            window_index: window_index.to_string(),
+            pane_id: pane_id.to_string(),
+        }
+    }
+
+    fn focus_cycle(
+        display_sessions: Vec<DisplaySession>,
+        focus: Option<TmuxFocus>,
+        focus_project_path: Option<&str>,
+    ) -> ScanCycle {
+        ScanCycle {
+            display_sessions,
+            runtime_sessions: Vec::new(),
+            focus,
+            focus_project_path: focus_project_path.map(str::to_string),
+            focused: false,
+            degraded: false,
+        }
+    }
+
+    // Regression: commits a53ad31 and f9c1e89. Focus travelled through tmux
+    // hooks into a file the app watched, and the hub never versioned it, so a
+    // focus-only change woke no waiter. Focus is a hub-owned snapshot field.
+    #[test]
+    fn hub_bumps_version_and_wakes_waiters_on_a_focus_only_change() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let sessions = vec![session_with_state(SessionState::Active)];
+
+        let first = hub.commit_cycle(
+            focus_cycle(sessions.clone(), None, None),
+            &mut cadence,
+            None,
+            now,
+        );
+        assert!(first.changed);
+        assert_eq!(hub.snapshot().version, 1);
+
+        let focused = hub.commit_cycle(
+            focus_cycle(
+                sessions.clone(),
+                Some(focus_at("taurhaus", "1", "%1")),
+                Some("/tmp/project"),
+            ),
+            &mut cadence,
+            Some(now),
+            now,
+        );
+        assert!(focused.changed, "a focus-only change must bump the version");
+        assert_eq!(hub.snapshot().version, 2);
+        assert!(
+            hub.wait_for_update(1, Duration::ZERO).changed,
+            "waiters must wake on a focus-only change"
+        );
+        let snapshot = hub.runtime_snapshot();
+        assert_eq!(snapshot.focus, Some(focus_at("taurhaus", "1", "%1")));
+        assert_eq!(
+            snapshot.focus_project_path,
+            Some("/tmp/project".to_string())
+        );
+
+        let repeat = hub.commit_cycle(
+            focus_cycle(
+                sessions.clone(),
+                Some(focus_at("taurhaus", "1", "%1")),
+                Some("/tmp/project"),
+            ),
+            &mut cadence,
+            Some(now),
+            now,
+        );
+        assert!(!repeat.changed, "unchanged focus must not bump the version");
+        assert_eq!(hub.snapshot().version, 2);
+
+        let moved_pane = hub.commit_cycle(
+            focus_cycle(
+                sessions.clone(),
+                Some(focus_at("taurhaus", "1", "%2")),
+                Some("/tmp/project"),
+            ),
+            &mut cadence,
+            Some(now),
+            now,
+        );
+        assert!(
+            moved_pane.changed,
+            "the pane is part of the focus signature"
+        );
+        assert_eq!(hub.snapshot().version, 3);
+
+        let cleared = hub.commit_cycle(
+            focus_cycle(sessions, None, None),
+            &mut cadence,
+            Some(now),
+            now,
+        );
+        assert!(cleared.changed, "losing focus is a change");
+        assert_eq!(hub.runtime_snapshot().focus, None);
+    }
+
+    #[test]
+    fn cadence_holds_the_active_interval_while_a_client_is_focused() {
+        let mut cadence = ScannerCadence::default();
+        let idle = vec![session_with_state(SessionState::Idle)];
+
+        for _ in 0..(IDLE_STABLE_CYCLES_THRESHOLD + 5) {
+            assert_eq!(
+                cadence.next_interval(false, &idle, true),
+                ACTIVE_SCAN_INTERVAL,
+                "someone is looking; hold the 500 ms cadence"
+            );
+        }
+
+        for _ in 0..IDLE_STABLE_CYCLES_THRESHOLD {
+            let _ = cadence.next_interval(false, &idle, false);
+        }
+        assert_eq!(
+            cadence.next_interval(false, &idle, false),
+            IDLE_SCAN_INTERVAL
+        );
+    }
+
+    static CLIENT_PROBE_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    fn scripted_clients() -> Vec<crate::session_scanner::tmux::TmuxClient> {
+        CLIENT_PROBE_CALLS.fetch_add(1, Ordering::SeqCst);
+        vec![crate::session_scanner::tmux::TmuxClient {
+            flags: vec!["attached".to_string(), "focused".to_string()],
+            session: "taurhaus".to_string(),
+            window_index: "1".to_string(),
+            pane_id: "%1".to_string(),
+            activity: 100,
+        }]
+    }
+
+    // Regression: latent since 9a66d1c (degraded scans) — a degraded cycle must
+    // stay inert on the focus path too: no tmux probe, no focus mutation.
+    #[test]
+    fn degraded_cycle_does_not_probe_or_alter_focus() {
+        let _scanner = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _codex = CODEX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let tmp = TempDir::new().expect("tempdir");
+        set_binding_store_path_for_test(Some(tmp.path().join("codex-bindings.json")));
+        clear_scan_cache();
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
+        process::set_inventory_provider_override(Some(hub_inventory));
+        crate::session_scanner::tmux::set_list_clients_override(Some(scripted_clients));
+        CLIENT_PROBE_CALLS.store(0, Ordering::SeqCst);
+
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+
+        let healthy = hub.commit_cycle(scan_cycle(tmp.path()), &mut cadence, None, now);
+        assert!(healthy.changed);
+        assert_eq!(CLIENT_PROBE_CALLS.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            hub.runtime_snapshot().focus,
+            Some(focus_at("taurhaus", "1", "%1"))
+        );
+
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_FAILS, Ordering::SeqCst);
+        let degraded_cycle = scan_cycle(tmp.path());
+        assert!(degraded_cycle.degraded);
+        assert!(degraded_cycle.focus.is_none());
+        assert_eq!(
+            CLIENT_PROBE_CALLS.load(Ordering::SeqCst),
+            1,
+            "a degraded cycle must not probe tmux"
+        );
+        let degraded = hub.commit_cycle(degraded_cycle, &mut cadence, Some(now), now);
+        assert!(!degraded.changed);
+        assert_eq!(
+            hub.runtime_snapshot().focus,
+            Some(focus_at("taurhaus", "1", "%1")),
+            "a degraded cycle must leave the last known focus in place"
+        );
+
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_EMPTY, Ordering::SeqCst);
+        let _ = scan_cycle(tmp.path());
+        crate::session_scanner::tmux::set_list_clients_override(None);
+        process::set_inventory_provider_override(None);
+        set_binding_store_path_for_test(None);
+        clear_scan_cache();
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
     }
 }
