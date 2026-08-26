@@ -56,29 +56,31 @@ pub(crate) fn reconcile_codex_compaction(
         has_managed_codex,
         &executable,
     )?;
-    let mut fields = serde_json::Map::new();
-    fields.insert(
-        "tool".to_string(),
-        serde_json::Value::String("codex".to_string()),
-    );
-    fields.insert(
-        "mode".to_string(),
-        serde_json::Value::String(
-            match mode {
-                CodexCompactionMode::Hooks => "hooks",
-                CodexCompactionMode::Transcript => "transcript",
-            }
-            .to_string(),
-        ),
-    );
-    fields.insert("changed".to_string(), serde_json::Value::Bool(changed));
-    crate::commands::logging::emit_global(
-        "info",
-        "coordination",
-        "compaction.codex_hook.reconciled",
-        Some("Reconciled Codex compaction source".to_string()),
-        fields,
-    );
+    if changed {
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "tool".to_string(),
+            serde_json::Value::String("codex".to_string()),
+        );
+        fields.insert(
+            "mode".to_string(),
+            serde_json::Value::String(
+                match mode {
+                    CodexCompactionMode::Hooks => "hooks",
+                    CodexCompactionMode::Transcript => "transcript",
+                }
+                .to_string(),
+            ),
+        );
+        fields.insert("changed".to_string(), serde_json::Value::Bool(true));
+        crate::commands::logging::emit_global(
+            "info",
+            "coordination",
+            "compaction.codex_hook.reconciled",
+            Some("Reconciled Codex compaction source".to_string()),
+            fields,
+        );
+    }
     Ok(changed)
 }
 
@@ -91,35 +93,6 @@ fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {
             "failed to resolve taurhaus executable for Codex compact hook: {error}"
         ))
     })
-}
-
-pub(crate) fn persisted_codex_compaction_mode() -> CodexCompactionMode {
-    let db_path = PlatformPaths::app_data_root().join("taurhaus.db");
-    let connection = match rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    ) {
-        Ok(connection) => connection,
-        Err(error) => {
-            tracing::warn!(
-                db_path = %db_path.display(),
-                error = %error,
-                "Failed to read Codex compaction setting; using hooks"
-            );
-            return CodexCompactionMode::Hooks;
-        }
-    };
-    match crate::db::settings_queries::get_all_settings(&connection) {
-        Ok(settings) => settings.terminal.harness.codex_compaction,
-        Err(error) => {
-            tracing::warn!(
-                db_path = %db_path.display(),
-                error = %error,
-                "Failed to load Codex compaction setting; using hooks"
-            );
-            CodexCompactionMode::Hooks
-        }
-    }
 }
 
 #[cfg(test)]

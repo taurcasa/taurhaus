@@ -21,6 +21,29 @@ use crate::coordination::stores::{
 use taurhaus_lib::daemon_api::protocol;
 use taurhaus_lib::ProviderState;
 
+#[test]
+fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
+    // Regression: 6fe0aa3 made Codex hook filesystem errors abort initialize,
+    // add, and resume before the otherwise valid coordination pipeline ran.
+    let source = include_str!("../coordination.rs");
+    assert!(source.contains("compaction.codex_hook.degraded"));
+}
+
+#[test]
+fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
+    // Regression: 6fe0aa3 reconciled Codex both before launch and again after a
+    // successful pipeline, doubling writes and structured reconciliation events.
+    let source = include_str!("../coordination.rs");
+    let helper = source
+        .split("fn maybe_ensure_compact_hooks_for_team")
+        .nth(1)
+        .expect("post-pipeline hook helper")
+        .split("fn emit_initialize_pipeline_result")
+        .next()
+        .expect("post-pipeline hook helper body");
+    assert!(!helper.contains("reconcile_codex_before_managed_launch"));
+}
+
 #[derive(Debug, Default)]
 struct MockBinaryLookup {
     available: HashSet<String>,

@@ -216,6 +216,18 @@ impl DaemonProvider {
             .map(|info| info.protocol_version)
     }
 
+    pub fn set_codex_compaction_mode(
+        &self,
+        mode: crate::models::CodexCompactionMode,
+    ) -> Result<(), AppError> {
+        let _: serde_json::Value = self.call(
+            protocol::method::SET_CODEX_COMPACTION_MODE,
+            protocol::SetCodexCompactionModeParams { mode },
+            PING_TIMEOUT,
+        )?;
+        Ok(())
+    }
+
     pub fn ping_info_with_timeout(
         &self,
         timeout: Duration,

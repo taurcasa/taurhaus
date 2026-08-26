@@ -826,6 +826,17 @@ fn parse_signal_boundary(line: &str, jsonl_offset: u64) -> Option<ParsedSignalBo
     })
 }
 
+pub fn latest_compaction_timestamp(jsonl_path: &Path) -> Option<DateTime<Utc>> {
+    let file = File::open(jsonl_path).ok()?;
+    let mut latest = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if let Some(boundary) = parse_signal_boundary(&line, 0) {
+            latest = Some(boundary.timestamp);
+        }
+    }
+    latest
+}
+
 fn normalize_paired_boundaries(boundaries: Vec<ParsedSignalBoundary>) -> Vec<ParsedSignalBoundary> {
     let mut normalized: Vec<ParsedSignalBoundary> = Vec::new();
 

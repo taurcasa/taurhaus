@@ -63,12 +63,6 @@ impl CompactHookInput {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct CompactHookSourceHint {
-    #[serde(default, alias = "transcriptPath")]
-    transcript_path: Option<PathBuf>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct CompactHookResponse {
     #[serde(rename = "hookSpecificOutput", skip_serializing_if = "Option::is_none")]
@@ -134,36 +128,14 @@ impl CompactHookFailureStage {
 }
 
 /// Harness-specific hook configuration. Claude and Codex are the two current
-/// implementations; parsing stays shared because their stable payload fields
-/// have the same shape.
+/// installer implementations; their stable payload fields share one parser.
 pub(crate) trait CompactionSignalSource {
     fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError>;
     fn remove(&self) -> Result<bool, CoordinationError>;
-
-    fn parse(&self, raw: &str) -> Result<CompactHookInput, serde_json::Error> {
-        serde_json::from_str(raw)
-    }
 }
 
-fn parse_compact_hook_input(
-    raw: &str,
-    teams_dir: &Path,
-) -> Result<CompactHookInput, serde_json::Error> {
-    let hint: CompactHookSourceHint = serde_json::from_str(raw)?;
-    match infer_tool_from_transcript_path(hint.transcript_path.as_deref()) {
-        Some(CliTool::Claude) => ClaudeCompactionSignalSource {
-            claude_dir: teams_dir.parent().unwrap_or(teams_dir),
-        }
-        .parse(raw),
-        Some(CliTool::Codex) => {
-            let codex_home = PlatformPaths::codex_dir();
-            CodexCompactionSignalSource {
-                codex_home: &codex_home,
-            }
-            .parse(raw)
-        }
-        Some(CliTool::Gemini) | None => serde_json::from_str(raw),
-    }
+fn parse_compact_hook_input(raw: &str) -> Result<CompactHookInput, serde_json::Error> {
+    serde_json::from_str(raw)
 }
 
 struct ClaudeCompactionSignalSource<'a> {
@@ -228,7 +200,7 @@ pub fn handle_compact_hook(
     raw: &str,
     teams_dir: &Path,
 ) -> Result<CompactHookResponse, CoordinationError> {
-    let payload = parse_compact_hook_input(raw, teams_dir).map_err(|err| {
+    let payload = parse_compact_hook_input(raw).map_err(|err| {
         emit_compact_hook_parse_payload_debug(raw, &err.to_string());
         emit_compact_hook_failed(
             CompactHookFailureStage::ParsePayload,
@@ -274,6 +246,12 @@ pub fn handle_compact_hook(
 
     emit_compact_hook_resolved(&payload, &matched);
 
+    let compaction_timestamp = payload
+        .transcript_path
+        .as_deref()
+        .and_then(crate::session_scanner::compaction_extractor::latest_compaction_timestamp)
+        .unwrap_or_else(Utc::now);
+
     let Some(snapshot) =
         OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
     else {
@@ -283,7 +261,7 @@ pub fn handle_compact_hook(
             &matched.member.name,
             tool,
             &payload.session_id,
-            Utc::now(),
+            compaction_timestamp,
             CompactionDeliveryResult::Skipped,
         )
         .inspect_err(|error| {
@@ -312,7 +290,7 @@ pub fn handle_compact_hook(
             &matched.member.name,
             tool,
             &payload.session_id,
-            Utc::now(),
+            compaction_timestamp,
             CompactionDeliveryResult::Skipped,
         )
         .inspect_err(|error| {
@@ -358,7 +336,7 @@ pub fn handle_compact_hook(
         &matched.member.name,
         tool,
         &payload.session_id,
-        Utc::now(),
+        compaction_timestamp,
         CompactionDeliveryResult::Injected,
     )
     .inspect_err(|error| {
@@ -395,16 +373,6 @@ pub fn ensure_compact_hook_installed(
     };
 
     ClaudeCompactionSignalSource { claude_dir }.install(taurhaus_exe)
-}
-
-pub fn remove_compact_hook(teams_dir: &Path) -> Result<bool, CoordinationError> {
-    let Some(claude_dir) = teams_dir.parent() else {
-        return Err(CoordinationError::Validation(format!(
-            "team directory '{}' has no parent Claude dir",
-            teams_dir.display()
-        )));
-    };
-    ClaudeCompactionSignalSource { claude_dir }.remove()
 }
 
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
@@ -453,15 +421,20 @@ pub fn team_has_managed_codex_member(
 }
 
 pub fn any_managed_codex_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
-    TeamConfigStore::list(teams_dir)?
-        .into_iter()
-        .try_fold(false, |found, team_name| {
-            if found {
-                Ok(true)
-            } else {
-                team_has_managed_codex_member(teams_dir, &team_name)
+    for team_name in TeamConfigStore::list(teams_dir)? {
+        match team_has_managed_codex_member(teams_dir, &team_name) {
+            Ok(true) => return Ok(true),
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(
+                    team_name,
+                    error = %error,
+                    "skipping invalid team config during managed Codex discovery"
+                );
             }
-        })
+        }
+    }
+    Ok(false)
 }
 
 fn resolve_member_match(
@@ -553,13 +526,6 @@ fn infer_tool_from_transcript_path(transcript_path: Option<&Path>) -> Option<Cli
         return Some(CliTool::Claude);
     }
     None
-}
-
-pub fn handle_session_start_hook_stdin<R: Read>(
-    stdin: R,
-    teams_dir: &Path,
-) -> Result<CompactHookResponse, CoordinationError> {
-    handle_compact_hook_stdin(stdin, teams_dir)
 }
 
 pub fn handle_session_start_hook(
@@ -1220,21 +1186,11 @@ mod tests {
         _in_process: MutexGuard<'static, ()>,
         lock_file: std::fs::File,
         previous_override: Option<OsString>,
-        previous_home: Option<OsString>,
-        previous_codex_home: Option<OsString>,
     }
 
     impl EnvTestGuard {
         fn set_override(&self, value: impl AsRef<std::ffi::OsStr>) {
             std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, value);
-        }
-
-        fn set_home(&self, value: impl AsRef<std::ffi::OsStr>) {
-            std::env::set_var("HOME", value);
-        }
-
-        fn set_codex_home(&self, value: impl AsRef<std::ffi::OsStr>) {
-            std::env::set_var("CODEX_HOME", value);
         }
     }
 
@@ -1243,14 +1199,6 @@ mod tests {
             match self.previous_override.as_ref() {
                 Some(previous) => std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, previous),
                 None => std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV),
-            }
-            match self.previous_home.as_ref() {
-                Some(previous) => std::env::set_var("HOME", previous),
-                None => std::env::remove_var("HOME"),
-            }
-            match self.previous_codex_home.as_ref() {
-                Some(previous) => std::env::set_var("CODEX_HOME", previous),
-                None => std::env::remove_var("CODEX_HOME"),
             }
             let _ = self.lock_file.unlock();
         }
@@ -1273,8 +1221,6 @@ mod tests {
             _in_process: in_process,
             lock_file,
             previous_override: std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV),
-            previous_home: std::env::var_os("HOME"),
-            previous_codex_home: std::env::var_os("CODEX_HOME"),
         }
     }
 
@@ -2094,18 +2040,7 @@ mod tests {
                 "transcript_path": transcript_path,
             })
             .to_string();
-            let parsed = match tool {
-                CliTool::Claude => ClaudeCompactionSignalSource {
-                    claude_dir: tmp.path(),
-                }
-                .parse(&payload),
-                CliTool::Codex => CodexCompactionSignalSource {
-                    codex_home: tmp.path(),
-                }
-                .parse(&payload),
-                CliTool::Gemini => unreachable!("fixture covers hook-capable tools"),
-            }
-            .expect("source parses fixture");
+            let parsed = parse_compact_hook_input(&payload).expect("source parses fixture");
             assert_eq!(parsed.inferred_tool(), Some(tool));
 
             let response =
@@ -2139,21 +2074,21 @@ mod tests {
     // repairable Codex hook executable path.
     #[test]
     fn codex_installer_is_idempotent_repairs_exe_path_and_removes_cleanly() {
-        let guard = acquire_env_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
-        let home = tmp.path().join("home");
         let codex_home = tmp.path().join("isolated-codex-home");
-        fs::create_dir_all(&home).expect("home");
-        guard.set_home(&home);
-        guard.set_codex_home(&codex_home);
 
         let first_exe = tmp.path().join("taurhaus-daemon-v1");
         let second_exe = tmp.path().join("taurhaus-daemon-v2");
         fs::write(&first_exe, b"v1").expect("first exe");
         fs::write(&second_exe, b"v2").expect("second exe");
 
-        assert!(ensure_codex_compact_hook_installed(&first_exe).expect("first install"));
-        assert!(!ensure_codex_compact_hook_installed(&first_exe).expect("idempotent install"));
+        assert!(
+            ensure_codex_compact_hook_installed_at(&codex_home, &first_exe).expect("first install")
+        );
+        assert!(
+            !ensure_codex_compact_hook_installed_at(&codex_home, &first_exe)
+                .expect("idempotent install")
+        );
 
         let hooks: Value = serde_json::from_str(
             &fs::read_to_string(codex_home.join("hooks.json")).expect("hooks.json"),
@@ -2164,7 +2099,9 @@ mod tests {
             CODEX_ADDITIONAL_CONTEXT_LIMIT
         );
 
-        assert!(ensure_codex_compact_hook_installed(&second_exe).expect("repair exe"));
+        assert!(
+            ensure_codex_compact_hook_installed_at(&codex_home, &second_exe).expect("repair exe")
+        );
         let script = fs::read_to_string(
             codex_home
                 .join("hooks")
@@ -2174,8 +2111,8 @@ mod tests {
         assert!(script.contains(&second_exe.display().to_string()));
         assert!(!script.contains(&first_exe.display().to_string()));
 
-        assert!(remove_codex_compact_hook().expect("remove hook"));
-        assert!(!remove_codex_compact_hook().expect("idempotent remove"));
+        assert!(remove_codex_compact_hook_at(&codex_home).expect("remove hook"));
+        assert!(!remove_codex_compact_hook_at(&codex_home).expect("idempotent remove"));
         let hooks_after: Value = serde_json::from_str(
             &fs::read_to_string(codex_home.join("hooks.json")).expect("hooks.json after"),
         )
@@ -2183,6 +2120,86 @@ mod tests {
         assert!(!hooks_after
             .to_string()
             .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+    }
+
+    #[test]
+    fn codex_installer_regression_does_not_mutate_home_or_codex_home() {
+        // Regression: 6fe0aa3 made an installer test mutate process-wide HOME and
+        // CODEX_HOME while unrelated coordination tests resolved those variables.
+        let source = include_str!("compact_hook.rs");
+        let installer_test = source
+            .split("fn codex_installer_is_idempotent_repairs_exe_path_and_removes_cleanly")
+            .nth(1)
+            .expect("installer regression test")
+            .split("fn codex_installer_regression_does_not_mutate_home_or_codex_home")
+            .next()
+            .expect("installer regression test body");
+        assert!(!installer_test.contains("guard.set_home"));
+        assert!(!installer_test.contains("guard.set_codex_home"));
+    }
+
+    #[test]
+    fn managed_codex_discovery_skips_orphan_team_directories() {
+        // Regression: 6fe0aa3 made one non-team directory under teams/ abort Codex
+        // hook reconciliation before a later valid managed Codex team was checked.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(tmp.path().join("00-orphan")).expect("orphan team dir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(tmp.path(), "zz-codex-team", &member, "codex-session");
+
+        assert!(any_managed_codex_member(tmp.path()).expect("scan valid teams"));
+    }
+
+    #[test]
+    fn compact_hook_records_the_transcript_compaction_timestamp() {
+        // Regression: 6fe0aa3 recorded Utc::now() for hook delivery while the
+        // transcript fallback recorded the compacted event timestamp, defeating dedupe.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(tmp.path(), "codex-team", &member, "session-codex");
+        write_snapshot_fixture(tmp.path(), "codex-team", &member.name);
+        let transcript_path = tmp
+            .path()
+            .join(".codex/sessions/rollout-session-codex.jsonl");
+        fs::create_dir_all(transcript_path.parent().expect("transcript parent"))
+            .expect("create transcript parent");
+        fs::write(
+            &transcript_path,
+            concat!(
+                "{\"timestamp\":\"2026-08-26T05:59:59.000Z\",\"type\":\"session_meta\",\"payload\":{}}\n",
+                "{\"timestamp\":\"2026-08-26T06:00:00.123Z\",\"type\":\"compacted\",\"payload\":{}}\n"
+            ),
+        )
+        .expect("write transcript");
+
+        handle_compact_hook(
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "session-codex",
+                "source": "compact",
+                "cwd": &project,
+                "transcript_path": &transcript_path,
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("handle Codex compact hook");
+
+        let state = MemberCompactionStore::load(tmp.path(), "codex-team", &member.name)
+            .expect("load compaction state")
+            .expect("compaction state");
+        assert_eq!(
+            state.last_compaction_timestamp,
+            DateTime::parse_from_rfc3339("2026-08-26T06:00:00.123Z")
+                .expect("timestamp")
+                .with_timezone(&Utc)
+        );
     }
 
     // Regression: 0b87699 wired hook stdin/stdout only through the desktop

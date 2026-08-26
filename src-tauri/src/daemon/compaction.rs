@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -21,6 +21,12 @@ use crate::session_scanner::compaction_watcher::{
 };
 const TEAM_CONFIG_FILENAME: &str = "config.json";
 const TEAM_CONFIG_TMP_FILENAME: &str = "config.json.tmp";
+const MODE_TRANSCRIPT: u8 = 0;
+const MODE_HOOKS: u8 = 1;
+const MODE_PENDING: u8 = 2;
+
+static REQUESTED_MODE: AtomicU8 = AtomicU8::new(MODE_TRANSCRIPT);
+static ACTIVE_MODE: AtomicU8 = AtomicU8::new(MODE_PENDING);
 
 type SignalProcessor = dyn WatchSignalProcessor;
 
@@ -32,16 +38,6 @@ pub struct DaemonCompactionRuntime {
 
 impl DaemonCompactionRuntime {
     pub fn maybe_start() -> Result<Option<Self>, CoordinationError> {
-        if crate::commands::terminal_settings::persisted_codex_compaction_mode()
-            == crate::models::CodexCompactionMode::Hooks
-        {
-            crate::coordination::compaction_events::emit_compaction_owner_selected(
-                "hooks",
-                "active",
-                "codex_hooks_configured",
-            );
-            return Ok(None);
-        }
         let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
         Self::maybe_start_at(teams_dir)
     }
@@ -137,6 +133,101 @@ impl DaemonCompactionRuntime {
             _watcher_service: watcher_service,
         })
     }
+}
+
+pub(crate) fn set_requested_mode(mode: crate::models::CodexCompactionMode) {
+    let target = mode_value(mode);
+    if REQUESTED_MODE.swap(target, Ordering::AcqRel) != target {
+        ACTIVE_MODE.store(MODE_PENDING, Ordering::Release);
+    }
+}
+
+pub(crate) fn reset_requested_mode(mode: crate::models::CodexCompactionMode) {
+    REQUESTED_MODE.store(mode_value(mode), Ordering::Release);
+    ACTIVE_MODE.store(MODE_PENDING, Ordering::Release);
+}
+
+pub(crate) fn request_mode_and_wait(
+    mode: crate::models::CodexCompactionMode,
+) -> Result<(), String> {
+    let target = mode_value(mode);
+    set_requested_mode(mode);
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        if ACTIVE_MODE.load(Ordering::Acquire) == target {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    Err(format!(
+        "timed out applying daemon Codex compaction mode '{mode:?}'"
+    ))
+}
+
+pub(crate) fn requested_mode() -> crate::models::CodexCompactionMode {
+    match REQUESTED_MODE.load(Ordering::Acquire) {
+        MODE_HOOKS => crate::models::CodexCompactionMode::Hooks,
+        _ => crate::models::CodexCompactionMode::Transcript,
+    }
+}
+
+fn mode_value(mode: crate::models::CodexCompactionMode) -> u8 {
+    match mode {
+        crate::models::CodexCompactionMode::Hooks => MODE_HOOKS,
+        crate::models::CodexCompactionMode::Transcript => MODE_TRANSCRIPT,
+    }
+}
+
+pub(crate) fn run_mode_controller(teams_dir: Option<PathBuf>, shutdown: Arc<AtomicBool>) {
+    let mut runtime = None;
+    let mut active_mode = None;
+
+    while !shutdown.load(Ordering::Relaxed) {
+        let requested = requested_mode();
+        if active_mode != Some(requested) {
+            runtime.take();
+            let applied = match requested {
+                crate::models::CodexCompactionMode::Hooks => {
+                    crate::coordination::compaction_events::emit_compaction_owner_selected(
+                        "hooks",
+                        "active",
+                        "app_requested_codex_hooks",
+                    );
+                    true
+                }
+                crate::models::CodexCompactionMode::Transcript => {
+                    let start_result = match teams_dir.clone() {
+                        Some(teams_dir) => DaemonCompactionRuntime::maybe_start_at(teams_dir),
+                        None => DaemonCompactionRuntime::maybe_start(),
+                    };
+                    match start_result {
+                        Ok(started) => {
+                            runtime = started;
+                            true
+                        }
+                        Err(error) => {
+                            crate::coordination::compaction_events::emit_compaction_owner_failed(
+                                "daemon",
+                                "daemon_runtime_initialization",
+                                &error.to_string(),
+                            );
+                            tracing::warn!(
+                                error = %error,
+                                "daemon compaction initialization failed; server remains available"
+                            );
+                            false
+                        }
+                    }
+                }
+            };
+            if applied {
+                active_mode = Some(requested);
+                ACTIVE_MODE.store(mode_value(requested), Ordering::Release);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    ACTIVE_MODE.store(MODE_PENDING, Ordering::Release);
 }
 
 impl Drop for DaemonCompactionRuntime {
@@ -632,5 +723,37 @@ mod tests {
                 .map(|teams| !teams.contains("beta"))
                 .unwrap_or(false)
         });
+    }
+
+    #[test]
+    fn daemon_mode_controller_flips_between_exactly_one_compaction_source() {
+        // Regression: 6fe0aa3 read the mode only at daemon boot, so settings flips
+        // either stopped all reinjection or left hooks and transcript running together.
+        let _guards = compaction_test_guards();
+        compaction_extractor::stop_compaction_extractor_service_for_test();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        set_requested_mode(crate::models::CodexCompactionMode::Transcript);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let thread_shutdown = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            run_mode_controller(Some(teams_dir), thread_shutdown);
+        });
+
+        wait_until(Duration::from_secs(2), || {
+            compaction_extractor::compaction_extractor_service_is_running_for_test()
+        });
+        request_mode_and_wait(crate::models::CodexCompactionMode::Hooks)
+            .expect("switch daemon to hooks");
+        assert!(!compaction_extractor::compaction_extractor_service_is_running_for_test());
+
+        request_mode_and_wait(crate::models::CodexCompactionMode::Transcript)
+            .expect("switch daemon to transcript");
+        assert!(compaction_extractor::compaction_extractor_service_is_running_for_test());
+
+        shutdown.store(true, Ordering::Relaxed);
+        handle.join().expect("join mode controller");
+        assert!(!compaction_extractor::compaction_extractor_service_is_running_for_test());
     }
 }

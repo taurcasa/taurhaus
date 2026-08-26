@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 /// v8: tmux focus became a field of the hub's versioned snapshot
 /// (`wait_session_updates.focus`), the only live focus transport. A v7 daemon
 /// omits it and would leave the app with a permanently dark indicator.
-pub const PROTOCOL_VERSION: u32 = 8;
+/// v9: the app explicitly selects the daemon's Codex compaction mode instead of
+/// making the daemon guess the desktop settings database path.
+pub const PROTOCOL_VERSION: u32 = 9;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -90,6 +92,7 @@ pub mod method {
     pub const WATCH: &str = "watch";
     pub const UNWATCH: &str = "unwatch";
     pub const SHUTDOWN: &str = "shutdown";
+    pub const SET_CODEX_COMPACTION_MODE: &str = "set_codex_compaction_mode";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -140,6 +143,12 @@ pub struct PingResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PathParams {
     pub path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SetCodexCompactionModeParams {
+    pub mode: crate::models::CodexCompactionMode,
 }
 
 /// `get_project_tasks` params.
@@ -945,5 +954,19 @@ mod tests {
         let detached = r#"{"version":1,"display_sessions":[],"runtime_sessions":[],"focus":{"session":null,"window":null,"timestamp":null},"foreground_project_path":null}"#;
         let result: RuntimeSessionSnapshotResult = serde_json::from_str(detached).unwrap();
         assert_eq!(result.focus.expect("detached focus decodes").session, "");
+    }
+
+    #[test]
+    fn codex_compaction_mode_params_roundtrip() {
+        // Regression: 6fe0aa3 made the daemon guess the desktop settings DB path;
+        // mode ownership now crosses the daemon protocol explicitly.
+        let params = SetCodexCompactionModeParams {
+            mode: crate::models::CodexCompactionMode::Transcript,
+        };
+        let json = serde_json::to_string(&params).expect("serialize params");
+        assert_eq!(
+            serde_json::from_str::<SetCodexCompactionModeParams>(&json).expect("decode params"),
+            params
+        );
     }
 }

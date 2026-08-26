@@ -230,6 +230,10 @@ pub struct CliCommandSettings {
     pub claude: ToolCommands,
     pub codex: ToolCommands,
     pub gemini: ToolCommands,
+    /// Runtime-only launch input. The coordination command resolves managed hook
+    /// trust before pipeline rendering; this is never persisted or sent to the UI.
+    #[serde(skip)]
+    pub codex_bypass_hook_trust: bool,
 }
 
 impl Default for CliCommandSettings {
@@ -250,6 +254,7 @@ impl Default for CliCommandSettings {
                 fresh: "gemini --yolo".into(),
                 resume: "gemini --yolo --resume".into(),
             },
+            codex_bypass_hook_trust: false,
         }
     }
 }

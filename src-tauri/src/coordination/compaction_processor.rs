@@ -262,8 +262,8 @@ fn append_codex_inbox_message(
     card: &OperationalReinjectionCard,
     now: DateTime<Utc>,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
-    let rendered_payload =
-        CompactionReinjectionService::render_codex_inbox_text(card).map_err(|error| {
+    let rendered_payload = CompactionReinjectionService::render_additional_context_text(card)
+        .map_err(|error| {
             crate::coordination::errors::CoordinationError::StoreError(format!(
                 "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
                 member_name, team_name
@@ -711,8 +711,8 @@ mod tests {
         let member = sample_member(member_name, "/tmp/project");
         let snapshot = sample_snapshot(team_name, member_name, "/tmp/project");
         let card = CompactionReinjectionService::compose_at(&member, &snapshot, now);
-        let rendered =
-            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render card");
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render card");
 
         append_codex_inbox_message(teams_dir, team_name, member_name, &card, now)
             .expect("append compaction card");

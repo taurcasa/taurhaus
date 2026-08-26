@@ -90,6 +90,7 @@ fn run_with_compaction_teams_dir(
     provider: Arc<dyn ProjectProvider>,
     compaction_teams_dir: Option<std::path::PathBuf>,
 ) -> std::io::Result<()> {
+    crate::daemon::compaction::reset_requested_mode(crate::models::CodexCompactionMode::Transcript);
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, Duration::from_millis(750));
 
@@ -122,30 +123,7 @@ fn run_with_compaction_teams_dir(
 
     let compaction_shutdown = shutdown.clone();
     let compaction_handle = std::thread::spawn(move || {
-        let start_result = match compaction_teams_dir {
-            Some(teams_dir) => {
-                crate::daemon::compaction::DaemonCompactionRuntime::maybe_start_at(teams_dir)
-            }
-            None => crate::daemon::compaction::DaemonCompactionRuntime::maybe_start(),
-        };
-        let _runtime = match start_result {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                crate::coordination::compaction_events::emit_compaction_owner_failed(
-                    "daemon",
-                    "daemon_runtime_initialization",
-                    &error.to_string(),
-                );
-                tracing::warn!(
-                    error = %error,
-                    "daemon compaction initialization failed after bind; server remains available"
-                );
-                None
-            }
-        };
-        while !compaction_shutdown.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        crate::daemon::compaction::run_mode_controller(compaction_teams_dir, compaction_shutdown);
     });
 
     tracing::info!(port = config.port, "daemon listening");

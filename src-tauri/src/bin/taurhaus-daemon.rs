@@ -115,6 +115,7 @@ fn maybe_run_compact_hook_mode() -> bool {
 
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
+        .with_writer(std::io::stderr)
         .init();
     let _log_state = LogFileState::new(PlatformPaths::log_path())
         .inspect(|state| {
