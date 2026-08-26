@@ -5,13 +5,15 @@
  * discovered.
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { TAURHAUS_CLAUDE_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 import { POLL, WAIT_MEDIUM } from '../helpers/timing.js'
+import { attachedTmuxSession, killTmuxPane, openTmuxWindow } from '../helpers/tmux.js'
 
 const REGRESSION_STAMP = Date.now()
 const REGRESSION_TEAM = `event-pipeline-team-${REGRESSION_STAMP}`
@@ -167,12 +169,10 @@ describe('Regressions', () => {
     // `tmux list-clients` once per scanner cycle, resolves the focused pane to
     // a project, and the `tmux-focus-changed` event carries `project_id`
     // (asserted in the Rust hub/bridge tests and the Shell unit tests). This
-    // block is the deletion guard — the retired file is no longer an input —
-    // and keeps the live file and task update paths honest in the packaged app
-    // without a reload. The live transition itself (launch a session, navigate
-    // to its pane, watch the indicator move to that project row) is asserted by
-    // `session-management.js` -> `waitForForegroundIndicator`, which needs a
-    // real tmux server and runs in the Tier 2 lane.
+    // block is the deletion guard: it establishes a real hub-resolved focus
+    // first — the state the retired chain used to overwrite — and then proves
+    // the file no longer moves it. It also keeps the live file and task update
+    // paths honest in the packaged app without a reload.
 
     const readmePath = join(TAURHAUS_PROJECT_PATH, 'README.md')
     let originalReadme = null
@@ -202,43 +202,132 @@ describe('Regressions', () => {
       )
     }
 
+    async function projectRowId(name) {
+      return await browser.execute((needle) => {
+        const row = Array.from(document.querySelectorAll('[data-testid="project-item"]')).find(
+          (el) => (el.textContent || '').trim().toLowerCase().includes(needle)
+        )
+        return row?.getAttribute('data-project-id') ?? null
+      }, name)
+    }
+
+    async function daemonStatus() {
+      const result = await browser.executeAsync((done) => {
+        const tauri = window.__TAURI_INTERNALS__
+        if (!tauri || typeof tauri.invoke !== 'function') {
+          done(null)
+          return
+        }
+        tauri
+          .invoke('get_daemon_status')
+          .then((value) => done(value?.status ?? null))
+          .catch(() => done(null))
+      })
+      return result
+    }
+
+    // A live focus the hub can resolve: a pane whose process the scanner reads
+    // as a Claude session, working in the taurhaus project. `new-window` selects
+    // the pane it creates, and `focus_from_clients` reports the attached
+    // client's current pane, so the indicator lands on the taurhaus row.
+    function startLiveFocusPane(session) {
+      const fixtureDir = mkdtempSync(join(tmpdir(), 'taurhaus-focus-'))
+      const agentPath = join(fixtureDir, 'claude')
+      writeFileSync(agentPath, '#!/usr/bin/env node\nsetInterval(() => {}, 1000)\n', 'utf8')
+      chmodSync(agentPath, 0o755)
+
+      const pane = openTmuxWindow({
+        session,
+        cwd: TAURHAUS_PROJECT_PATH,
+        command: agentPath,
+        name: 'pr8-focus',
+      })
+      if (!pane) {
+        rmSync(fixtureDir, { recursive: true, force: true })
+        return null
+      }
+
+      return { ...pane, fixtureDir }
+    }
+
     it('ignores a stale tmux-focus.json instead of driving the foreground indicator', async function () {
       if (!mainApp) return this.skip()
+      this.timeout(120_000)
 
       const dataDir = process.env.TAURHAUS_DATA_DIR
       if (!dataDir) return this.skip()
+      // Focus is a hub snapshot field now, so there is nothing to assert
+      // without the daemon, and nothing to read without an attached client.
+      if ((await daemonStatus()) !== 'connected') return this.skip()
+      const tmuxSession = attachedTmuxSession()
+      if (!tmuxSession) return this.skip()
 
-      await selectProjectByName('taurhaus')
-      await waitForProjectsLoaded()
+      const live = startLiveFocusPane(tmuxSession)
+      if (!live) return this.skip()
 
-      const baseline = await foregroundOwners()
       const focusFile = join(dataDir, 'tmux-focus.json')
+      try {
+        await selectProjectByName('taurhaus')
+        await waitForProjectsLoaded()
 
-      // A payload the retired matcher resolved to the taurhaus project: it used
-      // to move the indicator onto that row.
-      writeFileSync(
-        focusFile,
-        JSON.stringify({ session: 'taurhaus', window: '0', pane_id: '%0', timestamp: Date.now() }),
-        'utf8'
-      )
-      // Well past the retired inotify -> Tauri event latency.
-      await browser.pause(2_000)
-      expect(await foregroundOwners()).toEqual(baseline)
+        // The red-before state: a real, resolvable focus owned by a known row.
+        // Without it both stale writes below are no-ops on either code path.
+        const taurhausRow = await projectRowId('taurhaus')
+        expect(taurhausRow).toBeTruthy()
+        await browser.waitUntil(
+          async () => {
+            const owners = await foregroundOwners()
+            return owners.length === 1 && owners[0] === taurhausRow
+          },
+          {
+            timeout: 30_000,
+            interval: POLL,
+            timeoutMsg: 'Hub never resolved the live tmux pane to the taurhaus row',
+          }
+        )
+        const baseline = [taurhausRow]
+        expect(await foregroundOwners()).toEqual(baseline)
 
-      // A payload the retired matcher resolved to nothing: it used to clear the
-      // indicator off whichever row owned it.
-      writeFileSync(
-        focusFile,
-        JSON.stringify({ session: 'pr8-stale', window: '99', pane_id: '%99', timestamp: Date.now() }),
-        'utf8'
-      )
-      await browser.pause(2_000)
-      expect(await foregroundOwners()).toEqual(baseline)
+        // A payload the retired matcher resolved to nothing: it used to clear
+        // the indicator off the row that owns it, through the file watcher and
+        // then the 75 ms `get_foreground_project` refresh.
+        writeFileSync(
+          focusFile,
+          JSON.stringify({
+            session: tmuxSession,
+            window: '99',
+            pane_id: '%99999',
+            timestamp: Date.now(),
+          }),
+          'utf8'
+        )
+        // Well past the retired inotify -> Tauri event latency.
+        await browser.pause(3_000)
+        expect(await foregroundOwners()).toEqual(baseline)
 
-      // Deleting the file is not an input either.
-      rmSync(focusFile, { force: true })
-      await browser.pause(1_000)
-      expect(await foregroundOwners()).toEqual(baseline)
+        // Nor does a payload naming another tmux server move it.
+        writeFileSync(
+          focusFile,
+          JSON.stringify({
+            session: 'pr8-stale',
+            window: '0',
+            pane_id: '%0',
+            timestamp: Date.now(),
+          }),
+          'utf8'
+        )
+        await browser.pause(3_000)
+        expect(await foregroundOwners()).toEqual(baseline)
+
+        // Deleting the file is not an input either.
+        rmSync(focusFile, { force: true })
+        await browser.pause(2_000)
+        expect(await foregroundOwners()).toEqual(baseline)
+      } finally {
+        killTmuxPane(live.paneId)
+        rmSync(live.fixtureDir, { recursive: true, force: true })
+        rmSync(focusFile, { force: true })
+      }
     })
 
     it('refreshes README content after a live file edit without reloading the app', async function () {

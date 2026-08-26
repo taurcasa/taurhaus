@@ -88,3 +88,58 @@ export function cleanupNewTmuxPanes(snapshot) {
     skippedReason: '',
   }
 }
+
+/**
+ * The tmux session of the most recently active attached client, or null.
+ *
+ * This is the client the daemon hub reads focus from: `focus_from_clients`
+ * prefers a client whose terminal reports `focused` and otherwise falls back to
+ * the most recently active attached client, so a test only needs *an attached*
+ * client — not the OS focus, which the app window holds while E2E runs.
+ */
+export function attachedTmuxSession() {
+  const clients = runTmux(['list-clients', '-F', '#{client_flags}\t#{session_name}\t#{client_activity}'])
+  if (!clients.ok) return null
+
+  const attached = String(clients.output ?? '')
+    .split('\n')
+    .map((line) => line.split('\t'))
+    .filter(([flags, session]) => Boolean(session?.trim()) && String(flags).split(',').includes('attached'))
+    .map(([, session, activity]) => ({ session: session.trim(), activity: Number(activity) || 0 }))
+    .sort((a, b) => b.activity - a.activity)
+
+  return attached.length > 0 ? attached[0].session : null
+}
+
+/**
+ * Create a window in `session` and select it, returning its pane/window ids.
+ *
+ * `new-window` without `-d` selects the window it creates, so the attached
+ * client's current pane becomes this one — which is what the hub reports.
+ */
+export function openTmuxWindow({ session, cwd, command, name = 'e2e' }) {
+  const created = runTmux([
+    'new-window',
+    '-t',
+    session,
+    '-n',
+    name,
+    '-c',
+    cwd,
+    '-P',
+    '-F',
+    '#{pane_id}\t#{window_index}',
+    command,
+  ])
+  if (!created.ok) return null
+
+  const [paneId, windowIndex] = String(created.output ?? '').trim().split('\t')
+  if (!/^%\d+$/.test(String(paneId).trim())) return null
+
+  return { session, paneId: paneId.trim(), windowIndex: String(windowIndex ?? '').trim() }
+}
+
+export function killTmuxPane(paneId) {
+  if (!paneId) return
+  runTmux(['kill-pane', '-t', paneId])
+}

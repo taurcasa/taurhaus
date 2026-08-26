@@ -227,6 +227,8 @@ The daemon runs natively as a subprocess:
 
 On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v8), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness, and every reconnect confirms it before the daemon counts as recovered (`daemon_lifecycle.rs`). A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use.
+
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 
 ## Key files

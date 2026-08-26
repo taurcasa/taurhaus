@@ -235,11 +235,16 @@ pub fn parse_tmux_output(output: &str) -> HashMap<String, TmuxPane> {
 
 /// Map a focused tmux session/window/pane onto a known session's project path.
 ///
-/// The pane is the precise answer: the `Split` launch policy puts two projects
-/// in one window (`tmux_layout.rs`), so a window match alone can name the
-/// neighbour. Window matching (index, then the taurhaus-managed window name)
-/// stays as the fallback for a focused pane no session owns — a plain shell —
-/// and for legacy focus payloads that carry no pane id.
+/// The pane is the answer whenever the focus carries one. Every scanned session
+/// that knows its tmux session knows its pane too — both come from the same
+/// `TmuxPane` record (`scans.rs`) — so a focused pane that matches nothing is a
+/// pane no session owns: a plain shell, or the neighbour that a `Split` window
+/// puts beside another project (`tmux_layout.rs`). Naming the window's other
+/// project there is a wrong answer, not a degraded one, so it stays unresolved.
+///
+/// Window matching (index, then the taurhaus-managed window name) resolves only
+/// payloads that carry no pane id at all: the retired hook file and any snapshot
+/// whose pane field is null.
 pub fn resolve_focus_project_path(
     focus: &TmuxFocus,
     sessions: &[DisplaySession],
@@ -259,15 +264,16 @@ pub fn resolve_focus_project_path(
 
     let pane = focus.pane_id.trim();
     if !pane.is_empty() {
-        let owner = sessions.iter().filter(in_focused_session).find(|session| {
-            session
-                .tmux_pane
-                .as_deref()
-                .is_some_and(|value| value.trim() == pane)
-        });
-        if let Some(owner) = owner {
-            return Some(owner.project_path.clone());
-        }
+        return sessions
+            .iter()
+            .filter(in_focused_session)
+            .find(|session| {
+                session
+                    .tmux_pane
+                    .as_deref()
+                    .is_some_and(|value| value.trim() == pane)
+            })
+            .map(|session| session.project_path.clone());
     }
 
     sessions
@@ -574,18 +580,31 @@ bad line
         );
     }
 
-    // Regression: commit 07ab6c5. A pane id must not narrow the answer to
-    // nothing — the focused pane is often a plain shell, and legacy payloads
-    // carry no pane at all — so the window match stays as the fallback.
+    // Regression: commit b816dc7 made the focused pane the precise answer but
+    // left the window match as an unconditional fallback. Every session that
+    // carries a tmux session carries its pane too (both come from the same
+    // `TmuxPane` record in `scans.rs`), so a focused pane that matches nothing
+    // is a pane no scanned session owns — the neighbour in a `Split` window, a
+    // plain shell, or an agent that just exited. Falling through to the window
+    // named the wrong project as foreground.
     #[test]
-    fn resolve_focus_falls_back_to_the_window_when_no_session_owns_the_pane() {
+    fn resolve_focus_does_not_name_the_neighbour_when_the_focused_pane_is_unknown() {
         let sessions = vec![split_session("/projects/alpha", "1", "%3")];
 
         assert_eq!(
-            resolve_focus_project_path(&focus_pane("taurhaus", "1", "%9"), &sessions),
-            Some("/projects/alpha".to_string()),
-            "an unowned focused pane still names its window's project"
+            resolve_focus_project_path(&focus_pane("taurhaus", "1", "%5"), &sessions),
+            None,
+            "beta's pane shares alpha's window but alpha must not inherit its focus"
         );
+    }
+
+    // Regression: commit 07ab6c5. Legacy focus payloads (the retired hook file,
+    // and any snapshot whose pane field is null) carry no pane id at all, so the
+    // window match stays as their resolution path.
+    #[test]
+    fn resolve_focus_falls_back_to_the_window_only_for_a_payload_without_a_pane() {
+        let sessions = vec![split_session("/projects/alpha", "1", "%3")];
+
         assert_eq!(
             resolve_focus_project_path(&focus_pane("taurhaus", "1", ""), &sessions),
             Some("/projects/alpha".to_string()),

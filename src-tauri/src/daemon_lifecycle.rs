@@ -651,8 +651,9 @@ pub(crate) fn daemon_health_check(
         };
 
         if daemon.is_connected() {
-            match daemon.ping() {
-                Ok(()) => {
+            match classify_daemon_health(daemon.ping_protocol_version().map_err(|e| e.to_string()))
+            {
+                DaemonHealth::Healthy => {
                     if consecutive_failures > 0 {
                         tracing::debug!("Daemon health check recovered");
                     }
@@ -665,11 +666,29 @@ pub(crate) fn daemon_health_check(
                     restart_attempts = 0;
                     ever_connected = true;
                 }
-                Err(e) => {
+                DaemonHealth::ProtocolMismatch { running, expected } => {
+                    // Reachable but useless: drop it so the reconnect/restart
+                    // path below replaces it with a daemon this app can bridge.
+                    daemon.disconnect("health_protocol_mismatch");
+                    if !recovering {
+                        tracing::error!(
+                            daemon_protocol_version = running,
+                            expected,
+                            "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
+                        );
+                        emit_frontend_event(
+                            &app,
+                            "daemon-status",
+                            serde_json::json!({ "status": "disconnected" }),
+                        );
+                        recovering = true;
+                    }
+                }
+                DaemonHealth::Unreachable(error) => {
                     consecutive_failures += 1;
                     tracing::warn!(
                         failures = consecutive_failures,
-                        error = %e,
+                        error = %error,
                         "Daemon health check failed"
                     );
                     if consecutive_failures >= 3 && !recovering {
@@ -718,6 +737,10 @@ pub(crate) fn daemon_health_check(
                 || {
                     daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
                         .is_ok()
+                        && confirm_daemon_protocol(
+                            || daemon.ping_protocol_version().map_err(|e| e.to_string()),
+                            |reason| daemon.disconnect(reason),
+                        )
                 },
                 || {
                     // Don't restart the daemon while bootstrap is still running —
@@ -763,6 +786,65 @@ pub(crate) fn daemon_health_check(
                     }
                 }
             }
+        }
+    }
+}
+
+/// What a health ping says about the daemon on the other end.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DaemonHealth {
+    /// Reachable and speaking this app's protocol.
+    Healthy,
+    /// Reachable, but speaking a protocol this app cannot bridge.
+    ProtocolMismatch { running: u32, expected: u32 },
+    /// Not reachable.
+    Unreachable(String),
+}
+
+/// Judge a health ping.
+///
+/// Startup rejects a daemon whose protocol differs (`startup::daemon`), but the
+/// health monitor runs for the rest of the app's life, and a daemon that comes
+/// back late — or that a developer starts by hand — meets no other gate. Since
+/// protocol v8 the hub snapshot is the only live focus transport, so accepting a
+/// v7 daemon here would leave the foreground indicator dark forever: its omitted
+/// focus fields decode as `None` and the hook chain that used to cover for it is
+/// gone.
+fn classify_daemon_health(ping: Result<u32, String>) -> DaemonHealth {
+    let expected = crate::daemon::protocol::PROTOCOL_VERSION;
+    match ping {
+        Ok(running) if running == expected => DaemonHealth::Healthy,
+        Ok(running) => DaemonHealth::ProtocolMismatch { running, expected },
+        Err(error) => DaemonHealth::Unreachable(error),
+    }
+}
+
+/// Confirm a freshly reconnected daemon speaks this app's protocol.
+///
+/// Reachability is not compatibility: an outdated daemon still accepts TCP, so
+/// treating a successful reconnect as recovery walks around the startup gate.
+/// A daemon that fails here is disconnected, which sends the caller on to its
+/// restart path.
+fn confirm_daemon_protocol<P, D>(ping_protocol_version: P, disconnect: D) -> bool
+where
+    P: FnOnce() -> Result<u32, String>,
+    D: FnOnce(&str),
+{
+    match classify_daemon_health(ping_protocol_version()) {
+        DaemonHealth::Healthy => true,
+        DaemonHealth::ProtocolMismatch { running, expected } => {
+            tracing::warn!(
+                daemon_protocol_version = running,
+                expected,
+                "Reconnected daemon is outdated — rebuild with `just install-daemon`"
+            );
+            disconnect("reconnect_protocol_mismatch");
+            false
+        }
+        DaemonHealth::Unreachable(error) => {
+            tracing::debug!(error = %error, "Reconnected daemon did not answer the protocol ping");
+            disconnect("reconnect_ping_failed");
+            false
         }
     }
 }
@@ -1016,19 +1098,31 @@ struct FocusEmission {
     project_path: Option<String>,
 }
 
-/// Fold a freshly fetched hub snapshot into the bridge's cursor and focus.
+/// Fold the outcome of a seed fetch into the bridge's cursor and focus.
 ///
-/// Connect and reconnect both land here. The snapshot is the newest hub state
-/// the app has, so its focus goes through the same change detection as a long
-/// poll: a focus that moved while the bridge was down is emitted now instead of
-/// waiting out the next `WAIT_TIMEOUT`.
+/// Connect and reconnect both land here. A fetched snapshot is the newest hub
+/// state the app has, so its focus goes through the same change detection as a
+/// long poll: a focus that moved while the bridge was down is emitted now
+/// instead of waiting out the next `WAIT_TIMEOUT`.
+///
+/// `None` — every seed attempt failed — clears the cursor. Keeping the old one
+/// is worse than starting over: a daemon that restarted counts versions from
+/// zero again, so the next long poll would find nothing newer than a cursor from
+/// the previous process and block for the full `WAIT_TIMEOUT` with stale focus
+/// on screen. A zero cursor makes the very next poll return the current
+/// snapshot. `last_focus` is kept, so that poll still emits only a real change.
 ///
 /// Returns whether the focus transition must be emitted.
-fn apply_seed_snapshot(
-    snapshot: &daemon::protocol::RuntimeSessionSnapshotResult,
+fn apply_seed_outcome(
+    snapshot: Option<&daemon::protocol::RuntimeSessionSnapshotResult>,
     since_version: &mut u64,
     last_focus: &mut Option<FocusEmission>,
 ) -> bool {
+    let Some(snapshot) = snapshot else {
+        *since_version = 0;
+        return false;
+    };
+
     *since_version = snapshot.version;
     take_focus_change(
         last_focus,
@@ -1201,12 +1295,13 @@ fn emit_current_session_snapshot(
         }
     }
 
+    let focus_changed = apply_seed_outcome(snapshot.as_ref(), since_version, last_focus);
     let snapshot = snapshot?;
 
     // Cache for the polling path (list_cli_sessions)
     crate::session_snapshot_cache::store(&snapshot);
 
-    if apply_seed_snapshot(&snapshot, since_version, last_focus) {
+    if focus_changed {
         emit_tmux_focus_changed(
             app,
             snapshot.focus.as_ref(),
@@ -1640,8 +1735,12 @@ mod tests {
         let mut last = None;
 
         assert!(
-            apply_seed_snapshot(
-                &seed_snapshot(4, Some(focus("taurhaus", "2", "%9")), Some("/projects/a")),
+            apply_seed_outcome(
+                Some(&seed_snapshot(
+                    4,
+                    Some(focus("taurhaus", "2", "%9")),
+                    Some("/projects/a")
+                )),
                 &mut since_version,
                 &mut last,
             ),
@@ -1658,31 +1757,141 @@ mod tests {
 
         // Focus moved while the bridge was disconnected: the reconnect snapshot
         // is the newest state the app has, so it emits now, not in 20 s.
-        assert!(apply_seed_snapshot(
-            &seed_snapshot(9, Some(focus("taurhaus", "3", "%11")), Some("/projects/b")),
+        assert!(apply_seed_outcome(
+            Some(&seed_snapshot(
+                9,
+                Some(focus("taurhaus", "3", "%11")),
+                Some("/projects/b")
+            )),
             &mut since_version,
             &mut last,
         ));
         assert_eq!(since_version, 9);
 
         // A reconnect that changed nothing stays quiet.
-        assert!(!apply_seed_snapshot(
-            &seed_snapshot(9, Some(focus("taurhaus", "3", "%11")), Some("/projects/b")),
+        assert!(!apply_seed_outcome(
+            Some(&seed_snapshot(
+                9,
+                Some(focus("taurhaus", "3", "%11")),
+                Some("/projects/b")
+            )),
             &mut since_version,
             &mut last,
         ));
 
         // A hub with no focus at all clears the indicator once.
-        assert!(apply_seed_snapshot(
-            &seed_snapshot(11, None, None),
+        assert!(apply_seed_outcome(
+            Some(&seed_snapshot(11, None, None)),
             &mut since_version,
             &mut last,
         ));
-        assert!(!apply_seed_snapshot(
-            &seed_snapshot(11, None, None),
+        assert!(!apply_seed_outcome(
+            Some(&seed_snapshot(11, None, None)),
             &mut since_version,
             &mut last,
         ));
+    }
+
+    // Regression: commit 07ab6c5 deleted the tmux hook -> file -> inotify focus
+    // chain and b816dc7 bumped the protocol to 8 so startup replaces daemons
+    // that predate hub-owned focus. The health monitor that runs for the rest of
+    // the app's life still accepted anything that answered a ping, so a v7
+    // daemon reconnecting late (or started by hand) passed the gate: its omitted
+    // focus fields decode as `None` and the deleted chain has no replacement.
+    #[test]
+    fn health_check_rejects_a_daemon_that_predates_hub_owned_focus() {
+        let v7: daemon::protocol::PingResult = serde_json::from_str(
+            r#"{"version":"0.9.9","protocol_version":7,"uptime_secs":41,"data_root":"/home/u/.local/share/taurhaus"}"#,
+        )
+        .expect("v7 ping payload");
+
+        assert_eq!(
+            classify_daemon_health(Ok(v7.protocol_version)),
+            DaemonHealth::ProtocolMismatch {
+                running: 7,
+                expected: daemon::protocol::PROTOCOL_VERSION,
+            }
+        );
+        assert_eq!(
+            classify_daemon_health(Ok(daemon::protocol::PROTOCOL_VERSION)),
+            DaemonHealth::Healthy
+        );
+        assert_eq!(
+            classify_daemon_health(Err("connection refused".to_string())),
+            DaemonHealth::Unreachable("connection refused".to_string())
+        );
+    }
+
+    // Regression: same commits. Recovery treated any successful TCP reconnect as
+    // a recovered daemon, so the protocol gate could be walked around by simply
+    // dropping and restoring the connection.
+    #[test]
+    fn a_reconnected_daemon_with_the_wrong_protocol_is_not_treated_as_recovered() {
+        let mut disconnects = Vec::new();
+        assert!(!confirm_daemon_protocol(
+            || Ok(daemon::protocol::PROTOCOL_VERSION - 1),
+            |reason| disconnects.push(reason.to_string()),
+        ));
+        assert_eq!(
+            disconnects.len(),
+            1,
+            "the stale daemon must be dropped so the restart path replaces it"
+        );
+
+        let mut disconnects = Vec::new();
+        assert!(!confirm_daemon_protocol(
+            || Err("read timed out".to_string()),
+            |reason| disconnects.push(reason.to_string()),
+        ));
+        assert_eq!(disconnects.len(), 1);
+
+        let mut disconnects = Vec::new();
+        assert!(confirm_daemon_protocol(
+            || Ok(daemon::protocol::PROTOCOL_VERSION),
+            |reason| disconnects.push(reason.to_string()),
+        ));
+        assert!(disconnects.is_empty());
+    }
+
+    // Regression: commit 07ab6c5 seeded the bridge from a snapshot fetched on
+    // connect, but when every seed attempt failed the cursor kept its
+    // pre-disconnect value. A restarted daemon counts from a lower version, so
+    // the following long poll had nothing newer to report and blocked for the
+    // full 20 s WAIT_TIMEOUT — on top of three 5 s seed timeouts — while a stale
+    // focus stayed on screen.
+    #[test]
+    fn a_failed_seed_clears_the_cursor_so_a_restarted_daemon_is_seen_at_once() {
+        let mut since_version = 42;
+        let mut last = None;
+        assert!(apply_seed_outcome(
+            Some(&seed_snapshot(
+                42,
+                Some(focus("taurhaus", "2", "%9")),
+                Some("/projects/a")
+            )),
+            &mut since_version,
+            &mut last,
+        ));
+
+        assert!(
+            !apply_seed_outcome(None, &mut since_version, &mut last),
+            "a seed that never arrived has no focus to emit"
+        );
+        assert_eq!(
+            since_version, 0,
+            "the cursor must not outlive the connection it was counted on"
+        );
+
+        // The restarted daemon's counter is lower than the pre-restart cursor:
+        // with the stale cursor kept, this snapshot would have been withheld.
+        let restarted = seed_snapshot(3, Some(focus("taurhaus", "5", "%21")), Some("/projects/b"));
+        assert!(restarted.version > since_version);
+        assert!(apply_seed_outcome(
+            Some(&restarted),
+            &mut since_version,
+            &mut last,
+        ));
+        assert_eq!(since_version, 3);
     }
 
     #[test]
