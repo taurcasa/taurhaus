@@ -422,7 +422,6 @@ pub(super) fn log_daemon_data_root_mismatch(ping: &crate::daemon::protocol::Ping
     tracing::warn!(
         daemon_data_root = %ping.data_root,
         app_data_root = %app_data_root.display(),
-        daemon_focus_path = %ping.focus_path,
         "Daemon data root differs from the app data root"
     );
     let mut fields = Map::new();
@@ -433,18 +432,6 @@ pub(super) fn log_daemon_data_root_mismatch(ping: &crate::daemon::protocol::Ping
     fields.insert(
         "app_data_root".to_string(),
         Value::String(app_data_root_text),
-    );
-    fields.insert(
-        "daemon_focus_path".to_string(),
-        Value::String(ping.focus_path.clone()),
-    );
-    fields.insert(
-        "app_focus_path".to_string(),
-        Value::String(
-            crate::session_scanner::control::default_tmux_focus_path()
-                .display()
-                .to_string(),
-        ),
     );
     emit_startup_event(
         "warn",
@@ -536,9 +523,6 @@ mod tests {
             data_root: crate::provider::platform_paths::PlatformPaths::app_data_root()
                 .display()
                 .to_string(),
-            focus_path: crate::session_scanner::control::default_tmux_focus_path()
-                .display()
-                .to_string(),
         };
 
         assert!(ensure_expected_daemon_runtime(&ping).is_ok());
@@ -551,7 +535,6 @@ mod tests {
             protocol_version: crate::daemon::protocol::PROTOCOL_VERSION,
             uptime_secs: 1,
             data_root: String::new(),
-            focus_path: String::new(),
         };
 
         let error = ensure_expected_daemon_runtime(&ping).expect_err("mismatch should fail");
@@ -565,7 +548,6 @@ mod tests {
             protocol_version: crate::daemon::protocol::PROTOCOL_VERSION.saturating_sub(1),
             uptime_secs: 1,
             data_root: String::new(),
-            focus_path: String::new(),
         };
 
         let error = ensure_expected_daemon_runtime(&ping).expect_err("mismatch should fail");
@@ -575,7 +557,7 @@ mod tests {
     #[test]
     fn startup_logs_daemon_data_root_mismatch() {
         // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
-        // left the app unable to diagnose a daemon using a different focus file.
+        // left the app unable to diagnose a daemon using a different data root.
         let _log_guard = crate::test_support::acquire_global_log_test_guard();
         let dir = tempfile::tempdir().expect("temp dir");
         let log_path = dir.path().join("startup-daemon.log.jsonl");
@@ -585,8 +567,7 @@ mod tests {
             "version": env!("CARGO_PKG_VERSION"),
             "protocol_version": crate::daemon::protocol::PROTOCOL_VERSION,
             "uptime_secs": 1,
-            "data_root": "/definitely/not/the/app/data/root",
-            "focus_path": "/definitely/not/the/app/data/root/tmux-focus.json"
+            "data_root": "/definitely/not/the/app/data/root"
         }))
         .expect("ping payload");
 
@@ -617,9 +598,6 @@ mod tests {
             protocol_version: crate::daemon::protocol::PROTOCOL_VERSION,
             uptime_secs: 1,
             data_root: crate::provider::platform_paths::PlatformPaths::app_data_root()
-                .display()
-                .to_string(),
-            focus_path: crate::session_scanner::control::default_tmux_focus_path()
                 .display()
                 .to_string(),
         };

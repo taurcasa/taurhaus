@@ -86,7 +86,7 @@ pub(crate) fn dispatch(
 }
 
 pub(crate) fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {
-    let (data_root, focus_path) = crate::daemon_api::data_identity_paths();
+    let data_root = crate::daemon_api::data_identity_paths();
     DaemonResponse::ok(
         id,
         protocol::PingResult {
@@ -94,7 +94,6 @@ pub(crate) fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {
             protocol_version: protocol::PROTOCOL_VERSION,
             uptime_secs: start_time.elapsed().as_secs(),
             data_root: data_root.display().to_string(),
-            focus_path: focus_path.display().to_string(),
         },
     )
 }
@@ -309,7 +308,7 @@ pub(crate) fn handle_get_runtime_session_snapshot(id: &str) -> DaemonResponse {
             display_sessions: snapshot.display_sessions,
             runtime_sessions: snapshot.runtime_sessions,
             focus: snapshot.focus,
-            foreground_project_path: snapshot.foreground_project_path,
+            foreground_project_path: snapshot.focus_project_path,
             degraded: snapshot.degraded,
         },
     )
@@ -339,6 +338,8 @@ pub(crate) fn handle_wait_session_updates(id: &str, params: &serde_json::Value) 
             version: update.snapshot.version,
             changed: update.changed,
             sessions: update.snapshot.sessions,
+            focus: update.focus,
+            focus_project_path: update.focus_project_path,
         },
     )
 }

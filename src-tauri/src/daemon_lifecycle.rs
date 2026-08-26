@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::commands;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::sentinels::CLAUDE_TASKS_PROJECT_ID;
+use crate::session_scanner::tmux::TmuxFocus;
 use crate::session_scanner::DisplaySession;
 use crate::{
     daemon, db, fs, models, provider, services, watch_targets, ProviderState, WatcherState,
@@ -650,8 +651,9 @@ pub(crate) fn daemon_health_check(
         };
 
         if daemon.is_connected() {
-            match daemon.ping() {
-                Ok(()) => {
+            match classify_daemon_health(daemon.ping_protocol_version().map_err(|e| e.to_string()))
+            {
+                DaemonHealth::Healthy => {
                     if consecutive_failures > 0 {
                         tracing::debug!("Daemon health check recovered");
                     }
@@ -664,11 +666,29 @@ pub(crate) fn daemon_health_check(
                     restart_attempts = 0;
                     ever_connected = true;
                 }
-                Err(e) => {
+                DaemonHealth::ProtocolMismatch { running, expected } => {
+                    // Reachable but useless: drop it so the reconnect/restart
+                    // path below replaces it with a daemon this app can bridge.
+                    daemon.disconnect("health_protocol_mismatch");
+                    if !recovering {
+                        tracing::error!(
+                            daemon_protocol_version = running,
+                            expected,
+                            "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
+                        );
+                        emit_frontend_event(
+                            &app,
+                            "daemon-status",
+                            serde_json::json!({ "status": "disconnected" }),
+                        );
+                        recovering = true;
+                    }
+                }
+                DaemonHealth::Unreachable(error) => {
                     consecutive_failures += 1;
                     tracing::warn!(
                         failures = consecutive_failures,
-                        error = %e,
+                        error = %error,
                         "Daemon health check failed"
                     );
                     if consecutive_failures >= 3 && !recovering {
@@ -717,6 +737,10 @@ pub(crate) fn daemon_health_check(
                 || {
                     daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
                         .is_ok()
+                        && confirm_daemon_protocol(
+                            || daemon.ping_protocol_version().map_err(|e| e.to_string()),
+                            |reason| daemon.disconnect(reason),
+                        )
                 },
                 || {
                     // Don't restart the daemon while bootstrap is still running —
@@ -766,6 +790,65 @@ pub(crate) fn daemon_health_check(
     }
 }
 
+/// What a health ping says about the daemon on the other end.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DaemonHealth {
+    /// Reachable and speaking this app's protocol.
+    Healthy,
+    /// Reachable, but speaking a protocol this app cannot bridge.
+    ProtocolMismatch { running: u32, expected: u32 },
+    /// Not reachable.
+    Unreachable(String),
+}
+
+/// Judge a health ping.
+///
+/// Startup rejects a daemon whose protocol differs (`startup::daemon`), but the
+/// health monitor runs for the rest of the app's life, and a daemon that comes
+/// back late — or that a developer starts by hand — meets no other gate. Since
+/// protocol v8 the hub snapshot is the only live focus transport, so accepting a
+/// v7 daemon here would leave the foreground indicator dark forever: its omitted
+/// focus fields decode as `None` and the hook chain that used to cover for it is
+/// gone.
+fn classify_daemon_health(ping: Result<u32, String>) -> DaemonHealth {
+    let expected = crate::daemon::protocol::PROTOCOL_VERSION;
+    match ping {
+        Ok(running) if running == expected => DaemonHealth::Healthy,
+        Ok(running) => DaemonHealth::ProtocolMismatch { running, expected },
+        Err(error) => DaemonHealth::Unreachable(error),
+    }
+}
+
+/// Confirm a freshly reconnected daemon speaks this app's protocol.
+///
+/// Reachability is not compatibility: an outdated daemon still accepts TCP, so
+/// treating a successful reconnect as recovery walks around the startup gate.
+/// A daemon that fails here is disconnected, which sends the caller on to its
+/// restart path.
+fn confirm_daemon_protocol<P, D>(ping_protocol_version: P, disconnect: D) -> bool
+where
+    P: FnOnce() -> Result<u32, String>,
+    D: FnOnce(&str),
+{
+    match classify_daemon_health(ping_protocol_version()) {
+        DaemonHealth::Healthy => true,
+        DaemonHealth::ProtocolMismatch { running, expected } => {
+            tracing::warn!(
+                daemon_protocol_version = running,
+                expected,
+                "Reconnected daemon is outdated — rebuild with `just install-daemon`"
+            );
+            disconnect("reconnect_protocol_mismatch");
+            false
+        }
+        DaemonHealth::Unreachable(error) => {
+            tracing::debug!(error = %error, "Reconnected daemon did not answer the protocol ping");
+            disconnect("reconnect_ping_failed");
+            false
+        }
+    }
+}
+
 fn daemon_health_check_interval(
     connected: bool,
     ever_connected: bool,
@@ -810,7 +893,6 @@ fn handle_daemon_recovered(app: &AppHandle) {
     #[cfg(feature = "mesh-bridged-backend")]
     crate::startup::compaction::release_app_owned_compaction(app, "daemon_recovered");
     respawn_daemon_watches(app);
-    crate::startup::watchers::repair_tmux_focus_hooks();
     {
         let app_for_reseed = app.clone();
         std::thread::spawn(move || {
@@ -869,6 +951,79 @@ fn emit_session_bridge_recovery_measurement(duration_ms: u64, emission: SessionS
     );
 }
 
+/// What one focus-bridge iteration needs from `ProviderState`.
+///
+/// `wsl_distro` rides along with the address because both bridge connections
+/// authenticate against the distro the daemon actually runs in — reading the
+/// default distro's token file instead leaves an authenticated daemon rejecting
+/// the app, and focus is the only thing this bridge carries live.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BridgeTarget {
+    addr: String,
+    connected: bool,
+    wsl_distro: Option<String>,
+}
+
+fn bridge_target(provider: &ProviderState) -> Option<BridgeTarget> {
+    let daemon = provider.daemon.as_ref()?;
+    Some(BridgeTarget {
+        addr: daemon.addr().to_string(),
+        connected: daemon.is_connected(),
+        wsl_distro: provider.wsl_distro.clone(),
+    })
+}
+
+/// Open the bridge's own long-poll connection, and only hand it back if the
+/// daemon answering it speaks this app's protocol.
+///
+/// The shared provider's connected flag is not a protocol check: a daemon
+/// replaced under a running app — the `just install-daemon` loop, or an older
+/// build that wins the port after a restart — keeps that flag true until the
+/// health monitor's next ping. Since protocol v8 the hub snapshot is the only
+/// live focus transport, so a v7 daemon adopted in that window serves focus
+/// fields that decode as `None` with no hook chain left to cover for it. Ping on
+/// the socket the bridge is about to consume, before the seed fetch runs on the
+/// same daemon.
+///
+/// `reported_mismatch` latches the loud log: this runs on a one-second retry
+/// loop, so an outdated daemon nobody rebuilds would otherwise fill the log.
+fn connect_bridge_listener(
+    addr: &str,
+    wsl_distro: Option<&str>,
+    reported_mismatch: &mut bool,
+) -> Option<crate::daemon::session_listener::DaemonSessionListener> {
+    let mut listener =
+        match crate::daemon::session_listener::DaemonSessionListener::connect(addr, wsl_distro) {
+            Ok(listener) => listener,
+            Err(error) => {
+                tracing::debug!(error = %error, "Session listener connect failed");
+                return None;
+            }
+        };
+
+    match classify_daemon_health(listener.ping_protocol_version().map_err(|e| e.to_string())) {
+        DaemonHealth::Healthy => {
+            *reported_mismatch = false;
+            Some(listener)
+        }
+        DaemonHealth::ProtocolMismatch { running, expected } => {
+            if !*reported_mismatch {
+                tracing::error!(
+                    daemon_protocol_version = running,
+                    expected,
+                    "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
+                );
+                *reported_mismatch = true;
+            }
+            None
+        }
+        DaemonHealth::Unreachable(error) => {
+            tracing::debug!(error = %error, "Session listener protocol ping failed");
+            None
+        }
+    }
+}
+
 /// Bridge daemon-owned session updates into frontend Tauri events.
 ///
 /// Uses a dedicated daemon connection and long-poll update requests so the UI
@@ -883,18 +1038,18 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
         let mut since_version: u64 = 0;
         let mut observed_connected = false;
         let mut recovery_tracker = SessionBridgeRecoveryTracker::default();
+        let mut last_focus: Option<FocusEmission> = None;
+        let mut reported_protocol_mismatch = false;
         tracing::info!("session updates bridge thread started");
 
         loop {
-            let (daemon_addr, connected) = {
-                let provider_state = app.state::<ProviderState>();
-                let Some(ref daemon) = provider_state.daemon else {
-                    return;
-                };
-                (daemon.addr().to_string(), daemon.is_connected())
+            let Some(target) = bridge_target(&app.state::<ProviderState>()) else {
+                return;
             };
+            let daemon_addr = target.addr;
+            let wsl_distro = target.wsl_distro;
 
-            if !connected {
+            if !target.connected {
                 if observed_connected {
                     tracing::info!("session updates bridge: daemon disconnected");
                     observed_connected = false;
@@ -908,20 +1063,24 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                 observed_connected = true;
             }
 
-            let mut listener =
-                match crate::daemon::session_listener::DaemonSessionListener::connect(&daemon_addr)
-                {
-                    Ok(l) => l,
-                    Err(e) => {
-                        tracing::debug!(error = %e, "Session listener connect failed");
-                        std::thread::sleep(RETRY_DELAY);
-                        continue;
-                    }
-                };
+            // A connection this bridge cannot trust is a disconnect: neither the
+            // seed fetch below nor the long poll may run against that daemon.
+            let Some(mut listener) = connect_bridge_listener(
+                &daemon_addr,
+                wsl_distro.as_deref(),
+                &mut reported_protocol_mismatch,
+            ) else {
+                std::thread::sleep(RETRY_DELAY);
+                continue;
+            };
 
-            if let Some(emission) =
-                emit_current_session_snapshot(&app, &daemon_addr, &mut since_version)
-            {
+            if let Some(emission) = emit_current_session_snapshot(
+                &app,
+                &daemon_addr,
+                wsl_distro.as_deref(),
+                &mut since_version,
+                &mut last_focus,
+            ) {
                 if let Some(duration_ms) = recovery_tracker.take_duration_ms(Instant::now()) {
                     emit_session_bridge_recovery_measurement(duration_ms, emission);
                 }
@@ -949,16 +1108,23 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                         }
 
                         since_version = update.version;
+                        if take_focus_change(
+                            &mut last_focus,
+                            update.focus.as_ref(),
+                            update.focus_project_path.as_deref(),
+                        ) {
+                            emit_tmux_focus_changed(
+                                &app,
+                                update.focus.as_ref(),
+                                update.focus_project_path.as_deref(),
+                            );
+                        }
                         if update.changed {
                             let mut sessions = update.sessions;
                             let session_count = sessions.len();
-                            let distro = {
-                                let provider_state = app.state::<ProviderState>();
-                                provider_state.wsl_distro.clone()
-                            };
                             normalize_sessions_for_frontend(
                                 &mut sessions,
-                                distro.as_deref(),
+                                wsl_distro.as_deref(),
                                 crate::daemon::launcher::is_native_daemon(),
                             );
                             crate::coordination::activity_export::enrich_sessions_with_team_membership(
@@ -994,12 +1160,121 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
     });
 }
 
+/// The focus the bridge last handed the frontend.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FocusEmission {
+    focus: Option<TmuxFocus>,
+    project_path: Option<String>,
+}
+
+/// Fold the outcome of a seed fetch into the bridge's cursor and focus.
+///
+/// Connect and reconnect both land here. A fetched snapshot is the newest hub
+/// state the app has, so its focus goes through the same change detection as a
+/// long poll: a focus that moved while the bridge was down is emitted now
+/// instead of waiting out the next `WAIT_TIMEOUT`.
+///
+/// `None` — every seed attempt failed — clears the cursor. Keeping the old one
+/// is worse than starting over: a daemon that restarted counts versions from
+/// zero again, so the next long poll would find nothing newer than a cursor from
+/// the previous process and block for the full `WAIT_TIMEOUT` with stale focus
+/// on screen. A zero cursor makes the very next poll return the current
+/// snapshot. `last_focus` is kept, so that poll still emits only a real change.
+///
+/// Returns whether the focus transition must be emitted.
+fn apply_seed_outcome(
+    snapshot: Option<&daemon::protocol::RuntimeSessionSnapshotResult>,
+    since_version: &mut u64,
+    last_focus: &mut Option<FocusEmission>,
+) -> bool {
+    let Some(snapshot) = snapshot else {
+        *since_version = 0;
+        return false;
+    };
+
+    *since_version = snapshot.version;
+    take_focus_change(
+        last_focus,
+        snapshot.focus.as_ref(),
+        snapshot.foreground_project_path.as_deref(),
+    )
+}
+
+/// Whether the hub's focus moved since the last emission, recording the new one.
+///
+/// The hub reports focus on every long-poll response; the app only wants the
+/// transitions.
+fn take_focus_change(
+    last: &mut Option<FocusEmission>,
+    focus: Option<&TmuxFocus>,
+    project_path: Option<&str>,
+) -> bool {
+    let next = FocusEmission {
+        focus: focus.cloned(),
+        project_path: project_path.map(str::to_string),
+    };
+    if last.as_ref() == Some(&next) {
+        return false;
+    }
+    *last = Some(next);
+    true
+}
+
+/// `tmux-focus-changed` payload; `null` means nothing is focused.
+fn tmux_focus_event_payload(
+    focus: Option<&TmuxFocus>,
+    project_id: Option<&str>,
+) -> serde_json::Value {
+    match focus {
+        Some(focus) => serde_json::json!({
+            "session": focus.session,
+            "window": focus.window_index,
+            "pane_id": focus.pane_id,
+            "project_id": project_id,
+        }),
+        None => serde_json::Value::Null,
+    }
+}
+
+/// Emit the focus transition, resolving the project id app-side.
+fn emit_tmux_focus_changed(app: &AppHandle, focus: Option<&TmuxFocus>, project_path: Option<&str>) {
+    let project_id = project_path.and_then(|project_path| {
+        let provider = app.state::<ProviderState>();
+        let localized = crate::commands::command_center::localize_daemon_project_path(
+            &provider,
+            project_path.to_string(),
+        );
+        let db = app.state::<crate::commands::projects::DbState>();
+        match crate::commands::command_center::resolve_project_id_from_path(&db, &localized) {
+            Ok(project_id) => project_id,
+            Err(error) => {
+                tracing::debug!(error = %error, "tmux focus project lookup failed");
+                None
+            }
+        }
+    });
+
+    tracing::debug!(
+        session = ?focus.map(|focus| focus.session.as_str()),
+        window = ?focus.map(|focus| focus.window_index.as_str()),
+        pane_id = ?focus.map(|focus| focus.pane_id.as_str()),
+        project_id = ?project_id,
+        "tmux focus changed"
+    );
+    emit_frontend_event(
+        app,
+        "tmux-focus-changed",
+        tmux_focus_event_payload(focus, project_id.as_deref()),
+    );
+}
+
 /// Fetch the current runtime session snapshot via a short-lived direct connection.
 ///
 /// Bypasses the shared `DaemonProvider` to avoid contention during the startup
 /// burst. The TCP connection is dropped when this function returns.
 fn fetch_snapshot_direct(
     addr: &str,
+    wsl_distro: Option<&str>,
 ) -> Result<daemon::protocol::RuntimeSessionSnapshotResult, String> {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
@@ -1013,7 +1288,7 @@ fn fetch_snapshot_direct(
         .set_nodelay(true)
         .map_err(|e| format!("Bridge snapshot set nodelay failed: {e}"))?;
 
-    let auth_token = crate::daemon::auth::read_auth_token();
+    let auth_token = crate::daemon::auth::read_auth_token_for_distro(wsl_distro);
     let request = daemon::protocol::DaemonRequest::new(
         "bridge-snapshot",
         daemon::protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
@@ -1061,7 +1336,9 @@ fn fetch_snapshot_direct(
 fn emit_current_session_snapshot(
     app: &AppHandle,
     addr: &str,
+    wsl_distro: Option<&str>,
     since_version: &mut u64,
+    last_focus: &mut Option<FocusEmission>,
 ) -> Option<SessionSnapshotEmission> {
     use std::time::Duration;
 
@@ -1070,7 +1347,7 @@ fn emit_current_session_snapshot(
 
     let mut snapshot = None;
     for attempt in 1..=MAX_SEED_RETRIES {
-        match fetch_snapshot_direct(addr) {
+        match fetch_snapshot_direct(addr, wsl_distro) {
             Ok(s) => {
                 snapshot = Some(s);
                 break;
@@ -1089,20 +1366,25 @@ fn emit_current_session_snapshot(
         }
     }
 
+    let focus_changed = apply_seed_outcome(snapshot.as_ref(), since_version, last_focus);
     let snapshot = snapshot?;
 
     // Cache for the polling path (list_cli_sessions)
     crate::session_snapshot_cache::store(&snapshot);
 
+    if focus_changed {
+        emit_tmux_focus_changed(
+            app,
+            snapshot.focus.as_ref(),
+            snapshot.foreground_project_path.as_deref(),
+        );
+    }
+
     let mut sessions = snapshot.display_sessions;
     let session_count = sessions.len();
-    let distro = {
-        let provider_state = app.state::<ProviderState>();
-        provider_state.wsl_distro.clone()
-    };
     normalize_sessions_for_frontend(
         &mut sessions,
-        distro.as_deref(),
+        wsl_distro,
         crate::daemon::launcher::is_native_daemon(),
     );
     crate::coordination::activity_export::enrich_sessions_with_team_membership(
@@ -1111,7 +1393,6 @@ fn emit_current_session_snapshot(
         &mut sessions,
     );
 
-    *since_version = snapshot.version;
     emit_frontend_event(
         app,
         "sessions-updated",
@@ -1458,5 +1739,351 @@ mod tests {
     #[test]
     fn daemon_claude_tasks_watch_remains_enabled_without_local_windows_path() {
         assert!(!prefer_local_claude_tasks_watch_for_host(true, false));
+    }
+
+    fn focus(session: &str, window_index: &str, pane_id: &str) -> TmuxFocus {
+        TmuxFocus {
+            session: session.to_string(),
+            window_index: window_index.to_string(),
+            pane_id: pane_id.to_string(),
+        }
+    }
+
+    // Regression: commits a53ad31 and f9c1e89. The focus signal used to reach
+    // the app through tmux hooks writing a file; it is now a hub snapshot field
+    // that arrives on every long-poll response, so the bridge must emit the
+    // Tauri event only when the focus actually changed.
+    #[test]
+    fn focus_bridge_emits_once_per_change() {
+        let mut last = None;
+
+        assert!(take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "2", "%9")),
+            Some("/projects/mesh"),
+        ));
+        assert!(!take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "2", "%9")),
+            Some("/projects/mesh"),
+        ));
+        assert!(take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "3", "%11")),
+            Some("/projects/other"),
+        ));
+        assert!(take_focus_change(&mut last, None, None));
+        assert!(!take_focus_change(&mut last, None, None));
+    }
+
+    fn seed_snapshot(
+        version: u64,
+        focus: Option<TmuxFocus>,
+        project_path: Option<&str>,
+    ) -> daemon::protocol::RuntimeSessionSnapshotResult {
+        daemon::protocol::RuntimeSessionSnapshotResult {
+            version,
+            display_sessions: Vec::new(),
+            runtime_sessions: Vec::new(),
+            focus,
+            foreground_project_path: project_path.map(str::to_string),
+            degraded: false,
+        }
+    }
+
+    // Regression: commit 07ab6c5 routed focus through the long poll only. The
+    // snapshot fetched on connect and on every reconnect advanced the version
+    // cursor but never went through the focus fold, so a focus that moved while
+    // the bridge was down stayed wrong on screen until an otherwise unchanged
+    // poll timed out 20 s later — against a 500 ms hub cadence.
+    #[test]
+    fn focus_bridge_seeds_focus_from_the_connect_snapshot() {
+        let mut since_version = 0;
+        let mut last = None;
+
+        assert!(
+            apply_seed_outcome(
+                Some(&seed_snapshot(
+                    4,
+                    Some(focus("taurhaus", "2", "%9")),
+                    Some("/projects/a")
+                )),
+                &mut since_version,
+                &mut last,
+            ),
+            "the first snapshot carries the focus the hub already knows"
+        );
+        assert_eq!(since_version, 4);
+
+        // The long poll that follows must not repeat what the seed emitted.
+        assert!(!take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "2", "%9")),
+            Some("/projects/a"),
+        ));
+
+        // Focus moved while the bridge was disconnected: the reconnect snapshot
+        // is the newest state the app has, so it emits now, not in 20 s.
+        assert!(apply_seed_outcome(
+            Some(&seed_snapshot(
+                9,
+                Some(focus("taurhaus", "3", "%11")),
+                Some("/projects/b")
+            )),
+            &mut since_version,
+            &mut last,
+        ));
+        assert_eq!(since_version, 9);
+
+        // A reconnect that changed nothing stays quiet.
+        assert!(!apply_seed_outcome(
+            Some(&seed_snapshot(
+                9,
+                Some(focus("taurhaus", "3", "%11")),
+                Some("/projects/b")
+            )),
+            &mut since_version,
+            &mut last,
+        ));
+
+        // A hub with no focus at all clears the indicator once.
+        assert!(apply_seed_outcome(
+            Some(&seed_snapshot(11, None, None)),
+            &mut since_version,
+            &mut last,
+        ));
+        assert!(!apply_seed_outcome(
+            Some(&seed_snapshot(11, None, None)),
+            &mut since_version,
+            &mut last,
+        ));
+    }
+
+    // Regression: commit 07ab6c5 deleted the tmux hook -> file -> inotify focus
+    // chain and b816dc7 bumped the protocol to 8 so startup replaces daemons
+    // that predate hub-owned focus. The health monitor that runs for the rest of
+    // the app's life still accepted anything that answered a ping, so a v7
+    // daemon reconnecting late (or started by hand) passed the gate: its omitted
+    // focus fields decode as `None` and the deleted chain has no replacement.
+    #[test]
+    fn health_check_rejects_a_daemon_that_predates_hub_owned_focus() {
+        let v7: daemon::protocol::PingResult = serde_json::from_str(
+            r#"{"version":"0.9.9","protocol_version":7,"uptime_secs":41,"data_root":"/home/u/.local/share/taurhaus"}"#,
+        )
+        .expect("v7 ping payload");
+
+        assert_eq!(
+            classify_daemon_health(Ok(v7.protocol_version)),
+            DaemonHealth::ProtocolMismatch {
+                running: 7,
+                expected: daemon::protocol::PROTOCOL_VERSION,
+            }
+        );
+        assert_eq!(
+            classify_daemon_health(Ok(daemon::protocol::PROTOCOL_VERSION)),
+            DaemonHealth::Healthy
+        );
+        assert_eq!(
+            classify_daemon_health(Err("connection refused".to_string())),
+            DaemonHealth::Unreachable("connection refused".to_string())
+        );
+    }
+
+    // Regression: same commits. Recovery treated any successful TCP reconnect as
+    // a recovered daemon, so the protocol gate could be walked around by simply
+    // dropping and restoring the connection.
+    #[test]
+    fn a_reconnected_daemon_with_the_wrong_protocol_is_not_treated_as_recovered() {
+        let mut disconnects = Vec::new();
+        assert!(!confirm_daemon_protocol(
+            || Ok(daemon::protocol::PROTOCOL_VERSION - 1),
+            |reason| disconnects.push(reason.to_string()),
+        ));
+        assert_eq!(
+            disconnects.len(),
+            1,
+            "the stale daemon must be dropped so the restart path replaces it"
+        );
+
+        let mut disconnects = Vec::new();
+        assert!(!confirm_daemon_protocol(
+            || Err("read timed out".to_string()),
+            |reason| disconnects.push(reason.to_string()),
+        ));
+        assert_eq!(disconnects.len(), 1);
+
+        let mut disconnects = Vec::new();
+        assert!(confirm_daemon_protocol(
+            || Ok(daemon::protocol::PROTOCOL_VERSION),
+            |reason| disconnects.push(reason.to_string()),
+        ));
+        assert!(disconnects.is_empty());
+    }
+
+    // Regression: commit 07ab6c5 seeded the bridge from a snapshot fetched on
+    // connect, but when every seed attempt failed the cursor kept its
+    // pre-disconnect value. A restarted daemon counts from a lower version, so
+    // the following long poll had nothing newer to report and blocked for the
+    // full 20 s WAIT_TIMEOUT — on top of three 5 s seed timeouts — while a stale
+    // focus stayed on screen.
+    #[test]
+    fn a_failed_seed_clears_the_cursor_so_a_restarted_daemon_is_seen_at_once() {
+        let mut since_version = 42;
+        let mut last = None;
+        assert!(apply_seed_outcome(
+            Some(&seed_snapshot(
+                42,
+                Some(focus("taurhaus", "2", "%9")),
+                Some("/projects/a")
+            )),
+            &mut since_version,
+            &mut last,
+        ));
+
+        assert!(
+            !apply_seed_outcome(None, &mut since_version, &mut last),
+            "a seed that never arrived has no focus to emit"
+        );
+        assert_eq!(
+            since_version, 0,
+            "the cursor must not outlive the connection it was counted on"
+        );
+
+        // The restarted daemon's counter is lower than the pre-restart cursor:
+        // with the stale cursor kept, this snapshot would have been withheld.
+        let restarted = seed_snapshot(3, Some(focus("taurhaus", "5", "%21")), Some("/projects/b"));
+        assert!(restarted.version > since_version);
+        assert!(apply_seed_outcome(
+            Some(&restarted),
+            &mut since_version,
+            &mut last,
+        ));
+        assert_eq!(since_version, 3);
+    }
+
+    // Regression: 07ab6c5 deleted the hook -> file -> inotify focus chain, leaving
+    // this bridge as the app's only live tmux-focus transport. It read just the
+    // daemon address and connection flag from `ProviderState`, so both of its
+    // connections — the long-poll listener and the direct seed fetch — loaded
+    // their auth token with `read_auth_token()`, i.e. from whichever WSL distro
+    // is default on Windows rather than the one the daemon runs in. An
+    // authenticated daemon in a non-default distro rejected both, and focus
+    // never moved.
+    #[test]
+    fn the_focus_bridge_carries_the_configured_distro_to_both_daemon_connections() {
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::new_disconnected_with_distro(
+                    "127.0.0.1:9",
+                    Some("Taurhaus-Ubuntu"),
+                ),
+            ),
+            wsl_distro: Some("Taurhaus-Ubuntu".to_string()),
+        };
+
+        let target = bridge_target(&provider).expect("bridge target");
+
+        assert_eq!(target.addr, "127.0.0.1:9");
+        assert!(!target.connected);
+        assert_eq!(
+            target.wsl_distro.as_deref(),
+            Some("Taurhaus-Ubuntu"),
+            "the bridge must authenticate against the distro the daemon runs in"
+        );
+    }
+
+    #[test]
+    fn a_bridge_without_a_daemon_has_no_target() {
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: None,
+            wsl_distro: Some("Taurhaus-Ubuntu".to_string()),
+        };
+
+        assert!(bridge_target(&provider).is_none());
+    }
+
+    // Regression: 07ab6c5 deleted the hook -> file -> inotify focus chain and
+    // b816dc7 bumped the protocol to 8, and a0f3545/108481f then gated the
+    // health monitor and every inline reconnect. The focus bridge still opened
+    // its own two connections — the long-poll listener and the seed fetch —
+    // after reading nothing but the shared provider's `is_connected` flag. A
+    // daemon replaced under a live app (the `just install-daemon` loop, or an
+    // older build that wins the port on restart) leaves that flag true for as
+    // long as it takes the health monitor to notice, so the bridge adopted a v7
+    // connection whose omitted focus fields decode as `None` and drove the
+    // foreground indicator from it.
+    #[test]
+    fn the_focus_bridge_refuses_a_listener_connection_from_an_outdated_daemon() {
+        let _guard = crate::test_support::acquire_heavy_test_guard();
+
+        let stub = crate::test_support::StubDaemon::start(
+            daemon::protocol::PROTOCOL_VERSION - 1,
+            serde_json::Value::Null,
+        );
+
+        let mut reported_mismatch = false;
+        assert!(
+            connect_bridge_listener(stub.addr(), None, &mut reported_mismatch).is_none(),
+            "the bridge must validate the protocol on the connection it is about to consume"
+        );
+        assert!(
+            reported_mismatch,
+            "the first refusal must say the daemon is outdated"
+        );
+
+        assert!(
+            connect_bridge_listener(stub.addr(), None, &mut reported_mismatch).is_none(),
+            "the refusal holds for every retry against the same daemon"
+        );
+        assert!(
+            reported_mismatch,
+            "the mismatch stays reported so the one-second retry loop does not repeat it"
+        );
+    }
+
+    #[test]
+    fn the_focus_bridge_consumes_a_listener_connection_speaking_this_protocol() {
+        let _guard = crate::test_support::acquire_heavy_test_guard();
+
+        let stub = crate::test_support::StubDaemon::start(
+            daemon::protocol::PROTOCOL_VERSION,
+            serde_json::Value::Null,
+        );
+
+        // Latched by an earlier outage: a healthy daemon has to clear it so the
+        // next mismatch is loud again.
+        let mut reported_mismatch = true;
+        assert!(connect_bridge_listener(stub.addr(), None, &mut reported_mismatch).is_some());
+        assert!(!reported_mismatch);
+    }
+
+    #[test]
+    fn a_bridge_listener_that_cannot_connect_is_not_reported_as_outdated() {
+        // Bind and release an ephemeral port so nothing answers on it: an
+        // unreachable daemon is a retry, not an outdated build, and it must not
+        // latch the "rebuild the daemon" message over a real mismatch.
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind closed port");
+        let addr = closed.local_addr().expect("closed port addr").to_string();
+        drop(closed);
+
+        let mut reported_mismatch = false;
+        assert!(connect_bridge_listener(&addr, None, &mut reported_mismatch).is_none());
+        assert!(!reported_mismatch);
+    }
+
+    #[test]
+    fn focus_event_payload_carries_the_resolved_project_id() {
+        let payload = tmux_focus_event_payload(Some(&focus("taurhaus", "2", "%9")), Some("p1"));
+        assert_eq!(payload["session"], "taurhaus");
+        assert_eq!(payload["window"], "2");
+        assert_eq!(payload["pane_id"], "%9");
+        assert_eq!(payload["project_id"], "p1");
+
+        let unresolved = tmux_focus_event_payload(Some(&focus("taurhaus", "2", "%9")), None);
+        assert!(unresolved["project_id"].is_null());
+
+        assert!(tmux_focus_event_payload(None, None).is_null());
     }
 }

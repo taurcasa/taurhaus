@@ -450,6 +450,16 @@ async function waitForForegroundIndicator() {
     },
     { timeout: 10_000, interval: POLL, timeoutMsg: 'Foreground indicator did not move to target project' }
   )
+
+  // Ownership, not presence: the hub resolves the focused pane to exactly one
+  // project, so no other row may keep an indicator from the previous focus.
+  const owners = await browser.execute(() =>
+    Array.from(document.querySelectorAll('[data-testid="project-item"]'))
+      .filter((row) => row.querySelector('[data-testid="sidebar-foreground-indicator"]'))
+      .map((row) => row.textContent?.trim().toLowerCase() ?? '')
+  )
+  expect(owners).toHaveLength(1)
+  expect(owners[0]).toContain(TARGET_PROJECT_NAME)
 }
 
 function seedArchivedSessionHistory() {

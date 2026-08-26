@@ -111,81 +111,35 @@ fn mutable_scan_caches_are_not_global_statics() {
 }
 
 #[test]
-fn ensure_taurhaus_session_does_not_manage_tmux_focus_hooks() {
-    // Regression: commits a53ad31 (removal added) and f9c1e89 (None => remove-all)
-    // let an env-less daemon launch path remove every app-owned focus hook.
-    let source = read_source("src/session_scanner/control.rs");
-    let ensure_body = source
-        .split("fn ensure_taurhaus_session()")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("/// Propagate important environment variables")
-                .next()
+fn the_tmux_focus_path_contains_no_hook_code() {
+    // Regression: commits a53ad31 (hook removal added) and f9c1e89 (focus path
+    // None => remove every taurhaus hook) let an env-less daemon launch strip
+    // every focus hook, and two installers (app + daemon) with two path
+    // authorities could ping-pong `set-hook -g` forever. Focus is now a field
+    // of the daemon hub's versioned snapshot: no hooks, no focus file, no
+    // inotify watch, so none of that machinery may come back.
+    let mut files = Vec::new();
+    collect_rs_files(&crate_root().join("src"), &mut files);
+
+    let violations: Vec<String> = files
+        .into_iter()
+        .filter_map(|path| {
+            let source = fs::read_to_string(&path).ok()?;
+            let runtime = runtime_section(&source);
+            let markers: Vec<&str> = ["tmux-focus.json", "set-hook", "show-hooks", "focus_hook"]
+                .into_iter()
+                .filter(|marker| runtime.contains(marker))
+                .collect();
+            if markers.is_empty() {
+                return None;
+            }
+            Some(format!("{}: {markers:?}", path.display()))
         })
-        .expect("ensure_taurhaus_session source body");
-
-    for hook_fn in [
-        "remove_legacy_tmux_focus_hooks",
-        "remove_stale_tmux_focus_hooks",
-        "install_tmux_focus_hooks",
-        "ensure_tmux_focus_hooks_for_path",
-        "reconcile_tmux_focus_hooks_for_path",
-    ] {
-        assert!(
-            !ensure_body.contains(hook_fn),
-            "daemon launch boundary must not reference app-owned hook function {hook_fn}"
-        );
-    }
-}
-
-#[test]
-fn launch_cli_session_repairs_app_owned_tmux_focus_hooks_after_success() {
-    // Regression: commit 55fcf0c removed launch-time hook installation without
-    // repairing from the app after a cold tmux server was created.
-    let source = read_source("src/commands/command_center/mod.rs");
-    let launch_body = source
-        .split("pub fn launch_cli_session(")
-        .nth(1)
-        .and_then(|tail| tail.split("#[tauri::command]").next())
-        .expect("launch_cli_session source body");
+        .collect();
 
     assert!(
-        launch_body.contains("if result.is_ok()")
-            && launch_body.contains("crate::startup::watchers::repair_tmux_focus_hooks()"),
-        "the app IPC boundary must repair focus hooks after every successful launch"
-    );
-}
-
-#[test]
-fn tmux_focus_cleanup_keeps_the_ea3b44f_regression_guard() {
-    // Regression: commit 55fcf0c replaced the ea3b44f ownership regression
-    // guard with a None-only test that short-circuited all hook filtering.
-    let source = read_source("src/session_scanner/control.rs");
-
-    assert!(
-        source.contains("fn legacy_tmux_focus_hook_names_match_only_taurhaus_hooks()"),
-        "the ea3b44f hook ownership regression test must remain in the suite"
-    );
-}
-
-#[test]
-fn tmux_focus_reconciliation_uses_one_global_hook_probe() {
-    // Regression: commit 55fcf0c made every periodic repair spawn two tmux/WSL
-    // probes by inspecting the same global hook state twice.
-    let source = read_source("src/session_scanner/control.rs");
-    let repair_body = source
-        .split("pub(crate) fn reconcile_tmux_focus_hooks_for_path(")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("pub(crate) fn remove_stale_tmux_focus_hooks(")
-                .next()
-        })
-        .expect("tmux focus reconciliation source body");
-
-    assert_eq!(
-        repair_body.matches("show-hooks").count(),
-        1,
-        "one reconciliation cycle must inspect global tmux hooks only once"
+        violations.is_empty(),
+        "the tmux focus path must contain no hook or focus-file code: {violations:?}"
     );
 }
 

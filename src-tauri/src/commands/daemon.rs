@@ -90,7 +90,9 @@ pub fn start_daemon(
         std::thread::sleep(std::time::Duration::from_secs(2));
 
         if let Some(ref daemon) = provider.daemon {
-            if daemon.reconnect().is_ok() {
+            // Checked, not raw: the button must not adopt a daemon whose
+            // protocol predates hub-owned focus just because it answers TCP.
+            if daemon.reconnect_checked().is_ok() {
                 if let Err(error) = app.emit(
                     "daemon-status",
                     serde_json::json!({ "status": "connected" }),

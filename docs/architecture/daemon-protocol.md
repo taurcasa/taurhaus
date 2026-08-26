@@ -18,7 +18,7 @@ The app and the daemon exist as separate processes because of platform boundarie
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 7 (current) |
+| Protocol version | 8 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -32,6 +32,8 @@ On startup, the daemon generates a random 32-byte token, writes it to a well-kno
 | Windows | `{FOLDERID_LocalAppData}/taurhaus/daemon.token` |
 
 The app reads this token on connect and includes it in the `auth` field of every request. A normal daemon run rejects missing or incorrect tokens. Authentication can be disabled only with a debug-build flag or in an explicitly unauthenticated test configuration.
+
+On Windows the token file lives inside the WSL distro the daemon runs in, so every app-side connection reads it for that distro (`read_auth_token_for_distro`), never for whichever distro happens to be default. That includes both connections the focus bridge opens — the long-poll session listener and its direct seed fetch — because since v8 they carry tmux focus and nothing else does.
 
 ### Connection lifecycle
 
@@ -190,7 +192,7 @@ This keeps polling encapsulated inside daemon + app backend while the frontend s
 
 ### Per-cycle task scan caching (v6+)
 
-`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6 and still present in v7):
+`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6 and still present in v8):
 
 - When present, the daemon reuses cached `scan_sessions()` + `ClaudeSourceIndex` inputs for repeated project scans in the same cycle.
 - When absent, the daemon performs a fresh input scan (backward compatible behavior).
@@ -225,7 +227,9 @@ The daemon runs natively as a subprocess:
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v7), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v8), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use.
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 

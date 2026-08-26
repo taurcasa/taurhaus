@@ -1,9 +1,24 @@
+import { normalizeProjectPath } from '../pathUtils.js'
 import { setupSessionPollingLifecycle } from './events.svelte.js'
-import {
-  hasAttachedTmuxFocus,
-  resolveProjectIdFromSession,
-  resolveProjectIdFromTmuxFocusPayload,
-} from './tmuxFocus.js'
+
+// Resolve the project a live session belongs to, by id or by project path.
+function resolveProjectIdFromSession(session, projects = []) {
+  const directProjectId = session?.project_id ?? session?.projectId ?? null
+  if (typeof directProjectId === 'string' && directProjectId.trim()) {
+    return directProjectId
+  }
+
+  const projectPath = session?.project_path ?? session?.projectPath ?? null
+  if (typeof projectPath !== 'string' || !projectPath.trim()) {
+    return null
+  }
+
+  const normalizedSessionPath = normalizeProjectPath(projectPath)
+  const matchingProject = projects.find(
+    (project) => normalizeProjectPath(project?.path) === normalizedSessionPath
+  )
+  return matchingProject?.id ?? null
+}
 
 function errorMessage(error) {
   if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) {
@@ -22,46 +37,32 @@ export function createShellSessionLifecycleController({
   sessionStore,
   logger = console,
 }) {
-  let tmuxFocusRefreshTimer = null
-
   function setForegroundProject(projectId) {
     state.foregroundProjectId = typeof projectId === 'string' && projectId.trim()
       ? projectId
       : null
   }
 
-  function clearTmuxFocusRefreshTimer() {
-    if (tmuxFocusRefreshTimer !== null) {
-      clearTimeout(tmuxFocusRefreshTimer)
-      tmuxFocusRefreshTimer = null
-    }
-  }
-
-  function cleanup() {
-    clearTmuxFocusRefreshTimer()
-  }
-
-  function logTmuxFocus(stage, details = {}) {
-    logger.debug('[tmux-focus]', {
-      stage,
-      ...details,
-    })
-  }
-
-  function scheduleForegroundProjectRefresh() {
-    clearTmuxFocusRefreshTimer()
-    tmuxFocusRefreshTimer = setTimeout(() => {
-      tmuxFocusRefreshTimer = null
-      void loadForegroundProject()
-    }, 75)
-  }
+  // Counts live 'tmux-focus-changed' applications. The startup IPC read below
+  // and the live focus stream write the same field, and the read's answer is a
+  // snapshot of the moment it was made — so a focus event that lands while the
+  // promise is in flight is the newer truth and the awaited answer must yield.
+  let liveFocusGeneration = 0
 
   async function loadForegroundProject() {
+    const startedAtGeneration = liveFocusGeneration
+    const supersededByLiveFocus = () => liveFocusGeneration !== startedAtGeneration
+
     try {
       const projectId = await ipc.getForegroundProject()
-      logTmuxFocus('foreground-ipc-refresh', { projectId })
+      if (supersededByLiveFocus()) {
+        logger.debug('[tmux-focus]', { stage: 'foreground-ipc-superseded', projectId })
+        return
+      }
+      logger.debug('[tmux-focus]', { stage: 'foreground-ipc-read', projectId })
       setForegroundProject(projectId)
     } catch (error) {
+      if (supersededByLiveFocus()) return
       logger.warn('[sessions] failed to load foreground project; clearing foreground marker', {
         error_message: errorMessage(error),
       })
@@ -96,28 +97,13 @@ export function createShellSessionLifecycleController({
     }
   }
 
+  // The daemon hub owns tmux focus and resolves it to a project, so the event
+  // already carries the project id; a null payload means nothing is focused.
   function handleTmuxFocusChanged(payload) {
-    const projectId = resolveProjectIdFromTmuxFocusPayload(payload, {
-      projects: getProjects(),
-      liveSessions: Array.from(sessionStore.getSessions().values()).flat(),
-    })
-
-    if (projectId) {
-      logTmuxFocus('event-resolved-from-session-store', { payload, projectId })
-      clearTmuxFocusRefreshTimer()
-      setForegroundProject(projectId)
-      return
-    }
-
-    if (hasAttachedTmuxFocus(payload)) {
-      logTmuxFocus('event-scheduling-ipc-refresh', { payload })
-      scheduleForegroundProjectRefresh()
-      return
-    }
-
-    logTmuxFocus('event-cleared', { payload })
-    clearTmuxFocusRefreshTimer()
-    setForegroundProject(null)
+    const projectId = payload?.project_id ?? payload?.projectId ?? null
+    logger.debug('[tmux-focus]', { stage: 'event', payload, projectId })
+    liveFocusGeneration += 1
+    setForegroundProject(projectId)
   }
 
   async function handleMeshFocusPane(paneId) {
@@ -162,9 +148,6 @@ export function createShellSessionLifecycleController({
       return state.foregroundProjectId
     },
     setForegroundProject,
-    clearTmuxFocusRefreshTimer,
-    cleanup,
-    scheduleForegroundProjectRefresh,
     loadForegroundProject,
     setupPolling,
     handleDaemonDisconnected,

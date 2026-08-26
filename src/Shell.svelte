@@ -428,12 +428,6 @@
     })
   })
 
-  $effect(() => {
-    return () => {
-      sessionController.cleanup()
-    }
-  })
-
   async function handleDismissRelationship(relId) {
     await projectController.handleDismissRelationship(relId, (message) => {
       shellNotice = message

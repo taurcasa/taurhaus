@@ -19,7 +19,6 @@ use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::platform::apply_background_command_settings;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::TMUX_SESSION_NAME;
-use crate::session_scanner::tmux::TmuxFocusState;
 use crate::session_scanner::DisplaySession;
 use crate::ProviderState;
 
@@ -73,9 +72,6 @@ pub fn launch_cli_session(
         cli_tool,
     )
     .ipc_cmd("launch_cli_session");
-    if result.is_ok() {
-        crate::startup::watchers::repair_tmux_focus_hooks();
-    }
     span.finish_result(&result);
     result
 }
@@ -157,93 +153,50 @@ pub fn get_project_activity(
 
 #[tauri::command]
 pub fn get_foreground_project(
-    app: tauri::AppHandle,
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
 ) -> IpcResult<Option<String>> {
     let span = IpcCommandSpan::start("get_foreground_project");
-    let result = get_foreground_project_impl(&app, db.inner(), provider.inner())
-        .ipc_cmd("get_foreground_project");
+    let result =
+        get_foreground_project_impl(db.inner(), provider.inner()).ipc_cmd("get_foreground_project");
     span.finish_result(&result);
     result
 }
 
+/// The foreground project, as the daemon hub last observed it.
+///
+/// The hub owns tmux focus (`tmux list-clients` once per scanner cycle) and
+/// resolves it to a project path; this IPC is the app's startup read of that
+/// snapshot. Live updates arrive on the `tmux-focus-changed` event instead.
 pub(crate) fn get_foreground_project_impl(
-    app: &tauri::AppHandle,
     db: &DbState,
     provider: &ProviderState,
 ) -> Result<Option<String>, String> {
-    if let Some(snapshot) = daemon_runtime_session_snapshot(provider)?.snapshot {
-        if let Some(mut project_path) = snapshot.foreground_project_path.clone() {
-            if !crate::daemon::launcher::is_native_daemon() && project_path.starts_with('/') {
-                if let Some(ref distro) = provider.wsl_distro {
-                    project_path = crate::provider::path::to_windows(&project_path, distro);
-                }
-            }
-            return resolve_project_id_from_path(db, &project_path);
-        }
-        if !should_fall_back_to_local_focus(&snapshot) {
-            return Ok(None);
-        }
-
-        let data_dir = crate::startup::resolve_app_data_dir(app.clone()).map_err(|error| {
-            format!("Failed to resolve app data dir for tmux focus lookup: {error}")
-        })?;
-        return resolve_foreground_project_from_daemon_snapshot(&data_dir, db, provider, snapshot);
-    }
-
-    if provider.daemon.is_some() {
+    let Some(snapshot) = daemon_runtime_session_snapshot(provider)?.snapshot else {
         return Ok(None);
-    }
-
-    let data_dir = crate::startup::resolve_app_data_dir(app.clone()).map_err(|error| {
-        format!("Failed to resolve app data dir for tmux focus lookup: {error}")
-    })?;
-    let Some(focus) = crate::session_scanner::tmux::read_focus_state(&data_dir) else {
+    };
+    let Some(project_path) = snapshot.foreground_project_path else {
         return Ok(None);
     };
 
-    let sessions = list_cli_sessions_impl(app, db, provider)?;
-    resolve_foreground_project_id_from_sessions(db, &focus, &sessions)
+    resolve_project_id_from_path(db, &localize_daemon_project_path(provider, project_path))
 }
 
-fn should_fall_back_to_local_focus(snapshot: &protocol::RuntimeSessionSnapshotResult) -> bool {
-    snapshot
-        .focus
-        .as_ref()
-        .and_then(|focus| {
-            crate::session_scanner::tmux::resolve_focus_project_path(
-                focus,
-                &snapshot.display_sessions,
-            )
-        })
-        .is_none()
-}
-
-fn resolve_foreground_project_from_daemon_snapshot(
-    data_dir: &Path,
-    db: &DbState,
+/// Translate a daemon-side (Linux) project path into the app's path form.
+pub(crate) fn localize_daemon_project_path(
     provider: &ProviderState,
-    mut snapshot: protocol::RuntimeSessionSnapshotResult,
-) -> Result<Option<String>, String> {
-    let Some(focus) = crate::session_scanner::tmux::read_focus_state(data_dir) else {
-        return Ok(None);
-    };
-    if !crate::daemon::launcher::is_native_daemon() {
-        if let Some(ref distro) = provider.wsl_distro {
-            for session in &mut snapshot.display_sessions {
-                if session.project_path.starts_with('/') {
-                    session.project_path =
-                        crate::provider::path::to_windows(&session.project_path, distro);
-                }
-            }
-        }
+    project_path: String,
+) -> String {
+    if crate::daemon::launcher::is_native_daemon() || !project_path.starts_with('/') {
+        return project_path;
     }
-
-    resolve_foreground_project_id_from_sessions(db, &focus, &snapshot.display_sessions)
+    match provider.wsl_distro {
+        Some(ref distro) => crate::provider::path::to_windows(&project_path, distro),
+        None => project_path,
+    }
 }
 
-fn resolve_project_id_from_path(
+pub(crate) fn resolve_project_id_from_path(
     db: &DbState,
     project_path: &str,
 ) -> Result<Option<String>, String> {
@@ -254,20 +207,6 @@ fn resolve_project_id_from_path(
         .into_iter()
         .find(|project| crate::provider::path::normalize_project_path(&project.path) == project_key)
         .map(|project| project.id))
-}
-
-fn resolve_foreground_project_id_from_sessions(
-    db: &DbState,
-    focus: &TmuxFocusState,
-    sessions: &[DisplaySession],
-) -> Result<Option<String>, String> {
-    let Some(project_path) =
-        crate::session_scanner::tmux::resolve_focus_project_path(focus, sessions)
-    else {
-        return Ok(None);
-    };
-
-    resolve_project_id_from_path(db, &project_path)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
