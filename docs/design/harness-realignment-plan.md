@@ -186,7 +186,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 10 frontend activity signal, protocol 10 | Opus 5 | Codex ×2 | 4 (3 fix rounds) | 5 (Codex: dropped final wall-clock interval; degraded state invisible to the frontend ×2 rounds; fallback accrual; protocol-9 break) | #23 |
 | 11 taureval fidelity + matrix (cross-repo) | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds + taureval view-keying follow-up) | 6 (Opus: discarded LaunchNotes corrupting matrix cells; sweep-abort chain ×2 rounds; view currency keyed on whole run_config) | #24 |
 | 13 Codex native idle edge + CLI version gates | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 8 (Opus: macOS-unreachable edge; probe bypassing login shell/distro ×2 rounds; failed probe deleting the installed hook; per-tick sink parsing) | #25 |
-| 14 cleanup (cross-repo) | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
+| 14 cleanup (cross-repo), mesh 0.2.20 | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 4 (Opus: mesh guard missed #{pane_dead}; skip path re-journalled forever and bypassed escalation; foreign-CLI skip permanent) | #26 |
 
 ## Spikes / unknowns
 
