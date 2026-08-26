@@ -417,13 +417,18 @@ grep 'compaction.codex_hook' <taurhaus.log.jsonl> | tail
 
 Working looks like:
 - `hooks.json` has `SessionStart`, matcher `compact`, `additionalContextLimit` 12000
-- `compaction.codex_hook.reconciled` in the log
+- `${CODEX_HOME:-~/.codex}/hooks/taurhaus-session-start-compact.*` exists
+
+`compaction.codex_hook.reconciled` is **not** required evidence. It is emitted only when reconciliation actually changed files, so a hook that was already correct logs nothing at all. An empty log with a correct `hooks.json` is the steady state, not a failure.
 
 Broken looks like:
 - matcher missing
 - script missing
-- `compaction.codex_hook.degraded` / `.unsupported` / `.version_unknown`
+- `compaction.codex_hook.degraded` / `.unsupported`
 - no hook fire evidence when compactions should have fired
+
+Indeterminate, not broken:
+- `compaction.codex_hook.version_unknown` — the Codex version could not be resolved, so reconciliation left the hook exactly as it found it. An installed hook stays the active compaction owner in that state (`startup/compaction.rs`); check `hooks.json` to see which case you are in.
 
 ## Diagnostic Use Order
 
@@ -559,17 +564,22 @@ The existing analyzer is the current checkpoint companion:
 python3 scripts/analyze-compaction.py --team taurhaus-team --last 30m
 ```
 
-What it now reports directly:
-- CP2 scanner health
-- CP3 parsed compaction evidence
-- CP5 terminal delivery evidence
-- CP6 runtime `session_id` health
-- CP8 compact hook readiness
-- a `Checkpoint Matrix` section with pass/warn/fail/unknown status per checkpoint
+It prints a `Checkpoint Matrix` with a pass/warn/fail/unknown status per row. **The matrix uses the analyzer's own numbering, which diverges from this document's from CP6 onward.** Read it through this map:
+
+| Analyzer row | Analyzer's own label | Section in this document |
+|---|---|---|
+| CP1–CP5 | same subjects, same order | CP1–CP5 |
+| CP6 | Mesh wake prompt transport happened | no numbered section here |
+| CP7 | Compaction card was surfaced by mesh read | CP7 — the analyzer checks read-side surfacing, the section checks the on-disk state |
+| CP8 | Runtime member records can support exact session resolution | **CP6** |
+| CP9 | Claude compact hook bridge is installed | **CP8**, Claude half only |
+
+The hook row is the one to read carefully: it inspects `~/.claude/settings.json` and `~/.claude/hooks/taurhaus-session-start-compact.*` and nothing else. The analyzer never opens Codex `hooks.json`, so a `hooks`-mode Codex hook has no checkpoint at all.
 
 What still remains manual:
 - strongest-form CP1 transcript inspection with `grep` on the actual Codex JSONL
 - detailed inbox/state inspection for CP7 when chasing one specific member
+- Codex hook installation in `hooks` mode — use the Codex block in CP8 above
 
 ## Bottom Line
 
