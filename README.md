@@ -183,7 +183,7 @@ The first-run wizard walks through:
 
 Your scan and ignore settings from the Settings panel apply to the wizard too — the same directories and exclusions are used everywhere.
 
-If more than one Claude subscription is signed in on the host, taurhaus asks once which account to use by default. Each project can then pin its own account, shown as a chip on the project overview.
+If more than one Claude subscription is signed in on the host, taurhaus asks which account to use when it starts a Claude session it cannot place on its own — that is, when the project has no pinned account, you have set no global default, and the session being resumed gives no answer either. Tick "remember" and the choice is pinned to that project, shown as a chip on the project overview. The global default lives in Settings; once it is set, the chooser stops asking.
 
 ### Quick start
 

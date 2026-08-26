@@ -83,14 +83,15 @@ Unified structured logging pipeline:
 - `src/lib/logger.js` (frontend bridge + interaction correlation + drop telemetry)
 - `src-tauri/src/commands/logging.rs` (JSONL sink, global emitter, rotation, `frontend_log`)
 - `src-tauri/src/commands/lifecycle.rs` (`ipc.command.received/completed/failed`, `ipc.lock.wait`)
-- `src-tauri/src/startup/mod.rs` (`startup.phase.started/completed/failed`)
+- `src-tauri/src/startup/telemetry.rs` (every `startup.*` event: `startup.app.started`, `startup.paths.resolved`, `startup.logging.initialized`, `startup.database.started/completed/failed`, `startup.daemon_phase.started/completed`, `startup.daemon_connect.succeeded/deferred`, `startup.orchestration.started/completed`, `startup.watchers.initialized/failed`, `startup.search.initialized/failed`, `startup.background_tasks.started/completed`, `startup.self_heal.started/completed/failed`). There is no generic `startup.phase.*` family — a test asserts those legacy names are never emitted.
 - `src-tauri/src/daemon_api.rs` + `src-tauri/src/provider/daemon_client.rs` (`daemon.rpc.sent/response/timeout`)
 - `src-tauri/src/session_scanner/classification.rs` (`activity.state.changed` with `pid`, `tool`, `from`, `to`, `source`)
-- `src-tauri/src/session_scanner/process.rs` (`session_scanner.process_scan.degraded/recovered`, edge-triggered)
+- `src-tauri/src/session_scanner/process.rs` (`session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit)
 - `src-tauri/src/session_scanner/launch.rs` (`launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`)
 - `src-tauri/src/commands/command_center/launching.rs` + `src-tauri/src/coordination/pipelines/helpers.rs` (`launch.command.rendered`, `launch.account.*`)
-- `src-tauri/src/coordination/compaction_events.rs` (`compaction.owner.selected/failed`, `compaction.signal_*`, `compaction.extractor.*`)
-- `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.*`)
+- `src-tauri/src/coordination/compaction_events.rs` (transcript-pipeline events: `compaction.owner.selected/failed`, `compaction.signal_emitted/consumed/failed/replayed`, `compaction.unresolved`, `compaction.extractor.heartbeat/failed`, `compaction.watcher.missed_event_recovered`)
+- `src-tauri/src/coordination/compact_hook.rs` (hook execution: `compaction.<tool>_hook.received/resolved/delivered/skipped/failed`, where `<tool>` is inferred from the transcript path)
+- `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.unsupported/version_unknown/reconciled`); `compaction.codex_hook.degraded` also comes from `coordination/compact_hook.rs`, `commands/settings.rs`, and `commands/coordination.rs`
 - `src-tauri/src/bin/taurhaus-daemon.rs` (`codex.notify.appended`)
 - `src-tauri/src/startup/daemon.rs` (`startup.daemon_protocol.checked`)
 
@@ -149,8 +150,8 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). Team-lead serialized runs or pre-release only. |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
 | `just install-daemon` | Builds, stops a running daemon, captures its `TAURHAUS_*`/`RUST_LOG` env and CLI args from `/proc`, normalizes them to `--data-dir <dir> --port <port>` (defaults `$TAURHAUS_DATA_DIR` or `~/.local/share/com.taurhaus.dev`, port 17233), atomically swaps the binary, then restarts it detached with the same env/args. |
-| `just build-mesh` | Resolves a lock-matching mesh binary via `scripts/resolve-mesh-binary.sh`, rebuilding the workspace binary when its `git_commit` differs from the lock. |
-| `just mesh-verify-lock` | Verifies the built mesh binary against `src-tauri/resources/mesh.lock.json`. |
+| `just build-mesh` | Resolves a mesh binary candidate via `scripts/resolve-mesh-binary.sh`: an explicit `MESH_BIN` is returned unchecked, otherwise the `MESH_PROJECT` workspace is rebuilt when its `git_commit` differs from the lock, otherwise a bundled/installed binary is returned unchecked. Not a lock gate on its own. |
+| `just mesh-verify-lock` | The lock gate: compares the resolved binary's `version`, `protocol_version`, `schema_version`, and `git_commit` against `src-tauri/resources/mesh.lock.json`. Run by `bundle-mesh` and `install-mesh`. |
 | `just update-mesh-lock VERSION [PROTOCOL] [SCHEMA] [COMMIT]` | Intentional entry point for bumping the mesh lock manifest. |
 | `just bundle-mesh` | Copies mesh into `src-tauri/resources/mesh` and writes `mesh.version` / `mesh.manifest.json`. Lock-verified. |
 | `just install-mesh` | Lock-verified mesh install to `~/.local/bin`. |
@@ -223,7 +224,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
 - **IPC**: Fine-grained commands (currently 89 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
-- **Daemon protocol**: `PROTOCOL_VERSION = 10` in `src-tauri/src/daemon/protocol.rs`. App and daemon must match **exactly** — startup logs `startup.daemon_protocol.checked` (status `outdated`) and every reconnect path drops a mismatched daemon. Startup runs `ensure_bundled_daemon_installed`, so the bundled daemon auto-updates. Additive methods (`list_claude_accounts`, `claude_project_transcript`) ship without a bump and degrade to `UNKNOWN_METHOD`.
+- **Daemon protocol**: `PROTOCOL_VERSION = 10` in `src-tauri/src/daemon/protocol.rs`. App and daemon must match **exactly** — the exact-version gate lives in `startup/setup.rs` and `ensure_expected_daemon_runtime` (`startup/daemon.rs`), and every reconnect path drops a mismatched daemon. `startup.daemon_protocol.checked` is a separate log line that labels only a *lower* daemon version `outdated`; anything else is `ok`, and the exact gate may already have rejected the daemon before it fires. The background bootstrap runs `ensure_bundled_daemon_installed`, so the bundled daemon auto-updates. Bump the constant when a wire change requires the app to be rebuilt against the new daemon; additive methods (`list_claude_accounts`, `claude_project_transcript`) ship without a bump and degrade to `UNKNOWN_METHOD`.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
 - **File rendering**: Classification → IPC → cache → render. See [`docs/file-rendering-pipeline.md`](docs/file-rendering-pipeline.md).
@@ -232,7 +233,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Tmux focus**: Foreground focus is owned by the daemon hub (`tmux list-clients` probed per cycle), travels inside the versioned session snapshot, and reaches the frontend as the `tmux-focus-changed` Tauri event. The hook → focus-file → inotify chain was deleted; `get_foreground_project` is only the startup IPC fallback.
 - **Model & reasoning effort**: Separate fields end to end — `ModelSpec { model, reasoning_effort }` (legacy `"gpt-5.4 high"` spellings still parsed), persisted per member, rendered per CLI by `LaunchSpec::render()`. The backend `ModelCatalog` (per-model efforts, deprecation hints) and `CliVersions` gates travel on `TerminalPlatformContract` in settings; the frontend uses one `ModelSelect`. Gemini's `-m` arm is **unverified**.
 - **Claude accounts**: Each project can pin a Claude subscription (= a Claude config dir), stored in `projects.claude_account_id` (migration 012), resolved per launch (request override → resumed session's transcript → project choice → global default) and rendered as a `CLAUDE_CONFIG_DIR=` prefix. Detection runs in-process on Linux/macOS, in the WSL daemon on Windows. Teams always run on the default config dir.
-- **Compaction reinjection**: One hook bridge (`compact_hook.rs`) serves Claude and Codex `SessionStart(source=compact)`. The Codex hook path is **opt-in** — `terminal.harness.codex_compaction` defaults to `transcript` (the JSONL tailer) and is gated on `CliVersions.codex_compaction_hooks_supported`. Exactly one compaction owner runs per host (daemon when configured and reachable, app otherwise), reported via `compaction.owner.selected/failed`.
+- **Compaction reinjection**: Two distinct delivery paths. The **hook path** (`compact_hook.rs`) serves Claude and Codex, accepts only `SessionStart` with `source=compact` (a `PostCompact` payload returns an empty response), and hands the card straight back to the CLI as `hookSpecificOutput.additionalContext` — it never touches the signal log or the mesh inbox. The **transcript path** tails managed transcripts and runs extractor → watcher → processor → mesh inbox. The Codex hook path is **opt-in** — `terminal.harness.codex_compaction` defaults to `transcript` (the JSONL tailer) and is gated on `CliVersions.codex_compaction_hooks_supported`. Exactly one owner runs per host — `Hooks` when the hook path is active, else daemon when configured and reachable, else app — reported via `compaction.owner.selected/failed`.
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
 - **Team templates**: Git-backed role/preset storage + `MeshTeamBuilder`-driven setup flow (quick presets, role filters, drag-and-drop roster editing) with advanced catalog/history in `TemplateBrowserPanel`, while preserving the existing initialize payload contract. Role templates are context-steering lane definitions with persisted schema fields for `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts`, plus behavioral contract, defaults, capabilities, provenance, and constraints.
@@ -270,7 +271,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
 | `src/lib/components/templateHistoryController.svelte.js` | Controller state/actions for template history/diff/revert. |
 | `src-tauri/src/startup/` | App bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`, `compaction`, `harness`, `setup`, `telemetry`, `orchestration`). |
-| `src-tauri/src/startup/compaction.rs` | Compaction owner selection: daemon when configured and reachable, app otherwise. |
+| `src-tauri/src/startup/compaction.rs` | Compaction owner selection (`App` / `DaemonPending` / `Daemon` / `Hooks`): `Hooks` when the hook path is active, else daemon when configured and reachable, else app. |
 | `src-tauri/src/session_scanner/launch.rs` | `ModelSpec { model, reasoning_effort }` (incl. `parse_legacy`) and `LaunchSpec::render()` — the per-tool launch command renderer. |
 | `src-tauri/src/commands/command_center/launching.rs` | Drives app launches through `LaunchSpec` (account resolution, `launch.command.rendered`). |
 | `src-tauri/src/session_scanner/claude_accounts.rs` | Claude account detection (config dirs, signed-in check) behind `list_claude_accounts`/`set_project_claude_account`. |
@@ -285,7 +286,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, `teams_dir()`, daemon binary, log path, `codex_notify_path()`, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
 | `src-tauri/src/coordination/compact_hook.rs` | One hook bridge for Claude Code and Codex (tool inferred from the transcript path), with an idempotent/removable Codex `hooks.json` installer. Invoked via `--compact-hook`. |
-| `src-tauri/src/coordination/compaction_events.rs` | All `compaction.*` structured events, incl. `compaction.owner.selected/failed`. |
+| `src-tauri/src/coordination/compaction_events.rs` | Transcript-pipeline compaction events: owner selection, signal lifecycle, extractor/watcher health. Hook-execution events are built in `compact_hook.rs`. |
 | `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
 | `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |
 | `src-tauri/src/session_scanner/compaction_watcher.rs` | Signal-log watcher that feeds compaction processing. |
@@ -324,7 +325,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Change launch command, model, or reasoning effort | `src-tauri/src/session_scanner/launch.rs`, `src-tauri/src/commands/command_center/launching.rs` (app launches), `src-tauri/src/coordination/pipelines/helpers.rs` (team launches), `src-tauri/src/models/mod.rs` (`ModelCatalog`/`CliVersions`), `src/lib/modelCatalog.js` + `src/lib/components/ModelSelect.svelte`, golden tests in `src-tauri/tests/cli_renderers.rs` |
 | Claude account (subscription) selection | `src-tauri/src/session_scanner/claude_accounts.rs`, `src-tauri/src/commands/claude_accounts/mod.rs`, `src-tauri/src/db/migrations/012_project_claude_account.sql`, `src-tauri/src/daemon/protocol.rs` (`list_claude_accounts`, `claude_project_transcript`), `src/lib/claudeAccounts.svelte.js` |
 | Fix tmux focus / foreground indicator | `src-tauri/src/session_scanner/tmux.rs` (`list_clients`, `focus_from_clients`), `src-tauri/src/daemon/session_activity.rs`, `src-tauri/src/daemon_lifecycle.rs` (emits `tmux-focus-changed`), `src-tauri/src/commands/command_center/mod.rs` (startup fallback), `src/lib/shell/sessionLifecycle.svelte.js` + `src/lib/shell/events.svelte.js` |
-| Change the daemon wire contract | `src-tauri/src/daemon/protocol.rs` (`PROTOCOL_VERSION` — bump on any wire change; regression tests pin it), `src-tauri/src/daemon_lifecycle.rs` (`classify_daemon_health`/`confirm_daemon_protocol`), `src-tauri/src/startup/daemon.rs`, then `just install-daemon` |
+| Change the daemon wire contract | `src-tauri/src/daemon/protocol.rs` (`PROTOCOL_VERSION` — bump when the change requires the app to be rebuilt against the new daemon; additive methods ship without a bump), `src-tauri/src/daemon_lifecycle.rs` (`classify_daemon_health`/`confirm_daemon_protocol`), `src-tauri/src/startup/daemon.rs`, then `just install-daemon` |
 | Fix path/root resolution | `src-tauri/src/provider/path.rs`, `src-tauri/src/provider/platform_paths.rs` |
 | Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 

@@ -56,7 +56,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `src/lib/context/ModelCatalogContext.js` | Model catalog context provider |
 | `src/lib/components/ModelSelect.svelte` | Effort-aware model picker fed by the backend catalog |
 | `src/lib/claudeAccounts.svelte.js` | Claude account state for the chooser and chip |
-| `src/lib/components/ClaudeAccountChooser.svelte` | First-launch account decision (Shell) when a host has 2+ signed-in accounts |
+| `src/lib/components/ClaudeAccountChooser.svelte` | Per-launch account decision (Shell), shown only when a Claude launch is unplaced and 2+ accounts are signed in |
 | `src/lib/components/ClaudeAccountChip.svelte` | Per-project Claude account display/change control (OverviewTab) |
 | `Sidebar.svelte` | Project list, session indicators, context menu, hover cards |
 | `src/lib/OverviewTab.svelte` | Project summary, README, recent commits, sessions |
@@ -141,7 +141,7 @@ Both implement the `ProjectProvider` trait. The routing is transparent to comman
 
 ### Storage
 
-- **SQLite** (`rusqlite`): 7 tables — `projects`, `sessions`, `session_activity`, `relationships`, `tasks`, `settings`, `archived_task_session_summaries` (migration 011). `projects.claude_account_id` (migration 012) pins a Claude subscription per project; `NULL` means the global default account. Source of truth for structured data.
+- **SQLite** (`rusqlite`): 7 domain tables — `projects`, `sessions`, `session_activity`, `relationships`, `tasks`, `settings`, `archived_task_session_summaries` (migration 011) — plus the internal `_migrations` bookkeeping table created by `db/migrations.rs`. `projects.claude_account_id` (migration 012) pins a Claude subscription per project; `NULL` means the global default account. Source of truth for structured data.
 - **tantivy**: Full-text search index over files, commits, sessions. Rebuilt from filesystem on startup.
 - **Filesystem**: Source of truth for content. SQLite stores metadata; files are always read fresh.
 - **Path overrides**: `TAURHAUS_DATA_DIR` overrides Tauri `app_data_dir()` resolution; `TAURHAUS_CLAUDE_DIR` overrides Claude-derived roots used by task/coordination watchers.
@@ -179,7 +179,7 @@ Logging is structured and machine-first:
 - **Rotation policy**: size-based rotation (20 MB segment threshold) with retention pruning (7 days).
 - **Frontend bridge**: `src/lib/logger.js` forwards structured payloads (`component`, `subsystem`, `event`, `message`, `context`) and emits drop telemetry (`frontend.logs.dropped`) under throttling.
 - **Lifecycle instrumentation**:
-  - startup phases: `startup.phase.started/completed/failed`
+  - startup phases (all from `src-tauri/src/startup/telemetry.rs`, one event family per phase — there is no generic `startup.phase.*`): `startup.app.started`, `startup.paths.resolved`, `startup.logging.initialized`, `startup.database.started/completed/failed`, `startup.daemon_phase.started/completed`, `startup.daemon_connect.succeeded/deferred`, `startup.orchestration.started/completed`, `startup.watchers.initialized/failed`, `startup.search.initialized/failed`, `startup.background_tasks.started/completed`, `startup.self_heal.started/completed/failed`
   - IPC lifecycle: `ipc.command.received/completed/failed`, `ipc.lock.wait`
   - daemon RPC lifecycle: `daemon.rpc.sent/response/timeout`
   - coordination step lifecycle: `coordination.step.started/completed/failed`
@@ -187,7 +187,7 @@ Logging is structured and machine-first:
   - project mutation and reseed outcomes: `projects.*`, `projects.reseed.degraded`
   - watch/index activity: `watch.batch.flushed`, `watch.git_status.*`, `search.file_index.*`
   - session activity transitions: `activity.state.changed` (`pid`, `tool`, `from`, `to`, `source`)
-  - process inventory health: `session_scanner.process_scan.degraded/recovered` (edge-triggered)
+  - process inventory health: `session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit
   - launch rendering: `launch.command.rendered`, `launch.account.*`, `launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`
   - compaction: `compaction.owner.selected/failed`, `compaction.signal_*`, `compaction.extractor.*`, `compaction.codex_hook.*`
   - Codex native idle notify: `codex.notify.appended`
@@ -217,7 +217,11 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Mesh daemon hot-swap**: mesh installs are version-aware. Member daemon reconciliation checks executable identity and automatically replaces drifted daemons; bounded background self-heal does the same for drifted team-daemons, so normal upgrades do not require a manual `team-daemon stop/start/restart-all` cycle.
 - **Runtime responsiveness**: Mesh steady-state polling stays on the fast snapshot path, and the frontend suspends hidden-tab refresh work, which avoids switch-away stalls and reduces Windows popup latency during runtime navigation.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude. Codex/Gemini leads currently validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
-- **Compaction reinjection**: When a managed agent loses context (compaction), taurhaus detects this, resolves which team member was affected, and re-delivers their working context to the team inbox. The pipeline has three stages: `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox only when the operational snapshot still has resumable task context. The hook bridge is `coordination/compact_hook.rs` and serves both Claude and Codex (tool inferred from the transcript path; `SessionStart(compact)` / `PostCompact`). It installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, returns `hookSpecificOutput.additionalContext`, logs standalone hook execution into the canonical JSONL sink, and manages an idempotent, removable, exe-path self-repairing Codex `hooks.json` installer. The Codex hook path is **opt-in**: `harness.codex_compaction` defaults to `transcript` (the hardened extractor) until validated on a live team, and hook installation is gated on `CliVersions.codex_compaction_hooks_supported`. Exactly one compaction owner runs per host — daemon when configured and reachable, app otherwise, with the fallback revoked on recovery.
+- **Compaction reinjection**: When a managed agent loses context (compaction), taurhaus resolves which team member was affected and re-delivers their working context. Two delivery paths exist, and they do not share a pipeline.
+  - **Transcript path** (default): `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox — only when the operational snapshot still has resumable task context.
+  - **Hook path**: `coordination/compact_hook.rs` serves both Claude and Codex (tool inferred from the transcript path). It accepts only `SessionStart` with `source=compact` — a `PostCompact` payload is skipped and returns an empty response — and hands the card straight back to the CLI as `hookSpecificOutput.additionalContext`, bypassing the signal log and the mesh inbox entirely. It installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, logs standalone hook execution into the canonical JSONL sink, and manages an idempotent, removable, exe-path self-repairing Codex `hooks.json` installer.
+
+  The Codex hook path is **opt-in**: `harness.codex_compaction` defaults to `transcript` (the hardened extractor) until validated on a live team, and hook installation is gated on `CliVersions.codex_compaction_hooks_supported`. Exactly one owner runs per host (`startup/compaction.rs`): `Hooks` when the hook path is active, otherwise daemon when configured and reachable, otherwise app — with the app fallback revoked on daemon recovery.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model. `MeshRuntimeBar` is also the shipped cold-restart/degraded recovery surface for team resume.
 - **Recovery status at the final active-development snapshot**: shipped resume/recovery flows are covered by dedicated E2E specs. Known degraded-path edge cases remain recorded in the task and commit history rather than presented as an active roadmap.
@@ -314,7 +318,9 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 - `git_changed` — .git directory modified (triggers commit list refresh)
 - `session_file_created` — new session handoff file detected
 
-**Pairing rule:** `PROTOCOL_VERSION = 10`. App and daemon must match **exactly** — startup and every reconnect path reject a mismatch, and regression tests pin the constant so any wire change forces a bump. After changing the contract, run `just install-daemon`. Additive methods (`list_claude_accounts`, `claude_project_transcript`) shipped without a bump and degrade to `UNKNOWN_METHOD` on older daemons.
+**Pairing rule:** `PROTOCOL_VERSION = 10`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
+
+**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons (`list_claude_accounts`, `claude_project_transcript`). The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one (7 for hub-owned focus, 9 for the degradation cursor). After changing the contract, run `just install-daemon`.
 
 **Commands (app → daemon, 27 methods):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
@@ -327,17 +333,22 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 
 ## Startup Sequence
 
-The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`):
+The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`). It is not a single serial chain: a synchronous setup lane runs to completion while daemon bootstrap and the heavier scans run concurrently.
 
-1. **Database** — open/create SQLite, run migrations
-2. **Daemon** — ensure the bundled daemon is installed/updated (`ensure_bundled_daemon_installed`), connect to an existing daemon or auto-launch (platform-specific), and check the protocol version exactly (`startup.daemon_protocol.checked`, status `outdated` on mismatch)
-3. **Watch bootstrap** — create the local watcher/event processor, reconcile activity-based local watches, and reconcile WSL daemon watches when applicable
-4. **Activity reseed** — update `last_activity_at` from latest git commit per project
-5. **Session import** — import any unimported session handoff files
-6. **Search index** — build tantivy index from filesystem if empty
-7. **Task scan** — seed task database from live CLI tool sources
+**Synchronous lane** (`startup/mod.rs` → `startup/orchestration.rs`, blocks `setup()`):
 
-Steps 3–7 run in background threads — the UI is interactive as soon as the database and daemon are ready. The watch bootstrap also ensures the dedicated Claude task-directory watch. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
+1. **Paths and logging** — resolve data/Claude roots, open the JSONL sink
+2. **Database** — open/create SQLite, run migrations
+3. **Daemon fast path** — attempt a connect to an already-running daemon and validate its ping (`startup/setup.rs`); a failure here defers rather than blocks
+4. **Watch bootstrap** — create the local watcher/event processor, reconcile activity-based local watches, and reconcile WSL daemon watches when applicable
+5. **Compaction owner** — select and start the owner (`startup/compaction.rs`)
+6. **Search open** — open the tantivy index
+
+**Concurrent daemon bootstrap** (spawned first, runs on its own thread): ensure the bundled daemon is installed/updated (`ensure_bundled_daemon_installed`), auto-launch it when the fast path did not connect, and log `startup.daemon_protocol.checked`. Daemon readiness is **not** a prerequisite for the UI — the app comes up on the local provider and picks the daemon up when it lands.
+
+**Background tasks** (spawned last, `startup/bootstrap.rs`): activity reseed (`last_activity_at` from the latest git commit per project), session scan/import, search index build, task scan from live CLI tool sources.
+
+The watch bootstrap also ensures the dedicated Claude task-directory watch. In Tauri runtime, session updates are event-driven (`sessions-updated`) with a one-time startup hydrate; frontend-only mock mode uses polling fallback.
 
 Claude task-directory watching follows the same override rules: default `~/.claude/tasks`, or `<TAURHAUS_CLAUDE_DIR>/tasks` when `TAURHAUS_CLAUDE_DIR` is set.
 
@@ -389,8 +400,8 @@ just metrics          # Quality KPI report snapshot
 just test-macos       # Run Rust tests on Mac Mini via SSH
 just build-daemon     # Build the daemon binary
 just install-daemon   # Build + install the daemon, preserving its env/args and restarting it
-just build-mesh       # Resolve a lock-matching mesh binary (rebuilds when the commit drifts)
-just mesh-verify-lock # Verify the mesh binary against mesh.lock.json
+just build-mesh       # Resolve a mesh binary candidate (rebuilds the workspace when the commit drifts)
+just mesh-verify-lock # The lock gate: verify the resolved binary against mesh.lock.json
 just update-mesh-lock # Bump the mesh lock manifest (intentional entry point)
 just bundle-mesh      # Bundle mesh into src-tauri/resources (lock-verified)
 just install-mesh     # Lock-verified mesh install to ~/.local/bin
