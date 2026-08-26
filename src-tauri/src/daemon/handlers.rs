@@ -95,12 +95,11 @@ pub(crate) fn dispatch(
 /// Claude subscriptions on the daemon's host — the Windows app cannot read the
 /// WSL home itself.
 fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
-    DaemonResponse::ok(
-        id,
-        protocol::ClaudeAccountsResult {
-            accounts: crate::session_scanner::claude_accounts::detect_claude_accounts_cached(),
-        },
-    )
+    let mut accounts = crate::session_scanner::claude_accounts::detect_claude_accounts_cached();
+    // The usage sink is written on the daemon's side of the WSL boundary too:
+    // the status line runs in the same Linux shell Claude Code does.
+    crate::daemon::claude_usage::attach_usage(&mut accounts);
+    DaemonResponse::ok(id, protocol::ClaudeAccountsResult { accounts })
 }
 
 /// The newest transcript a project has under any detected config dir — the

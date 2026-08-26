@@ -36,7 +36,7 @@ pub(crate) const SOURCE_DAEMON: &str = "daemon";
 const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
 
 /// The detected accounts, and whether they are an answer at all.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeAccountsResult {
     pub accounts: Vec<ClaudeAccount>,
@@ -109,8 +109,12 @@ pub(crate) fn claude_accounts_report(provider: &ProviderState) -> ClaudeAccounts
     if cfg!(target_os = "windows") {
         return daemon_accounts_report(provider);
     }
+    let mut accounts = detect_claude_accounts_cached();
+    // Detection is cached for a minute; usage is read fresh, because the whole
+    // point of it is to be current when the chooser opens.
+    crate::daemon::claude_usage::attach_usage(&mut accounts);
     ClaudeAccountsResult {
-        accounts: detect_claude_accounts_cached(),
+        accounts,
         source: SOURCE_NATIVE.to_string(),
         degraded: false,
         error: None,

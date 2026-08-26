@@ -38,6 +38,11 @@ impl PlatformPaths {
         Self::app_data_root().join(crate::daemon::codex_notify::CODEX_NOTIFY_FILENAME)
     }
 
+    /// Claude subscription usage sink, fed by the status-line bridge.
+    pub fn claude_usage_path() -> PathBuf {
+        Self::app_data_root().join(crate::daemon::claude_usage::CLAUDE_USAGE_FILENAME)
+    }
+
     /// Claude home directory (`~/.claude`).
     pub fn claude_dir() -> PathBuf {
         env_path_override(CLAUDE_DIR_OVERRIDE_ENV).unwrap_or_else(default_claude_dir)

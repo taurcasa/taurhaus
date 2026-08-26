@@ -310,6 +310,9 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
+        Some(crate::session_scanner::claude_statusline::USAGE_SINK_SUBCOMMAND) => {
+            Some(run_claude_usage_sink_cli(args))
+        }
         Some("--launch-command") => Some(run_launch_command_cli(args.next().as_deref())),
         Some("--render-onboarding") => Some(run_render_onboarding_cli(args.next().as_deref())),
         _ => None,
@@ -671,6 +674,33 @@ fn run_compact_hook_cli() -> i32 {
         }
     }
 
+    0
+}
+
+/// The native counterpart of `taurhaus-daemon claude-usage-sink`.
+///
+/// On Linux and macOS the app binary is what the generated status-line script
+/// calls. It stays as bare as the daemon's mode — Claude Code re-runs it on
+/// every refresh — so no log sink is installed and nothing but the rendered
+/// line reaches stdout.
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_claude_usage_sink_cli(args: impl Iterator<Item = String>) -> i32 {
+    let parsed = match crate::daemon::claude_usage::parse_usage_sink_args(args) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("{error}");
+            return 2;
+        }
+    };
+    if let Err(error) = crate::daemon::claude_usage::run_usage_sink(
+        &parsed,
+        io::stdin().lock(),
+        io::stdout().lock(),
+        &crate::provider::platform_paths::PlatformPaths::claude_usage_path(),
+        chrono::Utc::now(),
+    ) {
+        eprintln!("{error}");
+    }
     0
 }
 

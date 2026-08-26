@@ -49,6 +49,15 @@ function renderChooser(overrides = {}) {
   return { onConfirm, onCancel }
 }
 
+function usageAt(fiveHour, sevenDay, minutesAgo) {
+  const now = Date.now()
+  return {
+    five_hour: { used_percentage: fiveHour, resets_at: Math.floor(now / 1000) + 3600 },
+    seven_day: { used_percentage: sevenDay, resets_at: Math.floor(now / 1000) + 90000 },
+    observed_at: new Date(now - minutesAgo * 60_000).toISOString(),
+  }
+}
+
 describe('ClaudeAccountChooser', () => {
   it('lists every account and marks the default', () => {
     renderChooser()
@@ -134,5 +143,26 @@ describe('ClaudeAccountChooser', () => {
     renderChooser()
 
     expect(screen.queryByTestId('claude-accounts-degraded')).not.toBeInTheDocument()
+  })
+  // Regression: d6839a3 asked which subscription to run on without saying what
+  // was left of either one — the single moment the answer actually matters.
+  it('shows each account usage so the user can pick the one with headroom', () => {
+    render(ClaudeAccountChooser, {
+      props: {
+        accounts: [
+          { ...ACCOUNTS[0], usage: usageAt(91, 62, 1) },
+          { ...ACCOUNTS[1], usage: usageAt(12, 8, 1) },
+          ACCOUNTS[2],
+        ],
+        projectName: 'taurhaus',
+        onConfirm: vi.fn(),
+        onCancel: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('claude-account-option-account-1')).toHaveTextContent('5h 91%')
+    expect(screen.getByTestId('claude-account-option-account-2')).toHaveTextContent('5h 12%')
+    // The logged-out account has no record, and an empty meter is the answer.
+    expect(screen.getByTestId('claude-account-option-account-3')).not.toHaveTextContent('%')
   })
 })

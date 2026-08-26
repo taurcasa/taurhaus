@@ -81,7 +81,20 @@ pub fn run(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
+    // Deliberately here and not in `run_with_compaction_teams_dir`: this writes
+    // into real Claude config dirs, and `run_for_test` shares that function.
+    // On Windows the config dirs live in WSL, where only the daemon can reach
+    // them, so the daemon is the one that installs the status-line bridge.
+    install_claude_usage_statusline();
     run_with_compaction_teams_dir(config, shutdown, provider, None)
+}
+
+fn install_claude_usage_statusline() {
+    let Ok(exe) = std::env::current_exe() else {
+        tracing::debug!("Claude usage status line skipped: the daemon has no resolvable path");
+        return;
+    };
+    crate::session_scanner::claude_statusline::install_statusline_for_detected_accounts(&exe);
 }
 
 fn run_with_compaction_teams_dir(

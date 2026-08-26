@@ -15,6 +15,9 @@ use taurhaus_lib::provider::platform_paths::PlatformPaths;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    if maybe_run_claude_usage_sink_mode() {
+        return;
+    }
     if maybe_run_codex_notify_mode() {
         return;
     }
@@ -190,6 +193,40 @@ fn maybe_run_codex_notify_mode() -> bool {
     true
 }
 
+/// `taurhaus-daemon claude-usage-sink --config-dir <dir> [--render]`.
+///
+/// Called by the generated status-line script, which Claude Code re-runs on
+/// every refresh — so this mode stays deliberately bare: no tracing subscriber,
+/// no JSONL log sink, no writer thread. Diagnostics go to stderr, which the
+/// script discards; the record and (when asked) the rendered line are the whole
+/// job, and neither may cost the user their status line.
+fn maybe_run_claude_usage_sink_mode() -> bool {
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref()
+        != Some(taurhaus_lib::session_scanner::claude_statusline::USAGE_SINK_SUBCOMMAND)
+    {
+        return false;
+    }
+
+    let parsed = match taurhaus_lib::daemon::claude_usage::parse_usage_sink_args(args) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
+    if let Err(error) = taurhaus_lib::daemon::claude_usage::run_usage_sink(
+        &parsed,
+        std::io::stdin().lock(),
+        std::io::stdout().lock(),
+        &PlatformPaths::claude_usage_path(),
+        chrono::Utc::now(),
+    ) {
+        eprintln!("{error}");
+    }
+    true
+}
+
 fn maybe_run_compact_hook_mode() -> bool {
     let mode = std::env::args().nth(1);
     if !matches!(
@@ -326,6 +363,7 @@ fn print_help() {
     eprintln!();
     eprintln!("Usage: taurhaus-daemon [OPTIONS]");
     eprintln!("       taurhaus-daemon codex-notify <JSON>");
+    eprintln!("       taurhaus-daemon claude-usage-sink --config-dir <DIR> [--render]");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT})");

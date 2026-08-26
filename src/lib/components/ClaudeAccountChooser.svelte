@@ -6,6 +6,8 @@
    * has not chosen yet. Enter takes the default account so the common answer
    * costs a keystroke.
    */
+  import ClaudeUsageMeter from './ClaudeUsageMeter.svelte'
+
   let {
     accounts = [],
     projectName = '',
@@ -115,6 +117,11 @@
           <span class="block truncate text-[11px] {metaTone}">{account.email}</span>
           {#if metaFor(account)}
             <span class="block truncate text-[10px] {metaTone}">{metaFor(account)}</span>
+          {/if}
+          {#if account.usage}
+            <span class="mt-1.5 block max-w-[12rem]">
+              <ClaudeUsageMeter usage={account.usage} {dark} />
+            </span>
           {/if}
         </span>
         {#if account.id === defaultAccount?.id}

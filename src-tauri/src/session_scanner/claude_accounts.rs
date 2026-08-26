@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::daemon::claude_usage::ClaudeAccountUsage;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::types::RuntimeSession;
 
@@ -67,7 +68,10 @@ const fn host_credential_store() -> CredentialStore {
 }
 
 /// One Claude subscription, identified by the config dir it lives in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Eq` is deliberately absent: `usage` carries the percentages Claude Code
+/// reports, and those are `number` in its schema.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeAccount {
     /// `oauthAccount.accountUuid`, or the config dir when a release stops
@@ -90,6 +94,13 @@ pub struct ClaudeAccount {
     /// moves taurhaus's root, and Claude Code knows nothing about that.
     #[serde(default)]
     pub is_process_default: bool,
+    /// What this subscription's status line last reported about its 5-hour and
+    /// 7-day limits. `None` while nothing has reported: usage only flows while
+    /// a session of that account is running, so a fresh install, an account
+    /// that has not been used, and an account at 0 % are three different
+    /// things and only the last of them is a number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ClaudeAccountUsage>,
 }
 
 /// `.claude.json`, reduced to the account block. Every other key is ignored;
@@ -159,7 +170,7 @@ pub struct AccountRequest<'a> {
 }
 
 /// The account a launch runs on.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AccountResolution {
     /// Config dir to render into the command — `None` only when it is the dir
     /// Claude Code reads with `CLAUDE_CONFIG_DIR` unset, so a single-account
@@ -359,6 +370,9 @@ fn read_account(
         logged_in: signed_in(config_dir, store),
         is_default,
         is_process_default,
+        // Detection reads config dirs; usage lives in taurhaus's own sink and
+        // is attached by the callers that surface accounts to the user.
+        usage: None,
     })
 }
 

@@ -614,6 +614,44 @@ describe('ipc module', () => {
       expect(result.error).toBe('The WSL daemon is not reachable')
       delete window.__TAURI_INTERNALS__
     })
+
+    // Regression: d6839a3 normalized accounts without usage, so the camelCase
+    // the backend serializes (`fiveHour.usedPercentage`) would have reached the
+    // meter as `undefined` and every subscription would have looked unreported.
+    it('carries the usage the status line reported for each account', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        accounts: [
+          {
+            id: 'account-1',
+            configDir: '/home/user/.claude',
+            email: 'a@example.com',
+            loggedIn: true,
+            isDefault: true,
+            usage: {
+              fiveHour: { usedPercentage: 26, resetsAt: 1787784600 },
+              sevenDay: { usedPercentage: 17, resetsAt: 1788300000 },
+              observedAt: '2026-08-27T00:29:00Z',
+            },
+          },
+          { id: 'account-2', config_dir: '/home/user/.claude-work', email: 'b@example.com' },
+        ],
+        source: 'native',
+        degraded: false,
+        error: null,
+      })
+
+      const result = await ipc.listClaudeAccounts()
+
+      expect(result.accounts[0].usage).toEqual({
+        five_hour: { used_percentage: 26, resets_at: 1787784600 },
+        seven_day: { used_percentage: 17, resets_at: 1788300000 },
+        observed_at: '2026-08-27T00:29:00Z',
+      })
+      // An account nothing has reported for stays without usage; it is not 0 %.
+      expect(result.accounts[1].usage).toBeNull()
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   // -----------------------------------------------------------------------
@@ -722,6 +760,7 @@ describe('ipc module', () => {
         codex_compaction_hooks_supported: true,
         codex_notify_supported: true,
         codex_queue_wake_supported: true,
+        claude_statusline_usage_supported: false,
       })
       delete window.__TAURI_INTERNALS__
     })

@@ -21,6 +21,15 @@ const ACCOUNTS = [
   },
 ]
 
+function usageAt(fiveHour, sevenDay, minutesAgo) {
+  const now = Date.now()
+  return {
+    five_hour: { used_percentage: fiveHour, resets_at: Math.floor(now / 1000) + 3600 },
+    seven_day: { used_percentage: sevenDay, resets_at: Math.floor(now / 1000) + 90000 },
+    observed_at: new Date(now - minutesAgo * 60_000).toISOString(),
+  }
+}
+
 describe('ClaudeAccountChip', () => {
   it('stays hidden when only one account exists', () => {
     render(ClaudeAccountChip, {
@@ -116,5 +125,35 @@ describe('ClaudeAccountChip', () => {
     expect(screen.getByTestId('claude-accounts-degraded')).toHaveTextContent(
       'Accounts unavailable (daemon offline) — using last known'
     )
+  })
+  // Regression: d6839a3 named the subscription a project runs on but never
+  // said what was left of it, so choosing between two Max accounts meant
+  // guessing which one still had headroom.
+  it('shows the selected account usage on the chip and every account usage in the menu', async () => {
+    const accounts = [
+      { ...ACCOUNTS[0], usage: usageAt(26, 17, 2) },
+      { ...ACCOUNTS[1], usage: usageAt(81, 44, 2) },
+    ]
+    render(ClaudeAccountChip, {
+      props: { accounts, selectedAccountId: 'account-2', onSelect: vi.fn() },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    expect(chip).toHaveTextContent('5h 81%')
+
+    await fireEvent.click(chip)
+    expect(screen.getByTestId('claude-account-menu-item-account-1')).toHaveTextContent('5h 26%')
+    expect(screen.getByTestId('claude-account-menu-item-account-2')).toHaveTextContent('7d 44%')
+  })
+
+  it('says nothing about usage for an account no status line has reported', async () => {
+    render(ClaudeAccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
+    })
+
+    expect(screen.getByTestId('claude-account-chip')).not.toHaveTextContent('%')
+
+    await fireEvent.click(screen.getByTestId('claude-account-chip'))
+    expect(screen.queryByTestId('claude-usage-meter')).not.toBeInTheDocument()
   })
 })
