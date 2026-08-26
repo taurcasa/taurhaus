@@ -18,6 +18,10 @@ The daemon can run on all supported platforms, but it is only responsible for wa
 
 ![System Architecture](docs/images/system-architecture.jpg)
 
+## Harness Model
+
+taurhaus does not host models itself: Claude Code is the Claude harness (subscription models are only reachable through it), Codex and Gemini use their own CLIs, and taurhaus coordinates all of them from outside through tmux panes and the mesh bridge. Harness-native capabilities (a sessions registry, hooks, turn-complete notifications) are used where they exist; tmux + mesh is the floor that reaches any CLI. Per-tool behaviour is confined to capability slices behind one registry (`src-tauri/src/session_scanner/cli_tool.rs`), so adding a CLI touches only the slices where it differs. Model and reasoning effort are separate fields end to end, a Claude subscription is chosen per project, and the app and daemon refuse to run on mismatched protocol versions. See [Harness Model](docs/architecture/harness-model.md).
+
 ## Platform Abstraction
 
 The platform boundary is intentionally split:
@@ -430,9 +434,16 @@ bun run dev:visual
 | Terminal mgmt | Per-platform emulator enum | Same decision tree, platform-specific activation |
 | Provider routing | Trait-based dispatch | Transparent local vs daemon routing |
 | Unsafe code | `#![deny(unsafe_code)]` | One scoped exception for libgit2 init |
+| Harness | Harness-native where available, tmux + mesh as the floor | Subscription Claude is CLI-only; the floor reaches any CLI |
+| Tool extensibility | Capability slices behind one registry | Adding a CLI touches only where it differs |
+| Model + effort | Separate fields end to end, validated per tool | Effort used to be dropped silently; now logged, never silent |
+| App ↔ daemon | Exact protocol match on every connect; additive by default | A half-working pair is worse than a refused one; releases ship both |
+| Claude accounts | `CLAUDE_CONFIG_DIR` per project, derived from the transcript on resume | Session history lives inside the config dir |
+| Degraded scans | Inert — last good snapshot stands | Treating a failed read as "no sessions" caused the blackouts |
 
 ## Further Reading
 
+- [Harness model](docs/architecture/harness-model.md) — what taurhaus owns versus what the CLIs own; capability slices; pairing and stability rules
 - [Data model reference](docs/architecture/data-model.md) — SQLite schema, tantivy index, filesystem layout
 - [IPC reference](docs/architecture/ipc-reference.md) — all Tauri IPC commands with parameters and types
 - [Daemon protocol](docs/architecture/daemon-protocol.md) — TCP JSON-line protocol specification
