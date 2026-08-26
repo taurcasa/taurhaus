@@ -15,11 +15,13 @@
  * Every boundary that ends an interval goes through `accrueElapsed`: a new
  * snapshot, the snapshot that finds a session gone, and an explicit stop. What
  * the store refuses to measure is an interval it did not observe — a degraded
- * snapshot or a dead daemon bridge suspends the trackers, so a scanner blackout
- * is neither counted as work nor mistaken for idleness.
+ * snapshot, a cached or failed poll, or a dead daemon bridge suspends the
+ * trackers, so a scanner blackout is neither counted as work nor mistaken for
+ * idleness.
  *
  * Update sources:
- * - `startPolling()` / `stopPolling()` for frontend-only mock mode.
+ * - `startPolling()` / `stopPolling()` for frontend-only mock mode and for the
+ *   fallback loop the app runs while the daemon bridge is down.
  * - `applyDaemonSessionUpdate()` for event-driven daemon updates.
  *
  * Usage:
@@ -29,7 +31,7 @@
  *   getSessionsForProject('/home/user/proj')  // → ClaudeSession[]
  */
 
-import { listClaudeSessions, listProjects, recordSessionActivity } from './ipc.js'
+import { listCliSessionSnapshot, listProjects, recordSessionActivity } from './ipc.js'
 import { normalizeProjectPath } from './pathUtils.js'
 
 const POLL_INTERVAL_MS = 500
@@ -212,17 +214,53 @@ function flushTrackedActivity(trackersToFlush, now = Date.now()) {
 /** Callback invoked when polling receives a non-empty session snapshot. */
 let onSessionsReceived = null
 
-/** Perform a single poll and update the sessions map. */
+/**
+ * Read a poll answer as a list plus how it was obtained.
+ *
+ * A bare array is the legacy shape — it is a list nobody annotated, so it is
+ * taken at face value as an observation.
+ */
+function readPollSnapshot(result) {
+  if (Array.isArray(result)) {
+    return { list: result, freshness: 'fresh' }
+  }
+  return {
+    list: Array.isArray(result?.sessions) ? result.sessions : null,
+    freshness: result?.freshness ?? 'fresh',
+  }
+}
+
+/**
+ * Perform a single poll and update the sessions map.
+ *
+ * Polling runs precisely when the daemon bridge is down, so most of its answers
+ * are not observations: the backend replays a degraded hub snapshot, serves its
+ * on-disk cache, or has nothing at all. Only a fresh answer resumes
+ * measurement — anything else keeps the trackers suspended, and so does a
+ * rejected poll, which saw nothing by definition.
+ */
 async function poll() {
+  let result
   try {
-    const result = await listClaudeSessions()
-    applySessions(result)
-    if (onSessionsReceived && Array.isArray(result) && result.length > 0) {
-      onSessionsReceived(result)
-    }
+    result = await listCliSessionSnapshot()
   } catch (err) {
-    // On error, keep previous state (graceful degradation)
+    // On error, keep previous state (graceful degradation) and stop the clock.
+    suspendActivityAccrual(Date.now())
     console.warn('[sessionStore] poll failed:', err)
+    return
+  }
+
+  const { list, freshness } = readPollSnapshot(result)
+  const observed = freshness === 'fresh'
+  if (list === null || freshness === 'unavailable') {
+    // Nothing to show and nothing to measure: keep what is on screen.
+    applySessions(null)
+    return
+  }
+
+  applySessions(list, { degraded: !observed })
+  if (observed && onSessionsReceived && Array.isArray(list) && list.length > 0) {
+    onSessionsReceived(list)
   }
 }
 
@@ -238,8 +276,15 @@ async function poll() {
  * ones, replayed for continuity while its scanner is blind. They are stamped as
  * such so the indicator reads uncertain instead of holding the last green
  * reading, and their trackers stop measuring until a real observation returns.
+ *
+ * `observationGap` says the interval that *ended* with this snapshot ran
+ * through a blackout the app never heard start — one that was over again by the
+ * time this snapshot arrived. That interval is dropped rather than credited to
+ * the state in effect when it started. The edge *into* a blackout is not such a
+ * gap: the scanner was reporting normally until a cadence ago, and `degraded`
+ * suspends everything from there.
  */
-function applySessions(result, { degraded = false } = {}) {
+function applySessions(result, { degraded = false, observationGap = false } = {}) {
   const now = Date.now()
   if (!Array.isArray(result)) {
     suspendActivityAccrual(now)
@@ -277,6 +322,9 @@ function applySessions(result, { degraded = false } = {}) {
       tracker.projectId = session.project_id
     }
 
+    if (observationGap) {
+      tracker.suspended = true
+    }
     accrueElapsed(tracker, now)
     tracker.suspended = degraded
 
@@ -379,12 +427,17 @@ export { DEFAULT_TAURI_POLL_INTERVAL_MS }
  *
  * `degraded` marks the sessions as the hub's retained snapshot rather than a
  * fresh observation; the bridge emits it on the edges of the daemon scanner
- * going blind and recovering (`daemon_lifecycle.rs`).
+ * going blind and recovering (`daemon_lifecycle.rs`). `observation_gap` covers
+ * what the flag cannot: a blackout that began and ended between two answers is
+ * over by the time the app hears about it, but the interval it ran through was
+ * still never observed.
  */
 export function applyDaemonSessionUpdate(payload) {
   const list = Array.isArray(payload) ? payload : payload?.sessions
   const degraded = !Array.isArray(payload) && payload?.degraded === true
-  applySessions(list, { degraded })
+  const observationGap = !Array.isArray(payload)
+    && (payload?.observation_gap ?? payload?.observationGap) === true
+  applySessions(list, { degraded, observationGap })
 }
 
 /**
@@ -394,7 +447,9 @@ export function applyDaemonSessionUpdate(payload) {
  */
 export async function hydrateFromBackend() {
   try {
-    applySessions(await listClaudeSessions())
+    const { list, freshness } = readPollSnapshot(await listCliSessionSnapshot())
+    if (freshness === 'unavailable' || list === null) return
+    applySessions(list, { degraded: freshness !== 'fresh' })
   } catch (err) {
     console.warn('[sessionStore] hydrate failed:', err)
   }

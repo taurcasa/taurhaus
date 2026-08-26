@@ -1106,6 +1106,7 @@ mod tests {
             focus: None,
             foreground_project_path: None,
             degraded,
+            degraded_revision: 0,
         })
     }
 

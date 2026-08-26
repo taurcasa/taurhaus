@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-vi.mock('./ipc.js', () => ({
-  listClaudeSessions: vi.fn(),
-  listProjects: vi.fn().mockResolvedValue([]),
-  recordSessionActivity: vi.fn().mockResolvedValue(undefined),
-}))
+vi.mock('./ipc.js', () => {
+  const listClaudeSessions = vi.fn()
+  return {
+    listClaudeSessions,
+    // The store polls the snapshot command, which answers with the list *and*
+    // how it was obtained. Cases that only care about the list keep stubbing
+    // `listClaudeSessions`; a bare array reads as an observed list.
+    listCliSessionSnapshot: vi.fn(() => listClaudeSessions()),
+    listProjects: vi.fn().mockResolvedValue([]),
+    recordSessionActivity: vi.fn().mockResolvedValue(undefined),
+  }
+})
 
 describe('sessionStore', () => {
   let store
@@ -15,6 +22,10 @@ describe('sessionStore', () => {
     vi.resetModules()
     vi.clearAllMocks()
     ipc = await import('./ipc.js')
+    // clearAllMocks() keeps implementations and the mocked module is shared
+    // across cases, so re-arm the delegation: a case that stubs the snapshot
+    // answer directly must not leak its stub into the next one.
+    ipc.listCliSessionSnapshot.mockImplementation(() => ipc.listClaudeSessions())
     store = await import('./sessionStore.svelte.js')
   })
 
@@ -837,6 +848,109 @@ describe('sessionStore', () => {
     await vi.advanceTimersByTimeAsync(500)
     expect(store.getSessionStats(2100)).toBe(before)
     expect(store.getSessionForProject('/proj-degraded')._lastTransition).toBe(lastTransitionBefore)
+  })
+
+  it('measures nothing across an outage that fallback polling papers over', async () => {
+    // Regression: fa572d4 suspended the trackers on a degraded daemon snapshot
+    // and on markSessionPresenceStale(), but the fallback poll — the path the
+    // app runs *because* the bridge is down — handed every returned array to
+    // applySessions as a healthy observation. The suspension was cleared on the
+    // first poll and the whole outage was credited to the last state seen, even
+    // though the backend was serving its on-disk cache the entire time.
+    const session = { pid: 1900, project_path: '/proj-fallback-gap', state: 'active', tty: '/dev/pts/30', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValue([{ id: 'proj-fallback-gap-id', path: '/proj-fallback-gap' }])
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [session], freshness: 'fresh' })
+
+    store.startPolling({ intervalMs: 1000 })
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.getSessionStats(1900).activeMs).toBe(1000)
+
+    // Daemon gone: the bridge dies and the backend answers from its cache.
+    store.markSessionPresenceStale()
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [session], freshness: 'cached' })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(store.getSessionStats(1900).activeMs).toBe(1000)
+
+    // Daemon back. The first fresh poll closes the blind interval without
+    // crediting it; measurement resumes from there.
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [session], freshness: 'fresh' })
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(1000)
+
+    const stats = store.getSessionStats(1900)
+    expect(stats.activeMs).toBe(2000)
+    expect(stats.totalMs).toBe(2000)
+  })
+
+  it('keeps measuring suspended while polls are rejected', async () => {
+    // Regression: fa572d4 — a rejected poll only logged a warning, so the
+    // trackers kept running through an outage the app knew it could not see.
+    const session = { pid: 1910, project_path: '/proj-poll-rejected', state: 'active', tty: '/dev/pts/31', args: 'claude', cli_tool: 'claude' }
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [session], freshness: 'fresh' })
+
+    store.startPolling({ intervalMs: 1000 })
+    await vi.advanceTimersByTimeAsync(0)
+
+    ipc.listCliSessionSnapshot.mockRejectedValue(new Error('daemon gone'))
+    await vi.advanceTimersByTimeAsync(4000)
+
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [session], freshness: 'fresh' })
+    await vi.advanceTimersByTimeAsync(1000)
+    await vi.advanceTimersByTimeAsync(1000)
+
+    // The interval that ended with the first failed poll is still credited —
+    // the app was seeing until then. The three that follow, and the one that
+    // ends with the first answer after the outage, are not.
+    expect(store.getSessionStats(1910).activeMs).toBe(2000)
+  })
+
+  it('retains sessions when a poll has nothing to observe', async () => {
+    // Regression: fa572d4 — with the daemon unreachable and no cache, the
+    // backend answered with an empty list, which the store read as "every
+    // session ended": it flushed the trackers and blanked the sidebar.
+    const session = { pid: 1920, project_path: '/proj-poll-unavailable', state: 'active', tty: '/dev/pts/32', args: 'claude', cli_tool: 'claude' }
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [session], freshness: 'fresh' })
+
+    store.startPolling({ intervalMs: 1000 })
+    await vi.advanceTimersByTimeAsync(0)
+
+    ipc.listCliSessionSnapshot.mockResolvedValue({ sessions: [], freshness: 'unavailable' })
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(store.getSessionForProject('/proj-poll-unavailable')).toBeTruthy()
+    expect(store.getSessionStats(1920)).toBeTruthy()
+    expect(ipc.recordSessionActivity).not.toHaveBeenCalled()
+  })
+
+  it('does not credit an interval the daemon reports as unobserved', async () => {
+    // Regression: fa572d4 carried the hub's `degraded` flag to the app, but a
+    // blackout that started and ended between two long-poll answers left the
+    // flag false on both, so the blind interval was measured as work. The hub's
+    // degradation revision now travels with the answer and the bridge reports
+    // the gap.
+    const session = { pid: 1930, project_path: '/proj-observation-gap', state: 'active', tty: '/dev/pts/33', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValue([{ id: 'proj-observation-gap-id', path: '/proj-observation-gap' }])
+
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [session] })
+    vi.advanceTimersByTime(5000)
+
+    // Scanner went blind and recovered inside one wait: healthy sessions, but
+    // the interval that just ended contains a stretch nobody watched.
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [session], degraded: false, observation_gap: true })
+    vi.advanceTimersByTime(5000)
+
+    store.applyDaemonSessionUpdate({ version: 2, sessions: [] })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-observation-gap-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
+      5000,
+      5000,
+    )
   })
 
   it('applies polling updates even without daemon bridge events', async () => {

@@ -82,6 +82,7 @@ impl DaemonSessionListener {
     pub fn wait_for_updates(
         &mut self,
         since_version: u64,
+        since_degraded_revision: u64,
         timeout: Duration,
     ) -> Result<protocol::WaitSessionUpdatesResult, AppError> {
         let id = format!("su{}", self.next_id);
@@ -92,6 +93,7 @@ impl DaemonSessionListener {
             protocol::method::WAIT_SESSION_UPDATES,
             protocol::WaitSessionUpdatesParams {
                 since_version,
+                since_degraded_revision,
                 timeout_ms: timeout.as_millis() as u64,
             },
         )

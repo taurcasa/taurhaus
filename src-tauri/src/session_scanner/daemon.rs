@@ -30,6 +30,7 @@ pub(crate) fn decode_daemon_runtime_snapshot_response(
             focus: None,
             foreground_project_path: None,
             degraded: false,
+            degraded_revision: 0,
         }),
     }
 }
@@ -173,6 +174,7 @@ mod tests {
             focus: None,
             foreground_project_path: Some("/home/user/projects/taurhaus".to_string()),
             degraded: false,
+            degraded_revision: 0,
         };
 
         let decoded = decode_daemon_runtime_snapshot_response(DaemonResponse::ok(

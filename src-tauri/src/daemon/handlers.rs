@@ -325,6 +325,7 @@ pub(crate) fn handle_get_runtime_session_snapshot(id: &str) -> DaemonResponse {
             focus: snapshot.focus,
             foreground_project_path: snapshot.focus_project_path,
             degraded: snapshot.degraded,
+            degraded_revision: snapshot.degraded_revision,
         },
     )
 }
@@ -344,6 +345,7 @@ pub(crate) fn handle_wait_session_updates(id: &str, params: &serde_json::Value) 
 
     let update = crate::daemon::session_activity::SessionActivityHub::global().wait_for_update(
         params.since_version,
+        params.since_degraded_revision,
         std::time::Duration::from_millis(params.timeout_ms),
     );
 
@@ -356,6 +358,7 @@ pub(crate) fn handle_wait_session_updates(id: &str, params: &serde_json::Value) 
             focus: update.focus,
             focus_project_path: update.focus_project_path,
             degraded: update.degraded,
+            degraded_revision: update.degraded_revision,
         },
     )
 }

@@ -1040,6 +1040,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
         let mut recovery_tracker = SessionBridgeRecoveryTracker::default();
         let mut last_focus: Option<FocusEmission> = None;
         let mut last_degraded = false;
+        let mut last_degraded_revision: u64 = 0;
         let mut reported_protocol_mismatch = false;
         tracing::info!("session updates bridge thread started");
 
@@ -1082,6 +1083,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                 &mut since_version,
                 &mut last_focus,
                 &mut last_degraded,
+                &mut last_degraded_revision,
             ) {
                 if let Some(duration_ms) = recovery_tracker.take_duration_ms(Instant::now()) {
                     emit_session_bridge_recovery_measurement(duration_ms, emission);
@@ -1100,12 +1102,15 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                     break;
                 }
 
-                match listener.wait_for_updates(since_version, WAIT_TIMEOUT) {
+                match listener.wait_for_updates(since_version, last_degraded_revision, WAIT_TIMEOUT)
+                {
                     Ok(update) => {
-                        // Daemon restart: its version counter may reset.
-                        // Reset our cursor and retry from a fresh baseline.
+                        // Daemon restart: its version counter may reset, and so
+                        // does its degradation revision. Reset both cursors and
+                        // retry from a fresh baseline.
                         if update.version < since_version {
                             since_version = 0;
+                            last_degraded_revision = 0;
                             continue;
                         }
 
@@ -1125,9 +1130,14 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                         // false while the scanner is blind. Its edges still have
                         // to reach the app: the sessions it is looking at just
                         // stopped being an observation (or became one again).
+                        // The revision catches the case the flag cannot — a
+                        // blackout that began and ended inside this one wait.
                         let degraded_moved =
                             take_degraded_change(&mut last_degraded, update.degraded);
-                        if update.changed || degraded_moved {
+                        let blind_gap =
+                            take_blind_gap(&mut last_degraded_revision, update.degraded_revision);
+                        let observation_gap = observation_gap(blind_gap, update.degraded);
+                        if update.changed || degraded_moved || blind_gap {
                             let mut sessions = update.sessions;
                             let session_count = sessions.len();
                             normalize_sessions_for_frontend(
@@ -1148,12 +1158,14 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                     update.version,
                                     &sessions,
                                     update.degraded,
+                                    observation_gap,
                                 ),
                             );
                             tracing::debug!(
                                 version = update.version,
                                 session_count = session_count,
                                 degraded = update.degraded,
+                                observation_gap,
                                 "session updates bridge emitted sessions-updated event"
                             );
                         }
@@ -1197,16 +1209,20 @@ fn apply_seed_outcome(
     since_version: &mut u64,
     last_focus: &mut Option<FocusEmission>,
     last_degraded: &mut bool,
+    last_degraded_revision: &mut u64,
 ) -> bool {
     let Some(snapshot) = snapshot else {
         *since_version = 0;
+        *last_degraded_revision = 0;
         return false;
     };
 
     *since_version = snapshot.version;
-    // The seed emits its snapshot unconditionally, so the degraded flag is only
-    // recorded here — the long poll that follows must not repeat it as an edge.
+    // The seed emits its snapshot unconditionally, so the degradation status is
+    // only recorded here — the long poll that follows must not repeat it as an
+    // edge, nor re-report blackouts that predate the connection.
     *last_degraded = snapshot.degraded;
+    *last_degraded_revision = snapshot.degraded_revision;
     take_focus_change(
         last_focus,
         snapshot.focus.as_ref(),
@@ -1240,15 +1256,22 @@ fn take_focus_change(
 /// replayed while its scanner is blind, so `sessionStore` can stamp them and
 /// `activitySignal.js` can present them as uncertain instead of holding the
 /// last green reading.
+///
+/// `observation_gap` says the interval that ended with this emission contains a
+/// stretch nothing observed — the scanner is blind now, or it was blind and
+/// recovered between two answers. The app measures session time against that
+/// interval, so it drops it instead of crediting it to the last state it saw.
 fn sessions_updated_payload(
     version: u64,
     sessions: &[crate::session_scanner::DisplaySession],
     degraded: bool,
+    observation_gap: bool,
 ) -> serde_json::Value {
     serde_json::json!({
         "version": version,
         "sessions": sessions,
         "degraded": degraded,
+        "observation_gap": observation_gap,
     })
 }
 
@@ -1265,6 +1288,33 @@ fn take_degraded_change(last: &mut bool, degraded: bool) -> bool {
     }
     *last = degraded;
     true
+}
+
+/// Whether a blackout edge happened since the last answer, advancing the cursor.
+///
+/// The hub bumps `degraded_revision` on both edges without touching the version,
+/// so this is the only thing that can tell the app about a blackout that started
+/// *and* ended while it was parked in one long poll — by then `degraded` is
+/// false again and the flag alone says nothing happened. A daemon older than the
+/// revision answers 0 forever, which never advances and so never claims a gap.
+fn take_blind_gap(last_revision: &mut u64, revision: u64) -> bool {
+    if revision <= *last_revision {
+        return false;
+    }
+    *last_revision = revision;
+    true
+}
+
+/// Whether the interval this emission closes ran through a blackout the app
+/// never heard start.
+///
+/// The edge *into* a blackout is not one: the scanner was reporting normally
+/// until a cadence ago, so the interval that ends here was observed, and
+/// `degraded` stops the clock for everything after it. What the app cannot see
+/// for itself is a blackout that was over again before the answer came back —
+/// there the flag is false on both sides and only the revision moved.
+fn observation_gap(blind_gap: bool, degraded: bool) -> bool {
+    blind_gap && !degraded
 }
 
 /// `tmux-focus-changed` payload; `null` means nothing is focused.
@@ -1387,6 +1437,7 @@ fn emit_current_session_snapshot(
     since_version: &mut u64,
     last_focus: &mut Option<FocusEmission>,
     last_degraded: &mut bool,
+    last_degraded_revision: &mut u64,
 ) -> Option<SessionSnapshotEmission> {
     use std::time::Duration;
 
@@ -1414,8 +1465,13 @@ fn emit_current_session_snapshot(
         }
     }
 
-    let focus_changed =
-        apply_seed_outcome(snapshot.as_ref(), since_version, last_focus, last_degraded);
+    let focus_changed = apply_seed_outcome(
+        snapshot.as_ref(),
+        since_version,
+        last_focus,
+        last_degraded,
+        last_degraded_revision,
+    );
     let snapshot = snapshot?;
 
     // Cache for the polling path (list_cli_sessions)
@@ -1445,7 +1501,10 @@ fn emit_current_session_snapshot(
     emit_frontend_event(
         app,
         "sessions-updated",
-        sessions_updated_payload(snapshot.version, &sessions, snapshot.degraded),
+        // A seed follows a stretch during which the app received no updates at
+        // all — a connect, or a reconnect after the long poll failed — so the
+        // interval it closes was not observed, whatever the hub says now.
+        sessions_updated_payload(snapshot.version, &sessions, snapshot.degraded, true),
     );
     tracing::debug!(
         version = snapshot.version,
@@ -1828,13 +1887,13 @@ mod tests {
     // emission, healthy ones included, so absence never reads as "unknown".
     #[test]
     fn sessions_updated_payload_always_carries_the_degraded_flag() {
-        let healthy = sessions_updated_payload(4, &[], false);
+        let healthy = sessions_updated_payload(4, &[], false, false);
         assert_eq!(healthy["version"], 4);
         assert_eq!(healthy["degraded"], serde_json::Value::Bool(false));
         assert!(healthy["sessions"].is_array());
 
         assert_eq!(
-            sessions_updated_payload(4, &[], true)["degraded"],
+            sessions_updated_payload(4, &[], true, true)["degraded"],
             serde_json::Value::Bool(true)
         );
     }
@@ -1857,6 +1916,82 @@ mod tests {
         assert!(!take_degraded_change(&mut last, false));
     }
 
+    // Regression: fa572d4 emitted a degradation edge only when the long poll
+    // happened to return while the scanner was still blind. Both edges of a
+    // blackout that started and ended inside one 20 s wait left `degraded`
+    // false on the answer, the bridge stayed silent, and the app credited the
+    // blind interval as if it had been observed. The hub's degradation
+    // revision now rides the answer: any advance means the interval the app is
+    // about to measure contains a stretch nothing observed.
+    #[test]
+    fn a_blackout_between_two_answers_is_reported_as_an_unobserved_gap() {
+        let mut cursor = 0;
+        assert!(
+            !take_blind_gap(&mut cursor, 0),
+            "a healthy stretch reports no gap"
+        );
+
+        // Went blind and came back inside one wait: two edges, one answer.
+        assert!(take_blind_gap(&mut cursor, 2));
+        assert_eq!(cursor, 2);
+        assert!(
+            !take_blind_gap(&mut cursor, 2),
+            "the same answer is not a second gap"
+        );
+
+        // Blind again at the next answer: a new edge, a new gap.
+        assert!(take_blind_gap(&mut cursor, 3));
+        assert!(!take_blind_gap(&mut cursor, 3));
+
+        // A daemon older than the revision answers 0 forever and never claims
+        // a gap; its `degraded` flag is all the app gets, as before.
+        let mut old_daemon = 0;
+        assert!(!take_blind_gap(&mut old_daemon, 0));
+        assert!(!take_blind_gap(&mut old_daemon, 0));
+    }
+
+    // The app credits the interval between two emissions to the state it last
+    // saw, so an emission has to say when that interval ran through a blackout
+    // nobody watched. Going blind is not that interval: the scanner was fine
+    // until a cadence ago, and `degraded` stops the clock from there.
+    #[test]
+    fn only_a_blackout_the_app_never_heard_start_is_an_unobserved_gap() {
+        assert!(
+            !observation_gap(false, false),
+            "a healthy stretch closes an observed interval"
+        );
+        assert!(
+            !observation_gap(true, true),
+            "going blind now says nothing about the interval that just ended"
+        );
+        assert!(
+            observation_gap(true, false),
+            "recovered before the answer came back: the app never saw the blind stretch"
+        );
+        assert!(
+            !observation_gap(false, true),
+            "still blind, already reported: the clock is already stopped"
+        );
+    }
+
+    // The app measures per-session time against the interval between two
+    // observations (`sessionStore.svelte.js`), so an emission has to say
+    // whether that interval was observed at all — `degraded` alone only covers
+    // a blackout still in progress.
+    #[test]
+    fn sessions_updated_payload_reports_an_unobserved_gap() {
+        let clean = sessions_updated_payload(4, &[], false, false);
+        assert_eq!(clean["observation_gap"], serde_json::Value::Bool(false));
+
+        let recovered = sessions_updated_payload(5, &[], false, true);
+        assert_eq!(recovered["degraded"], serde_json::Value::Bool(false));
+        assert_eq!(
+            recovered["observation_gap"],
+            serde_json::Value::Bool(true),
+            "a recovered blackout still leaves an interval nobody watched"
+        );
+    }
+
     // The connect/reconnect seed always emits, so it records the flag rather
     // than folding an edge: the long poll that follows must not repeat it.
     #[test]
@@ -1865,18 +2000,28 @@ mod tests {
         let mut last_focus = None;
         let mut last_degraded = false;
 
+        let mut last_degraded_revision = 0;
+
         let mut snapshot = seed_snapshot(3, None, None);
         snapshot.degraded = true;
+        snapshot.degraded_revision = 5;
         let _ = apply_seed_outcome(
             Some(&snapshot),
             &mut since_version,
             &mut last_focus,
             &mut last_degraded,
+            &mut last_degraded_revision,
         );
 
         assert!(last_degraded);
         assert!(!take_degraded_change(&mut last_degraded, true));
         assert!(take_degraded_change(&mut last_degraded, false));
+
+        // Same for the blackout cursor: the seed adopts it, so the long poll it
+        // hands over to does not re-report the blackouts that came before.
+        assert_eq!(last_degraded_revision, 5);
+        assert!(!take_blind_gap(&mut last_degraded_revision, 5));
+        assert!(take_blind_gap(&mut last_degraded_revision, 6));
     }
 
     fn seed_snapshot(
@@ -1891,6 +2036,7 @@ mod tests {
             focus,
             foreground_project_path: project_path.map(str::to_string),
             degraded: false,
+            degraded_revision: 0,
         }
     }
 
@@ -1914,6 +2060,7 @@ mod tests {
                 &mut since_version,
                 &mut last,
                 &mut false,
+                &mut 0,
             ),
             "the first snapshot carries the focus the hub already knows"
         );
@@ -1937,6 +2084,7 @@ mod tests {
             &mut since_version,
             &mut last,
             &mut false,
+            &mut 0,
         ));
         assert_eq!(since_version, 9);
 
@@ -1950,6 +2098,7 @@ mod tests {
             &mut since_version,
             &mut last,
             &mut false,
+            &mut 0,
         ));
 
         // A hub with no focus at all clears the indicator once.
@@ -1958,12 +2107,14 @@ mod tests {
             &mut since_version,
             &mut last,
             &mut false,
+            &mut 0,
         ));
         assert!(!apply_seed_outcome(
             Some(&seed_snapshot(11, None, None)),
             &mut since_version,
             &mut last,
             &mut false,
+            &mut 0,
         ));
     }
 
@@ -2047,10 +2198,11 @@ mod tests {
             &mut since_version,
             &mut last,
             &mut false,
+            &mut 0,
         ));
 
         assert!(
-            !apply_seed_outcome(None, &mut since_version, &mut last, &mut false),
+            !apply_seed_outcome(None, &mut since_version, &mut last, &mut false, &mut 0),
             "a seed that never arrived has no focus to emit"
         );
         assert_eq!(
@@ -2067,6 +2219,7 @@ mod tests {
             &mut since_version,
             &mut last,
             &mut false,
+            &mut 0,
         ));
         assert_eq!(since_version, 3);
     }

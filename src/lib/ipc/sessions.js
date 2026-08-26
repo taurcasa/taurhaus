@@ -52,6 +52,21 @@ export function listClaudeSessions() {
   return invokeOrMock('list_cli_sessions', undefined, () => MOCK_CLAUDE_SESSIONS)
 }
 
+/**
+ * The same sessions, plus how the backend obtained them:
+ * `fresh` | `degraded` | `cached` | `unavailable`.
+ *
+ * The store polls this rather than the bare list because it measures session
+ * time against the interval between two observations — a replayed or cached
+ * list is not one.
+ */
+export function listCliSessionSnapshot() {
+  return invokeOrMock('list_cli_session_snapshot', undefined, () => ({
+    sessions: MOCK_CLAUDE_SESSIONS,
+    freshness: 'fresh',
+  }))
+}
+
 export function launchClaudeSession(projectId, mode, cliTool) {
   return invokeOrMock('launch_cli_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
     tmux_session: 'taurhaus',

@@ -92,7 +92,7 @@ fn run_with_compaction_teams_dir(
 ) -> std::io::Result<()> {
     crate::daemon::compaction::reset_requested_mode(crate::models::CodexCompactionMode::Transcript);
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
-    let _ = session_hub.wait_for_update(0, Duration::from_millis(750));
+    let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
@@ -759,6 +759,7 @@ mod tests {
             protocol::method::WAIT_SESSION_UPDATES,
             protocol::WaitSessionUpdatesParams {
                 since_version: u64::MAX,
+                since_degraded_revision: u64::MAX,
                 timeout_ms: 0,
             },
         );

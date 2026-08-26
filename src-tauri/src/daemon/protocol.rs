@@ -330,6 +330,12 @@ pub struct WaitSessionUpdatesParams {
     /// Client's last seen session snapshot version.
     #[serde(default)]
     pub since_version: u64,
+    /// Client's last seen degradation revision. The hub bumps it on every
+    /// scanner blackout edge without touching the version, so this is what
+    /// wakes the long poll for a blackout. Additive: older clients omit it and
+    /// the daemon answers exactly as it did before.
+    #[serde(default)]
+    pub since_degraded_revision: u64,
     /// Max time to wait for a newer snapshot. Clamped server-side.
     #[serde(default = "default_wait_session_timeout_ms")]
     pub timeout_ms: u64,
@@ -360,6 +366,13 @@ pub struct WaitSessionUpdatesResult {
     /// Additive: older daemons omit the field and decode as `false`.
     #[serde(default)]
     pub degraded: bool,
+    /// The hub's degradation revision as of this answer: one bump per blackout
+    /// edge. A client whose cursor is behind it spanned an interval the scanner
+    /// did not observe, even when `degraded` is false because the blackout
+    /// already ended. Additive: older daemons omit it and decode as `0`, which
+    /// never advances and so never claims a gap.
+    #[serde(default)]
+    pub degraded_revision: u64,
 }
 
 /// `get_runtime_session_snapshot` result.
@@ -380,6 +393,11 @@ pub struct RuntimeSessionSnapshotResult {
     /// omit the field and decode as `false` (their behavior so far).
     #[serde(default)]
     pub degraded: bool,
+    /// The hub's blackout-edge counter as of this snapshot. The bridge adopts it
+    /// as its cursor when it seeds, so the long poll that follows reports only
+    /// blackouts from here on. Additive: older daemons omit it and decode as 0.
+    #[serde(default)]
+    pub degraded_revision: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -832,6 +850,10 @@ mod tests {
         let p: WaitSessionUpdatesParams = serde_json::from_str(json).unwrap();
         assert_eq!(p.since_version, 42);
         assert_eq!(p.timeout_ms, 15_000);
+        assert_eq!(
+            p.since_degraded_revision, 0,
+            "a client that does not track blackout edges asks as it always did"
+        );
     }
 
     #[test]
@@ -843,6 +865,7 @@ mod tests {
             focus: None,
             focus_project_path: None,
             degraded: false,
+            degraded_revision: 0,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: WaitSessionUpdatesResult = serde_json::from_str(&json).unwrap();
@@ -862,6 +885,7 @@ mod tests {
             focus: None,
             foreground_project_path: None,
             degraded: true,
+            degraded_revision: 4,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("\"degraded\":true"));
@@ -913,6 +937,7 @@ mod tests {
             focus: Some(focus_fixture()),
             focus_project_path: Some("/projects/mesh".to_string()),
             degraded: false,
+            degraded_revision: 0,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert_eq!(
@@ -929,6 +954,10 @@ mod tests {
         assert_eq!(result.focus, None);
         assert_eq!(result.focus_project_path, None);
         assert!(!result.degraded, "an omitted flag decodes as healthy");
+        assert_eq!(
+            result.degraded_revision, 0,
+            "an omitted revision never advances, so it never claims a blind interval"
+        );
     }
 
     // Regression: 6c6f1cb made the app present a degraded snapshot as
@@ -945,6 +974,7 @@ mod tests {
             focus: None,
             focus_project_path: None,
             degraded: true,
+            degraded_revision: 3,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"degraded\":true"));
@@ -963,6 +993,7 @@ mod tests {
             focus: Some(focus_fixture()),
             foreground_project_path: Some("/projects/mesh".to_string()),
             degraded: false,
+            degraded_revision: 0,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["focus"]["session"], "taurhaus");

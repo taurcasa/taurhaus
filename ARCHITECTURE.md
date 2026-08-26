@@ -337,7 +337,7 @@ File changes detected
 CLI session state changes
   → Daemon bridge emits sessions-updated event to frontend
   → Frontend session store applies delta and refreshes indicators
-  → Startup hydration uses list_cli_sessions once (mock mode uses polling fallback)
+  → Startup hydration and fallback polling use list_cli_session_snapshot, which says whether the list is an observation (fresh) or continuity data (degraded/cached/unavailable)
   → Backend scanner inspects /proc (Linux) or libproc (macOS)
   → Sidebar shows tool indicator (active/idle)
   → HoverCard shows full session details on hover
