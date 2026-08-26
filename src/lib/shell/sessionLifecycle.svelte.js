@@ -43,12 +43,26 @@ export function createShellSessionLifecycleController({
       : null
   }
 
+  // Counts live 'tmux-focus-changed' applications. The startup IPC read below
+  // and the live focus stream write the same field, and the read's answer is a
+  // snapshot of the moment it was made — so a focus event that lands while the
+  // promise is in flight is the newer truth and the awaited answer must yield.
+  let liveFocusGeneration = 0
+
   async function loadForegroundProject() {
+    const startedAtGeneration = liveFocusGeneration
+    const supersededByLiveFocus = () => liveFocusGeneration !== startedAtGeneration
+
     try {
       const projectId = await ipc.getForegroundProject()
+      if (supersededByLiveFocus()) {
+        logger.debug('[tmux-focus]', { stage: 'foreground-ipc-superseded', projectId })
+        return
+      }
       logger.debug('[tmux-focus]', { stage: 'foreground-ipc-read', projectId })
       setForegroundProject(projectId)
     } catch (error) {
+      if (supersededByLiveFocus()) return
       logger.warn('[sessions] failed to load foreground project; clearing foreground marker', {
         error_message: errorMessage(error),
       })
@@ -88,6 +102,7 @@ export function createShellSessionLifecycleController({
   function handleTmuxFocusChanged(payload) {
     const projectId = payload?.project_id ?? payload?.projectId ?? null
     logger.debug('[tmux-focus]', { stage: 'event', payload, projectId })
+    liveFocusGeneration += 1
     setForegroundProject(projectId)
   }
 

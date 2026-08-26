@@ -118,4 +118,125 @@ describe('createShellSessionLifecycleController', () => {
     expect(getForegroundProject).not.toHaveBeenCalled()
   })
 
+  it('does not let a late startup fallback overwrite a newer live focus event', async () => {
+    // Regression: commit 07ab6c5 made `tmux-focus-changed` the only live focus
+    // transport and left `loadForegroundProject` as the startup read. Both write
+    // the same field, but the IPC read applied its awaited answer
+    // unconditionally — and that answer is a snapshot of the moment the call was
+    // made. A focus event landing while the promise was in flight was overwritten
+    // by the older value, parking the foreground marker on the wrong project
+    // until the next focus change.
+    let resolveForeground = () => {}
+    const getForegroundProject = vi.fn(
+      () => new Promise((resolve) => {
+        resolveForeground = resolve
+      })
+    )
+    const state = {
+      foregroundProjectId: null,
+      sessionBridgeLive: false,
+    }
+
+    const controller = createShellSessionLifecycleController({
+      state,
+      getProjects: () => [],
+      ipc: {
+        getForegroundProject,
+        listClaudeSessions: vi.fn(),
+        navigateToSession: vi.fn(),
+      },
+      sessionStore: {
+        getSessions: () => new Map(),
+        applyDaemonSessionUpdate: vi.fn(),
+        markSessionPresenceStale: vi.fn(),
+      },
+      logger: { warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    })
+
+    const pending = controller.loadForegroundProject()
+    controller.handleTmuxFocusChanged({ project_id: 'proj-live' })
+    expect(state.foregroundProjectId).toBe('proj-live')
+
+    resolveForeground('proj-stale')
+    await pending
+
+    expect(state.foregroundProjectId).toBe('proj-live')
+  })
+
+  it('does not let a failed startup fallback clear a live focus event', async () => {
+    // Same race, error arm: the catch path clears the marker outright, so a
+    // fallback that fails after a focus event landed blanked the indicator.
+    let rejectForeground = () => {}
+    const getForegroundProject = vi.fn(
+      () => new Promise((_resolve, reject) => {
+        rejectForeground = reject
+      })
+    )
+    const state = {
+      foregroundProjectId: null,
+      sessionBridgeLive: false,
+    }
+    const logger = { warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+
+    const controller = createShellSessionLifecycleController({
+      state,
+      getProjects: () => [],
+      ipc: {
+        getForegroundProject,
+        listClaudeSessions: vi.fn(),
+        navigateToSession: vi.fn(),
+      },
+      sessionStore: {
+        getSessions: () => new Map(),
+        applyDaemonSessionUpdate: vi.fn(),
+        markSessionPresenceStale: vi.fn(),
+      },
+      logger,
+    })
+
+    const pending = controller.loadForegroundProject()
+    controller.handleTmuxFocusChanged({ project_id: 'proj-live' })
+
+    rejectForeground(new Error('daemon gone'))
+    await pending
+
+    expect(state.foregroundProjectId).toBe('proj-live')
+  })
+
+  it('applies the startup fallback when no focus event raced it', async () => {
+    const getForegroundProject = vi.fn().mockResolvedValue('proj-startup')
+    const state = {
+      foregroundProjectId: null,
+      sessionBridgeLive: false,
+    }
+
+    const controller = createShellSessionLifecycleController({
+      state,
+      getProjects: () => [],
+      ipc: {
+        getForegroundProject,
+        listClaudeSessions: vi.fn(),
+        navigateToSession: vi.fn(),
+      },
+      sessionStore: {
+        getSessions: () => new Map(),
+        applyDaemonSessionUpdate: vi.fn(),
+        markSessionPresenceStale: vi.fn(),
+      },
+      logger: { warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    })
+
+    await controller.loadForegroundProject()
+
+    expect(state.foregroundProjectId).toBe('proj-startup')
+
+    // A focus event that has already been applied must not freeze the marker:
+    // the next load is newer than that event and wins on its own turn.
+    controller.handleTmuxFocusChanged({ project_id: 'proj-live' })
+    getForegroundProject.mockResolvedValue('proj-later')
+    await controller.loadForegroundProject()
+
+    expect(state.foregroundProjectId).toBe('proj-later')
+  })
+
 })

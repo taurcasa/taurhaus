@@ -100,7 +100,7 @@ export function cleanupNewTmuxPanes(snapshot) {
  * the most recently active attached client, so a test only needs *an attached*
  * client — not the OS focus, which the app window holds while E2E runs.
  */
-export function attachedTmuxSession() {
+function attachedTmuxSession() {
   const attached = listAttachedClients()
   if (!attached) return null
   return attached.sort((a, b) => b.activity - a.activity)[0]?.session ?? null
@@ -144,7 +144,7 @@ export function ensureAttachedTmuxSession({ cwd = process.cwd(), name = OWNED_SE
  * `script` (util-linux) allocates one and runs the attach inside it. The client
  * only counts once `list-clients` reports it, so this waits for that.
  */
-export function createAttachedTmuxSession({ cwd = process.cwd(), name = OWNED_SESSION } = {}) {
+function createAttachedTmuxSession({ cwd = process.cwd(), name = OWNED_SESSION } = {}) {
   runTmux(['kill-session', '-t', name])
   const created = runTmux(['new-session', '-d', '-s', name, '-c', cwd, 'sh -c "while :; do sleep 3600; done"'])
   if (!created.ok) return null

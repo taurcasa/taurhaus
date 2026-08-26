@@ -60,6 +60,25 @@ impl DaemonSessionListener {
         self.wsl_distro.as_deref()
     }
 
+    /// The protocol version of the daemon on the other end of *this* socket.
+    ///
+    /// The bridge gates on the connection it is about to consume rather than on
+    /// the shared provider's connected flag: a daemon replaced under a running
+    /// app leaves that flag true until the health monitor next pings, and the
+    /// bridge would meanwhile seed focus from whatever build now holds the port.
+    pub fn ping_protocol_version(&mut self) -> Result<u32, AppError> {
+        const PING_TIMEOUT: Duration = Duration::from_secs(5);
+
+        let id = format!("sp{}", self.next_id);
+        self.next_id += 1;
+
+        let request = DaemonRequest::ping(&id).with_auth(self.auth_token.clone());
+        let result = self.call(&request, PING_TIMEOUT, protocol::method::PING)?;
+        let ping: protocol::PingResult = serde_json::from_value(result)
+            .map_err(|e| AppError::InvalidPath(format!("Deserialize ping result failed: {e}")))?;
+        Ok(ping.protocol_version)
+    }
+
     pub fn wait_for_updates(
         &mut self,
         since_version: u64,
@@ -78,11 +97,32 @@ impl DaemonSessionListener {
         )
         .with_auth(self.auth_token.clone());
 
-        let json = serde_json::to_string(&request).map_err(|e| {
+        // The daemon holds a long poll open for `timeout`; give the socket the
+        // slack to carry the answer that arrives at the very end of it.
+        let result = self.call(
+            &request,
+            timeout + Duration::from_secs(2),
+            protocol::method::WAIT_SESSION_UPDATES,
+        )?;
+        serde_json::from_value(result).map_err(|e| {
             AppError::InvalidPath(format!(
-                "Serialize wait_session_updates request failed: {e}"
+                "Deserialize wait_session_updates result failed: {e}"
             ))
-        })?;
+        })
+    }
+
+    /// Send one request on this connection and read the single line back.
+    ///
+    /// `label` is the method name the error messages name, so a failed ping and
+    /// a failed long poll stay distinguishable in the log.
+    fn call(
+        &mut self,
+        request: &DaemonRequest,
+        read_timeout: Duration,
+        label: &str,
+    ) -> Result<serde_json::Value, AppError> {
+        let json = serde_json::to_string(request)
+            .map_err(|e| AppError::InvalidPath(format!("Serialize {label} request failed: {e}")))?;
         self.stream
             .write_all(json.as_bytes())
             .map_err(AppError::Io)?;
@@ -90,34 +130,28 @@ impl DaemonSessionListener {
         self.stream.flush().map_err(AppError::Io)?;
 
         self.stream
-            .set_read_timeout(Some(timeout + Duration::from_secs(2)))
+            .set_read_timeout(Some(read_timeout))
             .map_err(AppError::Io)?;
 
         let mut line = String::new();
         self.reader.read_line(&mut line).map_err(AppError::Io)?;
         if line.trim().is_empty() {
-            return Err(AppError::InvalidPath(
-                "Daemon returned empty wait_session_updates response".to_string(),
-            ));
+            return Err(AppError::InvalidPath(format!(
+                "Daemon returned empty {label} response"
+            )));
         }
 
-        let response: DaemonResponse = serde_json::from_str(&line).map_err(|e| {
-            AppError::InvalidPath(format!("Parse wait_session_updates response failed: {e}"))
-        })?;
+        let response: DaemonResponse = serde_json::from_str(&line)
+            .map_err(|e| AppError::InvalidPath(format!("Parse {label} response failed: {e}")))?;
 
         if let Some(err) = response.error {
             return Err(AppError::InvalidPath(format!(
-                "Daemon wait_session_updates error [{}]: {}",
+                "Daemon {label} error [{}]: {}",
                 err.code, err.message
             )));
         }
 
-        let result = response.result.unwrap_or(serde_json::Value::Null);
-        serde_json::from_value(result).map_err(|e| {
-            AppError::InvalidPath(format!(
-                "Deserialize wait_session_updates result failed: {e}"
-            ))
-        })
+        Ok(response.result.unwrap_or(serde_json::Value::Null))
     }
 }
 

@@ -973,6 +973,57 @@ fn bridge_target(provider: &ProviderState) -> Option<BridgeTarget> {
     })
 }
 
+/// Open the bridge's own long-poll connection, and only hand it back if the
+/// daemon answering it speaks this app's protocol.
+///
+/// The shared provider's connected flag is not a protocol check: a daemon
+/// replaced under a running app — the `just install-daemon` loop, or an older
+/// build that wins the port after a restart — keeps that flag true until the
+/// health monitor's next ping. Since protocol v8 the hub snapshot is the only
+/// live focus transport, so a v7 daemon adopted in that window serves focus
+/// fields that decode as `None` with no hook chain left to cover for it. Ping on
+/// the socket the bridge is about to consume, before the seed fetch runs on the
+/// same daemon.
+///
+/// `reported_mismatch` latches the loud log: this runs on a one-second retry
+/// loop, so an outdated daemon nobody rebuilds would otherwise fill the log.
+fn connect_bridge_listener(
+    addr: &str,
+    wsl_distro: Option<&str>,
+    reported_mismatch: &mut bool,
+) -> Option<crate::daemon::session_listener::DaemonSessionListener> {
+    let mut listener =
+        match crate::daemon::session_listener::DaemonSessionListener::connect(addr, wsl_distro) {
+            Ok(listener) => listener,
+            Err(error) => {
+                tracing::debug!(error = %error, "Session listener connect failed");
+                return None;
+            }
+        };
+
+    match classify_daemon_health(listener.ping_protocol_version().map_err(|e| e.to_string())) {
+        DaemonHealth::Healthy => {
+            *reported_mismatch = false;
+            Some(listener)
+        }
+        DaemonHealth::ProtocolMismatch { running, expected } => {
+            if !*reported_mismatch {
+                tracing::error!(
+                    daemon_protocol_version = running,
+                    expected,
+                    "DAEMON IS OUTDATED — rebuild with `just install-daemon`"
+                );
+                *reported_mismatch = true;
+            }
+            None
+        }
+        DaemonHealth::Unreachable(error) => {
+            tracing::debug!(error = %error, "Session listener protocol ping failed");
+            None
+        }
+    }
+}
+
 /// Bridge daemon-owned session updates into frontend Tauri events.
 ///
 /// Uses a dedicated daemon connection and long-poll update requests so the UI
@@ -988,6 +1039,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
         let mut observed_connected = false;
         let mut recovery_tracker = SessionBridgeRecoveryTracker::default();
         let mut last_focus: Option<FocusEmission> = None;
+        let mut reported_protocol_mismatch = false;
         tracing::info!("session updates bridge thread started");
 
         loop {
@@ -1011,16 +1063,15 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                 observed_connected = true;
             }
 
-            let mut listener = match crate::daemon::session_listener::DaemonSessionListener::connect(
+            // A connection this bridge cannot trust is a disconnect: neither the
+            // seed fetch below nor the long poll may run against that daemon.
+            let Some(mut listener) = connect_bridge_listener(
                 &daemon_addr,
                 wsl_distro.as_deref(),
-            ) {
-                Ok(l) => l,
-                Err(e) => {
-                    tracing::debug!(error = %e, "Session listener connect failed");
-                    std::thread::sleep(RETRY_DELAY);
-                    continue;
-                }
+                &mut reported_protocol_mismatch,
+            ) else {
+                std::thread::sleep(RETRY_DELAY);
+                continue;
             };
 
             if let Some(emission) = emit_current_session_snapshot(
@@ -1951,6 +2002,75 @@ mod tests {
         };
 
         assert!(bridge_target(&provider).is_none());
+    }
+
+    // Regression: 07ab6c5 deleted the hook -> file -> inotify focus chain and
+    // b816dc7 bumped the protocol to 8, and a0f3545/108481f then gated the
+    // health monitor and every inline reconnect. The focus bridge still opened
+    // its own two connections — the long-poll listener and the seed fetch —
+    // after reading nothing but the shared provider's `is_connected` flag. A
+    // daemon replaced under a live app (the `just install-daemon` loop, or an
+    // older build that wins the port on restart) leaves that flag true for as
+    // long as it takes the health monitor to notice, so the bridge adopted a v7
+    // connection whose omitted focus fields decode as `None` and drove the
+    // foreground indicator from it.
+    #[test]
+    fn the_focus_bridge_refuses_a_listener_connection_from_an_outdated_daemon() {
+        let _guard = crate::test_support::acquire_heavy_test_guard();
+
+        let stub = crate::test_support::StubDaemon::start(
+            daemon::protocol::PROTOCOL_VERSION - 1,
+            serde_json::Value::Null,
+        );
+
+        let mut reported_mismatch = false;
+        assert!(
+            connect_bridge_listener(stub.addr(), None, &mut reported_mismatch).is_none(),
+            "the bridge must validate the protocol on the connection it is about to consume"
+        );
+        assert!(
+            reported_mismatch,
+            "the first refusal must say the daemon is outdated"
+        );
+
+        assert!(
+            connect_bridge_listener(stub.addr(), None, &mut reported_mismatch).is_none(),
+            "the refusal holds for every retry against the same daemon"
+        );
+        assert!(
+            reported_mismatch,
+            "the mismatch stays reported so the one-second retry loop does not repeat it"
+        );
+    }
+
+    #[test]
+    fn the_focus_bridge_consumes_a_listener_connection_speaking_this_protocol() {
+        let _guard = crate::test_support::acquire_heavy_test_guard();
+
+        let stub = crate::test_support::StubDaemon::start(
+            daemon::protocol::PROTOCOL_VERSION,
+            serde_json::Value::Null,
+        );
+
+        // Latched by an earlier outage: a healthy daemon has to clear it so the
+        // next mismatch is loud again.
+        let mut reported_mismatch = true;
+        assert!(connect_bridge_listener(stub.addr(), None, &mut reported_mismatch).is_some());
+        assert!(!reported_mismatch);
+    }
+
+    #[test]
+    fn a_bridge_listener_that_cannot_connect_is_not_reported_as_outdated() {
+        // Bind and release an ephemeral port so nothing answers on it: an
+        // unreachable daemon is a retry, not an outdated build, and it must not
+        // latch the "rebuild the daemon" message over a real mismatch.
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind closed port");
+        let addr = closed.local_addr().expect("closed port addr").to_string();
+        drop(closed);
+
+        let mut reported_mismatch = false;
+        assert!(connect_bridge_listener(&addr, None, &mut reported_mismatch).is_none());
+        assert!(!reported_mismatch);
     }
 
     #[test]
