@@ -24,6 +24,7 @@ const TEAM_CONFIG_TMP_FILENAME: &str = "config.json.tmp";
 const MODE_TRANSCRIPT: u8 = 0;
 const MODE_HOOKS: u8 = 1;
 const MODE_PENDING: u8 = 2;
+const MODE_FAILED: u8 = 3;
 
 static REQUESTED_MODE: AtomicU8 = AtomicU8::new(MODE_TRANSCRIPT);
 static ACTIVE_MODE: AtomicU8 = AtomicU8::new(MODE_PENDING);
@@ -72,20 +73,49 @@ impl DaemonCompactionRuntime {
         watcher_config: CompactionSignalWatcherConfig,
         processor: Arc<SignalProcessor>,
     ) -> Result<Self, CoordinationError> {
+        Self::start_with_processor_and_topology_watcher(
+            teams_dir,
+            initial_sessions,
+            watcher_config,
+            processor,
+            start_team_topology_watcher,
+        )
+    }
+
+    fn start_with_processor_and_topology_watcher<F>(
+        teams_dir: PathBuf,
+        initial_sessions: Vec<crate::session_scanner::RuntimeSession>,
+        watcher_config: CompactionSignalWatcherConfig,
+        processor: Arc<SignalProcessor>,
+        start_topology_watcher: F,
+    ) -> Result<Self, CoordinationError>
+    where
+        F: FnOnce(&Path, mpsc::Sender<Event>) -> Result<RecommendedWatcher, CoordinationError>,
+    {
         fs::create_dir_all(&teams_dir)?;
         compaction_extractor::start_compaction_extractor_service_at(
             teams_dir.clone(),
             initial_sessions,
         )?;
 
-        let watcher_service = Arc::new(CompactionSignalWatcherService::start_at(
-            teams_dir.clone(),
-            desired_watcher_teams(&teams_dir)?,
-            processor.clone(),
-            watcher_config,
-        )?);
-        let (topology_tx, topology_rx) = mpsc::channel();
-        let topology_watcher = start_team_topology_watcher(&teams_dir, topology_tx)?;
+        let startup = (|| {
+            let watcher_service = Arc::new(CompactionSignalWatcherService::start_at(
+                teams_dir.clone(),
+                desired_watcher_teams(&teams_dir)?,
+                processor.clone(),
+                watcher_config,
+            )?);
+            let (topology_tx, topology_rx) = mpsc::channel();
+            let topology_watcher = start_topology_watcher(&teams_dir, topology_tx)?;
+            Ok::<_, CoordinationError>((watcher_service, topology_rx, topology_watcher))
+        })();
+        let (watcher_service, topology_rx, topology_watcher) = match startup {
+            Ok(started) => started,
+            Err(error) => {
+                compaction_extractor::stop_compaction_extractor_service();
+                return Err(error);
+            }
+        };
 
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
@@ -154,8 +184,14 @@ pub(crate) fn request_mode_and_wait(
     set_requested_mode(mode);
     let deadline = Instant::now() + Duration::from_secs(1);
     while Instant::now() < deadline {
-        if ACTIVE_MODE.load(Ordering::Acquire) == target {
-            return Ok(());
+        match ACTIVE_MODE.load(Ordering::Acquire) {
+            active if active == target => return Ok(()),
+            MODE_FAILED => {
+                return Err(format!(
+                    "daemon failed applying Codex compaction mode '{mode:?}'"
+                ));
+            }
+            _ => {}
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -215,6 +251,8 @@ pub(crate) fn run_mode_controller(teams_dir: Option<PathBuf>, shutdown: Arc<Atom
                                 error = %error,
                                 "daemon compaction initialization failed; server remains available"
                             );
+                            active_mode = Some(requested);
+                            ACTIVE_MODE.store(MODE_FAILED, Ordering::Release);
                             false
                         }
                     }
@@ -355,6 +393,9 @@ mod tests {
 
     use chrono::{DateTime, Utc};
 
+    use crate::commands::logging::{
+        clear_test_tap, install_global_sink, install_test_tap, LogFileState,
+    };
     use crate::coordination::domain::{HealthState, Member, MemberRole};
     use crate::coordination::runtime::RecordingCoordinationRuntime;
     use crate::coordination::stores::{
@@ -755,5 +796,71 @@ mod tests {
         shutdown.store(true, Ordering::Relaxed);
         handle.join().expect("join mode controller");
         assert!(!compaction_extractor::compaction_extractor_service_is_running_for_test());
+    }
+
+    #[test]
+    fn daemon_mode_controller_reports_failed_start_once_without_hot_retry() {
+        // Regression: 6fe0aa3 left the failed mode transition unlatched, so the
+        // controller emitted compaction.owner.failed every 50 ms for the daemon lifetime.
+        let _guards = compaction_test_guards();
+        let _log_guard = crate::test_support::acquire_global_log_test_guard();
+        compaction_extractor::stop_compaction_extractor_service_for_test();
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let blocked_parent = tmp.path().join("not-a-directory");
+        std::fs::write(&blocked_parent, b"file").expect("blocked parent fixture");
+        let log_state =
+            LogFileState::new(tmp.path().join("controller.log.jsonl")).expect("create log state");
+        install_global_sink(&log_state);
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        install_test_tap(event_tx);
+
+        reset_requested_mode(crate::models::CodexCompactionMode::Transcript);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let thread_shutdown = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            run_mode_controller(Some(blocked_parent.join("teams")), thread_shutdown);
+        });
+
+        let first_event = event_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first failed owner event");
+        std::thread::sleep(Duration::from_millis(220));
+        shutdown.store(true, Ordering::Relaxed);
+        handle.join().expect("join mode controller");
+
+        let failed_events = std::iter::once(first_event)
+            .chain(event_rx.try_iter())
+            .filter(|event| event["event"] == "compaction.owner.failed")
+            .count();
+        clear_test_tap();
+        assert_eq!(failed_events, 1);
+    }
+
+    #[test]
+    fn daemon_runtime_stops_extractor_when_topology_watcher_start_fails() {
+        // Regression: 6fe0aa3 started the process-global extractor before both
+        // watcher allocations, but an allocation failure returned without stopping it.
+        let _guards = compaction_test_guards();
+        compaction_extractor::stop_compaction_extractor_service_for_test();
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let result = DaemonCompactionRuntime::start_with_processor_and_topology_watcher(
+            tmp.path().join("teams"),
+            Vec::new(),
+            CompactionSignalWatcherConfig::default(),
+            Arc::new(accept_signal),
+            |_teams_dir, _tx| {
+                Err(CoordinationError::StoreError(
+                    "forced topology watcher failure".to_string(),
+                ))
+            },
+        );
+
+        assert!(result.is_err());
+        let extractor_was_left_running =
+            compaction_extractor::compaction_extractor_service_is_running_for_test();
+        compaction_extractor::stop_compaction_extractor_service_for_test();
+        assert!(!extractor_was_left_running);
     }
 }

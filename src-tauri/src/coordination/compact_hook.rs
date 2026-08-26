@@ -27,6 +27,7 @@ const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const CODEX_HOOKS_FILENAME: &str = "hooks.json";
 const SESSION_START_HOOK_EVENT: &str = "SessionStart";
 const COMPACT_SOURCE: &str = "compact";
+const HOOK_EXECUTABLE_RECORD_FILENAME: &str = "taurhaus-session-start-compact.executable";
 pub(crate) const CODEX_ADDITIONAL_CONTEXT_LIMIT: u64 = 12_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,11 +247,15 @@ pub fn handle_compact_hook(
 
     emit_compact_hook_resolved(&payload, &matched);
 
-    let compaction_timestamp = payload
-        .transcript_path
-        .as_deref()
-        .and_then(crate::session_scanner::compaction_extractor::latest_compaction_timestamp)
-        .unwrap_or_else(Utc::now);
+    let compaction_timestamp = if tool == CliTool::Codex {
+        payload
+            .transcript_path
+            .as_deref()
+            .and_then(crate::session_scanner::compaction_extractor::latest_compaction_timestamp)
+            .unwrap_or_else(Utc::now)
+    } else {
+        Utc::now()
+    };
 
     let Some(snapshot) =
         OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
@@ -395,7 +400,11 @@ pub fn remove_codex_compact_hook_at(codex_home: &Path) -> Result<bool, Coordinat
 }
 
 pub fn codex_compact_hook_is_installed() -> bool {
-    source_hook_is_installed(&PlatformPaths::codex_dir(), CODEX_HOOKS_FILENAME)
+    codex_compact_hook_is_installed_at(&PlatformPaths::codex_dir())
+}
+
+pub fn codex_compact_hook_is_installed_at(codex_home: &Path) -> bool {
+    source_hook_is_installed(codex_home, CODEX_HOOKS_FILENAME)
 }
 
 pub fn team_has_managed_claude_member(
@@ -776,13 +785,14 @@ fn ensure_source_installed(
     let runtime = detect_hook_runtime(config_dir);
     let script_path = hooks_dir.join(platform_hook_filename(runtime));
     let script_changed = write_hook_script(&script_path, taurhaus_exe, runtime)?;
+    let executable_changed = write_hook_executable_record(&hooks_dir, taurhaus_exe, runtime)?;
     let settings_changed = ensure_settings_hook_entry(
         &config_dir.join(settings_filename),
         &script_path,
         runtime,
         additional_context_limit,
     )?;
-    Ok(script_changed || settings_changed)
+    Ok(script_changed || executable_changed || settings_changed)
 }
 
 fn remove_source_hook(
@@ -841,16 +851,36 @@ fn remove_source_hook(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
         Err(error) => return Err(CoordinationError::Io(error)),
     };
-    Ok(settings_changed || script_changed)
+    let executable_record_changed = match fs::remove_file(
+        config_dir
+            .join("hooks")
+            .join(HOOK_EXECUTABLE_RECORD_FILENAME),
+    ) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(CoordinationError::Io(error)),
+    };
+    Ok(settings_changed || script_changed || executable_record_changed)
 }
 
 fn source_hook_is_installed(config_dir: &Path, settings_filename: &str) -> bool {
     let runtime = detect_hook_runtime(config_dir);
-    let script_path = config_dir
-        .join("hooks")
-        .join(platform_hook_filename(runtime));
-    let script_is_current =
-        fs::read_to_string(&script_path).is_ok_and(|script| script.contains("--compact-hook"));
+    let hooks_dir = config_dir.join("hooks");
+    let script_path = hooks_dir.join(platform_hook_filename(runtime));
+    let executable = fs::read_to_string(hooks_dir.join(HOOK_EXECUTABLE_RECORD_FILENAME))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let script_is_current = executable.as_deref().is_some_and(|executable| {
+        render_hook_script(Path::new(executable), runtime)
+            .ok()
+            .is_some_and(|expected| {
+                fs::read_to_string(&script_path).is_ok_and(|script| script == expected)
+            })
+    });
+    let executable_exists = executable
+        .as_deref()
+        .is_some_and(|executable| hook_executable_exists(config_dir, executable));
     let settings_contains_hook = load_settings_json(&config_dir.join(settings_filename))
         .ok()
         .and_then(|settings| {
@@ -868,7 +898,35 @@ fn source_hook_is_installed(config_dir: &Path, settings_filename: &str) -> bool 
                 })
         })
         .unwrap_or(false);
-    script_is_current && settings_contains_hook
+    script_is_current && executable_exists && settings_contains_hook
+}
+
+fn write_hook_executable_record(
+    hooks_dir: &Path,
+    taurhaus_exe: &Path,
+    runtime: HookRuntime,
+) -> Result<bool, CoordinationError> {
+    let executable = runtime_path_string(taurhaus_exe, runtime)?;
+    let record_path = hooks_dir.join(HOOK_EXECUTABLE_RECORD_FILENAME);
+    let changed = fs::read_to_string(&record_path)
+        .map(|current| current.trim() != executable)
+        .unwrap_or(true);
+    if changed {
+        fs::write(record_path, executable.as_bytes())?;
+    }
+    Ok(changed)
+}
+
+fn hook_executable_exists(config_dir: &Path, executable: &str) -> bool {
+    let config_dir = config_dir.to_string_lossy();
+    let visible_path = if executable.starts_with('/') {
+        path::wsl_distro_from_path(&config_dir)
+            .map(|distro| PathBuf::from(path::linux_to_wsl_unc(executable, &distro)))
+            .unwrap_or_else(|| PathBuf::from(executable))
+    } else {
+        PathBuf::from(executable)
+    };
+    visible_path.is_file()
 }
 
 fn write_hook_script(
@@ -2123,6 +2181,22 @@ mod tests {
     }
 
     #[test]
+    fn codex_hook_is_not_active_when_its_installed_executable_is_missing() {
+        // Regression: 6fe0aa3 disabled the transcript owner from hook-file
+        // presence alone even when the daemon referenced by the hook was absent.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_home = tmp.path().join("isolated-codex-home");
+        let executable = tmp.path().join("taurhaus-daemon");
+        fs::write(&executable, b"daemon").expect("executable fixture");
+
+        ensure_codex_compact_hook_installed_at(&codex_home, &executable).expect("install hook");
+        assert!(codex_compact_hook_is_installed_at(&codex_home));
+
+        fs::remove_file(&executable).expect("remove executable fixture");
+        assert!(!codex_compact_hook_is_installed_at(&codex_home));
+    }
+
+    #[test]
     fn codex_installer_regression_does_not_mutate_home_or_codex_home() {
         // Regression: 6fe0aa3 made an installer test mutate process-wide HOME and
         // CODEX_HOME while unrelated coordination tests resolved those variables.
@@ -2200,6 +2274,45 @@ mod tests {
                 .expect("timestamp")
                 .with_timezone(&Utc)
         );
+    }
+
+    #[test]
+    fn claude_compact_hook_does_not_scan_codex_boundaries_from_its_transcript() {
+        // Regression: 6fe0aa3 scanned and JSON-parsed the entire transcript for
+        // both tools even though Codex is the only supported boundary schema.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = sample_member(&project);
+        write_team_fixture(tmp.path(), "claude-team", &member, "session-claude");
+        write_snapshot_fixture(tmp.path(), "claude-team", &member.name);
+        let transcript_path = project.join(".claude/projects/session-claude.jsonl");
+        fs::create_dir_all(transcript_path.parent().expect("transcript parent"))
+            .expect("create transcript parent");
+        fs::write(
+            &transcript_path,
+            "{\"timestamp\":\"2020-01-01T00:00:00.000Z\",\"type\":\"compacted\",\"payload\":{}}\n",
+        )
+        .expect("write Claude transcript fixture");
+
+        let invoked_at = Utc::now();
+        handle_compact_hook(
+            &json!({
+                "hookEventName": "SessionStart",
+                "sessionId": "session-claude",
+                "source": "compact",
+                "cwd": &project,
+                "transcriptPath": &transcript_path,
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("handle Claude compact hook");
+
+        let state = MemberCompactionStore::load(tmp.path(), "claude-team", &member.name)
+            .expect("load compaction state")
+            .expect("compaction state");
+        assert!(state.last_compaction_timestamp >= invoked_at);
     }
 
     // Regression: 0b87699 wired hook stdin/stdout only through the desktop
