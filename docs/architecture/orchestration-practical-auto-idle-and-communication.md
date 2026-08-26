@@ -138,7 +138,7 @@ Taurhaus writes one JSON file per member at:
 
 - `~/.claude/teams/{team}/state/activity/{member}.json`
 
-Schema:
+Schema v1 in full (`src-tauri/src/coordination/activity_schema.rs`):
 
 ```json
 {
@@ -147,15 +147,22 @@ Schema:
   "stall_recent_activity": true,
   "stall_no_output": false,
   "stall_no_active_process": false,
-  "pane_alive": true
+  "active_non_shell_process": true,
+  "recent_io": true,
+  "pane_alive": true,
+  "pane_foreign": false,
+  "last_output_age_secs": 4,
+  "activity_confidence": "active"
 }
 ```
 
-`pane_alive` is false when the pane identity no longer matches the member's runtime record.
+- `pane_alive` is false when the pane identity no longer matches the member's runtime record; `pane_foreign` is true when a live pane has been taken over by something that is not the member.
+- `last_output_age_secs` is `null` when no output age could be read.
+- `activity_confidence` is one of `active`, `likely_working`, `uncertain`, `idle`, `dead`.
 
 Rules:
 
-- The daemon session hub writes the snapshot every 30s (`ACTIVITY_EXPORT_REFRESH_INTERVAL`), atomic write (`.tmp` + rename), only for teams with a live tmux pane. A degraded scan cycle exports nothing.
+- The daemon session hub writes the snapshot on an activity change, or when the 30 s refresh interval is due (`ACTIVITY_EXPORT_REFRESH_INTERVAL`), whichever comes first — not on a fixed 30 s tick. A focus move is not activity and writes nothing. Atomic write (`.tmp` + rename), only for teams with a live tmux pane. A degraded scan cycle exports nothing.
 - Mesh reads file each IdleMonitor poll.
 - If missing/unparseable/stale (`observed_at` older than 120s), mesh treats snapshot as unknown and does not use it as a positive suppression signal.
 - This is local filesystem only; no IPC/API dependency required.
