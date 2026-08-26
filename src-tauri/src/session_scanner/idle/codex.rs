@@ -5,7 +5,6 @@ use crate::session_scanner::process::ProcessInfo;
 use crate::session_scanner::tmux::TmuxPane;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,6 +21,7 @@ use std::time::SystemTime;
 pub struct CodexResolver {
     /// `~/.codex/sessions/` (or None if $HOME is unavailable).
     base_dir: Option<PathBuf>,
+    notify_path: PathBuf,
 }
 
 struct CodexNotifyActivitySource<'a> {
@@ -32,15 +32,11 @@ impl ActivitySource for CodexNotifyActivitySource<'_> {
     fn activity(
         &self,
         _project_path: &str,
-        pid: u32,
+        _pid: u32,
         resolved: Option<&IdleResult>,
     ) -> Option<IdleResult> {
         let result = resolved?.clone();
-        let fd_bound = result
-            .jsonl_path
-            .as_deref()
-            .is_some_and(|path| crate::platform::process_has_open_path(pid, path));
-        let result = apply_notify_edge(result, fd_bound, self.notify_path);
+        let result = apply_notify_edge(result, self.notify_path);
         result.authoritative.then_some(result)
     }
 }
@@ -48,7 +44,11 @@ impl ActivitySource for CodexNotifyActivitySource<'_> {
 impl CodexResolver {
     pub fn new() -> Self {
         let base_dir = Some(PlatformPaths::codex_dir().join("sessions"));
-        Self { base_dir }
+        let notify_path = PlatformPaths::codex_notify_path();
+        Self {
+            base_dir,
+            notify_path,
+        }
     }
 
     pub fn detect_idle_for_pid(
@@ -61,35 +61,31 @@ impl CodexResolver {
             return IdleResult::idle();
         };
         let result = codex_detect_idle_for_pid(project_path, pid, pane_id, base);
-        let notify_path = PlatformPaths::codex_notify_path();
         let source = CodexNotifyActivitySource {
-            notify_path: &notify_path,
+            notify_path: &self.notify_path,
         };
         ActivitySource::activity(&source, project_path, pid, Some(&result)).unwrap_or(result)
     }
 }
 
-fn apply_notify_edge(mut result: IdleResult, fd_bound: bool, notify_path: &Path) -> IdleResult {
-    if !fd_bound {
-        return result;
-    }
+fn apply_notify_edge(mut result: IdleResult, notify_path: &Path) -> IdleResult {
     let (Some(session_id), Some(transcript_path)) =
         (result.session_id.as_deref(), result.jsonl_path.as_deref())
     else {
         return result;
     };
-    let Some(record) =
-        crate::daemon::codex_notify::latest_record_for_session(notify_path, session_id)
-    else {
-        return result;
-    };
-    if record.event.get("type").and_then(Value::as_str) != Some("agent-turn-complete") {
-        return result;
-    }
     let Some(transcript_mtime) = fs::metadata(transcript_path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
     else {
+        return result;
+    };
+    let Some(record) = crate::daemon::codex_notify::latest_record_for_session_after(
+        notify_path,
+        session_id,
+        "agent-turn-complete",
+        transcript_mtime,
+    ) else {
         return result;
     };
     if record.ts < DateTime::<Utc>::from(transcript_mtime) {
@@ -633,14 +629,93 @@ mod tests {
             authoritative: false,
         };
 
-        let result = apply_notify_edge(heuristic, true, &notify_path);
+        let result = apply_notify_edge(heuristic, &notify_path);
 
         assert_eq!(result.state, SessionState::Idle);
         assert!(result.authoritative);
     }
 
+    // Regression: 61e9a24 made fd introspection a notify precondition even
+    // though macOS cannot probe open paths; the matching rollout UUID already
+    // proves the native edge belongs to the resolved transcript.
     #[test]
-    fn stale_foreign_or_unbound_notify_falls_back_to_codex_heuristics() {
+    fn fresh_turn_complete_is_authoritative_when_fd_introspection_is_unavailable() {
+        let tmp = TempDir::new().expect("tempdir");
+        let transcript = tmp
+            .path()
+            .join("rollout-2026-08-26T12-00-00-01a03e54-7a7a-7fb3-85f5-24dfa739a2e1.jsonl");
+        std::fs::write(&transcript, b"session\n").expect("transcript");
+        let transcript_mtime = std::fs::metadata(&transcript)
+            .and_then(|metadata| metadata.modified())
+            .expect("transcript mtime");
+        let notify_path = tmp.path().join("codex-notify.jsonl");
+        crate::daemon::codex_notify::append_event_at(
+            &notify_path,
+            include_str!("fixtures/codex-agent-turn-complete-0.149.0.json"),
+            chrono::DateTime::<Utc>::from(transcript_mtime) + chrono::Duration::milliseconds(1),
+        )
+        .expect("notify fixture");
+        let heuristic = IdleResult {
+            state: SessionState::Active,
+            session_id: Some("01a03e54-7a7a-7fb3-85f5-24dfa739a2e1".to_string()),
+            jsonl_path: Some(transcript.to_string_lossy().into_owned()),
+            last_output_age_secs: Some(0),
+            authoritative: false,
+        };
+
+        let result = apply_notify_edge(heuristic, &notify_path);
+
+        assert_eq!(result.state, SessionState::Idle);
+        assert!(result.authoritative);
+    }
+
+    // Regression: 61e9a24 only tested the edge helper, leaving resolver path
+    // wiring and the platform fd-probe boundary uncovered.
+    #[test]
+    fn resolver_consumes_notify_edge_through_configured_paths() {
+        let _guard = CODEX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let tmp = TempDir::new().expect("tempdir");
+        setup_binding_store(&tmp);
+        let sessions_dir = tmp.path().join("sessions");
+        let today = chrono::Local::now().date_naive();
+        let date_dir = sessions_dir
+            .join(today.format("%Y").to_string())
+            .join(today.format("%m").to_string())
+            .join(today.format("%d").to_string());
+        let transcript = create_codex_session(
+            &date_dir,
+            "rollout-2026-08-26T12-00-00-01a03e54-7a7a-7fb3-85f5-24dfa739a2e1.jsonl",
+            "/home/test/project",
+        );
+        let transcript_mtime = std::fs::metadata(&transcript)
+            .and_then(|metadata| metadata.modified())
+            .expect("transcript mtime");
+        let notify_path = tmp.path().join("codex-notify.jsonl");
+        crate::daemon::codex_notify::append_event_at(
+            &notify_path,
+            include_str!("fixtures/codex-agent-turn-complete-0.149.0.json"),
+            chrono::DateTime::<Utc>::from(transcript_mtime) + chrono::Duration::milliseconds(1),
+        )
+        .expect("notify fixture");
+        let resolver = CodexResolver {
+            base_dir: Some(sessions_dir),
+            notify_path,
+        };
+
+        let result = resolver.detect_idle_for_pid("/home/test/project", u32::MAX, Some("%99"));
+
+        assert_eq!(result.state, SessionState::Idle);
+        assert!(result.authoritative);
+        assert_eq!(
+            result.session_id.as_deref(),
+            Some("01a03e54-7a7a-7fb3-85f5-24dfa739a2e1")
+        );
+    }
+
+    #[test]
+    fn stale_or_foreign_notify_falls_back_to_codex_heuristics() {
         let tmp = TempDir::new().expect("tempdir");
         let transcript = tmp.path().join("rollout.jsonl");
         let notify_path = tmp.path().join("codex-notify.jsonl");
@@ -660,11 +735,7 @@ mod tests {
         };
 
         assert_eq!(
-            apply_notify_edge(heuristic.clone(), true, &notify_path),
-            heuristic
-        );
-        assert_eq!(
-            apply_notify_edge(heuristic.clone(), false, &notify_path),
+            apply_notify_edge(heuristic.clone(), &notify_path),
             heuristic
         );
 
@@ -672,10 +743,7 @@ mod tests {
             session_id: Some("different-thread".to_string()),
             ..heuristic.clone()
         };
-        assert_eq!(
-            apply_notify_edge(foreign.clone(), true, &notify_path),
-            foreign
-        );
+        assert_eq!(apply_notify_edge(foreign.clone(), &notify_path), foreign);
     }
 
     #[test]

@@ -280,7 +280,7 @@ const CODEX_NATIVE_NOTIFY_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_QUEUE_WAKE_MIN_VERSION: (u32, u32, u32) = (0, 149, 0);
 const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CliVersions {
     pub codex: Option<String>,
@@ -312,6 +312,12 @@ impl CliVersions {
         versions
     }
 
+    pub fn codex_compaction_hooks_support(&self) -> Option<bool> {
+        self.codex
+            .as_ref()
+            .map(|_| self.codex_compaction_hooks_supported)
+    }
+
     #[cfg(test)]
     fn from_outputs(codex: Option<&str>, claude: Option<&str>) -> Self {
         Self::from_versions(
@@ -338,14 +344,9 @@ impl CliVersions {
     }
 }
 
-impl Default for CliVersions {
-    fn default() -> Self {
-        Self::current().clone()
-    }
-}
-
 fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
     let mut command = cli_version_command(program);
+    tracing::info!(program, command = ?command, "Probing CLI version");
     let output = match crate::process_utils::run_command_with_timeout(
         &mut command,
         CLI_VERSION_TIMEOUT,
@@ -353,11 +354,17 @@ fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
     ) {
         Ok(output) if output.status.success() => output,
         Ok(output) => {
-            tracing::debug!(program, status = ?output.status.code(), "CLI version probe failed");
+            tracing::info!(
+                program,
+                status = ?output.status.code(),
+                stdout = %String::from_utf8_lossy(&output.stdout).trim(),
+                stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+                "CLI version probe returned a non-zero status"
+            );
             return None;
         }
         Err(error) => {
-            tracing::debug!(program, error = %error, "CLI version probe unavailable");
+            tracing::info!(program, error = %error, "CLI version probe unavailable");
             return None;
         }
     };
@@ -368,23 +375,47 @@ fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
     } else {
         stdout.as_ref()
     };
+    tracing::info!(
+        program,
+        status = ?output.status.code(),
+        raw_output = %raw.trim(),
+        "CLI version probe completed"
+    );
     parse_cli_version(raw)
 }
 
-#[cfg(not(target_os = "windows"))]
 fn cli_version_command(program: &str) -> Command {
-    let mut command = Command::new(program);
-    command.arg("--version");
-    command
+    let distro = crate::coordination::mesh_cli::resolve_wsl_distro_for_coordination(None);
+    cli_version_command_for_platform(AppPlatform::current(), program, distro.as_deref())
 }
 
-#[cfg(target_os = "windows")]
-fn cli_version_command(program: &str) -> Command {
-    // The platform contract is app-global, not project/distro-specific. Use
-    // WSL's default distro and keep the entire probe inside the 5 s timeout.
-    let mut command = crate::daemon::launcher::wsl_command();
-    command.args(["-e", program, "--version"]);
-    command
+fn cli_version_command_for_platform(
+    platform: AppPlatform,
+    program: &str,
+    configured_distro: Option<&str>,
+) -> Command {
+    let script = format!("{program} --version");
+    match platform {
+        AppPlatform::Windows => {
+            let mut command = crate::daemon::launcher::wsl_command();
+            if let Some(distro) = configured_distro {
+                command.args(crate::daemon::launcher::wsl_shell_args(
+                    distro, "-lc", &script,
+                ));
+            } else {
+                command.args(["-e", "sh", "-lc", script.as_str()]);
+            }
+            command
+        }
+        AppPlatform::Linux | AppPlatform::Macos => {
+            let shell = std::env::var_os("SHELL")
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "sh".into());
+            let mut command = Command::new(shell);
+            command.args(["-lc", script.as_str()]);
+            command
+        }
+    }
 }
 
 fn parse_cli_version(raw: &str) -> Option<((u32, u32, u32), String)> {
@@ -632,6 +663,12 @@ impl TerminalPlatformContract {
         }
     }
 
+    pub fn for_runtime_platform(platform: AppPlatform) -> Self {
+        let mut contract = Self::for_platform(platform);
+        contract.cli_versions = CliVersions::current().clone();
+        contract
+    }
+
     pub fn supports_emulator(&self, emulator: &str) -> bool {
         self.supported_emulators
             .iter()
@@ -728,7 +765,7 @@ pub struct Settings {
 
 impl Settings {
     pub fn with_runtime_terminal_contract(mut self) -> Self {
-        let contract = TerminalPlatformContract::default();
+        let contract = TerminalPlatformContract::for_runtime_platform(AppPlatform::current());
 
         if self.terminal.emulator == "default"
             || !contract.supports_emulator(&self.terminal.emulator)
@@ -1266,6 +1303,63 @@ mod tests {
         assert!(queue.codex_queue_wake_supported);
     }
 
+    // Regression: 61e9a24 ran the Windows probe as `wsl -e codex`, bypassing
+    // the configured distro and login-shell PATH where nvm installs Codex.
+    #[test]
+    fn windows_cli_version_probe_uses_configured_distro_login_shell() {
+        let command = cli_version_command_for_platform(
+            AppPlatform::Windows,
+            "codex",
+            Some("Taurhaus-Distro"),
+        );
+
+        assert_eq!(command.get_program(), "wsl");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec![
+                "-d",
+                "Taurhaus-Distro",
+                "-e",
+                "sh",
+                "-lc",
+                "codex --version",
+            ]
+        );
+    }
+
+    // Regression: 61e9a24 executed the Unix probe directly, so GUI launches
+    // without the user's hydrated PATH could not resolve an nvm-installed CLI.
+    #[test]
+    fn unix_cli_version_probe_uses_login_shell() {
+        let command = cli_version_command_for_platform(AppPlatform::Linux, "codex", None);
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_ne!(command.get_program(), "codex");
+        assert_eq!(args, vec!["-lc", "codex --version"]);
+    }
+
+    // Regression: 61e9a24 made `Default` launch two blocking subprocesses,
+    // making plain settings defaults host-dependent and potentially 10 s slow.
+    #[test]
+    fn cli_versions_default_is_inert() {
+        assert_eq!(
+            CliVersions::default(),
+            CliVersions {
+                codex: None,
+                claude: None,
+                codex_compaction_hooks_supported: false,
+                codex_notify_supported: false,
+                codex_queue_wake_supported: false,
+            }
+        );
+    }
+
     #[test]
     fn terminal_platform_contract_macos_defaults_include_supported_apps() {
         let contract = TerminalPlatformContract::for_platform(AppPlatform::Macos);
@@ -1416,9 +1510,10 @@ mod tests {
 
         let expected_default = TerminalPlatformContract::default().default_emulator;
         assert_eq!(settings.terminal.emulator, expected_default);
+        assert_eq!(settings.terminal_contract.platform, AppPlatform::current());
         assert_eq!(
-            settings.terminal_contract,
-            TerminalPlatformContract::default()
+            settings.terminal_contract.cli_versions,
+            CliVersions::current().clone()
         );
     }
 }
