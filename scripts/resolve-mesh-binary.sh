@@ -20,10 +20,15 @@ workspace_binary_needs_build() {
     if [ ! -f "$LOCK_FILE" ]; then
         return 1
     fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "✗ Cannot compare mesh git commit: python3 is not available." >&2
+        return 2
+    fi
 
     local mesh_json
+    local comparison_status=0
     mesh_json="$("$PROJECT_BINARY" version --json 2>/dev/null || true)"
-    LOCK_FILE="$LOCK_FILE" MESH_JSON="$mesh_json" python3 - <<'PY'
+    LOCK_FILE="$LOCK_FILE" MESH_JSON="$mesh_json" python3 - <<'PY' || comparison_status=$?
 import json
 import os
 import sys
@@ -37,12 +42,22 @@ except (OSError, json.JSONDecodeError):
 
 sys.exit(0 if expected is not None and actual != expected else 1)
 PY
+    if [ "$comparison_status" -ne 0 ] && [ "$comparison_status" -ne 1 ]; then
+        echo "✗ could not compare mesh git commit (python3 exited $comparison_status)." >&2
+        return 2
+    fi
+    return "$comparison_status"
 }
 
 if [ -d "$MESH_PROJECT" ]; then
     if workspace_binary_needs_build; then
         echo "▸ Building mesh from $MESH_PROJECT…" >&2
         (cd "$MESH_PROJECT" && cargo build --release --bin mesh) >&2
+    else
+        comparison_status=$?
+        if [ "$comparison_status" -ne 1 ]; then
+            exit "$comparison_status"
+        fi
     fi
     if [ -x "$PROJECT_BINARY" ] && [ -s "$PROJECT_BINARY" ]; then
         printf '%s\n' "$PROJECT_BINARY"

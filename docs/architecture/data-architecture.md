@@ -161,7 +161,7 @@ The compaction bugs audited on `2026-03-08` happened when transcript ownership w
 - coordination orchestrator logic
 - `runtime/` attachment state
 - operational snapshots
-- compaction hook processing, transcript-fallback signal extraction/watching, and delivery bookkeeping
+- compaction hook processing and the currently default Codex transcript signal extraction/watching, plus delivery bookkeeping
 - member launch/liveness ownership checks and authoritative `runtime/` pane identity
 - UI projections and diagnostics
 
