@@ -71,6 +71,10 @@ pub struct LaunchSpec<'a> {
     /// Managed Codex launches opt into the taurhaus-written user hook without
     /// prompting for hook trust. Unmanaged launches always leave this false.
     pub codex_bypass_hook_trust: bool,
+    /// Managed Codex launches with native notify support receive the daemon
+    /// executable that will persist turn-complete edges. Unmanaged or
+    /// unsupported launches leave this unset.
+    pub codex_notify_executable: Option<&'a std::path::Path>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,6 +83,9 @@ pub enum LaunchNote {
     DeprecatedFlag { flag: String },
     /// The base already selected a model, so it wins over `ModelSpec`.
     ModelIgnored { found: String },
+    /// The base already selected a Codex notifier, so it wins over the managed
+    /// taurhaus turn-complete sink.
+    NotifyIgnored { found: String },
     /// The selected catalog model is deprecated and has a preferred replacement.
     ModelDeprecated {
         found: String,
@@ -103,6 +110,7 @@ impl LaunchNote {
         match self {
             Self::DeprecatedFlag { .. } => "launch.flag.deprecated",
             Self::ModelIgnored { .. } => "launch.model.ignored",
+            Self::NotifyIgnored { .. } => "launch.notify.ignored",
             Self::ModelDeprecated { .. } => "launch.model.deprecated",
             Self::EffortIgnored {
                 reason: EffortIgnoreReason::BaseOverride,
@@ -132,6 +140,20 @@ impl LaunchSpec<'_> {
                     && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
                 {
                     command.push_str(" --dangerously-bypass-hook-trust");
+                }
+                if let Some(executable) = self.codex_notify_executable {
+                    if command_contains_codex_config(self.base, "notify") {
+                        notes.push(LaunchNote::NotifyIgnored {
+                            found: "notify".to_string(),
+                        });
+                    } else {
+                        let notify = serde_json::to_string(&[
+                            executable.to_string_lossy().as_ref(),
+                            "codex-notify",
+                        ])
+                        .expect("string-only Codex notify command serializes");
+                        append_flag(&mut command, "-c", &format!("notify={notify}"));
+                    }
                 }
                 if command_contains_flag(self.base, "--full-auto") {
                     notes.push(LaunchNote::DeprecatedFlag {
@@ -292,6 +314,17 @@ pub(crate) fn command_contains_flag(command: &str, flag: &str) -> bool {
             || token
                 .strip_prefix(flag)
                 .is_some_and(|suffix| suffix.starts_with('='))
+    })
+}
+
+fn command_contains_codex_config(command: &str, key: &str) -> bool {
+    command.match_indices(key).any(|(index, _)| {
+        let before = command[..index].chars().next_back();
+        let after = command[index + key.len()..].trim_start();
+        let starts_config_key = before.is_none_or(|character| {
+            character.is_whitespace() || matches!(character, '\'' | '"' | '=')
+        });
+        starts_config_key && after.starts_with('=')
     })
 }
 
@@ -475,6 +508,7 @@ mod tests {
             base: "codex --yolo",
             model: ModelSpec::parse_legacy("gpt-5.4 high"),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -496,6 +530,7 @@ mod tests {
             model: ModelSpec::default(),
             team: None,
             codex_bypass_hook_trust: true,
+            codex_notify_executable: None,
         }
         .render();
         assert!(trusted.command.contains("--dangerously-bypass-hook-trust"));
@@ -507,11 +542,70 @@ mod tests {
             model: ModelSpec::default(),
             team: None,
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
         }
         .render();
         assert!(!unmanaged
             .command
             .contains("--dangerously-bypass-hook-trust"));
+    }
+
+    // Regression: 791f6be centralized managed launch rendering without Codex's
+    // native turn-complete notify, so completed turns stayed active until the
+    // fd/rchar heuristic and display hysteresis settled.
+    #[test]
+    fn managed_codex_launch_renders_turn_complete_notify() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec::default(),
+            team: None,
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: Some(std::path::Path::new(
+                "/home/test/.local/bin/taurhaus-daemon",
+            )),
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            concat!(
+                "codex --yolo -c '",
+                "notify=[\"/home/test/.local/bin/taurhaus-daemon\",\"codex-notify\"]'"
+            )
+        );
+        assert!(rendered.notes.is_empty());
+    }
+
+    #[test]
+    fn managed_codex_launch_preserves_user_notify_and_notes_it() {
+        for base in [
+            "codex --yolo -c 'notify=[\"custom-notifier\"]'",
+            "codex --yolo -c 'notify = [\"custom-notifier\"]'",
+            "codex --yolo --config=notify=[\"custom-notifier\"]",
+        ] {
+            let rendered = LaunchSpec {
+                tool: CliTool::Codex,
+                mode: LaunchMode::Fresh,
+                base,
+                model: ModelSpec::default(),
+                team: None,
+                codex_bypass_hook_trust: false,
+                codex_notify_executable: Some(std::path::Path::new(
+                    "/home/test/.local/bin/taurhaus-daemon",
+                )),
+            }
+            .render();
+
+            assert_eq!(rendered.command, base);
+            assert_eq!(
+                rendered.notes,
+                vec![LaunchNote::NotifyIgnored {
+                    found: "notify".to_string(),
+                }]
+            );
+        }
     }
 
     #[test]
@@ -522,6 +616,7 @@ mod tests {
             base: "codex --yolo",
             model: ModelSpec::parse_legacy("gpt-5.3"),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -538,6 +633,7 @@ mod tests {
             base: "codex --yolo --model gpt-6",
             model: model_spec("gpt-5.4", None),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -559,6 +655,7 @@ mod tests {
             base: "codex --full-auto",
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -581,6 +678,7 @@ mod tests {
             base: "codex --yolo",
             model: model_spec("gpt-5.4", None),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -602,6 +700,7 @@ mod tests {
             base: "codex --yolo",
             model: model_spec("gpt-5.4", Some("high")),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -620,6 +719,7 @@ mod tests {
             base: "codex --yolo",
             model: model_spec("gpt-5.4", Some("ultra")),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -640,6 +740,7 @@ mod tests {
             base: "codex --yolo -m gpt-5.5",
             model: model_spec("gpt-5.6-sol", Some("ultra")),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -675,6 +776,7 @@ mod tests {
                 reasoning_effort: Some("max".to_string()),
             },
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -694,6 +796,7 @@ mod tests {
                 reasoning_effort: Some("turbo".to_string()),
             },
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -715,6 +818,7 @@ mod tests {
             base: "claude --dangerously-skip-permissions",
             model: model_spec("opus", Some("ultra")),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -741,6 +845,13 @@ mod tests {
             }
             .event_name(),
             "launch.model.ignored"
+        );
+        assert_eq!(
+            LaunchNote::NotifyIgnored {
+                found: "notify".to_string()
+            }
+            .event_name(),
+            "launch.notify.ignored"
         );
         assert_eq!(
             LaunchNote::ModelDeprecated {
@@ -776,6 +887,7 @@ mod tests {
             base: "claude --dangerously-skip-permissions --team-name 'ledger-team'",
             model: model_spec("claude-opus-4-6", Some("high")),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -813,6 +925,7 @@ mod tests {
             base: "claude --dangerously-skip-permissions",
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -839,6 +952,7 @@ mod tests {
             base,
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -859,6 +973,7 @@ mod tests {
             base,
             model: model_spec("claude-opus-4-6", None),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -874,6 +989,7 @@ mod tests {
             base: "gemini --yolo",
             model: model_spec("gemini-3.1-pro", Some("high")),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();
@@ -898,6 +1014,7 @@ mod tests {
             base: "gemini --yolo --model gemini-2.5-pro",
             model: model_spec("gemini-3.1-pro", None),
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
             team: None,
         }
         .render();

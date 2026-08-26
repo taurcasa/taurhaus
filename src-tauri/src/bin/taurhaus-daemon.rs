@@ -15,6 +15,9 @@ use taurhaus_lib::provider::platform_paths::PlatformPaths;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    if maybe_run_codex_notify_mode() {
+        return;
+    }
     if maybe_run_compact_hook_mode() {
         return;
     }
@@ -102,6 +105,89 @@ fn main() {
     }
 
     tracing::info!("taurhaus-daemon shut down cleanly");
+}
+
+fn maybe_run_codex_notify_mode() -> bool {
+    if std::env::args().nth(1).as_deref() != Some("codex-notify") {
+        return false;
+    }
+
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
+        .with_writer(std::io::stderr)
+        .init();
+    let _log_state = LogFileState::new(PlatformPaths::log_path())
+        .inspect(|state| {
+            install_global_sink(state);
+        })
+        .map_err(|error| tracing::warn!(error = %error, "Codex notify log sink unavailable"))
+        .ok();
+
+    let Some(raw_event) = std::env::args().nth(2) else {
+        tracing::warn!("codex-notify requires the Codex JSON payload argument");
+        eprintln!("codex-notify requires the Codex JSON payload argument");
+        std::process::exit(1);
+    };
+    let event = match taurhaus_lib::daemon::codex_notify::parse_event(&raw_event) {
+        Ok(event) => event,
+        Err(error) => {
+            tracing::warn!(error = %error, "Codex notify payload was invalid");
+            eprintln!("invalid Codex notify payload: {error}");
+            std::process::exit(1);
+        }
+    };
+    let path = PlatformPaths::codex_notify_path();
+    let outcome = match taurhaus_lib::daemon::codex_notify::append_event_at(
+        &path,
+        &raw_event,
+        chrono::Utc::now(),
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            tracing::warn!(error, path = %path.display(), "Codex notify append failed");
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    };
+
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "path".to_string(),
+        serde_json::Value::String(path.display().to_string()),
+    );
+    fields.insert(
+        "session_id".to_string(),
+        event
+            .session_id()
+            .map(|value| serde_json::Value::String(value.to_string()))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    fields.insert(
+        "event_type".to_string(),
+        event
+            .event_type()
+            .map(|value| serde_json::Value::String(value.to_string()))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    fields.insert(
+        "truncated".to_string(),
+        serde_json::Value::Bool(outcome.truncated),
+    );
+    taurhaus_lib::logging::emit_global(
+        "info",
+        "daemon",
+        "codex.notify.appended",
+        Some("Recorded Codex native turn edge".to_string()),
+        fields,
+    );
+    tracing::info!(
+        path = %path.display(),
+        session_id = ?event.session_id(),
+        event_type = ?event.event_type(),
+        truncated = outcome.truncated,
+        "Codex native turn edge recorded"
+    );
+    true
 }
 
 fn maybe_run_compact_hook_mode() -> bool {
@@ -239,6 +325,7 @@ fn print_help() {
     eprintln!("app connects to this daemon via TCP localhost.");
     eprintln!();
     eprintln!("Usage: taurhaus-daemon [OPTIONS]");
+    eprintln!("       taurhaus-daemon codex-notify <JSON>");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT})");

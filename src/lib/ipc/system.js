@@ -32,6 +32,14 @@ const EMPTY_MODEL_CATALOG = {
   gemini: [],
 }
 
+const EMPTY_CLI_VERSIONS = {
+  codex: null,
+  claude: null,
+  codex_compaction_hooks_supported: false,
+  codex_notify_supported: false,
+  codex_queue_wake_supported: false,
+}
+
 const DEFAULT_TERMINAL_CONTRACTS = {
   linux: {
     platform: 'linux',
@@ -39,6 +47,7 @@ const DEFAULT_TERMINAL_CONTRACTS = {
     supported_emulators: ['manual'],
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
     model_catalog: EMPTY_MODEL_CATALOG,
+    cli_versions: EMPTY_CLI_VERSIONS,
   },
   macos: {
     platform: 'macos',
@@ -46,6 +55,7 @@ const DEFAULT_TERMINAL_CONTRACTS = {
     supported_emulators: ['iterm2', 'ghostty', 'terminal_app', 'custom'],
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
     model_catalog: EMPTY_MODEL_CATALOG,
+    cli_versions: EMPTY_CLI_VERSIONS,
   },
   windows: {
     platform: 'windows',
@@ -53,6 +63,7 @@ const DEFAULT_TERMINAL_CONTRACTS = {
     supported_emulators: ['windows_terminal', 'custom'],
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
     model_catalog: EMPTY_MODEL_CATALOG,
+    cli_versions: EMPTY_CLI_VERSIONS,
   },
 }
 
@@ -98,6 +109,29 @@ function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
   }
 }
 
+function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
+  const versions = raw && typeof raw === 'object' ? raw : defaults
+  return {
+    codex: versions.codex == null ? null : String(versions.codex),
+    claude: versions.claude == null ? null : String(versions.claude),
+    codex_compaction_hooks_supported: Boolean(
+      versions.codex_compaction_hooks_supported ??
+        versions.codexCompactionHooksSupported ??
+        defaults.codex_compaction_hooks_supported,
+    ),
+    codex_notify_supported: Boolean(
+      versions.codex_notify_supported ??
+        versions.codexNotifySupported ??
+        defaults.codex_notify_supported,
+    ),
+    codex_queue_wake_supported: Boolean(
+      versions.codex_queue_wake_supported ??
+        versions.codexQueueWakeSupported ??
+        defaults.codex_queue_wake_supported,
+    ),
+  }
+}
+
 export function buildFrontendFallbackTerminalContract(platform = 'linux') {
   const fallback = DEFAULT_TERMINAL_CONTRACTS[platform] ?? DEFAULT_TERMINAL_CONTRACTS.linux
   return {
@@ -110,6 +144,7 @@ export function buildFrontendFallbackTerminalContract(platform = 'linux') {
       gemini: { ...fallback.cli_command_defaults.gemini },
     },
     model_catalog: normalizeModelCatalog(fallback.model_catalog),
+    cli_versions: normalizeCliVersions(fallback.cli_versions),
   }
 }
 
@@ -134,6 +169,12 @@ function normalizeTerminalContract(raw) {
       : contract.modelCatalog && typeof contract.modelCatalog === 'object'
         ? contract.modelCatalog
         : defaults.model_catalog
+  const cliVersions =
+    contract.cli_versions && typeof contract.cli_versions === 'object'
+      ? contract.cli_versions
+      : contract.cliVersions && typeof contract.cliVersions === 'object'
+        ? contract.cliVersions
+        : defaults.cli_versions
 
   return {
     platform: defaults.platform,
@@ -145,6 +186,7 @@ function normalizeTerminalContract(raw) {
       gemini: normalizeToolCommands(cliCommandDefaults.gemini, defaults.cli_command_defaults.gemini),
     },
     model_catalog: normalizeModelCatalog(modelCatalog, defaults.model_catalog),
+    cli_versions: normalizeCliVersions(cliVersions, defaults.cli_versions),
   }
 }
 

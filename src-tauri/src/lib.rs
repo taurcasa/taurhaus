@@ -398,6 +398,13 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
                 replacement: None,
                 reason: None,
             },
+            LaunchNote::NotifyIgnored { found } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement: None,
+                reason: None,
+            },
             LaunchNote::ModelDeprecated { found, replacement } => Self {
                 event,
                 flag: None,
@@ -501,6 +508,7 @@ fn render_launch_command_cli<R: Read>(
         model: model.clone(),
         team,
         codex_bypass_hook_trust: request.codex_bypass_hook_trust,
+        codex_notify_executable: None,
     }
     .render();
     validate_command_override(&rendered.command)?;

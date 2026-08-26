@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -234,6 +236,11 @@ pub struct CliCommandSettings {
     /// trust before pipeline rendering; this is never persisted or sent to the UI.
     #[serde(skip)]
     pub codex_bypass_hook_trust: bool,
+    /// Runtime-only managed-launch input for Codex's per-turn notify command.
+    /// User-authored bases remain untouched and unmanaged launches leave this
+    /// unset.
+    #[serde(skip)]
+    pub codex_notify_executable: Option<std::path::PathBuf>,
 }
 
 impl Default for CliCommandSettings {
@@ -255,6 +262,7 @@ impl Default for CliCommandSettings {
                 resume: "gemini --yolo --resume".into(),
             },
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
         }
     }
 }
@@ -265,6 +273,169 @@ pub enum AppPlatform {
     Linux,
     Macos,
     Windows,
+}
+
+const CODEX_NATIVE_HOOKS_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
+const CODEX_NATIVE_NOTIFY_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
+const CODEX_QUEUE_WAKE_MIN_VERSION: (u32, u32, u32) = (0, 149, 0);
+const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CliVersions {
+    pub codex: Option<String>,
+    pub claude: Option<String>,
+    pub codex_compaction_hooks_supported: bool,
+    pub codex_notify_supported: bool,
+    pub codex_queue_wake_supported: bool,
+}
+
+static CLI_VERSIONS: LazyLock<CliVersions> = LazyLock::new(CliVersions::probe);
+
+impl CliVersions {
+    pub fn current() -> &'static Self {
+        &CLI_VERSIONS
+    }
+
+    fn probe() -> Self {
+        let codex = probe_cli_version("codex");
+        let claude = probe_cli_version("claude");
+        let versions = Self::from_versions(codex, claude);
+        tracing::info!(
+            codex = ?versions.codex,
+            claude = ?versions.claude,
+            codex_compaction_hooks_supported = versions.codex_compaction_hooks_supported,
+            codex_notify_supported = versions.codex_notify_supported,
+            codex_queue_wake_supported = versions.codex_queue_wake_supported,
+            "CLI versions detected for native harness capability gates"
+        );
+        versions
+    }
+
+    pub fn codex_compaction_hooks_support(&self) -> Option<bool> {
+        self.codex
+            .as_ref()
+            .map(|_| self.codex_compaction_hooks_supported)
+    }
+
+    #[cfg(test)]
+    fn from_outputs(codex: Option<&str>, claude: Option<&str>) -> Self {
+        Self::from_versions(
+            codex.and_then(parse_cli_version),
+            claude.and_then(parse_cli_version),
+        )
+    }
+
+    fn from_versions(
+        codex: Option<((u32, u32, u32), String)>,
+        claude: Option<((u32, u32, u32), String)>,
+    ) -> Self {
+        let codex_parsed = codex.as_ref().map(|(version, _)| *version);
+        Self {
+            codex: codex.map(|(_, normalized)| normalized),
+            claude: claude.map(|(_, normalized)| normalized),
+            codex_compaction_hooks_supported: codex_parsed
+                .is_some_and(|version| version >= CODEX_NATIVE_HOOKS_MIN_VERSION),
+            codex_notify_supported: codex_parsed
+                .is_some_and(|version| version >= CODEX_NATIVE_NOTIFY_MIN_VERSION),
+            codex_queue_wake_supported: codex_parsed
+                .is_some_and(|version| version >= CODEX_QUEUE_WAKE_MIN_VERSION),
+        }
+    }
+}
+
+fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
+    let mut command = cli_version_command(program);
+    let argv = std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    tracing::info!(program, argv = ?argv, "Probing CLI version");
+    let output = match crate::process_utils::run_command_with_timeout(
+        &mut command,
+        CLI_VERSION_TIMEOUT,
+        &format!("{program} --version"),
+    ) {
+        Ok(output) => output,
+        Err(error) => {
+            tracing::info!(program, error = %error, "CLI version probe unavailable");
+            return None;
+        }
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let raw = [stdout.trim(), stderr.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    tracing::info!(
+        program,
+        status = ?output.status.code(),
+        raw_output = %raw,
+        "CLI version probe completed"
+    );
+    if !output.status.success() {
+        return None;
+    }
+    parse_cli_version(&raw)
+}
+
+fn cli_version_command(program: &str) -> Command {
+    let distro = crate::coordination::mesh_cli::resolve_wsl_distro_for_coordination(None);
+    cli_version_command_for_platform(AppPlatform::current(), program, distro.as_deref())
+}
+
+fn cli_version_command_for_platform(
+    platform: AppPlatform,
+    program: &str,
+    configured_distro: Option<&str>,
+) -> Command {
+    let script = format!("{program} --version");
+    match platform {
+        AppPlatform::Windows => {
+            let interactive_script = format!(
+                r#"user_shell="$(getent passwd "$(id -u)" | cut -d: -f7)"; exec "${{user_shell:-sh}}" -ilc '{script}'"#
+            );
+            let mut command = crate::daemon::launcher::wsl_command();
+            if let Some(distro) = configured_distro {
+                command.args(crate::daemon::launcher::wsl_shell_args(
+                    distro,
+                    "-lc",
+                    &interactive_script,
+                ));
+            } else {
+                command.args(["-e", "sh", "-lc", interactive_script.as_str()]);
+            }
+            command
+        }
+        AppPlatform::Linux | AppPlatform::Macos => {
+            let shell = std::env::var_os("SHELL")
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "sh".into());
+            let mut command = Command::new(shell);
+            command.args(["-ilc", script.as_str()]);
+            command
+        }
+    }
+}
+
+fn parse_cli_version(raw: &str) -> Option<((u32, u32, u32), String)> {
+    raw.split_whitespace().find_map(|token| {
+        let token = token.trim_start_matches('v');
+        let mut parts = token.split('.');
+        let major = parts.next()?.parse::<u32>().ok()?;
+        let minor = parts.next()?.parse::<u32>().ok()?;
+        let patch = parts
+            .next()?
+            .chars()
+            .take_while(|character| character.is_ascii_digit())
+            .collect::<String>()
+            .parse::<u32>()
+            .ok()?;
+        let version = (major, minor, patch);
+        Some((version, format!("{major}.{minor}.{patch}")))
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -460,6 +631,8 @@ pub struct TerminalPlatformContract {
     pub cli_command_defaults: CliCommandSettings,
     #[serde(alias = "model_catalog")]
     pub model_catalog: ModelCatalog,
+    #[serde(alias = "cli_versions")]
+    pub cli_versions: CliVersions,
 }
 
 impl Default for TerminalPlatformContract {
@@ -488,7 +661,14 @@ impl TerminalPlatformContract {
                 .collect(),
             cli_command_defaults: CliCommandSettings::default(),
             model_catalog: ModelCatalog::default(),
+            cli_versions: CliVersions::default(),
         }
+    }
+
+    pub fn for_runtime_platform(platform: AppPlatform) -> Self {
+        let mut contract = Self::for_platform(platform);
+        contract.cli_versions = CliVersions::current().clone();
+        contract
     }
 
     pub fn supports_emulator(&self, emulator: &str) -> bool {
@@ -587,7 +767,7 @@ pub struct Settings {
 
 impl Settings {
     pub fn with_runtime_terminal_contract(mut self) -> Self {
-        let contract = TerminalPlatformContract::default();
+        let contract = TerminalPlatformContract::for_runtime_platform(AppPlatform::current());
 
         if self.terminal.emulator == "default"
             || !contract.supports_emulator(&self.terminal.emulator)
@@ -1103,6 +1283,78 @@ mod tests {
         assert_eq!(contract.cli_command_defaults, CliCommandSettings::default());
     }
 
+    // Regression: 2cf41db centralized the terminal platform contract without
+    // CLI versions, so 6fe0aa3 could install Codex hooks on unsupported CLIs.
+    #[test]
+    fn cli_versions_gate_codex_native_capabilities() {
+        let before_hooks =
+            CliVersions::from_outputs(Some("codex-cli 0.146.9"), Some("2.1.246 (Claude Code)"));
+        assert_eq!(before_hooks.codex.as_deref(), Some("0.146.9"));
+        assert_eq!(before_hooks.claude.as_deref(), Some("2.1.246"));
+        assert!(!before_hooks.codex_compaction_hooks_supported);
+        assert!(!before_hooks.codex_notify_supported);
+        assert!(!before_hooks.codex_queue_wake_supported);
+
+        let hooks_and_notify =
+            CliVersions::from_outputs(Some("codex-cli 0.147.0"), Some("claude 2.1.238"));
+        assert!(hooks_and_notify.codex_compaction_hooks_supported);
+        assert!(hooks_and_notify.codex_notify_supported);
+        assert!(!hooks_and_notify.codex_queue_wake_supported);
+
+        let queue = CliVersions::from_outputs(Some("codex-cli 0.149.0"), None);
+        assert!(queue.codex_queue_wake_supported);
+    }
+
+    // Regression: c0aa59a used a non-interactive login shell for the version
+    // probe, but managed panes source interactive rc files where nvm installs Codex.
+    #[test]
+    fn windows_cli_version_probe_uses_configured_distro_interactive_shell() {
+        let command = cli_version_command_for_platform(
+            AppPlatform::Windows,
+            "codex",
+            Some("Taurhaus-Distro"),
+        );
+
+        assert_eq!(command.get_program(), "wsl");
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(&args[..5], ["-d", "Taurhaus-Distro", "-e", "sh", "-lc"]);
+        assert!(args[5].contains(r#"exec "${user_shell:-sh}" -ilc"#));
+        assert!(args[5].ends_with("'codex --version'"));
+    }
+
+    // Regression: c0aa59a switched the Unix probe to `-lc`, which still omits
+    // interactive rc files and cannot resolve this host's nvm-installed Codex.
+    #[test]
+    fn unix_cli_version_probe_uses_interactive_login_shell() {
+        let command = cli_version_command_for_platform(AppPlatform::Linux, "codex", None);
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_ne!(command.get_program(), "codex");
+        assert_eq!(args, vec!["-ilc", "codex --version"]);
+    }
+
+    // Regression: 61e9a24 made `Default` launch two blocking subprocesses,
+    // making plain settings defaults host-dependent and potentially 10 s slow.
+    #[test]
+    fn cli_versions_default_is_inert() {
+        assert_eq!(
+            CliVersions::default(),
+            CliVersions {
+                codex: None,
+                claude: None,
+                codex_compaction_hooks_supported: false,
+                codex_notify_supported: false,
+                codex_queue_wake_supported: false,
+            }
+        );
+    }
+
     #[test]
     fn terminal_platform_contract_macos_defaults_include_supported_apps() {
         let contract = TerminalPlatformContract::for_platform(AppPlatform::Macos);
@@ -1223,6 +1475,10 @@ mod tests {
         assert!(value["modelCatalog"]["codex"][0]
             .get("defaultEffort")
             .is_some());
+        assert!(value["cliVersions"].get("codex").is_some());
+        assert!(value["cliVersions"]
+            .get("codexQueueWakeSupported")
+            .is_some());
     }
 
     #[test]
@@ -1249,9 +1505,10 @@ mod tests {
 
         let expected_default = TerminalPlatformContract::default().default_emulator;
         assert_eq!(settings.terminal.emulator, expected_default);
+        assert_eq!(settings.terminal_contract.platform, AppPlatform::current());
         assert_eq!(
-            settings.terminal_contract,
-            TerminalPlatformContract::default()
+            settings.terminal_contract.cli_versions,
+            CliVersions::current().clone()
         );
     }
 }

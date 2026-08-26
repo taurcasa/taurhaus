@@ -70,7 +70,12 @@ pub(super) fn launch_cli_session_impl(
                         Some("Delegating team-member resume to coordination pipeline".to_string()),
                         delegated_fields,
                     );
-                    return delegate_launch_to_coordination_resume(db, coordination_state, &target);
+                    return delegate_launch_to_coordination_resume(
+                        db,
+                        coordination_state,
+                        &target,
+                        tool,
+                    );
                 }
                 TeamMemberMatchResult::Ambiguous => {
                     let mut ambiguous_fields = Map::new();
@@ -102,6 +107,7 @@ pub(super) fn launch_cli_session_impl(
         base: base_command(&terminal_settings.cli_commands, tool, mode),
         model: ModelSpec::default(),
         codex_bypass_hook_trust: false,
+        codex_notify_executable: None,
         team: None,
     }
     .render();
@@ -134,6 +140,10 @@ pub(super) fn launch_cli_session_impl(
             LaunchNote::ModelIgnored { found } => {
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides the requested model"
+            }
+            LaunchNote::NotifyIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides the managed Codex notifier"
             }
             LaunchNote::ModelDeprecated { found, replacement } => {
                 fields.insert("found".to_string(), Value::String(found));
