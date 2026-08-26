@@ -1239,6 +1239,84 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
     assert_eq!(fallback["project"], "p1");
     assert_eq!(fallback["wanted"], "deleted-account");
     assert_eq!(fallback["used"], "primary@example.com");
+    assert_eq!(fallback["reason"], "account_unavailable");
+}
+
+// Regression: 518aace read every daemon failure as an empty account list. A
+// Windows resume whose transcript lookup never ran then dropped to the
+// physical default config dir — a different subscription's history — without
+// a word in the log to say the question had gone unanswered.
+#[test]
+fn a_launch_whose_detection_failed_falls_back_and_says_why() {
+    use super::launching::{decide_launch_account, log_account_resolution};
+    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
+    use crate::session_scanner::claude_accounts::AccountRequest;
+
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    let launch = decide_launch_account(
+        &ClaudeAccountsResult {
+            accounts: Vec::new(),
+            source: "daemon".to_string(),
+            degraded: true,
+            error: Some("Daemon transport error: connection reset by peer".to_string()),
+        },
+        &TranscriptLookup {
+            transcript: None,
+            unavailable: Some("timed out waiting for daemon".to_string()),
+        },
+        AccountRequest {
+            requested_account_id: None,
+            session_transcript: None,
+            project_account_id: Some("account-2"),
+            default_account_id: None,
+        },
+    );
+    log_account_resolution("p1", &launch);
+
+    let events = read_log_events(log_file_path.path());
+    let fallback = events
+        .iter()
+        .find(|event| event["event"] == "launch.account.fallback")
+        .expect("fallback event");
+    assert_eq!(fallback["project"], "p1");
+    assert_eq!(fallback["reason"], "daemon_unavailable");
+    assert_eq!(fallback["wanted"], "account-2");
+    assert_eq!(fallback["used"], serde_json::Value::Null);
+}
+
+/// A transcript recovered from this process's own sightings placed the resume,
+/// so nothing fell back — a warning here would be noise.
+#[test]
+fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
+    use super::launching::decide_launch_account;
+    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
+    use crate::session_scanner::claude_accounts::AccountRequest;
+
+    let transcript =
+        PathBuf::from("/home/user/.claude-account2/projects/-tmp-project/session.jsonl");
+    let launch = decide_launch_account(
+        &ClaudeAccountsResult {
+            accounts: fake_accounts(),
+            source: "daemon".to_string(),
+            degraded: false,
+            error: None,
+        },
+        &TranscriptLookup {
+            transcript: Some(transcript.clone()),
+            unavailable: Some("timed out waiting for daemon".to_string()),
+        },
+        AccountRequest {
+            requested_account_id: None,
+            session_transcript: Some(transcript.as_path()),
+            project_account_id: Some("account-1"),
+            default_account_id: None,
+        },
+    );
+
+    assert!(launch.degraded.is_none());
 }
 
 #[test]

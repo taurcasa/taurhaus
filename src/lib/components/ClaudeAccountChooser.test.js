@@ -117,4 +117,22 @@ describe('ClaudeAccountChooser', () => {
 
     expect(onConfirm).toHaveBeenCalledWith('account-1', true)
   })
+
+  // Regression: 518aace read a daemon failure as an empty account list, so the
+  // chooser stopped appearing altogether. A stale list is still the answer to
+  // "which subscriptions do I have" — it just needs to say that it is stale.
+  it('keeps offering the last known accounts when detection is degraded', () => {
+    renderChooser({ degraded: true })
+
+    expect(screen.getByTestId('claude-account-option-account-1')).toBeInTheDocument()
+    expect(screen.getByTestId('claude-accounts-degraded')).toHaveTextContent(
+      'Accounts unavailable (daemon offline) — using last known'
+    )
+  })
+
+  it('says nothing about the daemon while detection works', () => {
+    renderChooser()
+
+    expect(screen.queryByTestId('claude-accounts-degraded')).not.toBeInTheDocument()
+  })
 })

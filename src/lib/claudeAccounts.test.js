@@ -59,6 +59,22 @@ const THIRD = {
   config_dir: '/home/user/.claude-third',
 }
 
+/** What the backend answers when detection ran. */
+const detected = (accounts) => ({
+  accounts,
+  source: 'native',
+  degraded: false,
+  error: null,
+})
+
+/** What it answers when the daemon could not be asked at all. */
+const degraded = (error = 'The WSL daemon is not reachable') => ({
+  accounts: [],
+  source: 'daemon',
+  degraded: true,
+  error,
+})
+
 describe('claudeAccounts store', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -74,7 +90,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('keeps a logged-out account visible for the chooser but out of the count', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, { ...SECOND, logged_in: false }])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
 
     await refreshClaudeAccounts()
 
@@ -87,7 +103,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('launches straight away when only one account is logged in', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY]))
     await refreshClaudeAccounts()
 
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
@@ -97,7 +113,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('never asks for a non-Claude tool', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
 
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'codex' })
@@ -107,7 +123,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('asks once when two accounts are logged in and the project stored no choice', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
 
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
@@ -117,7 +133,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('remembers the choice for the project and launches on it', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 
@@ -129,7 +145,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('does not store the choice when the user unticks remember', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 
@@ -140,7 +156,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('skips the chooser once the project has a stored account', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
 
     await requestClaudeLaunch({
@@ -154,7 +170,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('cancelling the chooser launches nothing', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 
@@ -178,7 +194,7 @@ describe('claudeAccounts store', () => {
   // caller happened to hold and updated nothing after storing the answer, so
   // the same project asked again on every launch of the app session.
   it('asks once and never again once the choice is remembered', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     const project = { id: 'p1' }
     await requestClaudeLaunch({ project, mode: 'fresh', tool: 'claude' })
     await claudeAccounts.pending.confirm('account-2', true)
@@ -191,7 +207,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('a failed store drops the remembered choice again', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     setProjectClaudeAccount.mockRejectedValue(new Error('db locked'))
     const project = { id: 'p1' }
     await requestClaudeLaunch({ project, mode: 'fresh', tool: 'claude' })
@@ -205,7 +221,7 @@ describe('claudeAccounts store', () => {
   // alone. The chooser asked anyway, and Enter pinned the project to whichever
   // account happened to sit in the default config dir.
   it('never asks when a global default account is configured', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     getSettings.mockResolvedValue({ terminal: { claude_default_account_id: 'account-2' } })
 
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
@@ -216,7 +232,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('asks again when the configured global default is no longer usable', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, { ...SECOND, logged_in: false }, THIRD])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }, THIRD]))
     getSettings.mockResolvedValue({ terminal: { claude_default_account_id: 'account-2' } })
 
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
@@ -225,7 +241,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('a default chosen in settings takes effect without a reload', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
 
     setGlobalClaudeAccount('account-2')
@@ -248,7 +264,7 @@ describe('claudeAccounts store', () => {
     const detecting = refreshClaudeAccounts()
 
     const launching = requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
-    publish([PRIMARY, SECOND])
+    publish(detected([PRIMARY, SECOND]))
     await detecting
     await launching
 
@@ -262,7 +278,7 @@ describe('claudeAccounts store', () => {
   // the chooser outranks it, so a resume was pinned to whichever account the
   // user picked in a dialog that should never have opened.
   it('never asks for a resume the backend can already place', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     resolveClaudeLaunchAccount.mockResolvedValue({
       accountId: 'account-2',
       source: 'session',
@@ -276,7 +292,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('asks for a resume the backend cannot place', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     resolveClaudeLaunchAccount.mockResolvedValue({
       accountId: null,
       source: 'default_config_dir',
@@ -293,7 +309,7 @@ describe('claudeAccounts store', () => {
   // with the default config dir signed out too the launch landed on an account
   // nobody chose while several usable ones waited.
   it('asks again when the stored project account can no longer run', async () => {
-    listClaudeAccounts.mockResolvedValue([PRIMARY, { ...SECOND, logged_in: false }, THIRD])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }, THIRD]))
 
     await requestClaudeLaunch({
       project: { id: 'p1', claude_account_id: 'account-2' },
@@ -305,13 +321,66 @@ describe('claudeAccounts store', () => {
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
   })
 
+  // Regression: 518aace let the backend answer every daemon failure with a
+  // successful empty list. The store believed it: the chooser stopped asking,
+  // the chip disappeared, and launches ran on whichever subscription the
+  // default config dir happened to hold — while both accounts were still
+  // signed in and nothing on screen said otherwise.
+  it('keeps the accounts it last knew when detection is degraded', async () => {
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts()
+
+    listClaudeAccounts.mockResolvedValue(degraded())
+    await refreshClaudeAccounts({ force: true })
+
+    expect(claudeAccounts.accounts.map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+    expect(claudeAccounts.degraded).toBe(true)
+  })
+
+  it('still asks which subscription to use while detection is degraded', async () => {
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts()
+    listClaudeAccounts.mockResolvedValue(degraded())
+    await refreshClaudeAccounts({ force: true })
+
+    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(launchClaudeSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  it('detects again after a degraded answer instead of caching it', async () => {
+    listClaudeAccounts.mockResolvedValueOnce(degraded())
+    await refreshClaudeAccounts()
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+
+    await refreshClaudeAccounts()
+
+    expect(claudeAccounts.degraded).toBe(false)
+    expect(claudeAccounts.accounts).toHaveLength(2)
+  })
+
+  it('a rejected detection keeps the last known accounts too', async () => {
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts()
+
+    listClaudeAccounts.mockRejectedValue(new Error('daemon down'))
+    await refreshClaudeAccounts({ force: true })
+
+    expect(claudeAccounts.accounts).toHaveLength(2)
+    expect(claudeAccounts.degraded).toBe(true)
+  })
+
   // Regression: c982822 cached a failed detection as an empty account list for
   // the full 60 s TTL, so a daemon that connected a moment later could not
   // restore the chooser.
   it('detects again after a failure instead of caching the empty list', async () => {
     listClaudeAccounts.mockRejectedValueOnce(new Error('daemon down'))
     await refreshClaudeAccounts()
-    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
 
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 

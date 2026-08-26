@@ -9,7 +9,9 @@ vi.mock('./ipc.js', () => ({
   removeProject: vi.fn(),
   // A Claude launch asks the account store first, which detects before it
   // decides whether the subscription chooser has to open.
-  listClaudeAccounts: vi.fn(() => Promise.resolve([])),
+  listClaudeAccounts: vi.fn(() =>
+    Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
+  ),
   setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
   resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
   getSettings: vi.fn(() => Promise.resolve({ terminal: {} })),
@@ -54,7 +56,12 @@ describe('Sidebar component branches', () => {
     // The account store is module state shared by the whole app, detection
     // included: without this a test inherits the previous one's answer.
     resetClaudeAccountsForTest()
-    listClaudeAccounts.mockResolvedValue([])
+    listClaudeAccounts.mockResolvedValue({
+      accounts: [],
+      source: 'native',
+      degraded: false,
+      error: null,
+    })
     removeProject.mockResolvedValue(undefined)
     launchClaudeSession.mockResolvedValue({ ok: true })
     stopClaudeSession.mockResolvedValue(undefined)
@@ -784,10 +791,15 @@ describe('Sidebar component branches', () => {
       tmux_session: 'team',
       tmux_window: '2',
     }
-    listClaudeAccounts.mockResolvedValue([
-      { id: 'account-1', email: 'a@example.com', logged_in: true, is_default: true },
-      { id: 'account-2', email: 'b@example.com', logged_in: true, is_default: false },
-    ])
+    listClaudeAccounts.mockResolvedValue({
+      accounts: [
+        { id: 'account-1', email: 'a@example.com', logged_in: true, is_default: true },
+        { id: 'account-2', email: 'b@example.com', logged_in: true, is_default: false },
+      ],
+      source: 'native',
+      degraded: false,
+      error: null,
+    })
     getSessionsForProject.mockImplementation(() => [session])
 
     render(Sidebar, { props: { projects: [project] } })

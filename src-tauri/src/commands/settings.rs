@@ -252,13 +252,26 @@ mod tests {
 
         let _ = get_settings_with_span(&db).expect("get settings");
 
+        // The sink is process-global: anything else running in this test
+        // binary writes to it too. This test is about the pair of events one
+        // command emits, so it reads those and ignores the traffic around them.
         let lines = wait_for_lines(&log_path, 2);
-        let received: Value = serde_json::from_str(&lines[0]).expect("received json");
-        let completed: Value = serde_json::from_str(&lines[1]).expect("completed json");
+        let events: Vec<Value> = lines
+            .iter()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|event| event["command"] == "get_settings")
+            .collect();
 
-        assert_eq!(received["event"], "ipc.command.received");
+        let received = events
+            .iter()
+            .find(|event| event["event"] == "ipc.command.received")
+            .expect("received event");
+        let completed = events
+            .iter()
+            .find(|event| event["event"] == "ipc.command.completed")
+            .expect("completed event");
+
         assert_eq!(received["command"], "get_settings");
-        assert_eq!(completed["event"], "ipc.command.completed");
         assert_eq!(completed["command"], "get_settings");
         assert_eq!(completed["status"], "ok");
     }

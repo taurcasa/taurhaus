@@ -168,6 +168,7 @@
       accounts={claudeAccounts.accounts}
       selectedAccountId={projectClaudeAccountId}
       defaultAccountId={claudeAccounts.defaultAccountId}
+      degraded={claudeAccounts.degraded}
       {dark}
       onSelect={handleClaudeAccountSelect}
     />

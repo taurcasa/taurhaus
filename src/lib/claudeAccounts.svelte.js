@@ -21,6 +21,11 @@ import {
 export const claudeAccounts = $state({
   /** Every detected account, logged in or not. */
   accounts: [],
+  /**
+   * Detection could not run — a daemon that dropped out, typically. `accounts`
+   * is then the last list we knew, not the current truth.
+   */
+  degraded: false,
   /** The account configured as the global default, if the user chose one. */
   defaultAccountId: null,
   /**
@@ -115,8 +120,18 @@ export function refreshClaudeAccounts({ force = false } = {}) {
 }
 
 function detectClaudeAccounts() {
-  const accounts = Promise.resolve(listClaudeAccounts()).then((detected) => {
-    claudeAccounts.accounts = Array.isArray(detected) ? detected : []
+  const accounts = Promise.resolve(listClaudeAccounts()).then((report) => {
+    if (report?.degraded) {
+      // A daemon that dropped out has signed nobody out. Its empty list is
+      // silence, not an answer: keep the accounts we last knew, say they are
+      // stale, and leave the next caller free to ask again.
+      console.warn('Claude account detection is unavailable:', report.error)
+      claudeAccounts.degraded = true
+      detection = null
+      return
+    }
+    claudeAccounts.accounts = report?.accounts ?? []
+    claudeAccounts.degraded = false
   })
   const settings = Promise.resolve(getSettings())
     .then((loaded) => {
@@ -128,12 +143,13 @@ function detectClaudeAccounts() {
 
   return Promise.all([accounts, settings])
     .catch((error) => {
-      // Detection is a convenience, never a gate: an unreachable daemon leaves
-      // the list empty and every launch behaves as before. A failure is not
-      // cached — the next caller tries again, so a daemon that connects a
-      // moment later restores the chooser.
+      // Detection is a convenience, never a gate: a launch during an outage
+      // goes ahead on whatever the backend resolves. The accounts we already
+      // know stay on screen — a failed call is not evidence they are gone —
+      // and the failure is not cached, so a daemon that connects a moment
+      // later restores the real list.
       console.warn('Failed to detect Claude accounts:', error)
-      claudeAccounts.accounts = []
+      claudeAccounts.degraded = true
       detection = null
     })
 }
@@ -220,6 +236,7 @@ export async function requestClaudeLaunch({
 /** Test seam: the store is module state shared by the whole app. */
 export function resetClaudeAccountsForTest() {
   claudeAccounts.accounts = []
+  claudeAccounts.degraded = false
   claudeAccounts.defaultAccountId = null
   claudeAccounts.projectChoices = {}
   claudeAccounts.pending = null

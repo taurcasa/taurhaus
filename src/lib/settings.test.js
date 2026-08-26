@@ -17,7 +17,9 @@ vi.mock('./ipc.js', () => ({
   getIndexStatus: vi.fn(),
   rebuildIndex: vi.fn(),
   getPlatform: vi.fn(),
-  listClaudeAccounts: vi.fn(() => Promise.resolve([])),
+  listClaudeAccounts: vi.fn(() =>
+    Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
+  ),
   setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
   launchClaudeSession: vi.fn(() => Promise.resolve()),
   resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
@@ -132,9 +134,12 @@ describe('Settings component', () => {
     // The account store is module state shared by the whole app, detection
     // included: without this a test inherits the previous one's answer.
     resetClaudeAccountsForTest()
-    listClaudeAccounts.mockResolvedValue([])
+    listClaudeAccounts.mockResolvedValue(detected([]))
     launchClaudeSession.mockResolvedValue({ tmux_pane: '%1' })
   })
+
+  /** What the backend answers when detection ran. */
+  const detected = (accounts) => ({ accounts, source: 'native', degraded: false, error: null })
 
   const TWO_ACCOUNTS = [
     { id: 'account-1', email: 'a@example.com', display_name: 'A', logged_in: true, is_default: true },
@@ -148,7 +153,7 @@ describe('Settings component', () => {
   // reads the old persisted one — so a failed save left the UI claiming one
   // subscription while every launch used another.
   it('keeps the shared default untouched when saving it fails', async () => {
-    listClaudeAccounts.mockResolvedValue(TWO_ACCOUNTS)
+    listClaudeAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
     updateSettings.mockRejectedValueOnce(new Error('disk full'))
     render(Settings, { props: defaultProps() })
     await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
@@ -164,7 +169,7 @@ describe('Settings component', () => {
   })
 
   it('shares the chosen default once it is persisted', async () => {
-    listClaudeAccounts.mockResolvedValue(TWO_ACCOUNTS)
+    listClaudeAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
     render(Settings, { props: defaultProps() })
     await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
 

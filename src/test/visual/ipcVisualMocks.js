@@ -136,7 +136,12 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.checkDaemonInstallStatus.mockResolvedValue({ installed: true, needs_update: false })
   visualIpcMocks.installDaemon.mockResolvedValue(undefined)
   visualIpcMocks.launchClaudeSession.mockResolvedValue(undefined)
-  visualIpcMocks.listClaudeAccounts.mockResolvedValue([])
+  visualIpcMocks.listClaudeAccounts.mockResolvedValue({
+    accounts: [],
+    source: 'native',
+    degraded: false,
+    error: null,
+  })
   visualIpcMocks.setProjectClaudeAccount.mockResolvedValue(undefined)
   visualIpcMocks.navigateToSession.mockResolvedValue(undefined)
   visualIpcMocks.stopClaudeSession.mockResolvedValue(undefined)

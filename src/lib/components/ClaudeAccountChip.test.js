@@ -96,4 +96,25 @@ describe('ClaudeAccountChip', () => {
 
     expect(onSelect).toHaveBeenCalledWith(null)
   })
+
+  // Regression: 518aace read a daemon failure as an empty account list, so the
+  // chip vanished mid-session and the project's subscription went unnamed.
+  it('stays visible and says the list is stale when detection is degraded', async () => {
+    render(ClaudeAccountChip, {
+      props: {
+        accounts: ACCOUNTS,
+        selectedAccountId: 'account-2',
+        degraded: true,
+        onSelect: vi.fn(),
+      },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    expect(chip).toHaveTextContent('Matthias')
+
+    await fireEvent.click(chip)
+    expect(screen.getByTestId('claude-accounts-degraded')).toHaveTextContent(
+      'Accounts unavailable (daemon offline) — using last known'
+    )
+  })
 })

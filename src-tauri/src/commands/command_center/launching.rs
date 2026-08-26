@@ -1,3 +1,4 @@
+use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
 use crate::session_scanner::claude_accounts::{
@@ -109,7 +110,7 @@ pub(super) fn launch_cli_session_impl(
 
     let terminal_settings = load_terminal_settings(db);
     let account = (tool == CliTool::Claude).then(|| {
-        let resolution = resolve_claude_account(
+        let launch = resolve_claude_account(
             provider,
             &linux_path,
             mode,
@@ -117,8 +118,8 @@ pub(super) fn launch_cli_session_impl(
             project_account_id.as_deref(),
             terminal_settings.claude_default_account_id.as_deref(),
         );
-        log_account_resolution(&project_id, &resolution);
-        resolution
+        log_account_resolution(&project_id, &launch);
+        launch.resolution
     });
     let config_dir = account.as_ref().and_then(launch_config_dir);
     let rendered = LaunchSpec {
@@ -419,6 +420,25 @@ pub(super) fn launch_cli_session_impl(
     })
 }
 
+/// Detection could not run at all — no daemon, or one that never answered.
+const DAEMON_UNAVAILABLE: &str = "daemon_unavailable";
+/// The selected account is gone or signed out.
+const ACCOUNT_UNAVAILABLE: &str = "account_unavailable";
+
+/// A launch's account, and what deciding it could not find out.
+pub(super) struct LaunchAccount {
+    pub resolution: AccountResolution,
+    pub degraded: Option<DegradedDetection>,
+}
+
+/// Detection went unanswered and the launch went ahead anyway.
+pub(super) struct DegradedDetection {
+    pub reason: &'static str,
+    /// The stored choice this launch could not honour — the answer it would
+    /// have used had detection worked.
+    pub wanted: Option<String>,
+}
+
 /// Pick the Claude subscription this launch runs on.
 fn resolve_claude_account(
     provider: &ProviderState,
@@ -427,7 +447,7 @@ fn resolve_claude_account(
     requested_account_id: Option<&str>,
     project_account_id: Option<&str>,
     default_account_id: Option<&str>,
-) -> AccountResolution {
+) -> LaunchAccount {
     // `--continue`/`--resume` only see the history of the config dir they run
     // in, so the session this project used last decides the account. The
     // transcripts on disk answer that even after a restart — and on Windows
@@ -435,40 +455,106 @@ fn resolve_claude_account(
     // WSL daemon reports. A sighting from this process's own scans stands in
     // when the transcripts cannot be read (an older daemon, say).
     let asked_for_an_account = requested_account_id.is_some_and(|id| !id.trim().is_empty());
-    let session_transcript = (!asked_for_an_account
-        && matches!(mode, LaunchMode::Continue | LaunchMode::Resume))
-    .then(|| {
-        crate::commands::claude_accounts::claude_project_transcript(provider, linux_path)
-            .or_else(|| remembered_claude_transcript(linux_path))
-    })
-    .flatten();
+    let mut transcript = TranscriptLookup::default();
+    if !asked_for_an_account && matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
+        transcript =
+            crate::commands::claude_accounts::claude_project_transcript(provider, linux_path);
+        if transcript.transcript.is_none() {
+            transcript.transcript = remembered_claude_transcript(linux_path);
+        }
+    }
 
-    let accounts = crate::commands::claude_accounts::claude_accounts(provider);
-    resolve_launch_account(
+    let accounts = crate::commands::claude_accounts::claude_accounts_report(provider);
+    decide_launch_account(
         &accounts,
+        &transcript,
         AccountRequest {
             requested_account_id,
-            session_transcript: session_transcript.as_deref(),
+            session_transcript: transcript.transcript.as_deref(),
             project_account_id,
             default_account_id,
         },
     )
 }
 
+/// The account precedence, plus whether it was applied to a real answer.
+///
+/// An empty account list from a daemon that never replied is silence, and a
+/// resume that falls through it lands on the config dir Claude Code reads on
+/// its own — someone else's history. The launch still goes ahead; what it must
+/// not do is go ahead quietly.
+pub(super) fn decide_launch_account(
+    accounts: &ClaudeAccountsResult,
+    transcript: &TranscriptLookup,
+    request: AccountRequest<'_>,
+) -> LaunchAccount {
+    let wanted = request
+        .project_account_id
+        .or(request.default_account_id)
+        .map(str::to_string);
+    let resolution = resolve_launch_account(&accounts.accounts, request);
+    // An explicit pick and a transcript both answer for themselves; only a
+    // launch that fell through to the fallback lost something.
+    let derived = matches!(
+        resolution.source,
+        AccountSource::Request | AccountSource::Session
+    );
+    let unanswered = accounts.degraded || transcript.unavailable.is_some();
+    let degraded = (unanswered && !derived).then_some(DegradedDetection {
+        reason: DAEMON_UNAVAILABLE,
+        wanted,
+    });
+    LaunchAccount {
+        resolution,
+        degraded,
+    }
+}
+
 /// Say in the log which subscription a launch ended up on, and why.
-fn log_account_resolution(project_id: &str, resolution: &AccountResolution) {
+pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
+    let resolution = &launch.resolution;
+    let used = || {
+        resolution
+            .account
+            .as_ref()
+            .map(|account| Value::String(account.email.clone()))
+            .unwrap_or(Value::Null)
+    };
+
+    if let Some(degraded) = launch.degraded.as_ref() {
+        let mut fields = Map::new();
+        fields.insert("project".to_string(), Value::String(project_id.to_string()));
+        fields.insert(
+            "reason".to_string(),
+            Value::String(degraded.reason.to_string()),
+        );
+        fields.insert(
+            "wanted".to_string(),
+            degraded
+                .wanted
+                .as_ref()
+                .map(|id| Value::String(id.clone()))
+                .unwrap_or(Value::Null),
+        );
+        fields.insert("used".to_string(), used());
+        crate::commands::logging::emit_global(
+            "warn",
+            "command_center",
+            "launch.account.fallback",
+            Some("Claude account detection is unavailable; launching without it".to_string()),
+            fields,
+        );
+    }
+
     if let Some(wanted) = resolution.fallback_from.as_deref() {
         let mut fields = Map::new();
         fields.insert("project".to_string(), Value::String(project_id.to_string()));
-        fields.insert("wanted".to_string(), Value::String(wanted.to_string()));
         fields.insert(
-            "used".to_string(),
-            resolution
-                .account
-                .as_ref()
-                .map(|account| Value::String(account.email.clone()))
-                .unwrap_or(Value::Null),
+            "reason".to_string(),
+            Value::String(ACCOUNT_UNAVAILABLE.to_string()),
         );
+        fields.insert("wanted".to_string(), Value::String(wanted.to_string()));
+        fields.insert("used".to_string(), used());
         crate::commands::logging::emit_global(
             "warn",
             "command_center",
@@ -551,7 +637,8 @@ pub(super) fn resolve_claude_launch_account_impl(
         None,
         project_account_id.as_deref(),
         terminal_settings.claude_default_account_id.as_deref(),
-    );
+    )
+    .resolution;
 
     Ok(ClaudeLaunchAccount {
         account_id: resolution

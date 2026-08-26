@@ -628,6 +628,7 @@
         accounts={resolveChooserAccounts()}
         projectName={claudeAccounts.pending.projectName}
         defaultAccountId={claudeAccounts.defaultAccountId}
+        degraded={claudeAccounts.degraded}
         {dark}
         onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
         onCancel={() => claudeAccounts.pending?.cancel()}

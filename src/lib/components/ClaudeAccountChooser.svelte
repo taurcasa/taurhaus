@@ -11,6 +11,8 @@
     projectName = '',
     /** The account configured as the global default, if the user chose one. */
     defaultAccountId = null,
+    /** Detection could not run: these are the accounts last known, not current. */
+    degraded = false,
     dark = false,
     onConfirm = () => {},
     onCancel = () => {},
@@ -92,6 +94,12 @@
   <p class="mb-2 text-[11px] font-semibold uppercase tracking-wider {headingTone}">
     Claude account{projectName ? ` · ${projectName}` : ''}
   </p>
+
+  {#if degraded}
+    <p class="mb-2 text-[11px] {metaTone}" data-testid="claude-accounts-degraded">
+      Accounts unavailable (daemon offline) — using last known
+    </p>
+  {/if}
 
   <div class="flex flex-col gap-1.5">
     {#each accounts as account (account.id)}

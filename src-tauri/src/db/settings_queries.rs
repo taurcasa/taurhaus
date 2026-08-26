@@ -175,8 +175,19 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
     })
 }
 
-/// Save all settings to the database.
+/// Save all settings to the database, as one write.
+///
+/// The keys are a single blob to everything that reads them: a launch reads the
+/// Claude default while the frontend reads the form it just submitted. A save
+/// that stopped halfway would leave those two disagreeing, so this either
+/// lands whole or changes nothing.
 pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    write_settings(&tx, settings)?;
+    tx.commit()
+}
+
+fn write_settings(conn: &Connection, settings: &Settings) -> Result<(), rusqlite::Error> {
     let scan_dirs_json =
         serde_json::to_string(&settings.scan_directories).unwrap_or_else(|_| "[]".to_string());
     set_setting(conn, KEY_SCAN_DIRS, &scan_dirs_json)?;
@@ -290,6 +301,60 @@ mod tests {
                 .terminal
                 .claude_default_account_id,
             None
+        );
+    }
+
+    /// A write that fails partway leaves the settings blob as it was.
+    ///
+    /// Regression: 518aace wrote every key in its own autocommit statement, so
+    /// a failure after `terminal.claude_default_account_id` kept the new
+    /// default on disk while the command reported failure and the frontend put
+    /// its old value back. Every launch then routed to a subscription the UI
+    /// said nothing about.
+    #[test]
+    fn a_failed_late_write_leaves_the_earlier_keys_alone() {
+        let (conn, _tmp) = test_db();
+        let mut settings = Settings {
+            scan_directories: vec!["~/projects".to_string()],
+            ..Settings::default()
+        };
+        settings.terminal.claude_default_account_id = Some("account-1".to_string());
+        save_settings(&conn, &settings).unwrap();
+
+        // `dark_mode` is written after the Claude default, so this fails the
+        // save halfway through — the way a disk error or a constraint would.
+        conn.execute_batch(
+            "CREATE TRIGGER fail_dark_mode BEFORE INSERT ON settings
+             WHEN NEW.key = 'dark_mode'
+             BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END;",
+        )
+        .unwrap();
+
+        settings.scan_directories = vec!["~/work".to_string()];
+        settings.terminal.claude_default_account_id = Some("account-2".to_string());
+        let error = save_settings(&conn, &settings).expect_err("the late write fails");
+        assert!(
+            error.to_string().contains("simulated write failure"),
+            "{error}"
+        );
+
+        let loaded = get_all_settings(&conn).unwrap();
+        assert_eq!(
+            loaded.terminal.claude_default_account_id.as_deref(),
+            Some("account-1")
+        );
+        assert_eq!(loaded.scan_directories, vec!["~/projects".to_string()]);
+
+        // Clearing the default is the same write, and rolls back the same way.
+        settings.terminal.claude_default_account_id = None;
+        save_settings(&conn, &settings).expect_err("the late write still fails");
+        assert_eq!(
+            get_all_settings(&conn)
+                .unwrap()
+                .terminal
+                .claude_default_account_id
+                .as_deref(),
+            Some("account-1")
         );
     }
 

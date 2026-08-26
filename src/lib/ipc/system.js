@@ -358,15 +358,33 @@ function normalizeClaudeAccount(raw) {
   }
 }
 
+function normalizeClaudeAccountsResult(raw) {
+  const result = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const accounts = Array.isArray(result.accounts) ? result.accounts : []
+  return {
+    accounts: accounts.map(normalizeClaudeAccount).filter(Boolean),
+    source: String(result.source ?? 'native'),
+    degraded: Boolean(result.degraded),
+    error: result.error == null ? null : String(result.error),
+  }
+}
+
 /**
  * Claude subscriptions detected on this host (in-process on Linux/macOS, via
- * the WSL daemon on Windows). An empty list means detection could not run —
- * every launch then behaves as it did before per-project accounts existed.
+ * the WSL daemon on Windows), and whether detection ran at all.
+ *
+ * An empty list with `degraded: false` is an answer — no accounts, or a daemon
+ * too old to know about them, and every launch behaves as it did before
+ * per-project accounts existed. An empty list with `degraded: true` is silence:
+ * nothing answered, and callers keep whatever they last knew.
  */
 export function listClaudeAccounts() {
-  return invokeOrMock('list_claude_accounts', undefined, () => []).then((accounts) =>
-    Array.isArray(accounts) ? accounts.map(normalizeClaudeAccount).filter(Boolean) : []
-  )
+  return invokeOrMock('list_claude_accounts', undefined, () => ({
+    accounts: [],
+    source: 'native',
+    degraded: false,
+    error: null,
+  })).then(normalizeClaudeAccountsResult)
 }
 
 export function search(query, limit = 20) {

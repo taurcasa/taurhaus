@@ -9,7 +9,7 @@ function createDefaults() {
       stopClaudeSession: undefined,
       removeProject: undefined,
       openExternalUrl: undefined,
-      listClaudeAccounts: [],
+      listClaudeAccounts: { accounts: [], source: 'native', degraded: false, error: null },
       setProjectClaudeAccount: undefined,
     },
     sessionStore: {

@@ -8,6 +8,8 @@
     selectedAccountId = null,
     /** The account configured as the global default, if the user chose one. */
     defaultAccountId = null,
+    /** Detection could not run: these are the accounts last known, not current. */
+    degraded = false,
     dark = false,
     onSelect = () => {},
   } = $props()
@@ -47,10 +49,13 @@
     return String(account?.display_name ?? '').trim() || account?.email || ''
   }
 
+  const staleNote = 'Accounts unavailable (daemon offline) — using last known'
   const title = $derived(
-    selected
-      ? `${selected.email}${inherited ? ' (default account)' : ''}`
-      : 'No Claude account detected'
+    degraded
+      ? staleNote
+      : selected
+        ? `${selected.email}${inherited ? ' (default account)' : ''}`
+        : 'No Claude account detected'
   )
 
   function pick(accountId) {
@@ -82,6 +87,11 @@
         role="menu"
         data-testid="claude-account-menu"
       >
+        {#if degraded}
+          <p class="px-2 py-1 text-[10px] {metaTone}" data-testid="claude-accounts-degraded">
+            {staleNote}
+          </p>
+        {/if}
         {#each accounts as account (account.id)}
           <button
             type="button"

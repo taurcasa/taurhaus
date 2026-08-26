@@ -568,6 +568,54 @@ describe('ipc module', () => {
     })
   })
 
+  describe('listClaudeAccounts()', () => {
+    it('carries the accounts and the state of detection', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        accounts: [
+          {
+            id: 'account-1',
+            config_dir: '/home/user/.claude',
+            email: 'a@example.com',
+            display_name: 'A',
+            logged_in: true,
+            is_default: true,
+          },
+        ],
+        source: 'daemon',
+        degraded: false,
+        error: null,
+      })
+
+      const result = await ipc.listClaudeAccounts()
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('list_claude_accounts')
+      expect(result.accounts).toHaveLength(1)
+      expect(result.source).toBe('daemon')
+      expect(result.degraded).toBe(false)
+      delete window.__TAURI_INTERNALS__
+    })
+
+    // Regression: 518aace let a daemon failure arrive as a plain empty list,
+    // indistinguishable from a host with no subscriptions signed in.
+    it('reports a degraded detection rather than an empty answer', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        accounts: [],
+        source: 'daemon',
+        degraded: true,
+        error: 'The WSL daemon is not reachable',
+      })
+
+      const result = await ipc.listClaudeAccounts()
+
+      expect(result.accounts).toEqual([])
+      expect(result.degraded).toBe(true)
+      expect(result.error).toBe('The WSL daemon is not reachable')
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
   // -----------------------------------------------------------------------
   // Settings IPC functions
   // -----------------------------------------------------------------------

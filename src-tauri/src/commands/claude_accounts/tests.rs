@@ -58,17 +58,110 @@ fn setting_the_account_of_an_unknown_project_is_an_error() {
     assert!(error.contains("Project not found"), "{error}");
 }
 
-/// Without a daemon there is nothing to ask on Windows, and the app must read
-/// that as "no accounts detected" rather than failing the call.
+/// Without a daemon there is nothing to ask on Windows. The call still
+/// succeeds — but the empty list is silence, not an answer, and it says so.
 #[test]
-fn a_missing_daemon_yields_no_accounts_instead_of_an_error() {
+fn a_missing_daemon_yields_a_degraded_report_instead_of_an_error() {
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: None,
         wsl_distro: None,
     };
 
-    assert!(daemon_claude_accounts(&provider).is_none());
+    let report = daemon_accounts_report(&provider);
+
+    assert!(report.accounts.is_empty());
+    assert!(report.degraded, "a daemon that cannot be asked is degraded");
+    assert!(report.error.is_some());
+    assert_eq!(report.source, SOURCE_DAEMON);
+}
+
+// Regression: 518aace ran every daemon failure through `unwrap_or_default()`.
+// A disconnect, a timeout and an undecodable payload all arrived at the
+// frontend as a successful empty list, so the chooser vanished and the chip
+// with it — while the accounts were still there and still signed in.
+#[test]
+fn a_daemon_that_never_answered_is_degraded_not_empty() {
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+        Err(crate::errors::AppError::DaemonTransport(
+            "connection reset by peer".to_string(),
+        )),
+        "Claude accounts",
+    ));
+
+    assert!(report.accounts.is_empty());
+    assert!(report.degraded);
+    assert!(
+        report.error.as_deref().is_some_and(|e| e.contains("reset")),
+        "{:?}",
+        report.error
+    );
+}
+
+#[test]
+fn an_undecodable_account_list_is_degraded_not_empty() {
+    let response =
+        protocol::DaemonResponse::ok("list-claude-accounts", serde_json::json!({"accounts": 7}));
+
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+        Ok(response),
+        "Claude accounts",
+    ));
+
+    assert!(report.degraded);
+    assert!(report.error.is_some());
+}
+
+/// The one empty list that *is* an answer: a daemon built before the method
+/// existed. Launches then render exactly as they did before this feature.
+#[test]
+fn an_older_daemon_reports_no_accounts_without_degrading() {
+    let response = protocol::DaemonResponse::err(
+        "list-claude-accounts",
+        "UNKNOWN_METHOD",
+        "Unknown method: list_claude_accounts",
+    );
+
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+        Ok(response),
+        "Claude accounts",
+    ));
+
+    assert!(report.accounts.is_empty());
+    assert!(!report.degraded);
+    assert_eq!(report.error, None);
+}
+
+/// A resume derives its subscription from the transcript that owns the
+/// project's history. A lookup that never ran must not read as "no history".
+#[test]
+fn a_transcript_lookup_the_daemon_could_not_answer_says_so() {
+    let lookup = transcript_lookup_from(daemon_answer::<protocol::ClaudeProjectTranscriptResult>(
+        Err(crate::errors::AppError::DaemonTransport(
+            "timed out waiting for daemon".to_string(),
+        )),
+        "Claude transcript",
+    ));
+
+    assert_eq!(lookup.transcript, None);
+    assert!(lookup.unavailable.is_some());
+}
+
+#[test]
+fn an_older_daemon_reports_no_transcript_without_degrading() {
+    let response = protocol::DaemonResponse::err(
+        "claude-project-transcript",
+        "UNKNOWN_METHOD",
+        "Unknown method: claude_project_transcript",
+    );
+
+    let lookup = transcript_lookup_from(daemon_answer::<protocol::ClaudeProjectTranscriptResult>(
+        Ok(response),
+        "Claude transcript",
+    ));
+
+    assert_eq!(lookup.transcript, None);
+    assert_eq!(lookup.unavailable, None);
 }
 
 /// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
@@ -107,8 +200,7 @@ fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
         wsl_distro: None,
     };
 
-    assert_eq!(
-        claude_project_transcript(&provider, project_path).as_deref(),
-        Some(transcript.as_path())
-    );
+    let lookup = claude_project_transcript(&provider, project_path);
+    assert_eq!(lookup.transcript.as_deref(), Some(transcript.as_path()));
+    assert_eq!(lookup.unavailable, None);
 }
