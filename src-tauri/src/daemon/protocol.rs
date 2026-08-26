@@ -21,7 +21,13 @@ use serde::{Deserialize, Serialize};
 /// omits it and would leave the app with a permanently dark indicator.
 /// v9: the app explicitly selects the daemon's Codex compaction mode instead of
 /// making the daemon guess the desktop settings database path.
-pub const PROTOCOL_VERSION: u32 = 9;
+/// v10: a scanner blackout got its own cursor — the app sends
+/// `since_degraded_revision` and the daemon answers `degraded` /
+/// `degraded_revision`. The gate has to refuse both mixed pairs: a v9 app never
+/// sends the cursor, so its long poll returns immediately forever once a
+/// blackout has happened, and a v9 daemon never sends the flags, so a v10 app
+/// would read every replayed snapshot as a live observation.
+pub const PROTOCOL_VERSION: u32 = 10;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -925,6 +931,29 @@ mod tests {
             PROTOCOL_VERSION > hook_chain_daemon,
             "hub-owned focus changed the wire contract: bump PROTOCOL_VERSION so \
              startup replaces a pre-PR8 daemon instead of trusting its empty focus"
+        );
+    }
+
+    // Regression: commit 2b47b3b gave a blackout its own cursor
+    // (`since_degraded_revision` in, `degraded_revision` out) but left
+    // PROTOCOL_VERSION at 9, so both mixed pairs passed the exact-version gate.
+    // A pre-PR10 app omits the cursor, it defaults to 0, and once a blackout has
+    // ever happened the daemon's revision is permanently above 0 — every long
+    // poll returns immediately and the bridge, which sleeps only between
+    // failures, spins. The other direction is quieter and just as wrong: a
+    // pre-PR10 daemon omits `degraded`/`degraded_revision`, so a new app decodes
+    // a healthy snapshot and silently loses blackout reporting. Both are fixed
+    // by making the version gate refuse the pair.
+    #[test]
+    fn protocol_version_excludes_daemons_without_degradation_cursor() {
+        // The last version whose wire had no blackout cursor in either direction.
+        let cursorless_daemon = 9;
+        assert!(
+            PROTOCOL_VERSION > cursorless_daemon,
+            "the blackout cursor changed the wire contract in both directions: bump \
+             PROTOCOL_VERSION so the exact-version gate refuses a pre-PR10 daemon \
+             instead of losing degradation, and so a pre-PR10 app is refused \
+             instead of spinning on immediate answers"
         );
     }
 

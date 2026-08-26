@@ -6,6 +6,7 @@ import {
   activitySignal,
   isActiveLevel,
   isLiveLevel,
+  isRetainedSignal,
 } from './activitySignal.js'
 
 /**
@@ -267,5 +268,15 @@ describe('activitySignal invariants', () => {
       'uncertain',
     ])
     expect(ACTIVITY_LEVELS.filter(isActiveLevel)).toEqual(['working', 'active'])
+  })
+
+  it('names both retained sources and nothing else', () => {
+    expect(isRetainedSignal(activitySignal({ state: 'active', _presenceStale: true }))).toBe(true)
+    expect(isRetainedSignal(activitySignal({ state: 'active', degraded: true }))).toBe(true)
+    expect(
+      isRetainedSignal(activitySignal({ state: 'idle', project_unattributed_active: true }))
+    ).toBe(false)
+    expect(isRetainedSignal(activitySignal({ state: 'active' }))).toBe(false)
+    expect(isRetainedSignal(undefined)).toBe(false)
   })
 })

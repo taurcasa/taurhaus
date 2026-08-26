@@ -2,7 +2,7 @@
   import { getLatestSession, getRecentCommits, getRelationships } from './ipc.js'
   import { formatDuration } from './format.js'
   import { groupedSessionIndicators, hasLiveSession, sessionBadge, toolIcon } from './sessionIndicator.js'
-  import { activitySignal, isActiveLevel } from './activitySignal.js'
+  import { activitySignal, isActiveLevel, isRetainedSignal } from './activitySignal.js'
 
   const FRESH_SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
   const DEFAULT_WIDTH = 312
@@ -267,7 +267,7 @@
     }
 
     if (signal.level === 'uncertain') {
-      const retained = signal.source === 'stale' || signal.source === 'degraded'
+      const retained = isRetainedSignal(signal)
       return {
         tone: LEVEL_TONE[signal.level],
         body: retained

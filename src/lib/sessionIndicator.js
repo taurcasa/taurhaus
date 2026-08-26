@@ -1,6 +1,6 @@
 /** Session indicator semantics for sidebar rows and HoverCard display. */
 
-import { activityLevel, activitySignal, isActiveLevel, isLiveLevel } from './activitySignal.js'
+import { activityLevel, activitySignal, isActiveLevel, isLiveLevel, isRetainedSignal } from './activitySignal.js'
 import { getToolIcon, getToolName } from './toolLogos.js'
 
 const STACKING_THRESHOLD = 4
@@ -22,8 +22,16 @@ export function hasLiveSession(session) {
   return isLiveLevel(activityLevel(session))
 }
 
-export function isStalePresence(session) {
-  return session?._presenceStale === true || session?._presenceStatus === 'stale'
+/**
+ * Whether this row is a retained reading rather than an observed one.
+ *
+ * Read through `activitySignal`, never off `_presence*` directly: a degraded
+ * scan is stamped as *live* presence (the bridge is up, the scanner is blind),
+ * so a presence-only test calls it a healthy row and lands it in the idle
+ * bucket. The signal knows both ways in.
+ */
+export function isRetainedReading(session) {
+  return isRetainedSignal(activitySignal(session))
 }
 
 /** Return true when the tool is actively working (not waiting for input). */
@@ -34,14 +42,14 @@ export function isActiveSession(session) {
 /** Row-level tint class when any live session exists. */
 export function rowTintClass(session) {
   if (!hasLiveSession(session)) return ''
-  return isStalePresence(session) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
+  return isRetainedReading(session) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
 }
 
 /** Row-level tint class when any session in the array is live. */
 export function rowTintForSessions(sessions) {
   if (!sessions || sessions.length === 0) return ''
   if (!sessions.some(s => hasLiveSession(s))) return ''
-  return sessions.some(isStalePresence) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
+  return sessions.some(isRetainedReading) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
 }
 
 function groupMetadata(session) {
@@ -87,7 +95,7 @@ const LEVEL_TONE_CLASS = {
  * gap makes the reading uncertain, it does not mean the session went idle.
  */
 function reportedSignal(session, signal) {
-  if (signal.source !== 'stale' && signal.source !== 'degraded') return signal
+  if (!isRetainedSignal(signal)) return signal
   return activitySignal({ ...session, _presenceStale: false, _presenceStatus: 'live', degraded: false })
 }
 
@@ -157,7 +165,7 @@ export function uniqueTools(sessions, variant = 'default') {
 function buildTeamIndicator(group) {
   const members = [...group.members].sort(compareGroupedMembers)
   const isActive = members.some(isActiveSession)
-  const isStale = members.some(isStalePresence)
+  const isStale = members.some(isRetainedReading)
   const count = members.length
   const activityLabel = isStale ? 'retained stale' : (isActive ? 'active' : 'idle')
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
@@ -221,7 +229,7 @@ export function sessionBadge(session) {
   const interactive = Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
 
   if (signal.level === 'uncertain') {
-    const retained = signal.source === 'stale' || signal.source === 'degraded'
+    const retained = isRetainedSignal(signal)
     return {
       visible: true,
       signal,
@@ -310,7 +318,7 @@ function singleSessionIndicator(session) {
   const isActive = isActiveLevel(reported.level)
   const isUnattributed = reported.source === 'project'
   const interactive = Boolean(session.tmux_session && session.tmux_window && session.tmux_pane)
-  const isStale = isStalePresence(session)
+  const isStale = isRetainedSignal(signal)
   const statusLabel = isActive
     ? 'running'
     : (isUnattributed ? 'project active (unattributed)' : 'idle')

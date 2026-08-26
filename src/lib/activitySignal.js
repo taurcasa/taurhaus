@@ -154,3 +154,13 @@ export function isLiveLevel(level) {
 export function isActiveLevel(level) {
   return level === 'working' || level === 'active'
 }
+
+/**
+ * True when the signal describes a *retained* reading rather than an observed
+ * one: the daemon bridge went down (`stale`) or its scanner went blind
+ * (`degraded`). Both mean the record is the last thing we saw, not the current
+ * truth, so both wear the same tone and the same wording.
+ */
+export function isRetainedSignal(signal) {
+  return signal?.source === 'stale' || signal?.source === 'degraded'
+}
