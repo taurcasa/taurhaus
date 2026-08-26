@@ -1281,6 +1281,90 @@ fn a_codex_launch_never_receives_a_claude_config_dir() {
     assert_eq!(request.params["command_override"], "codex --yolo");
 }
 
+fn exited_claude_session(
+    project_path: &str,
+    transcript: &str,
+) -> crate::session_scanner::RuntimeSession {
+    crate::session_scanner::RuntimeSession {
+        pid: 9182,
+        project_path: project_path.to_string(),
+        tty: "/dev/pts/5".to_string(),
+        args: "claude".to_string(),
+        cli_tool: CliTool::Claude,
+        tmux_session: None,
+        tmux_window: None,
+        tmux_pane: None,
+        tmux_window_name: None,
+        state: SessionState::Idle,
+        session_id: Some("f3286b16-ffc7-4d16-915d-046705823a3d".to_string()),
+        jsonl_path: Some(transcript.to_string()),
+        recent_io: false,
+        last_output_age_secs: Some(12),
+        activity_confidence: Default::default(),
+        activity_attribution: Default::default(),
+        project_unattributed_active: false,
+        group_kind: SessionGroupKind::Standalone,
+        group_id: None,
+        group_label: None,
+        member_name: None,
+    }
+}
+
+// Regression: c982822 took the resume transcript from the live runtime
+// snapshot, which lists running processes only. Resume is reached for after
+// Claude has exited, and by then the session is gone from that snapshot — so
+// the subscription that owns the history was unavailable exactly when it had
+// to decide where `--resume` runs.
+#[test]
+fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p-resume", "/tmp/resume-project");
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    // The last session for this project ran on the second subscription.
+    crate::session_scanner::claude_accounts::record_claude_transcripts(&[exited_claude_session(
+        "/tmp/resume-project",
+        "/home/user/.claude-account2/projects/-tmp-resume-project/f3286b16.jsonl",
+    )]);
+    // Claude exited: no runtime snapshot mentions it any more.
+    crate::session_snapshot_cache::clear();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-resume".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' claude --dangerously-skip-permissions --resume"
+    );
+
+    let events = read_log_events(log_file_path.path());
+    assert!(
+        events
+            .iter()
+            .any(|event| event["event"] == "launch.account.derived_from_session"),
+        "{events:?}"
+    );
+}
+
 #[test]
 fn launch_cli_session_surfaces_daemon_error_message() {
     let daemon = start_stub_daemon(serde_json::json!({

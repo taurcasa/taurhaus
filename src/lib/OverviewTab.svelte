@@ -5,8 +5,12 @@
   import { themeTokens } from './themeTokens.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
   import ClaudeAccountChip from './components/ClaudeAccountChip.svelte'
-  import { claudeAccounts, refreshClaudeAccounts } from './claudeAccounts.svelte.js'
-  import { setProjectClaudeAccount } from './ipc.js'
+  import {
+    claudeAccounts,
+    effectiveClaudeAccountId,
+    refreshClaudeAccounts,
+    setProjectClaudeAccountChoice,
+  } from './claudeAccounts.svelte.js'
 
   let {
     dark = false,
@@ -35,23 +39,13 @@
   const t = $derived(themeTokens(dark))
 
   // Which subscription this project runs on. Hidden with a single account.
-  // The override is keyed by project so selecting another project drops it
-  // without an effect that writes state.
-  let claudeAccountOverride = $state(null)
-  const projectClaudeAccountId = $derived(
-    claudeAccountOverride && claudeAccountOverride.projectId === selectedProject?.id
-      ? claudeAccountOverride.accountId
-      : (selectedProject?.claudeAccountId ?? selectedProject?.claude_account_id ?? null)
-  )
+  // The choice lives in the shared store, so the chip and the next launch —
+  // which may happen from the sidebar — always read the same answer.
+  const projectClaudeAccountId = $derived(effectiveClaudeAccountId(selectedProject))
 
   function handleClaudeAccountSelect(accountId) {
-    const projectId = selectedProject?.id
-    if (!projectId) return
-    claudeAccountOverride = { projectId, accountId }
-    setProjectClaudeAccount(projectId, accountId).catch((error) => {
-      console.error('Failed to set the project Claude account:', error)
-      claudeAccountOverride = null
-    })
+    if (!selectedProject?.id) return
+    void setProjectClaudeAccountChoice(selectedProject.id, accountId)
   }
 
   $effect(() => {
@@ -173,6 +167,7 @@
     <ClaudeAccountChip
       accounts={claudeAccounts.accounts}
       selectedAccountId={projectClaudeAccountId}
+      defaultAccountId={claudeAccounts.defaultAccountId}
       {dark}
       onSelect={handleClaudeAccountSelect}
     />

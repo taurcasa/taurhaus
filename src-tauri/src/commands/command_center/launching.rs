@@ -1,10 +1,9 @@
-use std::path::PathBuf;
-
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::claude_accounts::{
-    resolve_launch_account, AccountRequest, AccountResolution, AccountSource,
+    remembered_claude_transcript, resolve_launch_account, AccountRequest, AccountResolution,
+    AccountSource,
 };
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
@@ -432,9 +431,13 @@ fn resolve_claude_account(
     default_account_id: Option<&str>,
 ) -> AccountResolution {
     // `--continue`/`--resume` only see the history of the config dir they run
-    // in, so a session already known for this project decides the account.
+    // in, so the session this project used last decides the account. Sightings
+    // are recorded from every runtime snapshot and outlive the process that
+    // produced them, which is what makes this work at all: by the time the user
+    // reaches for Resume, Claude has usually exited and no snapshot mentions
+    // the session any more.
     let session_transcript = matches!(mode, LaunchMode::Continue | LaunchMode::Resume)
-        .then(|| live_session_transcript(linux_path))
+        .then(|| remembered_claude_transcript(linux_path))
         .flatten();
 
     let accounts = crate::commands::claude_accounts::claude_accounts(provider);
@@ -491,28 +494,6 @@ fn resolve_claude_account(
     }
 
     resolution
-}
-
-/// Transcript of the Claude session this project already has, if the last
-/// runtime snapshot saw one. That transcript names its own config dir.
-fn live_session_transcript(linux_path: &str) -> Option<PathBuf> {
-    let project_key = crate::provider::path::normalize_project_path(linux_path);
-    let snapshot = crate::session_snapshot_cache::load()?;
-    snapshot
-        .runtime_sessions
-        .into_iter()
-        .filter(|session| {
-            session.cli_tool == CliTool::Claude
-                && crate::provider::path::normalize_project_path(&session.project_path)
-                    == project_key
-        })
-        .filter_map(|session| session.jsonl_path)
-        .map(PathBuf::from)
-        .max_by_key(|path| {
-            std::fs::metadata(path)
-                .and_then(|metadata| metadata.modified())
-                .ok()
-        })
 }
 
 pub(super) fn decode_daemon_launch_result(

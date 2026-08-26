@@ -94,4 +94,27 @@ describe('ClaudeAccountChooser', () => {
     await fireEvent.keyDown(panel, { key: 'Escape' })
     expect(onCancel).toHaveBeenCalled()
   })
+
+  // Regression: c982822 took Enter's answer from `is_default` — the physical
+  // `~/.claude` dir — so the keystroke pinned the project to an account the
+  // user had already replaced as the global default in Settings.
+  it('Enter takes the configured global default and the badge marks it', async () => {
+    const { onConfirm } = renderChooser({ defaultAccountId: 'account-2' })
+
+    expect(screen.getByTestId('claude-account-option-account-2')).toContainElement(
+      screen.getByTestId('claude-account-default-badge')
+    )
+
+    await fireEvent.keyDown(screen.getByTestId('claude-account-chooser'), { key: 'Enter' })
+
+    expect(onConfirm).toHaveBeenCalledWith('account-2', true)
+  })
+
+  it('Enter ignores a configured default that cannot run', async () => {
+    const { onConfirm } = renderChooser({ defaultAccountId: 'account-3' })
+
+    await fireEvent.keyDown(screen.getByTestId('claude-account-chooser'), { key: 'Enter' })
+
+    expect(onConfirm).toHaveBeenCalledWith('account-1', true)
+  })
 })

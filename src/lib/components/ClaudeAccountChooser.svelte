@@ -9,6 +9,8 @@
   let {
     accounts = [],
     projectName = '',
+    /** The account configured as the global default, if the user chose one. */
+    defaultAccountId = null,
     dark = false,
     onConfirm = () => {},
     onCancel = () => {},
@@ -17,8 +19,11 @@
   let rememberChoice = $state(true)
   let panel = $state(null)
 
+  // Enter answers with what a project would inherit today: the configured
+  // global default, else the account in the default config dir.
   const defaultAccount = $derived(
-    accounts.find((account) => account.is_default && account.logged_in) ??
+    accounts.find((account) => account.id === defaultAccountId && account.logged_in) ??
+      accounts.find((account) => account.is_default && account.logged_in) ??
       accounts.find((account) => account.logged_in) ??
       null
   )
@@ -104,7 +109,7 @@
             <span class="block truncate text-[10px] {metaTone}">{metaFor(account)}</span>
           {/if}
         </span>
-        {#if account.is_default}
+        {#if account.id === defaultAccount?.id}
           <span
             class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium {badgeTone}"
             data-testid="claude-account-default-badge">Default</span

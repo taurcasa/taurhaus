@@ -309,8 +309,16 @@
     void loadModelCatalogFromSettings()
   })
 
+  // Account detection reads the WSL home through the daemon on Windows, so a
+  // daemon that arrives late has to be asked again — until then the chooser
+  // has nothing to offer.
+  let lastAccountDetectionDaemonStatus = null
   $effect(() => {
-    void refreshClaudeAccounts()
+    const status = daemonStatus
+    if (status === lastAccountDetectionDaemonStatus) return
+    const reconnected = status === 'connected' && lastAccountDetectionDaemonStatus !== null
+    lastAccountDetectionDaemonStatus = status
+    void refreshClaudeAccounts({ force: reconnected })
   })
 
   $effect(() => {
@@ -619,6 +627,7 @@
       <ClaudeAccountChooser
         accounts={resolveChooserAccounts()}
         projectName={claudeAccounts.pending.projectName}
+        defaultAccountId={claudeAccounts.defaultAccountId}
         {dark}
         onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
         onCancel={() => claudeAccounts.pending?.cancel()}

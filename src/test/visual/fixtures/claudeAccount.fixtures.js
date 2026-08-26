@@ -57,6 +57,17 @@ export const claudeAccountScenarios = [
     expected: { chooser: true, chip: true },
   },
   {
+    name: 'global-default-second-light',
+    theme: 'light',
+    accounts: [PRIMARY, SECOND],
+    projectName: 'taurhaus',
+    selectedAccountId: null,
+    // Settings named the second subscription the default: the chip and the
+    // chooser's Enter answer follow it, not the `~/.claude` dir.
+    defaultAccountId: 'account-2',
+    expected: { chooser: true, chip: true },
+  },
+  {
     name: 'logged-out-account-dark',
     theme: 'dark',
     accounts: [PRIMARY, SECOND, LOGGED_OUT],

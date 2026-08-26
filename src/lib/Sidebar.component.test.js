@@ -7,6 +7,11 @@ vi.mock('./ipc.js', () => ({
   launchClaudeSession: vi.fn(),
   stopClaudeSession: vi.fn(),
   removeProject: vi.fn(),
+  // A Claude launch asks the account store first, which detects before it
+  // decides whether the subscription chooser has to open.
+  listClaudeAccounts: vi.fn(() => Promise.resolve([])),
+  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
+  getSettings: vi.fn(() => Promise.resolve({ terminal: {} })),
 }))
 
 vi.mock('./sessionStore.svelte.js', () => ({

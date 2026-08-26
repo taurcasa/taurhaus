@@ -6,6 +6,8 @@
   let {
     accounts = [],
     selectedAccountId = null,
+    /** The account configured as the global default, if the user chose one. */
+    defaultAccountId = null,
     dark = false,
     onSelect = () => {},
   } = $props()
@@ -13,10 +15,15 @@
   let open = $state(false)
 
   const visible = $derived(accounts.length >= 2)
-  const selected = $derived(
-    accounts.find((account) => account.id === selectedAccountId) ??
+  // What a project inherits: the configured global default while it can run,
+  // otherwise the account in the default config dir.
+  const inheritedAccount = $derived(
+    accounts.find((account) => account.id === defaultAccountId && account.logged_in) ??
       accounts.find((account) => account.is_default) ??
       null
+  )
+  const selected = $derived(
+    accounts.find((account) => account.id === selectedAccountId) ?? inheritedAccount
   )
   const inherited = $derived(!selectedAccountId)
 

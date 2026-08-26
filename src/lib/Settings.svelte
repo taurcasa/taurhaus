@@ -7,7 +7,11 @@
     getPlatform,
   } from './ipc.js'
   import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
-  import { claudeAccounts, refreshClaudeAccounts } from './claudeAccounts.svelte.js'
+  import {
+    claudeAccounts,
+    refreshClaudeAccounts,
+    setGlobalClaudeAccount,
+  } from './claudeAccounts.svelte.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
@@ -141,10 +145,11 @@
 
   function setDefaultClaudeAccount(accountId) {
     ensureCliCommands()
-    // The default account is the one taurhaus already uses when nothing is
-    // selected; storing it explicitly would only go stale if it ever moves.
-    settings.terminal.claude_default_account_id =
-      accountId && accountId !== defaultClaudeAccount?.id ? accountId : null
+    // Stored verbatim, including the account in the default config dir: this
+    // is the answer projects inherit, and the chooser stops asking once it
+    // exists. The shared store hears about it without a reload.
+    settings.terminal.claude_default_account_id = accountId || null
+    setGlobalClaudeAccount(accountId || null)
     saveSettings()
   }
 
@@ -686,8 +691,9 @@
           <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-claude-accounts">
             <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Claude accounts</h2>
             <p class="text-[13px] {textTertiary} mb-3">
-              Projects without their own choice launch on the default account. Team members always run
-              on {claudeAccountLabel(defaultClaudeAccount)}.
+              Projects without an account of their own launch on the one selected here. Team members
+              always run on {claudeAccountLabel(defaultClaudeAccount)} — agent inboxes live in that
+              config dir.
             </p>
             <div class="space-y-2">
               {#each detectedClaudeAccounts as account (account.id)}

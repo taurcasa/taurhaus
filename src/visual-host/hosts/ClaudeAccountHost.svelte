@@ -18,6 +18,7 @@
     <ClaudeAccountChip
       {accounts}
       selectedAccountId={scenario?.selectedAccountId ?? null}
+      defaultAccountId={scenario?.defaultAccountId ?? null}
       {dark}
       onSelect={() => {}}
     />
@@ -31,6 +32,7 @@
       <ClaudeAccountChooser
         {accounts}
         projectName={scenario?.projectName ?? ''}
+        defaultAccountId={scenario?.defaultAccountId ?? null}
         {dark}
         onConfirm={() => {}}
         onCancel={() => {}}

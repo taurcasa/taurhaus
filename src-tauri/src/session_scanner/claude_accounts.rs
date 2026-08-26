@@ -7,9 +7,11 @@
 //! directories, and nothing but the environment variable connects a launch to
 //! one of them.
 //!
-//! Detection is deliberately dumb: read the config file, keep the dirs that
-//! name an account, and let a missing `.credentials.json` mean "logged out"
-//! rather than "gone". Nothing here writes to a config dir.
+//! Detection is deliberately dumb: read the config file and keep the dirs that
+//! name an account. Whether that account is signed in is the one platform
+//! question here — Linux and Windows/WSL write `.credentials.json`, macOS keeps
+//! the tokens in the login keychain and writes nothing. Nothing here writes to
+//! a config dir.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -19,6 +21,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::types::RuntimeSession;
 
 /// Per-account configuration file, at the root of every config dir.
 const CONFIG_FILENAME: &str = ".claude.json";
@@ -36,6 +39,26 @@ const CONFIG_DIRNAME_PREFIX: &str = ".claude-";
 /// launch path and on every settings/chooser open.
 #[cfg(not(test))]
 const CACHE_TTL: Duration = Duration::from_secs(60);
+
+/// Where Claude Code keeps the OAuth tokens of a config dir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CredentialStore {
+    /// `<config dir>/.credentials.json` — Linux and Windows/WSL.
+    File,
+    /// The macOS login keychain, under `Claude Code-credentials`. There is no
+    /// file to look for, and reading the keychain would pop an authorization
+    /// prompt, so a config dir that names an account counts as signed in.
+    Keychain,
+}
+
+/// The credential store of the host this build runs on.
+const fn host_credential_store() -> CredentialStore {
+    if cfg!(target_os = "macos") {
+        CredentialStore::Keychain
+    } else {
+        CredentialStore::File
+    }
+}
 
 /// One Claude subscription, identified by the config dir it lives in.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +115,9 @@ pub enum AccountSource {
     Project,
     /// The global default account.
     GlobalDefault,
+    /// Nothing selected an account and the default config dir cannot run one,
+    /// but exactly one detected account is signed in.
+    SoleSignedIn,
     /// Nothing selected an account: the default config dir it is.
     DefaultConfigDir,
 }
@@ -133,6 +159,17 @@ pub fn detect_claude_accounts_in(
     extra_dirs: &[PathBuf],
     default_dir: &Path,
 ) -> Vec<ClaudeAccount> {
+    detect_with_store(home, extra_dirs, default_dir, host_credential_store())
+}
+
+/// Detection against a named credential store, so both platform behaviours are
+/// testable from any host.
+fn detect_with_store(
+    home: &Path,
+    extra_dirs: &[PathBuf],
+    default_dir: &Path,
+    store: CredentialStore,
+) -> Vec<ClaudeAccount> {
     let mut candidates = vec![home.join(DEFAULT_CONFIG_DIRNAME), default_dir.to_path_buf()];
     if let Ok(entries) = std::fs::read_dir(home) {
         let mut siblings: Vec<PathBuf> = entries
@@ -160,7 +197,7 @@ pub fn detect_claude_accounts_in(
             continue;
         }
         seen.push(key.clone());
-        if let Some(account) = read_account(&candidate, key == default_key) {
+        if let Some(account) = read_account(&candidate, key == default_key, store) {
             accounts.push(account);
         }
     }
@@ -174,8 +211,12 @@ pub fn detect_claude_accounts_in(
     accounts
 }
 
-/// Read one config dir. `None` when it holds no signed-in account.
-fn read_account(config_dir: &Path, is_default: bool) -> Option<ClaudeAccount> {
+/// Read one config dir. `None` when it names no account at all.
+fn read_account(
+    config_dir: &Path,
+    is_default: bool,
+    store: CredentialStore,
+) -> Option<ClaudeAccount> {
     let raw = std::fs::read_to_string(config_dir.join(CONFIG_FILENAME)).ok()?;
     let oauth = match serde_json::from_str::<ConfigFile>(&raw) {
         Ok(parsed) => parsed.oauth_account?,
@@ -205,9 +246,19 @@ fn read_account(config_dir: &Path, is_default: bool) -> Option<ClaudeAccount> {
         display_name: non_empty(oauth.display_name),
         organization: non_empty(oauth.organization_name),
         seat_tier: non_empty(oauth.seat_tier).or_else(|| non_empty(oauth.organization_type)),
-        logged_in: config_dir.join(CREDENTIALS_FILENAME).exists(),
+        logged_in: signed_in(config_dir, store),
         is_default,
     })
+}
+
+/// Whether the account in `config_dir` holds credentials it can launch with.
+fn signed_in(config_dir: &Path, store: CredentialStore) -> bool {
+    match store {
+        CredentialStore::File => config_dir.join(CREDENTIALS_FILENAME).exists(),
+        // Nothing on disk answers this on macOS, and the absence of a file the
+        // platform never writes is not evidence of a logout.
+        CredentialStore::Keychain => true,
+    }
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
@@ -288,41 +339,121 @@ fn config_dirs_of_live_sessions() -> Vec<PathBuf> {
         .collect()
 }
 
+/// The Claude transcript a project's most recent session was seen writing.
+struct TranscriptSighting {
+    project_key: String,
+    transcript: PathBuf,
+}
+
+/// Sightings outlive the processes that produced them.
+///
+/// `--resume` needs the subscription that owns the history, and it is normally
+/// reached for after Claude has exited — by which time the session is gone from
+/// every runtime snapshot. Remembering the transcript keeps the answer.
+static TRANSCRIPT_SIGHTINGS: Mutex<Vec<TranscriptSighting>> = Mutex::new(Vec::new());
+
+/// Note the transcript of each project's freshest Claude session in `sessions`.
+pub(crate) fn record_claude_transcripts(sessions: &[RuntimeSession]) {
+    let mut freshest: Vec<(String, &str, Option<u64>)> = Vec::new();
+    for session in sessions
+        .iter()
+        .filter(|session| session.cli_tool == crate::session_scanner::cli_tool::CliTool::Claude)
+    {
+        let Some(transcript) = session.jsonl_path.as_deref() else {
+            continue;
+        };
+        let key = crate::provider::path::normalize_project_path(&session.project_path);
+        let age = session.last_output_age_secs;
+        match freshest.iter_mut().find(|(seen, _, _)| *seen == key) {
+            Some(entry) if fresher(age, entry.2) => {
+                entry.1 = transcript;
+                entry.2 = age;
+            }
+            Some(_) => {}
+            None => freshest.push((key, transcript, age)),
+        }
+    }
+
+    if freshest.is_empty() {
+        return;
+    }
+
+    let mut sightings = TRANSCRIPT_SIGHTINGS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    for (key, transcript, _) in freshest {
+        let transcript = PathBuf::from(transcript);
+        match sightings
+            .iter_mut()
+            .find(|sighting| sighting.project_key == key)
+        {
+            Some(sighting) => sighting.transcript = transcript,
+            None => sightings.push(TranscriptSighting {
+                project_key: key,
+                transcript,
+            }),
+        }
+    }
+}
+
+/// `left` was active at least as recently as `right`.
+///
+/// The key is the scanner's own `last_output_age_secs`, never the transcript's
+/// mtime: on Windows these paths are the WSL daemon's, and stat'ing them in the
+/// app process fails for every candidate alike. An unknown age ranks last.
+fn fresher(left: Option<u64>, right: Option<u64>) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left < right,
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
+/// The transcript last seen for a project, whether or not it still has a
+/// running session.
+pub(crate) fn remembered_claude_transcript(project_path: &str) -> Option<PathBuf> {
+    let key = crate::provider::path::normalize_project_path(project_path);
+    TRANSCRIPT_SIGHTINGS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .iter()
+        .find(|sighting| sighting.project_key == key)
+        .map(|sighting| sighting.transcript.clone())
+}
+
 /// Pick the account one launch runs on.
 ///
 /// Precedence: an explicit request, then the session being resumed, then the
-/// project's choice, then the global default. A selected account that is gone
-/// or logged out falls back to the default config dir and says so; an empty
-/// account list means detection could not run at all, which is not a fallback.
+/// project's choice, then `fallback` — the global default, the default config
+/// dir while its account can run, or a lone signed-in account. A selection that
+/// is gone or signed out takes that same fallback and says which id it was; an
+/// empty account list means detection could not run at all, which is not a
+/// fallback and renders nothing.
 pub fn resolve_launch_account(
     accounts: &[ClaudeAccount],
     default_dir: &Path,
     request: AccountRequest<'_>,
 ) -> AccountResolution {
-    let default_resolution = |fallback_from: Option<String>| AccountResolution {
-        config_dir: None,
-        account: accounts.iter().find(|account| account.is_default).cloned(),
-        source: AccountSource::DefaultConfigDir,
-        fallback_from,
-    };
-
     if accounts.is_empty() {
-        return default_resolution(None);
+        return AccountResolution {
+            config_dir: None,
+            account: None,
+            source: AccountSource::DefaultConfigDir,
+            fallback_from: None,
+        };
     }
 
     // An explicit pick outranks everything, including the session: the user
     // just answered this question for this launch.
-    if let Some(wanted) = request
-        .requested_account_id
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return match accounts
-            .iter()
-            .find(|account| account.id == wanted && account.logged_in)
-        {
+    if let Some(wanted) = trimmed(request.requested_account_id) {
+        return match usable(accounts, wanted) {
             Some(account) => selected(account, default_dir, AccountSource::Request),
-            None => default_resolution(Some(wanted.to_string())),
+            None => fallback(
+                accounts,
+                default_dir,
+                request.default_account_id,
+                Some(wanted.to_string()),
+            ),
         };
     }
 
@@ -344,25 +475,78 @@ pub fn resolve_launch_account(
         }
     }
 
-    let selections = [
-        (request.project_account_id, AccountSource::Project),
-        (request.default_account_id, AccountSource::GlobalDefault),
-    ];
-
-    for (wanted, source) in selections {
-        let Some(wanted) = wanted.map(str::trim).filter(|value| !value.is_empty()) else {
-            continue;
+    if let Some(wanted) = trimmed(request.project_account_id) {
+        return match usable(accounts, wanted) {
+            Some(account) => selected(account, default_dir, AccountSource::Project),
+            None => fallback(
+                accounts,
+                default_dir,
+                request.default_account_id,
+                Some(wanted.to_string()),
+            ),
         };
-        let Some(account) = accounts
-            .iter()
-            .find(|account| account.id == wanted && account.logged_in)
-        else {
-            return default_resolution(Some(wanted.to_string()));
-        };
-        return selected(account, default_dir, source);
     }
 
-    default_resolution(None)
+    fallback(accounts, default_dir, request.default_account_id, None)
+}
+
+fn trimmed(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// The named account, if it is detected and can actually run a session.
+fn usable<'a>(accounts: &'a [ClaudeAccount], wanted: &str) -> Option<&'a ClaudeAccount> {
+    accounts
+        .iter()
+        .find(|account| account.id == wanted && account.logged_in)
+}
+
+/// The account a launch runs on when nothing usable was selected for it.
+///
+/// The configured global default answers first — it exists for exactly this
+/// case. Then the default config dir, but only while it can run: a detected
+/// account that is signed out would greet the user with a login prompt, so a
+/// lone signed-in sibling is the better answer.
+fn fallback(
+    accounts: &[ClaudeAccount],
+    default_dir: &Path,
+    global_default_id: Option<&str>,
+    mut fallback_from: Option<String>,
+) -> AccountResolution {
+    if let Some(wanted) = trimmed(global_default_id) {
+        if let Some(account) = usable(accounts, wanted) {
+            return AccountResolution {
+                fallback_from,
+                ..selected(account, default_dir, AccountSource::GlobalDefault)
+            };
+        }
+        fallback_from = fallback_from.or_else(|| Some(wanted.to_string()));
+    }
+
+    let default_account = accounts.iter().find(|account| account.is_default);
+    let default_config_dir = || AccountResolution {
+        config_dir: None,
+        account: default_account.cloned(),
+        source: AccountSource::DefaultConfigDir,
+        fallback_from: fallback_from.clone(),
+    };
+
+    // Undetected is not the same as signed out: a config dir detection could
+    // not read still launches the way it always has.
+    if default_account.is_none_or(|account| account.logged_in) {
+        return default_config_dir();
+    }
+
+    let mut signed_in = accounts.iter().filter(|account| account.logged_in);
+    match (signed_in.next(), signed_in.next()) {
+        (Some(only), None) => AccountResolution {
+            fallback_from,
+            ..selected(only, default_dir, AccountSource::SoleSignedIn)
+        },
+        // Several accounts could run and none was chosen: the chooser asks
+        // rather than this function guessing.
+        _ => default_config_dir(),
+    }
 }
 
 /// Resolution for an account that was found and can run. The config dir is
@@ -730,6 +914,206 @@ mod tests {
 
         assert_eq!(resolved.source, AccountSource::Request);
         assert_eq!(resolved.config_dir, None);
+    }
+
+    // Regression: c982822 read `logged_in` as the presence of
+    // `<config dir>/.credentials.json`. macOS keeps Claude Code's OAuth tokens
+    // in the login keychain and writes no such file, so every account on a Mac
+    // came back signed out: the chooser disabled them and every project or
+    // global selection fell back to the default config dir.
+    #[test]
+    fn a_keychain_host_reads_an_account_without_a_credentials_file_as_signed_in() {
+        let home = TempDir::new().unwrap();
+        write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", false);
+        write_account(
+            home.path(),
+            ".claude-account2",
+            SECOND_ID,
+            "b@example.com",
+            false,
+        );
+        let default_dir = home.path().join(".claude");
+
+        let on_file_hosts =
+            detect_with_store(home.path(), &[], &default_dir, CredentialStore::File);
+        assert!(
+            on_file_hosts.iter().all(|account| !account.logged_in),
+            "{on_file_hosts:?}"
+        );
+
+        let on_macos = detect_with_store(home.path(), &[], &default_dir, CredentialStore::Keychain);
+        assert!(
+            on_macos.iter().all(|account| account.logged_in),
+            "{on_macos:?}"
+        );
+
+        let resolved = resolve_launch_account(
+            &on_macos,
+            &default_dir,
+            AccountRequest {
+                project_account_id: Some(SECOND_ID),
+                ..request()
+            },
+        );
+
+        assert_eq!(resolved.source, AccountSource::Project);
+        assert_eq!(
+            resolved.config_dir.as_deref(),
+            Some(home.path().join(".claude-account2").as_path())
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn this_host_resolves_a_keychain_backed_account() {
+        let home = TempDir::new().unwrap();
+        write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", false);
+        write_account(
+            home.path(),
+            ".claude-account2",
+            SECOND_ID,
+            "b@example.com",
+            false,
+        );
+        let default_dir = home.path().join(".claude");
+
+        let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
+
+        assert!(accounts.iter().all(|account| account.logged_in));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn this_host_reads_a_missing_credentials_file_as_signed_out() {
+        let home = TempDir::new().unwrap();
+        write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", false);
+        let default_dir = home.path().join(".claude");
+
+        let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
+
+        assert!(accounts.iter().all(|account| !account.logged_in));
+    }
+
+    // Regression: c982822 resolved "nothing selected" straight to the physical
+    // default config dir without asking whether that account can run, so a
+    // signed-out `~/.claude` next to one signed-in sibling launched the dir
+    // that only offers a login prompt.
+    #[test]
+    fn a_signed_out_default_gives_way_to_the_only_usable_account() {
+        let home = TempDir::new().unwrap();
+        write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", false);
+        write_account(
+            home.path(),
+            ".claude-account2",
+            SECOND_ID,
+            "b@example.com",
+            true,
+        );
+        let default_dir = home.path().join(".claude");
+        let accounts = detect_with_store(home.path(), &[], &default_dir, CredentialStore::File);
+
+        let resolved = resolve_launch_account(&accounts, &default_dir, request());
+
+        assert_eq!(resolved.source, AccountSource::SoleSignedIn);
+        assert_eq!(
+            resolved.config_dir.as_deref(),
+            Some(home.path().join(".claude-account2").as_path())
+        );
+        assert_eq!(resolved.fallback_from, None);
+    }
+
+    // Regression: c982822 returned the default config dir the moment a stored
+    // choice was unusable, skipping the global default the user configured for
+    // exactly that case.
+    #[test]
+    fn a_stale_project_choice_falls_back_to_the_configured_global_default() {
+        let (home, accounts) = accounts_fixture();
+        let default_dir = home.path().join(".claude");
+
+        let resolved = resolve_launch_account(
+            &accounts,
+            &default_dir,
+            AccountRequest {
+                project_account_id: Some("deleted-account"),
+                default_account_id: Some(SECOND_ID),
+                ..request()
+            },
+        );
+
+        assert_eq!(resolved.source, AccountSource::GlobalDefault);
+        assert_eq!(resolved.fallback_from.as_deref(), Some("deleted-account"));
+        assert_eq!(
+            resolved.config_dir.as_deref(),
+            Some(home.path().join(".claude-account2").as_path())
+        );
+    }
+
+    fn claude_session(project: &str, transcript: &str, age_secs: Option<u64>) -> RuntimeSession {
+        RuntimeSession {
+            pid: 4242,
+            project_path: project.to_string(),
+            tty: "/dev/pts/3".to_string(),
+            args: "claude".to_string(),
+            cli_tool: crate::session_scanner::cli_tool::CliTool::Claude,
+            tmux_session: None,
+            tmux_window: None,
+            tmux_pane: None,
+            tmux_window_name: None,
+            state: crate::session_scanner::types::SessionState::Idle,
+            session_id: None,
+            jsonl_path: Some(transcript.to_string()),
+            recent_io: false,
+            last_output_age_secs: age_secs,
+            activity_confidence: Default::default(),
+            activity_attribution: Default::default(),
+            project_unattributed_active: false,
+            group_kind: Default::default(),
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }
+    }
+
+    // Regression: c982822 ranked a project's candidate transcripts with
+    // `std::fs::metadata` in the app process. On Windows those are the WSL
+    // daemon's Linux paths, which cannot be stat'ed there, so every key came
+    // back `None` and an arbitrary session decided the subscription.
+    #[test]
+    fn the_freshest_session_decides_without_reading_the_transcripts() {
+        let project = "/home/user/projects/ranked";
+        let stale = "/home/user/.claude/projects/-home-user-projects-ranked/aaa.jsonl";
+        let fresh = "/home/user/.claude-account2/projects/-home-user-projects-ranked/bbb.jsonl";
+
+        record_claude_transcripts(&[
+            claude_session(project, stale, Some(400)),
+            claude_session(project, fresh, Some(3)),
+            claude_session(project, "/home/user/.claude/projects/x/ccc.jsonl", None),
+        ]);
+
+        assert_eq!(
+            remembered_claude_transcript(project).as_deref(),
+            Some(Path::new(fresh))
+        );
+    }
+
+    // Regression: c982822 read the resume transcript out of the live runtime
+    // snapshot only. Resume is normally reached for once Claude has exited, and
+    // the session is gone from that snapshot by then, so the account the
+    // history belongs to was lost exactly when it was needed.
+    #[test]
+    fn a_sighting_outlives_the_session_that_produced_it() {
+        let project = "/home/user/projects/outlives";
+        let transcript =
+            "/home/user/.claude-account2/projects/-home-user-projects-outlives/a.jsonl";
+        record_claude_transcripts(&[claude_session(project, transcript, Some(2))]);
+
+        // The next snapshot no longer lists the session: Claude exited.
+        record_claude_transcripts(&[]);
+
+        assert_eq!(
+            remembered_claude_transcript(project).as_deref(),
+            Some(Path::new(transcript))
+        );
     }
 
     #[test]

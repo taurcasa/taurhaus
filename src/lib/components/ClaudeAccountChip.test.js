@@ -54,6 +54,37 @@ describe('ClaudeAccountChip', () => {
     expect(onSelect).toHaveBeenCalledWith('account-1')
   })
 
+  // Regression: c982822 read the inherited account off `is_default`, which is
+  // the physical `~/.claude` dir, so a project inheriting a global default
+  // configured in Settings advertised the wrong subscription.
+  it('shows the configured global default for an inheriting project', () => {
+    render(ClaudeAccountChip, {
+      props: {
+        accounts: ACCOUNTS,
+        selectedAccountId: null,
+        defaultAccountId: 'account-2',
+        onSelect: vi.fn(),
+      },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    expect(chip).toHaveTextContent('Matthias')
+    expect(chip).toHaveAttribute('title', expect.stringContaining('m.stier@giesi.com'))
+  })
+
+  it('falls back to the default config dir when the configured default is gone', () => {
+    render(ClaudeAccountChip, {
+      props: {
+        accounts: ACCOUNTS,
+        selectedAccountId: null,
+        defaultAccountId: 'deleted-account',
+        onSelect: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('claude-account-chip')).toHaveTextContent('Who')
+  })
+
   it('offers clearing the project choice back to the default', async () => {
     const onSelect = vi.fn()
     render(ClaudeAccountChip, {
