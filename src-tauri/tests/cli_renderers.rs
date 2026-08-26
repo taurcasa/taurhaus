@@ -13,8 +13,10 @@ use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec,
 use taurhaus_lib::templates::types::RoleTemplate;
 
 fn run_renderer(flag: &str, request: &serde_json::Value) -> String {
+    let temp = tempfile::tempdir().expect("renderer data dir");
     let mut child = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
         .args([flag, "-"])
+        .env("TAURHAUS_DATA_DIR", temp.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -37,8 +39,10 @@ fn run_renderer(flag: &str, request: &serde_json::Value) -> String {
 }
 
 fn run_renderer_argument(flag: &str, request: &serde_json::Value) -> String {
+    let temp = tempfile::tempdir().expect("renderer data dir");
     let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
         .args([flag, &serde_json::to_string(request).unwrap()])
+        .env("TAURHAUS_DATA_DIR", temp.path())
         .output()
         .expect("run real taurhaus binary");
     assert!(
@@ -50,8 +54,10 @@ fn run_renderer_argument(flag: &str, request: &serde_json::Value) -> String {
 }
 
 fn run_renderer_error(flag: &str, request: &serde_json::Value) -> String {
+    let temp = tempfile::tempdir().expect("renderer data dir");
     let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
         .args([flag, &serde_json::to_string(request).unwrap()])
+        .env("TAURHAUS_DATA_DIR", temp.path())
         .output()
         .expect("run real taurhaus binary");
     assert!(!output.status.success(), "renderer unexpectedly succeeded");
