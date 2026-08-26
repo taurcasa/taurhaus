@@ -32,6 +32,16 @@ pub struct DaemonCompactionRuntime {
 
 impl DaemonCompactionRuntime {
     pub fn maybe_start() -> Result<Option<Self>, CoordinationError> {
+        if crate::commands::terminal_settings::persisted_codex_compaction_mode()
+            == crate::models::CodexCompactionMode::Hooks
+        {
+            crate::coordination::compaction_events::emit_compaction_owner_selected(
+                "hooks",
+                "active",
+                "codex_hooks_configured",
+            );
+            return Ok(None);
+        }
         let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
         Self::maybe_start_at(teams_dir)
     }

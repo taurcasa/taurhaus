@@ -21,6 +21,10 @@ pub(super) fn run_startup_orchestration(
         bootstrap_complete,
     );
     #[cfg(feature = "mesh-bridged-backend")]
+    if let Err(error) = reconcile_startup_codex_compaction(app.handle()) {
+        tracing::warn!(error = %error, "startup Codex compaction reconciliation failed");
+    }
+    #[cfg(feature = "mesh-bridged-backend")]
     spawn_coordination_self_heal_monitor(app.handle().clone());
 
     let watchers_started_at = Instant::now();
@@ -77,6 +81,22 @@ pub(super) fn run_startup_orchestration(
 
     crate::startup::bootstrap::spawn_background_startup_tasks(app.handle().clone());
     Ok(())
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_startup_codex_compaction(app: &tauri::AppHandle) -> Result<(), String> {
+    let db = app.state::<crate::commands::projects::DbState>();
+    let state = app.state::<crate::coordination::state::CoordinationState>();
+    let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
+    let has_managed_codex =
+        crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir())
+            .map_err(|error| error.to_string())?;
+    crate::commands::terminal_settings::reconcile_codex_compaction(
+        terminal.harness.codex_compaction,
+        has_managed_codex,
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 pub(super) fn daemon_watch_bootstrap_enabled(context: &SetupContext) -> bool {

@@ -646,6 +646,8 @@ describe('ipc module', () => {
       expect(result.terminal.emulator).toBe('windows_terminal')
       expect(result.terminal.custom_command).toBe('')
       expect(result.terminal.tmux_layout).toBe('new_window')
+      // Regression: 0b87699 exposed no Codex hook/transcript selection through IPC.
+      expect(result.terminal.harness.codex_compaction).toBe('hooks')
       expect(result.terminal.cli_commands.claude.continue_cmd).toBe('claude --continue')
       expect(result.terminal_contract.default_emulator).toBe('windows_terminal')
       expect(result.terminal_contract.supported_emulators).toEqual(['windows_terminal', 'custom'])
@@ -709,6 +711,7 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('thresholds')
       expect(result.thresholds).toHaveProperty('active_days')
       expect(result).toHaveProperty('project_dialog_last_path')
+      expect(result.terminal.harness.codex_compaction).toBe('hooks')
     })
   })
 

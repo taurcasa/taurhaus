@@ -76,12 +76,36 @@ fn update_settings_with_span(
     let span = IpcCommandSpan::start("update_settings");
     let result = (|| -> Result<Settings, String> {
         let updated = update_settings_impl(db, settings)?;
+        #[cfg(feature = "mesh-bridged-backend")]
+        reconcile_codex_compaction_setting(app, &updated)?;
         enqueue_activity_watch_reconcile(app.clone(), "settings_updated");
         Ok(updated)
     })()
     .ipc_cmd("update_settings");
     span.finish_result(&result);
     result
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_codex_compaction_setting(
+    app: &tauri::AppHandle,
+    settings: &Settings,
+) -> Result<(), String> {
+    use tauri::Manager;
+
+    let has_managed_codex = match app.try_state::<crate::coordination::state::CoordinationState>() {
+        Some(state) => {
+            crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir())
+                .map_err(|error| error.to_string())?
+        }
+        None => false,
+    };
+    crate::commands::terminal_settings::reconcile_codex_compaction(
+        settings.terminal.harness.codex_compaction,
+        has_managed_codex,
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, String> {

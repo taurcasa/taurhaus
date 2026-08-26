@@ -495,6 +495,30 @@ impl TerminalPlatformContract {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct HarnessSettings {
+    #[serde(default)]
+    #[serde(alias = "codex_compaction")]
+    pub codex_compaction: CodexCompactionMode,
+}
+
+impl Default for HarnessSettings {
+    fn default() -> Self {
+        Self {
+            codex_compaction: CodexCompactionMode::Hooks,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CodexCompactionMode {
+    #[default]
+    Hooks,
+    Transcript,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct TerminalSettings {
     /// Terminal emulator to use:
     /// - Windows: "windows_terminal" (default), "custom"
@@ -512,6 +536,10 @@ pub struct TerminalSettings {
     #[serde(default)]
     #[serde(alias = "cli_commands")]
     pub cli_commands: CliCommandSettings,
+    /// Harness-native feature selection. Codex hooks are the verified default;
+    /// transcript parsing remains the explicit compatibility fallback.
+    #[serde(default)]
+    pub harness: HarnessSettings,
 }
 
 impl Default for TerminalSettings {
@@ -521,6 +549,7 @@ impl Default for TerminalSettings {
             custom_command: String::new(),
             tmux_layout: "new_window".into(),
             cli_commands: CliCommandSettings::default(),
+            harness: HarnessSettings::default(),
         }
     }
 }
@@ -772,6 +801,25 @@ pub struct DiffHunk {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regression: 0b87699 offered no Codex compaction source setting, leaving
+    // the unstable transcript tailer as the only path.
+    #[test]
+    fn terminal_settings_default_codex_compaction_to_hooks() {
+        let settings = TerminalSettings::default();
+        assert_eq!(
+            settings.harness.codex_compaction,
+            CodexCompactionMode::Hooks
+        );
+
+        let legacy: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window"
+        }))
+        .expect("legacy settings");
+        assert_eq!(legacy.harness.codex_compaction, CodexCompactionMode::Hooks);
+    }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
 
@@ -1185,6 +1233,7 @@ mod tests {
                 custom_command: String::new(),
                 tmux_layout: "new_window".into(),
                 cli_commands: CliCommandSettings::default(),
+                harness: HarnessSettings::default(),
             },
             ..Settings::default()
         }

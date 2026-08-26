@@ -139,6 +139,7 @@ export const MOCK_SETTINGS = {
         resume: 'gemini --yolo --resume',
       },
     },
+    harness: { codex_compaction: 'hooks' },
   },
   terminal_contract: {
     platform: 'linux',

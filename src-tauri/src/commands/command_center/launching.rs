@@ -101,6 +101,7 @@ pub(super) fn launch_cli_session_impl(
         mode,
         base: base_command(&terminal_settings.cli_commands, tool, mode),
         model: ModelSpec::default(),
+        codex_bypass_hook_trust: false,
         team: None,
     }
     .render();

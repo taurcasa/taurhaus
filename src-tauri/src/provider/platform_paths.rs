@@ -8,6 +8,7 @@ use crate::session_scanner::cli_tool::{config_for, CliTool};
 const APP_BUNDLE_ID: &str = "com.taurhaus.dev";
 const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
+const CODEX_HOME_ENV: &str = "CODEX_HOME";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const HOOKS_DIRNAME: &str = "hooks";
 const DAEMON_BINARY_NAME: &str = "taurhaus-daemon";
@@ -40,6 +41,11 @@ impl PlatformPaths {
     /// Team state root (`~/.claude/teams`).
     pub fn teams_dir() -> PathBuf {
         Self::claude_dir().join("teams")
+    }
+
+    /// Codex home directory (`$CODEX_HOME` or `~/.codex`).
+    pub fn codex_dir() -> PathBuf {
+        env_path_override(CODEX_HOME_ENV).unwrap_or_else(default_codex_dir)
     }
 
     /// App-data root used by coordination template hydration.
@@ -114,6 +120,14 @@ fn default_claude_dir() -> PathBuf {
     }
 
     home_dir_or_temp().join(".claude")
+}
+
+fn default_codex_dir() -> PathBuf {
+    if let Some(path) = windows_unc_home_subdir(".codex") {
+        return path;
+    }
+
+    home_dir_or_temp().join(".codex")
 }
 
 fn default_tool_session_root(tool: CliTool) -> PathBuf {

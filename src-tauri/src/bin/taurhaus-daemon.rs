@@ -15,6 +15,9 @@ use taurhaus_lib::provider::platform_paths::PlatformPaths;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    if maybe_run_compact_hook_mode() {
+        return;
+    }
     let args = match parse_args() {
         Ok(ParseOutcome::Run(args)) => args,
         Ok(ParseOutcome::ExitSuccess) => return,
@@ -99,6 +102,37 @@ fn main() {
     }
 
     tracing::info!("taurhaus-daemon shut down cleanly");
+}
+
+fn maybe_run_compact_hook_mode() -> bool {
+    let mode = std::env::args().nth(1);
+    if !matches!(
+        mode.as_deref(),
+        Some("--compact-hook" | "--claude-compact-hook")
+    ) {
+        return false;
+    }
+
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
+        .init();
+    let _log_state = LogFileState::new(PlatformPaths::log_path())
+        .inspect(|state| {
+            install_global_sink(state);
+        })
+        .map_err(|error| tracing::warn!(error = %error, "compact hook log sink unavailable"))
+        .ok();
+    let teams_dir = PlatformPaths::teams_dir();
+    if let Err(error) = taurhaus_lib::coordination::compact_hook::run_compact_hook_cli(
+        std::io::stdin(),
+        std::io::stdout(),
+        &teams_dir,
+    ) {
+        taurhaus_lib::coordination::compact_hook::emit_compact_hook_cli_failed(&error.to_string());
+        tracing::warn!(error = %error, "compact hook bridge failed");
+        println!("{{}}");
+    }
+    true
 }
 
 struct Args {

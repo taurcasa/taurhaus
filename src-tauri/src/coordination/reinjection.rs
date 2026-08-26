@@ -165,7 +165,7 @@ impl CompactionReinjectionService {
         serde_json::to_string_pretty(card)
     }
 
-    pub fn render_codex_inbox_text(
+    pub fn render_additional_context_text(
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
         let mut lines = vec![
@@ -319,6 +319,12 @@ impl CompactionReinjectionService {
         );
 
         Ok(lines.join("\n"))
+    }
+
+    pub fn render_codex_inbox_text(
+        card: &OperationalReinjectionCard,
+    ) -> Result<String, serde_json::Error> {
+        Self::render_additional_context_text(card)
     }
 }
 

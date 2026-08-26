@@ -165,7 +165,8 @@ mod commands {
     }
 
     pub mod terminal_settings {
-        use crate::models::{CliCommandSettings, TerminalSettings};
+        use crate::coordination::errors::CoordinationError;
+        use crate::models::{CliCommandSettings, CodexCompactionMode, TerminalSettings};
 
         use super::projects::DbState;
 
@@ -175,6 +176,13 @@ mod commands {
 
         pub fn load_terminal_settings(_db: &DbState) -> TerminalSettings {
             TerminalSettings::default()
+        }
+
+        pub fn reconcile_codex_compaction(
+            _mode: CodexCompactionMode,
+            _has_managed_codex: bool,
+        ) -> Result<bool, CoordinationError> {
+            Ok(false)
         }
     }
 

@@ -472,6 +472,8 @@ fn render_team_launch_command(
         mode: LaunchMode::Fresh,
         base,
         model: model.clone(),
+        codex_bypass_hook_trust: cli_tool == CliTool::Codex
+            && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
         team: (cli_tool == CliTool::Claude).then_some(TeamContext {
             team_name,
             agent_name,

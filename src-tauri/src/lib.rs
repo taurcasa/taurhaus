@@ -303,40 +303,26 @@ pub fn run() {
 fn maybe_run_coordination_cli_mode() -> Option<i32> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
-        Some("--claude-compact-hook") => Some(run_claude_compact_hook_cli()),
+        Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
         _ => None,
     }
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
-fn run_claude_compact_hook_cli() -> i32 {
+fn run_compact_hook_cli() -> i32 {
     let _log_state = init_coordination_cli_log_sink();
-    let response = (|| -> Result<String, crate::coordination::errors::CoordinationError> {
-        let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
-        let hook_response = crate::coordination::claude_hooks::handle_session_start_hook_stdin(
-            io::stdin(),
-            &teams_dir,
-        )?;
-        serde_json::to_string(&hook_response).map_err(|err| {
-            crate::coordination::errors::CoordinationError::StoreError(format!(
-                "failed to serialize Claude compact hook response: {err}"
-            ))
-        })
-    })();
-
-    match response {
-        Ok(payload) => {
-            if let Err(error) = write_claude_compact_hook_stdout(io::stdout(), &payload) {
-                crate::coordination::claude_hooks::emit_claude_hook_cli_failed(&error.to_string());
-                tracing::warn!(error = %error, "failed to write Claude compact hook response to stdout");
-                return 1;
-            }
-        }
+    let teams_dir = crate::provider::platform_paths::PlatformPaths::teams_dir();
+    match crate::coordination::compact_hook::run_compact_hook_cli(
+        io::stdin(),
+        io::stdout(),
+        &teams_dir,
+    ) {
+        Ok(()) => {}
         Err(err) => {
-            crate::coordination::claude_hooks::emit_claude_hook_cli_failed(&err.to_string());
-            tracing::warn!(error = %err, "Claude compact hook bridge failed");
+            crate::coordination::compact_hook::emit_compact_hook_cli_failed(&err.to_string());
+            tracing::warn!(error = %err, "compact hook bridge failed");
             if let Err(write_error) = write_claude_compact_hook_stdout(io::stdout(), "{}") {
-                tracing::warn!(error = %write_error, "failed to write Claude compact hook fallback response to stdout");
+                tracing::warn!(error = %write_error, "failed to write compact hook fallback response to stdout");
                 return 1;
             }
         }

@@ -560,12 +560,7 @@ fn extract_compaction_signals_for_team(
                 project_path: Some(record.project_path.clone()),
                 jsonl_path: Some(record.jsonl_path.clone()),
                 compaction_timestamp: Some(record.transcript_timestamp),
-                signal_kind: Some(match record.signal_kind {
-                    CompactionSignalKind::Compacted => {
-                        crate::coordination::compaction_events::CompactionSignalKind::Compacted
-                    }
-                    CompactionSignalKind::ContextCompacted => crate::coordination::compaction_events::CompactionSignalKind::ContextCompacted,
-                }),
+                signal_kind: Some(record.signal_kind),
             });
         }
     }

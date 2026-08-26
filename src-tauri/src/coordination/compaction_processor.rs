@@ -5,8 +5,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 
 use crate::coordination::compaction_events::{
-    emit_compaction_unresolved, CompactionSignalKind as EventSignalKind, CompactionUnresolvedEvent,
-    CompactionUnresolvedReason,
+    emit_compaction_unresolved, CompactionUnresolvedEvent, CompactionUnresolvedReason,
 };
 use crate::coordination::domain::Member;
 use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
@@ -14,9 +13,9 @@ use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_stale_compaction,
-    CompactionDeliveryResult, CompactionSignalKind, CompactionSignalRecord, MemberCompactionState,
-    MemberCompactionStore, MemberRuntimeStore, MeshInboxMessage, MeshInboxStore,
-    OperationalContextSnapshot, OperationalContextSnapshotStore, TeamConfigStore,
+    CompactionDeliveryResult, CompactionSignalRecord, MemberCompactionState, MemberCompactionStore,
+    MemberRuntimeStore, MeshInboxMessage, MeshInboxStore, OperationalContextSnapshot,
+    OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path::normalize_project_path;
 use crate::provider::platform_paths::PlatformPaths;
@@ -87,7 +86,7 @@ impl CompactionSignalProcessor {
                 project_path: signal.project_path.clone(),
                 jsonl_path: Some(signal.jsonl_path.clone()),
                 compaction_timestamp: signal.transcript_timestamp,
-                signal_kind: Some(event_signal_kind(signal.signal_kind)),
+                signal_kind: Some(signal.signal_kind),
                 reason: CompactionUnresolvedReason::ManagedMemberResolutionUnavailable,
             });
             return CompactionSignalProcessOutcome::Unresolved {
@@ -546,13 +545,6 @@ fn should_persist_delivery_state(
         .members
         .iter()
         .any(|member| member.name == member_name && member.cli_tool == CliTool::Codex))
-}
-
-fn event_signal_kind(kind: CompactionSignalKind) -> EventSignalKind {
-    match kind {
-        CompactionSignalKind::Compacted => EventSignalKind::Compacted,
-        CompactionSignalKind::ContextCompacted => EventSignalKind::ContextCompacted,
-    }
 }
 
 #[cfg(test)]

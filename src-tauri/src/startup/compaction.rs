@@ -137,6 +137,15 @@ pub(crate) fn initialize(
     daemon_connected: bool,
 ) -> Result<(), CoordinationError> {
     ensure_managed_state(app.handle());
+    let mode = crate::commands::terminal_settings::load_terminal_settings(
+        &app.state::<crate::commands::projects::DbState>(),
+    )
+    .harness
+    .codex_compaction;
+    if mode == crate::models::CodexCompactionMode::Hooks {
+        emit_compaction_owner_selected("hooks", "active", "codex_hooks_configured");
+        return Ok(());
+    }
     match configured_compaction_owner(daemon_configured, daemon_connected) {
         CompactionOwner::App => {
             initialize_app_owned_fallback(app.handle(), "daemon_not_configured")
@@ -160,6 +169,15 @@ pub(crate) fn initialize_app_owned_fallback(
     reason: &str,
 ) -> Result<(), CoordinationError> {
     ensure_managed_state(app);
+    let mode = crate::commands::terminal_settings::load_terminal_settings(
+        &app.state::<crate::commands::projects::DbState>(),
+    )
+    .harness
+    .codex_compaction;
+    if mode == crate::models::CodexCompactionMode::Hooks {
+        emit_compaction_owner_selected("hooks", "active", "codex_hooks_configured");
+        return Ok(());
+    }
     let state = app.state::<CompactionWatcherState>();
 
     match state.activate(start_app_owned_runtime) {

@@ -81,6 +81,7 @@ pub mod session_scanner {
             pub base: &'a str,
             pub model: ModelSpec,
             pub team: Option<TeamContext<'a>>,
+            pub codex_bypass_hook_trust: bool,
         }
 
         impl LaunchSpec<'_> {
@@ -90,6 +91,7 @@ pub mod session_scanner {
                     mode: self.mode,
                     base: self.base,
                     model: self.model.clone(),
+                    codex_bypass_hook_trust: self.codex_bypass_hook_trust,
                     team: self.team.as_ref().map(|team| {
                         taurhaus_lib::session_scanner::launch::TeamContext {
                             team_name: team.team_name,

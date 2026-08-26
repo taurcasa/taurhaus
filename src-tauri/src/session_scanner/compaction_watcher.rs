@@ -20,9 +20,9 @@ use crate::coordination::compaction_events::{
 };
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::compaction_signal::signal_log_path_for_team;
-use crate::coordination::stores::{
-    CompactionSignalKind, CompactionSignalLog, CompactionSignalRecord,
-};
+#[cfg(test)]
+use crate::coordination::stores::CompactionSignalKind;
+use crate::coordination::stores::{CompactionSignalLog, CompactionSignalRecord};
 use crate::session_scanner::cli_tool::CliTool;
 
 const SIGNAL_WATCHER_STATE_VERSION: u32 = 2;
@@ -746,14 +746,7 @@ fn signal_from_record(
         Some(record.project_path.as_str()),
         Some(Path::new(record.jsonl_path.as_str())),
         Some(record.transcript_timestamp),
-        Some(match record.signal_kind {
-            CompactionSignalKind::Compacted => {
-                crate::coordination::compaction_events::CompactionSignalKind::Compacted
-            }
-            CompactionSignalKind::ContextCompacted => {
-                crate::coordination::compaction_events::CompactionSignalKind::ContextCompacted
-            }
-        }),
+        Some(record.signal_kind),
     )
 }
 
