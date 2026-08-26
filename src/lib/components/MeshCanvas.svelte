@@ -1,4 +1,5 @@
 <script>
+  import { activityLevel } from '../activitySignal.js'
   import MeshConnection from './MeshConnection.svelte'
   import { computeMeshLayout } from './meshLayout.js'
   import MeshNode from './MeshNode.svelte'
@@ -189,12 +190,6 @@
     emitDetailAnchor(calculateDetailAnchor())
   }
 
-  function normalizeStatus(status) {
-    const value = String(status || '').toLowerCase()
-    if (value === 'active' || value === 'idle') return value
-    return 'offline'
-  }
-
   function isSelected(nodeId) {
     if (selectedNodeId === null || selectedNodeId === undefined) return false
     return String(selectedNodeId) === String(nodeId)
@@ -274,7 +269,7 @@
   const normalizedLead = $derived.by(() => {
     if (!lead) return null
 
-    let status = normalizeStatus(lead.status)
+    let status = activityLevel(lead)
     if (normalizedMode === 'initializing') {
       const started = Boolean(initState.activeId) || initState.completedIds.size > 0
       const allReady = Array.isArray(agents) && agents.length > 0 && initState.completedIds.size >= agents.length
@@ -314,7 +309,7 @@
         id,
         tool: agent?.tool ?? agent?.cliTool ?? agent?.cli_tool,
         model: String(agent?.model ?? agent?.modelName ?? agent?.model_name ?? '').trim(),
-        status: normalizeStatus(agent?.status),
+        status: activityLevel(agent),
       }
     })
   })

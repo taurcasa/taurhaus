@@ -5,8 +5,11 @@
  * A project can have multiple concurrent sessions (e.g. Claude + Codex).
  * The store groups sessions by normalized project path.
  *
- * Also tracks per-session activity ticks in memory, enriching session
- * objects with _duration, _activeMs, _activePercent, _lastTransition.
+ * Also measures per-session activity in memory, enriching session objects
+ * with _duration, _activeMs, _activePercent, _lastTransition. Time is
+ * measured against the wall clock between two observations, not counted in
+ * polls: daemon updates are event-driven, so the gap between snapshots is
+ * whatever the daemon took to report a change.
  * On session disappearance, persists stats via recordSessionActivity IPC.
  *
  * Update sources:
@@ -39,7 +42,9 @@ let activePollIntervalMs = POLL_INTERVAL_MS
 /**
  * In-memory activity trackers keyed by PID.
  * Not reactive — only used to compute enrichment fields on each poll.
- * @type {Map<number, {firstSeen: number, activeTicks: number, totalTicks: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string}>}
+ * `activeMs`/`totalMs` accumulate the wall-clock interval since the previous
+ * observation, credited to the state that was in effect during it.
+ * @type {Map<number, {firstSeen: number, activeMs: number, totalMs: number, lastSampleAt: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string}>}
  */
 let trackers = new Map()
 let projectIdByPath = new Map()
@@ -138,11 +143,11 @@ function flushTrackedActivity(trackersToFlush) {
   const flushes = []
 
   for (const tracker of trackersToFlush) {
-    if (!tracker || tracker.totalTicks <= 0) continue
+    if (!tracker) continue
 
     const startedAt = new Date(tracker.firstSeen).toISOString()
-    const activeDurationMs = tracker.activeTicks * activePollIntervalMs
-    const totalDurationMs = tracker.totalTicks * activePollIntervalMs
+    const activeDurationMs = tracker.activeMs
+    const totalDurationMs = tracker.totalMs
 
     flushes.push(persistSessionActivity(
       tracker,
@@ -201,8 +206,9 @@ function applySessions(result) {
     if (!tracker) {
       tracker = {
         firstSeen: now,
-        activeTicks: 0,
-        totalTicks: 0,
+        activeMs: 0,
+        totalMs: 0,
+        lastSampleAt: now,
         lastState: session.state,
         lastTransitionTime: now,
         projectPath: session.project_path,
@@ -216,9 +222,12 @@ function applySessions(result) {
       tracker.projectId = session.project_id
     }
 
-    tracker.totalTicks++
-    if (session.state === 'active') {
-      tracker.activeTicks++
+    // Credit the elapsed interval to the state that was in effect during it.
+    const elapsedMs = Math.max(0, now - tracker.lastSampleAt)
+    tracker.lastSampleAt = now
+    tracker.totalMs += elapsedMs
+    if (tracker.lastState === 'active') {
+      tracker.activeMs += elapsedMs
     }
 
     // Detect state transition
@@ -229,10 +238,10 @@ function applySessions(result) {
 
     // Enrich session object with computed fields
     session._duration = now - tracker.firstSeen
-    session._activeMs = tracker.activeTicks * activePollIntervalMs
-    session._activePercent = tracker.totalTicks > 0
-      ? Math.round((tracker.activeTicks / tracker.totalTicks) * 100)
-      : 0
+    session._activeMs = tracker.activeMs
+    session._activePercent = tracker.totalMs > 0
+      ? Math.round((tracker.activeMs / tracker.totalMs) * 100)
+      : (session.state === 'active' ? 100 : 0)
     session._lastTransition = tracker.lastTransitionTime
     stampSessionFreshness(session, now, false)
 

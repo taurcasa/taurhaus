@@ -1,4 +1,6 @@
 <script>
+  import { activityLevel, isActiveLevel } from '../activitySignal.js'
+
   let {
     teamName = '',
     lead = null,
@@ -77,16 +79,18 @@
 
   const members = $derived.by(() => [lead, ...(Array.isArray(agents) ? agents : [])].filter(Boolean))
 
+  // `uncertain` members are present but unattributed — they are counted with
+  // idle so the bar never offers to resume a member that is still running.
   const statusCounts = $derived.by(() => {
     const counts = { active: 0, idle: 0, offline: 0 }
     for (const member of members) {
-      const status = String(member?.status ?? member?.sessionStatus ?? '').trim().toLowerCase()
-      if (status === 'active') {
+      const level = activityLevel(member)
+      if (isActiveLevel(level)) {
         counts.active += 1
-      } else if (status === 'idle') {
-        counts.idle += 1
-      } else {
+      } else if (level === 'offline') {
         counts.offline += 1
+      } else {
+        counts.idle += 1
       }
     }
     return counts

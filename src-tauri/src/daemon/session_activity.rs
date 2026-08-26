@@ -13,7 +13,7 @@ use crate::coordination::activity_export::{
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::tmux::{self, TmuxFocus};
-use crate::session_scanner::SessionState;
+use crate::session_scanner::{ActivityAttribution, ActivityConfidence, SessionState};
 use crate::session_scanner::{DisplaySession, RuntimeSession};
 
 /// Scanner cadence for daemon-owned session activity tracking.
@@ -65,6 +65,11 @@ struct HubState {
     degraded: bool,
 }
 
+/// The activity half of the hub's change signature.
+///
+/// Confidence and attribution are part of it because the app presents them
+/// (`src/lib/activitySignal.js`); `recent_io` and `last_output_age_secs` are
+/// deliberately excluded — they flip per poll and would defeat change-gating.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SessionEventSignature {
     pid: u32,
@@ -76,6 +81,8 @@ struct SessionEventSignature {
     tmux_pane: Option<String>,
     tmux_window_name: Option<String>,
     state: SessionState,
+    activity_confidence: ActivityConfidence,
+    activity_attribution: ActivityAttribution,
     project_unattributed_active: bool,
 }
 
@@ -90,6 +97,8 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
         tmux_pane: session.tmux_pane.clone(),
         tmux_window_name: session.tmux_window_name.clone(),
         state: session.state,
+        activity_confidence: session.activity_confidence,
+        activity_attribution: session.activity_attribution,
         project_unattributed_active: session.project_unattributed_active,
     }
 }
@@ -445,8 +454,8 @@ mod tests {
             state,
             recent_io: false,
             last_output_age_secs: None,
-            activity_confidence: crate::session_scanner::ActivityConfidence::Low,
-            activity_attribution: crate::session_scanner::ActivityAttribution::None,
+            activity_confidence: ActivityConfidence::Low,
+            activity_attribution: ActivityAttribution::None,
             project_unattributed_active: false,
             group_kind: crate::session_scanner::SessionGroupKind::Standalone,
             group_id: None,
@@ -772,6 +781,40 @@ mod tests {
             focused: false,
             degraded: false,
         }
+    }
+
+    // Regression: 3f0d541 built `SessionEventSignature` from the coarse
+    // state alone, so a confidence or attribution downgrade on the same PID
+    // never bumped the version and never reached the app — which now presents
+    // those fields (`src/lib/activitySignal.js`).
+    #[test]
+    fn an_activity_confidence_change_is_a_change() {
+        let previous = vec![session_with_state(SessionState::Active)];
+        let mut next = previous.clone();
+        next[0].activity_confidence = ActivityConfidence::High;
+
+        assert!(activity_changed(&previous, &next));
+    }
+
+    #[test]
+    fn an_activity_attribution_change_is_a_change() {
+        let previous = vec![session_with_state(SessionState::Active)];
+        let mut next = previous.clone();
+        next[0].activity_attribution = ActivityAttribution::Attributed;
+
+        assert!(activity_changed(&previous, &next));
+    }
+
+    // `recent_io` and `last_output_age_secs` flip on nearly every poll; both
+    // stay out of the signature so change-gating keeps working.
+    #[test]
+    fn a_recent_io_or_output_age_flip_alone_is_not_a_change() {
+        let previous = vec![session_with_state(SessionState::Active)];
+        let mut next = previous.clone();
+        next[0].recent_io = !next[0].recent_io;
+        next[0].last_output_age_secs = Some(7);
+
+        assert!(!activity_changed(&previous, &next));
     }
 
     // Regression: commits a53ad31 and f9c1e89. Focus travelled through tmux

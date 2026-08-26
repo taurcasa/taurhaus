@@ -294,37 +294,39 @@ describe('sessionStore', () => {
 
     const stats = store.getSessionStats(500)
     expect(stats).not.toBeNull()
-    expect(stats.totalTicks).toBe(1)
-    expect(stats.activeTicks).toBe(1)
+    // First sighting measures no elapsed time yet.
+    expect(stats.totalMs).toBe(0)
+    expect(stats.activeMs).toBe(0)
     expect(stats.projectPath).toBe('/proj')
     expect(stats.cliTool).toBe('claude')
   })
 
-  it('increments activeTicks only when state is active', async () => {
+  it('accrues no active time while the session stays idle', async () => {
     const session = { pid: 600, project_path: '/proj', state: 'idle', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
 
     await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(500)
 
     const stats = store.getSessionStats(600)
-    expect(stats.totalTicks).toBe(1)
-    expect(stats.activeTicks).toBe(0) // idle — no active tick
+    expect(stats.totalMs).toBe(500)
+    expect(stats.activeMs).toBe(0) // idle — no active time
   })
 
-  it('increments totalTicks regardless of state', async () => {
+  it('accrues total time regardless of state', async () => {
     const session = { pid: 700, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
 
-    // 3 poll cycles
+    // 3 poll cycles: two measured 500ms intervals.
     await vi.advanceTimersByTimeAsync(0)
     await vi.advanceTimersByTimeAsync(500)
     await vi.advanceTimersByTimeAsync(500)
 
     const stats = store.getSessionStats(700)
-    expect(stats.totalTicks).toBe(3)
-    expect(stats.activeTicks).toBe(3)
+    expect(stats.totalMs).toBe(1000)
+    expect(stats.activeMs).toBe(1000)
   })
 
   it('updates lastTransitionTime on state change', async () => {
@@ -361,31 +363,42 @@ describe('sessionStore', () => {
     expect(s._activePercent).toBe(100) // all ticks were active
   })
 
-  it('uses the configured mock polling interval for exact active duration math', async () => {
-    const session = { pid: 910, project_path: '/proj-mock-interval', state: 'active', tty: '/dev/pts/14', args: 'claude', cli_tool: 'claude' }
+  // Regression: `_activeMs` counted polls instead of time
+  // (`activeTicks * activePollIntervalMs`, sessionStore.svelte.js:215-232,
+  // shipped in 9a66d1c). Daemon updates are event-driven, so the gap between
+  // two snapshots is whatever the daemon took to report a change — never one
+  // fixed tick.
+  it('accumulates wall-clock elapsed time between polls while active', async () => {
+    const session = { pid: 910, project_path: '/proj-wall-clock', state: 'active', tty: '/dev/pts/14', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling({ intervalMs: 500 })
 
     await vi.advanceTimersByTimeAsync(0)
+    expect(store.getSessionForProject('/proj-wall-clock')._activeMs).toBe(0)
+
     await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionForProject('/proj-wall-clock')._activeMs).toBe(500)
 
-    const tracked = store.getSessionForProject('/proj-mock-interval')
-    expect(tracked._activeMs).toBe(1000)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(store.getSessionForProject('/proj-wall-clock')._activeMs).toBe(1000)
   })
 
-  it('uses the configured tauri polling interval for exact active duration math', async () => {
-    const session = { pid: 920, project_path: '/proj-tauri-interval', state: 'active', tty: '/dev/pts/15', args: 'claude', cli_tool: 'claude' }
-    ipc.listClaudeSessions.mockResolvedValue([session])
-    store.startPolling({ intervalMs: 5000 })
+  // Regression: a 5s gap between two snapshots used to count as a single
+  // 500ms tick (9a66d1c).
+  it('counts a five second gap between snapshots as five seconds of activity', () => {
+    const session = { pid: 920, project_path: '/proj-gap', state: 'active', tty: '/dev/pts/15', args: 'claude', cli_tool: 'claude' }
 
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(5000)
+    store.applyDaemonSessionUpdate([session])
+    expect(store.getSessionForProject('/proj-gap')._activeMs).toBe(0)
 
-    const tracked = store.getSessionForProject('/proj-tauri-interval')
-    expect(tracked._activeMs).toBe(10000)
+    vi.advanceTimersByTime(5000)
+    store.applyDaemonSessionUpdate([session])
+
+    expect(store.getSessionForProject('/proj-gap')._activeMs).toBe(5000)
+    expect(store.getSessionStats(920).totalMs).toBe(5000)
   })
 
-  it('computes _activePercent as ratio of active to total ticks', async () => {
+  it('computes _activePercent as ratio of active to measured time', async () => {
     const session = { pid: 1000, project_path: '/proj', state: 'active', tty: '/dev/pts/1', args: 'claude', cli_tool: 'claude' }
     ipc.listClaudeSessions.mockResolvedValue([session])
     store.startPolling()
@@ -400,8 +413,9 @@ describe('sessionStore', () => {
     await vi.advanceTimersByTimeAsync(500)
 
     const s = store.getSessionForProject('/proj')
-    // 2 active out of 4 total = 50%
-    expect(s._activePercent).toBe(50)
+    // Three measured 500ms intervals; the session was last seen active at the
+    // start of the first two, so 1000ms active out of 1500ms measured.
+    expect(s._activePercent).toBe(67)
   })
 
   it('triggers recordSessionActivity IPC when session disappears', async () => {
@@ -473,8 +487,8 @@ describe('sessionStore', () => {
       'claude',
       expect.any(String),
       expect.any(String),
-      1000,
-      1000,
+      500,
+      500,
     )
   })
 
@@ -496,12 +510,12 @@ describe('sessionStore', () => {
       'claude',
       expect.any(String),
       expect.any(String),
-      1000,
-      1000,
+      500,
+      500,
     )
   })
 
-  it('persists exact active duration using the configured tauri polling interval when a session disappears', async () => {
+  it('persists the measured active duration when a session disappears', async () => {
     const session = { pid: 1330, project_path: '/proj-tauri-persist', state: 'active', tty: '/dev/pts/16', args: 'claude', cli_tool: 'claude' }
     ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-tauri-persist-id', path: '/proj-tauri-persist' }])
     ipc.listClaudeSessions
@@ -521,8 +535,8 @@ describe('sessionStore', () => {
       'claude',
       expect.any(String),
       expect.any(String),
-      10000,
-      10000,
+      5000,
+      5000,
     )
   })
 

@@ -5,7 +5,7 @@
   import { getSessionContext } from './context/SessionContext.js'
   import { normalizeProjectPath } from './pathUtils.js'
   import { getSessionForProject, getSessionsForProject } from './sessionStore.svelte.js'
-  import { rowTintForSessions, toolIndicators } from './sessionIndicator.js'
+  import { hasLiveSession, rowTintForSessions, toolIndicators } from './sessionIndicator.js'
   import { buildSidebarProjection } from './sidebar.js'
   import { describeSessionActionError } from './errorCopy.js'
   import SidebarProjectList from './SidebarProjectList.svelte'
@@ -361,7 +361,7 @@
   function sessionCtxItems() {
     if (!ctxMenu?.project) return []
     const allSessions = getSessionsForProject(ctxMenu.project.path)
-    const liveSessions = allSessions.filter(s => s.state === 'active' || s.state === 'idle')
+    const liveSessions = allSessions.filter(hasLiveSession)
     const navigableSession = getNavigableSessionForProject(ctxMenu.project)
 
     const items = []

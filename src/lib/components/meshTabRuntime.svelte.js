@@ -1,3 +1,4 @@
+import { activityLevel, isLiveLevel } from '../activitySignal.js'
 import {
   INITIAL_RUNTIME_REFRESH_DELAY_MS,
   RUNTIME_STATUS_POLL_MS,
@@ -21,7 +22,7 @@ function uniqueMemberNames(names) {
 function buildResumeTargetNames(config) {
   const members = [config?.lead, ...(config?.agents ?? [])].filter(Boolean)
   const offlineMembers = members
-    .filter((member) => String(member?.status ?? '').trim().toLowerCase() === 'offline')
+    .filter((member) => !isLiveLevel(activityLevel(member)))
     .map((member) => String(member?.name ?? '').trim())
     .filter(Boolean)
   if (offlineMembers.length > 0) return uniqueMemberNames(offlineMembers)

@@ -198,6 +198,32 @@ describe('sessionIndicator', () => {
     expect(indicators[0].ariaLabel).toContain('unattributed')
   })
 
+  // Regression: the badge and the tool indicator derived activity separately,
+  // so an unattributed session showed an amber IDLE badge next to a blue
+  // "project active (unattributed)" indicator. Both now read one derivation
+  // (docs/design/harness-realignment-plan.md, PR 10).
+  it('badge and indicator agree on unattributed project activity', () => {
+    const unattributed = session({ state: 'idle', project_unattributed_active: true })
+    const badge = sessionBadge(unattributed)
+    const [indicator] = toolIndicators([unattributed])
+
+    expect(badge.signal.level).toBe('uncertain')
+    expect(badge.badgeClass).toContain('text-info-300')
+    expect(badge.ariaLabel).toContain('unattributed')
+    expect(indicator.colorClass).toBe('text-info-300')
+    expect(indicator.isUnattributed).toBe(true)
+  })
+
+  // Regression: a daemon gap makes the reading uncertain, it does not mean the
+  // session went idle — retained rows keep their last reported wording.
+  it('keeps the last reported wording for a retained stale session', () => {
+    const [indicator] = toolIndicators([session({ state: 'active', _presenceStale: true })])
+
+    expect(indicator.ariaLabel).toBe('Claude: retained stale running')
+    expect(indicator.isActive).toBe(true)
+    expect(indicator.toneClass).toBe('session-pill-stale')
+  })
+
   it('toolIndicators marks retained stale presence distinctly from live activity', () => {
     const indicators = toolIndicators([
       session({ state: 'active', cli_tool: 'codex', _presenceStale: true }),

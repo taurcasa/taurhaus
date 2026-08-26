@@ -1,4 +1,5 @@
 <script>
+  import { activityLevel } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
 
   let {
@@ -41,17 +42,17 @@
 
   const icon = $derived.by(() => getToolIcon(safeTool))
 
-  const safeStatus = $derived.by(() => {
-    const value = String(status || '').trim().toLowerCase()
-    if (value === 'active' || value === 'idle') return value
-    return 'offline'
-  })
+  const safeStatus = $derived(activityLevel({ status }))
 
-  const statusColor = $derived.by(() => {
-    if (safeStatus === 'active') return 'var(--color-success-500)'
-    if (safeStatus === 'idle') return 'var(--color-warning-500)'
-    return 'var(--mesh-node-status-offline)'
-  })
+  const STATUS_COLORS = {
+    working: 'var(--color-success-500)',
+    active: 'var(--color-success-500)',
+    idle: 'var(--color-warning-500)',
+    uncertain: 'var(--color-info-500)',
+    offline: 'var(--mesh-node-status-offline)',
+  }
+
+  const statusColor = $derived(STATUS_COLORS[safeStatus])
 
   const centerX = $derived(Number(position?.x ?? 0))
   const centerY = $derived(Number(position?.y ?? 0))

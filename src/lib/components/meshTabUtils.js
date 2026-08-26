@@ -1,3 +1,4 @@
+import { activityLevel } from '../activitySignal.js'
 import {
   TOOL_OPTIONS,
   applyNamePattern,
@@ -12,12 +13,6 @@ import { normalizeProjectPath as normalizeSharedProjectPath } from '../pathUtils
 
 function optionalEffort(value) {
   return String(value ?? '').trim() || null
-}
-
-function normalizeStatus(status) {
-  const value = String(status || '').trim().toLowerCase()
-  if (value === 'active' || value === 'idle') return value
-  return 'offline'
 }
 
 export function inferTeamName(path) {
@@ -99,7 +94,7 @@ export function createLead(overrides = {}, projectPath = '') {
     tool: normalizedTool,
     model: String(overrides.model ?? ''),
     reasoningEffort: optionalEffort(overrides.reasoningEffort ?? overrides.reasoning_effort),
-    status: normalizeStatus(overrides.status),
+    status: activityLevel({ status: overrides.status }),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: false,
     projectLabel: '',
@@ -124,7 +119,7 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     tool: normalizedTool,
     model: String(overrides.model ?? ''),
     reasoningEffort: optionalEffort(overrides.reasoningEffort ?? overrides.reasoning_effort),
-    status: normalizeStatus(overrides.status),
+    status: activityLevel({ status: overrides.status }),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: Boolean(overrides.isCrossProject ?? overrides.is_cross_project),
     projectLabel: String(overrides.projectLabel ?? overrides.project_label ?? ''),
@@ -351,7 +346,7 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     tool: normalizeTool(member?.cliTool),
     model: String(member?.model || ''),
     reasoningEffort: optionalEffort(member?.reasoningEffort ?? member?.reasoning_effort),
-    status: normalizeStatus(member?.sessionStatus),
+    status: activityLevel(member),
     projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
     description: member?.description ?? null,
     paneId: member?.paneId ?? null,
