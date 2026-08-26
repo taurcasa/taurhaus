@@ -65,7 +65,7 @@ All of the following are rooted under:
 | Member runtime | `teams/<team>/runtime/<member>.json` | JSON | Taurhaus | Taurhaus, mesh read-only | Authoritative current attachment | Pane, session id, transcript path, `cli_tool`, `project_path`, daemon pid, health |
 | Mesh inbox | `teams/<team>/inboxes/<member>.json` | JSON array | Taurhaus, mesh | Taurhaus, mesh daemons/agents | Authoritative message queue for file-based delivery | Shared protocol surface |
 | Operational snapshot | `teams/<team>/state/operational/<member>.json` | JSON | Taurhaus | Taurhaus reinjection/delivery | Derived contextual snapshot | Current task, assignment footer, working set, override state |
-| Member compaction state | `teams/<team>/state/compaction/members/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
+| Member compaction state | `teams/<team>/state/compaction/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
 | Compaction signal log | `teams/<team>/state/compaction/signals/codex-compaction-signals.jsonl` | JSONL | Taurhaus extractor | Taurhaus watcher/processor/diagnostics | Derived canonical signal stream | Normalized Codex compaction records |
 | Compaction extractor state | `teams/<team>/state/compaction/extractor-state.json` | JSON | Taurhaus extractor | Taurhaus diagnostics | Derived processing checkpoint | Tracked transcript offsets + last error by file |
 | Compaction watcher state | `teams/<team>/state/compaction/signal-watcher-state.json` | JSON | Taurhaus watcher | Taurhaus diagnostics | Derived processing checkpoint | Last consumed offset + recovery stats |
@@ -95,7 +95,7 @@ Current implementation answers common questions from different stores:
 | Which session/transcript is member `Y` attached to right now? | `teams/<team>/runtime/<member>.json` |
 | Which tool/project does member `Y` currently attach to? | `teams/<team>/runtime/<member>.json` |
 | What message queue should member `Y` read? | `teams/<team>/inboxes/<member>.json` |
-| What was the last handled compaction for member `Y`? | `teams/<team>/state/compaction/members/<member>.json` |
+| What was the last handled compaction for member `Y`? | `teams/<team>/state/compaction/<member>.json` |
 | What compaction signals have been emitted but not yet consumed? | signal log + watcher offset under `state/compaction/` |
 | What is the current task/working set used for post-compaction reinjection? | `teams/<team>/state/operational/<member>.json` |
 | What files/commits/tasks belong to a registered project? | SQLite + search index + filesystem/tool sources |
@@ -161,13 +161,14 @@ The compaction bugs audited on `2026-03-08` happened when transcript ownership w
 - coordination orchestrator logic
 - `runtime/` attachment state
 - operational snapshots
-- compaction signal extraction/watching and delivery bookkeeping
+- compaction hook processing, transcript-fallback signal extraction/watching, and delivery bookkeeping
+- member launch/liveness ownership checks and authoritative `runtime/` pane identity
 - UI projections and diagnostics
 
 ### mesh Owns
 
 - file-based messaging protocol semantics
-- member daemon behavior
+- member daemon behavior, including revalidating pane existence and configured `cli_tool` immediately before tmux injection
 - team-daemon behavior
 - mesh-native status/activity fields in shared config space
 
@@ -176,7 +177,7 @@ The compaction bugs audited on `2026-03-08` happened when transcript ownership w
 - `teams/<team>/config.json`
 - `teams/<team>/inboxes/`
 
-These files must remain compatible across Taurhaus and mesh, but Taurhaus-specific attachment semantics should not migrate into mesh as generic source-of-truth fields unless mesh truly consumes them semantically.
+These files must remain compatible across Taurhaus and mesh. Taurhaus owns the snake-case `cli_tool` member extension used by its runtime and writes it into `config.json`; mesh consumes that field only as a delivery safety check. Taurhaus-specific attachment semantics remain in `runtime/` and should not migrate into shared config unless mesh truly consumes them semantically.
 
 ## Key Data Flows
 

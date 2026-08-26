@@ -339,7 +339,7 @@ What this proves:
 
 Verify:
 ```bash
-jq . ~/.claude/teams/<team>/state/compaction/members/<member>.json
+jq . ~/.claude/teams/<team>/state/compaction/<member>.json
 jq . ~/.claude/teams/<team>/inboxes/<member>.json | tail
 ```
 

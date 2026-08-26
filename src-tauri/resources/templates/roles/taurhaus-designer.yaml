@@ -10,6 +10,7 @@ kind: agent
 defaults:
   cli_tool: gemini
   model: gemini-3.1-pro
+  reasoning_effort: null
   default_name_pattern: designer-{n}
 
 instructions: |

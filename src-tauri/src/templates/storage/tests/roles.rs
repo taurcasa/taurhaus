@@ -111,6 +111,59 @@ fn save_after_legacy_load_writes_canonical_model_and_effort_keys() {
     assert!(!raw.contains("gpt-5.4-high"));
 }
 
+// Regression: ff40911 split legacy model/effort values at runtime, but the
+// bundled role catalog kept combined values and could silently lose effort.
+#[test]
+fn bundled_roles_use_canonical_model_and_reasoning_effort() {
+    let roles_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("templates")
+        .join("roles");
+    let mut paths = fs::read_dir(&roles_dir)
+        .expect("read bundled roles")
+        .map(|entry| entry.expect("read role entry").path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("yaml"))
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    assert_eq!(paths.len(), 38, "bundled role count changed");
+
+    let mut high_effort_roles = Vec::new();
+    for path in paths {
+        let raw = fs::read_to_string(&path).expect("read bundled role");
+        assert!(
+            raw.lines()
+                .any(|line| line.trim_start().starts_with("reasoning_effort:")),
+            "{} must declare defaults.reasoning_effort explicitly",
+            path.display()
+        );
+        let role: RoleTemplate = serde_norway::from_str(&raw).expect("parse bundled role");
+        let parsed = crate::session_scanner::launch::ModelSpec::parse_legacy(&role.defaults.model);
+
+        assert_eq!(
+            parsed.model.as_deref(),
+            Some(role.defaults.model.as_str()),
+            "{} must use a bare model slug",
+            path.display()
+        );
+        assert_eq!(
+            parsed.reasoning_effort,
+            None,
+            "{} still embeds reasoning effort in defaults.model",
+            path.display()
+        );
+
+        if role.defaults.reasoning_effort.as_deref() == Some("high") {
+            high_effort_roles.push(role.role_id);
+        }
+    }
+
+    assert_eq!(high_effort_roles.len(), 14);
+    assert!(high_effort_roles
+        .iter()
+        .any(|role| role == "quick-dev-codex"));
+}
+
 #[test]
 fn create_role_validates_writes_and_commits() {
     let (_root, app_data, builtins) = setup_dirs();
