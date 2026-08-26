@@ -52,9 +52,11 @@ pub mod templates;
 
 pub mod test_support;
 
+use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::{io, process};
 
+use serde::{Deserialize, Serialize};
 use tauri_plugin_window_state::StateFlags;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -305,8 +307,329 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
+        Some("--launch-command") => Some(run_launch_command_cli(args.next().as_deref())),
+        Some("--render-onboarding") => Some(run_render_onboarding_cli(args.next().as_deref())),
         _ => None,
     }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LaunchCommandCliRequest {
+    tool: crate::session_scanner::cli_tool::CliTool,
+    mode: crate::daemon::protocol::LaunchMode,
+    #[serde(default)]
+    base: Option<String>,
+    model: Option<String>,
+    #[serde(default, alias = "reasoning_effort")]
+    reasoning_effort: Option<String>,
+    team: Option<LaunchCommandTeamCliRequest>,
+    #[serde(default, alias = "codex_bypass_hook_trust")]
+    codex_bypass_hook_trust: bool,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LaunchCommandTeamCliRequest {
+    #[serde(alias = "team_name")]
+    team_name: String,
+    #[serde(alias = "agent_name")]
+    agent_name: String,
+    role: crate::coordination::domain::MemberRole,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RenderOnboardingCliRequest {
+    tool: crate::session_scanner::cli_tool::CliTool,
+    #[serde(alias = "team_name")]
+    team_name: String,
+    #[serde(alias = "member_name")]
+    member_name: String,
+    #[serde(alias = "lead_name")]
+    lead_name: String,
+    role: crate::templates::types::RoleTemplate,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchCommandCliResponse {
+    command: String,
+    notes: Vec<LaunchCommandCliNote>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchCommandCliNote {
+    event: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    found: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replacement: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
+    fn from(note: crate::session_scanner::launch::LaunchNote) -> Self {
+        use crate::session_scanner::launch::{EffortIgnoreReason, LaunchNote};
+
+        let event = note.event_name();
+        match note {
+            LaunchNote::DeprecatedFlag { flag } => Self {
+                event,
+                flag: Some(flag),
+                found: None,
+                replacement: None,
+                reason: None,
+            },
+            LaunchNote::ModelIgnored { found } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement: None,
+                reason: None,
+            },
+            LaunchNote::ModelDeprecated { found, replacement } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement,
+                reason: None,
+            },
+            LaunchNote::EffortIgnored { found, reason } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement: None,
+                reason: Some(match reason {
+                    EffortIgnoreReason::BaseOverride => "baseOverride",
+                    EffortIgnoreReason::Invalid => "invalid",
+                }),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_launch_command_cli(json_arg: Option<&str>) -> i32 {
+    let _log_state = init_coordination_cli_log_sink();
+    match render_launch_command_cli(json_arg, io::stdin()) {
+        Ok(response) => match serde_json::to_string(&response) {
+            Ok(payload) => write_renderer_stdout(io::stdout(), &payload),
+            Err(error) => {
+                tracing::warn!(error = %error, "failed to serialize launch command response");
+                1
+            }
+        },
+        Err(error) => {
+            tracing::warn!(error = %error, "launch command renderer failed");
+            1
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn render_launch_command_cli<R: Read>(
+    json_arg: Option<&str>,
+    mut stdin: R,
+) -> Result<LaunchCommandCliResponse, String> {
+    use crate::models::{CliCommandSettings, ModelCatalog};
+    use crate::session_scanner::control::validate_command_override;
+    use crate::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
+
+    let json = read_renderer_request(json_arg, &mut stdin)?;
+    let request: LaunchCommandCliRequest =
+        serde_json::from_str(&json).map_err(|error| format!("invalid launch request: {error}"))?;
+    let mut model = request
+        .model
+        .as_deref()
+        .map(ModelSpec::parse_legacy)
+        .unwrap_or_default();
+    if request.reasoning_effort.is_some() {
+        model.reasoning_effort = request.reasoning_effort;
+    }
+    let mut notes = Vec::new();
+    if let Some(requested_model) = model.model.clone() {
+        let member_name = request
+            .team
+            .as_ref()
+            .map(|team| team.agent_name.as_str())
+            .unwrap_or("taureval");
+        if let Some(validated) = crate::coordination::member_activation::validated_role_model(
+            request.tool,
+            &requested_model,
+            member_name,
+            "launch_renderer_cli",
+        ) {
+            model.model = Some(validated);
+        } else {
+            let replacement = ModelCatalog::default_for(request.tool).id.clone();
+            notes.push(LaunchCommandCliNote {
+                event: "launch.model.invalid",
+                flag: None,
+                found: Some(requested_model),
+                replacement: Some(replacement.clone()),
+                reason: None,
+            });
+            model.model = Some(replacement);
+        }
+    }
+    let team = request.team.as_ref().map(|team| TeamContext {
+        team_name: &team.team_name,
+        agent_name: &team.agent_name,
+        role: team.role,
+    });
+    let defaults = CliCommandSettings::default();
+    let base = request
+        .base
+        .as_deref()
+        .unwrap_or_else(|| base_command(&defaults, request.tool, request.mode));
+
+    let rendered = LaunchSpec {
+        tool: request.tool,
+        mode: request.mode,
+        base,
+        model: model.clone(),
+        team,
+        codex_bypass_hook_trust: request.codex_bypass_hook_trust,
+    }
+    .render();
+    validate_command_override(&rendered.command)?;
+
+    let mode = format!("{:?}", request.mode).to_ascii_lowercase();
+    let mut fields = serde_json::Map::new();
+    fields.insert("tool".to_string(), request.tool.to_string().into());
+    fields.insert("mode".to_string(), mode.into());
+    fields.insert(
+        "model".to_string(),
+        model
+            .model
+            .map(serde_json::Value::String)
+            .unwrap_or_default(),
+    );
+    fields.insert(
+        "reasoning_effort".to_string(),
+        model
+            .reasoning_effort
+            .map(serde_json::Value::String)
+            .unwrap_or_default(),
+    );
+    fields.insert(
+        "command".to_string(),
+        crate::session_scanner::launch::redact_command_for_logging(&rendered.command).into(),
+    );
+    crate::commands::logging::emit_global(
+        "info",
+        "coordination",
+        "launch.command.rendered",
+        Some("Rendered CLI launch command".to_string()),
+        fields,
+    );
+
+    for note in rendered.notes {
+        let response_note = LaunchCommandCliNote::from(note);
+        let mut fields = serde_json::Map::new();
+        fields.insert("tool".to_string(), request.tool.to_string().into());
+        if let Some(value) = response_note.flag.as_ref() {
+            fields.insert("flag".to_string(), value.clone().into());
+        }
+        if let Some(value) = response_note.found.as_ref() {
+            fields.insert("found".to_string(), value.clone().into());
+        }
+        if let Some(value) = response_note.replacement.as_ref() {
+            fields.insert("replacement".to_string(), value.clone().into());
+        }
+        if let Some(value) = response_note.reason {
+            fields.insert("reason".to_string(), value.into());
+        }
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            response_note.event,
+            Some("Launch renderer reported a configuration note".to_string()),
+            fields,
+        );
+        notes.push(response_note);
+    }
+
+    Ok(LaunchCommandCliResponse {
+        command: rendered.command,
+        notes,
+    })
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_render_onboarding_cli(json_arg: Option<&str>) -> i32 {
+    match render_onboarding_cli(json_arg, io::stdin()) {
+        Ok(onboarding) => write_renderer_stdout(io::stdout(), &onboarding),
+        Err(error) => {
+            tracing::warn!(error = %error, "onboarding renderer failed");
+            1
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn render_onboarding_cli<R: Read>(json_arg: Option<&str>, mut stdin: R) -> Result<String, String> {
+    use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let json = read_renderer_request(json_arg, &mut stdin)?;
+    let request: RenderOnboardingCliRequest = serde_json::from_str(&json)
+        .map_err(|error| format!("invalid onboarding request: {error}"))?;
+    let role_context = RoleContext::from(&request.role);
+    let rendered = if request.tool == CliTool::Claude {
+        DeliveryRenderer::render_claude_role_context(
+            &request.team_name,
+            &request.member_name,
+            &request.lead_name,
+            role_context,
+        )
+    } else {
+        DeliveryRenderer::render_onboarding(
+            &request.team_name,
+            &request.member_name,
+            &request.lead_name,
+            role_context,
+        )
+    };
+    Ok(rendered)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn read_renderer_request<R: Read>(json_arg: Option<&str>, stdin: &mut R) -> Result<String, String> {
+    match json_arg {
+        Some(json) if json != "-" => Ok(json.to_string()),
+        _ => {
+            let mut json = String::new();
+            stdin
+                .read_to_string(&mut json)
+                .map_err(|error| format!("failed to read renderer request: {error}"))?;
+            if json.trim().is_empty() {
+                Err("renderer request JSON is required as an argument or on stdin".to_string())
+            } else {
+                Ok(json)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn write_renderer_stdout<W: Write>(mut stdout: W, payload: &str) -> i32 {
+    if let Err(error) = writeln!(stdout, "{payload}").and_then(|()| stdout.flush()) {
+        tracing::warn!(error = %error, "failed to write renderer output to stdout");
+        return 1;
+    }
+    0
 }
 
 #[cfg(feature = "mesh-bridged-backend")]
