@@ -209,7 +209,7 @@ function normalizeSettings(raw) {
         gemini: normalizeToolCommands(cliCommands.gemini, terminalContract.cli_command_defaults.gemini),
       },
       harness: {
-        codex_compaction: codexCompaction === 'transcript' ? 'transcript' : 'hooks',
+        codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
       },
     },
     terminal_contract: terminalContract,

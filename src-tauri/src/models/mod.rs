@@ -509,7 +509,7 @@ pub struct HarnessSettings {
 impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
-            codex_compaction: CodexCompactionMode::Hooks,
+            codex_compaction: CodexCompactionMode::Transcript,
         }
     }
 }
@@ -517,8 +517,8 @@ impl Default for HarnessSettings {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodexCompactionMode {
-    #[default]
     Hooks,
+    #[default]
     Transcript,
 }
 
@@ -810,11 +810,11 @@ mod tests {
     // Regression: 0b87699 offered no Codex compaction source setting, leaving
     // the unstable transcript tailer as the only path.
     #[test]
-    fn terminal_settings_default_codex_compaction_to_hooks() {
+    fn terminal_settings_default_codex_compaction_to_transcript() {
         let settings = TerminalSettings::default();
         assert_eq!(
             settings.harness.codex_compaction,
-            CodexCompactionMode::Hooks
+            CodexCompactionMode::Transcript
         );
 
         let legacy: TerminalSettings = serde_json::from_value(serde_json::json!({
@@ -823,7 +823,10 @@ mod tests {
             "tmux_layout": "new_window"
         }))
         .expect("legacy settings");
-        assert_eq!(legacy.harness.codex_compaction, CodexCompactionMode::Hooks);
+        assert_eq!(
+            legacy.harness.codex_compaction,
+            CodexCompactionMode::Transcript
+        );
     }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
