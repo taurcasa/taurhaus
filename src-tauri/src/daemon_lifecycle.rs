@@ -1039,6 +1039,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
         let mut observed_connected = false;
         let mut recovery_tracker = SessionBridgeRecoveryTracker::default();
         let mut last_focus: Option<FocusEmission> = None;
+        let mut last_degraded = false;
         let mut reported_protocol_mismatch = false;
         tracing::info!("session updates bridge thread started");
 
@@ -1080,6 +1081,7 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                 wsl_distro.as_deref(),
                 &mut since_version,
                 &mut last_focus,
+                &mut last_degraded,
             ) {
                 if let Some(duration_ms) = recovery_tracker.take_duration_ms(Instant::now()) {
                     emit_session_bridge_recovery_measurement(duration_ms, emission);
@@ -1119,7 +1121,13 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                                 update.focus_project_path.as_deref(),
                             );
                         }
-                        if update.changed {
+                        // A degraded cycle bumps no version, so `changed` stays
+                        // false while the scanner is blind. Its edges still have
+                        // to reach the app: the sessions it is looking at just
+                        // stopped being an observation (or became one again).
+                        let degraded_moved =
+                            take_degraded_change(&mut last_degraded, update.degraded);
+                        if update.changed || degraded_moved {
                             let mut sessions = update.sessions;
                             let session_count = sessions.len();
                             normalize_sessions_for_frontend(
@@ -1136,14 +1144,16 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                             emit_frontend_event(
                                 &app,
                                 "sessions-updated",
-                                serde_json::json!({
-                                    "version": update.version,
-                                    "sessions": sessions,
-                                }),
+                                sessions_updated_payload(
+                                    update.version,
+                                    &sessions,
+                                    update.degraded,
+                                ),
                             );
                             tracing::debug!(
                                 version = update.version,
                                 session_count = session_count,
+                                degraded = update.degraded,
                                 "session updates bridge emitted sessions-updated event"
                             );
                         }
@@ -1186,6 +1196,7 @@ fn apply_seed_outcome(
     snapshot: Option<&daemon::protocol::RuntimeSessionSnapshotResult>,
     since_version: &mut u64,
     last_focus: &mut Option<FocusEmission>,
+    last_degraded: &mut bool,
 ) -> bool {
     let Some(snapshot) = snapshot else {
         *since_version = 0;
@@ -1193,6 +1204,9 @@ fn apply_seed_outcome(
     };
 
     *since_version = snapshot.version;
+    // The seed emits its snapshot unconditionally, so the degraded flag is only
+    // recorded here — the long poll that follows must not repeat it as an edge.
+    *last_degraded = snapshot.degraded;
     take_focus_change(
         last_focus,
         snapshot.focus.as_ref(),
@@ -1217,6 +1231,39 @@ fn take_focus_change(
         return false;
     }
     *last = Some(next);
+    true
+}
+
+/// `sessions-updated` payload.
+///
+/// `degraded` tells the app the sessions are the hub's last good snapshot,
+/// replayed while its scanner is blind, so `sessionStore` can stamp them and
+/// `activitySignal.js` can present them as uncertain instead of holding the
+/// last green reading.
+fn sessions_updated_payload(
+    version: u64,
+    sessions: &[crate::session_scanner::DisplaySession],
+    degraded: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "version": version,
+        "sessions": sessions,
+        "degraded": degraded,
+    })
+}
+
+/// Whether the hub's degraded flag flipped since the last emission, recording it.
+///
+/// A degraded scanner cycle bumps no version, so the long poll keeps answering
+/// `changed: false` and the app would hold its last good indicator for as long
+/// as the scanner stays blind. The edges — and only the edges — are worth an
+/// event: one when the sessions become continuity data, one when they are an
+/// observation again.
+fn take_degraded_change(last: &mut bool, degraded: bool) -> bool {
+    if *last == degraded {
+        return false;
+    }
+    *last = degraded;
     true
 }
 
@@ -1339,6 +1386,7 @@ fn emit_current_session_snapshot(
     wsl_distro: Option<&str>,
     since_version: &mut u64,
     last_focus: &mut Option<FocusEmission>,
+    last_degraded: &mut bool,
 ) -> Option<SessionSnapshotEmission> {
     use std::time::Duration;
 
@@ -1366,7 +1414,8 @@ fn emit_current_session_snapshot(
         }
     }
 
-    let focus_changed = apply_seed_outcome(snapshot.as_ref(), since_version, last_focus);
+    let focus_changed =
+        apply_seed_outcome(snapshot.as_ref(), since_version, last_focus, last_degraded);
     let snapshot = snapshot?;
 
     // Cache for the polling path (list_cli_sessions)
@@ -1396,14 +1445,12 @@ fn emit_current_session_snapshot(
     emit_frontend_event(
         app,
         "sessions-updated",
-        serde_json::json!({
-            "version": snapshot.version,
-            "sessions": sessions,
-        }),
+        sessions_updated_payload(snapshot.version, &sessions, snapshot.degraded),
     );
     tracing::debug!(
         version = snapshot.version,
         session_count = session_count,
+        degraded = snapshot.degraded,
         "session updates bridge emitted current snapshot after connect"
     );
     Some(SessionSnapshotEmission {
@@ -1776,6 +1823,62 @@ mod tests {
         assert!(!take_focus_change(&mut last, None, None));
     }
 
+    // The frontend reads `degraded` off this payload (`sessionStore.svelte.js`)
+    // to stamp the sessions it retains; the key must be present on every
+    // emission, healthy ones included, so absence never reads as "unknown".
+    #[test]
+    fn sessions_updated_payload_always_carries_the_degraded_flag() {
+        let healthy = sessions_updated_payload(4, &[], false);
+        assert_eq!(healthy["version"], 4);
+        assert_eq!(healthy["degraded"], serde_json::Value::Bool(false));
+        assert!(healthy["sessions"].is_array());
+
+        assert_eq!(
+            sessions_updated_payload(4, &[], true)["degraded"],
+            serde_json::Value::Bool(true)
+        );
+    }
+
+    // Regression: 6c6f1cb presented a `degraded` record as uncertain, but a
+    // degraded scanner cycle bumps no hub version, so the long poll answers
+    // `changed: false` and the bridge emitted nothing — the app kept the last
+    // good indicator for as long as the scanner stayed blind. The bridge emits
+    // on the healthy->degraded and degraded->healthy edges, and only there: a
+    // scanner that is blind for a minute must not produce an event per poll.
+    #[test]
+    fn degraded_bridge_emits_once_per_edge() {
+        let mut last = false;
+
+        assert!(!take_degraded_change(&mut last, false));
+        assert!(take_degraded_change(&mut last, true));
+        assert!(!take_degraded_change(&mut last, true));
+        assert!(!take_degraded_change(&mut last, true));
+        assert!(take_degraded_change(&mut last, false));
+        assert!(!take_degraded_change(&mut last, false));
+    }
+
+    // The connect/reconnect seed always emits, so it records the flag rather
+    // than folding an edge: the long poll that follows must not repeat it.
+    #[test]
+    fn seeding_records_the_degraded_flag_without_re_emitting_it() {
+        let mut since_version = 0;
+        let mut last_focus = None;
+        let mut last_degraded = false;
+
+        let mut snapshot = seed_snapshot(3, None, None);
+        snapshot.degraded = true;
+        let _ = apply_seed_outcome(
+            Some(&snapshot),
+            &mut since_version,
+            &mut last_focus,
+            &mut last_degraded,
+        );
+
+        assert!(last_degraded);
+        assert!(!take_degraded_change(&mut last_degraded, true));
+        assert!(take_degraded_change(&mut last_degraded, false));
+    }
+
     fn seed_snapshot(
         version: u64,
         focus: Option<TmuxFocus>,
@@ -1810,6 +1913,7 @@ mod tests {
                 )),
                 &mut since_version,
                 &mut last,
+                &mut false,
             ),
             "the first snapshot carries the focus the hub already knows"
         );
@@ -1832,6 +1936,7 @@ mod tests {
             )),
             &mut since_version,
             &mut last,
+            &mut false,
         ));
         assert_eq!(since_version, 9);
 
@@ -1844,6 +1949,7 @@ mod tests {
             )),
             &mut since_version,
             &mut last,
+            &mut false,
         ));
 
         // A hub with no focus at all clears the indicator once.
@@ -1851,11 +1957,13 @@ mod tests {
             Some(&seed_snapshot(11, None, None)),
             &mut since_version,
             &mut last,
+            &mut false,
         ));
         assert!(!apply_seed_outcome(
             Some(&seed_snapshot(11, None, None)),
             &mut since_version,
             &mut last,
+            &mut false,
         ));
     }
 
@@ -1938,10 +2046,11 @@ mod tests {
             )),
             &mut since_version,
             &mut last,
+            &mut false,
         ));
 
         assert!(
-            !apply_seed_outcome(None, &mut since_version, &mut last),
+            !apply_seed_outcome(None, &mut since_version, &mut last, &mut false),
             "a seed that never arrived has no focus to emit"
         );
         assert_eq!(
@@ -1957,6 +2066,7 @@ mod tests {
             Some(&restarted),
             &mut since_version,
             &mut last,
+            &mut false,
         ));
         assert_eq!(since_version, 3);
     }

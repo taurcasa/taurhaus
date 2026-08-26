@@ -143,14 +143,19 @@ const DERIVATION_TABLE = [
     { level: 'active', label: 'Active', confidence: 'medium', source: 'status' },
   ],
   [
-    'recent output raises confidence for a status-only record',
+    'recent output does not raise confidence for a status-only record',
     { sessionStatus: 'active', last_output_age_secs: 3 },
-    { level: 'active', label: 'Active', confidence: 'high', source: 'status' },
+    { level: 'active', label: 'Active', confidence: 'medium', source: 'status' },
   ],
   [
     'old output leaves a status-only record at medium confidence',
     { sessionStatus: 'active', lastOutputAgeSecs: 900 },
     { level: 'active', label: 'Active', confidence: 'medium', source: 'status' },
+  ],
+  [
+    'a reported confidence is used without attribution',
+    { sessionStatus: 'active', activity_confidence: 'high' },
+    { level: 'active', label: 'Active', confidence: 'high', source: 'status' },
   ],
   [
     'starting is live and reported as active',
@@ -211,6 +216,26 @@ describe('activitySignal invariants', () => {
     for (const record of records) {
       expect(activitySignal({ ...record, recent_io: true }))
         .toEqual(activitySignal({ ...record, recent_io: false }))
+    }
+  })
+
+  // Regression: 6c6f1cb promoted a status-only record to high confidence when
+  // `last_output_age_secs <= 10`. The daemon deliberately keeps output age out
+  // of `SessionEventSignature` (session_activity.rs) because it changes on
+  // every poll, so the frontend holds the number frozen at the last real event
+  // and would report "high confidence" forever once it had been recent. Only
+  // change-gated evidence may set the presented confidence.
+  it('never lets last_output_age_secs change the presented signal', () => {
+    const records = [
+      { sessionStatus: 'active' },
+      { sessionStatus: 'idle' },
+      { state: 'active', activity_attribution: 'attributed', activity_confidence: 'medium' },
+      { state: 'idle', project_unattributed_active: true },
+    ]
+
+    for (const record of records) {
+      expect(activitySignal({ ...record, last_output_age_secs: 1 }))
+        .toEqual(activitySignal({ ...record, last_output_age_secs: 3600 }))
     }
   })
 

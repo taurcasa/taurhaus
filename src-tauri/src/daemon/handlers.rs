@@ -355,6 +355,7 @@ pub(crate) fn handle_wait_session_updates(id: &str, params: &serde_json::Value) 
             sessions: update.snapshot.sessions,
             focus: update.focus,
             focus_project_path: update.focus_project_path,
+            degraded: update.degraded,
         },
     )
 }

@@ -37,6 +37,17 @@
     offline: 'quiet',
   }
 
+  /**
+   * Team header pill, keyed by the aggregate tone `sessionIndicator.js` derives.
+   * A team whose members are all retained-stale is not an idle team: it wears
+   * the same uncertain/info tone its member rows do.
+   */
+  const teamBadgeClasses = $derived.by(() => ({
+    active: 'bg-success-300/18 text-success-300 border border-success-300/55',
+    stale: 'bg-info-300/14 text-info-300 border border-info-300/45',
+    idle: 'bg-warning-300/18 text-warning-300 border border-warning-300/65',
+  }))
+
   const toneClasses = $derived.by(() => ({
     active: dark ? 'text-success-400' : 'text-success-600',
     waiting: dark ? 'text-warning-300' : 'text-warning-600',
@@ -543,7 +554,10 @@
           <section class="rounded-lg px-2.5 py-2 border {ui.evidenceRow}">
             <div class="flex items-center justify-between gap-2">
               <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Mesh team</div>
-              <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold {team.isActive ? 'bg-success-300/18 text-success-300 border border-success-300/55' : 'bg-warning-300/18 text-warning-300 border border-warning-300/65'}">
+              <span
+                class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold {teamBadgeClasses[team.tone] ?? (team.isActive ? teamBadgeClasses.active : teamBadgeClasses.idle)}"
+                data-testid="hovercard-team-badge"
+              >
                 T{team.count}
               </span>
             </div>

@@ -23,10 +23,14 @@
  * behind the level and `source` names that evidence, so a caller can explain
  * the level instead of re-deriving it.
  *
- * `recent_io` is deliberately **not** read: it flips on every scan poll, which
- * is why the daemon also leaves it out of its change signature
- * (`daemon/session_activity.rs`). Reading it here would make the indicator
- * flicker at the scan cadence.
+ * Only change-gated evidence is read. `recent_io` and `last_output_age_secs`
+ * flip on every scan poll, which is why the daemon leaves them out of its
+ * change signature (`daemon/session_activity.rs`) — the app therefore holds
+ * whatever value rode the last real event, frozen. Reading `recent_io` would
+ * make the indicator flicker at the scan cadence; reading the output age would
+ * be worse than flicker, because a frozen "3 seconds ago" stays inside any
+ * recency window forever. Confidence comes from `activity_confidence`, which
+ * the daemon does version.
  */
 
 /** Every level this module can return, strongest first. */
@@ -45,9 +49,6 @@ const LEVEL_LABELS = {
   uncertain: 'Uncertain',
   offline: 'Offline',
 }
-
-/** Output younger than this corroborates a status-only record. */
-const RECENT_OUTPUT_WINDOW_SECS = 10
 
 const REPORTED_CONFIDENCE = new Set(['high', 'medium', 'low'])
 
@@ -84,11 +85,6 @@ function attribution(record) {
 function reportedConfidence(record) {
   const value = firstString(record?.activity_confidence, record?.activityConfidence)
   return REPORTED_CONFIDENCE.has(value) ? value : ''
-}
-
-function lastOutputAgeSecs(record) {
-  const value = record?.last_output_age_secs ?? record?.lastOutputAgeSecs
-  return Number.isFinite(value) ? Number(value) : null
 }
 
 function isUnattributed(record) {
@@ -132,11 +128,11 @@ export function activitySignal(record) {
 
   const attributed = attribution(record) === 'attributed'
   const source = attributed ? 'session' : 'status'
-  const confidence = attributed
-    ? reportedConfidence(record) || 'medium'
-    : lastOutputAgeSecs(record) !== null && lastOutputAgeSecs(record) <= RECENT_OUTPUT_WINDOW_SECS
-      ? 'high'
-      : 'medium'
+  // `activity_confidence` grades the *activity* evidence. The scanner
+  // hard-codes it to `low` for a session it saw no activity from
+  // (`classification.rs`), where it means "nothing to attribute", not "we are
+  // unsure this is idle" — so an idle reading keeps its own default.
+  const confidence = base === 'idle' ? 'medium' : reportedConfidence(record) || 'medium'
 
   if (base === 'idle') return signal('idle', source, confidence)
   if (base === 'starting') return signal('active', source, confidence, 'Starting')

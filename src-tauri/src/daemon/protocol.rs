@@ -354,6 +354,12 @@ pub struct WaitSessionUpdatesResult {
     /// Project path the focused tmux window belongs to, resolved by the hub.
     #[serde(default)]
     pub focus_project_path: Option<String>,
+    /// The daemon scanner's latest cycle could not read its process inventory:
+    /// `sessions` is the hub's last good snapshot, replayed for continuity, and
+    /// the app must present it as unobserved rather than as the current truth.
+    /// Additive: older daemons omit the field and decode as `false`.
+    #[serde(default)]
+    pub degraded: bool,
 }
 
 /// `get_runtime_session_snapshot` result.
@@ -836,6 +842,7 @@ mod tests {
             sessions: vec![],
             focus: None,
             focus_project_path: None,
+            degraded: false,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: WaitSessionUpdatesResult = serde_json::from_str(&json).unwrap();
@@ -905,6 +912,7 @@ mod tests {
             sessions: Vec::new(),
             focus: Some(focus_fixture()),
             focus_project_path: Some("/projects/mesh".to_string()),
+            degraded: false,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert_eq!(
@@ -920,6 +928,30 @@ mod tests {
         let result: WaitSessionUpdatesResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.focus, None);
         assert_eq!(result.focus_project_path, None);
+        assert!(!result.degraded, "an omitted flag decodes as healthy");
+    }
+
+    // Regression: 6c6f1cb made the app present a degraded snapshot as
+    // uncertain, but `wait_session_updates` — the transport the session bridge
+    // actually lives on — carried no degradation status, so the retained
+    // sessions arrived indistinguishable from a fresh observation. Additive
+    // field: an older daemon omits it and decodes as healthy (above).
+    #[test]
+    fn wait_session_updates_result_roundtrips_degraded() {
+        let result = WaitSessionUpdatesResult {
+            version: 11,
+            changed: false,
+            sessions: Vec::new(),
+            focus: None,
+            focus_project_path: None,
+            degraded: true,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"degraded\":true"));
+        assert_eq!(
+            serde_json::from_str::<WaitSessionUpdatesResult>(&json).unwrap(),
+            result
+        );
     }
 
     #[test]

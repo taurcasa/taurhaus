@@ -167,6 +167,44 @@ describe('HoverCard', () => {
     expect(screen.getByText('developer2')).toBeInTheDocument()
     expect(screen.getByText('Active')).toBeInTheDocument()
     expect(screen.getByText('Idle')).toBeInTheDocument()
+    expect(screen.getByTestId('hovercard-team-badge')).toHaveClass('text-success-300')
+  })
+
+  it('gives a retained-stale team header the uncertain tone, not the idle one', async () => {
+    // Regression: 6c6f1cb routed every member row through the canonical
+    // uncertain/info tone but left the team header on `isActive ? success :
+    // warning`, so a team whose members were all retained-stale wore the same
+    // amber header as a team that was simply idle.
+    const { groupedSessionIndicators } = await import('./sessionIndicator.js')
+    groupedSessionIndicators.mockReturnValueOnce([
+      {
+        kind: 'team',
+        groupId: 'team-stale',
+        groupLabel: 'team-stale',
+        count: 2,
+        isActive: false,
+        tone: 'stale',
+        members: [
+          { member_name: 'team-lead', toolLabel: 'Claude', state: 'active', _presenceStale: true },
+          { member_name: 'developer2', toolLabel: 'Codex', state: 'idle', _presenceStale: true },
+        ],
+      },
+    ])
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [{ live: true, state: 'active', toolLabel: 'Claude' }],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('hovercard-team-roster')).toBeInTheDocument()
+    })
+
+    const badge = screen.getByTestId('hovercard-team-badge')
+    expect(badge).toHaveClass('text-info-300')
+    expect(badge).not.toHaveClass('text-warning-300')
   })
 
   it('falls back to commit summary when latest session is stale', async () => {

@@ -12,6 +12,12 @@
  * whatever the daemon took to report a change.
  * On session disappearance, persists stats via recordSessionActivity IPC.
  *
+ * Every boundary that ends an interval goes through `accrueElapsed`: a new
+ * snapshot, the snapshot that finds a session gone, and an explicit stop. What
+ * the store refuses to measure is an interval it did not observe — a degraded
+ * snapshot or a dead daemon bridge suspends the trackers, so a scanner blackout
+ * is neither counted as work nor mistaken for idleness.
+ *
  * Update sources:
  * - `startPolling()` / `stopPolling()` for frontend-only mock mode.
  * - `applyDaemonSessionUpdate()` for event-driven daemon updates.
@@ -44,10 +50,41 @@ let activePollIntervalMs = POLL_INTERVAL_MS
  * Not reactive — only used to compute enrichment fields on each poll.
  * `activeMs`/`totalMs` accumulate the wall-clock interval since the previous
  * observation, credited to the state that was in effect during it.
- * @type {Map<number, {firstSeen: number, activeMs: number, totalMs: number, lastSampleAt: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string}>}
+ * `suspended` marks a tracker whose next interval was never observed.
+ * @type {Map<number, {firstSeen: number, activeMs: number, totalMs: number, lastSampleAt: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string, suspended: boolean}>}
  */
 let trackers = new Map()
 let projectIdByPath = new Map()
+
+/**
+ * Close the tracker's open interval at `now`, crediting the state that was in
+ * effect during it, and rebase for the next one.
+ *
+ * A suspended tracker rebases without crediting: the interval that just ended
+ * was a blackout, and a blackout belongs to no state — neither to the "active"
+ * the last observation reported nor to idleness.
+ */
+function accrueElapsed(tracker, now) {
+  const elapsedMs = Math.max(0, now - tracker.lastSampleAt)
+  tracker.lastSampleAt = now
+  if (tracker.suspended) return
+  tracker.totalMs += elapsedMs
+  if (tracker.lastState === 'active') {
+    tracker.activeMs += elapsedMs
+  }
+}
+
+/**
+ * Stop measuring until the next real observation.
+ * Called when the app admits it stopped seeing: a degraded snapshot (the hub is
+ * replaying its last good sessions) or a dead daemon bridge.
+ */
+function suspendActivityAccrual(now) {
+  for (const tracker of trackers.values()) {
+    accrueElapsed(tracker, now)
+    tracker.suspended = true
+  }
+}
 
 function stampSessionFreshness(session, now, isStale) {
   session._presenceStatus = isStale ? 'stale' : 'live'
@@ -138,13 +175,22 @@ async function persistSessionActivity(tracker, startedAt, endedAt, activeDuratio
   )
 }
 
-function flushTrackedActivity(trackersToFlush) {
-  const endedAt = new Date().toISOString()
+/**
+ * Persist and clear the given trackers.
+ *
+ * `now` is the boundary that ended measurement — the snapshot that found the
+ * session gone, or the stop. The interval since each tracker's last observation
+ * ends there and is credited before the totals are read; dropping it undercounts
+ * every session by up to one poll interval (Q-PRD-02).
+ */
+function flushTrackedActivity(trackersToFlush, now = Date.now()) {
+  const endedAt = new Date(now).toISOString()
   const flushes = []
 
   for (const tracker of trackersToFlush) {
     if (!tracker) continue
 
+    accrueElapsed(tracker, now)
     const startedAt = new Date(tracker.firstSeen).toISOString()
     const activeDurationMs = tracker.activeMs
     const totalDurationMs = tracker.totalMs
@@ -187,10 +233,18 @@ async function poll() {
  * A snapshot without a sessions array is degraded (no observation), not an
  * empty inventory: it leaves sessions and trackers untouched so a backend gap
  * never flushes activity stats or resets _lastTransition.
+ *
+ * `degraded` says the sessions in the snapshot are the daemon hub's last good
+ * ones, replayed for continuity while its scanner is blind. They are stamped as
+ * such so the indicator reads uncertain instead of holding the last green
+ * reading, and their trackers stop measuring until a real observation returns.
  */
-function applySessions(result) {
-  if (!Array.isArray(result)) return
+function applySessions(result, { degraded = false } = {}) {
   const now = Date.now()
+  if (!Array.isArray(result)) {
+    suspendActivityAccrual(now)
+    return
+  }
 
   // Track which PIDs are still present
   const currentPids = new Set()
@@ -214,6 +268,7 @@ function applySessions(result) {
         projectPath: session.project_path,
         projectId: session.project_id || null,
         cliTool: session.cli_tool || 'claude',
+        suspended: degraded,
       }
       trackers.set(pid, tracker)
     }
@@ -222,13 +277,8 @@ function applySessions(result) {
       tracker.projectId = session.project_id
     }
 
-    // Credit the elapsed interval to the state that was in effect during it.
-    const elapsedMs = Math.max(0, now - tracker.lastSampleAt)
-    tracker.lastSampleAt = now
-    tracker.totalMs += elapsedMs
-    if (tracker.lastState === 'active') {
-      tracker.activeMs += elapsedMs
-    }
+    accrueElapsed(tracker, now)
+    tracker.suspended = degraded
 
     // Detect state transition
     if (session.state !== tracker.lastState) {
@@ -243,6 +293,7 @@ function applySessions(result) {
       ? Math.round((tracker.activeMs / tracker.totalMs) * 100)
       : (session.state === 'active' ? 100 : 0)
     session._lastTransition = tracker.lastTransitionTime
+    session.degraded = degraded
     stampSessionFreshness(session, now, false)
 
     const key = normalizeProjectPath(session.project_path)
@@ -251,20 +302,33 @@ function applySessions(result) {
     next.set(key, list)
   }
 
-  // Detect disappeared sessions and persist their stats
-  for (const [pid, tracker] of trackers) {
-    if (!currentPids.has(pid)) {
-      void Promise.allSettled(flushTrackedActivity([tracker]))
-      trackers.delete(pid)
+  // Detect disappeared sessions and persist their stats. A degraded snapshot
+  // is not evidence that anything ended, so it never retires a tracker: the
+  // next real observation does, without crediting the blackout.
+  if (!degraded) {
+    for (const [pid, tracker] of trackers) {
+      if (!currentPids.has(pid)) {
+        void Promise.allSettled(flushTrackedActivity([tracker], now))
+        trackers.delete(pid)
+      }
     }
   }
 
   sessions = next
 }
 
+/**
+ * Mark every retained session as stale presence — the daemon bridge is down.
+ *
+ * That is also the end of measurement: nothing observes these sessions until
+ * the bridge returns, so the trackers suspend rather than keep crediting the
+ * outage to whatever state they last saw.
+ */
 export function markSessionPresenceStale() {
+  const now = Date.now()
+  suspendActivityAccrual(now)
   if (sessions.size === 0) return
-  sessions = mapWithFreshness(sessions, Date.now(), true)
+  sessions = mapWithFreshness(sessions, now, true)
 }
 
 /**
@@ -311,12 +375,16 @@ export { DEFAULT_TAURI_POLL_INTERVAL_MS }
 
 /**
  * Apply sessions received from daemon `sessions-updated` events.
- * Payload shape: `{ version: number, sessions: ClaudeSession[] }`.
+ * Payload shape: `{ version: number, sessions: ClaudeSession[], degraded: bool }`.
+ *
+ * `degraded` marks the sessions as the hub's retained snapshot rather than a
+ * fresh observation; the bridge emits it on the edges of the daemon scanner
+ * going blind and recovering (`daemon_lifecycle.rs`).
  */
 export function applyDaemonSessionUpdate(payload) {
   const list = Array.isArray(payload) ? payload : payload?.sessions
-  if (!Array.isArray(list)) return
-  applySessions(list)
+  const degraded = !Array.isArray(payload) && payload?.degraded === true
+  applySessions(list, { degraded })
 }
 
 /**

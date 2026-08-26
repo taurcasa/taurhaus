@@ -516,6 +516,12 @@ describe('sessionStore', () => {
   })
 
   it('persists the measured active duration when a session disappears', async () => {
+    // Regression: 6c6f1cb moved the tracker from tick counting to wall-clock
+    // accrual but only accrued for sessions present in the new snapshot, so the
+    // last interval — the one that ends at the observation which found the
+    // session gone — was dropped. Q-PRD-02's acceptance case (observed active
+    // at 0 s and 5 s, gone at 10 s) persisted 5000 ms instead of 10000 ms, and
+    // 6c6f1cb rewrote this very assertion down to the undercount.
     const session = { pid: 1330, project_path: '/proj-tauri-persist', state: 'active', tty: '/dev/pts/16', args: 'claude', cli_tool: 'claude' }
     ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-tauri-persist-id', path: '/proj-tauri-persist' }])
     ipc.listClaudeSessions
@@ -535,9 +541,121 @@ describe('sessionStore', () => {
       'claude',
       expect.any(String),
       expect.any(String),
+      10000,
+      10000,
+    )
+  })
+
+  it('credits the interval between the last observation and an explicit stop', async () => {
+    // Regression: 6c6f1cb accrued elapsed time only inside applySessions, so
+    // stopPolling() persisted the totals as of the last snapshot and threw away
+    // everything measured since it.
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-stop-gap-id', path: '/proj-stop-gap' }])
+    store.applyDaemonSessionUpdate({
+      version: 1,
+      sessions: [
+        { pid: 1340, project_path: '/proj-stop-gap', state: 'active', tty: '/dev/pts/17', args: 'claude', cli_tool: 'claude' },
+      ],
+    })
+
+    vi.advanceTimersByTime(5000)
+    await store.stopPolling()
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-stop-gap-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
       5000,
       5000,
     )
+  })
+
+  it('does not credit the unobserved gap of a degraded snapshot to the last state', async () => {
+    // Regression: 6c6f1cb credited the whole interval between two observations
+    // to the state in effect at the earlier one. A degraded snapshot is not an
+    // observation (PR 2, 06b432d), so a scanner blackout was silently backfilled
+    // as activity: an active session that went dark for 10 s and came back
+    // counted those 10 s as work nobody ever saw.
+    const session = { pid: 1350, project_path: '/proj-degraded-gap', state: 'active', tty: '/dev/pts/18', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-degraded-gap-id', path: '/proj-degraded-gap' }])
+
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [session] })
+    vi.advanceTimersByTime(5000)
+
+    // Observation lost: the hub keeps reporting its last good snapshot.
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [session], degraded: true })
+    vi.advanceTimersByTime(10000)
+
+    // Observation restored, then the session is gone.
+    store.applyDaemonSessionUpdate({ version: 2, sessions: [session] })
+    vi.advanceTimersByTime(5000)
+    store.applyDaemonSessionUpdate({ version: 3, sessions: [] })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-degraded-gap-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
+      10000,
+      10000,
+    )
+  })
+
+  it('does not credit the gap after presence went stale', async () => {
+    // Regression: 6c6f1cb left trackers running while the daemon bridge was
+    // down. markSessionPresenceStale() is the app admitting it stopped
+    // observing, so the outage belongs to no state.
+    const session = { pid: 1360, project_path: '/proj-stale-gap-ms', state: 'active', tty: '/dev/pts/19', args: 'claude', cli_tool: 'claude' }
+    ipc.listProjects.mockResolvedValueOnce([{ id: 'proj-stale-gap-ms-id', path: '/proj-stale-gap-ms' }])
+
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [session] })
+    vi.advanceTimersByTime(3000)
+    store.markSessionPresenceStale()
+    vi.advanceTimersByTime(7000)
+
+    store.applyDaemonSessionUpdate({ version: 2, sessions: [session] })
+    vi.advanceTimersByTime(2000)
+    store.applyDaemonSessionUpdate({ version: 3, sessions: [] })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(ipc.recordSessionActivity).toHaveBeenCalledWith(
+      'proj-stale-gap-ms-id',
+      'claude',
+      expect.any(String),
+      expect.any(String),
+      5000,
+      5000,
+    )
+  })
+
+  it('stamps sessions from a degraded snapshot so the indicator reads uncertain', async () => {
+    // Regression: 6c6f1cb taught activitySignal.js to downgrade a `degraded`
+    // record to uncertain, but nothing on the frontend ever set the field —
+    // the daemon hub's degradation stopped at the wire. A retained snapshot
+    // stayed green for as long as the scanner was blind.
+    const { activitySignal } = await import('./activitySignal.js')
+    const session = { pid: 1370, project_path: '/proj-degraded-stamp', state: 'active', tty: '/dev/pts/20', args: 'claude', cli_tool: 'claude' }
+
+    store.applyDaemonSessionUpdate({ version: 4, sessions: [session], degraded: true })
+    expect(activitySignal(store.getSessionForProject('/proj-degraded-stamp')).level).toBe('uncertain')
+
+    store.applyDaemonSessionUpdate({ version: 5, sessions: [session] })
+    expect(activitySignal(store.getSessionForProject('/proj-degraded-stamp')).level).toBe('active')
+  })
+
+  it('does not retire a tracker on a degraded snapshot that omits it', async () => {
+    // A blind scanner is not evidence that a session ended (PR 2, 06b432d):
+    // only a real observation may flush activity stats.
+    const session = { pid: 1380, project_path: '/proj-degraded-omit', state: 'active', tty: '/dev/pts/21', args: 'claude', cli_tool: 'claude' }
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [session] })
+
+    store.applyDaemonSessionUpdate({ version: 1, sessions: [], degraded: true })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(ipc.recordSessionActivity).not.toHaveBeenCalled()
+    expect(store.getSessionStats(1380)).toBeTruthy()
   })
 
   it('applies daemon session updates without polling', () => {

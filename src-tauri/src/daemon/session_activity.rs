@@ -50,6 +50,11 @@ pub struct SessionUpdate {
     /// tmux focus as of `snapshot.version`, read under the same lock.
     pub focus: Option<TmuxFocus>,
     pub focus_project_path: Option<String>,
+    /// The sessions in `snapshot` are the last good ones, kept for continuity
+    /// while the scanner is blind — not an observation. A degraded cycle bumps
+    /// no version, so this rides the answer the long poll gives anyway (a
+    /// timeout included) rather than waking anyone.
+    pub degraded: bool,
 }
 
 #[derive(Default)]
@@ -239,6 +244,7 @@ fn session_update(state: &HubState, changed: bool) -> SessionUpdate {
         },
         focus: state.focus.clone(),
         focus_project_path: state.focus_project_path.clone(),
+        degraded: state.degraded,
     }
 }
 
@@ -620,6 +626,40 @@ mod tests {
         let snapshot = hub.runtime_snapshot();
         assert!(!snapshot.degraded, "healthy commit must clear degraded");
         assert_eq!(snapshot.version, 1);
+    }
+
+    // Regression: 6c6f1cb taught the app to present a `degraded` record as
+    // uncertain, but the hub only exposed the flag on `runtime_snapshot()` —
+    // the long poll the session bridge lives on never carried it. A blind
+    // scanner therefore left the last good indicator green indefinitely.
+    // The flag rides the long-poll answer without bumping the version:
+    // continuity data stays continuity data (see the test above).
+    #[test]
+    fn a_long_poll_answer_reports_the_degraded_flag() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let active = vec![session_with_state(SessionState::Active)];
+
+        let _ = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, None, now);
+        let healthy = hub.wait_for_update(0, Duration::ZERO);
+        assert!(healthy.changed);
+        assert!(!healthy.degraded);
+
+        let _ = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        let blind = hub.wait_for_update(1, Duration::ZERO);
+        assert!(
+            !blind.changed,
+            "a degraded cycle still wakes no waiter and bumps no version"
+        );
+        assert!(
+            blind.degraded,
+            "the long poll must report that the sessions it carries are not an observation"
+        );
+        assert_eq!(blind.snapshot.sessions, active, "continuity data is kept");
+
+        let _ = hub.commit_cycle(cycle(active, false), &mut cadence, Some(now), now);
+        assert!(!hub.wait_for_update(1, Duration::ZERO).degraded);
     }
 
     #[test]
