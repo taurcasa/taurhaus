@@ -1,6 +1,6 @@
 # Sidebar Session Indicator Grouping
 
-> Archived design review. This file captures the grouping threshold and rationale used during the sidebar session-indicator redesign. It is kept as historical product reasoning; current behavior is defined in the implementation and its tests.
+> Archived design review. This file captures the grouping threshold and rationale used during the sidebar session-indicator redesign. It is kept as historical product reasoning; current behavior is defined in the implementation and its tests. Superseded in detail: grouping starts at 2 members (`TEAM_GROUP_MIN_MEMBERS`), stacking at 4 (`STACKING_THRESHOLD`), and levels come from `src/lib/activitySignal.js` — `working`, `active`, `idle`, `uncertain`, `offline`.
 
 ## Summary
 

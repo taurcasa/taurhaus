@@ -1,5 +1,7 @@
 # E2E Gap Assessment: taurhaus vs tauri-driver + WebKitWebDriver Best Practices
 
+> Archived and stale: an ungrouped catch-all session now follows the five groups, failure artifacts are collected by `e2e/failure-artifacts.js`, and retry/timeout knobs exist. Superseded by [`docs/operations/testing-guide.md`](../../operations/testing-guide.md).
+
 Date: 2026-03-05  
 Scope: Linux Tauri 2 E2E stability (WebdriverIO -> tauri-driver -> WebKitWebDriver)  
 Mode: Read-only analysis (no test/code changes)

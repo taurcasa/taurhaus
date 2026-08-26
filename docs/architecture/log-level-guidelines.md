@@ -33,7 +33,8 @@ Examples:
 Naming constraints:
 
 - Use lowercase snake_case segments.
-- Keep verbs from a controlled set where possible: `started`, `completed`, `failed`, `received`, `sent`, `timeout`, `skipped`, `reconciled`, `dropped`.
+- Prefer the lifecycle verbs: `started`, `completed`, `failed`, `received`, `sent`, `timeout`, `skipped`, `reconciled`, `dropped`.
+- State verbs are also in use where the event reports a condition rather than a step: `changed`, `degraded`, `recovered`, `resolved`, `delivered`, `selected`, `replayed`, `established`, `lost`, `reconnecting`, `rendered`, `ignored`, `invalid`, `deprecated`, `mismatch`, `foreign`, `corrupt`, `unresolved`, `appended`, `executable_missing`, `heartbeat`. Reach for a lifecycle verb first; add to this list rather than inventing a synonym for one already here.
 - Do not encode dynamic IDs into the event name; put them in fields.
 
 ## 3. Level Selection Policy
@@ -53,8 +54,8 @@ Use INFO for:
 Good examples from current code:
 
 - `tracing::info!("taurhaus starting")` in [`startup/mod.rs`](../../src-tauri/src/startup/mod.rs#L27)
-- `tracing::info!("Background bootstrap: daemon connected")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L142)
-- `tracing::info!(watched, unwatched, reason, ...)` in [`startup/watchers.rs`](../../src-tauri/src/startup/watchers.rs#L317)
+- `tracing::info!("Background bootstrap: daemon connected")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L143)
+- `tracing::info!(watched, unwatched, reason, ...)` in [`startup/watchers.rs`](../../src-tauri/src/startup/watchers.rs#L310)
 
 Do not use INFO for:
 
@@ -76,9 +77,9 @@ Use WARN for:
 
 Good examples from current code:
 
-- `tracing::warn!(..., "Daemon health check failed")` in [`daemon_lifecycle.rs`](../../src-tauri/src/daemon_lifecycle.rs#L672)
+- `tracing::warn!(..., "Daemon health check failed")` in [`daemon_lifecycle.rs`](../../src-tauri/src/daemon_lifecycle.rs#L692)
 - `tracing::warn!(..., "dropping daemon event ...")` in [`daemon/event_listener.rs`](../../src-tauri/src/daemon/event_listener.rs#L361)
-- `tracing::warn!(..., "git status refresh failed ... scheduling one retry")` in [`event_processor.rs`](../../src-tauri/src/event_processor.rs#L611)
+- `tracing::warn!(..., "git status refresh failed ... scheduling one retry")` in [`event_processor.rs`](../../src-tauri/src/event_processor.rs#L604)
 
 Do not use WARN for:
 
@@ -100,8 +101,8 @@ Use ERROR for:
 Good examples from current code:
 
 - `tracing::error!("Failed to lock DB for activity reseed: ...")` in [`bootstrap.rs`](../../src-tauri/src/bootstrap.rs#L26)
-- `tracing::error!(..., "DAEMON IS OUTDATED ...")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L227)
-- `tracing::error!(..., "Daemon server error")` in [`bin/taurhaus-daemon.rs`](../../src-tauri/src/bin/taurhaus-daemon.rs#L93)
+- `tracing::error!(..., "DAEMON IS OUTDATED ...")` in [`startup/daemon.rs`](../../src-tauri/src/startup/daemon.rs#L232)
+- `tracing::error!(..., "Daemon server error")` in [`bin/taurhaus-daemon.rs`](../../src-tauri/src/bin/taurhaus-daemon.rs#L103)
 
 Do not use ERROR for:
 
@@ -122,8 +123,8 @@ Use DEBUG for:
 
 Good examples from current code:
 
-- `tracing::debug!(..., "session_scanner metrics")` in [`session_scanner/scans.rs`](../../src-tauri/src/session_scanner/scans.rs#L86)
-- `tracing::debug!(..., "flushing watch event batch")` in [`event_processor.rs`](../../src-tauri/src/event_processor.rs#L552)
+- `tracing::debug!(..., "session_scanner metrics")` in [`session_scanner/scans.rs`](../../src-tauri/src/session_scanner/scans.rs#L150)
+- `tracing::debug!(..., "flushing watch event batch")` in [`event_processor.rs`](../../src-tauri/src/event_processor.rs#L551)
 - `tracing::debug!(..., "Received request")` in [`daemon/handlers.rs`](../../src-tauri/src/daemon/handlers.rs#L33)
 
 Do not use DEBUG for:
@@ -139,7 +140,7 @@ Do not use DEBUG for:
 - `ts` (RFC3339 UTC timestamp)
 - `level`
 - `event`
-- `component` (`frontend`, `backend`, `daemon`, `e2e_runner`)
+- `component` (`frontend`, `backend`, `daemon`, `coordination`, `e2e_runner`) — the coordination/compaction/launch event families emit `coordination`
 - `run_id`
 
 ### Correlation fields

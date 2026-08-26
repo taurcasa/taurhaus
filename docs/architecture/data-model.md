@@ -28,6 +28,7 @@ Registered projects. The `path` column is the canonical identifier for filesyste
 | `hero_preference` | TEXT | | User-selected hero image preference |
 | `cached_branch` | TEXT | | Git branch name (cached, may be NULL if not yet scanned) |
 | `cached_is_dirty` | INTEGER | | Git dirty flag (0/1, cached) |
+| `claude_account_id` | TEXT | | Claude subscription (config dir) this project launches on. NULL = global default account |
 | `created_at` | TEXT | NOT NULL | Registration timestamp |
 | `updated_at` | TEXT | NOT NULL | Last metadata update |
 
@@ -146,6 +147,9 @@ Migrations live in `src-tauri/src/db/migrations/` as numbered SQL files. Applied
 | 007 | Add `archived_at` column to tasks |
 | 008 | Add task archive metadata columns: `state_changed_at`, `last_status`, `archived_reason` (with backfill) |
 | 009 | Rebuild tasks schema with `source_key` identity dimension + active-task unique index |
+| 010 | Session timeline index `sessions (project_id, date DESC)` + archived-task timeline index |
+| 011 | Create `archived_task_session_summaries` keyed by `(project_path, session_key)` — commit/file counts, `sources_json`, `enrichment_warnings` |
+| 012 | Add `projects.claude_account_id` (NULL = global default Claude account) |
 
 ## tantivy (full-text search)
 
@@ -207,6 +211,13 @@ Each tool stores session and task data differently:
 | Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | `update_plan` entries within session JSONL |
 | Gemini CLI | `~/.gemini/tmp/<dir-or-hash>/chats/*.json` | `TODO.md` in project root |
 
+Claude Code also writes two surfaces taurhaus reads but never modifies:
+
+| Path | Purpose |
+|------|---------|
+| `<CLAUDE_CONFIG_DIR>/sessions/<pid>.json` | Sessions registry — authoritative session identity and `busy`/`idle`/`waiting`/`shell` state |
+| `~/.claude`, `~/.claude-*` (`.credentials.json`, `.claude.json`) | Account config dirs, scanned for the per-project account chooser |
+
 ### Application data
 
 | Path | Purpose |
@@ -214,8 +225,12 @@ Each tool stores session and task data differently:
 | `app_data_dir()/taurhaus.db` | SQLite database |
 | `app_data_dir()/search_index/` | tantivy index directory |
 | `app_data_dir()/taurhaus.log.jsonl` | Unified structured JSONL log file (append-only with rotation) |
+| `app_data_dir()/codex-notify.jsonl` | Codex native turn-complete edge sink (bounded at 5 MB) |
+| `app_data_dir()/templates/` | Git-backed role/preset template store |
 
 `app_data_dir()` resolves to the platform-appropriate location via Tauri's path API.
+
+Terminal settings stored in the `settings` KV table include `harness.codex_compaction` (`hooks` | `transcript`, default `transcript`).
 
 ## Key files
 

@@ -220,30 +220,35 @@ Flow:
   - graceful behavior when `push_head()` fails (repo with no commits yet).
 - Keep error mapping style consistent (`AppError`/domain error wrapping with contextual path details).
 
-## IPC Surface (proposed)
+## IPC Surface (shipped)
+
+Registered names, not the proposal names. See [ipc-reference.md](./ipc-reference.md) for full signatures.
 
 ### CRUD + read
-- `templates_list_roles() -> Vec<RoleTemplate>`
+- `templates_list_roles_full() -> Vec<RoleTemplateFull>`
 - `templates_get_role(role_id) -> RoleTemplate`
-- `templates_upsert_role(request) -> TemplateMutationResult`
-- `templates_delete_role(role_id) -> TemplateMutationResult`
-- `templates_list_presets() -> Vec<PresetTemplate>`
-- `templates_get_preset(preset_id) -> PresetTemplate`
-- `templates_upsert_preset(request) -> TemplateMutationResult`
-- `templates_delete_preset(preset_id) -> TemplateMutationResult`
+- `templates_upsert_role(request: TemplatesUpsertRoleRequest) -> RoleTemplate`
+- `templates_delete_role(role_id) -> ()`
+- `import_role_from_file(request) -> ImportRoleFromFileResult` / `export_role_to_file(request) -> RoleExportResult`
+- `templates_list_presets_full() -> Vec<TeamPresetFull>`
+- `templates_get_preset(preset_id) -> TeamPreset`
+- `templates_upsert_preset(request: TemplatesUpsertPresetRequest) -> TeamPreset`
+- `templates_delete_preset(preset_id) -> ()`
+
+Mutations return the saved template re-read from the store, or unit for deletes — no commit envelope crosses IPC. Commit state is read separately from `templates_get_storage_status`.
 
 ### Git insights
-- `templates_get_storage_status() -> { mode, repo_initialized, dirty, pending_actions, last_commit }`
-- `templates_get_history(limit, cursor?) -> TemplateCommitPage`
+- `templates_get_storage_status() -> TemplateStorageStatus { mode, repo_initialized, dirty, pending_actions, last_commit }`
+- `templates_get_history(limit?, cursor?) -> TemplateCommitPage`
 - `templates_get_diff(commit_id) -> TemplateDiff`
-- `templates_revert(request) -> TemplateMutationResult`
-- `templates_flush_pending_commit() -> CommitResult` (manual force-commit)
+- `templates_revert(request: TemplateRevertRequest) -> ()`
+- `templates_flush_pending() -> TemplateFlushResult { committed, commit_id }` (manual force-commit)
 
 ### Git IPC payloads
 - `TemplateCommitPage`:
-  - `commits: Vec<TemplateCommitSummary>`
+  - `commits: Vec<TemplateCommit>`
   - `next_cursor: Option<String>` (cursor is commit SHA from last item)
-- `TemplateCommitSummary`:
+- `TemplateCommit`:
   - `commit_id: String`
   - `short_id: String`
   - `message: String`
@@ -252,23 +257,24 @@ Flow:
   - `changed_paths: Vec<String>` (template-scoped only)
 - `TemplateDiff`:
   - `commit_id: String`
-  - `files: Vec<TemplateDiffFile>`
-  - `stats: { files_changed: u32, insertions: u32, deletions: u32 }`
+  - `files: Vec<TemplateDiffFile>` (`path`, `status`, `hunks`)
+  - `stats: TemplateDiffStats { files_changed: u32, insertions: u32, deletions: u32 }`
 - `TemplateRevertRequest`:
-  - `commit_id: String`
-  - `paths: Option<Vec<String>>` (None means full commit template-scoped revert)
-  - `validate_only: bool`
+  - `id: String` (the template being reverted)
+  - `commit_hash: String`
+  - Revert restores one template to one commit state. There is no path filter and no `validate_only` dry run.
 
 ### Compose hooks
-- `templates_compose_team(request) -> InitializeTeamRequest`
-- `templates_validate_composition(request) -> CompositionReport`
+- `templates_compose_team(request) -> CompositionResult { roster, warnings, validation_errors }`
 
-## Mutation result shape
-- `success: bool`
-- `warnings: Vec<String>`
-- `committed: bool`
+There is no `templates_validate_composition` command; composition is validated inside `templates_compose_team`, which reports problems as `validation_errors` instead of failing the call. It returns a composed roster, not an `InitializeTeamRequest` — the caller builds the initialize payload from that roster.
+
+## Store mutation result (internal)
+
+`TemplateStore` write methods return `TemplateMutationResult`, which is consumed inside the command layer and never serialized to the frontend:
+
 - `commit_id: Option<String>`
-- `debounced: bool`
+- `committed: bool`
 
 ## Startup/Shutdown behavior
 

@@ -6,7 +6,7 @@ Contributors: architect + mesh-expert
 
 Status note (`2026-03-09`):
 - the lock-manifest strategy in this document has shipped
-- Taurhaus currently pins mesh `0.2.6`
+- Taurhaus currently pins mesh `0.2.20` (git commit `9994754d…`, protocol 1, schema 1); the bundled manifest matches
 - `install_mesh` now uses atomic replacement plus daemon cycling
 - running daemon currentity is validated instead of trusting only the on-disk bundle version
 
@@ -113,9 +113,14 @@ Current recipe set:
 3. `just bundle-mesh`
 - depends on `mesh-verify-lock`
 - bundles binary to `src-tauri/resources/mesh`
+- `rm -rf`s a stray directory at `src-tauri/resources/mesh` before copying, then asserts the bundled result is a regular file (0.6.5 fix). It does not refuse — a `cp` into that directory would have shipped `resources/mesh/mesh`, the corrupt v0.6.4 bundle
 - writes:
   - `src-tauri/resources/mesh.version` (plain semver, backward compatible)
   - `src-tauri/resources/mesh.manifest.json` (full metadata snapshot)
+
+Stale-binary rebuild: `scripts/resolve-mesh-binary.sh` compares the binary's `version --json` `git_commit` with the lock and rebuilds `target/release/mesh` when they differ, instead of silently reusing the stale binary.
+
+The mesh → taurhaus release checklist lives in [`CONTRIBUTING.md`](../../CONTRIBUTING.md) under "Updating the bundled mesh release".
 
 4. `build-windows` and all `build-macos*`
 - verify lock metadata before bundling

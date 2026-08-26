@@ -46,7 +46,8 @@ Mesh is not the primary detection or delivery owner for this feature.
 ## 2. Detection strategy
 
 - Claude Code: detect via `SessionStart(source=compact)` hook
-- Codex: detect via appended `type:"compacted"` / `payload.type:"context_compacted"` in the active session JSONL
+- Codex (default, `harness.codex_compaction=transcript`): detect via appended `type:"compacted"` / `payload.type:"context_compacted"` in the active session JSONL
+- Codex (opt-in, `harness.codex_compaction=hooks`): detect via the same `SessionStart(source=compact)` hook bridge, gated on Codex ≥ 0.147
 
 ## 3. Delivery strategy
 
@@ -295,12 +296,12 @@ Decision:
 - detection edge is the Claude hook
 - ownership is still Taurhaus because Taurhaus defines the hook, snapshot, and renderer
 
-This avoids waiting for the placeholder Claude native backend to become fully implemented.
+This avoids waiting for the Claude native backend to become fully implemented.
 
 Important local reality:
 
-- [claude.rs](../../src-tauri/src/coordination/backend/claude.rs) is still a placeholder
-- phase 1 should therefore use the hook bridge directly, not depend on a complete Claude-native coordination backend
+- [claude.rs](../../src-tauri/src/coordination/backend/claude.rs) now implements `deliver` for real — operator notices are appended to the Claude member's inbox through `MeshInboxStore::append`. `probe` is still a stub (always `SessionDead`), and `launch`/`teardown` are unimplemented
+- the compaction path therefore uses the hook bridge directly, not a complete Claude-native coordination backend
 
 ## Codex
 
@@ -314,7 +315,7 @@ Mechanism:
    - `payload.type:"context_compacted"`
 3. When detected, Taurhaus resolves the owning member/session.
 4. Taurhaus builds the reinjection card.
-5. Taurhaus injects it directly into the member’s tmux pane.
+5. Taurhaus appends the card to the member's mesh inbox; the member's mesh daemon wakes the pane.
 
 Decision:
 
@@ -344,7 +345,10 @@ Why this is best:
 
 Primary mechanism:
 
-- direct tmux submission of a bounded operational card
+- **transcript mode (default):** append a bounded `post_compaction_context` message to `teams/<team>/inboxes/<member>.json` via `MeshInboxStore::append`. The wake is the member's mesh daemon, which watches the inbox directory. Taurhaus never runs `send-keys` for compaction.
+- **hooks mode (opt-in):** the card is returned as `additionalContext` from Codex's own `SessionStart(compact)` hook — no inbox append and no wake prompt.
+
+The "direct tmux submission" phrasing below is the original phase-1 proposal, superseded by [Why bounded inbox delivery is now the right Codex transport](#why-bounded-inbox-delivery-is-now-the-right-codex-transport). The card *format* is still accurate.
 
 Format:
 
@@ -365,25 +369,13 @@ Validation: report-only
 Override: none
 ```
 
-Then submit with Enter as a new user turn.
-
-Why this is best for phase 1:
-
-- immediate
-- does not depend on `mesh read`
-- uses an already-available runtime primitive: tmux key injection
-- aligns with the confirmed after-compaction prompt boundary
+As shipped, that card is the text of the inbox message, not a tmux keystroke.
 
 ## Should we also mirror to mesh?
 
 Optionally yes, but not on the critical path.
 
-Recommended phase 1 behavior:
-
-- inject directly to Codex pane
-- optionally append a low-priority audit/event message elsewhere for observability
-
-But do not make mesh inbox delivery required for success.
+Shipped behavior went the other way: the mesh inbox append *is* the delivery, and `DeliveryMethod::InboxFile` is what the audit records.
 
 ## Timing, Reliability, and Idempotency
 
@@ -630,7 +622,7 @@ Dependency:
 
 - tasks 1, 3, and 4
 
-## 6. Implement Codex direct post-compaction tmux injection
+## 6. Implement Codex post-compaction inbox delivery
 
 Scope:
 
@@ -638,7 +630,7 @@ Scope:
 
 Goal:
 
-- inject rendered compact card as a bounded user turn
+- append the rendered compact card as a bounded inbox message and let the member's mesh daemon wake the pane
 - include freshness and pane-state guards
 
 Dependency:
@@ -715,6 +707,6 @@ The clean design is:
 - static role context comes from coordination config
 - dynamic operational context comes from a new canonical snapshot
 - Claude uses the native hook lifecycle
-- Codex uses Taurhaus session-file detection plus direct post-compaction tmux submit
+- Codex uses Taurhaus session-file detection plus a bounded mesh inbox append, woken by the member's mesh daemon (or, in opt-in hooks mode, the same hook lifecycle as Claude)
 
 That keeps tool-specific parser logic where it already belongs, avoids a fragile mesh-read roundtrip, and solves the actual high-value problem: restoring the compact operational contract that agents lose after compaction.

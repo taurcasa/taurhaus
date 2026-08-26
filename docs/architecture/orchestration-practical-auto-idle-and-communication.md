@@ -26,7 +26,7 @@ Reliable inputs already present in code/data:
 - Member heartbeat/activity and explicit status in `teams/{team}/config.json` (`lastActivityAt`, `statusState`, `statusSetAt`).
 - Runtime health signal in `teams/{team}/runtime/{member}.json`.
 - Idle reminder anti-spam marker `teams/{team}/state/{member}.idle_reminded`.
-- Taurhaus process/session activity signals (tmux/session scanner + pane command/state) in `src-tauri/src/coordination/stall_detector.rs`.
+- Taurhaus process/session activity signals (tmux/session scanner + pane command/state) in `src-tauri/src/coordination/activity_export.rs`. (The never-instantiated `coordination/stall_detector/` module was deleted; the export now runs from the daemon session hub.)
 - No dependency on `orchestration_v1`. IdleMonitor uses a standalone suppression helper in `mesh/src/idle_monitor.rs`.
 
 ## Problem 1: Auto-Idle Detection + Auto-Nudge
@@ -130,7 +130,7 @@ These rules directly address observed failure modes in `docs/ai-agent-characteri
 
 - Collecting process/session activity signals (pane state, command, activity confidence).
 - Persisting a tiny per-member activity snapshot that mesh reads from disk.
-- UI controls/visibility for stall configuration and detector health.
+- Surfacing member activity in the UI (there is no stall-configuration or detector-health surface).
 
 ### Concrete Phase C Handoff Contract
 
@@ -138,7 +138,7 @@ Taurhaus writes one JSON file per member at:
 
 - `~/.claude/teams/{team}/state/activity/{member}.json`
 
-Schema (v1):
+Schema v1 in full (`src-tauri/src/coordination/activity_schema.rs`):
 
 ```json
 {
@@ -146,13 +146,23 @@ Schema (v1):
   "observed_at": "2026-03-06T02:51:00Z",
   "stall_recent_activity": true,
   "stall_no_output": false,
-  "stall_no_active_process": false
+  "stall_no_active_process": false,
+  "active_non_shell_process": true,
+  "recent_io": true,
+  "pane_alive": true,
+  "pane_foreign": false,
+  "last_output_age_secs": 4,
+  "activity_confidence": "active"
 }
 ```
 
+- `pane_alive` is false when the pane identity no longer matches the member's runtime record; `pane_foreign` is true when a live pane has been taken over by something that is not the member.
+- `last_output_age_secs` is `null` when no output age could be read.
+- `activity_confidence` is one of `active`, `likely_working`, `uncertain`, `idle`, `dead`.
+
 Rules:
 
-- Taurhaus updates every stall-detector poll (default 30s), atomic write (`.tmp` + rename).
+- The daemon session hub writes the snapshot on an activity change, or when the 30 s refresh interval is due (`ACTIVITY_EXPORT_REFRESH_INTERVAL`), whichever comes first — not on a fixed 30 s tick. A focus move is not activity and writes nothing. Atomic write (`.tmp` + rename), only for teams with a live tmux pane. A degraded scan cycle exports nothing.
 - Mesh reads file each IdleMonitor poll.
 - If missing/unparseable/stale (`observed_at` older than 120s), mesh treats snapshot as unknown and does not use it as a positive suppression signal.
 - This is local filesystem only; no IPC/API dependency required.

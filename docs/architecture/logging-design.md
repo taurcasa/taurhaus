@@ -23,6 +23,8 @@ The sink is implemented as a single-writer async pipeline in
 - append-only writes (no launch-time truncation)
 - size-based rotation + retention pruning
 
+The daemon binary and the compact-hook CLI install the *same* sink (`install_global_sink`) and emit through `emit_global`, so daemon-side events — the session hub, the compaction runtime, `codex-notify` — land in the same file as app events. Tests drain the writer through the `LogFileState::flush_for_test()` barrier rather than sleeping before they read the file.
+
 ## Implementation Status
 
 ### P0 slice status
@@ -36,6 +38,47 @@ The sink is implemented as a single-writer async pipeline in
 | Frontend bridge migration to structured payloads | Implemented | `logger.js` forwards structured payloads (`component`, `subsystem`, `event`, `message`, optional context/correlation). |
 | Frontend drop telemetry | Implemented | `frontend.logs.dropped` emitted with drop counts/reasons under throttle. |
 
+### Watcher and daemon-connection coverage
+
+| Family | Level | Notes |
+|---|---|---|
+| `watch.batch.flushed` | debug | Per-batch watcher flush metrics. |
+| `watch.local.registered` / `.unregistered` / `.reconciled` | info | Local watcher registration lifecycle. |
+| `watch.git_status.refreshed` / `.refresh_failed` | info / warn | Git-status refresh from watcher events. |
+| `watch.event.dropped` | warn | Backpressure drop with counts. |
+| `inotify.capacity.warning` / `.error` | warn / error | Watch-descriptor capacity headroom. |
+| `daemon.connection.established` / `.reconnecting` | info | Provider connection lifecycle. |
+| `daemon.connection.lost` | warn | Connection dropped; app falls back to `LocalProvider`. |
+| `daemon.session_updates_bridge.recovered` | info | Long-poll bridge resumed after failure. |
+
+### 2026-08 event families
+
+| Family | Level | Notes |
+|---|---|---|
+| `activity.state.changed` | info | `{pid, tool, from, to, source}`. Not emitted on first sight of an already-idle process. |
+| `session_scanner.process_scan.degraded` / `.recovered` | warn / info | Blackout edge plus a 60 s reminder while degraded. |
+| `launch.command.rendered` | info | The rendered launch command. Carries notes: `launch.flag.deprecated`, `launch.model.ignored`, `launch.model.deprecated`, `launch.effort.ignored`, `launch.effort.invalid`, `launch.config_dir.ignored`, `launch.notify.ignored` (warn when attached to a launch). |
+| `launch.model.invalid` | warn | Configured model is not in the catalog. |
+| `launch.account.fallback` | warn | Requested Claude account unusable; fell back. |
+| `launch.account.derived_from_session` | info | Account inferred from an existing session. |
+| `codex.notify.appended` / `.executable_missing` | info (daemon) / warn | Codex turn-complete sink. |
+| `daemon.data_root.mismatch` | warn | App and daemon resolved different app-data roots. |
+| `compaction.owner.selected` / `.failed` | info / warn | `{owner: hooks \| daemon \| app, status, reason}`. |
+| `compaction.signal_emitted` / `_consumed` / `_replayed` | info | Codex transcript signal stream. |
+| `compaction.signal_failed`, `compaction.unresolved`, `compaction.extractor.failed` | warn | |
+| `compaction.extractor.heartbeat` | debug | Sampled to ≤ 1 per 60 s per teams dir. |
+| `compaction.watcher.missed_event_recovered` | info | Reconciliation caught a missed filesystem event. |
+| `compaction.detected` / `.injected` / `.skipped` / `.stale` | info | Delivery bookkeeping. |
+| `compaction.failed` | warn | |
+| `compaction.<tool>_hook.received` / `.resolved` / `.delivered` / `.skipped` | info | `<tool>` is `claude`, `codex`, or `compact` when the tool cannot be inferred. |
+| `compaction.<tool>_hook.failed`, `compaction.compact_hook.failed` | warn | Plus `compaction.compact_hook.parse_payload_debug`. |
+| `compaction.codex_hook.degraded` / `.unsupported` / `.version_unknown` | warn | Hooks mode gating. |
+| `compaction.codex_hook.reconciled` | info | Hook install/removal applied. |
+| `coordination.pane.foreign` | warn | A reused tmux pane no longer belongs to the member. |
+| `coordination.team_daemon.skipped` | info | Lead control-auth credential missing. |
+| `mesh.inbox.corrupt` | warn | Inbox quarantined to `<member>.json.corrupt.<ts>`. |
+| `startup.paths.resolved` | info | Resolved roots for this run. |
+
 ### Related observability work
 
 | Item | Status | Notes |
@@ -43,10 +86,8 @@ The sink is implemented as a single-writer async pipeline in
 | Log rotation and retention | Implemented | 20 MB rotation threshold, 7-day retention policy for rotated segments. |
 | E2E failure artifact capture | Implemented | Failure artifacts include app-log tails and test metadata in per-failure bundles. |
 
-### Known gaps at the final active-development snapshot
+### Known gaps
 
-- Extend event coverage for watcher and reconcile pipelines (`watch.*`, background task lifecycles).
-- Add dedicated daemon reconnect lifecycle vocabulary (`daemon.reconnect.*`) where missing.
 - Provide a lightweight log query helper for agent workflows (filter by `run_id`, `request_id`, `event`, `level`).
 
 ## Correlation Model
@@ -68,9 +109,17 @@ This model enables cross-layer reconstruction from UI action -> IPC -> backend -
   - [`src-tauri/src/commands/lifecycle.rs`](../../src-tauri/src/commands/lifecycle.rs)
 - Startup lifecycle:
   - [`src-tauri/src/startup/mod.rs`](../../src-tauri/src/startup/mod.rs)
+- Startup path/telemetry events:
+  - [`src-tauri/src/startup/telemetry.rs`](../../src-tauri/src/startup/telemetry.rs)
 - Daemon RPC lifecycle:
   - [`src-tauri/src/daemon_api.rs`](../../src-tauri/src/daemon_api.rs)
   - [`src-tauri/src/provider/daemon_client.rs`](../../src-tauri/src/provider/daemon_client.rs)
+- Compaction events:
+  - [`src-tauri/src/coordination/compaction_events.rs`](../../src-tauri/src/coordination/compaction_events.rs)
+  - [`src-tauri/src/coordination/compact_hook.rs`](../../src-tauri/src/coordination/compact_hook.rs)
+- Session activity events:
+  - [`src-tauri/src/session_scanner/classification.rs`](../../src-tauri/src/session_scanner/classification.rs)
+  - [`src-tauri/src/session_scanner/process.rs`](../../src-tauri/src/session_scanner/process.rs)
 
 ## Level Policy
 

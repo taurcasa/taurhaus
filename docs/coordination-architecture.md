@@ -30,9 +30,9 @@ This document captures the shipped/active coordination subsystem architecture in
 - The practical orchestration direction for auto-idle and communication quality now lives in [`architecture/orchestration-practical-auto-idle-and-communication.md`](architecture/orchestration-practical-auto-idle-and-communication.md).
 - The v0.2.0 protocol exploration is archived in [`archive/architecture/orchestration-protocol-design.md`](archive/architecture/orchestration-protocol-design.md) and is not an active implementation target.
 - Taurhaus now owns a broader operational context layer under `~/.claude/teams/{team}/state/`, including per-member operational snapshots, canonical Codex compaction signal logs, and per-member compaction delivery state.
-- The historical `state/activity/` export from `coordination/stall_detector.rs` is no longer the main reinjection context path.
-- Codex compaction reinjection is no longer poll-based. The shipped path is extractor -> watcher -> processor -> mesh inbox append.
-- Claude compaction reinjection is hook-based and now installs runtime-appropriate wrappers (`.sh` for WSL/Linux Claude runtimes, `.cmd` for native Windows Claude runtimes), normalizes current hook payload variants, and logs standalone hook execution into the canonical JSONL sink.
+- `coordination/stall_detector/` and its `#[path]` shim were deleted. The `state/activity/<member>.json` export now lives in `coordination/activity_export.rs`, which also runs the stale-pane ownership probe and quarantines foreign panes before writing a snapshot. It is not the main reinjection context path.
+- Codex compaction reinjection is no longer poll-based. Two sources exist, selected by the `harness.codex_compaction` setting: `transcript` (default) is extractor -> watcher -> processor -> `MeshInboxStore::append`; `hooks` (opt-in, gated on `CliVersions::codex_compaction_hooks_support()`) routes Codex's own `SessionStart(source=compact)` through a managed `~/.codex/hooks.json` installer into the same bridge. Switching back to `transcript` removes the hook.
+- There is one hook bridge for both tools, `coordination/compact_hook.rs` (it replaced `claude_hooks.rs`): one `CompactHookInput` parser for both payload shapes, the tool inferred from `transcript_path`, one resolver (runtime `session_id`, then normalized `cwd`), and `record_delivery_at(teams_dir, …)` as the only bookkeeping path. It installs runtime-appropriate wrappers (`.sh` for WSL/Linux runtimes, `.cmd` for native Windows runtimes) and logs standalone hook execution into the canonical JSONL sink.
 
 ## Design Decision Log
 
@@ -81,8 +81,10 @@ Current file-level inventory, writers/readers, and authority levels are maintain
 
 **Decision**: A team member is a logical role that persists independently of any specific tmux pane or process.
 
-- **Logical member** (durable, in config.json): name, role, instructions, projectPath
-- **Attachment** (volatile, in runtime/): pane_id, process info, session/jsonl attachment, daemon pid, delivery lease, health state
+- **Logical member** (durable, in config.json): name, role, instructions, projectPath, `model`, `reasoningEffort`
+- **Attachment** (volatile, in runtime/): pane_id, `pane_pid`, `pane_start_time`, process info, session/jsonl attachment, daemon pid, delivery lease, health state
+
+`config.json` saves take a `TargetFileLock`, and unknown keys written by mesh or Claude Code (`controlAuthTokenHash`, `lastActivity*`, `status*`, `isActive`) survive every save through `#[serde(flatten)] extra` on the team/member wire types and on `domain::Member` — taurhaus patches only its own keys.
 
 Members can be "detached" (pane died) but remain on the team. Rebind via process scanning without re-joining.
 
@@ -92,12 +94,21 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 
 **Decision**: Claude Code agents use native CLI flags. Codex/Gemini agents use mesh daemon bridge.
 
-| Agent Type | Launch Method | Delivery | Messaging |
-|---|---|---|---|
-| Claude Code | Native CLI flags (`--team-name`, `--agent-name`, etc.) | Inbox file write → native poller, plus `SessionStart(source=compact)` hook bridge | Native `SendMessage` tool |
-| Codex / Gemini | tmux + `mesh daemon` | Mesh inbox append + wake prompt | `mesh send` / `mesh read` CLI |
+| Agent Type | Launch Method | Delivery | Wake | Messaging |
+|---|---|---|---|---|
+| Claude Code | Native CLI flags (`--model`, `--effort`, `-n <agent_name>`, `--team-name`, `--agent-name`, `--agent-id`) | `MeshInboxStore::append` | Native inbox poller | Native `SendMessage` tool |
+| Codex | tmux + `mesh daemon`; `-m` + `-c 'model_reasoning_effort="…"'` (+ `--dangerously-bypass-hook-trust` in hooks mode) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+| Gemini | tmux + `mesh daemon`; `-m` (unverified) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+
+Launch flags are rendered by `LaunchSpec::render` in `session_scanner/launch.rs`.
+
+**Operator delivery is one writer for every tool.** Taurhaus appends to `teams/<team>/inboxes/<member>.json` through `MeshInboxStore::append` regardless of backend; the orchestrator ensures the member daemon after every inbox append for non-Claude members. `mesh send` / `mesh read` remain agent-originated traffic only. Codex additionally has the opt-in `SessionStart(compact)` hook path described above.
 
 **Rationale**: Claude Code is the only CLI tool with native local team capabilities (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Gemini CLI has no team features.
+
+**Which Claude account a team runs on**: team members always launch on the default Claude config dir (`PlatformPaths::claude_dir()`, honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Per-project account selection does not apply to teams; `MeshTeamBuilder` says so in one line when more than one account is registered.
+
+**Model and effort**: `Member.model` and `Member.reasoning_effort` are persisted separately, surfaced in live status, and passed to `mesh join --model`. The UI model list comes from `ModelCatalog` on `TerminalPlatformContract`.
 
 ### D6: Delivery lease for daemon conflict avoidance
 
@@ -116,13 +127,22 @@ This lease still exists for daemon ownership coordination, but it is no longer t
 
 **Status**: Partial
 
-**Decision**: Health monitoring uses explicit states, events, and a deterministic transition function for runtime monitoring and UI state.
+**Decision**: Health monitoring should use explicit states, events, and a deterministic transition function for runtime monitoring and UI state.
 
-**States**: Healthy, AwaitingRead, SuspectedStuck, Rebriefed, Suppressed, SessionDead
+**Shipped**: only `HealthState` — Healthy, AwaitingRead, SuspectedStuck, Rebriefed, Suppressed, SessionDead. `health/transition.rs` is an identity placeholder (`transition(current) -> current`), there is no event enum, and `health/policy.rs` is a placeholder `RecoveryPolicy { cooldown_secs }`.
 
-**Events**: UnreadDetected, IdleThresholdMet, IoResumed, InboxCleared, CooldownExpired, SessionMissing, DeliveryFailed, ManualSuppress, ManualResume
+**The live health mutations** are two, both written by `orchestrator/liveness.rs` during a reconciliation pass — there is no transition function between them:
 
-**Recovery evidence**:
+| Mutation | Trigger | Also writes |
+|---|---|---|
+| `-> SessionDead` | pane id missing, pane gone, pane dead, pane back to a shell, or the pane is foreign (D17 quarantine, `runtime/mod.rs`); also a vanished daemon pid at startup reconciliation | clears `session_id`/`jsonl_path`; terminates a stale non-Claude mesh daemon |
+| `-> Healthy` | the pane is alive and still owned (`PaneOwnership::Owned`), and the record was `SessionDead` or changed during the pass — a dead record recovers as soon as its pane is its own again | refreshes `last_seen_at`, re-detected `session_id`/`jsonl_path`, restarted daemon pid |
+
+Recovery is therefore pane-identity reconciliation, not the evidence tiers below. The event vocabulary and recovery-evidence tiers remain design intent, not code.
+
+**Planned events**: UnreadDetected, IdleThresholdMet, IoResumed, InboxCleared, CooldownExpired, SessionMissing, DeliveryFailed, ManualSuppress, ManualResume
+
+**Planned recovery evidence**:
 - Weak: terminal IO resumed after injection → clears toward healthy monitoring
 - Strong: inbox unread count decreased or task activity → clears to Healthy
 
@@ -136,11 +156,11 @@ This lease still exists for daemon ownership coordination, but it is no longer t
 enum DeliveryRequest {
     Bootstrap(BootstrapDelivery),
     RecoveryNudge(RecoveryNudgeDelivery),
-    OperatorNotice(OperatorNoticeDelivery),
+    OperatorNotice(Box<OperatorNoticeDelivery>),
 }
 ```
 
-Each variant carries structured fields reflecting intent. Backend implementations render variant-appropriate content (inbox JSON for Claude, tmux text for mesh-bridged).
+Each variant carries structured fields reflecting intent. Both backends produce the same inbox record (`MeshInboxMessage::operator_originated`) via `MeshInboxStore::append` and report `DeliveryMethod::InboxFile` — the audit `DeliveryMethod` reflects what actually happened. `TmuxInjection` and `NativeMessageApi` variants still exist in the enum, but no production backend returns them.
 
 ### D9: Closed, taurhaus-centric capability model
 
@@ -185,30 +205,64 @@ struct BackendCapabilities {
 src-tauri/src/
   coordination/
     mod.rs              # Public API surface
-    domain.rs           # Team, Member, RuntimeState, DeliveryLease, etc.
+    domain.rs           # Team, Member, RuntimeState, DeliveryLease, HealthState
+    requests.rs         # Typed request/response contracts
+    errors.rs  events.rs  consumer.rs  audit.rs
     backend/
       mod.rs            # CoordinationBackend trait + BackendCapabilities
       claude.rs         # ClaudeNativeBackend
       bridged.rs        # MeshBridgedBackend
+      fake.rs           # Test backend
       selector.rs       # BackendSelector
     stores/
       mod.rs
-      config.rs         # TeamConfigStore (JSON, ~/.claude/teams/)
+      config.rs         # TeamConfigStore (JSON, teams_dir)
       runtime.rs        # MemberRuntimeStore (JSON, runtime/)
+      inbox.rs          # MeshInboxStore — the single inbox writer
+      lock.rs           # TargetFileLock (flock + inode re-check)
+      compaction.rs  compaction_signal.rs  operational.rs  active_project.rs
     health/
-      mod.rs
-      state.rs          # HealthState enum
-      transition.rs     # transition(state, event, ctx) -> HealthTransition
-      policy.rs         # Cooldown, escalation, recovery thresholds
-    audit.rs            # Typed audit events
-    orchestrator.rs     # Top-level coordination service
+      mod.rs  state.rs  transition.rs  policy.rs    # placeholders, see D7
+    orchestrator/
+      mod.rs  audit_logging.rs  delivery.rs  helpers.rs
+      lifecycle.rs  liveness.rs  teardown.rs
+    pipelines/
+      mod.rs  initialize.rs  members.rs  lifecycle.rs  helpers.rs
+    runtime/
+      mod.rs  process.rs  recording.rs  system.rs  tmux.rs
+    compact_hook.rs         # Claude + Codex hook bridge
+    compaction_processor.rs  compaction_events.rs
+    activity_export.rs  activity_schema.rs
+    delivery.rs             # DeliveryRenderer / onboarding
+    member_activation.rs  mesh_cli.rs  operational_context.rs
+    reconcile.rs  reinjection.rs  roster.rs  validation.rs  state.rs
 ```
 
-### D13: Never modify agent config files
+### D13: Never modify agent instruction files; hook config is the one managed exception
 
 **Status**: Implemented
 
-**Decision**: Taurhaus never writes to CLAUDE.md, .codex-instructions.md, or any agent configuration files. All agent context delivery happens through tmux injection or inbox file writes — external and ephemeral.
+**Decision**: Taurhaus never writes to a project's or user's *instruction* files — CLAUDE.md, `.codex-instructions.md`, AGENTS.md. Those stay the user's.
+
+The one configuration taurhaus does own is the compact-hook registration, because a hook is the only way a tool hands its post-compaction turn back to us (`coordination/compact_hook.rs`):
+
+| Tool | Managed files | Condition |
+|---|---|---|
+| Claude | `<claude_dir>/settings.json` (`SessionStart` matcher `compact`) + `<claude_dir>/hooks/taurhaus-session-start-compact.*` | whenever any team has a managed Claude member — reconciled at startup and after team mutations |
+| Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | only when `harness.codex_compaction=hooks` (the setting defaults to `transcript`) and Codex ≥ 0.147; removed when the setting flips back |
+
+Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains foreign hooks — and settings files are rewritten atomically.
+
+**Two delivery channels, not one**, and compaction picks by path:
+
+| Path | Channel |
+|---|---|
+| hook path — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| transcript path — Codex in the default `transcript` mode | the card is appended to the member's inbox as an operator-originated message (`compaction_processor.rs` → `MeshInboxStore::append`) |
+
+Everything else — queued messages, operator notices — is an inbox write. Inbox files stay external and ephemeral.
+
+tmux is used to launch panes, and by the member `mesh daemon` to wake the agent; it is not a content channel. The bridged backend's sender-candidate chain and self-send were removed, so no sender is ever the recipient.
 
 ### D14: Team visibility scoped to managed teams
 
@@ -241,11 +295,11 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
   - `coordination_resume_member`
   - `coordination_resume_team`
 - Types:
-  - `ResumeContextMode`
-  - `ResumeMemberRequest` / `ResumeAgentReport`
+  - `ResumeMemberRequest { team_name, member_name }` / `ResumeAgentReport`
   - `ResumeTeamRequest` / `ResumeTeamReport`
+  - (`ResumeContextMode` was removed — resume always starts a fresh session)
 - Runtime behavior:
-  - member resume resolves/reuses a pane when possible, launches mode-aware CLI commands, restores mesh membership + per-agent daemon state for non-Claude members, and persists runtime attachment
+  - member resume resolves/reuses a pane when possible, always launches a fresh session, re-hydrates `model`/`reasoning_effort` from the persisted member, then the role template, then the catalog (never an empty string), restores mesh membership + per-agent daemon state for non-Claude members, and persists runtime attachment
   - team resume loads the persisted roster, resumes the lead first, then resumes the remaining members sequentially through the existing member-resume pipeline
   - partial success is preserved; already resumed members stay up while failed members remain retryable
 - Snapshot/UI contract:
@@ -279,11 +333,14 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
   - pane command resolves to shell (`pane_is_shell == true`)
   - daemon pid missing/dead/drifted from current mesh binary
   - team-daemon pid drifted from current mesh binary
+  - pane identity no longer matches the member (stale-pane guard, below)
 - Repair mutation:
-  - `health -> SessionDead` when panes are gone/dead/shell
+  - `health -> SessionDead` when panes are gone/dead/shell/foreign
   - `session_id -> None` when drift is confirmed
   - non-Claude member daemons are adopted/restarted/terminated as needed
   - team daemon is best-effort stopped/restarted when binary drift is detected
+
+**Stale-pane guard.** `MemberRuntimeRecord` (schema v3) carries `pane_pid` and `pane_start_time`, captured at launch — tmux 3.4 has no `pane_start_time`, so it is filled from `/proc` on Linux and left PID-only elsewhere. `pane_belongs_to_member` compares pane_id, pane_pid, pane_start_time, `#{pane_current_command}` against the member's `cli_tool`, and `#{pane_current_path}`. `PaneOwnership::Foreign { reason }` — `pane_id_mismatch`, `pane_pid_mismatch`, `pane_start_time_mismatch`, `cli_tool_mismatch: expected=… found=…`, `project_path_mismatch` — quarantines the member (`SessionDead`, no daemon restart, one foreign snapshot written) and emits `coordination.pane.foreign`. The check runs in liveness, activity export, and delivery; the frontend maps `pane_foreign` to offline.
 - Concurrency rule:
   - background self-heal runs on a dedicated orchestrator instance, not the app-owned cached orchestrator
   - foreground snapshot IPC therefore does not contend with background liveness repair on the shared coordination mutex
@@ -320,7 +377,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Stale compaction records are persisted as `Stale` results instead of being injected late.
 - Delivery is suppressed when the operational snapshot no longer contains a resumable task (for example, the last task was already `completed` or `deleted`), so finished work does not generate stale resume cards.
 - Mesh inbox corruption now fails closed: corrupt inbox files are quarantined and logged as `mesh.inbox.corrupt`, and append/load return an error instead of silently treating corruption as empty.
-- Claude hook delivery uses the same resumable-task guard and emits `compaction.claude_hook.received/resolved/delivered/failed` events for transport diagnostics.
+- Hook delivery uses the same resumable-task guard and emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, or `compact` when the tool cannot be inferred, and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`. Also `compaction.codex_hook.degraded` and `compaction.compact_hook.parse_payload_debug`.
 
 **End-to-end path**:
 1. `RuntimeSession` discovery identifies active managed Codex transcripts.
@@ -351,7 +408,8 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 
 - Backend template IPC (`templates_*`) handles role/preset storage, composition, history, diff, and revert.
 - Frontend template flow now centers on `MeshTeamBuilder` inside `MeshSetupView`, while `TemplateBrowserPanel` and `TeamCustomizerPanel` remain advanced catalog/history/edit surfaces. All of them still resolve to the same `InitializeTeamRequest` shape used by manual setup.
-- Coordination runtime continues to start teams only through `coordination_initialize_team` / `templates_apply_composition` (which forwards into the same initialize pipeline).
+- Coordination runtime continues to start teams only through `coordination_initialize_team`. Preset application resolves earlier, in `commands/coordination/request_normalization.rs` (`compose_team` with `CompositionOverrides { lead: preset.lead_overrides }`), and then enters that same pipeline — there is no `templates_apply_composition` command.
+- Registered template commands: `templates_list_roles_full`, `templates_get_role`, `templates_upsert_role`, `templates_delete_role`, `import_role_from_file`, `templates_list_presets_full`, `templates_get_preset`, `templates_upsert_preset`, `templates_delete_preset`, `templates_compose_team`, `templates_get_storage_status`, `templates_get_history`, `templates_get_diff`, `templates_revert`, `templates_flush_pending`, `export_role_to_file`.
 
 **Integration points**:
 - `src-tauri/src/templates/storage/`: git-backed template persistence and pending-action state
@@ -361,6 +419,30 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - `src/lib/components/MeshTeamBuilder.svelte`: primary quick-preset, filter, and drag/drop team builder
 
 **Rationale**: This preserves one runtime lifecycle for team launch/resume/remove while enabling reusable template authoring and auditability through git-backed history.
+
+### D22: Claude leads join mesh; the team daemon is gated on their credential
+
+**Status**: Implemented
+
+**Decision**: A Claude *lead* is joined to mesh (`mesh join --team T --name <lead> --type lead --model <slug> --claude-dir <dir>`); non-lead Claude members are never joined.
+
+- The join is deferred until after `commit_runtime` — the last config save — so the credential exists by the time `mesh team-daemon start` authenticates.
+- Three separate gates are checked before `mesh team-daemon start`, in order. The first one that fails skips the daemon and emits `coordination.team_daemon.skipped { team_name, operator_name, reason, credential_path }`:
+
+| Condition | `reason` |
+|---|---|
+| `state/control_auth/<lead>.json` is not a file | `missing_lead_control_credential` |
+| the lead's `config.json` entry has no non-empty `controlAuthTokenHash` | `missing_lead_control_auth_token_hash` |
+| the lead's `config.json` entry has `isActive: false` | `inactive_lead_control_identity` |
+
+- The event is deduplicated per credential path *and* reason, so a team that moves from one failing gate to another logs both, and a repeated identical skip logs once. The skip state is cleared when all three gates pass.
+
+**Rationale**: The lead is the only Claude member that participates in mesh-level team control. Deferring the join is load-bearing: an earlier join wrote a credential that the final config save then clobbered, leaving the team daemon unable to authenticate.
+
+**Integration points**:
+- `coordination/pipelines/helpers.rs`: `join_mesh_if_required`
+- `coordination/pipelines/members.rs`: `deferred_claude_lead_join`
+- `coordination/orchestrator/teardown.rs`: credential check and skip event
 
 ## Historical Planning
 
