@@ -33,6 +33,8 @@ On startup, the daemon generates a random 32-byte token, writes it to a well-kno
 
 The app reads this token on connect and includes it in the `auth` field of every request. A normal daemon run rejects missing or incorrect tokens. Authentication can be disabled only with a debug-build flag or in an explicitly unauthenticated test configuration.
 
+On Windows the token file lives inside the WSL distro the daemon runs in, so every app-side connection reads it for that distro (`read_auth_token_for_distro`), never for whichever distro happens to be default. That includes both connections the focus bridge opens — the long-poll session listener and its direct seed fetch — because since v8 they carry tmux focus and nothing else does.
+
 ### Connection lifecycle
 
 1. **Startup**: App tries to connect to an already-running daemon.
@@ -227,7 +229,7 @@ The daemon runs natively as a subprocess:
 
 On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v8), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
-The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness, and every reconnect confirms it before the daemon counts as recovered (`daemon_lifecycle.rs`). A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use.
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use.
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 

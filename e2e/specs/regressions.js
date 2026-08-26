@@ -13,7 +13,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { selectProjectByName, switchToTab, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { TAURHAUS_CLAUDE_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 import { POLL, WAIT_MEDIUM } from '../helpers/timing.js'
-import { attachedTmuxSession, killTmuxPane, openTmuxWindow } from '../helpers/tmux.js'
+import { ensureAttachedTmuxSession, killTmuxPane, openTmuxWindow } from '../helpers/tmux.js'
 
 const REGRESSION_STAMP = Date.now()
 const REGRESSION_TEAM = `event-pipeline-team-${REGRESSION_STAMP}`
@@ -257,13 +257,21 @@ describe('Regressions', () => {
       const dataDir = process.env.TAURHAUS_DATA_DIR
       if (!dataDir) return this.skip()
       // Focus is a hub snapshot field now, so there is nothing to assert
-      // without the daemon, and nothing to read without an attached client.
+      // without the daemon.
       if ((await daemonStatus()) !== 'connected') return this.skip()
-      const tmuxSession = attachedTmuxSession()
-      if (!tmuxSession) return this.skip()
+      // The hub reads focus from `tmux list-clients`, so this test needs a
+      // client. A clean runner has none — it gets one of its own rather than
+      // skipping, which would retire the regression on exactly the machines
+      // that run it. `null` means tmux itself is unavailable.
+      const tmux = ensureAttachedTmuxSession({ cwd: TAURHAUS_PROJECT_PATH })
+      if (!tmux) return this.skip()
+      const tmuxSession = tmux.session
 
       const live = startLiveFocusPane(tmuxSession)
-      if (!live) return this.skip()
+      if (!live) {
+        tmux.cleanup()
+        return this.skip()
+      }
 
       const focusFile = join(dataDir, 'tmux-focus.json')
       try {
@@ -327,6 +335,7 @@ describe('Regressions', () => {
         killTmuxPane(live.paneId)
         rmSync(live.fixtureDir, { recursive: true, force: true })
         rmSync(focusFile, { force: true })
+        tmux.cleanup()
       }
     })
 

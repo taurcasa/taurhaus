@@ -13,11 +13,24 @@ pub struct DaemonSessionListener {
     stream: TcpStream,
     reader: BufReader<TcpStream>,
     next_id: u64,
+    /// The WSL distro the daemon runs in, if any — the distro whose token file
+    /// this connection has to authenticate with.
+    wsl_distro: Option<String>,
     auth_token: Option<String>,
 }
 
 impl DaemonSessionListener {
-    pub fn connect(addr: &str) -> Result<Self, AppError> {
+    /// Connect for long-poll session updates, authenticating against `wsl_distro`.
+    ///
+    /// The token has to come from the distro the daemon was started in: on
+    /// Windows `read_auth_token()` reads whichever distro is currently default,
+    /// so a daemon in any other distro rejects the connection and the focus
+    /// bridge — the app's only live tmux-focus transport — goes silent.
+    ///
+    /// The token is read once here, which is also the refresh: a rejected poll
+    /// returns an error, the bridge drops the listener and connects again, and
+    /// this reads the token file anew.
+    pub fn connect(addr: &str, wsl_distro: Option<&str>) -> Result<Self, AppError> {
         let stream = TcpStream::connect(addr).map_err(|e| {
             AppError::Io(std::io::Error::new(
                 e.kind(),
@@ -31,14 +44,20 @@ impl DaemonSessionListener {
             ))
         })?;
         let reader = BufReader::new(stream.try_clone().map_err(AppError::Io)?);
-        let auth_token = crate::daemon::auth::read_auth_token();
+        let auth_token = crate::daemon::auth::read_auth_token_for_distro(wsl_distro);
 
         Ok(Self {
             stream,
             reader,
             next_id: 1,
+            wsl_distro: wsl_distro.map(ToOwned::to_owned),
             auth_token,
         })
+    }
+
+    /// The distro this connection authenticated against.
+    pub fn auth_distro(&self) -> Option<&str> {
+        self.wsl_distro.as_deref()
     }
 
     pub fn wait_for_updates(
@@ -107,6 +126,35 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
 
+    // Regression: 07ab6c5 deleted the hook -> file -> inotify focus chain, making
+    // this long-poll listener the app's only live tmux-focus transport. It read
+    // its auth token with `read_auth_token()` — `read_auth_token_for_distro(None)`
+    // — which on Windows probes whichever WSL distro is currently default, not
+    // the one the daemon was started in. A daemon in a non-default distro
+    // rejected the token and no focus update ever arrived.
+    #[test]
+    fn the_listener_reads_its_token_from_the_daemons_own_distro() {
+        let server = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = server.local_addr().expect("test listener addr");
+        let accept_thread = std::thread::spawn(move || {
+            let (_stream, _) = server.accept().expect("accept session listener");
+            std::thread::sleep(Duration::from_millis(100));
+        });
+
+        let listener = DaemonSessionListener::connect(&addr.to_string(), Some("Taurhaus-Ubuntu"))
+            .expect("connect session listener");
+
+        assert_eq!(listener.auth_distro(), Some("Taurhaus-Ubuntu"));
+        assert_eq!(
+            listener.auth_token,
+            crate::daemon::auth::read_auth_token_for_distro(Some("Taurhaus-Ubuntu")),
+            "the listener must present the token of the distro the daemon runs in"
+        );
+
+        drop(listener);
+        accept_thread.join().expect("join accept thread");
+    }
+
     #[test]
     fn session_listener_connect_enables_tcp_nodelay() {
         let server = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
@@ -116,8 +164,8 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         });
 
-        let listener =
-            DaemonSessionListener::connect(&addr.to_string()).expect("connect session listener");
+        let listener = DaemonSessionListener::connect(&addr.to_string(), None)
+            .expect("connect session listener");
         assert!(listener.stream.nodelay().unwrap());
 
         drop(listener);

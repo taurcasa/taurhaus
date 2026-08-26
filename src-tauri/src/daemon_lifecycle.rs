@@ -951,6 +951,28 @@ fn emit_session_bridge_recovery_measurement(duration_ms: u64, emission: SessionS
     );
 }
 
+/// What one focus-bridge iteration needs from `ProviderState`.
+///
+/// `wsl_distro` rides along with the address because both bridge connections
+/// authenticate against the distro the daemon actually runs in — reading the
+/// default distro's token file instead leaves an authenticated daemon rejecting
+/// the app, and focus is the only thing this bridge carries live.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BridgeTarget {
+    addr: String,
+    connected: bool,
+    wsl_distro: Option<String>,
+}
+
+fn bridge_target(provider: &ProviderState) -> Option<BridgeTarget> {
+    let daemon = provider.daemon.as_ref()?;
+    Some(BridgeTarget {
+        addr: daemon.addr().to_string(),
+        connected: daemon.is_connected(),
+        wsl_distro: provider.wsl_distro.clone(),
+    })
+}
+
 /// Bridge daemon-owned session updates into frontend Tauri events.
 ///
 /// Uses a dedicated daemon connection and long-poll update requests so the UI
@@ -969,15 +991,13 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
         tracing::info!("session updates bridge thread started");
 
         loop {
-            let (daemon_addr, connected) = {
-                let provider_state = app.state::<ProviderState>();
-                let Some(ref daemon) = provider_state.daemon else {
-                    return;
-                };
-                (daemon.addr().to_string(), daemon.is_connected())
+            let Some(target) = bridge_target(&app.state::<ProviderState>()) else {
+                return;
             };
+            let daemon_addr = target.addr;
+            let wsl_distro = target.wsl_distro;
 
-            if !connected {
+            if !target.connected {
                 if observed_connected {
                     tracing::info!("session updates bridge: daemon disconnected");
                     observed_connected = false;
@@ -991,20 +1011,22 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                 observed_connected = true;
             }
 
-            let mut listener =
-                match crate::daemon::session_listener::DaemonSessionListener::connect(&daemon_addr)
-                {
-                    Ok(l) => l,
-                    Err(e) => {
-                        tracing::debug!(error = %e, "Session listener connect failed");
-                        std::thread::sleep(RETRY_DELAY);
-                        continue;
-                    }
-                };
+            let mut listener = match crate::daemon::session_listener::DaemonSessionListener::connect(
+                &daemon_addr,
+                wsl_distro.as_deref(),
+            ) {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::debug!(error = %e, "Session listener connect failed");
+                    std::thread::sleep(RETRY_DELAY);
+                    continue;
+                }
+            };
 
             if let Some(emission) = emit_current_session_snapshot(
                 &app,
                 &daemon_addr,
+                wsl_distro.as_deref(),
                 &mut since_version,
                 &mut last_focus,
             ) {
@@ -1049,13 +1071,9 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                         if update.changed {
                             let mut sessions = update.sessions;
                             let session_count = sessions.len();
-                            let distro = {
-                                let provider_state = app.state::<ProviderState>();
-                                provider_state.wsl_distro.clone()
-                            };
                             normalize_sessions_for_frontend(
                                 &mut sessions,
-                                distro.as_deref(),
+                                wsl_distro.as_deref(),
                                 crate::daemon::launcher::is_native_daemon(),
                             );
                             crate::coordination::activity_export::enrich_sessions_with_team_membership(
@@ -1205,6 +1223,7 @@ fn emit_tmux_focus_changed(app: &AppHandle, focus: Option<&TmuxFocus>, project_p
 /// burst. The TCP connection is dropped when this function returns.
 fn fetch_snapshot_direct(
     addr: &str,
+    wsl_distro: Option<&str>,
 ) -> Result<daemon::protocol::RuntimeSessionSnapshotResult, String> {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
@@ -1218,7 +1237,7 @@ fn fetch_snapshot_direct(
         .set_nodelay(true)
         .map_err(|e| format!("Bridge snapshot set nodelay failed: {e}"))?;
 
-    let auth_token = crate::daemon::auth::read_auth_token();
+    let auth_token = crate::daemon::auth::read_auth_token_for_distro(wsl_distro);
     let request = daemon::protocol::DaemonRequest::new(
         "bridge-snapshot",
         daemon::protocol::method::GET_RUNTIME_SESSION_SNAPSHOT,
@@ -1266,6 +1285,7 @@ fn fetch_snapshot_direct(
 fn emit_current_session_snapshot(
     app: &AppHandle,
     addr: &str,
+    wsl_distro: Option<&str>,
     since_version: &mut u64,
     last_focus: &mut Option<FocusEmission>,
 ) -> Option<SessionSnapshotEmission> {
@@ -1276,7 +1296,7 @@ fn emit_current_session_snapshot(
 
     let mut snapshot = None;
     for attempt in 1..=MAX_SEED_RETRIES {
-        match fetch_snapshot_direct(addr) {
+        match fetch_snapshot_direct(addr, wsl_distro) {
             Ok(s) => {
                 snapshot = Some(s);
                 break;
@@ -1311,13 +1331,9 @@ fn emit_current_session_snapshot(
 
     let mut sessions = snapshot.display_sessions;
     let session_count = sessions.len();
-    let distro = {
-        let provider_state = app.state::<ProviderState>();
-        provider_state.wsl_distro.clone()
-    };
     normalize_sessions_for_frontend(
         &mut sessions,
-        distro.as_deref(),
+        wsl_distro,
         crate::daemon::launcher::is_native_daemon(),
     );
     crate::coordination::activity_export::enrich_sessions_with_team_membership(
@@ -1892,6 +1908,49 @@ mod tests {
             &mut last,
         ));
         assert_eq!(since_version, 3);
+    }
+
+    // Regression: 07ab6c5 deleted the hook -> file -> inotify focus chain, leaving
+    // this bridge as the app's only live tmux-focus transport. It read just the
+    // daemon address and connection flag from `ProviderState`, so both of its
+    // connections — the long-poll listener and the direct seed fetch — loaded
+    // their auth token with `read_auth_token()`, i.e. from whichever WSL distro
+    // is default on Windows rather than the one the daemon runs in. An
+    // authenticated daemon in a non-default distro rejected both, and focus
+    // never moved.
+    #[test]
+    fn the_focus_bridge_carries_the_configured_distro_to_both_daemon_connections() {
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: Some(
+                crate::provider::daemon_client::DaemonProvider::new_disconnected_with_distro(
+                    "127.0.0.1:9",
+                    Some("Taurhaus-Ubuntu"),
+                ),
+            ),
+            wsl_distro: Some("Taurhaus-Ubuntu".to_string()),
+        };
+
+        let target = bridge_target(&provider).expect("bridge target");
+
+        assert_eq!(target.addr, "127.0.0.1:9");
+        assert!(!target.connected);
+        assert_eq!(
+            target.wsl_distro.as_deref(),
+            Some("Taurhaus-Ubuntu"),
+            "the bridge must authenticate against the distro the daemon runs in"
+        );
+    }
+
+    #[test]
+    fn a_bridge_without_a_daemon_has_no_target() {
+        let provider = ProviderState {
+            local: crate::provider::local::LocalProvider,
+            daemon: None,
+            wsl_distro: Some("Taurhaus-Ubuntu".to_string()),
+        };
+
+        assert!(bridge_target(&provider).is_none());
     }
 
     #[test]

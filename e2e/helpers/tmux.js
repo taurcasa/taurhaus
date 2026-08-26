@@ -1,4 +1,7 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+
+/** tmux session this helper creates when the runner started without a client. */
+const OWNED_SESSION = 'taurhaus-e2e-focus'
 
 function runTmux(args) {
   try {
@@ -98,17 +101,86 @@ export function cleanupNewTmuxPanes(snapshot) {
  * client — not the OS focus, which the app window holds while E2E runs.
  */
 export function attachedTmuxSession() {
+  const attached = listAttachedClients()
+  if (!attached) return null
+  return attached.sort((a, b) => b.activity - a.activity)[0]?.session ?? null
+}
+
+function listAttachedClients() {
   const clients = runTmux(['list-clients', '-F', '#{client_flags}\t#{session_name}\t#{client_activity}'])
   if (!clients.ok) return null
 
-  const attached = String(clients.output ?? '')
+  return String(clients.output ?? '')
     .split('\n')
     .map((line) => line.split('\t'))
     .filter(([flags, session]) => Boolean(session?.trim()) && String(flags).split(',').includes('attached'))
     .map(([, session, activity]) => ({ session: session.trim(), activity: Number(activity) || 0 }))
-    .sort((a, b) => b.activity - a.activity)
+}
 
-  return attached.length > 0 ? attached[0].session : null
+/** Block the calling thread — these helpers are synchronous by design. */
+function waitSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/**
+ * An attached tmux session the focus hub can read, creating one when needed.
+ *
+ * The hub resolves focus from `tmux list-clients`, so a test that asserts on
+ * the foreground indicator needs a client to exist. A developer machine already
+ * has one; a clean E2E runner has none, and skipping there would quietly retire
+ * the regression. Returns `{ session, created, cleanup }`, or `null` only when
+ * tmux (or a pty for it) genuinely is not available.
+ */
+export function ensureAttachedTmuxSession({ cwd = process.cwd(), name = OWNED_SESSION } = {}) {
+  const existing = attachedTmuxSession()
+  if (existing) return { session: existing, created: false, cleanup() {} }
+  return createAttachedTmuxSession({ cwd, name })
+}
+
+/**
+ * Create a tmux session and attach a client to it inside a pseudo-terminal.
+ *
+ * `tmux attach` needs a terminal, which a WebdriverIO runner does not have;
+ * `script` (util-linux) allocates one and runs the attach inside it. The client
+ * only counts once `list-clients` reports it, so this waits for that.
+ */
+export function createAttachedTmuxSession({ cwd = process.cwd(), name = OWNED_SESSION } = {}) {
+  runTmux(['kill-session', '-t', name])
+  const created = runTmux(['new-session', '-d', '-s', name, '-c', cwd, 'sh -c "while :; do sleep 3600; done"'])
+  if (!created.ok) return null
+
+  let client = null
+  try {
+    client = spawn('script', ['-qfc', `tmux attach-session -t ${name}`, '/dev/null'], {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+    })
+    client.unref()
+  } catch {
+    runTmux(['kill-session', '-t', name])
+    return null
+  }
+
+  const cleanup = () => {
+    runTmux(['kill-session', '-t', name])
+    try {
+      if (client?.pid) process.kill(-client.pid, 'SIGTERM')
+    } catch {
+      // The client exits on its own when the session dies.
+    }
+  }
+
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    if ((listAttachedClients() ?? []).some((entry) => entry.session === name)) {
+      return { session: name, created: true, cleanup }
+    }
+    waitSync(150)
+  }
+
+  cleanup()
+  return null
 }
 
 /**

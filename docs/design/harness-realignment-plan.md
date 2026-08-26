@@ -181,7 +181,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 6 compaction hardening, teams-dir authority, stall_detector deletion, flake fix | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds) | 6 (Opus: 1 blocker — app-side compaction owner unreachable on Linux/macOS; unbounded extractor maps; watcher `?` residue; two owners after daemon recovery; unguarded sink install) | #16 |
 | 7 delivery + config round-trip (N1/N2/P9/P11), S16 | Codex gpt-5.6 | Opus ×2 | 2 | 4 (Opus: save aborted on unparseable config; lead join fatal after commit; Windows lock vs readers; bridged used global teams dir) | #17 |
 | 7b stale-pane guard (N3/P3) | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 6 (Opus: 1 blocker — vanished pane as hard error; false-foreign via snapshot pane / cwd; team-wide quarantine; exporter race; refresh loop) | #18 |
-| 8 hub-owned focus; hook chain deleted | Opus 5 | Codex ×2 | tbd | tbd | tbd |
+| 8 hub-owned focus; hook chain deleted | Opus 5 | Codex ×2 | 3 fix rounds so far | 11 (Codex: daemons predating v8 accepted after startup across 3 rounds — first the health ping, then every inline/manual reconnect; focus resolved at window granularity, then to a split-window neighbour; the seed snapshot dropped on connect and its cursor kept after a failed seed; the E2E green before the fix in all 3 rounds; both bridge connections authenticating against the default WSL distro) | tbd |
 
 ## Spikes / unknowns
 

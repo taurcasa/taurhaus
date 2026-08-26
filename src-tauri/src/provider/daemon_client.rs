@@ -381,11 +381,46 @@ impl DaemonProvider {
         Ok(())
     }
 
+    /// Reconnect and confirm the daemon speaks this app's exact protocol.
+    ///
+    /// Reachability is not adoption. Since PR 8 the hub's versioned snapshot is
+    /// the app's only tmux-focus transport, and a daemon from before it answers
+    /// TCP perfectly well while omitting the focus fields — they decode as
+    /// `None`, so the foreground indicator simply never lights. Startup gates on
+    /// the protocol; every reconnect after startup has to gate on the same
+    /// thing, or a daemon started by hand walks straight around it.
+    ///
+    /// A mismatch disconnects immediately, which is what the health monitor's
+    /// restart path is waiting to see.
+    pub fn reconnect_checked(&self) -> Result<(), AppError> {
+        self.reconnect()?;
+
+        let version = match self.ping_protocol_version() {
+            Ok(version) => version,
+            Err(error) => {
+                self.mark_disconnected("reconnect_ping_failed");
+                return Err(error);
+            }
+        };
+
+        let expected = protocol::PROTOCOL_VERSION;
+        if version != expected {
+            self.mark_disconnected("reconnect_protocol_mismatch");
+            return Err(AppError::DaemonProtocol(format!(
+                "daemon protocol mismatch after reconnect at {}: running={version}, expected={expected}",
+                self.addr
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Attempt to reconnect, but only if the cooldown period has elapsed.
     ///
-    /// Returns `true` if reconnection succeeded, `false` if skipped (too soon)
-    /// or failed. Safe to call on every poll — the rate limiter prevents
-    /// thundering-herd reconnection attempts.
+    /// Returns `true` if reconnection succeeded, `false` if skipped (too soon),
+    /// failed, or reached a daemon speaking another protocol. Safe to call on
+    /// every poll — the rate limiter prevents thundering-herd reconnection
+    /// attempts.
     pub fn try_reconnect(&self) -> bool {
         // Rate-limit: skip if we attempted recently
         {
@@ -409,7 +444,7 @@ impl DaemonProvider {
             *guard = Some(Instant::now());
         }
 
-        match self.reconnect() {
+        match self.reconnect_checked() {
             Ok(()) => {
                 tracing::info!(addr = %self.addr, "Inline reconnect succeeded");
                 true
@@ -1315,5 +1350,52 @@ mod tests {
             .any(|value| value["event"] == "daemon.connection.lost"));
 
         daemon.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    // Regression: 07ab6c5 deleted the hook -> file -> inotify focus chain, leaving
+    // the daemon's versioned snapshot as the app's only focus transport, and
+    // a0f3545 put the protocol gate on the health monitor's recovery path only.
+    // `reconnect`/`try_reconnect` still counted a reachable socket as success, so
+    // every inline and manual reconnect (runtime snapshot IPC, task sync, the
+    // Start Daemon button) could adopt a daemon that predates hub-owned focus.
+    #[test]
+    fn a_checked_reconnect_drops_a_daemon_that_speaks_another_protocol() {
+        let _guard = crate::test_support::acquire_heavy_test_guard();
+        let stub = crate::test_support::StubDaemon::start(
+            protocol::PROTOCOL_VERSION - 1,
+            serde_json::Value::Null,
+        );
+        let provider = DaemonProvider::new_disconnected(stub.addr());
+
+        let error = provider
+            .reconnect_checked()
+            .expect_err("an outdated daemon must not be adopted");
+
+        assert!(
+            error.to_string().contains("protocol"),
+            "error should name the protocol mismatch: {error}"
+        );
+        assert!(
+            !provider.is_connected(),
+            "a mismatched daemon must be dropped immediately, not on some later poll"
+        );
+        assert!(
+            !provider.try_reconnect(),
+            "try_reconnect must apply the same gate"
+        );
+    }
+
+    #[test]
+    fn a_checked_reconnect_keeps_a_daemon_speaking_this_protocol() {
+        let _guard = crate::test_support::acquire_heavy_test_guard();
+        let stub = crate::test_support::StubDaemon::start(
+            protocol::PROTOCOL_VERSION,
+            serde_json::Value::Null,
+        );
+        let provider = DaemonProvider::new_disconnected(stub.addr());
+
+        provider.reconnect_checked().expect("matching daemon");
+
+        assert!(provider.is_connected());
     }
 }
