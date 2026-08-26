@@ -24,7 +24,7 @@ This flow covers:
 2. managed-member resolution
 3. post-compaction reinjection delivery
 4. delivery bookkeeping and audit logging
-5. Claude compact-hook readiness as the parallel delivery path for Claude members
+5. compact-hook readiness as the parallel delivery path (Claude always; Codex when `harness.codex_compaction=hooks`)
 
 Core source files:
 - `src-tauri/src/session_scanner/compaction_extractor.rs`
@@ -33,8 +33,11 @@ Core source files:
 - `src-tauri/src/coordination/stores/compaction_signal.rs`
 - `src-tauri/src/coordination/stores/compaction.rs`
 - `src-tauri/src/coordination/reinjection.rs`
-- `src-tauri/src/coordination/claude_hooks.rs`
-- `src-tauri/src/daemon/compaction.rs`
+- `src-tauri/src/coordination/compact_hook.rs` (one hook bridge for Claude and Codex)
+- `src-tauri/src/coordination/compaction_events.rs` (event emitters)
+- `src-tauri/src/startup/compaction.rs` (owner selection)
+- `src-tauri/src/daemon/compaction.rs` (daemon-owned runtime + mode switch)
+- `src-tauri/src/commands/terminal_settings.rs` (`harness.codex_compaction` reconcile/installer)
 - `scripts/analyze-compaction.py`
 
 ## High-Level Pipeline
@@ -49,14 +52,28 @@ Core source files:
 6. Taurhaus loads the member's `OperationalContextSnapshot`.
 7. Taurhaus composes an `OperationalReinjectionCard`.
 8. Delivery is attempted:
-   - Codex: append reinjection card to the mesh inbox for that member
-   - Claude: use the Claude `SessionStart(source=compact)` hook bridge
+   - Codex in `transcript` mode (default): append the reinjection card to the mesh inbox for that member
+   - Claude, and Codex in `hooks` mode: return the card from the `SessionStart(source=compact)` hook bridge
 9. Delivery state is persisted.
 10. Audit events are emitted to the structured JSONL log.
 
+One bridge serves both tools. `coordination/compact_hook.rs` parses a single `CompactHookInput`, infers the tool from `transcript_path` (Codex rollout vs Claude JSONL), resolves the member by runtime `session_id` and then normalized/canonical `cwd` across all teams (ambiguous matches are skipped), and books the result through `record_delivery_at(teams_dir, tool, …)`. For Codex the compaction timestamp is taken from the transcript tail.
+
+Codex uses that path only when `harness.codex_compaction=hooks` — opt-in, default `transcript`, requires Codex ≥ 0.147, and managed launches get `--dangerously-bypass-hook-trust`. Events: `compaction.{claude,codex}_hook.{received,resolved,delivered,skipped,failed}` and `compaction.compact_hook.failed`.
+
 ## Platform Flow Map
 
-### Linux native flow
+### Ownership before platform
+
+Compaction has exactly one owner on every platform, logged as `compaction.owner.selected {owner, status, reason}`:
+
+1. **hooks** when `harness.codex_compaction=hooks` is active — the extractor and watcher are stopped entirely
+2. otherwise **daemon**, when a daemon is configured *and* connected
+3. otherwise **app**, as a fallback that is released again when the daemon recovers
+
+The native daemon runs on Linux and macOS as well as Windows, so "daemon-owned" is the normal case on all three. The flows below are the transcript-mode topologies for an app-owned and a daemon-owned pipeline.
+
+### App-owned flow (no daemon configured or reachable)
 
 ```text
 Codex JSONL append
@@ -72,12 +89,11 @@ Codex JSONL append
 ```
 
 Key boundary facts:
-- the app still owns the local runtime scan loop
+- the app owns the local runtime scan loop only while no daemon is available
 - the scan loop only maintains the active transcript registry; it is no longer the compaction trigger
 - compaction detection/delivery is extractor -> signal log -> watcher -> processor
-- no daemon proxy is involved in the Linux/macOS path
 
-### Windows via daemon flow
+### Daemon-owned flow (the normal case on Linux, macOS, and Windows)
 
 ```text
 Codex JSONL append inside WSL
@@ -93,21 +109,22 @@ Codex JSONL append inside WSL
 ```
 
 Key boundary facts:
-- the daemon owns both runtime scanning and the Codex compaction pipeline on Windows
-- the Windows app no longer watches Linux transcript files directly
+- the daemon owns both runtime scanning and the Codex compaction pipeline
+- the app does not watch transcript files while the daemon owns the pipeline
+- the app pushes the mode with `set_codex_compaction_mode` (protocol v9); the daemon flips hooks↔transcript at runtime (`request_mode_and_wait`) and starts its compaction runtime on its own thread after bind
 - `LIST_DISPLAY_SESSIONS` remains UI-safe and strips transcript metadata
 - `LIST_RUNTIME_SESSIONS` remains the runtime-authoritative view for app-side status/debugging
 
-## Platform Divergence Points
+## Ownership Divergence Points
 
-| Boundary | Linux / macOS | Windows via daemon | Why it matters |
+| Boundary | App-owned fallback | Daemon-owned (normal) | Why it matters |
 |---|---|---|---|
 | Scan loop owner | app process | daemon `SessionActivityHub` thread | scanner health can fail in different places |
-| Display session source | local `scan_sessions_for_display()` | daemon `LIST_DISPLAY_SESSIONS` | Windows display path is proxy-fed |
-| Runtime session source for compaction | same local scan cycle | daemon `LIST_RUNTIME_SESSIONS` RPC | Windows needs an explicit runtime metadata fetch |
+| Display session source | local `scan_sessions_for_display()` | daemon snapshot / `LIST_DISPLAY_SESSIONS` | the app falls back to a local scan only when the daemon is unavailable |
+| Runtime session source for compaction | same local scan cycle | daemon `LIST_RUNTIME_SESSIONS` RPC | a daemon-fed path needs an explicit runtime metadata fetch |
 | Transcript metadata availability | directly present in local `RuntimeSession` | absent from display view, present only in runtime view | using the wrong view breaks compaction |
-| Where display updates are cached | app memory | daemon hub snapshot/versioned state | Windows can appear healthy at UI level while runtime metadata is wrong |
-| Where compaction extractor/watcher/processor run | app process | daemon process | Windows compaction now stays daemon-owned after the runtime-session proxy boundary |
+| Where display updates are cached | app memory | daemon hub snapshot/versioned state | the UI can look healthy while runtime metadata is wrong |
+| Where compaction extractor/watcher/processor run | app process | daemon process | ownership is a runtime decision, not a platform constant |
 
 ## Detailed Integration Boundaries
 
@@ -125,11 +142,12 @@ Key file:
 ### B2. Session scanner discovers runtime transcript metadata
 
 Implementation:
-- local/native path: the scan cycle publishes `RuntimeSession` values through `publish_compaction_runtime_sessions(...)` before stripping them to the display-safe view
-- Windows path: runtime metadata must come from `LIST_RUNTIME_SESSIONS`, not `LIST_DISPLAY_SESSIONS`
+- the scan cycle publishes `RuntimeSession` values through `publish_compaction_runtime_sessions(...)` before stripping them to the display-safe view
+- proxied path: runtime metadata must come from `LIST_RUNTIME_SESSIONS`, not `LIST_DISPLAY_SESSIONS`
+- a degraded scan (process inventory unreadable) publishes nothing: the extractor keeps its previous transcript set and offsets
 
 Key files:
-- `src-tauri/src/session_scanner/mod.rs`
+- `src-tauri/src/session_scanner/cache.rs`
 - `src-tauri/src/daemon/handlers.rs`
 - `src-tauri/src/daemon/protocol.rs`
 
@@ -139,8 +157,9 @@ Implementation:
 - `finalize_display_scan()` calls `publish_compaction_runtime_sessions(runtime_sessions)` when runtime sessions are available
 - this is the boundary that was bypassed by the Windows early-return bug
 
-Key file:
-- `src-tauri/src/session_scanner/mod.rs`
+Key files:
+- `src-tauri/src/session_scanner/cache.rs`
+- `src-tauri/src/session_scanner/scans.rs`
 
 ### B4. Compaction lines are read incrementally
 
@@ -187,16 +206,17 @@ Codex path:
 - append message to `MeshInboxStore`
 - persist delivery result
 
-Claude path:
+Hook path (Claude always; Codex when `harness.codex_compaction=hooks`):
 - hook bridge receives `SessionStart(source=compact)`
-- resolves managed Claude member by runtime `session_id` (+ `cwd` fallback)
+- infers the tool from `transcript_path`
+- resolves the managed member by runtime `session_id`, then normalized `cwd` (ambiguous ⇒ skipped)
 - loads snapshot
 - returns `hookSpecificOutput.additionalContext`
-- persists delivery result
+- persists delivery result via `record_delivery_at(teams_dir, tool, …)`
 
 Key files:
 - `src-tauri/src/coordination/compaction_processor.rs`
-- `src-tauri/src/coordination/claude_hooks.rs`
+- `src-tauri/src/coordination/compact_hook.rs`
 
 ### B8. Delivery bookkeeping and audit logging are persisted
 
@@ -209,12 +229,31 @@ Implementation:
   - `compaction.stale`
   - `compaction.failed`
 
-Key file:
+Upstream of the terminal result, the pipeline also emits `compaction.owner.selected` / `.failed`, `compaction.signal_emitted` / `_consumed` / `_replayed` / `_failed`, `compaction.unresolved`, `compaction.extractor.heartbeat` / `.failed`, `compaction.watcher.missed_event_recovered`, and `compaction.<tool>_hook.resolved` on the hook path.
+
+Key files:
 - `src-tauri/src/coordination/stores/compaction.rs`
+- `src-tauri/src/coordination/compaction_events.rs`
 
 ## Verification Checkpoints
 
 Use these checkpoints in order. Do not skip ahead.
+
+### CP0. Which process owns the pipeline
+
+What this proves:
+- you are inspecting the process that actually runs detection and delivery
+
+Verify:
+```bash
+grep 'compaction.owner.selected' <taurhaus.log.jsonl> | tail -n 5
+```
+
+Working looks like:
+- one `owner` value — `hooks`, `daemon`, or `app` — with a `reason`
+
+Broken looks like:
+- `compaction.owner.failed`, or an `app` owner while a daemon is connected
 
 ### CP1. Codex JSONL contains compaction boundary
 
@@ -351,12 +390,14 @@ Broken looks like:
 - terminal event exists in logs but state/inbox does not reflect it
 - or stale bookkeeping reappears after disband/remove
 
-### CP8. Claude compact hook bridge is ready
+### CP8. Compact hook bridge is ready
 
 What this proves:
-- Claude members can receive post-compaction operational context through the hook path
+- members can receive post-compaction operational context through the hook path
 
-Verify:
+Paths follow `PlatformPaths::hook_settings_path()` and `hook_script_dir()`, so they move with `TAURHAUS_CLAUDE_DIR`. Substitute your resolved Claude root for `~/.claude` below.
+
+Verify (Claude):
 ```bash
 python3 scripts/analyze-compaction.py --team <team> --last 30m
 jq . ~/.claude/settings.json
@@ -364,14 +405,25 @@ ls ~/.claude/hooks/taurhaus-session-start-compact.*
 ```
 
 Working looks like:
-- analyzer reports hook installed
+- analyzer reports hook installed (it checks the Claude hook only)
 - `settings.json` has `SessionStart` matcher `compact`
-- hook script exists
+- hook script exists, plus the `taurhaus-session-start-compact.executable` marker — the installer re-installs when the app exe path changes
+
+Verify (Codex, only in `hooks` mode):
+```bash
+jq . ${CODEX_HOME:-~/.codex}/hooks.json
+grep 'compaction.codex_hook' <taurhaus.log.jsonl> | tail
+```
+
+Working looks like:
+- `hooks.json` has `SessionStart`, matcher `compact`, `additionalContextLimit` 12000
+- `compaction.codex_hook.reconciled` in the log
 
 Broken looks like:
 - matcher missing
 - script missing
-- no hook fire evidence when Claude compactions should have fired
+- `compaction.codex_hook.degraded` / `.unsupported` / `.version_unknown`
+- no hook fire evidence when compactions should have fired
 
 ## Diagnostic Use Order
 
@@ -384,7 +436,7 @@ When a new failure is reported, use this order:
 5. CP5 terminal delivery event exists
 6. CP6 runtime state healthy
 7. CP7 durable Codex delivery state present
-8. CP8 Claude hook ready if the affected member is Claude
+8. CP8 hook ready if the affected member uses the hook path
 
 This order matters. If CP2 is false, investigating CP5 is wasted effort.
 
@@ -493,13 +545,11 @@ Checkpoint signature:
 
 ## Current Gaps In Observability
 
-These are still worth adding later:
-- dedicated `compaction.resolved` event
-- dedicated `compaction.enqueued` event
+Most of the gaps recorded here have since shipped: resolution is proved by `compaction.<tool>_hook.resolved` on the hook path and by `compaction.signal_consumed` / `compaction.unresolved` on the transcript path, and ownership by `compaction.owner.selected`.
+
+Still worth adding later:
 - explicit event for `runtime session fetched from daemon` vs `display session fetched from daemon`
 - checkpoint-specific skip/fail reason fields in terminal compaction events
-
-Right now, some checkpoints are inferred from neighboring events rather than proved directly.
 
 ## Companion Diagnostic
 
@@ -514,7 +564,7 @@ What it now reports directly:
 - CP3 parsed compaction evidence
 - CP5 terminal delivery evidence
 - CP6 runtime `session_id` health
-- CP8 Claude hook readiness
+- CP8 compact hook readiness
 - a `Checkpoint Matrix` section with pass/warn/fail/unknown status per checkpoint
 
 What still remains manual:

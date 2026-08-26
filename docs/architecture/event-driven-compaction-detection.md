@@ -53,7 +53,7 @@ So even when one bug is fixed, the architecture is still prone to missed or dela
 Current shipped note:
 - the two-stage signal architecture landed
 - the extractor is now `notify`-driven for active Codex transcript files with a `5s` reconciliation fallback
-- Windows runs the extractor -> signal log -> watcher -> processor pipeline inside the WSL daemon rather than in the app process
+- the extractor -> signal log -> watcher -> processor pipeline runs inside the daemon on every platform when one is connected, and in the app process only as a fallback
 
 ## Summary
 
@@ -258,13 +258,18 @@ process_compaction_signal(signal)
   -> emit audit events
 ```
 
-This is mostly the existing logic from `session_scanner/compaction.rs`, just fed by a signal record instead of a session-scan cycle.
+As shipped, this is `CompactionSignalProcessor::process_signal` in `coordination/compaction_processor.rs`, fed by a signal record instead of a session-scan cycle.
 
 ## 3. `CompactionSignalProcessor`
 
 Responsibility:
 - pure downstream processing from canonical signal -> terminal outcome
-- this replaces today's coupling to `process_codex_compaction_events(sessions)`
+- this replaced the former coupling to session-scan cycles
+
+Shipped modules:
+- `coordination/compaction_processor.rs` — `CompactionSignalProcessor::process_signal`
+- `session_scanner/compaction_watcher.rs` — 250 ms tick, 5 s reconciliation, state v2 in `signal-watcher-state.json`
+- `session_scanner/compaction_extractor.rs` — notify-driven, 5 s reconcile, heartbeat ≤ 1/60 s, state v2 in `extractor-state.json`
 
 Inputs:
 - canonical signal record
@@ -298,22 +303,25 @@ active Codex transcript
   -> processor records delivery result + emits audit events
 ```
 
-### Claude path
+### Hook path
 
-Claude should remain hook-driven.
+Claude is always hook-driven.
 
 ```text
-Claude compaction
-  -> Claude SessionStart(source=compact) hook fires
-  -> taurhaus compact-hook bridge resolves member by runtime session_id
+compaction
+  -> SessionStart(source=compact) hook fires
+  -> taurhaus compact-hook bridge infers the tool from transcript_path
+  -> bridge resolves member by runtime session_id (then normalized cwd)
   -> bridge loads operational snapshot
   -> bridge renders additionalContext
   -> bridge records delivery result + emits audit events
 ```
 
 Important boundary:
-- this redesign does **not** replace the Claude hook path
-- it only replaces Codex compaction detection
+- this redesign does **not** replace the hook path
+- the transcript pipeline is the default Codex detection path
+
+**Codex now has a hook path too.** The same bridge serves it when `harness.codex_compaction=hooks` — opt-in, requires Codex ≥ 0.147, installed through a managed `<CODEX_HOME>/hooks.json` (removed again when the setting flips back). The default is `transcript` until hooks are validated on a live team, and the transcript extractor/watcher remain the explicit fallback.
 
 ## ASCII Architecture Diagram
 
@@ -371,12 +379,12 @@ Claude compact -> Claude hook bridge -> additionalContext + delivery bookkeeping
 
 ## Platform Handling
 
+Ownership is a runtime decision, not a platform constant. On **every** platform the pipeline runs in the daemon whenever one is configured and connected — a native daemon on Linux and macOS, the WSL daemon on Windows. The app-owned runtime is a fallback taken only while the daemon is not configured or unreachable, and it is released when the daemon recovers. Hooks mode (opt-in) stops the extractor and watcher entirely.
+
 ## Linux native
 
 Ownership:
-- extractor runs in app process
-- signal watcher runs in app process
-- processor runs in app process
+- native daemon when connected; app process as fallback
 
 Path handling:
 - all transcript paths are Linux-native
@@ -389,9 +397,7 @@ Operational implication:
 ## macOS native
 
 Ownership:
-- extractor runs in app process
-- signal watcher runs in app process
-- processor runs in app process
+- native daemon when connected; app process as fallback
 
 Path handling:
 - same architecture as Linux
@@ -554,7 +560,7 @@ Refactor current logic so resolution + delivery + bookkeeping can be called from
 
 Goal:
 - preserve working downstream behavior
-- remove direct dependency on `process_codex_compaction_events(sessions)`
+- remove the direct dependency on the session-scan cycle
 
 ### Phase 1: add extractor and signal log on Linux/macOS
 
@@ -577,15 +583,16 @@ Implement:
 
 This avoids repeating the display/runtime confusion that already broke the old architecture.
 
-### Phase 3: observability hardening
+### Phase 3: observability hardening — shipped
 
-Add explicit events:
-- `compaction.signal_emitted`
-- `compaction.signal_consumed`
+All of it landed in `coordination/compaction_events.rs`, under slightly different names than proposed:
+- `compaction.signal_emitted`, `compaction.signal_consumed`, `compaction.signal_replayed`, `compaction.signal_failed`
 - `compaction.unresolved`
-- `compaction.processor.started`
-- `compaction.processor.completed`
-- extractor heartbeat/status metrics
+- `compaction.extractor.heartbeat` (sampled to ≤ 1 per 60 s per teams dir), `compaction.extractor.failed`
+- `compaction.watcher.missed_event_recovered`
+- `compaction.owner.selected` / `compaction.owner.failed`
+
+`compaction.processor.started` / `.completed` were not added; the terminal `compaction.*` events cover that span.
 
 ## Recommended Implementation Tasks
 
@@ -598,9 +605,9 @@ Add explicit events:
 7. Move Windows Codex compaction handling into the WSL daemon end-to-end.
 8. Extend diagnostics to inspect extractor state, signal-log offsets, and watcher health.
 
-## Recommended Event Set
+## Recommended Event Set — shipped
 
-For this redesign, add these structured events:
+All seven are implemented in `coordination/compaction_events.rs`:
 - `compaction.signal_emitted`
 - `compaction.signal_consumed`
 - `compaction.signal_replayed`
@@ -609,7 +616,7 @@ For this redesign, add these structured events:
 - `compaction.extractor.failed`
 - `compaction.watcher.missed_event_recovered`
 
-These events close the current observability gaps between transcript boundary, detection, and terminal outcome.
+These events close the observability gaps between transcript boundary, detection, and terminal outcome.
 
 ## Final Recommendation
 

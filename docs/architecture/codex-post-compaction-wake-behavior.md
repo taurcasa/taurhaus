@@ -1,5 +1,11 @@
 # Codex Post-Compaction Wake Behavior
 
+## Applies to transcript mode only
+
+This decision governs `harness.codex_compaction=transcript`, the default Codex compaction mode.
+
+With the opt-in `hooks` mode (requires Codex ≥ 0.147), the card is returned directly as `additionalContext` from Codex's own `SessionStart(source=compact)` hook: there is no inbox append, no wake prompt, and no next-turn steer, and the transcript extractor/watcher are stopped. Everything below is moot in that mode.
+
 ## Decision
 
 Keep Codex post-compaction wake behavior as a next-turn steer, not an interruptive forced-control mechanism.
