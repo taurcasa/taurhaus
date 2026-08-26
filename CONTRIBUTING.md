@@ -151,6 +151,20 @@ Each regression test must document what broke and why (commit reference if avail
 4. Open a PR with a clear title and description
 5. Include a brief test plan (what you tested and how)
 
+### Updating the bundled mesh release
+
+When a Taurhaus change depends on a mesh source change, keep the embedded build metadata and compatibility lock aligned:
+
+1. Bump mesh's patch version and refresh its `Cargo.lock`.
+2. Run `just check` in the mesh repository.
+3. Commit mesh, then run `just build-release` so `mesh version --json` reports the committed source revision.
+4. From Taurhaus, run `just update-mesh-lock <version> <protocol_version> <schema_version> <git_commit>` with the exact JSON values.
+5. Run `just bundle-mesh` and `just mesh-verify-lock`.
+6. Run `just install-mesh`, then restart running member daemons so the development host uses the lock-matching binary.
+7. Commit `src-tauri/resources/mesh.lock.json`, `mesh.manifest.json`, and `mesh.version` with the Taurhaus change. Use the normal Taurhaus release recipes afterward.
+
+If the mesh repository has no configured remote, stop after the local commit; do not invent a push target.
+
 ### Commit Messages
 
 - Template: `<type>(<scope>): <summary> (#task-id)`

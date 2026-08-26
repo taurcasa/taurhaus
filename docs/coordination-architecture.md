@@ -159,12 +159,11 @@ struct BackendCapabilities {
 }
 ```
 
-### D10: Backend selection — auto-detect with override
+### D10: Backend selection — route by member CLI tool
 
-**Status**: Partial
+**Status**: Implemented
 
-**Decision**: `BackendSelector` supports override → force-mesh → CLI-tool auto-detection ordering.
-`BackendSelector` supports override + auto-detect, but current setup/runtime flows still force M0-style `MeshBridged` selection.
+**Decision**: Runtime delivery selects the backend from the target member's configured CLI tool. Claude members use the native inbox-file backend; Codex and Gemini members use the mesh-bridged backend and member daemon. `BackendSelector::m0()` remains only as the compatibility constructor for the default external-agent backend, while the orchestrator and initialization pipeline perform per-member routing.
 
 ### D11: Channel-based daemon → orchestrator event pipeline
 

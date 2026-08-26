@@ -10,6 +10,7 @@ kind: agent
 defaults:
   cli_tool: claude
   model: claude-opus-4-6
+  reasoning_effort: null
   default_name_pattern: reviewer-{n}
 
 instructions: |
