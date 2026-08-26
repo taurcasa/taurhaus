@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-08-26
+
+Follow-up to 0.6.6. One activity signal across the UI, honest wall-clock activity accounting, compaction reinjection for Codex via its native hooks (opt-in), and two post-0.6.6 noise regressions fixed. Daemon protocol is now **10** — app and daemon update together.
+
+### Added
+
+- **Codex compaction reinjection via Codex's own hooks** — `SessionStart(source=compact)`/`PostCompact` from Codex now flow through the same bridge Claude uses (tool inferred from the transcript path), with a managed `hooks.json` installer (idempotent, removable, exe-path self-repairing). Off by default: Settings → Mesh → "Codex compaction source" stays on the transcript tailer until the hook path is validated on a live team. Empirically proven on Codex 0.147/0.149 (`additionalContext` injection, exact-once events).
+
+### Changed
+
+- **One activity signal** — every surface (sidebar, hover card, mesh canvas/nodes/runtime) derives its status from a single module: working/active/idle/uncertain/offline, with attribution deciding working vs uncertain and reused/dead panes reading as offline. Activity time (`active` percentages) now accumulates only observed wall-clock intervals — no tick math, no backfilled blackouts; scanner degradations are visible to the UI within a poll via a dedicated cursor.
+
+### Fixed
+
+- **Post-0.6.6 event noise** — first sight of an idle process no longer logs a state change, and background CLI processes without a controlling terminal (e.g. detached `codex exec` automation) are no longer treated as sessions at all: no phantom sidebar rows, no tracker churn (measured: 64.5 → ~5 events/min on a busy host, inventory perfectly stable).
+
+
 ## [0.6.6] - 2026-08-26
 
 Harness realignment release. Fixes the three long-standing live bugs (session-indicator blackouts, permanently-uncertain activity icons, the dead tmux focus indicator), makes model and reasoning effort first-class end to end, and hardens the coordination stores against the mesh bridge. Daemon protocol is now **8** — the app auto-updates its bundled daemon on startup; running app and daemon must be updated together.
