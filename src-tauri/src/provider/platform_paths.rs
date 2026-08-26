@@ -43,6 +43,16 @@ impl PlatformPaths {
         env_path_override(CLAUDE_DIR_OVERRIDE_ENV).unwrap_or_else(default_claude_dir)
     }
 
+    /// The Claude root only when it was moved (`TAURHAUS_CLAUDE_DIR`).
+    ///
+    /// Claude Code itself knows nothing about that variable: with
+    /// `CLAUDE_CONFIG_DIR` unset it reads `~/.claude` whatever taurhaus was
+    /// pointed at. Anything that launches Claude has to say the root out loud,
+    /// and anything that scans for accounts has to stay inside it.
+    pub fn claude_dir_override() -> Option<PathBuf> {
+        env_path_override(CLAUDE_DIR_OVERRIDE_ENV)
+    }
+
     /// Team state root (`~/.claude/teams`).
     pub fn teams_dir() -> PathBuf {
         Self::claude_dir().join("teams")

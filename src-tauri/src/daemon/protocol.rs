@@ -102,6 +102,10 @@ pub mod method {
     /// Additive since protocol v10 (no version bump): a daemon that predates it
     /// answers `UNKNOWN_METHOD`, which the app reads as "no accounts detected".
     pub const LIST_CLAUDE_ACCOUNTS: &str = "list_claude_accounts";
+    /// Additive since protocol v10 (no version bump): a daemon that predates it
+    /// answers `UNKNOWN_METHOD`, and a resume then falls back to the project's
+    /// own choice.
+    pub const CLAUDE_PROJECT_TRANSCRIPT: &str = "claude_project_transcript";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -142,6 +146,21 @@ pub mod event {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ClaudeAccountsResult {
     pub accounts: Vec<crate::session_scanner::claude_accounts::ClaudeAccount>,
+}
+
+/// `claude_project_transcript` — which subscription owns a project's history.
+///
+/// Windows-shaped for the same reason: the transcripts live in WSL, so only the
+/// daemon can compare their mtimes. Sessions are gone from every snapshot by
+/// the time a user reaches for Resume; the files are not.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClaudeProjectTranscriptParams {
+    pub project_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClaudeProjectTranscriptResult {
+    pub transcript: Option<String>,
 }
 
 /// `ping` — health check

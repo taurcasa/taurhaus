@@ -29,7 +29,8 @@ use self::activity_tracking::{
 };
 #[cfg(test)]
 use self::launching::decode_daemon_launch_result;
-use self::launching::launch_cli_session_impl;
+pub use self::launching::ClaudeLaunchAccount;
+use self::launching::{launch_cli_session_impl, resolve_claude_launch_account_impl};
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
 use self::session_listing::list_cli_sessions_impl;
 pub use self::session_listing::CliSessionSnapshot;
@@ -95,6 +96,25 @@ pub fn launch_cli_session(
         claude_account_id,
     )
     .ipc_cmd("launch_cli_session");
+    span.finish_result(&result);
+    result
+}
+
+/// Which Claude subscription a launch would run on, before it runs.
+///
+/// The chooser asks the user exactly once, and only when it has to. Whether it
+/// has to is a backend question: the transcript of the project's last session
+/// decides every resume, and a stored choice that logged out decides nothing.
+#[tauri::command]
+pub fn resolve_claude_launch_account(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    project_id: String,
+    mode: LaunchMode,
+) -> IpcResult<ClaudeLaunchAccount> {
+    let span = IpcCommandSpan::start("resolve_claude_launch_account");
+    let result = resolve_claude_launch_account_impl(db.inner(), provider.inner(), project_id, mode)
+        .ipc_cmd("resolve_claude_launch_account");
     span.finish_result(&result);
     result
 }

@@ -4,11 +4,17 @@ vi.mock('./ipc.js', () => ({
   listClaudeAccounts: vi.fn(),
   setProjectClaudeAccount: vi.fn(),
   launchClaudeSession: vi.fn(),
+  resolveClaudeLaunchAccount: vi.fn(),
   getSettings: vi.fn(),
 }))
 
-const { listClaudeAccounts, setProjectClaudeAccount, launchClaudeSession, getSettings } =
-  await import('./ipc.js')
+const {
+  listClaudeAccounts,
+  setProjectClaudeAccount,
+  launchClaudeSession,
+  resolveClaudeLaunchAccount,
+  getSettings,
+} = await import('./ipc.js')
 const {
   claudeAccounts,
   effectiveClaudeAccountId,
@@ -59,6 +65,11 @@ describe('claudeAccounts store', () => {
     resetClaudeAccountsForTest()
     setProjectClaudeAccount.mockResolvedValue(undefined)
     launchClaudeSession.mockResolvedValue({ tmux_pane: '%1' })
+    resolveClaudeLaunchAccount.mockResolvedValue({
+      accountId: null,
+      source: 'default_config_dir',
+      needsChoice: true,
+    })
     getSettings.mockResolvedValue({ terminal: { claude_default_account_id: null } })
   })
 
@@ -240,6 +251,55 @@ describe('claudeAccounts store', () => {
     publish([PRIMARY, SECOND])
     await detecting
     await launching
+
+    expect(launchClaudeSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  // Regression: c982822 applied the chooser to every mode. `--resume` only
+  // sees the history of the config dir it runs in, and the backend derives
+  // that dir from the project's last transcript — but an explicit answer from
+  // the chooser outranks it, so a resume was pinned to whichever account the
+  // user picked in a dialog that should never have opened.
+  it('never asks for a resume the backend can already place', async () => {
+    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    resolveClaudeLaunchAccount.mockResolvedValue({
+      accountId: 'account-2',
+      source: 'session',
+      needsChoice: false,
+    })
+
+    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+  })
+
+  it('asks for a resume the backend cannot place', async () => {
+    listClaudeAccounts.mockResolvedValue([PRIMARY, SECOND])
+    resolveClaudeLaunchAccount.mockResolvedValue({
+      accountId: null,
+      source: 'default_config_dir',
+      needsChoice: true,
+    })
+
+    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1', mode: 'resume' })
+  })
+
+  // Regression: c982822 treated any stored project account id as an answer.
+  // A pinned account that logged out is not one: the backend refuses it, and
+  // with the default config dir signed out too the launch landed on an account
+  // nobody chose while several usable ones waited.
+  it('asks again when the stored project account can no longer run', async () => {
+    listClaudeAccounts.mockResolvedValue([PRIMARY, { ...SECOND, logged_in: false }, THIRD])
+
+    await requestClaudeLaunch({
+      project: { id: 'p1', claude_account_id: 'account-2' },
+      mode: 'fresh',
+      tool: 'claude',
+    })
 
     expect(launchClaudeSession).not.toHaveBeenCalled()
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })

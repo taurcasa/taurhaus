@@ -14,6 +14,7 @@ import {
   getSettings,
   launchClaudeSession,
   listClaudeAccounts,
+  resolveClaudeLaunchAccount,
   setProjectClaudeAccount,
 } from './ipc.js'
 
@@ -39,6 +40,17 @@ export function loggedInAccounts() {
 /** Accounts to show in a chooser — logged-out ones stay visible but disabled. */
 export function resolveChooserAccounts() {
   return claudeAccounts.accounts
+}
+
+/**
+ * A stored account id, but only while the account it names is detected and
+ * signed in. A pinned subscription that logged out has answered nothing: the
+ * backend refuses it too, and its launch would land on whatever the fallback
+ * finds.
+ */
+function usableAccountId(accountId) {
+  if (!accountId) return null
+  return loggedInAccounts().some((account) => account.id === accountId) ? accountId : null
 }
 
 /** The configured global default, when it is detected and can run. */
@@ -126,6 +138,30 @@ function detectClaudeAccounts() {
     })
 }
 
+/** Modes whose account the history decides, not the user. */
+const HISTORY_MODES = new Set(['resume', 'continue'])
+
+/**
+ * Whether the backend already knows which subscription this launch runs on.
+ *
+ * `--resume` and `--continue` only see the history of the config dir they run
+ * in, and the transcript that owns a project's history names it. That lookup is
+ * the backend's; asking the user instead would pin the resume to an answer
+ * which outranks the transcript and opens a different history.
+ */
+async function backendPlacesLaunch(projectId, mode) {
+  if (!HISTORY_MODES.has(mode)) return false
+  try {
+    const placed = await resolveClaudeLaunchAccount(projectId, mode)
+    return !(placed?.needsChoice ?? placed?.needs_choice ?? true)
+  } catch (error) {
+    // Asking is the safe direction: the launch gets an account either way, and
+    // this way the user picks it.
+    console.warn('Failed to resolve the Claude account for this launch:', error)
+    return false
+  }
+}
+
 /**
  * Launch a session, asking which subscription to use only when the answer is
  * genuinely unknown.
@@ -153,9 +189,12 @@ export async function requestClaudeLaunch({
   // Detection may still be in flight (a launch clicked during startup); asking
   // an empty list would skip the chooser and run on the backend default.
   await refreshClaudeAccounts()
+  if (loggedInAccounts().length < 2) return run(null)
 
-  const alreadyChosen = effectiveClaudeAccountId(project) || globalClaudeAccount()
-  if (alreadyChosen || loggedInAccounts().length < 2) return run(null)
+  // A choice that can still run is the answer. It is not passed along: the
+  // backend applies it, and anything that outranks it, on its own.
+  const alreadyChosen = usableAccountId(effectiveClaudeAccountId(project)) || globalClaudeAccount()
+  if (alreadyChosen || (await backendPlacesLaunch(projectId, mode))) return run(null)
 
   // The chooser owns the rest of the flow: this call is done once it is open.
   claudeAccounts.pending = {

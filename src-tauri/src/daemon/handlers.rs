@@ -81,6 +81,9 @@ pub(crate) fn dispatch(
             handle_set_codex_compaction_mode(&request.id, &request.params)
         }
         protocol::method::LIST_CLAUDE_ACCOUNTS => handle_list_claude_accounts(&request.id),
+        protocol::method::CLAUDE_PROJECT_TRANSCRIPT => {
+            handle_claude_project_transcript(&request.id, &request.params)
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
@@ -96,6 +99,35 @@ fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
         id,
         protocol::ClaudeAccountsResult {
             accounts: crate::session_scanner::claude_accounts::detect_claude_accounts_cached(),
+        },
+    )
+}
+
+/// The newest transcript a project has under any detected config dir — the
+/// account `--resume` has to run in. The files are the daemon's to read: on
+/// Windows they live in WSL, and the app never scans them.
+fn handle_claude_project_transcript(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::ClaudeProjectTranscriptParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => {
+                return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string());
+            }
+        };
+
+    let config_dirs: Vec<std::path::PathBuf> =
+        crate::session_scanner::claude_accounts::detect_claude_accounts_cached()
+            .into_iter()
+            .map(|account| account.config_dir)
+            .collect();
+    DaemonResponse::ok(
+        id,
+        protocol::ClaudeProjectTranscriptResult {
+            transcript: crate::session_scanner::claude_accounts::newest_project_transcript(
+                &config_dirs,
+                &params.project_path,
+            )
+            .map(|path| path.display().to_string()),
         },
     )
 }

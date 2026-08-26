@@ -9,6 +9,8 @@
 #[cfg(test)]
 mod tests;
 
+use std::path::PathBuf;
+
 use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
@@ -16,7 +18,9 @@ use crate::commands::projects::DbState;
 use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
-use crate::session_scanner::claude_accounts::{detect_claude_accounts_cached, ClaudeAccount};
+use crate::session_scanner::claude_accounts::{
+    detect_claude_accounts_cached, newest_project_transcript, ClaudeAccount,
+};
 use crate::ProviderState;
 
 #[tauri::command]
@@ -60,6 +64,67 @@ pub(crate) fn claude_accounts(provider: &ProviderState) -> Vec<ClaudeAccount> {
         return daemon_claude_accounts(provider).unwrap_or_default();
     }
     detect_claude_accounts_cached()
+}
+
+/// The newest Claude transcript for a project, read where the transcripts are.
+///
+/// This is what makes `--resume` land on the subscription that owns a project's
+/// history after the session that wrote it is gone — including after a restart,
+/// and on Windows, where the app never sees the sessions the daemon scans.
+pub(crate) fn claude_project_transcript(
+    provider: &ProviderState,
+    project_path: &str,
+) -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        return daemon_claude_project_transcript(provider, project_path);
+    }
+    let config_dirs: Vec<PathBuf> = detect_claude_accounts_cached()
+        .into_iter()
+        .map(|account| account.config_dir)
+        .collect();
+    newest_project_transcript(&config_dirs, project_path)
+}
+
+fn daemon_claude_project_transcript(
+    provider: &ProviderState,
+    project_path: &str,
+) -> Option<PathBuf> {
+    let daemon = provider.daemon.as_ref()?;
+    if !daemon.is_connected() && !daemon.try_reconnect() {
+        return None;
+    }
+
+    let request = protocol::DaemonRequest::new(
+        "claude-project-transcript",
+        protocol::method::CLAUDE_PROJECT_TRANSCRIPT,
+        protocol::ClaudeProjectTranscriptParams {
+            project_path: project_path.to_string(),
+        },
+    );
+    match daemon.send_status_request(&request) {
+        Ok(response) if response.is_ok() => response
+            .result
+            .and_then(|value| {
+                serde_json::from_value::<protocol::ClaudeProjectTranscriptResult>(value)
+                    .map_err(|error| {
+                        tracing::warn!(error = %error, "Failed to decode Claude transcript from daemon");
+                    })
+                    .ok()
+            })
+            .and_then(|result| result.transcript)
+            .map(PathBuf::from),
+        Ok(response) => {
+            tracing::debug!(
+                error = ?response.error,
+                "Daemon does not resolve Claude transcripts; resume keeps the project's own choice"
+            );
+            None
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "Daemon unreachable for Claude transcript lookup");
+            None
+        }
+    }
 }
 
 fn daemon_claude_accounts(provider: &ProviderState) -> Option<Vec<ClaudeAccount>> {

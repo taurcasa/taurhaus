@@ -215,6 +215,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::command_center::list_cli_sessions,
             commands::command_center::list_cli_session_snapshot,
             commands::command_center::launch_cli_session,
+            commands::command_center::resolve_claude_launch_account,
             commands::command_center::stop_cli_session,
             commands::command_center::navigate_to_session,
             commands::command_center::record_session_activity,
