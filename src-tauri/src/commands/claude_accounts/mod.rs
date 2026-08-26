@@ -19,7 +19,7 @@ use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{CommandResultExt, IpcResult, SanitizeErr};
 use crate::session_scanner::claude_accounts::{
-    detect_claude_accounts_cached, newest_project_transcript, ClaudeAccount,
+    detect_claude_accounts_cached, newest_project_transcript, transcript_config_dirs, ClaudeAccount,
 };
 use crate::ProviderState;
 
@@ -78,11 +78,10 @@ pub(crate) fn claude_project_transcript(
     if cfg!(target_os = "windows") {
         return daemon_claude_project_transcript(provider, project_path);
     }
-    let config_dirs: Vec<PathBuf> = detect_claude_accounts_cached()
-        .into_iter()
-        .map(|account| account.config_dir)
-        .collect();
-    newest_project_transcript(&config_dirs, project_path)
+    // The config dirs, not the accounts: a `.claude.json` caught mid-rewrite
+    // names no account, and the history it sits next to must not disappear
+    // with it.
+    newest_project_transcript(&transcript_config_dirs(), project_path)
 }
 
 fn daemon_claude_project_transcript(

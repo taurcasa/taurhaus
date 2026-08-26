@@ -1,9 +1,8 @@
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
-use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::claude_accounts::{
-    remembered_claude_transcript, resolve_launch_account, AccountRequest, AccountResolution,
-    AccountSource,
+    configured_root_to_name, remembered_claude_transcript, resolve_launch_account,
+    to_launch_namespace, AccountRequest, AccountResolution, AccountSource,
 };
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
@@ -512,16 +511,10 @@ fn launch_config_dir(resolution: &AccountResolution) -> Option<PathBuf> {
         resolution
             .account
             .is_none()
-            .then(PlatformPaths::claude_dir_override)
+            .then(configured_root_to_name)
             .flatten()
     })?;
-    // Launches run in the daemon's filesystem namespace, which on Windows is
-    // WSL's. Account dirs arrive from the daemon already in Linux form and pass
-    // through unchanged.
-    let raw = dir.to_string_lossy().to_string();
-    Some(PathBuf::from(
-        crate::provider::path::to_linux(&raw).unwrap_or(raw),
-    ))
+    Some(to_launch_namespace(&dir))
 }
 
 /// What a launch would run on, without launching it.

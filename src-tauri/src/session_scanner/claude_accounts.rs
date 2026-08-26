@@ -175,32 +175,62 @@ pub struct AccountResolution {
     pub needs_choice: bool,
 }
 
+/// One scan of this host's Claude config dirs.
+///
+/// The dirs and the accounts are deliberately separate answers. `.claude.json`
+/// is rewritten in place by Claude Code, so a dir caught mid-write names no
+/// account — while its `projects/` transcripts sit there untouched. Anything
+/// looking for a project's history reads `config_dirs`; only the chooser, the
+/// chip and the Settings block need `accounts`.
+#[derive(Debug, Clone, Default)]
+pub struct ClaudeScan {
+    pub config_dirs: Vec<PathBuf>,
+    pub accounts: Vec<ClaudeAccount>,
+}
+
 /// Accounts under `home`, plus any `extra_dirs` found elsewhere.
 ///
 /// `extra_dirs` carries the config dirs of live Claude processes: a session
 /// started with `CLAUDE_CONFIG_DIR=/somewhere/else` is a real account this
 /// scan would otherwise never see.
-pub fn detect_claude_accounts(home: &Path, extra_dirs: &[PathBuf]) -> Vec<ClaudeAccount> {
-    detect_claude_accounts_in(home, extra_dirs, &PlatformPaths::claude_dir())
-}
-
-/// `detect_claude_accounts` with the default config dir supplied explicitly.
 pub fn detect_claude_accounts_in(
     home: &Path,
     extra_dirs: &[PathBuf],
     default_dir: &Path,
 ) -> Vec<ClaudeAccount> {
-    detect_with_store(home, extra_dirs, default_dir, host_credential_store())
+    detect_claude_accounts_rooted(
+        home,
+        extra_dirs,
+        default_dir,
+        &home.join(DEFAULT_CONFIG_DIRNAME),
+    )
 }
 
-/// Detection against a named credential store, so both platform behaviours are
-/// testable from any host.
-fn detect_with_store(
+/// `detect_claude_accounts_in` with the dir Claude Code reads on its own named
+/// outright.
+///
+/// It is not derivable from the scan root. `TAURHAUS_CLAUDE_DIR` moves the
+/// scan, Claude Code has never heard of that variable, and an override that
+/// happens to be named `.claude` would otherwise pass for the process default
+/// and lose the `CLAUDE_CONFIG_DIR` assignment that makes it real.
+pub fn detect_claude_accounts_rooted(
     home: &Path,
     extra_dirs: &[PathBuf],
     default_dir: &Path,
-    store: CredentialStore,
+    process_default_dir: &Path,
 ) -> Vec<ClaudeAccount> {
+    scan_with_store(
+        home,
+        extra_dirs,
+        default_dir,
+        process_default_dir,
+        host_credential_store(),
+    )
+    .accounts
+}
+
+/// Every config dir one scan should look at, deduped by canonical path.
+fn config_dir_candidates(home: &Path, extra_dirs: &[PathBuf], default_dir: &Path) -> Vec<PathBuf> {
     let mut candidates = vec![home.join(DEFAULT_CONFIG_DIRNAME), default_dir.to_path_buf()];
     if let Ok(entries) = std::fs::read_dir(home) {
         let mut siblings: Vec<PathBuf> = entries
@@ -219,16 +249,37 @@ fn detect_with_store(
     }
     candidates.extend(extra_dirs.iter().cloned());
 
-    let default_key = canonical_key(default_dir);
-    let process_default_key = canonical_key(&home.join(DEFAULT_CONFIG_DIRNAME));
     let mut seen = Vec::new();
-    let mut accounts = Vec::new();
+    let mut unique = Vec::new();
     for candidate in candidates {
         let key = canonical_key(&candidate);
         if seen.contains(&key) {
             continue;
         }
-        seen.push(key.clone());
+        seen.push(key);
+        unique.push(candidate);
+    }
+    unique
+}
+
+/// A scan against a named credential store, so both platform behaviours are
+/// testable from any host.
+fn scan_with_store(
+    home: &Path,
+    extra_dirs: &[PathBuf],
+    default_dir: &Path,
+    process_default_dir: &Path,
+    store: CredentialStore,
+) -> ClaudeScan {
+    let default_key = canonical_key(default_dir);
+    let process_default_key = canonical_key(process_default_dir);
+    let mut config_dirs = Vec::new();
+    let mut accounts = Vec::new();
+    for candidate in config_dir_candidates(home, extra_dirs, default_dir) {
+        let key = canonical_key(&candidate);
+        if candidate.is_dir() {
+            config_dirs.push(candidate.clone());
+        }
         if let Some(account) = read_account(
             &candidate,
             key == default_key,
@@ -245,7 +296,28 @@ fn detect_with_store(
             .cmp(&left.is_default)
             .then_with(|| left.email.cmp(&right.email))
     });
-    accounts
+    ClaudeScan {
+        config_dirs,
+        accounts,
+    }
+}
+
+/// `scan_with_store`'s accounts for a scan root that *is* the process's home.
+#[cfg(test)]
+fn detect_with_store(
+    home: &Path,
+    extra_dirs: &[PathBuf],
+    default_dir: &Path,
+    store: CredentialStore,
+) -> Vec<ClaudeAccount> {
+    scan_with_store(
+        home,
+        extra_dirs,
+        default_dir,
+        &home.join(DEFAULT_CONFIG_DIRNAME),
+        store,
+    )
+    .accounts
 }
 
 /// Read one config dir. `None` when it names no account at all.
@@ -312,10 +384,10 @@ fn canonical_key(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
-/// Accounts injected by a test, so no test ever reads the developer's real
+/// A scan injected by a test, so no test ever reads the developer's real
 /// `~/.claude*` — detection under test is always a fixture.
 #[cfg(test)]
-static DETECTION_OVERRIDE: Mutex<Option<Vec<ClaudeAccount>>> = Mutex::new(None);
+static DETECTION_OVERRIDE: Mutex<Option<ClaudeScan>> = Mutex::new(None);
 
 /// The override is process-wide, so the tests that install one run one at a
 /// time — two fixtures in flight at once would answer each other's launches.
@@ -335,21 +407,36 @@ impl Drop for DetectionOverrideGuard {
     }
 }
 
-/// Make `detect_claude_accounts_cached` report `accounts` for the life of the
-/// returned guard.
+/// Make the cached scan report `accounts` — and their config dirs — for the
+/// life of the returned guard.
 #[cfg(test)]
 pub(crate) fn install_detection_override(accounts: Vec<ClaudeAccount>) -> DetectionOverrideGuard {
+    let config_dirs = accounts
+        .iter()
+        .map(|account| account.config_dir.clone())
+        .collect();
+    install_scan_override(ClaudeScan {
+        config_dirs,
+        accounts,
+    })
+}
+
+/// `install_detection_override` for a scan whose config dirs and accounts do
+/// not line up — a dir whose `.claude.json` names nothing, say.
+#[cfg(test)]
+pub(crate) fn install_scan_override(scan: ClaudeScan) -> DetectionOverrideGuard {
     let lock = DETECTION_OVERRIDE_LOCK
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     *DETECTION_OVERRIDE
         .lock()
-        .unwrap_or_else(|error| error.into_inner()) = Some(accounts);
+        .unwrap_or_else(|error| error.into_inner()) = Some(scan);
     DetectionOverrideGuard(lock)
 }
 
-/// Detected accounts for this app run, re-read at most once a minute.
-pub fn detect_claude_accounts_cached() -> Vec<ClaudeAccount> {
+/// This app run's scan of the Claude config dirs, re-read at most once a
+/// minute.
+pub fn scan_claude_config_cached() -> ClaudeScan {
     #[cfg(test)]
     {
         return DETECTION_OVERRIDE
@@ -360,25 +447,51 @@ pub fn detect_claude_accounts_cached() -> Vec<ClaudeAccount> {
     }
 
     #[cfg(not(test))]
-    detect_claude_accounts_cached_uncached()
+    scan_claude_config_uncached()
+}
+
+/// Detected accounts for this app run.
+pub fn detect_claude_accounts_cached() -> Vec<ClaudeAccount> {
+    scan_claude_config_cached().accounts
+}
+
+/// Config dirs a project's transcripts may live in.
+///
+/// Deliberately wider than the detected accounts: a config dir whose
+/// `.claude.json` is empty, half-written or unreadable names no account, and
+/// the scan caches that for a minute. Its transcripts are still on disk, and
+/// `--resume` needs the dir that holds them, not the metadata beside it.
+pub fn transcript_config_dirs() -> Vec<PathBuf> {
+    scan_claude_config_cached().config_dirs
 }
 
 #[cfg(not(test))]
-fn detect_claude_accounts_cached_uncached() -> Vec<ClaudeAccount> {
-    static CACHE: Mutex<Option<(Instant, Vec<ClaudeAccount>)>> = Mutex::new(None);
+fn scan_claude_config_uncached() -> ClaudeScan {
+    static CACHE: Mutex<Option<(Instant, ClaudeScan)>> = Mutex::new(None);
 
     let mut cache = CACHE.lock().unwrap_or_else(|error| error.into_inner());
-    if let Some((observed_at, accounts)) = cache.as_ref() {
+    if let Some((observed_at, scan)) = cache.as_ref() {
         if observed_at.elapsed() < CACHE_TTL {
-            return accounts.clone();
+            return scan.clone();
         }
     }
 
-    let home = detection_home_for(PlatformPaths::claude_dir_override(), dirs::home_dir());
-    let accounts = detect_claude_accounts(&home, &config_dirs_of_live_sessions());
-    tracing::debug!(count = accounts.len(), "detected Claude accounts");
-    *cache = Some((Instant::now(), accounts.clone()));
-    accounts
+    let home_dir = dirs::home_dir();
+    let scan_home = detection_home_for(PlatformPaths::claude_dir_override(), home_dir.clone());
+    let scan = scan_with_store(
+        &scan_home,
+        &config_dirs_of_live_sessions(),
+        &PlatformPaths::claude_dir(),
+        &process_default_config_dir(home_dir.as_deref()),
+        host_credential_store(),
+    );
+    tracing::debug!(
+        accounts = scan.accounts.len(),
+        config_dirs = scan.config_dirs.len(),
+        "scanned Claude config dirs"
+    );
+    *cache = Some((Instant::now(), scan.clone()));
+    scan
 }
 
 /// Where the `<home>/.claude*` scan runs.
@@ -392,6 +505,40 @@ fn detection_home_for(override_dir: Option<PathBuf>, home: Option<PathBuf>) -> P
         return root.parent().map(Path::to_path_buf).unwrap_or(root);
     }
     home.unwrap_or_else(|| PathBuf::from("/"))
+}
+
+/// The dir Claude Code reads when `CLAUDE_CONFIG_DIR` is unset.
+///
+/// Always the *process's* own home, never the scan root: the two part company
+/// under `TAURHAUS_CLAUDE_DIR`, and deriving this from the scan root makes an
+/// override that happens to be named `.claude` pass for the default.
+fn process_default_config_dir(home: Option<&Path>) -> PathBuf {
+    home.map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("/"))
+        .join(DEFAULT_CONFIG_DIRNAME)
+}
+
+/// The configured Claude root, but only when Claude Code would not find it on
+/// its own.
+///
+/// `TAURHAUS_CLAUDE_DIR` moves taurhaus's whole Claude root — the teams dir
+/// included. Claude Code reads only `CLAUDE_CONFIG_DIR` and otherwise takes the
+/// process's own `~/.claude`, so anything that has to launch *into* the
+/// configured root has to say so out loud.
+pub fn configured_root_to_name() -> Option<PathBuf> {
+    let configured = PlatformPaths::claude_dir_override()?;
+    let process_default = process_default_config_dir(dirs::home_dir().as_deref());
+    (canonical_key(&configured) != canonical_key(&process_default)).then_some(configured)
+}
+
+/// A config dir as the shell that runs the launch will read it.
+///
+/// Launches run in the daemon's filesystem namespace, which on Windows is
+/// WSL's. Dirs that arrive from the daemon are already in Linux form and pass
+/// through unchanged.
+pub fn to_launch_namespace(dir: &Path) -> PathBuf {
+    let raw = dir.to_string_lossy().to_string();
+    PathBuf::from(crate::provider::path::to_linux(&raw).unwrap_or(raw))
 }
 
 /// The newest Claude transcript any of `config_dirs` holds for `project_path`.
@@ -567,6 +714,21 @@ pub fn resolve_launch_account(
     request: AccountRequest<'_>,
 ) -> AccountResolution {
     if accounts.is_empty() {
+        // A transcript names its own config dir outright — that answer never
+        // needed detection to have worked, and dropping it would resume in
+        // some other subscription's history.
+        if let Some(config_dir) = request
+            .session_transcript
+            .and_then(crate::session_scanner::idle::config_dir_for_transcript)
+        {
+            return AccountResolution {
+                config_dir: Some(config_dir),
+                account: None,
+                source: AccountSource::Session,
+                fallback_from: None,
+                needs_choice: false,
+            };
+        }
         return AccountResolution {
             config_dir: None,
             account: None,
@@ -1297,6 +1459,135 @@ mod tests {
         let resolved = resolve_launch_account(&accounts, request());
 
         assert_eq!(resolved.config_dir.as_deref(), Some(configured.as_path()));
+    }
+
+    /// The Claude arm of the renderer, as a project launch reaches it.
+    fn rendered_claude_command(config_dir: Option<&Path>) -> String {
+        crate::session_scanner::launch::LaunchSpec {
+            tool: crate::session_scanner::cli_tool::CliTool::Claude,
+            mode: crate::daemon::protocol::LaunchMode::Fresh,
+            base: "claude --dangerously-skip-permissions",
+            model: crate::session_scanner::launch::ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            claude_config_dir: config_dir,
+            team: None,
+        }
+        .render()
+        .command
+    }
+
+    // Regression: 760f776 read "the dir Claude Code uses on its own" off the
+    // scan root, which `TAURHAUS_CLAUDE_DIR` moves. An override that itself
+    // ends in `.claude` — `/tmp/run/.claude`, the natural shape for an
+    // isolated run — therefore passed for the process default, the launch
+    // rendered no `CLAUDE_CONFIG_DIR`, and Claude opened the real `~/.claude`
+    // subscription instead of the configured root.
+    #[test]
+    fn an_overridden_root_named_claude_is_still_named_in_the_launch() {
+        let run = TempDir::new().unwrap();
+        let real_home = TempDir::new().unwrap();
+        write_account(
+            run.path(),
+            ".claude",
+            PRIMARY_ID,
+            "isolated@example.com",
+            true,
+        );
+        write_account(
+            real_home.path(),
+            ".claude",
+            SECOND_ID,
+            "real@example.com",
+            true,
+        );
+        let configured = run.path().join(".claude");
+
+        let accounts = detect_claude_accounts_rooted(
+            run.path(),
+            &[],
+            &configured,
+            &real_home.path().join(DEFAULT_CONFIG_DIRNAME),
+        );
+
+        assert_eq!(accounts.len(), 1, "{accounts:?}");
+        assert!(!accounts[0].is_process_default, "{accounts:?}");
+
+        let resolved = resolve_launch_account(&accounts, request());
+        assert_eq!(resolved.config_dir.as_deref(), Some(configured.as_path()));
+
+        let command = rendered_claude_command(resolved.config_dir.as_deref());
+        assert!(
+            command.starts_with(&format!("CLAUDE_CONFIG_DIR='{}' ", configured.display())),
+            "{command}"
+        );
+    }
+
+    #[test]
+    fn the_process_default_config_dir_ignores_the_configured_root() {
+        assert_eq!(
+            process_default_config_dir(Some(Path::new("/home/dev"))),
+            PathBuf::from("/home/dev/.claude")
+        );
+    }
+
+    // Regression: 760f776 looked for a project's transcripts only under config
+    // dirs whose `.claude.json` parsed into an account. Claude Code rewrites
+    // that file in place, so a dir read mid-write names nothing — and the scan
+    // cached that absence for a minute. The transcripts never moved, but
+    // `--resume` stopped seeing them.
+    #[test]
+    fn a_config_dir_whose_account_file_is_unreadable_still_holds_its_transcripts() {
+        let home = TempDir::new().unwrap();
+        write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", true);
+        let truncated = home.path().join(".claude-account2");
+        fs::create_dir_all(&truncated).unwrap();
+        // Caught mid-rewrite: the file exists and parses into nothing.
+        fs::write(truncated.join(".claude.json"), "").unwrap();
+        let transcript = write_project_transcript(&truncated, "/home/user/projects/mid", "a.jsonl");
+
+        let scan = scan_with_store(
+            home.path(),
+            &[],
+            &home.path().join(".claude"),
+            &home.path().join(".claude"),
+            CredentialStore::File,
+        );
+
+        assert_eq!(scan.accounts.len(), 1, "{:?}", scan.accounts);
+        assert!(
+            scan.config_dirs.contains(&truncated),
+            "{:?}",
+            scan.config_dirs
+        );
+        assert_eq!(
+            newest_project_transcript(&scan.config_dirs, "/home/user/projects/mid").as_deref(),
+            Some(transcript.as_path())
+        );
+    }
+
+    // Regression: 760f776 dropped a resume's transcript the moment detection
+    // came back empty — every `.claude.json` unreadable at once, an isolated
+    // run, a daemon that answers nothing. The transcript names its config dir
+    // by itself, and losing it resumes in another subscription's history.
+    #[test]
+    fn a_transcript_still_places_a_resume_when_no_account_could_be_read() {
+        let transcript =
+            Path::new("/home/user/.claude-account2/projects/-home-user-projects-x/a.jsonl");
+
+        let resolved = resolve_launch_account(
+            &[],
+            AccountRequest {
+                session_transcript: Some(transcript),
+                ..request()
+            },
+        );
+
+        assert_eq!(resolved.source, AccountSource::Session);
+        assert_eq!(
+            resolved.config_dir.as_deref(),
+            Some(Path::new("/home/user/.claude-account2"))
+        );
     }
 
     fn claude_session(project: &str, transcript: &str, age_secs: Option<u64>) -> RuntimeSession {

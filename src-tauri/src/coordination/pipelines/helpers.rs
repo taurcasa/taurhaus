@@ -18,6 +18,7 @@ use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
+use crate::session_scanner::claude_accounts::{configured_root_to_name, to_launch_namespace};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
@@ -474,6 +475,15 @@ fn render_team_launch_command(
     if reasoning_effort.is_some() {
         model.reasoning_effort = reasoning_effort.map(str::to_string);
     }
+    // Team members stay on the default config dir: agent inboxes live under
+    // `PlatformPaths::teams_dir()`, and v1 does not move a member to another
+    // subscription. That root is only implicit while it *is* the dir Claude
+    // Code reads on its own — `TAURHAUS_CLAUDE_DIR` moves it, and a member
+    // launched without the assignment writes its inbox where no team reads.
+    let team_config_dir = (cli_tool == CliTool::Claude)
+        .then(configured_root_to_name)
+        .flatten()
+        .map(|dir| to_launch_namespace(&dir));
     let rendered = LaunchSpec {
         tool: cli_tool,
         mode: LaunchMode::Fresh,
@@ -485,10 +495,7 @@ fn render_team_launch_command(
         } else {
             None
         },
-        // Team members stay on the default config dir: agent inboxes live under
-        // `PlatformPaths::teams_dir()`, which is that one root. Moving a member
-        // to another subscription needs a per-team teams dir first.
-        claude_config_dir: None,
+        claude_config_dir: team_config_dir.as_deref(),
         team: (cli_tool == CliTool::Claude).then_some(TeamContext {
             team_name,
             agent_name,

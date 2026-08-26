@@ -355,14 +355,24 @@
 
   function ctxRestartTool(session) {
     if (!ctxMenu?.project || !session?.tmux_pane) return
-    const projectId = ctxMenu.project.id
+    const project = ctxMenu.project
     const tool = session.cli_tool
-    stopClaudeSession(session.tmux_pane, tool)
-      .then(() => launchClaudeSession(projectId, 'fresh', tool))
-      .catch((error) => {
+    const pane = session.tmux_pane
+    // The subscription is settled before anything is torn down: the chooser can
+    // open while the pane is still alive, so cancelling costs the user nothing.
+    requestClaudeLaunch({
+      project,
+      mode: 'fresh',
+      tool,
+      launch: (projectId, launchMode, launchTool, accountId) =>
+        stopClaudeSession(pane, launchTool).then(() =>
+          launchClaudeSession(projectId, launchMode, launchTool, accountId)
+        ),
+      onError: (error) => {
         console.error('Failed to restart session:', error)
         showSidebarNotice(describeSessionActionError('restart', { tool }, error))
-      })
+      },
+    })
   }
 
   /** Tool display names for context menu labels. */

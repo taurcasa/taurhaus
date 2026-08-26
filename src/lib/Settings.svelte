@@ -143,14 +143,18 @@
     settings?.terminal?.claude_default_account_id ?? defaultClaudeAccount?.id ?? ''
   )
 
-  function setDefaultClaudeAccount(accountId) {
+  async function setDefaultClaudeAccount(accountId) {
     ensureCliCommands()
     // Stored verbatim, including the account in the default config dir: this
     // is the answer projects inherit, and the chooser stops asking once it
-    // exists. The shared store hears about it without a reload.
+    // exists.
+    const previous = settings.terminal.claude_default_account_id ?? null
     settings.terminal.claude_default_account_id = accountId || null
-    setGlobalClaudeAccount(accountId || null)
-    saveSettings()
+    // The shared store routes launches, so it may only learn a default that
+    // actually persisted — otherwise the UI claims one subscription while the
+    // backend still reads the old one.
+    if (await saveSettings()) setGlobalClaudeAccount(accountId || null)
+    else settings.terminal.claude_default_account_id = previous
   }
 
   function claudeAccountLabel(account) {
@@ -184,16 +188,19 @@
     }
   }
 
+  /** Resolves to whether the write landed, for callers that must roll back. */
   async function saveSettings() {
-    if (!settings) return
+    if (!settings) return false
     saving = true
     saveError = null
     try {
       settings = await updateSettings(settings)
       onSettingsChanged()
+      return true
     } catch (e) {
       saveError = formatUserFacingError(e, 'Could not save settings. Try again.')
       console.error('Failed to save settings:', e)
+      return false
     } finally {
       saving = false
     }

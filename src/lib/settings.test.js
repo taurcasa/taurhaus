@@ -20,9 +20,21 @@ vi.mock('./ipc.js', () => ({
   listClaudeAccounts: vi.fn(() => Promise.resolve([])),
   setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
   launchClaudeSession: vi.fn(() => Promise.resolve()),
+  resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
 }))
 
-const { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform } = await import('./ipc.js')
+const {
+  getSettings,
+  updateSettings,
+  getIndexStatus,
+  rebuildIndex,
+  getPlatform,
+  listClaudeAccounts,
+  launchClaudeSession,
+} = await import('./ipc.js')
+const { claudeAccounts, requestClaudeLaunch, resetClaudeAccountsForTest } = await import(
+  './claudeAccounts.svelte.js'
+)
 
 import Settings from './Settings.svelte'
 
@@ -117,6 +129,48 @@ describe('Settings component', () => {
     getIndexStatus.mockResolvedValue({ doc_count: 42, is_empty: false })
     updateSettings.mockImplementation(async (s) => s)
     getPlatform.mockResolvedValue('windows')
+    // The account store is module state shared by the whole app, detection
+    // included: without this a test inherits the previous one's answer.
+    resetClaudeAccountsForTest()
+    listClaudeAccounts.mockResolvedValue([])
+    launchClaudeSession.mockResolvedValue({ tmux_pane: '%1' })
+  })
+
+  const TWO_ACCOUNTS = [
+    { id: 'account-1', email: 'a@example.com', display_name: 'A', logged_in: true, is_default: true },
+    { id: 'account-2', email: 'b@example.com', display_name: 'B', logged_in: true, is_default: false },
+  ]
+
+  // Regression: c982822 pushed the newly chosen default into the shared account
+  // store before the write landed, and restored neither the store nor the form
+  // when it failed. requestClaudeLaunch reads that store as an established
+  // default and launches without naming an account, while the backend still
+  // reads the old persisted one — so a failed save left the UI claiming one
+  // subscription while every launch used another.
+  it('keeps the shared default untouched when saving it fails', async () => {
+    listClaudeAccounts.mockResolvedValue(TWO_ACCOUNTS)
+    updateSettings.mockRejectedValueOnce(new Error('disk full'))
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
+
+    await fireEvent.click(screen.getByTestId('claude-account-default-account-2'))
+
+    await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
+    expect(claudeAccounts.defaultAccountId).toBe(null)
+
+    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    expect(launchClaudeSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  it('shares the chosen default once it is persisted', async () => {
+    listClaudeAccounts.mockResolvedValue(TWO_ACCOUNTS)
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
+
+    await fireEvent.click(screen.getByTestId('claude-account-default-account-2'))
+
+    await waitFor(() => expect(claudeAccounts.defaultAccountId).toBe('account-2'))
   })
 
   // --- IPC loading ---

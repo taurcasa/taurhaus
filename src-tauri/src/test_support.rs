@@ -5,6 +5,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 static HEAVY_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static GLOBAL_LOG_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static COMPACTION_EXTRACTOR_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static ENV_TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Guard that serializes heavy integration-style tests (daemon sockets,
 /// filesystem watchers) both within a process and across test binaries.
@@ -56,6 +57,44 @@ pub fn acquire_heavy_test_guard() -> HeavyTestGuard {
     });
 
     HeavyTestGuard {
+        _in_process: in_process,
+        lock_file,
+    }
+}
+
+/// Guard that serializes tests mutating process environment variables.
+pub struct EnvTestGuard {
+    _in_process: MutexGuard<'static, ()>,
+    lock_file: File,
+}
+
+impl Drop for EnvTestGuard {
+    fn drop(&mut self) {
+        let _ = self.lock_file.unlock();
+    }
+}
+
+/// Acquire the shared guard for tests that set or clear environment variables.
+///
+/// Environment mutation is process-wide, and several test modules keep private
+/// mutexes of their own. The file lock is what actually serializes them: it is
+/// per-open-file-description, so two handles on the same path block each other
+/// inside one process as well as across test binaries.
+pub fn acquire_env_test_guard() -> EnvTestGuard {
+    let in_process = ENV_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let lock_path = std::env::temp_dir().join("taurhaus-env-tests.lock");
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .unwrap_or_else(|e| panic!("failed to open env test lock at {:?}: {e}", lock_path));
+    lock_file
+        .lock_exclusive()
+        .unwrap_or_else(|e| panic!("failed to lock env test lock at {:?}: {e}", lock_path));
+
+    EnvTestGuard {
         _in_process: in_process,
         lock_file,
     }

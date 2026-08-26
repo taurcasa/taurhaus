@@ -48,6 +48,12 @@ pub mod session_scanner {
         pub use taurhaus_lib::session_scanner::cli_tool::CliTool;
     }
 
+    pub mod claude_accounts {
+        pub use taurhaus_lib::session_scanner::claude_accounts::{
+            configured_root_to_name, to_launch_namespace,
+        };
+    }
+
     pub mod process {
         pub use taurhaus_lib::session_scanner::process::detect_cli_tool;
     }

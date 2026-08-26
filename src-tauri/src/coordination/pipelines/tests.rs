@@ -1513,6 +1513,95 @@ fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
     assert!(command.contains("-c 'model_reasoning_effort=\"high\"'"));
 }
 
+/// A team member config, with everything but the tool left at its default.
+fn team_agent(cli_tool: &str) -> AgentSetupConfig {
+    AgentSetupConfig {
+        name: "team-lead".to_string(),
+        cli_tool: cli_tool.to_string(),
+        model: String::new(),
+        project_id: "/tmp/project".to_string(),
+        description: None,
+        role_id: None,
+        role_name: None,
+        focus_area: None,
+        context_summary: None,
+        behavior_summary: None,
+        communication_style: None,
+        runtime_compact_summary: None,
+        instructions: None,
+        behavioral_contract: None,
+        quality_gates: None,
+        reasoning_effort: None,
+        handoff_expectations: None,
+        definition_of_done: None,
+        phase_scope: None,
+        mode: None,
+        inherits_from: None,
+        required_artifacts: None,
+        capabilities: None,
+    }
+}
+
+// Regression: 760f776 rendered every team member launch with no
+// `CLAUDE_CONFIG_DIR` at all. Agent inboxes live under
+// `PlatformPaths::teams_dir()`, which `TAURHAUS_CLAUDE_DIR` moves — and Claude
+// Code has never heard of that variable, so a member launched without the
+// assignment ran against its physical `~/.claude` and wrote its inbox where
+// the team that started it never looks.
+#[test]
+fn build_cli_launch_command_names_a_configured_claude_root() {
+    let _guard = taurhaus_lib::test_support::acquire_env_test_guard();
+    let cmds = CliCommandSettings::default();
+    let override_dir = TempDir::new().expect("tempdir");
+    std::env::set_var("TAURHAUS_CLAUDE_DIR", override_dir.path());
+
+    let claude = build_cli_launch_command(
+        &team_agent("claude"),
+        "ledger-team",
+        MemberRole::Lead,
+        &cmds,
+    );
+    let codex = build_cli_launch_command(
+        &team_agent("codex"),
+        "ledger-team",
+        MemberRole::Agent,
+        &cmds,
+    );
+
+    std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+
+    let claude = claude.expect("claude command");
+    assert!(
+        claude.starts_with(&format!(
+            "CLAUDE_CONFIG_DIR='{}' ",
+            override_dir.path().display()
+        )),
+        "{claude}"
+    );
+    // The team environment still lands in front of the binary.
+    assert!(claude.contains("CLAUDECODE=1"), "{claude}");
+
+    let codex = codex.expect("codex command");
+    assert!(!codex.contains("CLAUDE_CONFIG_DIR"), "{codex}");
+}
+
+#[test]
+fn build_cli_launch_command_leaves_an_unmoved_claude_root_implicit() {
+    let _guard = taurhaus_lib::test_support::acquire_env_test_guard();
+    let cmds = CliCommandSettings::default();
+    std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+
+    let command = build_cli_launch_command(
+        &team_agent("claude"),
+        "ledger-team",
+        MemberRole::Lead,
+        &cmds,
+    )
+    .expect("command");
+
+    assert!(!command.contains("CLAUDE_CONFIG_DIR"), "{command}");
+}
+
 #[test]
 fn build_cli_launch_command_for_claude_appends_team_context() {
     let cmds = crate::models::CliCommandSettings::default();

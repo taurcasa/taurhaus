@@ -1,7 +1,9 @@
 use super::*;
 use crate::db::queries;
+use crate::session_scanner::claude_accounts::{install_scan_override, ClaudeScan};
+use std::path::Path;
 use std::sync::Mutex;
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 
 fn db_with_project(project_id: &str) -> (DbState, NamedTempFile) {
     let tmp = NamedTempFile::new().expect("temp db");
@@ -67,4 +69,46 @@ fn a_missing_daemon_yields_no_accounts_instead_of_an_error() {
     };
 
     assert!(daemon_claude_accounts(&provider).is_none());
+}
+
+/// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
+pub(crate) fn write_transcript(config_dir: &Path, project_path: &str, name: &str) -> PathBuf {
+    let dir = config_dir
+        .join("projects")
+        .join(crate::session_scanner::idle::path_to_slug(project_path));
+    std::fs::create_dir_all(&dir).expect("transcript dir");
+    let path = dir.join(name);
+    std::fs::write(&path, "{}\n").expect("transcript");
+    path
+}
+
+// Regression: 760f776 looked for a project's transcripts only under the config
+// dirs that detection had parsed into an account. Claude Code rewrites
+// `.claude.json` in place, so a dir read mid-write names nothing — and the
+// scan cached that absence for a minute. The history was still on disk, but
+// `--resume` stopped seeing it and fell through to the project's own choice,
+// opening a different subscription's sessions.
+#[test]
+fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
+    let home = TempDir::new().expect("home");
+    let config_dir = home.path().join(".claude-account2");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    // Caught mid-rewrite: the file is there and names no account at all.
+    std::fs::write(config_dir.join(".claude.json"), "").expect("config file");
+    let project_path = "/home/user/projects/mid-write";
+    let transcript = write_transcript(&config_dir, project_path, "abc.jsonl");
+    let _scan = install_scan_override(ClaudeScan {
+        config_dirs: vec![config_dir],
+        accounts: Vec::new(),
+    });
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+
+    assert_eq!(
+        claude_project_transcript(&provider, project_path).as_deref(),
+        Some(transcript.as_path())
+    );
 }
