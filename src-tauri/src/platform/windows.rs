@@ -22,6 +22,12 @@ pub fn list_processes() -> Option<Vec<(u32, String)>> {
     None
 }
 
+/// CLI tools run inside WSL2 here, so their controlling terminal is read by
+/// the WSL daemon's Linux implementation, not from a native Windows process.
+pub fn process_has_controlling_terminal(_pid: u32) -> Option<bool> {
+    None
+}
+
 /// CLI tools run inside WSL2 here, so their environment is read by the WSL
 /// daemon's Linux implementation, not from a native Windows process.
 pub fn process_env_var(_pid: u32, _name: &str) -> Option<String> {

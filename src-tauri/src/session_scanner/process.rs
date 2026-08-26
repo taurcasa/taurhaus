@@ -5,6 +5,13 @@
 //! `inventory_backend`. The inventory is fail-soft: when it cannot be read, the last good
 //! inventory is reported with `ProcessScan::degraded` set so callers keep
 //! their state instead of treating the gap as "no sessions".
+//!
+//! Only *interactive* tool processes are sessions. A process with no
+//! controlling terminal is a one-shot run (`codex exec` launched detached by
+//! automation, a CI job, a cron child), not something a person is sitting in
+//! front of, so it is dropped from the inventory before anything downstream
+//! sees it — see `retain_interactive_processes`, the one place the rule is
+//! applied. The rule is terminal-based, never tool-based.
 
 use std::io::{self, Read};
 use std::process::{Child, Command, Stdio};
@@ -35,6 +42,32 @@ pub struct ProcessScan {
     pub degraded: bool,
 }
 
+/// One detected CLI tool process as the inventory backend reports it, before
+/// cwd/tty enrichment.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct InventoryEntry {
+    pub(crate) pid: u32,
+    pub(crate) args: String,
+    pub(crate) cli_tool: CliTool,
+    /// Whether the backend sees a controlling terminal for this process:
+    /// `/proc/<pid>/stat`'s `tty_nr` on Linux, the `ps` TTY column on macOS.
+    /// Only `retain_interactive_processes` reads it; `ProcessInfo::tty` stays
+    /// the stdin device the tmux pane map is keyed by.
+    pub(crate) has_terminal: bool,
+}
+
+#[cfg(test)]
+impl InventoryEntry {
+    pub(crate) fn new(pid: u32, args: &str, cli_tool: CliTool, has_terminal: bool) -> Self {
+        Self {
+            pid,
+            args: args.to_string(),
+            cli_tool,
+            has_terminal,
+        }
+    }
+}
+
 /// Last successfully read inventory, reported verbatim on degraded scans.
 static LAST_GOOD_INVENTORY: Mutex<Vec<ProcessInfo>> = Mutex::new(Vec::new());
 
@@ -61,7 +94,7 @@ const TARGET_OS: TargetOs = TargetOs::Windows;
 enum InventoryBackend {
     /// `/proc/*/cmdline`.
     Proc,
-    /// `ps -eo pid,args`.
+    /// `ps -eo pid,tty,args`.
     Ps,
     /// No native inventory: CLI tools run inside WSL2 and the session scan
     /// goes through the WSL daemon, so the local read is always degraded.
@@ -87,6 +120,32 @@ const fn inventory_backend(os: TargetOs) -> InventoryBackend {
         TargetOs::Linux => InventoryBackend::Proc,
         TargetOs::MacOs => InventoryBackend::Ps,
         TargetOs::Windows => InventoryBackend::None,
+    }
+}
+
+/// Where a target reads a process's controlling terminal from.
+///
+/// Outside tests only the host's own backend is resolved; the pure selection
+/// below keeps the per-target wiring checkable on any host.
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControllingTtySource {
+    /// `/proc/<pid>/stat` field 7 (`tty_nr`); `0` means no controlling terminal.
+    ProcStat,
+    /// The `ps` TTY column; `?`/`??`/`-` mean no controlling terminal.
+    PsTtyColumn,
+    /// No native inventory, so there is nothing to classify locally.
+    None,
+}
+
+/// Controlling-terminal source for a target OS, derived from its inventory
+/// backend so the two can never drift apart.
+#[cfg_attr(not(test), allow(dead_code))]
+const fn controlling_tty_source(os: TargetOs) -> ControllingTtySource {
+    match inventory_backend(os) {
+        InventoryBackend::Proc => ControllingTtySource::ProcStat,
+        InventoryBackend::Ps => ControllingTtySource::PsTtyColumn,
+        InventoryBackend::None => ControllingTtySource::None,
     }
 }
 
@@ -258,7 +317,7 @@ fn system_process_count() -> Option<usize> {
     }
 }
 
-/// Read the raw CLI-tool inventory as `(pid, args, cli_tool)` tuples.
+/// Read the interactive CLI-tool inventory as `(pid, args, cli_tool)` tuples.
 ///
 /// Returns `None` when the platform inventory is unavailable; the degraded /
 /// recovered transition events are emitted from here.
@@ -266,8 +325,36 @@ fn list_cli_tool_processes() -> Option<Vec<(u32, String, CliTool)>> {
     note_inventory_health(read_cli_tool_inventory())
 }
 
-/// Detect CLI tools from the selected inventory backend.
+/// The CLI-tool inventory every consumer sees: detected tool processes that
+/// have a controlling terminal.
+///
+/// Both the fingerprint (`scan_process_ids`) and the enriched scan
+/// (`scan_processes`) come through here, so they always describe the same set
+/// of sessions.
 fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
+    let mut entries = read_inventory_entries()?;
+    retain_interactive_processes(&mut entries);
+    Some(
+        entries
+            .into_iter()
+            .map(|entry| (entry.pid, entry.args, entry.cli_tool))
+            .collect(),
+    )
+}
+
+/// Drop every tool process that has no controlling terminal.
+///
+/// The one place the interactive rule is applied, so display sessions, runtime
+/// sessions, hysteresis trackers, process-I/O sampling, compaction publishing
+/// and activity events all inherit it. Terminal-based and tool-agnostic: a
+/// `codex exec` run in a tmux pane is still a session, and a `claude` started
+/// with no terminal is not.
+pub(crate) fn retain_interactive_processes(entries: &mut Vec<InventoryEntry>) {
+    entries.retain(|entry| entry.has_terminal);
+}
+
+/// Detect CLI tools from the selected inventory backend, unfiltered.
+fn read_inventory_entries() -> Option<Vec<InventoryEntry>> {
     match INVENTORY_BACKEND {
         InventoryBackend::Proc => {
             let processes = crate::platform::list_processes()?;
@@ -275,14 +362,25 @@ fn read_cli_tool_inventory() -> Option<Vec<(u32, String, CliTool)>> {
                 processes
                     .into_iter()
                     .filter_map(|(pid, args)| {
-                        let tool = detect_cli_tool(&args)?;
-                        Some((pid, args, tool))
+                        let cli_tool = detect_cli_tool(&args)?;
+                        // Unknown reading (the process is already gone, or the
+                        // stat line will not parse): keep it. Enrichment drops
+                        // dead PIDs anyway, and dropping a session we cannot
+                        // classify would be worse than keeping a phantom one.
+                        let has_terminal =
+                            crate::platform::process_has_controlling_terminal(pid).unwrap_or(true);
+                        Some(InventoryEntry {
+                            pid,
+                            args,
+                            cli_tool,
+                            has_terminal,
+                        })
                     })
                     .collect(),
             )
         }
         InventoryBackend::Ps => {
-            let output = run_with_timeout("ps", &["-eo", "pid,args"])?;
+            let output = run_with_timeout("ps", &["-eo", "pid,tty,args"])?;
             Some(parse_ps_output(&output))
         }
         InventoryBackend::None => None,
@@ -539,21 +637,39 @@ fn kill_and_reap(child: &mut Child) {
     let _ = child.wait();
 }
 
-/// Parse `ps -eo pid,args` output into (pid, args, cli_tool) tuples for detected CLI tools.
-pub fn parse_ps_output(output: &str) -> Vec<(u32, String, CliTool)> {
+/// Parse `ps -eo pid,tty,args` output into inventory entries for detected CLI tools.
+///
+/// The TTY column is the process's controlling terminal, which is how the
+/// `ps` backend answers `InventoryEntry::has_terminal`.
+pub(crate) fn parse_ps_output(output: &str) -> Vec<InventoryEntry> {
     output
         .lines()
         .filter_map(|line| {
             let line = line.trim();
-            // Split into PID and rest (args)
-            let (pid_str, args) = line.split_once(char::is_whitespace)?;
+            // Split into PID, TTY, and rest (args).
+            let (pid_str, rest) = line.split_once(char::is_whitespace)?;
+            let (tty, args) = rest.trim_start().split_once(char::is_whitespace)?;
             let args = args.trim();
 
-            let tool = detect_cli_tool(args)?;
+            let cli_tool = detect_cli_tool(args)?;
             let pid: u32 = pid_str.parse().ok()?;
-            Some((pid, args.to_string(), tool))
+            Some(InventoryEntry {
+                pid,
+                args: args.to_string(),
+                cli_tool,
+                has_terminal: ps_tty_is_a_terminal(tty),
+            })
         })
         .collect()
+}
+
+/// Whether a `ps` TTY column names a controlling terminal.
+///
+/// `ps` prints `?` (Linux) or `??` (BSD/macOS) for a process with no
+/// controlling terminal, and `-` on some platforms. Anything else names a
+/// device — `pts/3`, `s001`, `ttys002`, `console` — and is a real terminal.
+fn ps_tty_is_a_terminal(column: &str) -> bool {
+    !matches!(column.trim(), "" | "?" | "??" | "-")
 }
 
 /// Detect which CLI tool a process belongs to from its command line args.
@@ -659,84 +775,85 @@ mod tests {
     #[test]
     fn parse_ps_finds_bare_claude() {
         let output = "\
-  PID COMMAND
- 1234 claude
- 5678 bash";
+  PID TTY      COMMAND
+ 1234 s001     claude
+ 5678 s001     bash";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, 1234);
-        assert_eq!(result[0].1, "claude");
-        assert_eq!(result[0].2, CliTool::Claude);
+        assert_eq!(result[0].pid, 1234);
+        assert_eq!(result[0].args, "claude");
+        assert_eq!(result[0].cli_tool, CliTool::Claude);
+        assert!(result[0].has_terminal);
     }
 
     #[test]
     fn parse_ps_finds_claude_with_flags() {
         let output = "\
-  PID COMMAND
- 4927 claude --dangerously-skip-permissions
- 4928 claude --dangerously-skip-permissions --continue
- 4929 claude --resume";
+  PID TTY      COMMAND
+ 4927 s001     claude --dangerously-skip-permissions
+ 4928 s002     claude --dangerously-skip-permissions --continue
+ 4929 s003     claude --resume";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
-        assert_eq!(result[0].0, 4927);
-        assert!(result[0].1.contains("--dangerously-skip-permissions"));
-        assert_eq!(result[0].2, CliTool::Claude);
-        assert_eq!(result[1].0, 4928);
-        assert!(result[1].1.contains("--continue"));
-        assert_eq!(result[2].0, 4929);
-        assert!(result[2].1.contains("--resume"));
+        assert_eq!(result[0].pid, 4927);
+        assert!(result[0].args.contains("--dangerously-skip-permissions"));
+        assert_eq!(result[0].cli_tool, CliTool::Claude);
+        assert_eq!(result[1].pid, 4928);
+        assert!(result[1].args.contains("--continue"));
+        assert_eq!(result[2].pid, 4929);
+        assert!(result[2].args.contains("--resume"));
     }
 
     #[test]
     fn parse_ps_finds_full_path_claude() {
         let output = "\
-  PID COMMAND
- 1000 /home/user/.local/bin/claude --dangerously-skip-permissions";
+  PID TTY      COMMAND
+ 1000 ttys001  /home/user/.local/bin/claude --dangerously-skip-permissions";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, 1000);
-        assert_eq!(result[0].2, CliTool::Claude);
+        assert_eq!(result[0].pid, 1000);
+        assert_eq!(result[0].cli_tool, CliTool::Claude);
     }
 
     #[test]
     fn parse_ps_finds_node_launched_claude() {
         let output = "\
-  PID COMMAND
- 2000 node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
+  PID TTY      COMMAND
+ 2000 s001     node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@anthropic-ai/claude-code/dist/cli.js";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, 2000);
-        assert_eq!(result[0].2, CliTool::Claude);
+        assert_eq!(result[0].pid, 2000);
+        assert_eq!(result[0].cli_tool, CliTool::Claude);
 
         let output2 = "\
-  PID COMMAND
- 2000 node /usr/local/bin/claude --dangerously-skip-permissions";
+  PID TTY      COMMAND
+ 2000 s001     node /usr/local/bin/claude --dangerously-skip-permissions";
         let result2 = parse_ps_output(output2);
         assert_eq!(result2.len(), 1);
-        assert_eq!(result2[0].2, CliTool::Claude);
+        assert_eq!(result2[0].cli_tool, CliTool::Claude);
     }
 
     #[test]
     fn parse_ps_excludes_grep_and_ps() {
         let output = "\
-  PID COMMAND
- 1234 claude --dangerously-skip-permissions
- 5555 grep claude
- 6666 ps -eo pid,args";
+  PID TTY      COMMAND
+ 1234 s001     claude --dangerously-skip-permissions
+ 5555 s001     grep claude
+ 6666 s001     ps -eo pid,tty,args";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, 1234);
+        assert_eq!(result[0].pid, 1234);
     }
 
     #[test]
     fn parse_ps_excludes_claude_prefixed() {
         let output = "\
-  PID COMMAND
- 1234 claude-code-server
- 5678 claude";
+  PID TTY      COMMAND
+ 1234 s001     claude-code-server
+ 5678 s001     claude";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].0, 5678);
+        assert_eq!(result[0].pid, 5678);
     }
 
     #[test]
@@ -747,7 +864,7 @@ mod tests {
 
     #[test]
     fn parse_ps_handles_header_only() {
-        let result = parse_ps_output("  PID COMMAND\n");
+        let result = parse_ps_output("  PID TTY      COMMAND\n");
         assert!(result.is_empty());
     }
 
@@ -837,6 +954,117 @@ mod tests {
         assert_eq!(InventoryBackend::Proc.name(), "proc");
         assert_eq!(InventoryBackend::Ps.name(), "ps");
         assert_eq!(InventoryBackend::None.name(), "none");
+    }
+
+    // -----------------------------------------------------------------------
+    // interactive-process filter
+    // -----------------------------------------------------------------------
+
+    // Regression: the live 0.6.6 host launched `codex exec` one-shots detached
+    // with stdin on /dev/null, so `ps` reported TTY `?` for them. The inventory
+    // carried them into classification anyway: phantom session rows for the
+    // project in the sidebar, a hysteresis tracker per PID, and ~64
+    // `activity.state.changed` records a minute as their bursty I/O flipped
+    // idle<->active. The first-sight-idle guard (PR #20, on top of 06b432d)
+    // silenced only the first-sight half of that flapping. A process with no
+    // controlling terminal is not an interactive session and must leave the
+    // inventory before anything downstream sees it.
+    #[test]
+    fn processes_without_a_controlling_terminal_leave_the_inventory() {
+        let mut entries = vec![
+            InventoryEntry::new(4242, "codex exec --json review", CliTool::Codex, false),
+            InventoryEntry::new(4243, "claude --continue", CliTool::Claude, true),
+            InventoryEntry::new(4244, "codex --yolo", CliTool::Codex, true),
+            InventoryEntry::new(4245, "claude -p summarize", CliTool::Claude, false),
+        ];
+
+        retain_interactive_processes(&mut entries);
+
+        assert_eq!(
+            entries.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![4243, 4244],
+            "only processes with a controlling terminal stay in the inventory, \
+             and the rule is terminal-based, not tool-based"
+        );
+    }
+
+    // Regression: same live symptom, the other direction — the guard must not
+    // touch real sessions. A Codex process in a tmux pane has a controlling
+    // terminal and stays.
+    #[test]
+    fn a_terminal_backed_process_stays_in_the_inventory() {
+        let mut entries = vec![InventoryEntry::new(
+            4246,
+            "codex --yolo",
+            CliTool::Codex,
+            true,
+        )];
+
+        retain_interactive_processes(&mut entries);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].pid, 4246);
+    }
+
+    // Regression: the `ps` backend's own reading of the same rule. macOS prints
+    // `??` for a process with no controlling terminal (Linux `ps` prints `?`),
+    // and a device name otherwise.
+    #[test]
+    fn ps_tty_column_tells_terminals_from_detached_processes() {
+        for column in ["s001", "ttys002", "pts/3", "console", "tty1"] {
+            assert!(
+                ps_tty_is_a_terminal(column),
+                "{column:?} names a controlling terminal"
+            );
+        }
+        for column in ["?", "??", "-", "", "   "] {
+            assert!(
+                !ps_tty_is_a_terminal(column),
+                "{column:?} means no controlling terminal"
+            );
+        }
+    }
+
+    // Regression: the same live symptom read through the `ps` arm — a detached
+    // one-shot must come out of the inventory non-interactive while its
+    // terminal-backed neighbours survive.
+    #[test]
+    fn parse_ps_marks_detached_processes_non_interactive() {
+        let output = "\
+  PID TTY      COMMAND
+ 1234 s001     claude --continue
+ 5678 ??       codex exec --json review
+ 9012 ttys002  codex --yolo";
+        let mut result = parse_ps_output(output);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[1].args, "codex exec --json review");
+        assert!(!result[1].has_terminal);
+
+        retain_interactive_processes(&mut result);
+        assert_eq!(
+            result.iter().map(|entry| entry.pid).collect::<Vec<_>>(),
+            vec![1234, 9012]
+        );
+    }
+
+    // Regression: the filter must be wired to a real controlling-terminal
+    // reading on every target, not only on the host that happens to build.
+    // Like `inventory_backend_is_selected_per_target_os`, the selection is a
+    // pure function of the target OS, checked for every OS on any host.
+    #[test]
+    fn controlling_tty_source_is_selected_per_target_os() {
+        assert_eq!(
+            controlling_tty_source(TargetOs::Linux),
+            ControllingTtySource::ProcStat
+        );
+        assert_eq!(
+            controlling_tty_source(TargetOs::MacOs),
+            ControllingTtySource::PsTtyColumn
+        );
+        assert_eq!(
+            controlling_tty_source(TargetOs::Windows),
+            ControllingTtySource::None
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -982,7 +1210,10 @@ mod tests {
     }
 
     // The Linux inventory comes from /proc, not ps: a live child whose argv[0]
-    // is "claude" must show up in the fingerprint.
+    // is "claude" must show up in the raw inventory, and in the fingerprint
+    // exactly when it has a controlling terminal (the test binary's own
+    // terminal is inherited, and a test run has one only when it was started
+    // from a terminal).
     #[cfg(target_os = "linux")]
     #[test]
     fn scan_process_ids_reads_live_inventory_without_ps() {
@@ -1001,16 +1232,157 @@ mod tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep as claude");
+        let entries = read_inventory_entries();
         let pids = scan_process_ids();
+        let child_pid = child.id();
         kill_and_reap(&mut child);
 
+        let entries = entries.expect("/proc inventory readable");
         let pids = pids.expect("/proc inventory readable");
-        assert!(
-            pids.contains(&child.id()),
-            "live /proc inventory must list the claude-named child {}",
-            child.id()
+        let entry = entries
+            .iter()
+            .find(|entry| entry.pid == child_pid)
+            .unwrap_or_else(|| {
+                panic!("live /proc inventory must list the claude-named child {child_pid}")
+            });
+        assert_eq!(
+            pids.contains(&child_pid),
+            entry.has_terminal,
+            "the fingerprint carries a live tool process exactly when it has a \
+             controlling terminal"
         );
         assert!(pids.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    /// A directory holding a `claude`-named symlink to `sleep`, so a live child
+    /// is detected as a CLI tool by its argv[0] while being harmless.
+    #[cfg(target_os = "linux")]
+    fn fake_claude_binary() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("claude");
+        std::os::unix::fs::symlink("/bin/sleep", &path).expect("symlink sleep as claude");
+        let path = path.to_string_lossy().to_string();
+        (dir, path)
+    }
+
+    /// Poll the live inventory until an entry's args start with `prefix`.
+    #[cfg(target_os = "linux")]
+    fn wait_for_live_entry(prefix: &str) -> Option<InventoryEntry> {
+        for _ in 0..100 {
+            if let Some(entries) = read_inventory_entries() {
+                if let Some(entry) = entries
+                    .into_iter()
+                    .find(|entry| entry.args.starts_with(prefix))
+                {
+                    return Some(entry);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
+
+    #[cfg(target_os = "linux")]
+    fn kill_pid(pid: u32) {
+        let _ = Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    // Regression: the live 0.6.6 symptom, reproduced against the real /proc
+    // reading. A tool process started with no controlling terminal — what
+    // `codex exec` one-shots launched detached by automation look like — is
+    // visible to /proc but must never reach the fingerprint or the enriched
+    // inventory, so no session, tracker, or activity event can follow it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_live_detached_tool_process_never_reaches_the_inventory() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_dir, binary) = fake_claude_binary();
+        let Ok(mut child) = Command::new("setsid")
+            .args([&binary, "30"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            eprintln!("skipping: setsid is not available on this host");
+            return;
+        };
+
+        let entry = wait_for_live_entry(&binary).expect("detached child in the /proc inventory");
+        let pids = scan_process_ids().expect("/proc inventory readable");
+        let processes = scan_processes();
+        kill_pid(entry.pid);
+        kill_and_reap(&mut child);
+
+        assert!(
+            !entry.has_terminal,
+            "a setsid child has no controlling terminal"
+        );
+        assert!(
+            !pids.contains(&entry.pid),
+            "the fingerprint must not carry a process with no controlling terminal"
+        );
+        assert!(
+            !processes
+                .processes
+                .iter()
+                .any(|process| process.pid == entry.pid),
+            "the enriched inventory must not carry a process with no controlling terminal"
+        );
+    }
+
+    // Regression: the guard is terminal-based, so it must leave real sessions
+    // alone. A tool process running on a pts — what a tmux pane or a plain
+    // terminal gives every session — stays in the inventory and in the
+    // fingerprint. `script` gives the child a pty without a tmux server.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_live_pts_backed_tool_process_stays_in_the_inventory() {
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_dir, binary) = fake_claude_binary();
+        let Ok(mut child) = Command::new("script")
+            .args(["-qec", &format!("{binary} 30"), "/dev/null"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            eprintln!("skipping: script is not available on this host");
+            return;
+        };
+
+        let entry = wait_for_live_entry(&binary).expect("pty-backed child in the /proc inventory");
+        let pids = scan_process_ids().expect("/proc inventory readable");
+        let processes = scan_processes();
+        kill_pid(entry.pid);
+        kill_and_reap(&mut child);
+
+        assert!(
+            entry.has_terminal,
+            "a child running under a pty has a controlling terminal"
+        );
+        assert!(
+            pids.contains(&entry.pid),
+            "the fingerprint must keep a pts-backed tool process"
+        );
+        let process = processes
+            .processes
+            .iter()
+            .find(|process| process.pid == entry.pid)
+            .expect("pts-backed process in the enriched inventory");
+        assert!(
+            process.tty.starts_with("/dev/pts/"),
+            "expected a pts device, got {}",
+            process.tty
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1132,28 +1504,29 @@ mod tests {
     #[test]
     fn parse_ps_detects_mixed_tools() {
         let output = "\
-  PID COMMAND
- 1000 claude --continue
- 2000 codex --full-auto
- 3000 node /path/@google/gemini-cli/dist/cli.mjs
- 4000 bash
- 5000 vim";
+  PID TTY      COMMAND
+ 1000 s001     claude --continue
+ 2000 s002     codex --full-auto
+ 3000 s003     node /path/@google/gemini-cli/dist/cli.mjs
+ 4000 s004     bash
+ 5000 s005     vim";
         let result = parse_ps_output(output);
         assert_eq!(result.len(), 3);
         assert_eq!(
             result[0],
-            (1000, "claude --continue".to_string(), CliTool::Claude)
+            InventoryEntry::new(1000, "claude --continue", CliTool::Claude, true)
         );
         assert_eq!(
             result[1],
-            (2000, "codex --full-auto".to_string(), CliTool::Codex)
+            InventoryEntry::new(2000, "codex --full-auto", CliTool::Codex, true)
         );
         assert_eq!(
             result[2],
-            (
+            InventoryEntry::new(
                 3000,
-                "node /path/@google/gemini-cli/dist/cli.mjs".to_string(),
-                CliTool::Gemini
+                "node /path/@google/gemini-cli/dist/cli.mjs",
+                CliTool::Gemini,
+                true
             )
         );
     }

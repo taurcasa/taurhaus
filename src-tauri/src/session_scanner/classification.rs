@@ -345,7 +345,7 @@ pub(crate) fn set_runtime_idle_detector_override(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session_scanner::{cache, SCANNER_TEST_LOCK};
+    use crate::session_scanner::{cache, StateChangeCapture, SCANNER_TEST_LOCK};
 
     fn runtime_session(pid: u32, tty: &str, cli_tool: CliTool) -> RuntimeSession {
         RuntimeSession {
@@ -408,61 +408,6 @@ mod tests {
             &move |_: &process::ProcessInfo| result.clone(),
         );
         sessions.into_iter().next().expect("one session")
-    }
-
-    /// Capture the `activity.state.changed` events one classification sequence
-    /// emits.
-    ///
-    /// The structured emitter is process-global, so the sink and the tap are
-    /// installed under the shared global-log guard and torn down on drop.
-    struct StateChangeCapture {
-        _log_guard: crate::test_support::GlobalLogTestGuard,
-        _sink_dir: tempfile::TempDir,
-        _sink: crate::commands::logging::LogFileState,
-        events: std::sync::mpsc::Receiver<serde_json::Value>,
-    }
-
-    impl StateChangeCapture {
-        fn install() -> Self {
-            let log_guard = crate::test_support::acquire_global_log_test_guard();
-            let sink_dir = tempfile::tempdir().expect("temp dir");
-            let sink = crate::commands::logging::LogFileState::new(
-                sink_dir.path().join("activity.log.jsonl"),
-            )
-            .expect("log state");
-            crate::commands::logging::install_global_sink(&sink);
-            let (sender, events) = std::sync::mpsc::channel();
-            crate::commands::logging::install_test_tap(sender);
-            Self {
-                _log_guard: log_guard,
-                _sink_dir: sink_dir,
-                _sink: sink,
-                events,
-            }
-        }
-
-        /// Every `(from, to)` pair emitted for `pid`, in emission order.
-        fn transitions_for(&self, pid: u32) -> Vec<(Option<SessionState>, SessionState)> {
-            self.events
-                .try_iter()
-                .filter(|event| {
-                    event["event"] == "activity.state.changed" && event["fields"]["pid"] == pid
-                })
-                .map(|event| {
-                    (
-                        serde_json::from_value(event["fields"]["from"].clone())
-                            .expect("from state"),
-                        serde_json::from_value(event["fields"]["to"].clone()).expect("to state"),
-                    )
-                })
-                .collect()
-        }
-    }
-
-    impl Drop for StateChangeCapture {
-        fn drop(&mut self) {
-            crate::commands::logging::clear_test_tap();
-        }
     }
 
     // Regression: PR 2 commit 06b432d added `activity.state.changed` and gated

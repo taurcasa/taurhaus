@@ -92,6 +92,31 @@ fn parse_start_ticks(stat: &str) -> Option<u64> {
         .ok()
 }
 
+/// Whether a process has a controlling terminal (`/proc/{pid}/stat` field 7).
+///
+/// `tty_nr == 0` means the process was started with no controlling terminal —
+/// a detached one-shot run, a daemon child — which `ps` prints as `?`. The
+/// session scanner drops those from its inventory: they are not interactive
+/// sessions. Returns `None` when the process is gone or its stat line cannot
+/// be parsed, which the caller reads as "unknown", not as "no terminal".
+pub fn process_has_controlling_terminal(pid: u32) -> Option<bool> {
+    parse_tty_nr(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?).map(|tty_nr| tty_nr != 0)
+}
+
+/// Field 7 of a `/proc/<pid>/stat` line.
+///
+/// Field 2 (`comm`) is parenthesised and may itself contain spaces and
+/// parentheses, so everything up to the last `)` is skipped; the tokens that
+/// follow start at field 3.
+fn parse_tty_nr(stat: &str) -> Option<i64> {
+    stat.rsplit_once(')')?
+        .1
+        .split_whitespace()
+        .nth(4)?
+        .parse()
+        .ok()
+}
+
 /// Read the executable path of a process from `/proc/{pid}/exe`.
 pub fn process_exe(pid: u32) -> Option<PathBuf> {
     fs::read_link(format!("/proc/{pid}/exe")).ok()
@@ -497,6 +522,44 @@ mod tests {
     #[test]
     fn process_tty_returns_none_for_nonexistent_pid() {
         assert!(process_tty(999_999_999).is_none());
+    }
+
+    #[test]
+    fn parse_tty_nr_reads_field_7_past_a_comm_with_spaces_and_parens() {
+        // Field 3 is the state; fields 4..=22 follow, so field 7 (tty_nr) is
+        // the 5th token after the comm.
+        let fields: Vec<String> = (4..=22).map(|field| field.to_string()).collect();
+        let stat = format!("4242 (weird (name) here) S {}", fields.join(" "));
+        assert_eq!(parse_tty_nr(&stat), Some(7));
+        assert_eq!(parse_tty_nr("4242 (short) S 1 2"), None);
+    }
+
+    // Regression: the session scanner drops processes with no controlling
+    // terminal, so this reading is what keeps a detached `codex exec` one-shot
+    // (tty_nr 0) out of the inventory and a pts-backed session in it.
+    #[test]
+    fn process_has_controlling_terminal_matches_proc_stat_for_self() {
+        let pid = std::process::id();
+        let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+        let tty_nr: i64 = stat
+            .rsplit_once(')')
+            .unwrap()
+            .1
+            .split_whitespace()
+            .nth(4)
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(
+            process_has_controlling_terminal(pid),
+            Some(tty_nr != 0),
+            "tty_nr {tty_nr} must decide the controlling-terminal answer"
+        );
+    }
+
+    #[test]
+    fn process_has_controlling_terminal_is_none_for_nonexistent_pid() {
+        assert_eq!(process_has_controlling_terminal(999_999_999), None);
     }
 
     #[test]
