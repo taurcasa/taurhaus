@@ -221,6 +221,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 ## Architecture Summary
 
+- **Harness model**: Claude Code hosts Claude, the other CLIs host theirs; taurhaus coordinates from outside (tmux + mesh floor) and uses harness-native capabilities where they exist. Per-tool code lives in capability slices behind `src-tauri/src/session_scanner/cli_tool.rs`; never branch on tool identity outside those slices. See `docs/architecture/harness-model.md`.
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
 - **IPC**: Fine-grained commands (currently 89 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
@@ -296,6 +297,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `scripts/build-windows.ps1` | Native Windows build runner for `bun install` + `bun run tauri build --bundles nsis`, with optional `sccache`. |
 | `scripts/windows-build-prereqs.ps1` | Native Windows prerequisite checker/installer for Bun, Rust MSVC, Visual Studio Build Tools, and NSIS. |
 | `scripts/install-windows-silent.ps1` | Silent Windows installer runner with NSIS payload hash verification. |
+| `docs/architecture/harness-model.md` | What taurhaus owns vs what the CLIs own: capability slices, model/effort, accounts, app↔daemon pairing, stability rules |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/architecture/data-architecture.md` | Authoritative map of live coordination stores, ownership boundaries, and derived state. |
@@ -326,6 +328,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Claude account (subscription) selection | `src-tauri/src/session_scanner/claude_accounts.rs`, `src-tauri/src/commands/claude_accounts/mod.rs`, `src-tauri/src/db/migrations/012_project_claude_account.sql`, `src-tauri/src/daemon/protocol.rs` (`list_claude_accounts`, `claude_project_transcript`), `src/lib/claudeAccounts.svelte.js` |
 | Fix tmux focus / foreground indicator | `src-tauri/src/session_scanner/tmux.rs` (`list_clients`, `focus_from_clients`), `src-tauri/src/daemon/session_activity.rs`, `src-tauri/src/daemon_lifecycle.rs` (emits `tmux-focus-changed`), `src-tauri/src/commands/command_center/mod.rs` (startup fallback), `src/lib/shell/sessionLifecycle.svelte.js` + `src/lib/shell/events.svelte.js` |
 | Change the daemon wire contract | `src-tauri/src/daemon/protocol.rs` (`PROTOCOL_VERSION` — bump when the change requires the app to be rebuilt against the new daemon; additive methods ship without a bump), `src-tauri/src/daemon_lifecycle.rs` (`classify_daemon_health`/`confirm_daemon_protocol`), `src-tauri/src/startup/daemon.rs`, then `just install-daemon` |
+| Add a new CLI tool | `src-tauri/src/session_scanner/cli_tool.rs` (registry entry + argv signature), then `session_scanner/launch.rs` (flag rendering), `session_scanner/idle/` (identity/idle source or none), `coordination/compact_hook.rs` (hook installer or none); see `docs/architecture/harness-model.md` |
 | Fix path/root resolution | `src-tauri/src/provider/path.rs`, `src-tauri/src/provider/platform_paths.rs` |
 | Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 
