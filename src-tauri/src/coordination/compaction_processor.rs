@@ -5,8 +5,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 
 use crate::coordination::compaction_events::{
-    emit_compaction_unresolved, CompactionSignalKind as EventSignalKind, CompactionUnresolvedEvent,
-    CompactionUnresolvedReason,
+    emit_compaction_unresolved, CompactionUnresolvedEvent, CompactionUnresolvedReason,
 };
 use crate::coordination::domain::Member;
 use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
@@ -14,9 +13,9 @@ use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_stale_compaction,
-    CompactionDeliveryResult, CompactionSignalKind, CompactionSignalRecord, MemberCompactionState,
-    MemberCompactionStore, MemberRuntimeStore, MeshInboxMessage, MeshInboxStore,
-    OperationalContextSnapshot, OperationalContextSnapshotStore, TeamConfigStore,
+    CompactionDeliveryResult, CompactionSignalRecord, MemberCompactionState, MemberCompactionStore,
+    MemberRuntimeStore, MeshInboxMessage, MeshInboxStore, OperationalContextSnapshot,
+    OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path::normalize_project_path;
 use crate::provider::platform_paths::PlatformPaths;
@@ -87,7 +86,7 @@ impl CompactionSignalProcessor {
                 project_path: signal.project_path.clone(),
                 jsonl_path: Some(signal.jsonl_path.clone()),
                 compaction_timestamp: signal.transcript_timestamp,
-                signal_kind: Some(event_signal_kind(signal.signal_kind)),
+                signal_kind: Some(signal.signal_kind),
                 reason: CompactionUnresolvedReason::ManagedMemberResolutionUnavailable,
             });
             return CompactionSignalProcessOutcome::Unresolved {
@@ -263,8 +262,8 @@ fn append_codex_inbox_message(
     card: &OperationalReinjectionCard,
     now: DateTime<Utc>,
 ) -> Result<(), crate::coordination::errors::CoordinationError> {
-    let rendered_payload =
-        CompactionReinjectionService::render_codex_inbox_text(card).map_err(|error| {
+    let rendered_payload = CompactionReinjectionService::render_additional_context_text(card)
+        .map_err(|error| {
             crate::coordination::errors::CoordinationError::StoreError(format!(
                 "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
                 member_name, team_name
@@ -548,13 +547,6 @@ fn should_persist_delivery_state(
         .any(|member| member.name == member_name && member.cli_tool == CliTool::Codex))
 }
 
-fn event_signal_kind(kind: CompactionSignalKind) -> EventSignalKind {
-    match kind {
-        CompactionSignalKind::Compacted => EventSignalKind::Compacted,
-        CompactionSignalKind::ContextCompacted => EventSignalKind::ContextCompacted,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -719,8 +711,8 @@ mod tests {
         let member = sample_member(member_name, "/tmp/project");
         let snapshot = sample_snapshot(team_name, member_name, "/tmp/project");
         let card = CompactionReinjectionService::compose_at(&member, &snapshot, now);
-        let rendered =
-            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render card");
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render card");
 
         append_codex_inbox_message(teams_dir, team_name, member_name, &card, now)
             .expect("append compaction card");

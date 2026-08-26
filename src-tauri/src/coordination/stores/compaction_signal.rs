@@ -7,19 +7,13 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub use crate::coordination::compaction_events::CompactionSignalKind;
 use crate::coordination::errors::CoordinationError;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 
 const COMPACTION_SIGNAL_SCHEMA_VERSION: u32 = 1;
 const COMPACTION_SIGNAL_FILENAME: &str = "codex-compaction-signals.jsonl";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CompactionSignalKind {
-    Compacted,
-    ContextCompacted,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

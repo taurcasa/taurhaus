@@ -1,4 +1,4 @@
-//! Claude Code hook bridge for post-compaction operational reinjection.
+//! Claude Code and Codex hook bridge for post-compaction operational reinjection.
 
 use std::fs;
 use std::io::Read;
@@ -18,27 +18,34 @@ use crate::coordination::stores::{
     OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path;
+use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use taurhaus_lib::logging::emit_global;
 
 const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
+const CODEX_HOOKS_FILENAME: &str = "hooks.json";
 const SESSION_START_HOOK_EVENT: &str = "SessionStart";
 const COMPACT_SOURCE: &str = "compact";
+const HOOK_EXECUTABLE_RECORD_FILENAME: &str = "taurhaus-session-start-compact.executable";
+pub(crate) const CODEX_ADDITIONAL_CONTEXT_LIMIT: u64 = 12_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClaudeHookRuntime {
+enum HookRuntime {
     Posix,
     Windows,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct ClaudeSessionStartHookInput {
+pub(crate) struct CompactHookInput {
     #[serde(alias = "hookEventName")]
     hook_event_name: String,
     #[serde(alias = "sessionId")]
     session_id: String,
-    source: String,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    trigger: Option<String>,
     #[serde(default)]
     cwd: Option<PathBuf>,
     #[serde(default, alias = "transcriptPath")]
@@ -51,14 +58,20 @@ struct ClaudeSessionStartHookInput {
     agent_type: Option<String>,
 }
 
+impl CompactHookInput {
+    fn inferred_tool(&self) -> Option<CliTool> {
+        infer_tool_from_transcript_path(self.transcript_path.as_deref())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
-pub struct ClaudeHookResponse {
+pub struct CompactHookResponse {
     #[serde(rename = "hookSpecificOutput", skip_serializing_if = "Option::is_none")]
-    hook_specific_output: Option<ClaudeSessionStartHookSpecificOutput>,
+    hook_specific_output: Option<CompactHookSpecificOutput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ClaudeSessionStartHookSpecificOutput {
+pub struct CompactHookSpecificOutput {
     #[serde(rename = "hookEventName")]
     hook_event_name: String,
     #[serde(rename = "additionalContext")]
@@ -72,18 +85,20 @@ struct HookMemberMatch {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClaudeHookSkipReason {
+enum CompactHookSkipReason {
     NonCompactSessionStart,
+    ToolInferenceUnavailable,
     NoManagedMemberMatch,
     MultipleManagedMembersMatched,
     MissingOperationalSnapshot,
     NoResumableTaskContext,
 }
 
-impl ClaudeHookSkipReason {
+impl CompactHookSkipReason {
     fn as_str(self) -> &'static str {
         match self {
             Self::NonCompactSessionStart => "non_compact_session_start",
+            Self::ToolInferenceUnavailable => "tool_inference_unavailable",
             Self::NoManagedMemberMatch => "no_managed_member_match",
             Self::MultipleManagedMembersMatched => "multiple_managed_members_matched",
             Self::MissingOperationalSnapshot => "missing_operational_snapshot",
@@ -93,7 +108,7 @@ impl ClaudeHookSkipReason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ClaudeHookFailureStage {
+enum CompactHookFailureStage {
     ReadStdin,
     ParsePayload,
     RenderAdditionalContext,
@@ -101,7 +116,7 @@ enum ClaudeHookFailureStage {
     SerializeResponse,
 }
 
-impl ClaudeHookFailureStage {
+impl CompactHookFailureStage {
     fn as_str(self) -> &'static str {
         match self {
             Self::ReadStdin => "read_stdin",
@@ -113,14 +128,93 @@ impl ClaudeHookFailureStage {
     }
 }
 
-pub fn handle_session_start_hook_stdin<R: Read>(
+/// Harness-specific hook configuration. Claude and Codex are the two current
+/// installer implementations; their stable payload fields share one parser.
+pub(crate) trait CompactionSignalSource {
+    fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError>;
+    fn remove(&self) -> Result<bool, CoordinationError>;
+}
+
+fn parse_compact_hook_input(raw: &str) -> Result<CompactHookInput, serde_json::Error> {
+    serde_json::from_str(raw)
+}
+
+struct ClaudeCompactionSignalSource<'a> {
+    claude_dir: &'a Path,
+}
+
+impl CompactionSignalSource for ClaudeCompactionSignalSource<'_> {
+    fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        ensure_source_installed(
+            self.claude_dir,
+            CLAUDE_SETTINGS_FILENAME,
+            taurhaus_exe,
+            None,
+        )
+    }
+
+    fn remove(&self) -> Result<bool, CoordinationError> {
+        remove_source_hook(self.claude_dir, CLAUDE_SETTINGS_FILENAME)
+    }
+}
+
+struct CodexCompactionSignalSource<'a> {
+    codex_home: &'a Path,
+}
+
+impl CompactionSignalSource for CodexCompactionSignalSource<'_> {
+    fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        let runtime = detect_hook_runtime(self.codex_home);
+        let executable = runtime_path_string(taurhaus_exe, runtime)?;
+        if !hook_executable_exists(self.codex_home, &executable) {
+            emit_codex_hook_degraded(self.codex_home, &executable);
+            return self.remove();
+        }
+        ensure_source_installed(
+            self.codex_home,
+            CODEX_HOOKS_FILENAME,
+            taurhaus_exe,
+            Some(CODEX_ADDITIONAL_CONTEXT_LIMIT),
+        )
+    }
+
+    fn remove(&self) -> Result<bool, CoordinationError> {
+        remove_source_hook(self.codex_home, CODEX_HOOKS_FILENAME)
+    }
+}
+
+fn emit_codex_hook_degraded(codex_home: &Path, executable: &str) {
+    let mut fields = Map::new();
+    fields.insert("tool".to_string(), Value::String("codex".to_string()));
+    fields.insert(
+        "reason".to_string(),
+        Value::String("hook_executable_missing".to_string()),
+    );
+    fields.insert(
+        "codex_home".to_string(),
+        Value::String(codex_home.display().to_string()),
+    );
+    fields.insert(
+        "executable".to_string(),
+        Value::String(executable.to_string()),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "compaction.codex_hook.degraded",
+        Some("Skipped Codex compaction hook because its executable is unavailable".to_string()),
+        fields,
+    );
+}
+
+pub fn handle_compact_hook_stdin<R: Read>(
     mut stdin: R,
     teams_dir: &Path,
-) -> Result<ClaudeHookResponse, CoordinationError> {
+) -> Result<CompactHookResponse, CoordinationError> {
     let mut raw = String::new();
     stdin.read_to_string(&mut raw).map_err(|error| {
-        emit_claude_hook_failed(
-            ClaudeHookFailureStage::ReadStdin,
+        emit_compact_hook_failed(
+            CompactHookFailureStage::ReadStdin,
             None,
             None,
             None,
@@ -130,17 +224,17 @@ pub fn handle_session_start_hook_stdin<R: Read>(
         );
         CoordinationError::Io(error)
     })?;
-    handle_session_start_hook(&raw, teams_dir)
+    handle_compact_hook(&raw, teams_dir)
 }
 
-pub fn handle_session_start_hook(
+pub fn handle_compact_hook(
     raw: &str,
     teams_dir: &Path,
-) -> Result<ClaudeHookResponse, CoordinationError> {
-    let payload: ClaudeSessionStartHookInput = serde_json::from_str(raw).map_err(|err| {
-        emit_claude_hook_parse_payload_debug(raw, &err.to_string());
-        emit_claude_hook_failed(
-            ClaudeHookFailureStage::ParsePayload,
+) -> Result<CompactHookResponse, CoordinationError> {
+    let payload = parse_compact_hook_input(raw).map_err(|err| {
+        emit_compact_hook_parse_payload_debug(raw, &err.to_string());
+        emit_compact_hook_failed(
+            CompactHookFailureStage::ParsePayload,
             None,
             None,
             None,
@@ -148,25 +242,50 @@ pub fn handle_session_start_hook(
             Some(raw.len()),
             &err.to_string(),
         );
-        CoordinationError::Validation(format!("invalid Claude SessionStart hook payload: {err}"))
+        CoordinationError::Validation(format!("invalid compact hook payload: {err}"))
     })?;
 
-    emit_claude_hook_received(&payload, raw.len());
+    emit_compact_hook_received(&payload, raw.len());
 
-    if payload.hook_event_name != SESSION_START_HOOK_EVENT || payload.source != COMPACT_SOURCE {
-        emit_claude_hook_skipped(&payload, None, ClaudeHookSkipReason::NonCompactSessionStart);
-        return Ok(ClaudeHookResponse::default());
+    if payload.hook_event_name != SESSION_START_HOOK_EVENT
+        || payload.source.as_deref() != Some(COMPACT_SOURCE)
+    {
+        emit_compact_hook_skipped(
+            &payload,
+            None,
+            CompactHookSkipReason::NonCompactSessionStart,
+        );
+        return Ok(CompactHookResponse::default());
     }
 
-    let matched = match resolve_member_match(teams_dir, &payload)? {
+    let Some(tool) = payload.inferred_tool() else {
+        emit_compact_hook_skipped(
+            &payload,
+            None,
+            CompactHookSkipReason::ToolInferenceUnavailable,
+        );
+        return Ok(CompactHookResponse::default());
+    };
+
+    let matched = match resolve_member_match(teams_dir, tool, &payload)? {
         Ok(matched) => matched,
         Err(reason) => {
-            emit_claude_hook_skipped(&payload, None, reason);
-            return Ok(ClaudeHookResponse::default());
+            emit_compact_hook_skipped(&payload, None, reason);
+            return Ok(CompactHookResponse::default());
         }
     };
 
-    emit_claude_hook_resolved(&payload, &matched);
+    emit_compact_hook_resolved(&payload, &matched);
+
+    let compaction_timestamp = if tool == CliTool::Codex {
+        payload
+            .transcript_path
+            .as_deref()
+            .and_then(crate::session_scanner::compaction_extractor::latest_compaction_timestamp)
+            .unwrap_or_else(Utc::now)
+    } else {
+        Utc::now()
+    };
 
     let Some(snapshot) =
         OperationalContextSnapshotStore::load(teams_dir, &matched.team_name, &matched.member.name)?
@@ -175,14 +294,14 @@ pub fn handle_session_start_hook(
             teams_dir,
             &matched.team_name,
             &matched.member.name,
-            CliTool::Claude,
+            tool,
             &payload.session_id,
-            Utc::now(),
+            compaction_timestamp,
             CompactionDeliveryResult::Skipped,
         )
         .inspect_err(|error| {
-            emit_claude_hook_failed(
-                ClaudeHookFailureStage::RecordDelivery,
+            emit_compact_hook_failed(
+                CompactHookFailureStage::RecordDelivery,
                 Some(&payload),
                 Some(&matched),
                 None,
@@ -191,12 +310,12 @@ pub fn handle_session_start_hook(
                 &error.to_string(),
             );
         })?;
-        emit_claude_hook_skipped(
+        emit_compact_hook_skipped(
             &payload,
             Some(&matched),
-            ClaudeHookSkipReason::MissingOperationalSnapshot,
+            CompactHookSkipReason::MissingOperationalSnapshot,
         );
-        return Ok(ClaudeHookResponse::default());
+        return Ok(CompactHookResponse::default());
     };
 
     if !CompactionReinjectionService::snapshot_has_resumable_task(&snapshot) {
@@ -204,14 +323,14 @@ pub fn handle_session_start_hook(
             teams_dir,
             &matched.team_name,
             &matched.member.name,
-            CliTool::Claude,
+            tool,
             &payload.session_id,
-            Utc::now(),
+            compaction_timestamp,
             CompactionDeliveryResult::Skipped,
         )
         .inspect_err(|error| {
-            emit_claude_hook_failed(
-                ClaudeHookFailureStage::RecordDelivery,
+            emit_compact_hook_failed(
+                CompactHookFailureStage::RecordDelivery,
                 Some(&payload),
                 Some(&matched),
                 None,
@@ -220,19 +339,19 @@ pub fn handle_session_start_hook(
                 &error.to_string(),
             );
         })?;
-        emit_claude_hook_skipped(
+        emit_compact_hook_skipped(
             &payload,
             Some(&matched),
-            ClaudeHookSkipReason::NoResumableTaskContext,
+            CompactHookSkipReason::NoResumableTaskContext,
         );
-        return Ok(ClaudeHookResponse::default());
+        return Ok(CompactHookResponse::default());
     }
 
     let card = CompactionReinjectionService::compose(&matched.member, &snapshot);
-    let additional_context = CompactionReinjectionService::render_claude_additional_context(&card)
+    let additional_context = CompactionReinjectionService::render_additional_context_text(&card)
         .map_err(|err| {
-            emit_claude_hook_failed(
-                ClaudeHookFailureStage::RenderAdditionalContext,
+            emit_compact_hook_failed(
+                CompactHookFailureStage::RenderAdditionalContext,
                 Some(&payload),
                 Some(&matched),
                 None,
@@ -241,7 +360,7 @@ pub fn handle_session_start_hook(
                 &err.to_string(),
             );
             CoordinationError::StoreError(format!(
-                "failed to render Claude additional context for '{}': {err}",
+                "failed to render compact hook additional context for '{}': {err}",
                 matched.member.name
             ))
         })?;
@@ -250,14 +369,14 @@ pub fn handle_session_start_hook(
         teams_dir,
         &matched.team_name,
         &matched.member.name,
-        CliTool::Claude,
+        tool,
         &payload.session_id,
-        Utc::now(),
+        compaction_timestamp,
         CompactionDeliveryResult::Injected,
     )
     .inspect_err(|error| {
-        emit_claude_hook_failed(
-            ClaudeHookFailureStage::RecordDelivery,
+        emit_compact_hook_failed(
+            CompactHookFailureStage::RecordDelivery,
             Some(&payload),
             Some(&matched),
             None,
@@ -267,10 +386,10 @@ pub fn handle_session_start_hook(
         );
     })?;
 
-    emit_claude_hook_delivered(&payload, &matched, additional_context.len());
+    emit_compact_hook_delivered(&payload, &matched, additional_context.len());
 
-    Ok(ClaudeHookResponse {
-        hook_specific_output: Some(ClaudeSessionStartHookSpecificOutput {
+    Ok(CompactHookResponse {
+        hook_specific_output: Some(CompactHookSpecificOutput {
             hook_event_name: SESSION_START_HOOK_EVENT.to_string(),
             additional_context,
         }),
@@ -288,17 +407,34 @@ pub fn ensure_compact_hook_installed(
         )));
     };
 
-    let hooks_dir = claude_dir.join("hooks");
-    fs::create_dir_all(&hooks_dir)?;
+    ClaudeCompactionSignalSource { claude_dir }.install(taurhaus_exe)
+}
 
-    let runtime = detect_claude_hook_runtime(claude_dir);
-    let script_path = hooks_dir.join(platform_hook_filename(runtime));
-    write_hook_script(&script_path, taurhaus_exe, runtime)?;
-    ensure_settings_hook_entry(
-        &claude_dir.join(CLAUDE_SETTINGS_FILENAME),
-        &script_path,
-        runtime,
-    )
+pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+    ensure_codex_compact_hook_installed_at(&PlatformPaths::codex_dir(), taurhaus_exe)
+}
+
+pub fn ensure_codex_compact_hook_installed_at(
+    codex_home: &Path,
+    taurhaus_exe: &Path,
+) -> Result<bool, CoordinationError> {
+    CodexCompactionSignalSource { codex_home }.install(taurhaus_exe)
+}
+
+pub fn remove_codex_compact_hook() -> Result<bool, CoordinationError> {
+    remove_codex_compact_hook_at(&PlatformPaths::codex_dir())
+}
+
+pub fn remove_codex_compact_hook_at(codex_home: &Path) -> Result<bool, CoordinationError> {
+    CodexCompactionSignalSource { codex_home }.remove()
+}
+
+pub fn codex_compact_hook_is_installed() -> bool {
+    codex_compact_hook_is_installed_at(&PlatformPaths::codex_dir())
+}
+
+pub fn codex_compact_hook_is_installed_at(codex_home: &Path) -> bool {
+    source_hook_is_installed(codex_home, CODEX_HOOKS_FILENAME)
 }
 
 pub fn team_has_managed_claude_member(
@@ -312,11 +448,40 @@ pub fn team_has_managed_claude_member(
         .any(|member| member.cli_tool == CliTool::Claude))
 }
 
+pub fn team_has_managed_codex_member(
+    teams_dir: &Path,
+    team_name: &str,
+) -> Result<bool, CoordinationError> {
+    let config = TeamConfigStore::load(teams_dir, team_name)?;
+    Ok(config
+        .members
+        .iter()
+        .any(|member| member.cli_tool == CliTool::Codex))
+}
+
+pub fn any_managed_codex_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    for team_name in TeamConfigStore::list(teams_dir)? {
+        match team_has_managed_codex_member(teams_dir, &team_name) {
+            Ok(true) => return Ok(true),
+            Ok(false) => {}
+            Err(error) => {
+                tracing::warn!(
+                    team_name,
+                    error = %error,
+                    "skipping invalid team config during managed Codex discovery"
+                );
+            }
+        }
+    }
+    Ok(false)
+}
+
 fn resolve_member_match(
     teams_dir: &Path,
-    payload: &ClaudeSessionStartHookInput,
-) -> Result<Result<HookMemberMatch, ClaudeHookSkipReason>, CoordinationError> {
-    let mut runtime_matches = Vec::new();
+    tool: CliTool,
+    payload: &CompactHookInput,
+) -> Result<Result<HookMemberMatch, CompactHookSkipReason>, CoordinationError> {
+    let mut candidates = Vec::new();
 
     for team_name in TeamConfigStore::list(teams_dir)? {
         let config = match TeamConfigStore::load(teams_dir, &team_name) {
@@ -325,52 +490,109 @@ fn resolve_member_match(
                 tracing::warn!(
                     team_name = team_name,
                     error = %err,
-                    "failed to load team config during Claude compaction hook resolution"
+                    "failed to load team config during compact hook resolution"
                 );
                 continue;
             }
         };
 
         for member in config.members {
-            if member.cli_tool != CliTool::Claude {
+            if member.cli_tool != tool {
                 continue;
             }
-            let runtime = match MemberRuntimeStore::load(teams_dir, &team_name, &member.name) {
-                Ok(runtime) => runtime,
-                Err(_) => continue,
-            };
-            if runtime.session_id.as_deref() != Some(payload.session_id.as_str()) {
-                continue;
-            }
-            if !cwd_matches_member(payload.cwd.as_deref(), &member.project_path) {
-                continue;
-            }
-            runtime_matches.push(HookMemberMatch {
-                team_name: team_name.clone(),
-                member,
-            });
+            let runtime_session_id = MemberRuntimeStore::load(teams_dir, &team_name, &member.name)
+                .ok()
+                .and_then(|runtime| runtime.session_id);
+            candidates.push((
+                HookMemberMatch {
+                    team_name: team_name.clone(),
+                    member,
+                },
+                runtime_session_id,
+            ));
         }
     }
 
-    if runtime_matches.len() == 1 {
-        return Ok(Ok(runtime_matches
+    let session_matches = candidates
+        .iter()
+        .filter(|(_, runtime_session_id)| {
+            runtime_session_id.as_deref() == Some(payload.session_id.as_str())
+        })
+        .map(|(matched, _)| matched.clone())
+        .collect::<Vec<_>>();
+    if session_matches.len() == 1 {
+        return Ok(Ok(session_matches
             .into_iter()
             .next()
             .expect("single match")));
     }
-    if runtime_matches.len() > 1 {
+    if session_matches.len() > 1 {
         tracing::warn!(
             session_id = %payload.session_id,
-            "multiple Claude members matched hook payload by runtime session; skipping reinjection"
+            tool = %tool,
+            "multiple members matched compact hook payload by runtime session; skipping reinjection"
         );
-        return Ok(Err(ClaudeHookSkipReason::MultipleManagedMembersMatched));
+        return Ok(Err(CompactHookSkipReason::MultipleManagedMembersMatched));
     }
-    Ok(Err(ClaudeHookSkipReason::NoManagedMemberMatch))
+
+    let cwd_matches = candidates
+        .into_iter()
+        .filter(|(matched, _)| {
+            cwd_matches_member(payload.cwd.as_deref(), &matched.member.project_path)
+        })
+        .map(|(matched, _)| matched)
+        .collect::<Vec<_>>();
+    match cwd_matches.len() {
+        1 => Ok(Ok(cwd_matches.into_iter().next().expect("single match"))),
+        0 => Ok(Err(CompactHookSkipReason::NoManagedMemberMatch)),
+        _ => Ok(Err(CompactHookSkipReason::MultipleManagedMembersMatched)),
+    }
 }
 
-pub(crate) fn emit_claude_hook_cli_failed(error_message: &str) {
-    emit_claude_hook_failed(
-        ClaudeHookFailureStage::SerializeResponse,
+fn infer_tool_from_transcript_path(transcript_path: Option<&Path>) -> Option<CliTool> {
+    let transcript_path = transcript_path?;
+    let normalized = transcript_path.to_string_lossy().replace('\\', "/");
+    let normalized = normalized.to_ascii_lowercase();
+    let file_name = transcript_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if normalized.contains("/.codex/") || file_name.starts_with("rollout-") {
+        return Some(CliTool::Codex);
+    }
+    if normalized.contains("/.claude") || normalized.contains("/projects/") {
+        return Some(CliTool::Claude);
+    }
+    None
+}
+
+pub fn handle_session_start_hook(
+    raw: &str,
+    teams_dir: &Path,
+) -> Result<CompactHookResponse, CoordinationError> {
+    handle_compact_hook(raw, teams_dir)
+}
+
+pub fn run_compact_hook_cli<R: Read, W: Write>(
+    stdin: R,
+    mut stdout: W,
+    teams_dir: &Path,
+) -> Result<(), CoordinationError> {
+    let response = handle_compact_hook_stdin(stdin, teams_dir)?;
+    serde_json::to_writer(&mut stdout, &response).map_err(|error| {
+        CoordinationError::StoreError(format!(
+            "failed to serialize compact hook response: {error}"
+        ))
+    })?;
+    stdout.write_all(b"\n")?;
+    stdout.flush()?;
+    Ok(())
+}
+
+pub fn emit_compact_hook_cli_failed(error_message: &str) {
+    emit_compact_hook_failed(
+        CompactHookFailureStage::SerializeResponse,
         None,
         None,
         None,
@@ -380,76 +602,80 @@ pub(crate) fn emit_claude_hook_cli_failed(error_message: &str) {
     );
 }
 
-fn emit_claude_hook_received(payload: &ClaudeSessionStartHookInput, raw_bytes: usize) {
-    let mut fields = base_claude_hook_fields(Some(payload), None);
+fn emit_compact_hook_received(payload: &CompactHookInput, raw_bytes: usize) {
+    let mut fields = base_compact_hook_fields(Some(payload), None);
     fields.insert("raw_bytes".to_string(), Value::from(raw_bytes as u64));
+    let event = hook_event_name(payload.inferred_tool(), "received");
     emit_global(
         "info",
         "coordination",
-        "compaction.claude_hook.received",
-        Some("Claude compact hook payload received".to_string()),
+        &event,
+        Some("Compact hook payload received".to_string()),
         fields,
     );
 }
 
-fn emit_claude_hook_resolved(payload: &ClaudeSessionStartHookInput, matched: &HookMemberMatch) {
+fn emit_compact_hook_resolved(payload: &CompactHookInput, matched: &HookMemberMatch) {
+    let event = hook_event_name(Some(matched.member.cli_tool), "resolved");
     emit_global(
         "info",
         "coordination",
-        "compaction.claude_hook.resolved",
-        Some("Claude compact hook matched managed member".to_string()),
-        base_claude_hook_fields(Some(payload), Some(matched)),
+        &event,
+        Some("Compact hook matched managed member".to_string()),
+        base_compact_hook_fields(Some(payload), Some(matched)),
     );
 }
 
-fn emit_claude_hook_delivered(
-    payload: &ClaudeSessionStartHookInput,
+fn emit_compact_hook_delivered(
+    payload: &CompactHookInput,
     matched: &HookMemberMatch,
     additional_context_bytes: usize,
 ) {
-    let mut fields = base_claude_hook_fields(Some(payload), Some(matched));
+    let mut fields = base_compact_hook_fields(Some(payload), Some(matched));
     fields.insert(
         "additional_context_bytes".to_string(),
         Value::from(additional_context_bytes as u64),
     );
+    let event = hook_event_name(Some(matched.member.cli_tool), "delivered");
     emit_global(
         "info",
         "coordination",
-        "compaction.claude_hook.delivered",
-        Some("Claude compact hook returned additional context".to_string()),
+        &event,
+        Some("Compact hook returned additional context".to_string()),
         fields,
     );
 }
 
-fn emit_claude_hook_skipped(
-    payload: &ClaudeSessionStartHookInput,
+fn emit_compact_hook_skipped(
+    payload: &CompactHookInput,
     matched: Option<&HookMemberMatch>,
-    reason: ClaudeHookSkipReason,
+    reason: CompactHookSkipReason,
 ) {
-    let mut fields = base_claude_hook_fields(Some(payload), matched);
+    let mut fields = base_compact_hook_fields(Some(payload), matched);
     fields.insert(
         "skip_reason".to_string(),
         Value::String(reason.as_str().to_string()),
     );
+    let event = hook_event_name(payload.inferred_tool(), "skipped");
     emit_global(
         "info",
         "coordination",
-        "compaction.claude_hook.skipped",
-        Some("Claude compact hook did not return additional context".to_string()),
+        &event,
+        Some("Compact hook did not return additional context".to_string()),
         fields,
     );
 }
 
-fn emit_claude_hook_failed(
-    stage: ClaudeHookFailureStage,
-    payload: Option<&ClaudeSessionStartHookInput>,
+fn emit_compact_hook_failed(
+    stage: CompactHookFailureStage,
+    payload: Option<&CompactHookInput>,
     matched: Option<&HookMemberMatch>,
     session_id: Option<&str>,
     cwd: Option<&Path>,
     raw_bytes: Option<usize>,
     error_message: &str,
 ) {
-    let mut fields = base_claude_hook_fields(payload, matched);
+    let mut fields = base_compact_hook_fields(payload, matched);
     if payload.is_none() {
         insert_optional_string(&mut fields, "session_id", session_id.map(ToOwned::to_owned));
         insert_optional_string(&mut fields, "cwd", cwd.map(path_display));
@@ -465,21 +691,21 @@ fn emit_claude_hook_failed(
         "error.message".to_string(),
         Value::String(error_message.to_string()),
     );
+    let tool = matched
+        .map(|matched| matched.member.cli_tool)
+        .or_else(|| payload.and_then(CompactHookInput::inferred_tool));
+    let event = hook_event_name(tool, "failed");
     emit_global(
         "warn",
         "coordination",
-        "compaction.claude_hook.failed",
-        Some("Claude compact hook bridge failed".to_string()),
+        &event,
+        Some("Compact hook bridge failed".to_string()),
         fields,
     );
 }
 
-fn emit_claude_hook_parse_payload_debug(raw: &str, error_message: &str) {
+fn emit_compact_hook_parse_payload_debug(raw: &str, error_message: &str) {
     let mut fields = Map::new();
-    fields.insert(
-        "tool".to_string(),
-        Value::String(CliTool::Claude.to_string()),
-    );
     fields.insert(
         "error.message".to_string(),
         Value::String(error_message.to_string()),
@@ -489,27 +715,30 @@ fn emit_claude_hook_parse_payload_debug(raw: &str, error_message: &str) {
     emit_global(
         "debug",
         "coordination",
-        "compaction.claude_hook.parse_payload_debug",
-        Some("Claude compact hook payload parse failed".to_string()),
+        "compaction.compact_hook.parse_payload_debug",
+        Some("Compact hook payload parse failed".to_string()),
         fields,
     );
 }
 
-fn base_claude_hook_fields(
-    payload: Option<&ClaudeSessionStartHookInput>,
+fn base_compact_hook_fields(
+    payload: Option<&CompactHookInput>,
     matched: Option<&HookMemberMatch>,
 ) -> Map<String, Value> {
     let mut fields = Map::new();
-    fields.insert(
-        "tool".to_string(),
-        Value::String(CliTool::Claude.to_string()),
-    );
+    let tool = matched
+        .map(|matched| matched.member.cli_tool)
+        .or_else(|| payload.and_then(CompactHookInput::inferred_tool));
+    if let Some(tool) = tool {
+        fields.insert("tool".to_string(), Value::String(tool.to_string()));
+    }
     if let Some(payload) = payload {
         fields.insert(
             "hook_event_name".to_string(),
             Value::String(payload.hook_event_name.clone()),
         );
-        fields.insert("source".to_string(), Value::String(payload.source.clone()));
+        insert_optional_string(&mut fields, "source", payload.source.clone());
+        insert_optional_string(&mut fields, "trigger", payload.trigger.clone());
         insert_optional_string(&mut fields, "session_id", Some(payload.session_id.clone()));
         insert_optional_string(&mut fields, "cwd", payload.cwd.as_deref().map(path_display));
         insert_optional_string(
@@ -541,6 +770,13 @@ fn base_claude_hook_fields(
     fields
 }
 
+fn hook_event_name(tool: Option<CliTool>, action: &str) -> String {
+    let source = tool
+        .map(|tool| tool.to_string())
+        .unwrap_or_else(|| "compact".to_string());
+    format!("compaction.{source}_hook.{action}")
+}
+
 fn insert_optional_string(fields: &mut Map<String, Value>, key: &str, value: Option<String>) {
     if let Some(value) = value {
         fields.insert(key.to_string(), Value::String(value));
@@ -568,13 +804,173 @@ fn cwd_matches_member(cwd: Option<&Path>, member_project_path: &Path) -> bool {
     }
 }
 
+fn ensure_source_installed(
+    config_dir: &Path,
+    settings_filename: &str,
+    taurhaus_exe: &Path,
+    additional_context_limit: Option<u64>,
+) -> Result<bool, CoordinationError> {
+    let hooks_dir = config_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir)?;
+    let runtime = detect_hook_runtime(config_dir);
+    let script_path = hooks_dir.join(platform_hook_filename(runtime));
+    let script_changed = write_hook_script(&script_path, taurhaus_exe, runtime)?;
+    let executable_changed = write_hook_executable_record(&hooks_dir, taurhaus_exe, runtime)?;
+    let settings_changed = ensure_settings_hook_entry(
+        &config_dir.join(settings_filename),
+        &script_path,
+        runtime,
+        additional_context_limit,
+    )?;
+    Ok(script_changed || executable_changed || settings_changed)
+}
+
+fn remove_source_hook(
+    config_dir: &Path,
+    settings_filename: &str,
+) -> Result<bool, CoordinationError> {
+    let settings_path = config_dir.join(settings_filename);
+    let mut settings = load_settings_json(&settings_path)?;
+    let original = settings.clone();
+
+    if let Some(hooks) = settings.get_mut("hooks").and_then(Value::as_object_mut) {
+        if let Some(entries) = hooks
+            .get_mut(SESSION_START_HOOK_EVENT)
+            .and_then(Value::as_array_mut)
+        {
+            for entry in entries.iter_mut() {
+                if let Some(hook_array) = entry.get_mut("hooks").and_then(Value::as_array_mut) {
+                    hook_array.retain(|hook| !is_taurhaus_compact_hook(hook));
+                }
+            }
+            entries.retain(|entry| {
+                entry
+                    .get("hooks")
+                    .and_then(Value::as_array)
+                    .is_none_or(|hook_array| !hook_array.is_empty())
+            });
+            if entries.is_empty() {
+                hooks.remove(SESSION_START_HOOK_EVENT);
+            }
+        }
+        if hooks.is_empty() {
+            settings
+                .as_object_mut()
+                .expect("settings root remains an object")
+                .remove("hooks");
+        }
+    }
+
+    let settings_changed = settings != original;
+    if settings_changed {
+        let payload = serde_json::to_vec_pretty(&settings).map_err(|error| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize hook settings '{}': {error}",
+                settings_path.display()
+            ))
+        })?;
+        write_atomic_settings_file(&settings_path, &payload)?;
+    }
+
+    let runtime = detect_hook_runtime(config_dir);
+    let script_path = config_dir
+        .join("hooks")
+        .join(platform_hook_filename(runtime));
+    let script_changed = match fs::remove_file(&script_path) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(CoordinationError::Io(error)),
+    };
+    let executable_record_changed = match fs::remove_file(
+        config_dir
+            .join("hooks")
+            .join(HOOK_EXECUTABLE_RECORD_FILENAME),
+    ) {
+        Ok(()) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(CoordinationError::Io(error)),
+    };
+    Ok(settings_changed || script_changed || executable_record_changed)
+}
+
+fn source_hook_is_installed(config_dir: &Path, settings_filename: &str) -> bool {
+    let runtime = detect_hook_runtime(config_dir);
+    let hooks_dir = config_dir.join("hooks");
+    let script_path = hooks_dir.join(platform_hook_filename(runtime));
+    let executable = fs::read_to_string(hooks_dir.join(HOOK_EXECUTABLE_RECORD_FILENAME))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let script_is_current = executable.as_deref().is_some_and(|executable| {
+        render_hook_script(Path::new(executable), runtime)
+            .ok()
+            .is_some_and(|expected| {
+                fs::read_to_string(&script_path).is_ok_and(|script| script == expected)
+            })
+    });
+    let executable_exists = executable
+        .as_deref()
+        .is_some_and(|executable| hook_executable_exists(config_dir, executable));
+    let settings_contains_hook = load_settings_json(&config_dir.join(settings_filename))
+        .ok()
+        .and_then(|settings| {
+            settings
+                .get("hooks")?
+                .get(SESSION_START_HOOK_EVENT)?
+                .as_array()
+                .map(|entries| {
+                    entries.iter().any(|entry| {
+                        entry
+                            .get("hooks")
+                            .and_then(Value::as_array)
+                            .is_some_and(|hooks| hooks.iter().any(is_taurhaus_compact_hook))
+                    })
+                })
+        })
+        .unwrap_or(false);
+    script_is_current && executable_exists && settings_contains_hook
+}
+
+fn write_hook_executable_record(
+    hooks_dir: &Path,
+    taurhaus_exe: &Path,
+    runtime: HookRuntime,
+) -> Result<bool, CoordinationError> {
+    let executable = runtime_path_string(taurhaus_exe, runtime)?;
+    let record_path = hooks_dir.join(HOOK_EXECUTABLE_RECORD_FILENAME);
+    let changed = fs::read_to_string(&record_path)
+        .map(|current| current.trim() != executable)
+        .unwrap_or(true);
+    if changed {
+        fs::write(record_path, executable.as_bytes())?;
+    }
+    Ok(changed)
+}
+
+fn hook_executable_exists(config_dir: &Path, executable: &str) -> bool {
+    let config_dir = config_dir.to_string_lossy();
+    let visible_path = if executable.starts_with('/') {
+        path::wsl_distro_from_path(&config_dir)
+            .map(|distro| PathBuf::from(path::linux_to_wsl_unc(executable, &distro)))
+            .unwrap_or_else(|| PathBuf::from(executable))
+    } else {
+        PathBuf::from(executable)
+    };
+    visible_path.is_file()
+}
+
 fn write_hook_script(
     script_path: &Path,
     taurhaus_exe: &Path,
-    runtime: ClaudeHookRuntime,
-) -> Result<(), CoordinationError> {
+    runtime: HookRuntime,
+) -> Result<bool, CoordinationError> {
     let script_body = render_hook_script(taurhaus_exe, runtime)?;
-    fs::write(script_path, script_body.as_bytes())?;
+    let changed = fs::read(script_path)
+        .map(|current| current != script_body.as_bytes())
+        .unwrap_or(true);
+    if changed {
+        fs::write(script_path, script_body.as_bytes())?;
+    }
     #[cfg(not(target_os = "windows"))]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -582,20 +978,20 @@ fn write_hook_script(
         perms.set_mode(0o755);
         fs::set_permissions(script_path, perms)?;
     }
-    Ok(())
+    Ok(changed)
 }
 
 fn render_hook_script(
     taurhaus_exe: &Path,
-    runtime: ClaudeHookRuntime,
+    runtime: HookRuntime,
 ) -> Result<String, CoordinationError> {
     let executable = runtime_path_string(taurhaus_exe, runtime)?;
     Ok(match runtime {
-        ClaudeHookRuntime::Windows => {
-            format!("@echo off\r\n\"{}\" --claude-compact-hook\r\n", executable)
+        HookRuntime::Windows => {
+            format!("@echo off\r\n\"{}\" --compact-hook\r\n", executable)
         }
-        ClaudeHookRuntime::Posix => format!(
-            "#!/usr/bin/env bash\nset -euo pipefail\nexec {} --claude-compact-hook\n",
+        HookRuntime::Posix => format!(
+            "#!/usr/bin/env bash\nset -euo pipefail\nexec {} --compact-hook\n",
             shell_quote_string(&executable)
         ),
     })
@@ -604,7 +1000,8 @@ fn render_hook_script(
 fn ensure_settings_hook_entry(
     settings_path: &Path,
     script_path: &Path,
-    runtime: ClaudeHookRuntime,
+    runtime: HookRuntime,
+    additional_context_limit: Option<u64>,
 ) -> Result<bool, CoordinationError> {
     let mut settings = load_settings_json(settings_path)?;
     let original_settings = settings.clone();
@@ -612,7 +1009,7 @@ fn ensure_settings_hook_entry(
 
     let root = settings.as_object_mut().ok_or_else(|| {
         CoordinationError::StoreError(format!(
-            "Claude settings at '{}' are not a JSON object",
+            "Hook settings at '{}' are not a JSON object",
             settings_path.display()
         ))
     })?;
@@ -622,7 +1019,7 @@ fn ensure_settings_hook_entry(
         .or_insert_with(|| Value::Object(Default::default()));
     let hooks_obj = hooks.as_object_mut().ok_or_else(|| {
         CoordinationError::StoreError(format!(
-            "Claude settings 'hooks' in '{}' are not a JSON object",
+            "Hook settings 'hooks' in '{}' are not a JSON object",
             settings_path.display()
         ))
     })?;
@@ -632,7 +1029,7 @@ fn ensure_settings_hook_entry(
         .or_insert_with(|| Value::Array(Vec::new()));
     let entries = session_start.as_array_mut().ok_or_else(|| {
         CoordinationError::StoreError(format!(
-            "Claude settings 'hooks.{SESSION_START_HOOK_EVENT}' in '{}' are not an array",
+            "Hook settings 'hooks.{SESSION_START_HOOK_EVENT}' in '{}' are not an array",
             settings_path.display()
         ))
     })?;
@@ -653,11 +1050,11 @@ fn ensure_settings_hook_entry(
             .or_insert_with(|| Value::Array(Vec::new()));
         let hook_array = hooks_value.as_array_mut().ok_or_else(|| {
             CoordinationError::StoreError(format!(
-                "Claude settings compact SessionStart hooks in '{}' are not an array",
+                "Hook settings compact SessionStart hooks in '{}' are not an array",
                 settings_path.display()
             ))
         })?;
-        hook_array.push(command_hook_value(&command));
+        hook_array.push(command_hook_value(&command, additional_context_limit));
         inserted = true;
         break;
     }
@@ -665,7 +1062,7 @@ fn ensure_settings_hook_entry(
     if !inserted {
         entries.push(json!({
             "matcher": COMPACT_SOURCE,
-            "hooks": [command_hook_value(&command)],
+            "hooks": [command_hook_value(&command, additional_context_limit)],
         }));
     }
 
@@ -676,7 +1073,7 @@ fn ensure_settings_hook_entry(
     if changed {
         let payload = serde_json::to_vec_pretty(&settings).map_err(|err| {
             CoordinationError::StoreError(format!(
-                "failed to serialize Claude settings '{}': {err}",
+                "failed to serialize hook settings '{}': {err}",
                 settings_path.display()
             ))
         })?;
@@ -691,7 +1088,7 @@ fn write_atomic_settings_file(
 ) -> Result<(), CoordinationError> {
     let Some(parent) = settings_path.parent() else {
         return Err(CoordinationError::Validation(format!(
-            "Claude settings path '{}' has no parent directory",
+            "Hook settings path '{}' has no parent directory",
             settings_path.display()
         )));
     };
@@ -759,11 +1156,15 @@ fn is_taurhaus_compact_hook(hook: &Value) -> bool {
     command.contains(TAURHAUS_COMPACT_HOOK_BASENAME)
 }
 
-fn command_hook_value(command: &str) -> Value {
-    json!({
+fn command_hook_value(command: &str, additional_context_limit: Option<u64>) -> Value {
+    let mut hook = json!({
         "type": "command",
         "command": command,
-    })
+    });
+    if let Some(limit) = additional_context_limit {
+        hook["additionalContextLimit"] = Value::from(limit);
+    }
+    hook
 }
 
 fn load_settings_json(settings_path: &Path) -> Result<Value, CoordinationError> {
@@ -777,27 +1178,27 @@ fn load_settings_json(settings_path: &Path) -> Result<Value, CoordinationError> 
     }
     serde_json::from_str(&raw).map_err(|err| {
         CoordinationError::StoreError(format!(
-            "failed to parse Claude settings '{}': {err}",
+            "failed to parse hook settings '{}': {err}",
             settings_path.display()
         ))
     })
 }
 
-fn platform_hook_filename(runtime: ClaudeHookRuntime) -> String {
+fn platform_hook_filename(runtime: HookRuntime) -> String {
     match runtime {
-        ClaudeHookRuntime::Windows => format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.cmd"),
-        ClaudeHookRuntime::Posix => format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.sh"),
+        HookRuntime::Windows => format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.cmd"),
+        HookRuntime::Posix => format!("{TAURHAUS_COMPACT_HOOK_BASENAME}.sh"),
     }
 }
 
 fn settings_command_for_script(
     script_path: &Path,
-    runtime: ClaudeHookRuntime,
+    runtime: HookRuntime,
 ) -> Result<String, CoordinationError> {
     let script = runtime_path_string(script_path, runtime)?;
     Ok(match runtime {
-        ClaudeHookRuntime::Windows => format!("\"{}\"", script),
-        ClaudeHookRuntime::Posix => format!("bash {}", shell_quote_string(&script)),
+        HookRuntime::Windows => format!("\"{}\"", script),
+        HookRuntime::Posix => format!("bash {}", shell_quote_string(&script)),
     })
 }
 
@@ -806,41 +1207,41 @@ fn shell_quote_string(value: &str) -> String {
     format!("'{escaped}'")
 }
 
-fn detect_claude_hook_runtime(claude_dir: &Path) -> ClaudeHookRuntime {
-    let value = claude_dir.display().to_string();
+fn detect_hook_runtime(config_dir: &Path) -> HookRuntime {
+    let value = config_dir.display().to_string();
     if value.starts_with('/') || path::is_wsl_path(&value) {
-        return ClaudeHookRuntime::Posix;
+        return HookRuntime::Posix;
     }
     if path::is_windows_drive_path(&value) {
-        return ClaudeHookRuntime::Windows;
+        return HookRuntime::Windows;
     }
-    ClaudeHookRuntime::Posix
+    HookRuntime::Posix
 }
 
 fn runtime_path_string(
     path_value: &Path,
-    runtime: ClaudeHookRuntime,
+    runtime: HookRuntime,
 ) -> Result<String, CoordinationError> {
     let value = path_value.display().to_string();
     match runtime {
-        ClaudeHookRuntime::Posix => {
+        HookRuntime::Posix => {
             if value.starts_with('/') {
                 return Ok(value);
             }
             path::to_linux(&value).ok_or_else(|| {
                 CoordinationError::Validation(format!(
-                    "path '{}' is not executable from a POSIX Claude runtime",
+                    "path '{}' is not executable from a POSIX hook runtime",
                     path_value.display()
                 ))
             })
         }
-        ClaudeHookRuntime::Windows => {
+        HookRuntime::Windows => {
             if path::is_windows_drive_path(&value) {
                 return Ok(value);
             }
             path::linux_mount_to_windows(&value).ok_or_else(|| {
                 CoordinationError::Validation(format!(
-                    "path '{}' is not executable from a Windows Claude runtime",
+                    "path '{}' is not executable from a Windows hook runtime",
                     path_value.display()
                 ))
             })
@@ -1000,7 +1401,7 @@ mod tests {
                 assignment_footer: OperationalAssignmentFooterSnapshot {
                     execution_mode: "implement".to_string(),
                     file_ownership_boundary: vec![
-                        "src-tauri/src/coordination/claude_hooks.rs".to_string()
+                        "src-tauri/src/coordination/compact_hook.rs".to_string()
                     ],
                     adjacent_fix_policy: "no".to_string(),
                     validation_expectation: "cargo check --tests".to_string(),
@@ -1012,7 +1413,7 @@ mod tests {
                 },
                 working_set: OperationalWorkingSetSnapshot {
                     project_path: "/home/user/projects/taurhaus".to_string(),
-                    focal_files: vec!["src-tauri/src/coordination/claude_hooks.rs".to_string()],
+                    focal_files: vec!["src-tauri/src/coordination/compact_hook.rs".to_string()],
                 },
             },
         )
@@ -1033,7 +1434,8 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             tmp.path(),
@@ -1046,10 +1448,8 @@ mod tests {
         assert_eq!(output.hook_event_name, "SessionStart");
         assert!(output
             .additional_context
-            .contains("\"reason\": \"post_compaction\""));
-        assert!(output
-            .additional_context
-            .contains("\"member_name\": \"architect\""));
+            .contains("[taurhaus] restored_working_context_after_compaction"));
+        assert!(output.additional_context.contains("Current task: #680"));
     }
 
     #[test]
@@ -1074,7 +1474,7 @@ mod tests {
                 "hook_event_name": "SessionStart",
                 "session_id": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
                 "transcript_path": transcript_path,
                 "permission_mode": "default",
                 "model": "claude-opus-4-1",
@@ -1088,9 +1488,7 @@ mod tests {
             .hook_specific_output
             .expect("hook should inject additional context");
         assert_eq!(output.hook_event_name, "SessionStart");
-        assert!(output
-            .additional_context
-            .contains("\"reason\": \"post_compaction\""));
+        assert!(output.additional_context.contains("Current task: #680"));
     }
 
     #[test]
@@ -1114,7 +1512,8 @@ mod tests {
             "hookEventName": "SessionStart",
             "sessionId": "sess-123",
             "source": "compact",
-            "cwd": project,
+            "cwd": &project,
+            "transcriptPath": project.join(".claude/projects/session.jsonl"),
         })
         .to_string();
 
@@ -1122,23 +1521,47 @@ mod tests {
             handle_session_start_hook(&payload, tmp.path()).expect("hook should succeed");
         assert!(response.hook_specific_output.is_some());
 
+        // Regression: 0b87699 emitted only Claude hook lifecycle events, leaving
+        // the Codex bridge without acceptance telemetry.
+        let mut codex_member = sample_member(&project);
+        codex_member.name = "codex-architect".to_string();
+        codex_member.cli_tool = CliTool::Codex;
+        write_team_fixture(tmp.path(), "codex-team", &codex_member, "codex-session");
+        write_snapshot_fixture(tmp.path(), "codex-team", &codex_member.name);
+        let codex_payload = json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "codex-session",
+            "source": "compact",
+            "cwd": &project,
+            "transcript_path": project.join(
+                ".codex/sessions/2026/08/26/rollout-2026-08-26T10-00-00-codex-session.jsonl"
+            ),
+        })
+        .to_string();
+        let response =
+            handle_compact_hook(&codex_payload, tmp.path()).expect("Codex hook should succeed");
+        assert!(response.hook_specific_output.is_some());
+
         let contents = read_log_after_flush(
             &log_state,
             &log_path,
-            "\"event\":\"compaction.claude_hook.delivered\"",
+            "\"event\":\"compaction.codex_hook.delivered\"",
         );
         assert!(contents.contains("\"event\":\"compaction.claude_hook.received\""));
         assert!(contents.contains("\"event\":\"compaction.claude_hook.resolved\""));
         assert!(contents.contains("\"event\":\"compaction.claude_hook.delivered\""));
+        assert!(contents.contains("\"event\":\"compaction.codex_hook.received\""));
+        assert!(contents.contains("\"event\":\"compaction.codex_hook.resolved\""));
+        assert!(contents.contains("\"event\":\"compaction.codex_hook.delivered\""));
         assert!(contents.contains("\"session_id\":\"sess-123\""));
         assert!(contents.contains("\"team_name\":\"taurhaus-team\""));
         assert!(contents.contains("\"member_name\":\"architect\""));
     }
 
     #[test]
-    fn compact_hook_skips_forged_session_id_even_when_cwd_matches_managed_project() {
-        // Regression: commit 34e7b9d allowed cwd-only fallback, so a forged compact hook with a
-        // managed project path could receive reinjection context without owning the live session.
+    fn compact_hook_falls_back_to_cwd_when_runtime_session_is_not_yet_captured() {
+        // Regression: 0b87699 required a captured runtime session id; the shared
+        // PR 9 resolver must fall back to normalized cwd for a newly compacted session.
         let guard = acquire_env_test_guard();
         let tmp = tempfile::tempdir().expect("tempdir");
         let claude_dir = tmp.path().join("claude");
@@ -1157,19 +1580,19 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "forged-session",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             tmp.path(),
         )
         .expect("hook should succeed");
 
-        assert_eq!(response, ClaudeHookResponse::default());
+        assert!(response.hook_specific_output.is_some());
         assert!(
-            MemberCompactionStore::load(&claude_dir.join("teams"), team_name, &member.name,)
+            MemberCompactionStore::load(tmp.path(), team_name, &member.name)
                 .expect("load compaction state")
-                .is_none(),
-            "forged payload must not record delivery state"
+                .is_some()
         );
     }
 
@@ -1187,7 +1610,8 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             tmp.path(),
@@ -1197,34 +1621,16 @@ mod tests {
         let output = response
             .hook_specific_output
             .expect("hook should inject additional context");
-        let parsed: Value =
-            serde_json::from_str(&output.additional_context).expect("additional context json");
-
-        assert_eq!(parsed["version"], 1);
-        assert_eq!(parsed["reason"], "post_compaction");
-        assert_eq!(parsed["team_name"], "taurhaus-team");
-        assert_eq!(parsed["member_name"], "architect");
-        assert_eq!(parsed["role"]["role_id"], "taurhaus-architect");
-        assert_eq!(parsed["role"]["role_name"], "Taurhaus Architect");
-        assert_eq!(parsed["role"]["focus_area"], "Cross-layer diagnosis");
-        assert_eq!(parsed["task"]["id"], "680");
-        assert_eq!(
-            parsed["task"]["subject"],
-            "Implement Claude SessionStart(source=compact) hook bridge"
-        );
-        assert_eq!(parsed["task"]["execution_mode"], "implement");
-        assert_eq!(
-            parsed["task"]["validation_expectation"],
-            "cargo check --tests"
-        );
-        assert_eq!(
-            parsed["boundaries"]["file_ownership_boundary"][0],
-            "src-tauri/src/coordination/claude_hooks.rs"
-        );
-        assert_eq!(
-            parsed["working_set"]["project_path"],
-            "/home/user/projects/taurhaus"
-        );
+        assert!(output.additional_context.contains("Current task: #680"));
+        assert!(output
+            .additional_context
+            .contains("Role: Taurhaus Architect"));
+        assert!(output
+            .additional_context
+            .contains("Validation expectation: cargo check --tests"));
+        assert!(output
+            .additional_context
+            .contains("src-tauri/src/coordination/compact_hook.rs"));
     }
 
     #[test]
@@ -1241,7 +1647,7 @@ mod tests {
         )
         .expect("hook should succeed");
 
-        assert_eq!(response, ClaudeHookResponse::default());
+        assert_eq!(response, CompactHookResponse::default());
     }
 
     #[test]
@@ -1266,14 +1672,15 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             tmp.path(),
         )
         .expect("hook should succeed");
 
-        assert_eq!(response, ClaudeHookResponse::default());
+        assert_eq!(response, CompactHookResponse::default());
         let contents = read_log_after_flush(
             &log_state,
             &log_path,
@@ -1302,14 +1709,15 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             &passed_teams_dir,
         )
         .expect("hook should skip cleanly without a snapshot");
 
-        assert_eq!(response, ClaudeHookResponse::default());
+        assert_eq!(response, CompactHookResponse::default());
         assert!(
             MemberCompactionStore::load(&passed_teams_dir, "taurhaus-team", &member.name,)
                 .expect("load passed-root state")
@@ -1377,14 +1785,15 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             tmp.path(),
         )
         .expect("hook should succeed");
 
-        assert_eq!(response, ClaudeHookResponse::default());
+        assert_eq!(response, CompactHookResponse::default());
 
         let contents = read_log_after_flush(
             &log_state,
@@ -1406,17 +1815,15 @@ mod tests {
         install_global_sink(&log_state);
 
         let error = handle_session_start_hook("{", tmp.path()).expect_err("parse should fail");
-        assert!(error
-            .to_string()
-            .contains("invalid Claude SessionStart hook payload"));
+        assert!(error.to_string().contains("invalid compact hook payload"));
 
         let contents = read_log_after_flush(
             &log_state,
             &log_path,
-            "\"event\":\"compaction.claude_hook.failed\"",
+            "\"event\":\"compaction.compact_hook.failed\"",
         );
         assert!(contents.contains("\"failure_stage\":\"parse_payload\""));
-        assert!(contents.contains("\"event\":\"compaction.claude_hook.parse_payload_debug\""));
+        assert!(contents.contains("\"event\":\"compaction.compact_hook.parse_payload_debug\""));
         assert!(contents.contains("\"raw_payload\":\"{\""));
     }
 
@@ -1478,14 +1885,15 @@ mod tests {
                 "hookEventName": "SessionStart",
                 "sessionId": "sess-123",
                 "source": "compact",
-                "cwd": project,
+                "cwd": &project,
+                "transcriptPath": project.join(".claude/projects/session.jsonl"),
             })
             .to_string(),
             tmp.path(),
         )
         .expect("hook should succeed");
 
-        assert_eq!(response, ClaudeHookResponse::default());
+        assert_eq!(response, CompactHookResponse::default());
     }
 
     #[test]
@@ -1502,7 +1910,7 @@ mod tests {
         let script_path = tmp
             .path()
             .join("hooks")
-            .join(platform_hook_filename(ClaudeHookRuntime::Posix));
+            .join(platform_hook_filename(HookRuntime::Posix));
         assert!(script_path.exists());
         let settings_raw =
             fs::read_to_string(tmp.path().join("settings.json")).expect("settings exists");
@@ -1571,7 +1979,7 @@ mod tests {
                 shell_quote_string(
                     &tmp.path()
                         .join("hooks")
-                        .join(platform_hook_filename(ClaudeHookRuntime::Posix))
+                        .join(platform_hook_filename(HookRuntime::Posix))
                         .display()
                         .to_string()
                 )
@@ -1588,7 +1996,7 @@ mod tests {
         let script_path = tmp
             .path()
             .join("hooks")
-            .join(platform_hook_filename(ClaudeHookRuntime::Posix));
+            .join(platform_hook_filename(HookRuntime::Posix));
         fs::create_dir_all(script_path.parent().expect("hooks dir")).expect("hooks dir");
         fs::write(
             &settings_path,
@@ -1609,7 +2017,7 @@ mod tests {
         .expect("write settings");
 
         let changed =
-            ensure_settings_hook_entry(&settings_path, &script_path, ClaudeHookRuntime::Posix)
+            ensure_settings_hook_entry(&settings_path, &script_path, HookRuntime::Posix, None)
                 .expect("update settings");
         assert!(changed);
 
@@ -1636,10 +2044,10 @@ mod tests {
     }
 
     #[test]
-    fn detect_claude_hook_runtime_treats_wsl_unc_paths_as_posix() {
+    fn detect_hook_runtime_treats_wsl_unc_paths_as_posix() {
         assert_eq!(
-            detect_claude_hook_runtime(Path::new(r"\\wsl.localhost\Ubuntu\home\user\.claude")),
-            ClaudeHookRuntime::Posix
+            detect_hook_runtime(Path::new(r"\\wsl.localhost\Ubuntu\home\user\.claude")),
+            HookRuntime::Posix
         );
     }
 
@@ -1647,7 +2055,7 @@ mod tests {
     fn runtime_path_string_converts_windows_exe_for_posix_runtime() {
         let converted = runtime_path_string(
             Path::new(r"C:\Users\user\AppData\Local\taurhaus\taurhaus.exe"),
-            ClaudeHookRuntime::Posix,
+            HookRuntime::Posix,
         )
         .expect("convert to linux path");
         assert_eq!(
@@ -1662,7 +2070,7 @@ mod tests {
             Path::new(
                 r"\\wsl.localhost\Ubuntu\home\user\.claude\hooks\taurhaus-session-start-compact.sh",
             ),
-            ClaudeHookRuntime::Posix,
+            HookRuntime::Posix,
         )
         .expect("settings command");
         assert_eq!(
@@ -1675,12 +2083,314 @@ mod tests {
     fn render_hook_script_for_posix_runtime_execs_linux_mapped_windows_exe() {
         let script = render_hook_script(
             Path::new(r"C:\Users\user\AppData\Local\taurhaus\taurhaus.exe"),
-            ClaudeHookRuntime::Posix,
+            HookRuntime::Posix,
         )
         .expect("render script");
         assert!(script.contains(
-            "exec '/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe' --claude-compact-hook"
+            "exec '/mnt/c/Users/user/AppData/Local/taurhaus/taurhaus.exe' --compact-hook"
         ));
+    }
+
+    // Regression: 0b87699 introduced a Claude-only compact hook, so managed
+    // Codex sessions lost their operational context after compaction.
+    #[test]
+    fn compact_hook_accepts_claude_and_codex_payload_fixtures() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+
+        for (tool, transcript_path) in [
+            (
+                CliTool::Claude,
+                tmp.path()
+                    .join(".claude/projects/project/session-claude.jsonl"),
+            ),
+            (
+                CliTool::Codex,
+                tmp.path().join(
+                    ".codex/sessions/2026/08/26/rollout-2026-08-26T10-00-00-session-codex.jsonl",
+                ),
+            ),
+        ] {
+            let team_name = format!("{tool}-team");
+            let session_id = format!("session-{tool}");
+            let mut member = sample_member(&project);
+            member.name = format!("{tool}-member");
+            member.cli_tool = tool;
+            write_team_fixture(tmp.path(), &team_name, &member, &session_id);
+            write_snapshot_fixture(tmp.path(), &team_name, &member.name);
+
+            let payload = json!({
+                "hook_event_name": "SessionStart",
+                "session_id": session_id,
+                "source": "compact",
+                "cwd": &project,
+                "transcript_path": transcript_path,
+            })
+            .to_string();
+            let parsed = parse_compact_hook_input(&payload).expect("source parses fixture");
+            assert_eq!(parsed.inferred_tool(), Some(tool));
+
+            let response =
+                handle_compact_hook(&payload, tmp.path()).expect("compact SessionStart fixture");
+            let response = serde_json::to_value(response).expect("serialize response");
+            let context = response["hookSpecificOutput"]["additionalContext"]
+                .as_str()
+                .expect("additional context");
+            assert!(context.contains("[taurhaus] restored_working_context_after_compaction"));
+
+            let post_compact = handle_compact_hook(
+                &json!({
+                    "hook_event_name": "PostCompact",
+                    "session_id": format!("session-{tool}"),
+                    "trigger": "manual",
+                    "cwd": &project,
+                    "transcript_path": transcript_path,
+                })
+                .to_string(),
+                tmp.path(),
+            )
+            .expect("PostCompact fixture");
+            assert_eq!(
+                serde_json::to_value(post_compact).expect("serialize response"),
+                json!({})
+            );
+        }
+    }
+
+    // Regression: 0b87699 installed only Claude settings and persisted no
+    // repairable Codex hook executable path.
+    #[test]
+    fn codex_installer_is_idempotent_repairs_exe_path_and_removes_cleanly() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_home = tmp.path().join("isolated-codex-home");
+
+        let first_exe = tmp.path().join("taurhaus-daemon-v1");
+        let second_exe = tmp.path().join("taurhaus-daemon-v2");
+        fs::write(&first_exe, b"v1").expect("first exe");
+        fs::write(&second_exe, b"v2").expect("second exe");
+
+        assert!(
+            ensure_codex_compact_hook_installed_at(&codex_home, &first_exe).expect("first install")
+        );
+        assert!(
+            !ensure_codex_compact_hook_installed_at(&codex_home, &first_exe)
+                .expect("idempotent install")
+        );
+
+        let hooks: Value = serde_json::from_str(
+            &fs::read_to_string(codex_home.join("hooks.json")).expect("hooks.json"),
+        )
+        .expect("hooks json");
+        assert_eq!(
+            hooks["hooks"]["SessionStart"][0]["hooks"][0]["additionalContextLimit"],
+            CODEX_ADDITIONAL_CONTEXT_LIMIT
+        );
+
+        assert!(
+            ensure_codex_compact_hook_installed_at(&codex_home, &second_exe).expect("repair exe")
+        );
+        let script = fs::read_to_string(
+            codex_home
+                .join("hooks")
+                .join(platform_hook_filename(HookRuntime::Posix)),
+        )
+        .expect("hook script");
+        assert!(script.contains(&second_exe.display().to_string()));
+        assert!(!script.contains(&first_exe.display().to_string()));
+
+        assert!(remove_codex_compact_hook_at(&codex_home).expect("remove hook"));
+        assert!(!remove_codex_compact_hook_at(&codex_home).expect("idempotent remove"));
+        let hooks_after: Value = serde_json::from_str(
+            &fs::read_to_string(codex_home.join("hooks.json")).expect("hooks.json after"),
+        )
+        .expect("hooks json after");
+        assert!(!hooks_after
+            .to_string()
+            .contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+    }
+
+    #[test]
+    fn codex_hook_is_not_active_when_its_installed_executable_is_missing() {
+        // Regression: 6fe0aa3 disabled the transcript owner from hook-file
+        // presence alone even when the daemon referenced by the hook was absent.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_home = tmp.path().join("isolated-codex-home");
+        let executable = tmp.path().join("taurhaus-daemon");
+        fs::write(&executable, b"daemon").expect("executable fixture");
+
+        ensure_codex_compact_hook_installed_at(&codex_home, &executable).expect("install hook");
+        assert!(codex_compact_hook_is_installed_at(&codex_home));
+
+        fs::remove_file(&executable).expect("remove executable fixture");
+        assert!(!codex_compact_hook_is_installed_at(&codex_home));
+    }
+
+    #[test]
+    fn codex_installer_does_not_register_a_missing_executable() {
+        // Regression: 80ee59e made the installed-state check require the hook
+        // executable but still registered a missing executable in hooks.json.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_home = tmp.path().join("isolated-codex-home");
+        let missing_executable = tmp.path().join("missing-taurhaus-daemon");
+
+        ensure_codex_compact_hook_installed_at(&codex_home, &missing_executable)
+            .expect("skip unavailable hook executable");
+
+        let hooks = fs::read_to_string(codex_home.join("hooks.json")).unwrap_or_default();
+        assert!(!hooks.contains(TAURHAUS_COMPACT_HOOK_BASENAME));
+    }
+
+    #[test]
+    fn codex_installer_regression_does_not_mutate_home_or_codex_home() {
+        // Regression: 6fe0aa3 made an installer test mutate process-wide HOME and
+        // CODEX_HOME while unrelated coordination tests resolved those variables.
+        let source = include_str!("compact_hook.rs");
+        let installer_test = source
+            .split("fn codex_installer_is_idempotent_repairs_exe_path_and_removes_cleanly")
+            .nth(1)
+            .expect("installer regression test")
+            .split("fn codex_installer_regression_does_not_mutate_home_or_codex_home")
+            .next()
+            .expect("installer regression test body");
+        assert!(!installer_test.contains("guard.set_home"));
+        assert!(!installer_test.contains("guard.set_codex_home"));
+    }
+
+    #[test]
+    fn managed_codex_discovery_skips_orphan_team_directories() {
+        // Regression: 6fe0aa3 made one non-team directory under teams/ abort Codex
+        // hook reconciliation before a later valid managed Codex team was checked.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        fs::create_dir_all(tmp.path().join("00-orphan")).expect("orphan team dir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(tmp.path(), "zz-codex-team", &member, "codex-session");
+
+        assert!(any_managed_codex_member(tmp.path()).expect("scan valid teams"));
+    }
+
+    #[test]
+    fn compact_hook_records_the_transcript_compaction_timestamp() {
+        // Regression: 6fe0aa3 recorded Utc::now() for hook delivery while the
+        // transcript fallback recorded the compacted event timestamp, defeating dedupe.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(tmp.path(), "codex-team", &member, "session-codex");
+        write_snapshot_fixture(tmp.path(), "codex-team", &member.name);
+        let transcript_path = tmp
+            .path()
+            .join(".codex/sessions/rollout-session-codex.jsonl");
+        fs::create_dir_all(transcript_path.parent().expect("transcript parent"))
+            .expect("create transcript parent");
+        fs::write(
+            &transcript_path,
+            concat!(
+                "{\"timestamp\":\"2026-08-26T05:59:59.000Z\",\"type\":\"session_meta\",\"payload\":{}}\n",
+                "{\"timestamp\":\"2026-08-26T06:00:00.123Z\",\"type\":\"compacted\",\"payload\":{}}\n"
+            ),
+        )
+        .expect("write transcript");
+
+        handle_compact_hook(
+            &json!({
+                "hook_event_name": "SessionStart",
+                "session_id": "session-codex",
+                "source": "compact",
+                "cwd": &project,
+                "transcript_path": &transcript_path,
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("handle Codex compact hook");
+
+        let state = MemberCompactionStore::load(tmp.path(), "codex-team", &member.name)
+            .expect("load compaction state")
+            .expect("compaction state");
+        assert_eq!(
+            state.last_compaction_timestamp,
+            DateTime::parse_from_rfc3339("2026-08-26T06:00:00.123Z")
+                .expect("timestamp")
+                .with_timezone(&Utc)
+        );
+    }
+
+    #[test]
+    fn claude_compact_hook_does_not_scan_codex_boundaries_from_its_transcript() {
+        // Regression: 6fe0aa3 scanned and JSON-parsed the entire transcript for
+        // both tools even though Codex is the only supported boundary schema.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = sample_member(&project);
+        write_team_fixture(tmp.path(), "claude-team", &member, "session-claude");
+        write_snapshot_fixture(tmp.path(), "claude-team", &member.name);
+        let transcript_path = project.join(".claude/projects/session-claude.jsonl");
+        fs::create_dir_all(transcript_path.parent().expect("transcript parent"))
+            .expect("create transcript parent");
+        fs::write(
+            &transcript_path,
+            "{\"timestamp\":\"2020-01-01T00:00:00.000Z\",\"type\":\"compacted\",\"payload\":{}}\n",
+        )
+        .expect("write Claude transcript fixture");
+
+        let invoked_at = Utc::now();
+        handle_compact_hook(
+            &json!({
+                "hookEventName": "SessionStart",
+                "sessionId": "session-claude",
+                "source": "compact",
+                "cwd": &project,
+                "transcriptPath": &transcript_path,
+            })
+            .to_string(),
+            tmp.path(),
+        )
+        .expect("handle Claude compact hook");
+
+        let state = MemberCompactionStore::load(tmp.path(), "claude-team", &member.name)
+            .expect("load compaction state")
+            .expect("compaction state");
+        assert!(state.last_compaction_timestamp >= invoked_at);
+    }
+
+    // Regression: 0b87699 wired hook stdin/stdout only through the desktop
+    // binary, leaving the WSL daemon binary unable to host the same bridge.
+    #[test]
+    fn compact_hook_cli_reads_stdin_and_writes_stdout() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let mut member = sample_member(&project);
+        member.cli_tool = CliTool::Codex;
+        write_team_fixture(tmp.path(), "codex-team", &member, "session-codex");
+        write_snapshot_fixture(tmp.path(), "codex-team", &member.name);
+        let payload = json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "session-codex",
+            "source": "compact",
+            "cwd": &project,
+            "transcript_path": tmp.path().join(
+                ".codex/sessions/2026/08/26/rollout-2026-08-26T10-00-00-session-codex.jsonl"
+            ),
+        })
+        .to_string();
+        let mut stdout = Vec::new();
+
+        run_compact_hook_cli(payload.as_bytes(), &mut stdout, tmp.path())
+            .expect("CLI bridge succeeds");
+
+        let response: Value = serde_json::from_slice(&stdout).expect("stdout JSON");
+        assert!(response["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("additional context")
+            .contains("Current task:"));
     }
 
     #[test]

@@ -236,6 +236,7 @@ pub(super) fn build_cli_launch_command(
         team_name,
         &agent.name,
         role,
+        cli_commands.codex_bypass_hook_trust,
     )
 }
 
@@ -443,9 +444,14 @@ pub(super) fn build_member_activation_launch_command(
         &context.team_name,
         &context.member.name,
         context.member.role,
+        cli_commands.codex_bypass_hook_trust,
     )
 }
 
+// The explicit trust input keeps command rendering independent from ambient
+// CODEX_HOME state; grouping the stable team/member fields would add a second
+// launch context type for this single renderer.
+#[allow(clippy::too_many_arguments)]
 fn render_team_launch_command(
     cli_commands: &CliCommandSettings,
     cli_tool: CliTool,
@@ -454,6 +460,7 @@ fn render_team_launch_command(
     team_name: &str,
     agent_name: &str,
     role: MemberRole,
+    codex_bypass_hook_trust: bool,
 ) -> Result<String, CoordinationError> {
     let base = base_command(cli_commands, cli_tool, LaunchMode::Fresh);
     if base.trim().is_empty() {
@@ -472,6 +479,7 @@ fn render_team_launch_command(
         mode: LaunchMode::Fresh,
         base,
         model: model.clone(),
+        codex_bypass_hook_trust: cli_tool == CliTool::Codex && codex_bypass_hook_trust,
         team: (cli_tool == CliTool::Claude).then_some(TeamContext {
             team_name,
             agent_name,

@@ -81,6 +81,7 @@ function mockSettings(overrides = {}) {
     custom_command: '',
     tmux_layout: 'new_window',
     cli_commands: mockCliCommandDefaults(),
+    harness: { codex_compaction: 'hooks' },
     ...(overrides.terminal ?? {}),
   }
 
@@ -200,13 +201,28 @@ describe('Settings component', () => {
 
   // --- Section structure (P14) ---
 
-  it('renders all four sections: General, Display, Terminal & Sessions, Search', async () => {
+  it('renders the Mesh section with the Codex compaction source', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => {
-      expect(screen.getByTestId('settings-scanning')).toBeTruthy()
-      expect(screen.getByTestId('settings-display')).toBeTruthy()
-      expect(screen.getByTestId('settings-terminal')).toBeTruthy()
-      expect(screen.getByTestId('settings-index')).toBeTruthy()
+      // Regression: 0b87699 had no UI control to select the Codex hook bridge
+      // or restore the transcript fallback.
+      expect(screen.getByTestId('settings-mesh')).toBeTruthy()
+      expect(screen.getByTestId('codex-compaction-source')).toHaveValue('hooks')
+    })
+  })
+
+  it('saves the Codex compaction source from the Mesh section', async () => {
+    render(Settings, { props: defaultProps() })
+    const select = await screen.findByTestId('codex-compaction-source')
+
+    await fireEvent.change(select, { target: { value: 'transcript' } })
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+        terminal: expect.objectContaining({
+          harness: { codex_compaction: 'transcript' },
+        }),
+      }))
     })
   })
 

@@ -3,12 +3,14 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::session_scanner::cli_tool::CliTool;
 use taurhaus_lib::logging::emit_global;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CompactionSignalKind {
     Compacted,
     ContextCompacted,
@@ -386,6 +388,15 @@ fn path_display(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regression: a89ea4c left storage and observability with distinct signal
+    // enums, forcing three drift-prone identity mappers.
+    #[test]
+    fn stores_and_events_share_one_compaction_signal_kind() {
+        let kind: CompactionSignalKind =
+            crate::coordination::stores::CompactionSignalKind::ContextCompacted;
+        assert_eq!(kind, CompactionSignalKind::ContextCompacted);
+    }
     use std::fs;
 
     use taurhaus_lib::logging::{install_global_sink, LogFileState};

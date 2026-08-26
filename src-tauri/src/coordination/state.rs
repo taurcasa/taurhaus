@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use crate::coordination::backend::{
     BackendKind, BackendSelector, ClaudeNativeBackend, CoordinationBackend, MeshBridgedBackend,
 };
-use crate::coordination::claude_hooks::{
+use crate::coordination::compact_hook::{
     ensure_compact_hook_installed, team_has_managed_claude_member,
 };
 use crate::coordination::errors::CoordinationError;

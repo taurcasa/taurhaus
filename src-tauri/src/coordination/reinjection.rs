@@ -159,13 +159,7 @@ impl CompactionReinjectionService {
         }
     }
 
-    pub fn render_claude_additional_context(
-        card: &OperationalReinjectionCard,
-    ) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(card)
-    }
-
-    pub fn render_codex_inbox_text(
+    pub fn render_additional_context_text(
         card: &OperationalReinjectionCard,
     ) -> Result<String, serde_json::Error> {
         let mut lines = vec![
@@ -685,7 +679,7 @@ mod tests {
     }
 
     #[test]
-    fn render_claude_additional_context_matches_expected_json_snapshot() {
+    fn render_additional_context_text_is_imperative_resume_card() {
         let card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -694,102 +688,8 @@ mod tests {
                 .with_timezone(&Utc),
         );
 
-        let rendered =
-            CompactionReinjectionService::render_claude_additional_context(&card).expect("json");
-
-        let expected = r#"{
-  "version": 1,
-  "reason": "post_compaction",
-  "generated_at": "2026-03-08T14:10:05Z",
-  "team_name": "taurhaus-team",
-  "member_name": "architect",
-  "role": {
-    "role_id": "taurhaus-architect",
-    "role_name": "Taurhaus Architect",
-    "focus_area": "Cross-layer diagnosis",
-    "context_summary": "Keeps architecture context warm.",
-    "behavior_summary": "Stay concrete, evidence-backed, and escalate ownership ambiguity quickly.",
-    "communication_style": "Short, evidence-backed progress notes.",
-    "instructions": "Review architecture edges",
-    "runtime_compact_summary": {
-      "rolePurpose": "Preserve cross-layer diagnosis and review-vs-implementation boundaries after compaction.",
-      "keepDoing": [
-        "Tie findings to concrete code paths, runtime evidence, and real failure modes.",
-        "State clearly whether the current output is review, recommendation, or a narrow fix."
-      ],
-      "workflowSequence": [
-        "Reconnect the active task, owned surface, and failing behavior before changing scope.",
-        "Trace the issue across frontend, backend, runtime, and mesh layers until the root cause is explicit.",
-        "Deliver findings or a bounded fix with exact evidence, validation, and residual risk."
-      ],
-      "avoid": [
-        "Do not drift into generic implementation work or broad refactors during an audit task.",
-        "Do not blur review-only, recommend-only, and implement-now modes."
-      ],
-      "escalateWhen": [
-        "Escalate ownership ambiguity, direction changes, or blocked cross-role boundaries immediately."
-      ]
-    },
-    "quality_gates": [
-      "Tie conclusions to concrete repo evidence.",
-      "Avoid speculative architecture changes."
-    ],
-    "handoff_expectations": [
-      "Summarize evidence and residual risk."
-    ],
-    "definition_of_done": [
-      "Root cause and impact are explicit.",
-      "Residual risk is documented."
-    ],
-    "phase_scope": [
-      "investigation",
-      "recommendation"
-    ],
-    "mode": "analysis",
-    "inherits_from": "taurhaus-architect-base",
-    "required_artifacts": [
-      "root-cause summary",
-      "validation notes"
-    ]
-  },
-  "task": {
-    "id": "673",
-    "subject": "Architecture: post-compaction operational re-injection",
-    "execution_mode": "recommend",
-    "validation_expectation": "report-only",
-    "response_expectation": "report-on-completion"
-  },
-  "boundaries": {
-    "file_ownership_boundary": [
-      "docs/architecture/post-compaction-reinjection.md"
-    ],
-    "adjacent_fix_policy": "no",
-    "override_allowed": false,
-    "active_override_reason": null
-  },
-  "working_set": {
-    "project_path": "/home/user/projects/taurhaus",
-    "focal_files": [
-      "docs/architecture/post-compaction-reinjection.md"
-    ]
-  }
-}"#;
-
-        assert_eq!(rendered, expected);
-    }
-
-    #[test]
-    fn render_codex_inbox_text_is_imperative_resume_card() {
-        let card = CompactionReinjectionService::compose_at(
-            &sample_member(),
-            &sample_snapshot(),
-            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
-                .expect("timestamp")
-                .with_timezone(&Utc),
-        );
-
-        let rendered =
-            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render text");
 
         assert!(rendered.contains("[taurhaus] restored_working_context_after_compaction"));
         assert!(
@@ -835,7 +735,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_inbox_text_handles_sparse_cards() {
+    fn render_additional_context_text_handles_sparse_cards() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -857,8 +757,8 @@ mod tests {
         card.boundaries.active_override_reason = Some("lead-approved adjacent fix".to_string());
         card.working_set.focal_files.clear();
 
-        let rendered =
-            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render text");
 
         assert!(!rendered.contains("Role:"));
         assert!(!rendered.contains("Execution mode:"));
@@ -871,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn render_codex_inbox_text_preserves_role_id_when_role_name_is_missing() {
+    fn render_additional_context_text_preserves_role_id_when_role_name_is_missing() {
         let mut card = CompactionReinjectionService::compose_at(
             &sample_member(),
             &sample_snapshot(),
@@ -881,8 +781,8 @@ mod tests {
         );
         card.role.role_name = None;
 
-        let rendered =
-            CompactionReinjectionService::render_codex_inbox_text(&card).expect("render text");
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render text");
 
         assert!(rendered.contains("Role: taurhaus-architect"));
     }
@@ -898,7 +798,7 @@ mod tests {
         let architect_role = load_role_template("taurhaus-architect");
         let lead_role = load_role_template("taurhaus-lead-codex");
 
-        let developer_rendered = CompactionReinjectionService::render_codex_inbox_text(
+        let developer_rendered = CompactionReinjectionService::render_additional_context_text(
             &CompactionReinjectionService::compose_at(
                 &member_from_role(&developer_role),
                 &snapshot,
@@ -906,7 +806,7 @@ mod tests {
             ),
         )
         .expect("render developer");
-        let architect_rendered = CompactionReinjectionService::render_codex_inbox_text(
+        let architect_rendered = CompactionReinjectionService::render_additional_context_text(
             &CompactionReinjectionService::compose_at(
                 &member_from_role(&architect_role),
                 &snapshot,
@@ -914,7 +814,7 @@ mod tests {
             ),
         )
         .expect("render architect");
-        let lead_rendered = CompactionReinjectionService::render_codex_inbox_text(
+        let lead_rendered = CompactionReinjectionService::render_additional_context_text(
             &CompactionReinjectionService::compose_at(
                 &member_from_role(&lead_role),
                 &snapshot,

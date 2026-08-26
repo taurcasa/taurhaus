@@ -68,6 +68,9 @@ pub struct LaunchSpec<'a> {
     pub base: &'a str,
     pub model: ModelSpec,
     pub team: Option<TeamContext<'a>>,
+    /// Managed Codex launches opt into the taurhaus-written user hook without
+    /// prompting for hook trust. Unmanaged launches always leave this false.
+    pub codex_bypass_hook_trust: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +128,11 @@ impl LaunchSpec<'_> {
 
         match self.tool {
             CliTool::Codex => {
+                if self.codex_bypass_hook_trust
+                    && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
+                {
+                    command.push_str(" --dangerously-bypass-hook-trust");
+                }
                 if command_contains_flag(self.base, "--full-auto") {
                     notes.push(LaunchNote::DeprecatedFlag {
                         flag: "--full-auto".to_string(),
@@ -466,6 +474,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo",
             model: ModelSpec::parse_legacy("gpt-5.4 high"),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -476,6 +485,35 @@ mod tests {
         );
     }
 
+    // Regression: 0b87699 had no Codex hook trust bridge, so managed launches
+    // left taurhaus's user-level compaction hook disabled.
+    #[test]
+    fn managed_codex_launch_bypasses_trust_only_when_requested() {
+        let trusted = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec::default(),
+            team: None,
+            codex_bypass_hook_trust: true,
+        }
+        .render();
+        assert!(trusted.command.contains("--dangerously-bypass-hook-trust"));
+
+        let unmanaged = LaunchSpec {
+            tool: CliTool::Codex,
+            mode: LaunchMode::Fresh,
+            base: "codex --yolo",
+            model: ModelSpec::default(),
+            team: None,
+            codex_bypass_hook_trust: false,
+        }
+        .render();
+        assert!(!unmanaged
+            .command
+            .contains("--dangerously-bypass-hook-trust"));
+    }
+
     #[test]
     fn codex_render_does_not_alias_gpt_5_3() {
         let rendered = LaunchSpec {
@@ -483,6 +521,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo",
             model: ModelSpec::parse_legacy("gpt-5.3"),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -498,6 +537,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo --model gpt-6",
             model: model_spec("gpt-5.4", None),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -518,6 +558,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --full-auto",
             model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -539,6 +580,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo",
             model: model_spec("gpt-5.4", None),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -559,6 +601,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo",
             model: model_spec("gpt-5.4", Some("high")),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -576,6 +619,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo",
             model: model_spec("gpt-5.4", Some("ultra")),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -595,6 +639,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "codex --yolo -m gpt-5.5",
             model: model_spec("gpt-5.6-sol", Some("ultra")),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -629,6 +674,7 @@ mod tests {
                 model: None,
                 reasoning_effort: Some("max".to_string()),
             },
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -647,6 +693,7 @@ mod tests {
                 model: Some("gpt-5.7-nova".to_string()),
                 reasoning_effort: Some("turbo".to_string()),
             },
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -667,6 +714,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "claude --dangerously-skip-permissions",
             model: model_spec("opus", Some("ultra")),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -727,6 +775,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "claude --dangerously-skip-permissions --team-name 'ledger-team'",
             model: model_spec("claude-opus-4-6", Some("high")),
+            codex_bypass_hook_trust: false,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -763,6 +812,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "claude --dangerously-skip-permissions",
             model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -788,6 +838,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base,
             model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -807,6 +858,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base,
             model: model_spec("claude-opus-4-6", None),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -821,6 +873,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "gemini --yolo",
             model: model_spec("gemini-3.1-pro", Some("high")),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();
@@ -844,6 +897,7 @@ mod tests {
             mode: LaunchMode::Fresh,
             base: "gemini --yolo --model gemini-2.5-pro",
             model: model_spec("gemini-3.1-pro", None),
+            codex_bypass_hook_trust: false,
             team: None,
         }
         .render();

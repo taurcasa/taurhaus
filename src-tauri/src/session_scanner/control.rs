@@ -448,6 +448,7 @@ pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
         mode,
         base: base_command(&commands, tool, mode),
         model: ModelSpec::default(),
+        codex_bypass_hook_trust: false,
         team: None,
     }
     .render()

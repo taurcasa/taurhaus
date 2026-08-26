@@ -6,8 +6,8 @@
 use rusqlite::Connection;
 
 use crate::models::{
-    ActivityThresholds, CliCommandSettings, CodeThemeSettings, DaemonSettings, Settings,
-    TerminalSettings,
+    ActivityThresholds, CliCommandSettings, CodeThemeSettings, DaemonSettings, HarnessSettings,
+    Settings, TerminalSettings,
 };
 
 /// Get a single setting value by key.
@@ -49,6 +49,7 @@ const KEY_TERMINAL_EMULATOR: &str = "terminal.emulator";
 const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 const KEY_CLI_COMMANDS: &str = "terminal.cli_commands";
+const KEY_TERMINAL_HARNESS: &str = "terminal.harness";
 const KEY_DARK_MODE: &str = "dark_mode";
 const KEY_PROJECT_DIALOG_LAST_PATH: &str = "project_dialog.last_path";
 
@@ -116,6 +117,21 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         None => defaults.terminal.cli_commands.clone(),
     };
 
+    let harness: HarnessSettings = match get_setting(conn, KEY_TERMINAL_HARNESS)? {
+        Some(raw) => match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                tracing::warn!(
+                    key = KEY_TERMINAL_HARNESS,
+                    error = %error,
+                    "Failed to decode settings JSON field; using default harness settings"
+                );
+                defaults.terminal.harness.clone()
+            }
+        },
+        None => defaults.terminal.harness.clone(),
+    };
+
     let dark_mode = get_setting(conn, KEY_DARK_MODE)?
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.dark_mode);
@@ -145,6 +161,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             custom_command: terminal_custom_command,
             tmux_layout: terminal_tmux_layout,
             cli_commands,
+            harness,
         },
         dark_mode,
         project_dialog_last_path,
@@ -204,6 +221,10 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
     let cli_commands_json =
         serde_json::to_string(&settings.terminal.cli_commands).unwrap_or_else(|_| "{}".to_string());
     set_setting(conn, KEY_CLI_COMMANDS, &cli_commands_json)?;
+
+    let harness_json =
+        serde_json::to_string(&settings.terminal.harness).unwrap_or_else(|_| "{}".to_string());
+    set_setting(conn, KEY_TERMINAL_HARNESS, &harness_json)?;
 
     set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
     set_setting(
@@ -294,7 +315,7 @@ mod tests {
     fn save_and_load_settings_roundtrip() {
         let (conn, _tmp) = test_db();
 
-        let settings = Settings {
+        let mut settings = Settings {
             scan_directories: vec!["~/projects".to_string(), "~/work".to_string()],
             thresholds: ActivityThresholds {
                 active_days: 5,
@@ -316,6 +337,9 @@ mod tests {
             project_dialog_last_path: "/projects/taurhaus".to_string(),
             terminal_contract: Default::default(),
         };
+        // Regression: 0b87699 had no SQLite-backed Codex compaction source,
+        // so a transcript fallback selection could not survive a restart.
+        settings.terminal.harness.codex_compaction = crate::models::CodexCompactionMode::Transcript;
 
         save_settings(&conn, &settings).unwrap();
         let loaded = get_all_settings(&conn).unwrap();
@@ -330,6 +354,10 @@ mod tests {
         assert!(!loaded.daemon.auto_start);
         assert_eq!(loaded.code_theme.light, "one-light");
         assert_eq!(loaded.code_theme.dark, "dracula");
+        assert_eq!(
+            loaded.terminal.harness.codex_compaction,
+            crate::models::CodexCompactionMode::Transcript
+        );
         assert!(loaded.dark_mode);
         assert_eq!(loaded.project_dialog_last_path, "/projects/taurhaus");
     }

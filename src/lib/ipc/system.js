@@ -159,6 +159,10 @@ function normalizeSettings(raw) {
       : terminal.cliCommands && typeof terminal.cliCommands === 'object'
         ? terminal.cliCommands
         : {}
+  const harness = terminal.harness && typeof terminal.harness === 'object'
+    ? terminal.harness
+    : {}
+  const codexCompaction = harness.codex_compaction ?? harness.codexCompaction
   const terminalContract = normalizeTerminalContract(
     settings.terminal_contract && typeof settings.terminal_contract === 'object'
       ? settings.terminal_contract
@@ -203,6 +207,9 @@ function normalizeSettings(raw) {
         claude: normalizeToolCommands(cliCommands.claude, terminalContract.cli_command_defaults.claude),
         codex: normalizeToolCommands(cliCommands.codex, terminalContract.cli_command_defaults.codex),
         gemini: normalizeToolCommands(cliCommands.gemini, terminalContract.cli_command_defaults.gemini),
+      },
+      harness: {
+        codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
       },
     },
     terminal_contract: terminalContract,

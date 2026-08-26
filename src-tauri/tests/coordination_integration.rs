@@ -13,6 +13,18 @@ mod coordination_shims;
 pub use coordination_shims::provider;
 pub use coordination_shims::{daemon, errors, models, session_scanner, templates, tmux_layout};
 
+pub mod startup {
+    pub mod compaction {
+        pub fn reconcile_compaction_runtime<R: tauri::Runtime>(
+            _app: &tauri::AppHandle<R>,
+            _mode: crate::models::CodexCompactionMode,
+            _reason: &str,
+        ) -> Result<(), crate::coordination::errors::CoordinationError> {
+            Ok(())
+        }
+    }
+}
+
 pub mod terminal {
     use std::sync::{Mutex, OnceLock};
 
@@ -165,7 +177,8 @@ mod commands {
     }
 
     pub mod terminal_settings {
-        use crate::models::{CliCommandSettings, TerminalSettings};
+        use crate::coordination::errors::CoordinationError;
+        use crate::models::{CliCommandSettings, CodexCompactionMode, TerminalSettings};
 
         use super::projects::DbState;
 
@@ -175,6 +188,13 @@ mod commands {
 
         pub fn load_terminal_settings(_db: &DbState) -> TerminalSettings {
             TerminalSettings::default()
+        }
+
+        pub fn reconcile_codex_compaction(
+            _mode: CodexCompactionMode,
+            _has_managed_codex: bool,
+        ) -> Result<bool, CoordinationError> {
+            Ok(false)
         }
     }
 
@@ -195,6 +215,51 @@ mod commands {
 mod coordination;
 
 use coordination::backend::{BackendSelector, CoordinationBackend, FakeBackend};
+
+#[test]
+fn daemon_compact_hook_stdout_is_json_when_a_team_config_is_unparseable() {
+    // Regression: 6fe0aa3 installed a stdout tracing subscriber in daemon hook mode,
+    // so one malformed team config prefixed the JSON hook response with a WARN line.
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let claude_dir = tmp.path().join("claude");
+    let broken_team_dir = claude_dir.join("teams").join("broken-team");
+    std::fs::create_dir_all(&broken_team_dir).expect("create broken team dir");
+    std::fs::write(broken_team_dir.join("config.json"), "{not-json")
+        .expect("write malformed team config");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_taurhaus-daemon"))
+        .arg("--compact-hook")
+        .env("TAURHAUS_CLAUDE_DIR", &claude_dir)
+        .env("TAURHAUS_DATA_DIR", tmp.path().join("data"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn daemon compact hook mode");
+    child
+        .stdin
+        .take()
+        .expect("child stdin")
+        .write_all(
+            br#"{"hook_event_name":"SessionStart","session_id":"x","source":"compact","cwd":"/tmp","transcript_path":"/tmp/.codex/sessions/rollout-a.jsonl"}"#,
+        )
+        .expect("write hook payload");
+
+    let output = child.wait_with_output().expect("wait for compact hook");
+    assert!(
+        output.status.success(),
+        "hook mode should exit successfully"
+    );
+    serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "daemon compact hook stdout must be exactly one JSON response: {error}; stdout={:?}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+    });
+}
 use coordination::requests::{AddAgentRequest, AgentSetupConfig, InitializeTeamRequest, LeadMode};
 use coordination::runtime::{CoordinationRuntime, RecordingCoordinationRuntime};
 use coordination::state::CoordinationState;

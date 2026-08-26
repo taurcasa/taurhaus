@@ -77,11 +77,26 @@ pub(crate) fn dispatch(
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
+        protocol::method::SET_CODEX_COMPACTION_MODE => {
+            handle_set_codex_compaction_mode(&request.id, &request.params)
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
             format!("Unknown method: {}", request.method),
         ),
+    }
+}
+
+fn handle_set_codex_compaction_mode(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::SetCodexCompactionModeParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+        };
+    match crate::daemon::compaction::request_mode_and_wait(params.mode) {
+        Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
+        Err(error) => DaemonResponse::err(id, "COMPACTION_MODE_APPLY_FAILED", error),
     }
 }
 

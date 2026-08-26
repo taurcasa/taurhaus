@@ -79,6 +79,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
+        harness: { codex_compaction: 'hooks' },
       },
       terminal_contract: terminalContract,
       dark_mode: dark,
@@ -216,6 +217,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cliDefaults,
+        harness: { codex_compaction: 'hooks' },
       }
     }
     if (!settings.terminal.cli_commands) settings.terminal.cli_commands = cliDefaults
@@ -519,7 +521,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks' } }
                   }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
@@ -548,7 +550,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks' } }
                   }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
@@ -574,7 +576,7 @@
                     : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
                     const cliDefaults = getTerminalCliDefaults()
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults };
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks' } };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
@@ -650,6 +652,32 @@
               {/if}
             </div>
           {/each}
+        </section>
+
+        <!-- ═══ MESH ═══ -->
+        <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-mesh">
+          <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Mesh</h2>
+          <div class="flex items-center gap-3">
+            <label for="codex-compaction-source" class="text-[13px] {t.textSecondary} w-32">Codex compaction</label>
+            <select
+              id="codex-compaction-source"
+              class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} {fieldFocusRing}"
+              value={settings.terminal?.harness?.codex_compaction ?? 'hooks'}
+              onchange={(e) => {
+                ensureCliCommands()
+                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks' }
+                settings.terminal.harness.codex_compaction = e.target.value
+                saveSettings()
+              }}
+              data-testid="codex-compaction-source"
+            >
+              <option value="hooks">Native hooks</option>
+              <option value="transcript">Transcript fallback</option>
+            </select>
+          </div>
+          <p class="mt-2 text-[11px] {textTertiary}">
+            Native hooks restore working context immediately after Codex compacts a managed session.
+          </p>
         </section>
 
         <!-- ═══ SEARCH ═══ -->

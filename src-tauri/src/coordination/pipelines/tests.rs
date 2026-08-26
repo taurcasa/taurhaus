@@ -1404,6 +1404,26 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     );
 }
 
+#[test]
+fn team_launch_rendering_does_not_probe_ambient_codex_home() {
+    // Regression: 6fe0aa3 made pure launch rendering stat the developer's real
+    // CODEX_HOME, changing six command snapshots after the managed hook existed.
+    let helpers_source = include_str!("helpers.rs");
+    assert!(!helpers_source.contains("codex_compact_hook_is_installed"));
+
+    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    let untrusted =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("untrusted command");
+    commands.codex_bypass_hook_trust = true;
+    let trusted =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("trusted command");
+    assert!(!untrusted.contains("--dangerously-bypass-hook-trust"));
+    assert!(trusted.contains("--dangerously-bypass-hook-trust"));
+}
+
 // Regression: a79d392 forced the catalog's low effort onto declarations that omitted it,
 // changing the command after activation instead of preserving the CLI's configured effort.
 #[test]
