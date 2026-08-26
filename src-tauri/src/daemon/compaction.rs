@@ -25,6 +25,8 @@ const MODE_TRANSCRIPT: u8 = 0;
 const MODE_HOOKS: u8 = 1;
 const MODE_PENDING: u8 = 2;
 const MODE_FAILED: u8 = 3;
+const MODE_RETRY_INITIAL_BACKOFF: Duration = Duration::from_secs(1);
+const MODE_RETRY_MAX_BACKOFF: Duration = Duration::from_secs(60);
 
 static REQUESTED_MODE: AtomicU8 = AtomicU8::new(MODE_TRANSCRIPT);
 static ACTIVE_MODE: AtomicU8 = AtomicU8::new(MODE_PENDING);
@@ -217,9 +219,18 @@ fn mode_value(mode: crate::models::CodexCompactionMode) -> u8 {
 pub(crate) fn run_mode_controller(teams_dir: Option<PathBuf>, shutdown: Arc<AtomicBool>) {
     let mut runtime = None;
     let mut active_mode = None;
+    let mut failed_retry_at = None;
+    let mut retry_backoff = MODE_RETRY_INITIAL_BACKOFF;
 
     while !shutdown.load(Ordering::Relaxed) {
         let requested = requested_mode();
+        if active_mode == Some(requested)
+            && failed_retry_at.is_some_and(|retry_at| Instant::now() >= retry_at)
+        {
+            active_mode = None;
+            failed_retry_at = None;
+            ACTIVE_MODE.store(MODE_PENDING, Ordering::Release);
+        }
         if active_mode != Some(requested) {
             runtime.take();
             let applied = match requested {
@@ -253,6 +264,9 @@ pub(crate) fn run_mode_controller(teams_dir: Option<PathBuf>, shutdown: Arc<Atom
                             );
                             active_mode = Some(requested);
                             ACTIVE_MODE.store(MODE_FAILED, Ordering::Release);
+                            failed_retry_at = Some(Instant::now() + retry_backoff);
+                            retry_backoff =
+                                retry_backoff.saturating_mul(2).min(MODE_RETRY_MAX_BACKOFF);
                             false
                         }
                     }
@@ -260,6 +274,8 @@ pub(crate) fn run_mode_controller(teams_dir: Option<PathBuf>, shutdown: Arc<Atom
             };
             if applied {
                 active_mode = Some(requested);
+                failed_retry_at = None;
+                retry_backoff = MODE_RETRY_INITIAL_BACKOFF;
                 ACTIVE_MODE.store(mode_value(requested), Ordering::Release);
             }
         }
@@ -802,6 +818,8 @@ mod tests {
     fn daemon_mode_controller_reports_failed_start_once_without_hot_retry() {
         // Regression: 6fe0aa3 left the failed mode transition unlatched, so the
         // controller emitted compaction.owner.failed every 50 ms for the daemon lifetime.
+        // Regression: 80ee59e then latched the failure permanently, so a transient
+        // watcher startup failure could not recover without restarting the daemon.
         let _guards = compaction_test_guards();
         let _log_guard = crate::test_support::acquire_global_log_test_guard();
         compaction_extractor::stop_compaction_extractor_service_for_test();
@@ -826,15 +844,25 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("first failed owner event");
         std::thread::sleep(Duration::from_millis(220));
+        let hot_retry_events = event_rx
+            .try_iter()
+            .filter(|event| event["event"] == "compaction.owner.failed")
+            .count();
+        assert_eq!(hot_retry_events, 0);
+
+        let retry_event = event_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("failed owner retry event after backoff");
         shutdown.store(true, Ordering::Relaxed);
         handle.join().expect("join mode controller");
 
         let failed_events = std::iter::once(first_event)
+            .chain(std::iter::once(retry_event))
             .chain(event_rx.try_iter())
             .filter(|event| event["event"] == "compaction.owner.failed")
             .count();
         clear_test_tap();
-        assert_eq!(failed_events, 1);
+        assert_eq!(failed_events, 2);
     }
 
     #[test]

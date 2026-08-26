@@ -164,6 +164,12 @@ struct CodexCompactionSignalSource<'a> {
 
 impl CompactionSignalSource for CodexCompactionSignalSource<'_> {
     fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        let runtime = detect_hook_runtime(self.codex_home);
+        let executable = runtime_path_string(taurhaus_exe, runtime)?;
+        if !hook_executable_exists(self.codex_home, &executable) {
+            emit_codex_hook_degraded(self.codex_home, &executable);
+            return self.remove();
+        }
         ensure_source_installed(
             self.codex_home,
             CODEX_HOOKS_FILENAME,
@@ -175,6 +181,30 @@ impl CompactionSignalSource for CodexCompactionSignalSource<'_> {
     fn remove(&self) -> Result<bool, CoordinationError> {
         remove_source_hook(self.codex_home, CODEX_HOOKS_FILENAME)
     }
+}
+
+fn emit_codex_hook_degraded(codex_home: &Path, executable: &str) {
+    let mut fields = Map::new();
+    fields.insert("tool".to_string(), Value::String("codex".to_string()));
+    fields.insert(
+        "reason".to_string(),
+        Value::String("hook_executable_missing".to_string()),
+    );
+    fields.insert(
+        "codex_home".to_string(),
+        Value::String(codex_home.display().to_string()),
+    );
+    fields.insert(
+        "executable".to_string(),
+        Value::String(executable.to_string()),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "compaction.codex_hook.degraded",
+        Some("Skipped Codex compaction hook because its executable is unavailable".to_string()),
+        fields,
+    );
 }
 
 pub fn handle_compact_hook_stdin<R: Read>(
@@ -2194,6 +2224,21 @@ mod tests {
 
         fs::remove_file(&executable).expect("remove executable fixture");
         assert!(!codex_compact_hook_is_installed_at(&codex_home));
+    }
+
+    #[test]
+    fn codex_installer_does_not_register_a_missing_executable() {
+        // Regression: 80ee59e made the installed-state check require the hook
+        // executable but still registered a missing executable in hooks.json.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let codex_home = tmp.path().join("isolated-codex-home");
+        let missing_executable = tmp.path().join("missing-taurhaus-daemon");
+
+        ensure_codex_compact_hook_installed_at(&codex_home, &missing_executable)
+            .expect("skip unavailable hook executable");
+
+        let hooks = fs::read_to_string(codex_home.join("hooks.json")).unwrap_or_default();
+        assert!(!hooks.contains(TAURHAUS_COMPACT_HOOK_BASENAME));
     }
 
     #[test]
