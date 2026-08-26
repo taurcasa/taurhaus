@@ -233,9 +233,13 @@ pub fn parse_tmux_output(output: &str) -> HashMap<String, TmuxPane> {
         .collect()
 }
 
-/// Map a focused tmux session/window onto a known session's project path.
+/// Map a focused tmux session/window/pane onto a known session's project path.
 ///
-/// Matches on window index, falling back to the taurhaus-managed window name.
+/// The pane is the precise answer: the `Split` launch policy puts two projects
+/// in one window (`tmux_layout.rs`), so a window match alone can name the
+/// neighbour. Window matching (index, then the taurhaus-managed window name)
+/// stays as the fallback for a focused pane no session owns — a plain shell —
+/// and for legacy focus payloads that carry no pane id.
 pub fn resolve_focus_project_path(
     focus: &TmuxFocus,
     sessions: &[DisplaySession],
@@ -246,27 +250,41 @@ pub fn resolve_focus_project_path(
         return None;
     }
 
-    sessions.iter().find_map(|session| {
-        let tmux_session = session.tmux_session.as_deref()?.trim();
-        if tmux_session != session_name {
-            return None;
-        }
-
-        let matches_window_name = session
-            .tmux_window_name
+    let in_focused_session = |session: &&DisplaySession| {
+        session
+            .tmux_session
             .as_deref()
-            .is_some_and(|value| value.trim() == window);
-        let matches_window_index = session
-            .tmux_window
-            .as_deref()
-            .is_some_and(|value| value.trim() == window);
+            .is_some_and(|value| value.trim() == session_name)
+    };
 
-        if matches_window_name || matches_window_index {
-            Some(session.project_path.clone())
-        } else {
-            None
+    let pane = focus.pane_id.trim();
+    if !pane.is_empty() {
+        let owner = sessions.iter().filter(in_focused_session).find(|session| {
+            session
+                .tmux_pane
+                .as_deref()
+                .is_some_and(|value| value.trim() == pane)
+        });
+        if let Some(owner) = owner {
+            return Some(owner.project_path.clone());
         }
-    })
+    }
+
+    sessions
+        .iter()
+        .filter(in_focused_session)
+        .find(|session| {
+            let matches_window_name = session
+                .tmux_window_name
+                .as_deref()
+                .is_some_and(|value| value.trim() == window);
+            let matches_window_index = session
+                .tmux_window
+                .as_deref()
+                .is_some_and(|value| value.trim() == window);
+            matches_window_name || matches_window_index
+        })
+        .map(|session| session.project_path.clone())
 }
 
 #[cfg(test)]
@@ -514,12 +532,77 @@ bad line
         assert!(!any_client_focused(&[]));
     }
 
+    /// A legacy focus payload: session and window, no pane id.
     fn focus_on(session: &str, window_index: &str) -> TmuxFocus {
+        focus_pane(session, window_index, "")
+    }
+
+    fn focus_pane(session: &str, window_index: &str, pane_id: &str) -> TmuxFocus {
         TmuxFocus {
             session: session.to_string(),
             window_index: window_index.to_string(),
-            pane_id: "%1".to_string(),
+            pane_id: pane_id.to_string(),
         }
+    }
+
+    /// One launch inside the shared `taurhaus` session, pinned to a pane.
+    fn split_session(path: &str, window_index: &str, pane_id: &str) -> DisplaySession {
+        let mut session = session_for(path, Some("taurhaus"), None);
+        session.tmux_window = Some(window_index.to_string());
+        session.tmux_pane = Some(pane_id.to_string());
+        session
+    }
+
+    // Regression: commit 07ab6c5 made the hub the owner of tmux focus but
+    // resolved it at window granularity, ignoring the pane id it already
+    // carried. The `Split` launch policy puts two projects in one window
+    // (`tmux_layout.rs`), so focusing project B's pane reported project A.
+    #[test]
+    fn resolve_focus_matches_the_focused_pane_inside_a_split_window() {
+        let sessions = vec![
+            split_session("/projects/alpha", "1", "%3"),
+            split_session("/projects/beta", "1", "%5"),
+        ];
+
+        assert_eq!(
+            resolve_focus_project_path(&focus_pane("taurhaus", "1", "%5"), &sessions),
+            Some("/projects/beta".to_string())
+        );
+        assert_eq!(
+            resolve_focus_project_path(&focus_pane("taurhaus", "1", "%3"), &sessions),
+            Some("/projects/alpha".to_string())
+        );
+    }
+
+    // Regression: commit 07ab6c5. A pane id must not narrow the answer to
+    // nothing — the focused pane is often a plain shell, and legacy payloads
+    // carry no pane at all — so the window match stays as the fallback.
+    #[test]
+    fn resolve_focus_falls_back_to_the_window_when_no_session_owns_the_pane() {
+        let sessions = vec![split_session("/projects/alpha", "1", "%3")];
+
+        assert_eq!(
+            resolve_focus_project_path(&focus_pane("taurhaus", "1", "%9"), &sessions),
+            Some("/projects/alpha".to_string()),
+            "an unowned focused pane still names its window's project"
+        );
+        assert_eq!(
+            resolve_focus_project_path(&focus_pane("taurhaus", "1", ""), &sessions),
+            Some("/projects/alpha".to_string()),
+            "a legacy payload without a pane id still resolves"
+        );
+    }
+
+    // A pane id is server-unique, but the session guard must still hold.
+    #[test]
+    fn resolve_focus_ignores_a_matching_pane_in_another_tmux_session() {
+        let mut other = split_session("/projects/alpha", "1", "%3");
+        other.tmux_session = Some("other".to_string());
+
+        assert_eq!(
+            resolve_focus_project_path(&focus_pane("taurhaus", "1", "%3"), &[other]),
+            None
+        );
     }
 
     #[test]
@@ -599,7 +682,7 @@ bad line
     #[test]
     fn tmux_focus_keeps_the_session_and_window_wire_keys() {
         // Old apps read only `session`/`window`; the daemon must keep emitting them.
-        let json = serde_json::to_value(focus_on("taurhaus", "2")).unwrap();
+        let json = serde_json::to_value(focus_pane("taurhaus", "2", "%1")).unwrap();
         assert_eq!(json["session"], "taurhaus");
         assert_eq!(json["window"], "2");
         assert_eq!(json["pane_id"], "%1");

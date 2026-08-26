@@ -164,11 +164,15 @@ describe('Regressions', () => {
     // it never verified the running app end to end.
     //
     // The hook -> file -> inotify chain is gone: the daemon hub probes
-    // `tmux list-clients` once per scanner cycle, resolves the focused window
-    // to a project, and the `tmux-focus-changed` event carries `project_id`
+    // `tmux list-clients` once per scanner cycle, resolves the focused pane to
+    // a project, and the `tmux-focus-changed` event carries `project_id`
     // (asserted in the Rust hub/bridge tests and the Shell unit tests). This
-    // block asserts the retired file is no longer an input, and keeps the live
-    // file and task update paths honest in the packaged app without a reload.
+    // block is the deletion guard — the retired file is no longer an input —
+    // and keeps the live file and task update paths honest in the packaged app
+    // without a reload. The live transition itself (launch a session, navigate
+    // to its pane, watch the indicator move to that project row) is asserted by
+    // `session-management.js` -> `waitForForegroundIndicator`, which needs a
+    // real tmux server and runs in the Tier 2 lane.
 
     const readmePath = join(TAURHAUS_PROJECT_PATH, 'README.md')
     let originalReadme = null
@@ -187,6 +191,17 @@ describe('Regressions', () => {
       }
     })
 
+    // Ownership, not a count: the sidebar shows at most one foreground
+    // indicator, so counting survives the indicator moving from one project row
+    // to another, and stays at 0 when nothing resolves.
+    async function foregroundOwners() {
+      return await browser.execute(() =>
+        Array.from(document.querySelectorAll('[data-testid="project-item"]'))
+          .filter((row) => row.querySelector('[data-testid="sidebar-foreground-indicator"]'))
+          .map((row) => row.getAttribute('data-project-id'))
+      )
+    }
+
     it('ignores a stale tmux-focus.json instead of driving the foreground indicator', async function () {
       if (!mainApp) return this.skip()
 
@@ -196,26 +211,34 @@ describe('Regressions', () => {
       await selectProjectByName('taurhaus')
       await waitForProjectsLoaded()
 
-      const baseline = await browser.execute(
-        () => document.querySelectorAll('[data-testid="sidebar-foreground-indicator"]').length
-      )
-
+      const baseline = await foregroundOwners()
       const focusFile = join(dataDir, 'tmux-focus.json')
+
+      // A payload the retired matcher resolved to the taurhaus project: it used
+      // to move the indicator onto that row.
       writeFileSync(
         focusFile,
-        JSON.stringify({ session: 'taurhaus', window: '0', timestamp: Date.now() }),
+        JSON.stringify({ session: 'taurhaus', window: '0', pane_id: '%0', timestamp: Date.now() }),
         'utf8'
       )
-
       // Well past the retired inotify -> Tauri event latency.
       await browser.pause(2_000)
+      expect(await foregroundOwners()).toEqual(baseline)
 
-      const afterWrite = await browser.execute(
-        () => document.querySelectorAll('[data-testid="sidebar-foreground-indicator"]').length
+      // A payload the retired matcher resolved to nothing: it used to clear the
+      // indicator off whichever row owned it.
+      writeFileSync(
+        focusFile,
+        JSON.stringify({ session: 'pr8-stale', window: '99', pane_id: '%99', timestamp: Date.now() }),
+        'utf8'
       )
-      expect(afterWrite).toBe(baseline)
+      await browser.pause(2_000)
+      expect(await foregroundOwners()).toEqual(baseline)
 
+      // Deleting the file is not an input either.
       rmSync(focusFile, { force: true })
+      await browser.pause(1_000)
+      expect(await foregroundOwners()).toEqual(baseline)
     })
 
     it('refreshes README content after a live file edit without reloading the app', async function () {

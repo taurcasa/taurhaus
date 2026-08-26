@@ -123,12 +123,14 @@ fn activity_changed(prev: &[DisplaySession], next: &[DisplaySession]) -> bool {
     prev_sig != next_sig
 }
 
+/// Activity export is due on an activity change or the periodic refresh.
+/// A focus move is not activity: it writes no member activity file.
 fn should_export_activity_snapshots(
-    changed: bool,
+    activity_moved: bool,
     last_export_at: Option<Instant>,
     now: Instant,
 ) -> bool {
-    changed
+    activity_moved
         || last_export_at
             .is_none_or(|last| now.duration_since(last) >= ACTIVITY_EXPORT_REFRESH_INTERVAL)
 }
@@ -334,10 +336,14 @@ impl SessionActivityHub {
         }
 
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let changed = !state.initialized
-            || activity_changed(&state.display_sessions, &cycle.display_sessions)
-            || focus_signature(state.focus.as_ref(), state.focus_project_path.as_deref())
+        // Both halves version the snapshot, but only activity is worth an
+        // export: a focus move touches no member's activity file.
+        let activity_moved = !state.initialized
+            || activity_changed(&state.display_sessions, &cycle.display_sessions);
+        let focus_moved =
+            focus_signature(state.focus.as_ref(), state.focus_project_path.as_deref())
                 != focus_signature(cycle.focus.as_ref(), cycle.focus_project_path.as_deref());
+        let changed = activity_moved || focus_moved;
         // Keep latest metadata; only a change generates a new version/event.
         state.display_sessions = cycle.display_sessions;
         state.runtime_sessions = cycle.runtime_sessions;
@@ -352,7 +358,11 @@ impl SessionActivityHub {
 
         CycleDecision {
             changed,
-            export_due: should_export_activity_snapshots(changed, last_activity_export_at, now),
+            export_due: should_export_activity_snapshots(
+                activity_moved,
+                last_activity_export_at,
+                now,
+            ),
             interval: cadence.next_interval(changed, &state.display_sessions, cycle.focused),
         }
     }
@@ -835,6 +845,59 @@ mod tests {
         );
         assert!(cleared.changed, "losing focus is a change");
         assert_eq!(hub.runtime_snapshot().focus, None);
+    }
+
+    // Regression: commit 07ab6c5 folded focus into the same `changed` flag that
+    // decides `export_due`, so every tmux focus switch — up to twice a second —
+    // re-ran roster loading, per-member tmux probes and activity-file writes.
+    // Focus is not activity: the export is due on an activity change or the
+    // 30 s refresh, nothing else.
+    #[test]
+    fn a_focus_only_change_does_not_trigger_an_activity_export() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let sessions = vec![session_with_state(SessionState::Active)];
+        let focus = Some(focus_at("taurhaus", "1", "%1"));
+
+        let first = hub.commit_cycle(
+            focus_cycle(sessions.clone(), None, None),
+            &mut cadence,
+            None,
+            now,
+        );
+        assert!(first.export_due, "the first cycle always exports");
+
+        let moved = hub.commit_cycle(
+            focus_cycle(sessions.clone(), focus.clone(), Some("/tmp/project")),
+            &mut cadence,
+            Some(now),
+            now + Duration::from_secs(1),
+        );
+        assert!(moved.changed, "a focus-only move is still a version bump");
+        assert!(!moved.export_due, "focus is not activity");
+
+        // Control: an activity change still exports on the same cycle.
+        let mut idle = sessions.clone();
+        idle[0].state = SessionState::Idle;
+        let activity = hub.commit_cycle(
+            focus_cycle(idle.clone(), focus.clone(), Some("/tmp/project")),
+            &mut cadence,
+            Some(now),
+            now + Duration::from_secs(2),
+        );
+        assert!(activity.changed);
+        assert!(activity.export_due, "an activity change exports");
+
+        // Control: the 30 s refresh still fires with nothing changed at all.
+        let refresh = hub.commit_cycle(
+            focus_cycle(idle, focus, Some("/tmp/project")),
+            &mut cadence,
+            Some(now - ACTIVITY_EXPORT_REFRESH_INTERVAL - Duration::from_secs(1)),
+            now,
+        );
+        assert!(!refresh.changed);
+        assert!(refresh.export_due, "the periodic refresh is unaffected");
     }
 
     #[test]

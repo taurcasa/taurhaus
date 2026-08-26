@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 ///
 /// The app checks this on connect. If the daemon's protocol version is
 /// lower than what the app expects, it warns the user to rebuild the daemon.
-pub const PROTOCOL_VERSION: u32 = 7;
+/// v8: tmux focus became a field of the hub's versioned snapshot
+/// (`wait_session_updates.focus`), the only live focus transport. A v7 daemon
+/// omits it and would leave the app with a permanently dark indicator.
+pub const PROTOCOL_VERSION: u32 = 8;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -866,6 +869,23 @@ mod tests {
             window_index: "2".to_string(),
             pane_id: "%9".to_string(),
         }
+    }
+
+    // Regression: commit 07ab6c5 deleted the hook -> tmux-focus.json -> inotify
+    // chain and made `wait_session_updates` the only live focus transport, but
+    // left PROTOCOL_VERSION at 7. A v7 daemon omits the focus fields, the app
+    // bridge reads that absence as "nothing is focused" and the sidebar
+    // indicator goes dark with no other source to recover from. Startup must
+    // refuse such a daemon on ping instead.
+    #[test]
+    fn protocol_version_excludes_daemons_without_hub_owned_focus() {
+        // The last version whose daemon produced focus through the hook chain.
+        let hook_chain_daemon = 7;
+        assert!(
+            PROTOCOL_VERSION > hook_chain_daemon,
+            "hub-owned focus changed the wire contract: bump PROTOCOL_VERSION so \
+             startup replaces a pre-PR8 daemon instead of trusting its empty focus"
+        );
     }
 
     #[test]

@@ -18,7 +18,7 @@ The app and the daemon exist as separate processes because of platform boundarie
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 7 (current) |
+| Protocol version | 8 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -190,7 +190,7 @@ This keeps polling encapsulated inside daemon + app backend while the frontend s
 
 ### Per-cycle task scan caching (v6+)
 
-`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6 and still present in v7):
+`get_project_tasks` supports an optional `scan_cycle_id` (added in protocol v6 and still present in v8):
 
 - When present, the daemon reuses cached `scan_sessions()` + `ClaudeSourceIndex` inputs for repeated project scans in the same cycle.
 - When absent, the daemon performs a fresh input scan (backward compatible behavior).
@@ -225,7 +225,7 @@ The daemon runs natively as a subprocess:
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v7), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. If the daemon's version is lower than the app expects (current: v8), it warns the user to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 

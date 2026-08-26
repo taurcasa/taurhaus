@@ -920,9 +920,12 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                     }
                 };
 
-            if let Some(emission) =
-                emit_current_session_snapshot(&app, &daemon_addr, &mut since_version)
-            {
+            if let Some(emission) = emit_current_session_snapshot(
+                &app,
+                &daemon_addr,
+                &mut since_version,
+                &mut last_focus,
+            ) {
                 if let Some(duration_ms) = recovery_tracker.take_duration_ms(Instant::now()) {
                     emit_session_bridge_recovery_measurement(duration_ms, emission);
                 }
@@ -1011,6 +1014,27 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
 struct FocusEmission {
     focus: Option<TmuxFocus>,
     project_path: Option<String>,
+}
+
+/// Fold a freshly fetched hub snapshot into the bridge's cursor and focus.
+///
+/// Connect and reconnect both land here. The snapshot is the newest hub state
+/// the app has, so its focus goes through the same change detection as a long
+/// poll: a focus that moved while the bridge was down is emitted now instead of
+/// waiting out the next `WAIT_TIMEOUT`.
+///
+/// Returns whether the focus transition must be emitted.
+fn apply_seed_snapshot(
+    snapshot: &daemon::protocol::RuntimeSessionSnapshotResult,
+    since_version: &mut u64,
+    last_focus: &mut Option<FocusEmission>,
+) -> bool {
+    *since_version = snapshot.version;
+    take_focus_change(
+        last_focus,
+        snapshot.focus.as_ref(),
+        snapshot.foreground_project_path.as_deref(),
+    )
 }
 
 /// Whether the hub's focus moved since the last emission, recording the new one.
@@ -1149,6 +1173,7 @@ fn emit_current_session_snapshot(
     app: &AppHandle,
     addr: &str,
     since_version: &mut u64,
+    last_focus: &mut Option<FocusEmission>,
 ) -> Option<SessionSnapshotEmission> {
     use std::time::Duration;
 
@@ -1181,6 +1206,14 @@ fn emit_current_session_snapshot(
     // Cache for the polling path (list_cli_sessions)
     crate::session_snapshot_cache::store(&snapshot);
 
+    if apply_seed_snapshot(&snapshot, since_version, last_focus) {
+        emit_tmux_focus_changed(
+            app,
+            snapshot.focus.as_ref(),
+            snapshot.foreground_project_path.as_deref(),
+        );
+    }
+
     let mut sessions = snapshot.display_sessions;
     let session_count = sessions.len();
     let distro = {
@@ -1198,7 +1231,6 @@ fn emit_current_session_snapshot(
         &mut sessions,
     );
 
-    *since_version = snapshot.version;
     emit_frontend_event(
         app,
         "sessions-updated",
@@ -1580,6 +1612,77 @@ mod tests {
         ));
         assert!(take_focus_change(&mut last, None, None));
         assert!(!take_focus_change(&mut last, None, None));
+    }
+
+    fn seed_snapshot(
+        version: u64,
+        focus: Option<TmuxFocus>,
+        project_path: Option<&str>,
+    ) -> daemon::protocol::RuntimeSessionSnapshotResult {
+        daemon::protocol::RuntimeSessionSnapshotResult {
+            version,
+            display_sessions: Vec::new(),
+            runtime_sessions: Vec::new(),
+            focus,
+            foreground_project_path: project_path.map(str::to_string),
+            degraded: false,
+        }
+    }
+
+    // Regression: commit 07ab6c5 routed focus through the long poll only. The
+    // snapshot fetched on connect and on every reconnect advanced the version
+    // cursor but never went through the focus fold, so a focus that moved while
+    // the bridge was down stayed wrong on screen until an otherwise unchanged
+    // poll timed out 20 s later — against a 500 ms hub cadence.
+    #[test]
+    fn focus_bridge_seeds_focus_from_the_connect_snapshot() {
+        let mut since_version = 0;
+        let mut last = None;
+
+        assert!(
+            apply_seed_snapshot(
+                &seed_snapshot(4, Some(focus("taurhaus", "2", "%9")), Some("/projects/a")),
+                &mut since_version,
+                &mut last,
+            ),
+            "the first snapshot carries the focus the hub already knows"
+        );
+        assert_eq!(since_version, 4);
+
+        // The long poll that follows must not repeat what the seed emitted.
+        assert!(!take_focus_change(
+            &mut last,
+            Some(&focus("taurhaus", "2", "%9")),
+            Some("/projects/a"),
+        ));
+
+        // Focus moved while the bridge was disconnected: the reconnect snapshot
+        // is the newest state the app has, so it emits now, not in 20 s.
+        assert!(apply_seed_snapshot(
+            &seed_snapshot(9, Some(focus("taurhaus", "3", "%11")), Some("/projects/b")),
+            &mut since_version,
+            &mut last,
+        ));
+        assert_eq!(since_version, 9);
+
+        // A reconnect that changed nothing stays quiet.
+        assert!(!apply_seed_snapshot(
+            &seed_snapshot(9, Some(focus("taurhaus", "3", "%11")), Some("/projects/b")),
+            &mut since_version,
+            &mut last,
+        ));
+
+        // A hub with no focus at all clears the indicator once.
+        assert!(apply_seed_snapshot(
+            &seed_snapshot(11, None, None),
+            &mut since_version,
+            &mut last,
+        ));
+        assert!(!apply_seed_snapshot(
+            &seed_snapshot(11, None, None),
+            &mut since_version,
+            &mut last,
+        ));
     }
 
     #[test]
