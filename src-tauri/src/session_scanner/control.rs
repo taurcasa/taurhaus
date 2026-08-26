@@ -449,6 +449,7 @@ pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
         base: base_command(&commands, tool, mode),
         model: ModelSpec::default(),
         codex_bypass_hook_trust: false,
+        codex_notify_executable: None,
         team: None,
     }
     .render()
@@ -519,6 +520,7 @@ fn propagate_env_to_tmux() {
         "GEMINI_API_KEY",
         "NODE_EXTRA_CA_CERTS",
         "PATH",
+        "TAURHAUS_DATA_DIR",
     ];
 
     for var in PROPAGATE_VARS {

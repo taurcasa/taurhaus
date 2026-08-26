@@ -191,6 +191,17 @@ mod commands {
             TerminalSettings::default()
         }
 
+        pub fn apply_managed_codex_launch_inputs(
+            cli_commands: &mut CliCommandSettings,
+            has_managed_codex: bool,
+            codex_bypass_hook_trust: bool,
+        ) {
+            cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
+            cli_commands.codex_notify_executable = (has_managed_codex
+                && crate::models::CliVersions::current().codex_notify_supported)
+                .then(crate::provider::platform_paths::PlatformPaths::daemon_binary_path);
+        }
+
         pub fn reconcile_codex_compaction(
             _mode: CodexCompactionMode,
             _has_managed_codex: bool,

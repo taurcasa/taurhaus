@@ -1424,6 +1424,28 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
     assert!(trusted.contains("--dangerously-bypass-hook-trust"));
 }
 
+// Regression: 791f6be centralized team launch rendering without a managed
+// Codex notify input, so the pipeline could not opt into native idle edges.
+#[test]
+fn managed_codex_team_launch_includes_native_notify_sink() {
+    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let commands = crate::models::CliCommandSettings {
+        codex_notify_executable: Some(std::path::PathBuf::from(
+            "/home/test/.local/bin/taurhaus-daemon",
+        )),
+        ..Default::default()
+    };
+
+    let command =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("managed command");
+
+    assert!(command.contains(concat!(
+        "-c 'notify=[\"/home/test/.local/bin/taurhaus-daemon\",",
+        "\"codex-notify\"]'"
+    )));
+}
+
 // Regression: a79d392 forced the catalog's low effort onto declarations that omitted it,
 // changing the command after activation instead of preserving the CLI's configured effort.
 #[test]

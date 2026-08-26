@@ -631,6 +631,13 @@ describe('ipc module', () => {
             codex: [{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'high'], defaultEffort: 'low', deprecated: false, replacement: null }],
             gemini: [{ id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', efforts: [], defaultEffort: null, deprecated: false, replacement: null }],
           },
+          cliVersions: {
+            codex: '0.149.0',
+            claude: '2.1.246',
+            codexCompactionHooksSupported: true,
+            codexNotifySupported: true,
+            codexQueueWakeSupported: true,
+          },
         },
       })
 
@@ -658,6 +665,15 @@ describe('ipc module', () => {
         defaultEffort: 'low',
         deprecated: false,
         replacement: null,
+      })
+      // Regression: 2cf41db exposed no per-tool version gate through the
+      // platform contract, so native capability support could not be audited.
+      expect(result.terminal_contract.cli_versions).toEqual({
+        codex: '0.149.0',
+        claude: '2.1.246',
+        codex_compaction_hooks_supported: true,
+        codex_notify_supported: true,
+        codex_queue_wake_supported: true,
       })
       delete window.__TAURI_INTERNALS__
     })

@@ -448,9 +448,9 @@ pub(super) fn build_member_activation_launch_command(
     )
 }
 
-// The explicit trust input keeps command rendering independent from ambient
-// CODEX_HOME state; grouping the stable team/member fields would add a second
-// launch context type for this single renderer.
+// Runtime-only Codex inputs on `CliCommandSettings` keep command rendering
+// independent from ambient CODEX_HOME state; grouping the stable team/member
+// fields would add a second launch context type for this single renderer.
 #[allow(clippy::too_many_arguments)]
 fn render_team_launch_command(
     cli_commands: &CliCommandSettings,
@@ -480,6 +480,11 @@ fn render_team_launch_command(
         base,
         model: model.clone(),
         codex_bypass_hook_trust: cli_tool == CliTool::Codex && codex_bypass_hook_trust,
+        codex_notify_executable: if cli_tool == CliTool::Codex {
+            cli_commands.codex_notify_executable.as_deref()
+        } else {
+            None
+        },
         team: (cli_tool == CliTool::Claude).then_some(TeamContext {
             team_name,
             agent_name,
@@ -531,6 +536,10 @@ fn render_team_launch_command(
             LaunchNote::ModelIgnored { found } => {
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides the role model"
+            }
+            LaunchNote::NotifyIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base overrides the managed Codex notifier"
             }
             LaunchNote::ModelDeprecated { found, replacement } => {
                 fields.insert("found".to_string(), Value::String(found));

@@ -353,8 +353,14 @@ fn delegate_launch_to_coordination_resume(
     db: &DbState,
     coordination_state: &CoordinationState,
     target: &TeamMemberMatch,
+    tool: CliTool,
 ) -> Result<protocol::LaunchSessionResult, String> {
-    let terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
+    let mut terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
+    crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+        &mut terminal_settings.cli_commands,
+        tool == CliTool::Codex,
+        false,
+    );
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),
         member_name: target.member_name.clone(),

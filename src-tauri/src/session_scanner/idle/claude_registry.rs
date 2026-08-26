@@ -28,8 +28,23 @@ use crate::session_scanner::SessionState;
 
 use super::{
     age_secs_since_mtime, classify_mtime, file_mtime, most_recent_mtime, newest_file_mtime,
-    path_to_slug, IdleResult, ACTIVE_THRESHOLD,
+    path_to_slug, ActivitySource, IdleResult, ACTIVE_THRESHOLD,
 };
+
+pub(super) struct ClaudeRegistryActivitySource<'a> {
+    pub config_dir: &'a Path,
+}
+
+impl ActivitySource for ClaudeRegistryActivitySource<'_> {
+    fn activity(
+        &self,
+        project_path: &str,
+        pid: u32,
+        _resolved: Option<&IdleResult>,
+    ) -> Option<IdleResult> {
+        detect_idle_from_registry(project_path, pid, self.config_dir)
+    }
+}
 
 /// Directory holding the per-PID registry records.
 const SESSIONS_SUBDIR: &str = "sessions";

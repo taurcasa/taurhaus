@@ -276,6 +276,9 @@ pub(crate) fn reconcile_compaction_runtime<R: tauri::Runtime>(
 }
 
 fn hooks_are_active(mode: crate::models::CodexCompactionMode) -> bool {
+    if !crate::models::CliVersions::current().codex_compaction_hooks_supported {
+        return false;
+    }
     effective_compaction_mode(
         mode,
         crate::coordination::compact_hook::codex_compact_hook_is_installed(),

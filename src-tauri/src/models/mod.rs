@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -234,6 +236,11 @@ pub struct CliCommandSettings {
     /// trust before pipeline rendering; this is never persisted or sent to the UI.
     #[serde(skip)]
     pub codex_bypass_hook_trust: bool,
+    /// Runtime-only managed-launch input for Codex's per-turn notify command.
+    /// User-authored bases remain untouched and unmanaged launches leave this
+    /// unset.
+    #[serde(skip)]
+    pub codex_notify_executable: Option<std::path::PathBuf>,
 }
 
 impl Default for CliCommandSettings {
@@ -255,6 +262,7 @@ impl Default for CliCommandSettings {
                 resume: "gemini --yolo --resume".into(),
             },
             codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
         }
     }
 }
@@ -265,6 +273,136 @@ pub enum AppPlatform {
     Linux,
     Macos,
     Windows,
+}
+
+const CODEX_NATIVE_HOOKS_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
+const CODEX_NATIVE_NOTIFY_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
+const CODEX_QUEUE_WAKE_MIN_VERSION: (u32, u32, u32) = (0, 149, 0);
+const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CliVersions {
+    pub codex: Option<String>,
+    pub claude: Option<String>,
+    pub codex_compaction_hooks_supported: bool,
+    pub codex_notify_supported: bool,
+    pub codex_queue_wake_supported: bool,
+}
+
+static CLI_VERSIONS: LazyLock<CliVersions> = LazyLock::new(CliVersions::probe);
+
+impl CliVersions {
+    pub fn current() -> &'static Self {
+        &CLI_VERSIONS
+    }
+
+    fn probe() -> Self {
+        let codex = probe_cli_version("codex");
+        let claude = probe_cli_version("claude");
+        let versions = Self::from_versions(codex, claude);
+        tracing::info!(
+            codex = ?versions.codex,
+            claude = ?versions.claude,
+            codex_compaction_hooks_supported = versions.codex_compaction_hooks_supported,
+            codex_notify_supported = versions.codex_notify_supported,
+            codex_queue_wake_supported = versions.codex_queue_wake_supported,
+            "CLI versions detected for native harness capability gates"
+        );
+        versions
+    }
+
+    #[cfg(test)]
+    fn from_outputs(codex: Option<&str>, claude: Option<&str>) -> Self {
+        Self::from_versions(
+            codex.and_then(parse_cli_version),
+            claude.and_then(parse_cli_version),
+        )
+    }
+
+    fn from_versions(
+        codex: Option<((u32, u32, u32), String)>,
+        claude: Option<((u32, u32, u32), String)>,
+    ) -> Self {
+        let codex_parsed = codex.as_ref().map(|(version, _)| *version);
+        Self {
+            codex: codex.map(|(_, normalized)| normalized),
+            claude: claude.map(|(_, normalized)| normalized),
+            codex_compaction_hooks_supported: codex_parsed
+                .is_some_and(|version| version >= CODEX_NATIVE_HOOKS_MIN_VERSION),
+            codex_notify_supported: codex_parsed
+                .is_some_and(|version| version >= CODEX_NATIVE_NOTIFY_MIN_VERSION),
+            codex_queue_wake_supported: codex_parsed
+                .is_some_and(|version| version >= CODEX_QUEUE_WAKE_MIN_VERSION),
+        }
+    }
+}
+
+impl Default for CliVersions {
+    fn default() -> Self {
+        Self::current().clone()
+    }
+}
+
+fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
+    let mut command = cli_version_command(program);
+    let output = match crate::process_utils::run_command_with_timeout(
+        &mut command,
+        CLI_VERSION_TIMEOUT,
+        &format!("{program} --version"),
+    ) {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            tracing::debug!(program, status = ?output.status.code(), "CLI version probe failed");
+            return None;
+        }
+        Err(error) => {
+            tracing::debug!(program, error = %error, "CLI version probe unavailable");
+            return None;
+        }
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let raw = if stdout.trim().is_empty() {
+        stderr.as_ref()
+    } else {
+        stdout.as_ref()
+    };
+    parse_cli_version(raw)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cli_version_command(program: &str) -> Command {
+    let mut command = Command::new(program);
+    command.arg("--version");
+    command
+}
+
+#[cfg(target_os = "windows")]
+fn cli_version_command(program: &str) -> Command {
+    // The platform contract is app-global, not project/distro-specific. Use
+    // WSL's default distro and keep the entire probe inside the 5 s timeout.
+    let mut command = crate::daemon::launcher::wsl_command();
+    command.args(["-e", program, "--version"]);
+    command
+}
+
+fn parse_cli_version(raw: &str) -> Option<((u32, u32, u32), String)> {
+    raw.split_whitespace().find_map(|token| {
+        let token = token.trim_start_matches('v');
+        let mut parts = token.split('.');
+        let major = parts.next()?.parse::<u32>().ok()?;
+        let minor = parts.next()?.parse::<u32>().ok()?;
+        let patch = parts
+            .next()?
+            .chars()
+            .take_while(|character| character.is_ascii_digit())
+            .collect::<String>()
+            .parse::<u32>()
+            .ok()?;
+        let version = (major, minor, patch);
+        Some((version, format!("{major}.{minor}.{patch}")))
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -460,6 +598,8 @@ pub struct TerminalPlatformContract {
     pub cli_command_defaults: CliCommandSettings,
     #[serde(alias = "model_catalog")]
     pub model_catalog: ModelCatalog,
+    #[serde(alias = "cli_versions")]
+    pub cli_versions: CliVersions,
 }
 
 impl Default for TerminalPlatformContract {
@@ -488,6 +628,7 @@ impl TerminalPlatformContract {
                 .collect(),
             cli_command_defaults: CliCommandSettings::default(),
             model_catalog: ModelCatalog::default(),
+            cli_versions: CliVersions::default(),
         }
     }
 
@@ -1103,6 +1244,28 @@ mod tests {
         assert_eq!(contract.cli_command_defaults, CliCommandSettings::default());
     }
 
+    // Regression: 2cf41db centralized the terminal platform contract without
+    // CLI versions, so 6fe0aa3 could install Codex hooks on unsupported CLIs.
+    #[test]
+    fn cli_versions_gate_codex_native_capabilities() {
+        let before_hooks =
+            CliVersions::from_outputs(Some("codex-cli 0.146.9"), Some("2.1.246 (Claude Code)"));
+        assert_eq!(before_hooks.codex.as_deref(), Some("0.146.9"));
+        assert_eq!(before_hooks.claude.as_deref(), Some("2.1.246"));
+        assert!(!before_hooks.codex_compaction_hooks_supported);
+        assert!(!before_hooks.codex_notify_supported);
+        assert!(!before_hooks.codex_queue_wake_supported);
+
+        let hooks_and_notify =
+            CliVersions::from_outputs(Some("codex-cli 0.147.0"), Some("claude 2.1.238"));
+        assert!(hooks_and_notify.codex_compaction_hooks_supported);
+        assert!(hooks_and_notify.codex_notify_supported);
+        assert!(!hooks_and_notify.codex_queue_wake_supported);
+
+        let queue = CliVersions::from_outputs(Some("codex-cli 0.149.0"), None);
+        assert!(queue.codex_queue_wake_supported);
+    }
+
     #[test]
     fn terminal_platform_contract_macos_defaults_include_supported_apps() {
         let contract = TerminalPlatformContract::for_platform(AppPlatform::Macos);
@@ -1222,6 +1385,10 @@ mod tests {
         assert_eq!(value["modelCatalog"]["codex"][0]["id"], "gpt-5.6-sol");
         assert!(value["modelCatalog"]["codex"][0]
             .get("defaultEffort")
+            .is_some());
+        assert!(value["cliVersions"].get("codex").is_some());
+        assert!(value["cliVersions"]
+            .get("codexQueueWakeSupported")
             .is_some());
     }
 

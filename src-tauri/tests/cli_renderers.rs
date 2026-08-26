@@ -94,6 +94,7 @@ fn launch_command_cli_matches_launch_spec_bytes() {
             role: MemberRole::Agent,
         }),
         codex_bypass_hook_trust: false,
+        codex_notify_executable: None,
     }
     .render()
     .command;
@@ -159,6 +160,7 @@ fn launch_command_cli_uses_default_base_and_snake_case_claude_team() {
             role: MemberRole::Agent,
         }),
         codex_bypass_hook_trust: false,
+        codex_notify_executable: None,
     }
     .render()
     .command;

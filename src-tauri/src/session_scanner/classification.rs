@@ -145,8 +145,9 @@ where
             };
             idle_ms += idle_started.elapsed();
 
-            // The tool reported this state itself (Claude sessions registry):
-            // it replaces the file signal rather than supplementing it.
+            // The tool reported this state itself (Claude sessions registry or
+            // Codex notify): it replaces the file signal rather than
+            // supplementing it.
             let authoritative = idle_result.authoritative;
             let authoritative_active = authoritative && idle_result.state == SessionState::Active;
             let file_active = !authoritative && idle_result.state == SessionState::Active;
@@ -277,7 +278,11 @@ fn activity_source(
     cli_tool: CliTool,
 ) -> &'static str {
     if authoritative {
-        return "registry";
+        return match cli_tool {
+            CliTool::Claude => "registry",
+            CliTool::Codex => "notify",
+            CliTool::Gemini => "native",
+        };
     }
     if process_active {
         match cli_tool {
@@ -562,7 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn activity_source_names_the_registry_when_authoritative() {
+    fn activity_source_names_the_native_source_when_authoritative() {
         assert_eq!(
             activity_source(true, false, false, CliTool::Claude),
             "registry"
@@ -570,6 +575,10 @@ mod tests {
         assert_eq!(
             activity_source(true, true, false, CliTool::Claude),
             "registry"
+        );
+        assert_eq!(
+            activity_source(true, false, false, CliTool::Codex),
+            "notify"
         );
     }
 

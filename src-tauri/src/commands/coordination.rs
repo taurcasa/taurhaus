@@ -116,19 +116,21 @@ pub async fn coordination_initialize_team(
         let db = app_for_task.state::<DbState>();
         let state = app_for_task.state::<CoordinationState>();
         let request = normalize_initialize_request_paths(&db, request)?;
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(
-            &app_for_task,
-            &db,
-            matches!(
-                CliTool::from_alias(&request.lead.cli_tool),
-                Ok(CliTool::Codex)
-            ) || request
-                .agents
-                .iter()
-                .any(|agent| matches!(CliTool::from_alias(&agent.cli_tool), Ok(CliTool::Codex))),
-        );
+        let has_codex = matches!(
+            CliTool::from_alias(&request.lead.cli_tool),
+            Ok(CliTool::Codex)
+        ) || request
+            .agents
+            .iter()
+            .any(|agent| matches!(CliTool::from_alias(&agent.cli_tool), Ok(CliTool::Codex)));
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(&app_for_task, &db, has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
+        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+            &mut cli_commands,
+            has_codex,
+            codex_bypass_hook_trust,
+        );
         let mut emit = |event: &StepProgressEvent| {
             let _ = app_for_task.emit("coordination-step-progress", event);
         };
@@ -181,16 +183,17 @@ pub fn coordination_add_agent(
     let requested_team_name = request.team_name.clone();
     let result = {
         let request = normalize_add_agent_request_path(&db, request)?;
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(
-            &app,
-            &db,
-            matches!(
-                CliTool::from_alias(&request.agent.cli_tool),
-                Ok(CliTool::Codex)
-            ),
+        let has_codex = matches!(
+            CliTool::from_alias(&request.agent.cli_tool),
+            Ok(CliTool::Codex)
         );
+        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
+        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+            &mut cli_commands,
+            has_codex,
+            codex_bypass_hook_trust,
+        );
         let mut emit = |event: &StepProgressEvent| {
             let _ = app.emit("coordination-step-progress", event);
         };
@@ -230,7 +233,11 @@ pub fn coordination_resume_member(
             .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
         let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
+        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+            &mut cli_commands,
+            has_codex,
+            codex_bypass_hook_trust,
+        );
         let mut emit = |event: &StepProgressEvent| {
             let _ = app.emit("coordination-step-progress", event);
         };
@@ -264,7 +271,11 @@ pub fn coordination_resume_team(
             .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
         let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
-        cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
+        crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+            &mut cli_commands,
+            has_codex,
+            codex_bypass_hook_trust,
+        );
         let mut emit = |event: &ResumeTeamProgressEvent| {
             emit_resume_team_progress_log_event(event);
             let _ = app.emit("coordination-resume-team-progress", event);

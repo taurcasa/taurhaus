@@ -5,6 +5,7 @@ use crate::session_scanner::process::ProcessInfo;
 use crate::session_scanner::tmux::TmuxPane;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,9 +24,30 @@ pub struct CodexResolver {
     base_dir: Option<PathBuf>,
 }
 
+struct CodexNotifyActivitySource<'a> {
+    notify_path: &'a Path,
+}
+
+impl ActivitySource for CodexNotifyActivitySource<'_> {
+    fn activity(
+        &self,
+        _project_path: &str,
+        pid: u32,
+        resolved: Option<&IdleResult>,
+    ) -> Option<IdleResult> {
+        let result = resolved?.clone();
+        let fd_bound = result
+            .jsonl_path
+            .as_deref()
+            .is_some_and(|path| crate::platform::process_has_open_path(pid, path));
+        let result = apply_notify_edge(result, fd_bound, self.notify_path);
+        result.authoritative.then_some(result)
+    }
+}
+
 impl CodexResolver {
     pub fn new() -> Self {
-        let base_dir = dirs::home_dir().map(|h| h.join(".codex").join("sessions"));
+        let base_dir = Some(PlatformPaths::codex_dir().join("sessions"));
         Self { base_dir }
     }
 
@@ -38,8 +60,45 @@ impl CodexResolver {
         let Some(base) = self.base_dir.as_ref() else {
             return IdleResult::idle();
         };
-        codex_detect_idle_for_pid(project_path, pid, pane_id, base)
+        let result = codex_detect_idle_for_pid(project_path, pid, pane_id, base);
+        let notify_path = PlatformPaths::codex_notify_path();
+        let source = CodexNotifyActivitySource {
+            notify_path: &notify_path,
+        };
+        ActivitySource::activity(&source, project_path, pid, Some(&result)).unwrap_or(result)
     }
+}
+
+fn apply_notify_edge(mut result: IdleResult, fd_bound: bool, notify_path: &Path) -> IdleResult {
+    if !fd_bound {
+        return result;
+    }
+    let (Some(session_id), Some(transcript_path)) =
+        (result.session_id.as_deref(), result.jsonl_path.as_deref())
+    else {
+        return result;
+    };
+    let Some(record) =
+        crate::daemon::codex_notify::latest_record_for_session(notify_path, session_id)
+    else {
+        return result;
+    };
+    if record.event.get("type").and_then(Value::as_str) != Some("agent-turn-complete") {
+        return result;
+    }
+    let Some(transcript_mtime) = fs::metadata(transcript_path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+    else {
+        return result;
+    };
+    if record.ts < DateTime::<Utc>::from(transcript_mtime) {
+        return result;
+    }
+
+    result.state = SessionState::Idle;
+    result.authoritative = true;
+    result
 }
 
 impl Default for CodexResolver {
@@ -543,6 +602,80 @@ mod tests {
         writeln!(f, r#"{{"type":"response_item","payload":{{}}}}"#).unwrap();
         f.sync_all().unwrap();
         path
+    }
+
+    // Regression: c9669ef introduced authoritative Claude activity but left
+    // Codex turn completion on the time-normalized fd/rchar fallback.
+    #[test]
+    fn fresh_turn_complete_is_authoritative_idle_for_the_bound_thread() {
+        let tmp = TempDir::new().expect("tempdir");
+        let transcript = tmp
+            .path()
+            .join("rollout-2026-08-26T12-00-00-01a03e54-7a7a-7fb3-85f5-24dfa739a2e1.jsonl");
+        std::fs::write(&transcript, b"session\n").expect("transcript");
+        let transcript_mtime = std::fs::metadata(&transcript)
+            .and_then(|metadata| metadata.modified())
+            .expect("transcript mtime");
+        let notify_path = tmp.path().join("codex-notify.jsonl");
+        let notify_ts =
+            chrono::DateTime::<Utc>::from(transcript_mtime) + chrono::Duration::milliseconds(1);
+        crate::daemon::codex_notify::append_event_at(
+            &notify_path,
+            include_str!("fixtures/codex-agent-turn-complete-0.149.0.json"),
+            notify_ts,
+        )
+        .expect("notify fixture");
+        let heuristic = IdleResult {
+            state: SessionState::Active,
+            session_id: Some("01a03e54-7a7a-7fb3-85f5-24dfa739a2e1".to_string()),
+            jsonl_path: Some(transcript.to_string_lossy().into_owned()),
+            last_output_age_secs: Some(0),
+            authoritative: false,
+        };
+
+        let result = apply_notify_edge(heuristic, true, &notify_path);
+
+        assert_eq!(result.state, SessionState::Idle);
+        assert!(result.authoritative);
+    }
+
+    #[test]
+    fn stale_foreign_or_unbound_notify_falls_back_to_codex_heuristics() {
+        let tmp = TempDir::new().expect("tempdir");
+        let transcript = tmp.path().join("rollout.jsonl");
+        let notify_path = tmp.path().join("codex-notify.jsonl");
+        crate::daemon::codex_notify::append_event_at(
+            &notify_path,
+            include_str!("fixtures/codex-agent-turn-complete-0.149.0.json"),
+            Utc::now() - chrono::Duration::seconds(5),
+        )
+        .expect("notify fixture");
+        std::fs::write(&transcript, b"new turn\n").expect("newer transcript");
+        let heuristic = IdleResult {
+            state: SessionState::Active,
+            session_id: Some("01a03e54-7a7a-7fb3-85f5-24dfa739a2e1".to_string()),
+            jsonl_path: Some(transcript.to_string_lossy().into_owned()),
+            last_output_age_secs: Some(0),
+            authoritative: false,
+        };
+
+        assert_eq!(
+            apply_notify_edge(heuristic.clone(), true, &notify_path),
+            heuristic
+        );
+        assert_eq!(
+            apply_notify_edge(heuristic.clone(), false, &notify_path),
+            heuristic
+        );
+
+        let foreign = IdleResult {
+            session_id: Some("different-thread".to_string()),
+            ..heuristic.clone()
+        };
+        assert_eq!(
+            apply_notify_edge(foreign.clone(), true, &notify_path),
+            foreign
+        );
     }
 
     #[test]

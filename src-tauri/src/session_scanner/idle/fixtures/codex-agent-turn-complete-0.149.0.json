@@ -1,0 +1,11 @@
+{
+  "type": "agent-turn-complete",
+  "thread-id": "01a03e54-7a7a-7fb3-85f5-24dfa739a2e1",
+  "turn-id": "01a03e54-7bbf-74b2-ac52-2cfc3b0688cc",
+  "cwd": "/tmp/taurhaus-pr13-codex-notify.qlpHo3",
+  "client": "codex-tui",
+  "input-messages": [
+    "Reply only OK"
+  ],
+  "last-assistant-message": "OK"
+}

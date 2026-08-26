@@ -55,7 +55,8 @@ pub struct IdleResult {
     pub jsonl_path: Option<String>,
     /// Seconds since the latest observed session output file changed.
     pub last_output_age_secs: Option<u64>,
-    /// The tool itself reported this state (Claude sessions registry).
+    /// The tool itself reported this state (Claude sessions registry or a
+    /// fresh, fd-bound Codex turn-complete notification).
     ///
     /// Authoritative results bypass the rchar heuristic and the display
     /// hysteresis in `classification.rs` — there is nothing to smooth when the
@@ -91,6 +92,20 @@ pub trait SessionResolver: Send + Sync {
     /// Checks tool-specific session files and returns activity state,
     /// session ID, and path to the active session file.
     fn detect_idle(&self, project_path: &str) -> IdleResult;
+}
+
+/// Optional harness-native activity source layered over transcript heuristics.
+///
+/// Claude's per-PID registry and Codex's turn-complete sink are the two native
+/// implementations. Returning `None` leaves the caller's fd/rchar and mtime
+/// fallback in charge.
+pub(super) trait ActivitySource {
+    fn activity(
+        &self,
+        project_path: &str,
+        pid: u32,
+        resolved: Option<&IdleResult>,
+    ) -> Option<IdleResult>;
 }
 
 /// Get the resolver for a CLI tool.

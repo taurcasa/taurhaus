@@ -33,6 +33,11 @@ impl PlatformPaths {
         Self::app_data_root().join(JSONL_LOG_FILE_NAME)
     }
 
+    /// Native Codex turn-complete edge sink.
+    pub fn codex_notify_path() -> PathBuf {
+        Self::app_data_root().join(crate::daemon::codex_notify::CODEX_NOTIFY_FILENAME)
+    }
+
     /// Claude home directory (`~/.claude`).
     pub fn claude_dir() -> PathBuf {
         env_path_override(CLAUDE_DIR_OVERRIDE_ENV).unwrap_or_else(default_claude_dir)
@@ -243,6 +248,18 @@ mod tests {
 
         std::env::remove_var(DATA_DIR_OVERRIDE_ENV);
         assert_eq!(resolved, temp.path().join(JSONL_LOG_FILE_NAME));
+    }
+
+    #[test]
+    fn codex_notify_path_joins_jsonl_filename_under_app_data_root() {
+        let _guard = acquire_env_test_guard();
+        let temp = TempDir::new().expect("tempdir");
+        std::env::set_var(DATA_DIR_OVERRIDE_ENV, temp.path());
+
+        let resolved = PlatformPaths::codex_notify_path();
+
+        std::env::remove_var(DATA_DIR_OVERRIDE_ENV);
+        assert_eq!(resolved, temp.path().join("codex-notify.jsonl"));
     }
 
     #[test]

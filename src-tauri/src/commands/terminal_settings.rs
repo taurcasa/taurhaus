@@ -5,7 +5,7 @@ use crate::coordination::compact_hook::{
 use crate::coordination::errors::CoordinationError;
 #[cfg(test)]
 use crate::models::CliCommandSettings;
-use crate::models::{CodexCompactionMode, TerminalSettings};
+use crate::models::{CliVersions, CodexCompactionMode, TerminalSettings};
 use crate::provider::platform_paths::PlatformPaths;
 
 pub fn load_terminal_settings(db: &DbState) -> TerminalSettings {
@@ -25,6 +25,32 @@ pub fn load_terminal_settings(db: &DbState) -> TerminalSettings {
     }
 }
 
+pub(crate) fn apply_managed_codex_launch_inputs(
+    cli_commands: &mut crate::models::CliCommandSettings,
+    has_managed_codex: bool,
+    codex_bypass_hook_trust: bool,
+) {
+    apply_managed_codex_launch_inputs_with_support(
+        cli_commands,
+        has_managed_codex,
+        codex_bypass_hook_trust,
+        CliVersions::current().codex_notify_supported,
+        &PlatformPaths::daemon_binary_path(),
+    );
+}
+
+fn apply_managed_codex_launch_inputs_with_support(
+    cli_commands: &mut crate::models::CliCommandSettings,
+    has_managed_codex: bool,
+    codex_bypass_hook_trust: bool,
+    notify_supported: bool,
+    daemon_executable: &std::path::Path,
+) {
+    cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
+    cli_commands.codex_notify_executable =
+        (has_managed_codex && notify_supported).then(|| daemon_executable.to_path_buf());
+}
+
 #[cfg(test)]
 pub fn load_cli_commands(db: &DbState) -> CliCommandSettings {
     load_terminal_settings(db).cli_commands
@@ -36,10 +62,27 @@ pub(crate) fn reconcile_codex_compaction_at(
     has_managed_codex: bool,
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
+    reconcile_codex_compaction_at_with_support(
+        codex_home,
+        mode,
+        has_managed_codex,
+        CliVersions::current().codex_compaction_hooks_supported,
+        taurhaus_exe,
+    )
+}
+
+pub(crate) fn reconcile_codex_compaction_at_with_support(
+    codex_home: &std::path::Path,
+    mode: CodexCompactionMode,
+    has_managed_codex: bool,
+    hooks_supported: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
     match mode {
-        CodexCompactionMode::Hooks if has_managed_codex => {
+        CodexCompactionMode::Hooks if has_managed_codex && hooks_supported => {
             ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe)
         }
+        CodexCompactionMode::Hooks if has_managed_codex => remove_codex_compact_hook_at(codex_home),
         CodexCompactionMode::Hooks => Ok(false),
         CodexCompactionMode::Transcript => remove_codex_compact_hook_at(codex_home),
     }
@@ -49,6 +92,7 @@ pub(crate) fn reconcile_codex_compaction(
     mode: CodexCompactionMode,
     has_managed_codex: bool,
 ) -> Result<bool, CoordinationError> {
+    let hooks_supported = CliVersions::current().codex_compaction_hooks_supported;
     let executable = compact_hook_executable()?;
     let changed = reconcile_codex_compaction_at(
         &PlatformPaths::codex_dir(),
@@ -56,6 +100,36 @@ pub(crate) fn reconcile_codex_compaction(
         has_managed_codex,
         &executable,
     )?;
+    if mode == CodexCompactionMode::Hooks && has_managed_codex && !hooks_supported {
+        tracing::warn!(
+            codex_version = ?CliVersions::current().codex,
+            "Codex compact hook skipped because the installed CLI predates 0.147"
+        );
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "tool".to_string(),
+            serde_json::Value::String("codex".to_string()),
+        );
+        fields.insert(
+            "version".to_string(),
+            CliVersions::current()
+                .codex
+                .clone()
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        fields.insert(
+            "minimum_version".to_string(),
+            serde_json::Value::String("0.147.0".to_string()),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            "compaction.codex_hook.unsupported",
+            Some("Codex compact hook requires CLI version 0.147.0 or newer".to_string()),
+            fields,
+        );
+    }
     if changed {
         let mut fields = serde_json::Map::new();
         fields.insert(
