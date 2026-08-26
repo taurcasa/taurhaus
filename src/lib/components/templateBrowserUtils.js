@@ -164,7 +164,7 @@ export function normalizeSlotOverridesForDraft(value) {
  * renders from; what a save writes back comes from the row's own overrides, never
  * from comparing the rendered value with these defaults.
  */
-export function roleModelDefaults(role) {
+function roleModelDefaults(role) {
   const parsed = parseLegacyModel(resolveRoleModel(role))
   return {
     model: parsed.model,
