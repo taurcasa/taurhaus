@@ -203,7 +203,18 @@ where
             } else {
                 apply_hysteresis(proc.pid, decision.raw_state)
             };
-            if previous_state != Some(state) {
+            // First sight of a PID is not a transition. The display scan
+            // prunes the tracker of every PID it does not return
+            // (`cache::retain_state_trackers`), so unbound `codex exec`
+            // processes re-enter classification with `previous_state == None`
+            // on every cycle; emitting on those turned the sink into a
+            // heartbeat. First sight earns an event only when the process
+            // arrives active.
+            let is_transition = match previous_state {
+                Some(previous) => previous != state,
+                None => state != SessionState::Idle,
+            };
+            if is_transition {
                 emit_activity_state_changed(
                     proc.pid,
                     proc.cli_tool,
@@ -397,6 +408,148 @@ mod tests {
             &move |_: &process::ProcessInfo| result.clone(),
         );
         sessions.into_iter().next().expect("one session")
+    }
+
+    /// Capture the `activity.state.changed` events one classification sequence
+    /// emits.
+    ///
+    /// The structured emitter is process-global, so the sink and the tap are
+    /// installed under the shared global-log guard and torn down on drop.
+    struct StateChangeCapture {
+        _log_guard: crate::test_support::GlobalLogTestGuard,
+        _sink_dir: tempfile::TempDir,
+        _sink: crate::commands::logging::LogFileState,
+        events: std::sync::mpsc::Receiver<serde_json::Value>,
+    }
+
+    impl StateChangeCapture {
+        fn install() -> Self {
+            let log_guard = crate::test_support::acquire_global_log_test_guard();
+            let sink_dir = tempfile::tempdir().expect("temp dir");
+            let sink = crate::commands::logging::LogFileState::new(
+                sink_dir.path().join("activity.log.jsonl"),
+            )
+            .expect("log state");
+            crate::commands::logging::install_global_sink(&sink);
+            let (sender, events) = std::sync::mpsc::channel();
+            crate::commands::logging::install_test_tap(sender);
+            Self {
+                _log_guard: log_guard,
+                _sink_dir: sink_dir,
+                _sink: sink,
+                events,
+            }
+        }
+
+        /// Every `(from, to)` pair emitted for `pid`, in emission order.
+        fn transitions_for(&self, pid: u32) -> Vec<(Option<SessionState>, SessionState)> {
+            self.events
+                .try_iter()
+                .filter(|event| {
+                    event["event"] == "activity.state.changed" && event["fields"]["pid"] == pid
+                })
+                .map(|event| {
+                    (
+                        serde_json::from_value(event["fields"]["from"].clone())
+                            .expect("from state"),
+                        serde_json::from_value(event["fields"]["to"].clone()).expect("to state"),
+                    )
+                })
+                .collect()
+        }
+    }
+
+    impl Drop for StateChangeCapture {
+        fn drop(&mut self) {
+            crate::commands::logging::clear_test_tap();
+        }
+    }
+
+    // Regression: PR 2 commit 06b432d added `activity.state.changed` and gated
+    // it on `previous_state != Some(state)`, which is also true the first time
+    // a PID is seen. On the live 0.6.6 host the display scan prunes the tracker
+    // of every PID it does not return (`cache::retain_state_trackers`), so
+    // unbound `codex exec` PIDs were re-classified from an empty tracker on
+    // every cycle and re-emitted `None -> idle` forever: ~232 events/minute of
+    // pure noise in the JSONL sink. First sight of an idle process is not a
+    // transition.
+    #[test]
+    fn first_sight_of_an_idle_process_emits_no_state_change() {
+        let capture = StateChangeCapture::install();
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_010;
+        cache::remove_state_tracker(pid);
+
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Idle, false)).state,
+            SessionState::Idle
+        );
+
+        assert!(
+            capture.transitions_for(pid).is_empty(),
+            "first sight of an idle PID must not emit activity.state.changed"
+        );
+        cache::remove_state_tracker(pid);
+    }
+
+    // Regression: same commit 06b432d — the fix must not silence a process that
+    // arrives already working. First sight of an *active* PID is real news.
+    #[test]
+    fn first_sight_of_an_active_process_emits_the_arrival() {
+        let capture = StateChangeCapture::install();
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_011;
+        cache::remove_state_tracker(pid);
+
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Active, false)).state,
+            SessionState::Active
+        );
+
+        assert_eq!(
+            capture.transitions_for(pid),
+            vec![(None, SessionState::Active)]
+        );
+        cache::remove_state_tracker(pid);
+    }
+
+    // Regression: same commit 06b432d — suppressing first-sight idle must leave
+    // genuine transitions on a tracked PID untouched, in both directions.
+    #[test]
+    fn a_tracked_process_still_emits_both_transition_directions() {
+        let capture = StateChangeCapture::install();
+        let _lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let pid = 941_012;
+        cache::remove_state_tracker(pid);
+
+        // Poll 1 establishes the tracker at idle; hysteresis then needs a
+        // second consistent raw reading before each reported flip.
+        classify_once(pid, idle_result(SessionState::Idle, false));
+        classify_once(pid, idle_result(SessionState::Active, false));
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Active, false)).state,
+            SessionState::Active
+        );
+        classify_once(pid, idle_result(SessionState::Idle, false));
+        assert_eq!(
+            classify_once(pid, idle_result(SessionState::Idle, false)).state,
+            SessionState::Idle
+        );
+
+        assert_eq!(
+            capture.transitions_for(pid),
+            vec![
+                (Some(SessionState::Idle), SessionState::Active),
+                (Some(SessionState::Active), SessionState::Idle),
+            ]
+        );
+        cache::remove_state_tracker(pid);
     }
 
     // Regression: 9a66d1c classified every Claude session from transcript mtime
