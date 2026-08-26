@@ -182,7 +182,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 7 delivery + config round-trip (N1/N2/P9/P11), S16 | Codex gpt-5.6 | Opus ×2 | 2 | 4 (Opus: save aborted on unparseable config; lead join fatal after commit; Windows lock vs readers; bridged used global teams dir) | #17 |
 | 7b stale-pane guard (N3/P3) | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 6 (Opus: 1 blocker — vanished pane as hard error; false-foreign via snapshot pane / cwd; team-wide quarantine; exporter race; refresh loop) | #18 |
 | 8 hub-owned focus, protocol 8 | Opus 5 | Codex ×2 | 5 (4 fix rounds) | 14 (Codex: per-pane focus; v7 acceptance on three reconnect paths; seed races; E2E vacuity; bridge auth; startup-fallback race) | #19 |
-| 9 Codex compaction hook bridge | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
+| 9 compaction hook bridge (S6 proven) | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds + orchestrator default flip) | 12 (Opus: 2 blockers — stdout-poisoned hook responses, teams-dir walk failing settings saves; mode-flip reconciliation; liveness-blind fallback; retry flood; gate asymmetry) | #21 |
 
 ## Spikes / unknowns
 
