@@ -449,6 +449,30 @@ mod tests {
         (heavy, extractor)
     }
 
+    /// Wait for the next `compaction.owner.failed` record on the test tap.
+    ///
+    /// The tap is process-global and carries every structured record emitted
+    /// while it is installed, so a bare `recv_timeout` can hand back an
+    /// unrelated event from a concurrently running test and make the caller
+    /// stop the controller before its real retry lands.
+    fn next_failed_owner_event(
+        rx: &std::sync::mpsc::Receiver<serde_json::Value>,
+        timeout: Duration,
+    ) -> Option<serde_json::Value> {
+        let deadline = Instant::now() + timeout;
+        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+            match rx.recv_timeout(remaining) {
+                Ok(event) => {
+                    if event["event"] == "compaction.owner.failed" {
+                        return Some(event);
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+        None
+    }
+
     fn accept_signal(
         _: &crate::coordination::stores::CompactionSignalRecord,
     ) -> Result<(), String> {
@@ -840,8 +864,7 @@ mod tests {
             run_mode_controller(Some(blocked_parent.join("teams")), thread_shutdown);
         });
 
-        let first_event = event_rx
-            .recv_timeout(Duration::from_secs(1))
+        let first_event = next_failed_owner_event(&event_rx, Duration::from_secs(1))
             .expect("first failed owner event");
         std::thread::sleep(Duration::from_millis(220));
         let hot_retry_events = event_rx
@@ -850,8 +873,7 @@ mod tests {
             .count();
         assert_eq!(hot_retry_events, 0);
 
-        let retry_event = event_rx
-            .recv_timeout(Duration::from_secs(2))
+        let retry_event = next_failed_owner_event(&event_rx, Duration::from_secs(2))
             .expect("failed owner retry event after backoff");
         shutdown.store(true, Ordering::Relaxed);
         handle.join().expect("join mode controller");
