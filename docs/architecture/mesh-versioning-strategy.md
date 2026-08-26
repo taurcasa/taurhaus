@@ -113,7 +113,7 @@ Current recipe set:
 3. `just bundle-mesh`
 - depends on `mesh-verify-lock`
 - bundles binary to `src-tauri/resources/mesh`
-- refuses a directory at the target path and asserts the bundled result is a regular file (0.6.5 fix)
+- `rm -rf`s a stray directory at `src-tauri/resources/mesh` before copying, then asserts the bundled result is a regular file (0.6.5 fix). It does not refuse — a `cp` into that directory would have shipped `resources/mesh/mesh`, the corrupt v0.6.4 bundle
 - writes:
   - `src-tauri/resources/mesh.version` (plain semver, backward compatible)
   - `src-tauri/resources/mesh.manifest.json` (full metadata snapshot)

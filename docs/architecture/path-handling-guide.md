@@ -139,7 +139,7 @@ These are two different variables and confusing them silently splits state.
 
 `TAURHAUS_CLAUDE_DIR` moves **taurhaus's** Claude root only. Claude Code itself reads `CLAUDE_CONFIG_DIR` and, with that unset, `~/.claude` — whatever taurhaus was pointed at. Three consequences:
 
-1. **Launching.** Every managed Claude launch renders an explicit `CLAUDE_CONFIG_DIR=<dir>` prefix. If the base command already carries one, taurhaus keeps it and logs `launch.config_dir.ignored`.
+1. **Launching.** A managed Claude launch renders a `CLAUDE_CONFIG_DIR=<dir>` prefix only when the resolved account has an explicit config dir — a non-default account or an override. The default account deliberately resolves to `None` and renders no prefix, so Claude inherits its own unset-variable behaviour (`session_scanner/launch.rs`, `session_scanner/claude_accounts.rs`). If the base command already carries the variable, taurhaus keeps it and logs `launch.config_dir.ignored`.
 2. **Reading identity/activity.** Session identity and state are read under the *process's own* `CLAUDE_CONFIG_DIR` (`/proc/<pid>/environ` on Linux, `ps -Eww` on macOS), falling back to `tool_session_root(Claude)`. Never assume the app's root is the session's root.
 3. **The daemon.** It is spawned with `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` forwarded (converted to Linux form for a WSL daemon); `--data-dir` sets `TAURHAUS_DATA_DIR` inside the daemon. Startup logs `daemon.data_root.mismatch` (warn) when the app and daemon roots diverge anyway.
 
