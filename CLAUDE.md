@@ -85,6 +85,16 @@ Unified structured logging pipeline:
 - `src-tauri/src/commands/lifecycle.rs` (`ipc.command.received/completed/failed`, `ipc.lock.wait`)
 - `src-tauri/src/startup/mod.rs` (`startup.phase.started/completed/failed`)
 - `src-tauri/src/daemon_api.rs` + `src-tauri/src/provider/daemon_client.rs` (`daemon.rpc.sent/response/timeout`)
+- `src-tauri/src/session_scanner/classification.rs` (`activity.state.changed` with `pid`, `tool`, `from`, `to`, `source`)
+- `src-tauri/src/session_scanner/process.rs` (`session_scanner.process_scan.degraded/recovered`, edge-triggered)
+- `src-tauri/src/session_scanner/launch.rs` (`launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`)
+- `src-tauri/src/commands/command_center/launching.rs` + `src-tauri/src/coordination/pipelines/helpers.rs` (`launch.command.rendered`, `launch.account.*`)
+- `src-tauri/src/coordination/compaction_events.rs` (`compaction.owner.selected/failed`, `compaction.signal_*`, `compaction.extractor.*`)
+- `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.*`)
+- `src-tauri/src/bin/taurhaus-daemon.rs` (`codex.notify.appended`)
+- `src-tauri/src/startup/daemon.rs` (`startup.daemon_protocol.checked`)
+
+**Tauri frontend events**: `sessions-updated` and `tmux-focus-changed` are emitted from `src-tauri/src/daemon_lifecycle.rs`.
 
 **Logging policy**: see [`docs/architecture/log-level-guidelines.md`](docs/architecture/log-level-guidelines.md).
 
@@ -231,7 +241,11 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/app.css` | Design tokens + global styles |
 | `src/lib/ipc.js` | Thin compatibility re-export. Real IPC implementations live in `src/lib/ipc/`. |
 | `src/lib/ipc/` | Frontend IPC domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`) plus payload/mocks modules. |
-| `src/lib/context/` | Frontend context providers (`ProjectContext.js`, `SessionContext.js`). |
+| `src/lib/context/` | Frontend context providers (`ProjectContext.js`, `SessionContext.js`, `ModelCatalogContext.js`). |
+| `src/lib/activitySignal.js` | Single derivation of presented activity (`working`/`active`/`idle`/`uncertain`/`offline` + confidence) used by sidebar, HoverCard, and mesh canvas. |
+| `src/lib/modelCatalog.js` | Helpers over the backend-owned `ModelCatalog` delivered via `settings.terminal_contract.model_catalog`. |
+| `src/lib/components/ModelSelect.svelte` | Effort-aware model picker used by `MeshTeamBuilder` and `RoleEditor`. |
+| `src/lib/claudeAccounts.svelte.js` | Frontend Claude account state; drives `ClaudeAccountChooser.svelte` (Shell) and `ClaudeAccountChip.svelte` (OverviewTab). |
 | `src/lib/HoverCard.svelte` | Sidebar hover preview focused on current activity, latest change, and relationship cues. |
 | `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
 | `src/lib/components/meshTabController.svelte.js` | Controller state/actions for `MeshTab.svelte`. |
@@ -245,14 +259,23 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/TeamCustomizerPanel.svelte` | Advanced preset/draft editor used from the template catalog flow. |
 | `src/lib/components/TemplateHistoryPanel.svelte` | Template commit history, diff, dirty status, and revert UI |
 | `src/lib/components/templateHistoryController.svelte.js` | Controller state/actions for template history/diff/revert. |
-| `src-tauri/src/startup/` | App bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`). |
+| `src-tauri/src/startup/` | App bootstrap pipeline (`bootstrap`, `daemon`, `search`, `watchers`, `compaction`, `harness`, `setup`, `telemetry`, `orchestration`). |
+| `src-tauri/src/startup/compaction.rs` | Compaction owner selection: daemon when configured and reachable, app otherwise. |
+| `src-tauri/src/session_scanner/launch.rs` | `ModelSpec { model, reasoning_effort }` (incl. `parse_legacy`) and `LaunchSpec::render()` — the per-tool launch command renderer. |
+| `src-tauri/src/commands/command_center/launching.rs` | Drives app launches through `LaunchSpec` (account resolution, `launch.command.rendered`). |
+| `src-tauri/src/session_scanner/claude_accounts.rs` | Claude account detection (config dirs, signed-in check) behind `list_claude_accounts`/`set_project_claude_account`. |
+| `src-tauri/src/session_scanner/idle/claude_registry.rs` | Reads Claude Code's sessions registry (`<CLAUDE_CONFIG_DIR>/sessions/<pid>.json`) as authoritative identity/activity. |
+| `src-tauri/src/daemon/codex_notify.rs` | `taurhaus-daemon codex-notify <JSON>` subcommand; appends Codex turn-complete payloads to `<app_data>/codex-notify.jsonl` for the native idle edge. |
+| `src-tauri/src/daemon/session_activity.rs` | Daemon session-activity hub: versioned snapshot, tmux focus, degradation cursor. |
+| `src-tauri/tests/cli_renderers.rs` | Golden tests pinning `LaunchSpec::render` and `DeliveryRenderer` output, incl. the `--launch-command` / `--render-onboarding` CLI entries. |
 | `src-tauri/src/services/task_query.rs` | Shared task query service for backend consumers. |
 | `src-tauri/src/services/task_sync.rs` | Task synchronization service for daemon/IPC flows. |
 | `src-tauri/src/daemon_api.rs` | Daemon process API wrapper used by commands/startup flows. |
 | `src-tauri/src/project_provider.rs` | Active project resolution/provider utilities. |
-| `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, team roots, daemon binary, log path, and Claude hook paths. |
+| `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, `teams_dir()`, daemon binary, log path, `codex_notify_path()`, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
-| `src-tauri/src/coordination/claude_hooks.rs` | Claude `SessionStart(source=compact)` bridge, runtime-aware hook installation, and standalone hook logging. |
+| `src-tauri/src/coordination/compact_hook.rs` | One hook bridge for Claude Code and Codex (tool inferred from the transcript path), with an idempotent/removable Codex `hooks.json` installer. Invoked via `--compact-hook`. |
+| `src-tauri/src/coordination/compaction_events.rs` | All `compaction.*` structured events, incl. `compaction.owner.selected/failed`. |
 | `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
 | `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |
 | `src-tauri/src/session_scanner/compaction_watcher.rs` | Signal-log watcher that feeds compaction processing. |
@@ -267,10 +290,11 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `docs/architecture/data-architecture.md` | Authoritative map of live coordination stores, ownership boundaries, and derived state. |
 | `docs/architecture/path-handling-guide.md` | Rules for root authority, normalization, and Windows/WSL/Linux path boundaries. |
 | `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
-| `docs/design/role-context-steering-review.md` | Review notes for the role-system shift from capability labels to context steering |
-| `docs/design/agent-role-visibility.md` | Mesh runtime role-visibility guidance built around focus area, context summary, and behavior boundaries |
-| `docs/design/sidebar-session-grouping.md` | Sidebar grouping thresholds and behavior for team-linked live sessions |
-| `docs/design/sidebar-team-session-visuals.md` | Sidebar connector-rail and stacked-logo treatment for grouped team indicators |
+| `docs/design/harness-realignment-plan.md` | Harness realignment plan and implementation ledger (current PR-by-PR record) |
+| `docs/archive/design/role-context-steering-review.md` | Archived: review notes for the role-system shift from capability labels to context steering |
+| `docs/archive/design/agent-role-visibility.md` | Archived: mesh runtime role-visibility guidance built around focus area, context summary, and behavior boundaries |
+| `docs/archive/design/sidebar-session-grouping.md` | Archived: sidebar grouping thresholds and behavior for team-linked live sessions |
+| `docs/archive/design/sidebar-team-session-visuals.md` | Archived: sidebar connector-rail and stacked-logo treatment for grouped team indicators |
 | `docs/testing-guide.md` | Visual testing lane boundaries, usage, and screenshot conventions. |
 | `docs/images/system-architecture.jpg` | System architecture infographic |
 | `docs/file-rendering-pipeline.md` | File viewing/rendering pipeline + asset cache |
@@ -285,8 +309,12 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Add/modify IPC command | `src-tauri/src/commands/`, then `src-tauri/src/lib.rs` (handler registration), then `src/lib/ipc/` |
 | Add/fix a Svelte component | `src/lib/components/` (component file plus matching test in same directory) |
 | Fix file watcher behavior | `src-tauri/src/startup/watchers.rs`, `src-tauri/src/fs/watcher.rs`, `src-tauri/src/event_processor.rs` |
-| Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/idle/`, `src-tauri/src/session_scanner/process.rs` |
-| Fix compaction detection / reinjection | `src-tauri/src/session_scanner/compaction_extractor.rs`, `src-tauri/src/session_scanner/compaction_watcher.rs`, `src-tauri/src/coordination/compaction_processor.rs` |
+| Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/classification.rs` (authoritative vs heuristic, `activity.state.changed`), `src-tauri/src/session_scanner/scans.rs` (degraded scans return last-good), `src-tauri/src/session_scanner/idle/claude_registry.rs`, `src-tauri/src/session_scanner/process.rs`, `src-tauri/src/daemon/session_activity.rs` |
+| Fix compaction detection / reinjection | `src-tauri/src/coordination/compact_hook.rs`, `src-tauri/src/session_scanner/compaction_extractor.rs`, `src-tauri/src/session_scanner/compaction_watcher.rs`, `src-tauri/src/coordination/compaction_processor.rs`, `src-tauri/src/coordination/compaction_events.rs`, `src-tauri/src/startup/compaction.rs` + `src-tauri/src/daemon/compaction.rs` (owner selection), `src-tauri/src/commands/terminal_settings.rs` (`harness.codex_compaction`) |
+| Change launch command, model, or reasoning effort | `src-tauri/src/session_scanner/launch.rs`, `src-tauri/src/commands/command_center/launching.rs` (app launches), `src-tauri/src/coordination/pipelines/helpers.rs` (team launches), `src-tauri/src/models/mod.rs` (`ModelCatalog`/`CliVersions`), `src/lib/modelCatalog.js` + `src/lib/components/ModelSelect.svelte`, golden tests in `src-tauri/tests/cli_renderers.rs` |
+| Claude account (subscription) selection | `src-tauri/src/session_scanner/claude_accounts.rs`, `src-tauri/src/commands/claude_accounts/mod.rs`, `src-tauri/src/db/migrations/012_project_claude_account.sql`, `src-tauri/src/daemon/protocol.rs` (`list_claude_accounts`, `claude_project_transcript`), `src/lib/claudeAccounts.svelte.js` |
+| Fix tmux focus / foreground indicator | `src-tauri/src/session_scanner/tmux.rs` (`list_clients`, `focus_from_clients`), `src-tauri/src/daemon/session_activity.rs`, `src-tauri/src/daemon_lifecycle.rs` (emits `tmux-focus-changed`), `src-tauri/src/commands/command_center/mod.rs` (startup fallback), `src/lib/shell/sessionLifecycle.svelte.js` + `src/lib/shell/events.svelte.js` |
+| Change the daemon wire contract | `src-tauri/src/daemon/protocol.rs` (`PROTOCOL_VERSION` — bump on any wire change; regression tests pin it), `src-tauri/src/daemon_lifecycle.rs` (`classify_daemon_health`/`confirm_daemon_protocol`), `src-tauri/src/startup/daemon.rs`, then `just install-daemon` |
 | Fix path/root resolution | `src-tauri/src/provider/path.rs`, `src-tauri/src/provider/platform_paths.rs` |
 | Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 
