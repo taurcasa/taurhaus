@@ -292,6 +292,15 @@ pub fn run() {
         .with_writer(io::stderr)
         .init();
 
+    // Before anything a process start normally pays for. This binary is also
+    // the status-line sink, and Claude Code re-runs the status line on every
+    // refresh — per keystroke — so a login shell here would be spent per
+    // keystroke too.
+    #[cfg(feature = "mesh-bridged-backend")]
+    if let Some(args) = claude_usage_sink_args(std::env::args().skip(1)) {
+        process::exit(run_claude_usage_sink_cli(args.into_iter()));
+    }
+
     #[cfg(target_os = "macos")]
     inherit_macos_shell_env();
 
@@ -305,14 +314,30 @@ pub fn run() {
     }
 }
 
+/// The sink's own arguments, when this process *is* a status-line refresh.
+///
+/// Answered from argv alone, and answered first: Claude Code re-runs the
+/// status-line command on every refresh, so anything this binary does before
+/// reading the payload is paid for per keystroke.
+#[cfg(feature = "mesh-bridged-backend")]
+fn claude_usage_sink_args<I>(args: I) -> Option<Vec<String>>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut args = args.into_iter();
+    match args.next().as_deref() {
+        Some(crate::session_scanner::claude_statusline::USAGE_SINK_SUBCOMMAND) => {
+            Some(args.collect())
+        }
+        _ => None,
+    }
+}
+
 #[cfg(feature = "mesh-bridged-backend")]
 fn maybe_run_coordination_cli_mode() -> Option<i32> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
-        Some(crate::session_scanner::claude_statusline::USAGE_SINK_SUBCOMMAND) => {
-            Some(run_claude_usage_sink_cli(args))
-        }
         Some("--launch-command") => Some(run_launch_command_cli(args.next().as_deref())),
         Some("--render-onboarding") => Some(run_render_onboarding_cli(args.next().as_deref())),
         _ => None,
@@ -732,7 +757,9 @@ fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileS
 
 #[cfg(all(test, feature = "mesh-bridged-backend"))]
 mod tests {
-    use super::{init_coordination_cli_log_sink, write_claude_compact_hook_stdout};
+    use super::{
+        claude_usage_sink_args, init_coordination_cli_log_sink, write_claude_compact_hook_stdout,
+    };
 
     use serde_json::Value;
     use std::fs;
@@ -789,6 +816,30 @@ mod tests {
         .expect("json log");
         assert_eq!(entry["event"], "test.cli_hook_logging");
         assert_eq!(entry["component"], "coordination");
+    }
+
+    // Regression: 79be608 dispatched `claude-usage-sink` from
+    // `maybe_run_coordination_cli_mode`, which `run` reaches only *after*
+    // `inherit_macos_shell_env` — a `/bin/zsh -lc` with no timeout. Claude Code
+    // re-runs the status line on every refresh, per keystroke, so on macOS
+    // every refresh paid for a full login-shell start before the payload was
+    // even read, and a slow shell profile blanked the status line outright.
+    #[test]
+    fn the_status_line_sink_is_recognised_before_any_environment_work() {
+        assert_eq!(
+            claude_usage_sink_args(
+                ["claude-usage-sink", "--config-dir", "/home/user/.claude"].map(str::to_string)
+            ),
+            Some(vec![
+                "--config-dir".to_string(),
+                "/home/user/.claude".to_string()
+            ])
+        );
+        assert_eq!(
+            claude_usage_sink_args(["--launch-command", "{}"].map(str::to_string)),
+            None
+        );
+        assert_eq!(claude_usage_sink_args(Vec::new()), None);
     }
 
     #[test]

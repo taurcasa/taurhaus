@@ -14,22 +14,16 @@ pub(crate) fn spawn_background_startup_tasks(app: AppHandle) {
             crate::bootstrap::startup_search_index(&app)
         });
         run_background_task("task_scan", || crate::bootstrap::startup_task_scan(&app));
-        run_background_task("claude_usage_statusline", install_claude_usage_statusline);
     });
 }
 
-/// Take the status-line seat in every detected Claude config dir.
-///
-/// Off the critical path on purpose: it probes `claude --version`, reads config
-/// dirs and writes settings, and none of that may delay a window appearing. On
-/// Windows the app sees no WSL config dirs and the daemon does this instead.
-fn install_claude_usage_statusline() {
-    let Ok(exe) = std::env::current_exe() else {
-        tracing::debug!("Claude usage status line skipped: this build has no resolvable path");
-        return;
-    };
-    crate::session_scanner::claude_statusline::install_statusline_for_detected_accounts(&exe);
-}
+// The Claude status-line bridge is deliberately not installed here. It is
+// installed by the daemon, which the app starts on every platform, and one
+// owner is the point: two installers bake two different executable paths into
+// the same generated script and overwrite each other on every start. On
+// Windows it would be worse than churn — account detection reaches the WSL
+// home through its UNC path, so the app would write a bash script pointing at
+// a Windows binary. See `daemon::server::run` and `claude_statusline`.
 
 fn run_background_task<F>(task_group: &'static str, task: F)
 where

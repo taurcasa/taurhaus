@@ -11,8 +11,10 @@
 //! payload, and one record per account lands in `<app data>/claude-usage.jsonl`.
 //! It is append-only and capped like `codex-notify.jsonl`, and it is written
 //! from the status line of a *live TUI*, so it is written often: refreshes come
-//! per keystroke. Two things keep that cheap — a throttle to one record per
-//! account per 30 s, and a bounded tail read instead of a full parse.
+//! per keystroke. Three things keep that cheap: a throttle to one record per
+//! account per 30 s, a bounded tail read for the throttle's own lookup, and a
+//! lock that is never waited on — a refresh that queues is a terminal line that
+//! queues with it, and a dropped record costs one keystroke.
 //!
 //! Nothing here reads credentials: the payload is Claude Code's own documented
 //! status-line contract, and the account id comes from the config dir's
@@ -38,13 +40,16 @@ const MAX_CLAUDE_USAGE_BYTES: u64 = 5 * 1024 * 1024;
 /// numbers behind them move in percent, not in milliseconds.
 const THROTTLE_SECONDS: i64 = 30;
 
-/// How much of the sink's tail one read looks at.
+/// How much of the sink's tail the *write* path looks at.
 ///
-/// Records are ~200 bytes and throttled to two a minute per account, so this
-/// covers many hours of every account on the host — while never growing with
-/// the file. Nothing here needs the sink's history; only its last word per
-/// account.
+/// Only the throttle reads this, and only for the account about to report, so
+/// a bound that never grows with the file keeps the per-keystroke path cheap.
+/// The read side deliberately does not use it: see `latest_usage_records`.
 const TAIL_SCAN_BYTES: u64 = 256 * 1024;
+
+/// How long a read waits for a compacting writer before reading regardless.
+const READ_LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(500);
+const READ_LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 
 /// One rate-limit window, verbatim from the status-line payload.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -98,6 +103,8 @@ pub struct ClaudeUsageAppendOutcome {
     /// An earlier record for the same account is younger than the window.
     pub throttled: bool,
     pub truncated: bool,
+    /// Another refresh held the sink. Nothing was written and nothing waited.
+    pub contended: bool,
 }
 
 /// The status-line payload, reduced to what a status line and a record need.
@@ -243,12 +250,17 @@ pub fn append_usage_at(
             path.display()
         )
     })?;
-    file.lock_exclusive().map_err(|error| {
-        format!(
-            "failed to lock Claude usage sink '{}': {error}",
-            path.display()
-        )
-    })?;
+    // Never blocking. This runs from the status line of a live TUI, and a
+    // refresh that waits is a terminal line that waits with it. Another
+    // refresh holding the sink is either writing this same account's record —
+    // which the throttle would have dropped anyway — or compacting, and the
+    // next keystroke is a fraction of the 30 s throttle away.
+    if file.try_lock_exclusive().is_err() {
+        return Ok(ClaudeUsageAppendOutcome {
+            contended: true,
+            ..ClaudeUsageAppendOutcome::default()
+        });
+    }
 
     let result = (|| {
         let truncated = compact_sink_if_needed(&mut file, path)?;
@@ -257,6 +269,7 @@ pub fn append_usage_at(
                 written: false,
                 throttled: true,
                 truncated,
+                contended: false,
             });
         }
         serde_json::to_writer(&mut file, record).map_err(|error| {
@@ -281,6 +294,7 @@ pub fn append_usage_at(
             written: true,
             throttled: false,
             truncated,
+            contended: false,
         })
     })();
 
@@ -403,17 +417,53 @@ fn latest_per_account(records: Vec<ClaudeUsageRecord>) -> HashMap<PathBuf, Claud
     latest
 }
 
-/// The newest record per account in the sink's tail.
+/// The newest record per account in the sink.
+///
+/// The whole file, not the tail the write path uses: one busy subscription
+/// produces records for hours, and the quiet account whose last observation
+/// they pushed out of view is exactly the one the user is deciding about. The
+/// file is capped at 5 MB, so "the whole file" is bounded, and this runs on the
+/// read side — once per `list_claude_accounts`, not once per keystroke.
 pub fn latest_usage_records(path: &Path) -> HashMap<PathBuf, ClaudeUsageRecord> {
     let Ok(mut file) = File::open(path) else {
         return HashMap::new();
     };
-    match read_tail_records(&mut file) {
+    // Compaction truncates and rewrites the sink in place under an exclusive
+    // lock. Reading through that window returns an empty file, which the UI
+    // cannot tell apart from "nothing has ever reported".
+    let locked = wait_for_shared_lock(&file);
+    let records = (|| -> Result<Vec<ClaudeUsageRecord>, String> {
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents)
+            .map_err(|error| format!("failed to read Claude usage sink: {error}"))?;
+        Ok(parse_records(&contents))
+    })();
+    if locked {
+        let _ = FileExt::unlock(&file);
+    }
+    match records {
         Ok(records) => latest_per_account(records),
         Err(error) => {
             tracing::debug!(path = %path.display(), error, "Claude usage sink unreadable");
             HashMap::new()
         }
+    }
+}
+
+/// Wait a bounded moment for a shared lock, and read anyway if it never comes.
+///
+/// A wedged writer must not stall an IPC command; a compacting one takes
+/// milliseconds, and waiting for it is the whole point.
+fn wait_for_shared_lock(file: &File) -> bool {
+    let deadline = std::time::Instant::now() + READ_LOCK_WAIT;
+    loop {
+        if file.try_lock_shared().is_ok() {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(READ_LOCK_POLL);
     }
 }
 
@@ -909,6 +959,140 @@ mod tests {
         );
         assert!(parse_usage_sink_args(Vec::new()).is_err());
         assert!(parse_usage_sink_args(["--config-dir".to_string()]).is_err());
+    }
+
+    #[test]
+    fn a_locked_sink_never_holds_up_the_status_line() {
+        // Regression: 79be608 took a blocking exclusive lock, and took it
+        // before it knew whether the refresh was throttled at all. The status
+        // line runs this on every keystroke, so a sink already held by another
+        // refresh — or compacting five megabytes — stalled the terminal line
+        // the user is looking at. A dropped record costs nothing: the next
+        // refresh is a keystroke away.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
+        let config_dir = temp.path().join(".claude");
+        fs::create_dir_all(&config_dir).expect("config dir");
+        let holder = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&sink)
+            .expect("holder");
+        holder.lock_exclusive().expect("hold the sink");
+
+        let started = std::time::Instant::now();
+        let outcome = append_usage_at(&sink, &record(&config_dir, 0, 26.0)).expect("append");
+
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "the sink waited {:?} for a lock the status line cannot wait for",
+            started.elapsed()
+        );
+        assert_eq!(
+            outcome,
+            ClaudeUsageAppendOutcome {
+                written: false,
+                throttled: false,
+                truncated: false,
+                contended: true,
+            }
+        );
+        FileExt::unlock(&holder).expect("release");
+    }
+
+    #[test]
+    fn an_account_that_stopped_reporting_keeps_its_last_number() {
+        // Regression: 79be608 answered the read side from the last 256 KiB of
+        // the sink. One busy subscription pushes a quiet one's last record out
+        // of that window in an afternoon, and the quiet account's chip then
+        // showed no usage at all — while its record was still in the file, and
+        // while "last seen 6h ago" was exactly the answer the user needed.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
+        let quiet_dir = temp.path().join(".claude-account2");
+        let busy_dir = temp.path().join(".claude");
+        for dir in [&quiet_dir, &busy_dir] {
+            fs::create_dir_all(dir).expect("config dir");
+        }
+
+        {
+            let mut file = File::create(&sink).expect("sink");
+            let mut quiet = record(&quiet_dir, 0, 55.0);
+            quiet.account_id = Some("account-2".to_string());
+            writeln!(
+                file,
+                "{}",
+                serde_json::to_string(&quiet).expect("serialize")
+            )
+            .expect("write");
+            let mut seconds = 60;
+            while file.metadata().expect("stat").len() < TAIL_SCAN_BYTES + 8 * 1024 {
+                writeln!(
+                    file,
+                    "{}",
+                    serde_json::to_string(&record(&busy_dir, seconds, 10.0)).expect("serialize")
+                )
+                .expect("write");
+                seconds += 60;
+            }
+        }
+        // Still far below the cap, so nothing has compacted it away either.
+        assert!(fs::metadata(&sink).expect("stat").len() < MAX_CLAUDE_USAGE_BYTES);
+
+        let latest = latest_usage_records(&sink);
+
+        assert_eq!(latest.len(), 2);
+        assert_eq!(
+            latest
+                .get(&config_dir_key(&quiet_dir))
+                .and_then(|record| record.five_hour)
+                .map(|window| window.used_percentage),
+            Some(55.0)
+        );
+    }
+
+    #[test]
+    fn a_read_during_compaction_waits_instead_of_seeing_half_a_file() {
+        // Regression: 79be608 read the sink with no lock at all while the
+        // writer truncated and rewrote it in place. A `list_claude_accounts`
+        // that landed inside that window answered with healthy accounts and no
+        // usage — indistinguishable from "nothing has ever reported".
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
+        let first_dir = temp.path().join(".claude");
+        let second_dir = temp.path().join(".claude-account2");
+        for dir in [&first_dir, &second_dir] {
+            fs::create_dir_all(dir).expect("config dir");
+        }
+        append_usage_at(&sink, &record(&first_dir, 0, 26.0)).expect("append");
+        let mut second = record(&second_dir, 60, 4.0);
+        second.account_id = Some("account-2".to_string());
+        append_usage_at(&sink, &second).expect("append");
+        let original = fs::read(&sink).expect("sink readable");
+
+        let compacting = {
+            let sink = sink.clone();
+            std::thread::spawn(move || {
+                let mut file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&sink)
+                    .expect("open");
+                file.lock_exclusive().expect("lock");
+                file.set_len(0).expect("truncate");
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                file.write_all(&original).expect("restore");
+                file.flush().expect("flush");
+                FileExt::unlock(&file).expect("unlock");
+            })
+        };
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let latest = latest_usage_records(&sink);
+
+        compacting.join().expect("compaction thread");
+        assert_eq!(latest.len(), 2);
     }
 
     #[test]

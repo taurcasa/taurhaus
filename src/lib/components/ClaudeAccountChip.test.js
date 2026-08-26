@@ -146,6 +146,23 @@ describe('ClaudeAccountChip', () => {
     expect(screen.getByTestId('claude-account-menu-item-account-2')).toHaveTextContent('7d 44%')
   })
 
+  // Regression: 79be608 only ever read usage during account *detection*, which
+  // OverviewTab ran once on mount. A project mounted before its session's first
+  // status-line payload kept an empty meter for as long as it stayed open, and
+  // opening the menu to compare subscriptions showed numbers from mount time.
+  it('asks for fresh usage when the menu is opened', async () => {
+    const onRequestUsage = vi.fn()
+    render(ClaudeAccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onRequestUsage, onSelect: vi.fn() },
+    })
+
+    expect(onRequestUsage).not.toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByTestId('claude-account-chip'))
+
+    expect(onRequestUsage).toHaveBeenCalledTimes(1)
+  })
+
   it('says nothing about usage for an account no status line has reported', async () => {
     render(ClaudeAccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },

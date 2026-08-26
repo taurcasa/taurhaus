@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/svelte'
+import { tick } from 'svelte'
 import '@testing-library/jest-dom/vitest'
 
 import ClaudeUsageMeter from './ClaudeUsageMeter.svelte'
@@ -77,6 +78,48 @@ describe('ClaudeUsageMeter', () => {
     expect(screen.getByTestId('claude-usage-meter')).toHaveTextContent('5h 26% · 7d 17%')
     expect(screen.queryByTestId('claude-usage-bar-five-hour')).not.toBeInTheDocument()
     expect(screen.queryByTestId('claude-usage-reset')).not.toBeInTheDocument()
+  })
+
+  // Regression: 79be608 built every row from `used_percentage` alone and used
+  // `resets_at` only to pick the footer text. A 91 % five-hour reading whose
+  // window reset ten minutes ago still rendered as a fresh 91 % bar, steering
+  // the chooser away from the one subscription that had just got its headroom
+  // back.
+  it('says nothing about a window whose reset has already passed', () => {
+    const expired = usage()
+    expired.five_hour.resets_at = Math.floor(NOW.getTime() / 1000) - 600
+
+    render(ClaudeUsageMeter, { props: { usage: expired } })
+
+    const meter = screen.getByTestId('claude-usage-meter')
+    expect(meter).not.toHaveTextContent('5h')
+    expect(meter).toHaveTextContent('7d 17%')
+    expect(screen.queryByTestId('claude-usage-bar-five-hour')).not.toBeInTheDocument()
+  })
+
+  it('renders nothing once every window it had has reset', () => {
+    const expired = usage()
+    expired.five_hour.resets_at = Math.floor(NOW.getTime() / 1000) - 600
+    expired.seven_day.resets_at = Math.floor(NOW.getTime() / 1000) - 60
+
+    const { container } = render(ClaudeUsageMeter, { props: { usage: expired } })
+
+    expect(container.textContent.trim()).toBe('')
+  })
+
+  // Regression: 79be608 read `Date.now()` inside `$derived` with nothing to
+  // invalidate it, so a chip that was already on screen when a window reset
+  // kept showing the pre-reset percentage until something else re-rendered it.
+  it('drops a window as its reset passes, with no new props', async () => {
+    render(ClaudeUsageMeter, { props: { usage: usage() } })
+    expect(screen.getByTestId('claude-usage-meter')).toHaveTextContent('5h 26%')
+
+    // Past the five-hour window's reset, three hours out.
+    await vi.advanceTimersByTimeAsync(3 * 3600 * 1000 + 60_000)
+    await tick()
+
+    expect(screen.getByTestId('claude-usage-meter')).not.toHaveTextContent('5h 26%')
+    expect(screen.getByTestId('claude-usage-meter')).toHaveTextContent('7d 17%')
   })
 
   it('never draws a bar past its track', () => {

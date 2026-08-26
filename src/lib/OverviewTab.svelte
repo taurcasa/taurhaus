@@ -9,6 +9,7 @@
     claudeAccounts,
     effectiveClaudeAccountId,
     refreshClaudeAccounts,
+    refreshClaudeAccountUsage,
     setProjectClaudeAccountChoice,
   } from './claudeAccounts.svelte.js'
 
@@ -171,6 +172,7 @@
       degraded={claudeAccounts.degraded}
       {dark}
       onSelect={handleClaudeAccountSelect}
+      onRequestUsage={() => void refreshClaudeAccountUsage()}
     />
     <!-- Quick actions — compact icon buttons -->
     <div class="ml-auto flex items-center gap-1 shrink-0" data-testid="quick-actions">

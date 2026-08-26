@@ -44,6 +44,14 @@ function usage({ fiveHour, sevenDay, minutesAgo }) {
   }
 }
 
+/** The same usage, with its five-hour window already past its reset. */
+function resetFiveHour(reported) {
+  return {
+    ...reported,
+    five_hour: { ...reported.five_hour, resets_at: Math.floor(Date.now() / 1000) - 600 },
+  }
+}
+
 export const claudeAccountScenarios = [
   {
     name: 'single-account-light',
@@ -120,6 +128,21 @@ export const claudeAccountScenarios = [
     accounts: [
       { ...PRIMARY, usage: usage({ fiveHour: 54, sevenDay: 33, minutesAgo: 260 }) },
       SECOND,
+    ],
+    projectName: 'taurhaus',
+    selectedAccountId: null,
+    expected: { chooser: true, chip: true },
+  },
+  {
+    // A five-hour window that reset while the app stayed open. The percentage
+    // beside it describes a window that no longer exists, and this account is
+    // the one that just got its headroom back — so the row goes, and only the
+    // seven-day number is still spoken for.
+    name: 'usage-window-reset-light',
+    theme: 'light',
+    accounts: [
+      { ...PRIMARY, usage: resetFiveHour(usage({ fiveHour: 91, sevenDay: 62, minutesAgo: 40 })) },
+      { ...SECOND, usage: usage({ fiveHour: 12, sevenDay: 8, minutesAgo: 4 }) },
     ],
     projectName: 'taurhaus',
     selectedAccountId: null,

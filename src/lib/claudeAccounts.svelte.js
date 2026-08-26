@@ -119,6 +119,34 @@ export function refreshClaudeAccounts({ force = false } = {}) {
   return promise
 }
 
+/**
+ * Re-read what each subscription has left, without re-running detection.
+ *
+ * Usage moves while the app is open — a status line reports every 30 s of an
+ * active session — but the account *list* does not, and it is what the minute
+ * of detection caching is for. This asks for the current numbers and copies
+ * only those onto the accounts already on screen, so opening the chip never
+ * reshuffles it.
+ */
+export function refreshClaudeAccountUsage() {
+  return Promise.resolve(listClaudeAccounts())
+    .then((report) => {
+      if (report?.degraded) return
+      const usageById = new Map(
+        (report?.accounts ?? []).map((account) => [account.id, account.usage ?? null]),
+      )
+      claudeAccounts.accounts = claudeAccounts.accounts.map((account) =>
+        usageById.has(account.id)
+          ? { ...account, usage: usageById.get(account.id) }
+          : account,
+      )
+    })
+    .catch((error) => {
+      // Usage is a hint, never a gate: the numbers on screen stay as they were.
+      console.warn('Failed to refresh Claude subscription usage:', error)
+    })
+}
+
 function detectClaudeAccounts() {
   const accounts = Promise.resolve(listClaudeAccounts()).then((report) => {
     if (report?.degraded) {
@@ -211,6 +239,10 @@ export async function requestClaudeLaunch({
   // backend applies it, and anything that outranks it, on its own.
   const alreadyChosen = usableAccountId(effectiveClaudeAccountId(project)) || globalClaudeAccount()
   if (alreadyChosen || (await backendPlacesLaunch(projectId, mode))) return run(null)
+
+  // The chooser is where the user compares subscriptions, so it opens on the
+  // current numbers rather than on whatever detection last cached.
+  await refreshClaudeAccountUsage()
 
   // The chooser owns the rest of the flow: this call is done once it is open.
   claudeAccounts.pending = {

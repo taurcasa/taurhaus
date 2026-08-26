@@ -3,12 +3,13 @@
    * What a Claude subscription has left, as its status line last reported it.
    *
    * The numbers come from Claude Code's own status-line payload, which only
-   * flows while a session of that account is running. Three states follow from
-   * that and all three are visible here: fresh numbers with the window that
+   * flows while a session of that account is running. Four states follow from
+   * that and all four are visible here: fresh numbers with the window that
    * resets next, numbers older than an hour labelled with when they were seen,
-   * and — for an account nothing has reported for — nothing at all. An empty
-   * meter is the honest answer; a 0 % bar would be a lie that sends the user to
-   * the subscription with the least headroom.
+   * a window whose own reset has passed — dropped, because it describes a
+   * window that no longer exists — and, for an account nothing has reported
+   * for, nothing at all. An empty meter is the honest answer; a 0 % bar would
+   * be a lie that sends the user to the subscription with the least headroom.
    */
   let {
     usage = null,
@@ -19,23 +20,55 @@
 
   /** Past this, the numbers are labelled by their age instead of their reset. */
   const STALE_MS = 60 * 60 * 1000
+  /** How often the clock below moves. Percentages age in minutes, not frames. */
+  const TICK_MS = 30 * 1000
+
+  /**
+   * The clock every time-dependent value here reads.
+   *
+   * Reset times and observation ages pass while a chip sits open, and the props
+   * do not change when they do. Reading `Date.now()` straight from a `$derived`
+   * leaves a mounted meter showing a window that reset ten minutes ago.
+   */
+  let now = $state(Date.now())
+  $effect(() => {
+    const timer = setInterval(() => {
+      now = Date.now()
+    }, TICK_MS)
+    return () => clearInterval(timer)
+  })
+
+  /**
+   * A window taurhaus can still speak for.
+   *
+   * Once `resets_at` has passed, the percentage beside it describes a window
+   * that no longer exists — and the account it belongs to is exactly the one
+   * that just got its headroom back. Nothing is the honest answer until its
+   * status line reports again.
+   */
+  function live(window) {
+    if (!Number.isFinite(Number(window?.used_percentage))) return null
+    const resetsAt = Number(window.resets_at)
+    if (Number.isFinite(resetsAt) && resetsAt * 1000 <= now) return null
+    return window
+  }
 
   const windows = $derived(
     [
-      { key: 'five-hour', label: '5h', window: usage?.five_hour ?? null },
-      { key: 'seven-day', label: '7d', window: usage?.seven_day ?? null },
-    ].filter((entry) => Number.isFinite(Number(entry.window?.used_percentage))),
+      { key: 'five-hour', label: '5h', window: live(usage?.five_hour) },
+      { key: 'seven-day', label: '7d', window: live(usage?.seven_day) },
+    ].filter((entry) => entry.window),
   )
 
   const observedAt = $derived(usage?.observed_at ? Date.parse(usage.observed_at) : Number.NaN)
-  const ageMs = $derived(Number.isFinite(observedAt) ? Date.now() - observedAt : Number.NaN)
+  const ageMs = $derived(Number.isFinite(observedAt) ? now - observedAt : Number.NaN)
   const stale = $derived(Number.isFinite(ageMs) && ageMs > STALE_MS)
 
   const nextResetMs = $derived(
     windows
       .map((entry) => Number(entry.window?.resets_at))
       .filter((seconds) => Number.isFinite(seconds))
-      .map((seconds) => seconds * 1000 - Date.now())
+      .map((seconds) => seconds * 1000 - now)
       .filter((remaining) => remaining > 0)
       .sort((left, right) => left - right)[0] ?? null,
   )

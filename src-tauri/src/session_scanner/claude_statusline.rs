@@ -100,6 +100,16 @@ pub fn ensure_statusline_installed_at(
             ..StatuslineInstall::default()
         });
     }
+    if !is_posix_executable(taurhaus_exe) {
+        // A Windows-native executable reached through `/mnt/c/…` is not the
+        // binary this script can drive: it would receive `/home/…` arguments it
+        // resolves as Windows paths. Only the daemon that lives in the same
+        // namespace as the config dir may take this seat.
+        return Ok(StatuslineInstall {
+            skipped: Some("cross_namespace_executable"),
+            ..StatuslineInstall::default()
+        });
+    }
     let Some(executable) = linux_path_string(taurhaus_exe) else {
         return Ok(StatuslineInstall {
             skipped: Some("executable_not_reachable"),
@@ -129,8 +139,7 @@ pub fn ensure_statusline_installed_at(
     };
 
     let settings_path = config_dir.join(SETTINGS_FILENAME);
-    let mut settings = load_settings(&settings_path)?;
-    let existing = settings.get(STATUS_LINE_KEY).cloned();
+    let existing = load_settings(&settings_path)?.remove(STATUS_LINE_KEY);
     // Re-running against our own install must not wrap our own script: the
     // command the user actually configured is the one the record remembers.
     let wrapped = if is_taurhaus_status_line(existing.as_ref()) {
@@ -176,15 +185,19 @@ pub fn ensure_statusline_installed_at(
             .as_slice(),
     )?;
 
-    let desired = json!({
-        "type": "command",
-        "command": format!("bash {}", shell_quote(&script_command)),
-    });
-    let settings_changed = settings.get(STATUS_LINE_KEY) != Some(&desired);
-    if settings_changed {
-        settings.insert(STATUS_LINE_KEY.to_string(), desired);
-        write_settings(&settings_path, &settings)?;
-    }
+    // Only `type` and `command` are taurhaus's. Everything else the user set on
+    // their own `statusLine` — `padding`, and whatever a later Claude Code
+    // reads there — still applies while ours is the command being run.
+    let mut desired = match wrapped.as_ref() {
+        Some(Value::Object(original)) => original.clone(),
+        _ => Map::new(),
+    };
+    desired.insert("type".to_string(), Value::String("command".to_string()));
+    desired.insert(
+        "command".to_string(),
+        Value::String(format!("bash {}", shell_quote(&script_command))),
+    );
+    let settings_changed = commit_status_line(&settings_path, Some(Value::Object(desired)))?;
 
     Ok(StatuslineInstall {
         changed: script_changed || record_changed || settings_changed,
@@ -197,20 +210,12 @@ pub fn ensure_statusline_installed_at(
 pub fn remove_statusline_at(config_dir: &Path) -> Result<bool, String> {
     let hooks_dir = config_dir.join(HOOKS_DIRNAME);
     let settings_path = config_dir.join(SETTINGS_FILENAME);
-    let mut settings = load_settings(&settings_path)?;
+    let settings = load_settings(&settings_path)?;
     let mut changed = false;
 
     if is_taurhaus_status_line(settings.get(STATUS_LINE_KEY)) {
-        match read_record(&hooks_dir).and_then(|record| record.wrapped) {
-            Some(original) => {
-                settings.insert(STATUS_LINE_KEY.to_string(), original);
-            }
-            None => {
-                settings.remove(STATUS_LINE_KEY);
-            }
-        }
-        write_settings(&settings_path, &settings)?;
-        changed = true;
+        let original = read_record(&hooks_dir).and_then(|record| record.wrapped);
+        changed = commit_status_line(&settings_path, original)?;
     }
 
     for path in [
@@ -252,6 +257,10 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
 }
 
 /// Install the bridge in every detected account, when the CLI can feed it.
+///
+/// Called by the daemon and only by the daemon. It is the process that lives in
+/// the same namespace as the config dirs on every platform, and a second
+/// installer would only bake its own executable path into the same script.
 ///
 /// A build older than the one this was verified against gets nothing: its
 /// payload is not documented to carry `rate_limits`, and rewriting a user's
@@ -380,10 +389,12 @@ fn render_script(
         Some(command) => {
             script.push_str(
                 "# The status line below was configured before taurhaus wrapped it;\n\
-                 # it receives the same payload and owns the rendered line.\n",
+                 # it receives the same payload and owns the rendered line. The\n\
+                 # record is taken beside it, never in front of it: a sink that\n\
+                 # waits on the sink file must not delay the user's own line.\n",
             );
             script.push_str(&format!(
-                "printf '%s' \"$payload\" | {sink} >/dev/null 2>&1\n"
+                "printf '%s' \"$payload\" | {sink} >/dev/null 2>&1 &\n"
             ));
             script.push_str(&format!("printf '%s' \"$payload\" | {command}\n"));
         }
@@ -445,6 +456,31 @@ fn load_settings(settings_path: &Path) -> Result<Map<String, Value>, String> {
     }
 }
 
+/// Replace exactly `statusLine`, against the settings file as it is *now*.
+///
+/// The value is decided from a snapshot taken before the script and the record
+/// were written, and Claude Code owns this file too. Re-reading here keeps the
+/// window in which a concurrent write can be reverted down to one read and one
+/// rename, and keeps everything but `statusLine` out of taurhaus's hands.
+fn commit_status_line(settings_path: &Path, value: Option<Value>) -> Result<bool, String> {
+    let mut settings = load_settings(settings_path)?;
+    match value {
+        Some(desired) => {
+            if settings.get(STATUS_LINE_KEY) == Some(&desired) {
+                return Ok(false);
+            }
+            settings.insert(STATUS_LINE_KEY.to_string(), desired);
+        }
+        None => {
+            if settings.remove(STATUS_LINE_KEY).is_none() {
+                return Ok(false);
+            }
+        }
+    }
+    write_settings(settings_path, &settings)?;
+    Ok(true)
+}
+
 /// Write settings the way Claude Code's own writer does: never in place, so a
 /// reader never sees half a file.
 fn write_settings(settings_path: &Path, settings: &Map<String, Value>) -> Result<(), String> {
@@ -479,6 +515,17 @@ fn write_if_changed(path: &Path, payload: &[u8]) -> Result<bool, String> {
 
 fn is_posix_config_dir(config_dir: &Path) -> bool {
     let value = config_dir.display().to_string();
+    value.starts_with('/') || path::is_wsl_path(&value)
+}
+
+/// Whether this executable lives where the generated bash script runs.
+///
+/// A Windows drive path is reachable from WSL as `/mnt/c/…`, which is exactly
+/// what makes this worth checking: the script would run, and hand a Windows
+/// binary Linux paths it cannot resolve. The bridge belongs to the process in
+/// the same namespace as the config dir.
+fn is_posix_executable(taurhaus_exe: &Path) -> bool {
+    let value = taurhaus_exe.display().to_string();
     value.starts_with('/') || path::is_wsl_path(&value)
 }
 
@@ -723,6 +770,115 @@ mod tests {
         let settings = settings_of(&config_dir);
         assert!(!settings.contains_key(STATUS_LINE_KEY));
         assert_eq!(settings["theme"].as_str(), Some("dark"));
+    }
+
+    #[test]
+    fn a_windows_executable_never_takes_the_seat_of_a_wsl_config_dir() {
+        // Regression: 79be608 ran this installer from the app's own startup on
+        // every platform. On Windows account detection reaches the WSL home
+        // through its UNC path, and the installer accepted that dir: it wrote a
+        // *bash* script that invoked the Windows executable through `/mnt/c/…`
+        // and handed it `/home/…` arguments, which Windows `PathBuf`s cannot
+        // resolve — overwriting the working script the WSL daemon had just
+        // installed for that same account.
+        let install = ensure_statusline_installed_at(
+            Path::new(r"\\wsl.localhost\Ubuntu\home\mstie\.claude"),
+            Path::new(r"C:\Program Files\taurhaus\taurhaus.exe"),
+            Path::new(r"C:\Users\mstie\AppData\Roaming\com.taurhaus.dev\claude-usage.jsonl"),
+        )
+        .expect("install");
+
+        assert_eq!(install.skipped, Some("cross_namespace_executable"));
+        assert!(!install.changed);
+    }
+
+    #[test]
+    fn wrapping_keeps_the_options_the_user_set_on_their_status_line() {
+        // Regression: 79be608 replaced the active `statusLine` with a bare
+        // `{type, command}` object. Everything else Claude Code reads there —
+        // `padding`, and any option a later build adds — stopped applying for
+        // as long as taurhaus was installed, even though the record remembered
+        // it for removal.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({
+                "statusLine": {
+                    "type": "command",
+                    "command": "/home/user/zq/statusline-zq.sh",
+                    "padding": 0
+                }
+            }),
+        );
+        let exe = temp.path().join("taurhaus-daemon");
+
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        let active = settings_of(&config_dir)[STATUS_LINE_KEY].clone();
+        assert_eq!(active["padding"], json!(0));
+        assert_eq!(active["type"].as_str(), Some("command"));
+        assert!(active["command"]
+            .as_str()
+            .is_some_and(|command| command.contains(SCRIPT_BASENAME)));
+
+        // The preserved options must not make the next run look different.
+        let second = ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp))
+            .expect("second install");
+        assert!(!second.changed);
+    }
+
+    #[test]
+    fn a_wrapped_status_line_renders_even_when_the_sink_stalls() {
+        // Regression: 79be608 piped the payload to the sink synchronously and
+        // only then ran the command the user had configured. A sink waiting on
+        // the sink file's lock therefore delayed — and a wedged one blocked —
+        // the status line taurhaus promised never to disturb.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({ "statusLine": { "type": "command", "command": "my-line.sh" } }),
+        );
+
+        ensure_statusline_installed_at(&config_dir, &temp.path().join("exe"), &sink_for(&temp))
+            .expect("install");
+
+        let script = script_of(&config_dir);
+        let sink_line = script
+            .lines()
+            .find(|line| line.contains(USAGE_SINK_SUBCOMMAND))
+            .expect("the script records the refresh");
+        assert!(
+            sink_line.trim_end().ends_with('&'),
+            "the sink must not stand between the payload and the user's command: {script}"
+        );
+    }
+
+    #[test]
+    fn an_install_replaces_the_status_line_and_nothing_else() {
+        // Regression: 79be608 read the whole settings object at the top of the
+        // install and wrote that same object back after generating the script,
+        // so anything Claude Code (or a second installer) wrote in between was
+        // reverted. Only `statusLine` is taurhaus's to change.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let settings_path = config_dir.join(SETTINGS_FILENAME);
+        write_settings_json(&config_dir, json!({ "model": "old" }));
+
+        // The value the installer decided on, from settings as they were then.
+        let desired = json!({ "type": "command", "command": "bash /tmp/taurhaus-statusline.sh" });
+        // Claude Code writes the file while the script and record are written.
+        write_settings_json(&config_dir, json!({ "model": "new", "theme": "dark" }));
+
+        assert!(commit_status_line(&settings_path, Some(desired.clone())).expect("commit"));
+
+        let settings = settings_of(&config_dir);
+        assert_eq!(settings["model"].as_str(), Some("new"));
+        assert_eq!(settings["theme"].as_str(), Some("dark"));
+        assert_eq!(settings[STATUS_LINE_KEY], desired);
+        // Committing the same value again is not a change.
+        assert!(!commit_status_line(&settings_path, Some(desired)).expect("second commit"));
     }
 
     #[test]
