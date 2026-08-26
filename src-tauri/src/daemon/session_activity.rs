@@ -657,6 +657,12 @@ mod tests {
     // flag; `hub_does_not_bump_version_or_export_on_degraded` injects the flag
     // directly. This drives the real scanner with an inventory source that
     // fails after one healthy read and asserts the hub stays inert.
+    //
+    // Commit 07ab6c5 put a live `tmux list-clients` probe inside `scan_cycle`,
+    // so this test started reading the developer's own tmux server: a window
+    // switch between the healthy and the recovery cycle moved the focus half of
+    // the change signature and failed `!recovered.changed` at random. The tmux
+    // probe is scripted here for the same reason the inventory is.
     #[test]
     fn hub_ignores_degraded_cycle_from_real_scanner() {
         let _scanner = SCANNER_TEST_LOCK
@@ -670,6 +676,7 @@ mod tests {
         clear_scan_cache();
         HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
         process::set_inventory_provider_override(Some(hub_inventory));
+        crate::session_scanner::tmux::set_list_clients_override(Some(scripted_clients));
 
         let hub = SessionActivityHub::new();
         let mut cadence = ScannerCadence::default();
@@ -717,6 +724,7 @@ mod tests {
         // Teardown: a healthy empty scan prunes this test's trackers.
         HUB_INVENTORY_MODE.store(HUB_INVENTORY_EMPTY, Ordering::SeqCst);
         let _ = scan_cycle(tmp.path());
+        crate::session_scanner::tmux::set_list_clients_override(None);
         process::set_inventory_provider_override(None);
         set_binding_store_path_for_test(None);
         clear_scan_cache();
