@@ -7,8 +7,9 @@ use pretty_assertions::assert_eq;
 use taurhaus_lib::coordination::delivery::{DeliveryRenderer, RoleContext};
 use taurhaus_lib::coordination::domain::MemberRole;
 use taurhaus_lib::daemon::protocol::LaunchMode;
+use taurhaus_lib::models::CliCommandSettings;
 use taurhaus_lib::session_scanner::cli_tool::CliTool;
-use taurhaus_lib::session_scanner::launch::{LaunchSpec, ModelSpec, TeamContext};
+use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
 use taurhaus_lib::templates::types::RoleTemplate;
 
 fn run_renderer(flag: &str, request: &serde_json::Value) -> String {
@@ -48,6 +49,15 @@ fn run_renderer_argument(flag: &str, request: &serde_json::Value) -> String {
     String::from_utf8(output.stdout).expect("utf8 renderer output")
 }
 
+fn run_renderer_error(flag: &str, request: &serde_json::Value) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
+        .args([flag, &serde_json::to_string(request).unwrap()])
+        .output()
+        .expect("run real taurhaus binary");
+    assert!(!output.status.success(), "renderer unexpectedly succeeded");
+    String::from_utf8(output.stderr).expect("utf8 renderer error")
+}
+
 #[test]
 fn launch_command_cli_matches_launch_spec_bytes() {
     // Regression: commit 7b852ed duplicated launch rendering in taureval, so its
@@ -82,14 +92,117 @@ fn launch_command_cli_matches_launch_spec_bytes() {
     .render()
     .command;
 
-    assert_eq!(
+    for response in [
         run_renderer("--launch-command", &request),
-        format!("{expected}\n")
-    );
-    assert_eq!(
         run_renderer_argument("--launch-command", &request),
-        format!("{expected}\n")
-    );
+    ] {
+        let response: serde_json::Value =
+            serde_json::from_str(response.trim()).expect("launch response is JSON");
+        assert_eq!(response["command"], expected);
+        assert_eq!(response["notes"][0]["event"], "launch.model.deprecated");
+    }
+}
+
+#[test]
+fn launch_command_cli_surfaces_ignored_effort_notes() {
+    // Regression: commit bdcf8ea discarded LaunchSpec notes, so taureval could
+    // record a requested effort even when the rendered command omitted it.
+    let request = serde_json::json!({
+        "tool": "codex",
+        "mode": "fresh",
+        "base": "codex --yolo",
+        "model": "gpt-5.4",
+        "reasoningEffort": "max"
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(run_renderer("--launch-command", &request).trim())
+            .expect("launch response is JSON");
+
+    assert_eq!(response["command"], "codex --yolo -m 'gpt-5.4'");
+    assert_eq!(response["notes"][0]["event"], "launch.model.deprecated");
+    assert_eq!(response["notes"][1]["event"], "launch.effort.invalid");
+    assert_eq!(response["notes"][1]["found"], "max");
+    assert_eq!(response["notes"][1]["reason"], "invalid");
+}
+
+#[test]
+fn launch_command_cli_uses_default_base_and_snake_case_claude_team() {
+    let request = serde_json::json!({
+        "tool": "claude",
+        "mode": "fresh",
+        "model": "opus",
+        "reasoning_effort": "high",
+        "team": {
+            "team_name": "taureval-golden",
+            "agent_name": "agent-under-test",
+            "role": "agent"
+        }
+    });
+    let defaults = CliCommandSettings::default();
+    let expected = LaunchSpec {
+        tool: CliTool::Claude,
+        mode: LaunchMode::Fresh,
+        base: base_command(&defaults, CliTool::Claude, LaunchMode::Fresh),
+        model: ModelSpec {
+            model: Some("opus".to_string()),
+            reasoning_effort: Some("high".to_string()),
+        },
+        team: Some(TeamContext {
+            team_name: "taureval-golden",
+            agent_name: "agent-under-test",
+            role: MemberRole::Agent,
+        }),
+        codex_bypass_hook_trust: false,
+    }
+    .render()
+    .command;
+    let response: serde_json::Value =
+        serde_json::from_str(run_renderer("--launch-command", &request).trim())
+            .expect("launch response is JSON");
+
+    assert_eq!(response["command"], expected);
+    assert_eq!(response["notes"], serde_json::json!([]));
+}
+
+#[test]
+fn launch_command_cli_surfaces_cross_tool_model_replacement() {
+    let request = serde_json::json!({
+        "tool": "codex",
+        "mode": "fresh",
+        "model": "opus"
+    });
+    let response: serde_json::Value =
+        serde_json::from_str(run_renderer("--launch-command", &request).trim())
+            .expect("launch response is JSON");
+
+    assert_eq!(response["notes"][0]["event"], "launch.model.invalid");
+    assert_eq!(response["notes"][0]["found"], "opus");
+    assert_eq!(response["notes"][0]["replacement"], "gpt-5.6-sol");
+}
+
+#[test]
+fn renderer_cli_rejects_unknown_fields_and_multiline_commands() {
+    assert!(run_renderer_error(
+        "--launch-command",
+        &serde_json::json!({
+            "tool": "codex",
+            "mode": "fresh",
+            "model": "gpt-5.6-sol",
+            "effort": "high"
+        }),
+    )
+    .contains("unknown field `effort`"));
+
+    assert!(run_renderer_error(
+        "--launch-command",
+        &serde_json::json!({
+            "tool": "codex",
+            "mode": "fresh",
+            "base": "codex --yolo\necho unexpected",
+            "model": "gpt-5.6-sol"
+        }),
+    )
+    .contains("Command override must be a single line"));
 }
 
 #[test]
@@ -98,22 +211,41 @@ fn render_onboarding_cli_matches_delivery_renderer_bytes() {
     // taureval, dropping workflow fields whenever the taurhaus role evolved.
     let role_yaml = include_str!("../resources/templates/roles/quick-dev-codex.yaml");
     let role: RoleTemplate = serde_norway::from_str(role_yaml).expect("bundled role parses");
-    let request = serde_json::json!({
-        "tool": "codex",
-        "teamName": "taureval-golden",
-        "memberName": "agent-under-test",
-        "leadName": "evaluator",
-        "role": role
-    });
-    let expected = DeliveryRenderer::render_onboarding(
-        "taureval-golden",
-        "agent-under-test",
-        "evaluator",
-        RoleContext::from(&role),
-    );
+    let role_wire: serde_norway::Value =
+        serde_norway::from_str(role_yaml).expect("bundled role parses as wire value");
 
-    assert_eq!(
-        run_renderer("--render-onboarding", &request),
-        format!("{expected}\n")
-    );
+    for (tool, expected, golden) in [
+        (
+            "codex",
+            DeliveryRenderer::render_onboarding(
+                "taureval-golden",
+                "agent-under-test",
+                "evaluator",
+                RoleContext::from(&role),
+            ),
+            include_str!("quick-dev-codex-onboarding.golden.txt"),
+        ),
+        (
+            "claude",
+            DeliveryRenderer::render_claude_role_context(
+                "taureval-golden",
+                "agent-under-test",
+                "evaluator",
+                RoleContext::from(&role),
+            ),
+            include_str!("quick-dev-claude-onboarding.golden.txt"),
+        ),
+    ] {
+        let request = serde_json::json!({
+            "tool": tool,
+            "team_name": "taureval-golden",
+            "member_name": "agent-under-test",
+            "lead_name": "evaluator",
+            "role": role_wire.clone()
+        });
+        let actual = run_renderer("--render-onboarding", &request);
+
+        assert_eq!(actual, format!("{expected}\n"));
+        assert_eq!(actual, golden);
+    }
 }
