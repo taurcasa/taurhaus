@@ -88,6 +88,14 @@ pub fn list_processes() -> Option<Vec<(u32, String)>> {
     None
 }
 
+/// No per-PID controlling-terminal lookup here: the `ps` inventory backend
+/// already carries the TTY column for every process it lists, so the session
+/// scanner reads the controlling terminal from there (see
+/// `session_scanner::process`). `None` means "unknown on this platform".
+pub fn process_has_controlling_terminal(_pid: u32) -> Option<bool> {
+    None
+}
+
 /// Read one variable from another process's environment via `ps -Eww`.
 ///
 /// macOS has no `/proc`, but `ps -E` appends a process's environment to its

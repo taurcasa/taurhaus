@@ -401,7 +401,7 @@ mod tests {
     };
     use crate::session_scanner::{
         clear_scan_cache, set_display_scan_compaction_hook, state_tracker_snapshot,
-        SCANNER_TEST_LOCK,
+        StateChangeCapture, SCANNER_TEST_LOCK,
     };
     use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
     use std::sync::MutexGuard;
@@ -688,6 +688,8 @@ mod tests {
     const INVENTORY_HEALTHY: u8 = 0;
     const INVENTORY_FAILS: u8 = 1;
     const INVENTORY_EMPTY: u8 = 2;
+    /// The inventory the interactive filter produces from `live_inventory`.
+    const INVENTORY_FILTERED: u8 = 3;
     static E2E_INVENTORY_MODE: AtomicU8 = AtomicU8::new(INVENTORY_HEALTHY);
     static E2E_IDLE_CALLS: AtomicUsize = AtomicUsize::new(0);
     static E2E_COMPACTION_PUBLISHES: AtomicUsize = AtomicUsize::new(0);
@@ -699,6 +701,7 @@ mod tests {
         match E2E_INVENTORY_MODE.load(Ordering::SeqCst) {
             INVENTORY_FAILS => None,
             INVENTORY_EMPTY => Some(Vec::new()),
+            INVENTORY_FILTERED => Some(filtered_live_inventory()),
             _ => Some(vec![
                 process::ProcessInfo {
                     pid: E2E_CLAUDE_PID,
@@ -927,6 +930,122 @@ mod tests {
         assert_eq!(
             sessions, runtime,
             "degraded runtime scan must return the last good runtime view from the authoritative scan"
+        );
+    }
+
+    // --- non-interactive processes are not sessions ---
+
+    /// A detached `codex exec` one-shot: no controlling terminal (`ps` TTY `?`).
+    const DETACHED_PID: u32 = 920_001;
+    /// A real Claude session in a tmux pane.
+    const PANE_PID: u32 = 920_002;
+    const PANE_PROJECT: &str = "/home/user/pane-project";
+    const PANE_TTY: &str = "/dev/pts/9202";
+
+    /// What the live 0.6.6 host's `/proc` inventory held: an automation-launched
+    /// `codex exec` with no controlling terminal next to a real pane session.
+    fn live_inventory() -> Vec<process::InventoryEntry> {
+        vec![
+            process::InventoryEntry::new(
+                DETACHED_PID,
+                "codex exec --json review",
+                CliTool::Codex,
+                false,
+            ),
+            process::InventoryEntry::new(PANE_PID, "claude --continue", CliTool::Claude, true),
+        ]
+    }
+
+    /// Run the production interactive filter over `live_inventory`, then enrich
+    /// the survivors the way `scan_processes` does (cwd + stdin tty).
+    fn filtered_live_inventory() -> Vec<process::ProcessInfo> {
+        let mut entries = live_inventory();
+        process::retain_interactive_processes(&mut entries);
+        entries
+            .into_iter()
+            .map(|entry| process::ProcessInfo {
+                pid: entry.pid,
+                project_path: PANE_PROJECT.to_string(),
+                tty: PANE_TTY.to_string(),
+                args: entry.args,
+                cli_tool: entry.cli_tool,
+            })
+            .collect()
+    }
+
+    // Regression: the live 0.6.6 host ran `codex exec` one-shots launched
+    // detached with stdin on /dev/null (`ps` TTY `?`). They entered the
+    // inventory as tool processes, so the sidebar grew phantom session rows for
+    // the project, every PID got a hysteresis tracker, and their bursty I/O
+    // flipped idle<->active for ~64 `activity.state.changed` records a minute.
+    // The first-sight-idle guard (PR #20, on top of 06b432d) silenced only the
+    // first-sight half of that flapping. A process with no controlling terminal
+    // leaves the inventory, so nothing downstream can see it.
+    #[test]
+    fn a_process_without_a_controlling_terminal_never_becomes_a_session() {
+        let capture = StateChangeCapture::install();
+        let _harness = E2eScanner::install();
+        E2E_INVENTORY_MODE.store(INVENTORY_FILTERED, Ordering::SeqCst);
+
+        let (display, runtime, degraded) = scan_sessions_for_authoritative_snapshot();
+
+        assert!(!degraded);
+        assert_eq!(
+            display
+                .iter()
+                .map(|session| session.pid)
+                .collect::<Vec<_>>(),
+            vec![PANE_PID],
+            "the detached one-shot must not produce a display session"
+        );
+        assert_eq!(
+            runtime
+                .iter()
+                .map(|session| session.pid)
+                .collect::<Vec<_>>(),
+            vec![PANE_PID],
+            "the detached one-shot must not produce a runtime session"
+        );
+        assert_eq!(
+            state_tracker_snapshot(DETACHED_PID),
+            None,
+            "the detached one-shot must not get a hysteresis tracker"
+        );
+        assert!(
+            capture.transitions_for(DETACHED_PID).is_empty(),
+            "the detached one-shot must not emit activity.state.changed"
+        );
+    }
+
+    // Regression: the guard is terminal-based, so the sessions people actually
+    // run — a CLI on a pts, which is what a tmux pane and a plain terminal both
+    // give it — must be completely unaffected: still classified, still tracked,
+    // still reported.
+    #[test]
+    fn a_pts_backed_process_still_becomes_a_session() {
+        let capture = StateChangeCapture::install();
+        let _harness = E2eScanner::install();
+        E2E_INVENTORY_MODE.store(INVENTORY_FILTERED, Ordering::SeqCst);
+
+        let (display, _, degraded) = scan_sessions_for_authoritative_snapshot();
+
+        assert!(!degraded);
+        let session = display
+            .iter()
+            .find(|session| session.pid == PANE_PID)
+            .expect("the pts-backed process must still be a session");
+        assert_eq!(session.project_path, PANE_PROJECT);
+        assert_eq!(session.cli_tool, CliTool::Claude);
+        assert_eq!(session.state, SessionState::Active);
+        assert_eq!(
+            state_tracker_snapshot(PANE_PID),
+            Some((SessionState::Active, SessionState::Active)),
+            "the pts-backed process must still be tracked"
+        );
+        assert_eq!(
+            capture.transitions_for(PANE_PID),
+            vec![(None, SessionState::Active)],
+            "the pts-backed process must still report its arrival"
         );
     }
 
