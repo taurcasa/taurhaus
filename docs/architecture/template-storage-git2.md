@@ -220,14 +220,17 @@ Flow:
   - graceful behavior when `push_head()` fails (repo with no commits yet).
 - Keep error mapping style consistent (`AppError`/domain error wrapping with contextual path details).
 
-## IPC Surface (proposed)
+## IPC Surface (shipped)
+
+Registered names, not the proposal names. See [ipc-reference.md](./ipc-reference.md) for full signatures.
 
 ### CRUD + read
-- `templates_list_roles() -> Vec<RoleTemplate>`
+- `templates_list_roles_full() -> Vec<RoleTemplate>`
 - `templates_get_role(role_id) -> RoleTemplate`
 - `templates_upsert_role(request) -> TemplateMutationResult`
 - `templates_delete_role(role_id) -> TemplateMutationResult`
-- `templates_list_presets() -> Vec<PresetTemplate>`
+- `import_role_from_file(...)` / `export_role_to_file(...)`
+- `templates_list_presets_full() -> Vec<PresetTemplate>`
 - `templates_get_preset(preset_id) -> PresetTemplate`
 - `templates_upsert_preset(request) -> TemplateMutationResult`
 - `templates_delete_preset(preset_id) -> TemplateMutationResult`
@@ -237,7 +240,7 @@ Flow:
 - `templates_get_history(limit, cursor?) -> TemplateCommitPage`
 - `templates_get_diff(commit_id) -> TemplateDiff`
 - `templates_revert(request) -> TemplateMutationResult`
-- `templates_flush_pending_commit() -> CommitResult` (manual force-commit)
+- `templates_flush_pending() -> CommitResult` (manual force-commit)
 
 ### Git IPC payloads
 - `TemplateCommitPage`:
@@ -261,7 +264,8 @@ Flow:
 
 ### Compose hooks
 - `templates_compose_team(request) -> InitializeTeamRequest`
-- `templates_validate_composition(request) -> CompositionReport`
+
+There is no `templates_validate_composition` command; composition is validated inside `templates_compose_team`.
 
 ## Mutation result shape
 - `success: bool`

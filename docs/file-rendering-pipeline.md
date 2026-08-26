@@ -62,7 +62,20 @@ User clicks file (or README loads)
 
 ### 3. Known Binary Files
 
-**Extensions**: `.glb`, `.gltf`, `.wasm`, `.exe`, `.dll`, `.so`, `.dylib`, `.zip`, `.tar`, `.gz`, `.7z`, `.rar`, `.bin`, `.dat`, `.db`, `.sqlite`, `.o`, `.a`, `.class`, `.pyc`
+**Extensions** (`KNOWN_BINARY_EXTENSIONS` in `src/lib/fileClassifier.js`):
+
+| Group | Extensions |
+|-------|-----------|
+| 3D models | `glb`, `gltf`, `fbx`, `obj`, `stl` |
+| Compiled / bytecode | `wasm`, `exe`, `dll`, `so`, `dylib`, `o`, `a`, `class`, `pyc`, `pyo` |
+| Archives | `zip`, `tar`, `gz`, `bz2`, `xz`, `7z`, `rar`, `zst` |
+| Databases | `db`, `sqlite`, `sqlite3` |
+| Binary data | `bin`, `dat`, `pack`, `idx` |
+| Media (non-image) | `mp3`, `mp4`, `wav`, `ogg`, `webm`, `avi`, `mkv`, `flac`, `aac` |
+| Fonts | `woff`, `woff2`, `ttf`, `otf`, `eot` |
+| Documents | `doc`, `docx`, `xls`, `xlsx`, `ppt`, `pptx` |
+
+PDF is classified separately for its own viewer.
 
 **IPC command**: None — classified upfront, no IPC call made.
 
@@ -126,20 +139,19 @@ Current behavior:
 
 ### Invalidation Strategy
 
-**Current**: Session-lifetime. Cache clears on app restart.
+Session-lifetime plus watcher invalidation. The cache clears on app restart, and `notify`-driven changes clear it earlier:
 
-**Future**: File watcher integration. When `notify` detects a file change on disk:
-1. File watcher emits event to frontend with project ID and changed path
-2. Frontend calls `assetCache.invalidate(projectId, changedPath)`
+1. The watcher emits a project files-changed event to the frontend with the project ID and changed paths
+2. If any changed path is an image, `Shell.svelte` calls `assetCache.invalidateProject(project_id)` — whole-project, not per-path
 3. Next access triggers a fresh IPC read
 
-This same invalidation pattern extends to any future cached content (text files, rendered HTML, PDF pages).
+`invalidate(projectId, path)` exists for per-path clearing but no caller uses it yet. Whole-project invalidation is deliberately coarse: an image change is rare, and the per-path key would have to match the watcher's path form exactly.
 
 ### Extending the Cache
 
 To cache a new file type:
 1. Add caching calls in the component that loads the data (check `get()` before IPC, call `set()` after)
-2. File watcher invalidation works automatically — it invalidates by path, regardless of content type
+2. Extend the image-extension test in `Shell.svelte`'s `onProjectFilesChanged` if the new type should invalidate on watcher events
 3. No changes needed to the cache module itself
 
 ---
@@ -217,4 +229,4 @@ code → Shiki highlighter
 | New syntax language | Usually automatic — Shiki loads grammars on demand. Only add to `detect_language` if the extension differs from Shiki's language ID (e.g., `.rs` → "rust"). |
 | PDF viewer | New component, new file category in classifier, potentially new IPC command for page rendering |
 | File content caching | Add `assetCache.get/set` calls around `readFile` in the loading function |
-| File watcher invalidation | Call `assetCache.invalidate()` from the event listener (Phase 5C) |
+| File watcher invalidation | Already wired: `Shell.svelte` calls `assetCache.invalidateProject()` on image changes |
