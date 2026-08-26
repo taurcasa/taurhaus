@@ -1,5 +1,7 @@
 # CI enforcement assessment
 
+> Archived and stale: its central finding (no repo CI) no longer holds — `.github/workflows/quality-gate.yml` runs fmt/lint/typecheck/test-fast on PRs and main, and the quoted justfile line numbers have moved. Superseded by [`docs/operations/testing-guide.md`](../../operations/testing-guide.md).
+
 Date: 2026-03-07
 Task: #573
 Finding: Q-PRD-01

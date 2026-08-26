@@ -1,6 +1,6 @@
 # Agent Role Visibility In Mesh Runtime Canvas
 
-> Archived design review. This document records the runtime-role visibility direction that informed the shipped hover-card work. It remains directionally accurate, but the live UI and tests are the source of truth.
+> Archived design review. This document records the runtime-role visibility direction that informed the shipped hover-card work. It remains directionally accurate, but the live UI and tests are the source of truth. Superseded in detail: model and reasoning effort are separate fields (`model`, `reasoningEffort`) end to end, not one `"gpt-5.4 high"` string.
 
 ## Recommendation
 

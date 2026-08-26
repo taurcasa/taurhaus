@@ -1,5 +1,7 @@
 # E2E Performance Bug: WebDriver operations 73% slower in full suite vs subset
 
+> Archived and stale: the suite is 25 spec files run as five sealed groups plus an ungrouped session, with `logLevel` defaulting to `error` — not the single 14-spec persistent session measured here. Superseded by [`docs/operations/testing-guide.md`](../operations/testing-guide.md).
+
 ## Findings (2026-02-28)
 
 The most likely root cause is **WebdriverIO command logging**, not Mocha suite registration or Tauri app state.

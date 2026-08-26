@@ -1,5 +1,7 @@
 # Visual Testing Pipeline — Lessons Learned
 
+> Archived and stale: the visual lane now has 10 spec files, not 5. Superseded by [`docs/operations/visual-testing-guide.md`](../../operations/visual-testing-guide.md).
+
 Date: 2026-03-06
 Tasks: #404–#410
 

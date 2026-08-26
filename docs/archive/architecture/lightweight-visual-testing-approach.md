@@ -1,5 +1,7 @@
 # Lightweight Visual Testing Approach
 
+> Archived and stale as a proposal: the Browser Mode lane is implemented (`vitest.visual.config.js`, `just test-visual`, `bun run dev:visual`). Superseded by [`docs/operations/visual-testing-guide.md`](../../operations/visual-testing-guide.md).
+
 Date: 2026-03-06  
 Task: #403
 

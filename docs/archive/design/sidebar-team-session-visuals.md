@@ -1,6 +1,6 @@
 # Sidebar Team Session Visuals
 
-> Archived design review. This file captures the visual-direction decision for grouped team indicators. It is retained as historical rationale; current shipped behavior lives in the sidebar/session-indicator code and tests.
+> Archived design review. This file captures the visual-direction decision for grouped team indicators. It is retained as historical rationale; current shipped behavior lives in the sidebar/session-indicator code and tests. Superseded in detail: the tint is three-toned, not two — a retained/degraded reading takes the `uncertain` info tone ahead of active/idle, and offline reads zinc.
 
 ## Summary
 

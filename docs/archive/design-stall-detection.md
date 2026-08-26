@@ -1,5 +1,7 @@
 # Design Proposal: Multi-Signal Stall Detection for Mesh Agents
 
+> Archived and stale: the `stall_detector` module was deleted in realignment PR 6; activity now comes from the Claude sessions registry and `activity.state.changed`, exported by `coordination/activity_export.rs`. Superseded by [`docs/architecture/orchestration-practical-auto-idle-and-communication.md`](../architecture/orchestration-practical-auto-idle-and-communication.md).
+
 Date: 2026-03-05  
 Owner: architect (Task #317)
 

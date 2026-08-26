@@ -1,6 +1,6 @@
 # Role Management Review Against The Context-Steering Model
 
-> Archived design review. This document captures the rationale behind the role-system reframing that shipped in the v0.5.x cycle. It is retained for historical design context; current behavior is defined by the live role schema, frontend/runtime code, and tests.
+> Archived design review. This document captures the rationale behind the role-system reframing that shipped in the v0.5.x cycle. It is retained for historical design context; current behavior is defined by the live role schema, frontend/runtime code, and tests. Its findings are resolved: `capabilities` is optional, the context-steering fields are typed, and the bundled presets are `pair`, `dev-team`, `full-team`, `research-team` — see [`docs/team-templates.md`](../../team-templates.md).
 
 ## Executive Summary
 

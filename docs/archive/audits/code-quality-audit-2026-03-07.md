@@ -1,5 +1,7 @@
 # Audit #571: taurhaus Full Code Quality Audit
 
+> Archived and stale: `bun run lint` is now knip + dependency-cruiser (svelte-check moved to `typecheck`), repo CI exists, and the quoted justfile line numbers have moved. Superseded by [`docs/operations/testing-guide.md`](../../operations/testing-guide.md).
+
 Scope: `/home/user/projects/taurhaus`
 
 Automated checks run:
