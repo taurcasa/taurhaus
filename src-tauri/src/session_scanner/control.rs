@@ -450,6 +450,7 @@ pub fn build_launch_command(tool: CliTool, mode: LaunchMode) -> String {
         model: ModelSpec::default(),
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
+        claude_config_dir: None,
         team: None,
     }
     .render()

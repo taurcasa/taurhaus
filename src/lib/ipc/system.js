@@ -253,6 +253,8 @@ function normalizeSettings(raw) {
       harness: {
         codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
       },
+      claude_default_account_id:
+        terminal.claude_default_account_id ?? terminal.claudeDefaultAccountId ?? null,
     },
     terminal_contract: terminalContract,
   }
@@ -335,6 +337,54 @@ function normalizeMeshInstallStatus(raw) {
       status.environment_available ?? status.environmentAvailable ?? true,
     error: status.error ?? null,
   }
+}
+
+function normalizeClaudeAccount(raw) {
+  const account = raw && typeof raw === 'object' ? raw : {}
+  const id = String(account.id ?? '').trim()
+  if (!id) return null
+  const displayName = account.display_name ?? account.displayName ?? null
+  const configDir = account.config_dir ?? account.configDir ?? ''
+  const seatTier = account.seat_tier ?? account.seatTier ?? null
+  return {
+    id,
+    config_dir: String(configDir ?? ''),
+    email: String(account.email ?? '').trim(),
+    display_name: displayName == null ? null : String(displayName).trim() || null,
+    organization: account.organization == null ? null : String(account.organization).trim() || null,
+    seat_tier: seatTier == null ? null : String(seatTier).trim() || null,
+    logged_in: Boolean(account.logged_in ?? account.loggedIn),
+    is_default: Boolean(account.is_default ?? account.isDefault),
+  }
+}
+
+function normalizeClaudeAccountsResult(raw) {
+  const result = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const accounts = Array.isArray(result.accounts) ? result.accounts : []
+  return {
+    accounts: accounts.map(normalizeClaudeAccount).filter(Boolean),
+    source: String(result.source ?? 'native'),
+    degraded: Boolean(result.degraded),
+    error: result.error == null ? null : String(result.error),
+  }
+}
+
+/**
+ * Claude subscriptions detected on this host (in-process on Linux/macOS, via
+ * the WSL daemon on Windows), and whether detection ran at all.
+ *
+ * An empty list with `degraded: false` is an answer — no accounts, or a daemon
+ * too old to know about them, and every launch behaves as it did before
+ * per-project accounts existed. An empty list with `degraded: true` is silence:
+ * nothing answered, and callers keep whatever they last knew.
+ */
+export function listClaudeAccounts() {
+  return invokeOrMock('list_claude_accounts', undefined, () => ({
+    accounts: [],
+    source: 'native',
+    degraded: false,
+    error: null,
+  })).then(normalizeClaudeAccountsResult)
 }
 
 export function search(query, limit = 20) {

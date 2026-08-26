@@ -221,21 +221,33 @@ mod tests {
         assert!(err.to_lowercase().contains("poison"));
     }
 
-    fn wait_for_lines(path: &std::path::Path, expected: usize) -> Vec<String> {
+    /// Polls the global sink until both lifecycle records for `command` have
+    /// landed. The sink is process-global, so counting lines would let
+    /// unrelated traffic satisfy the wait before this command finishes
+    /// writing; matching on the records themselves is what makes it stable.
+    fn wait_for_command_events(path: &std::path::Path, command: &str) -> Vec<Value> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                let lines: Vec<String> = content
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(|line| line.to_string())
-                    .collect();
-                if lines.len() >= expected {
-                    return lines;
-                }
+            let events: Vec<Value> = std::fs::read_to_string(path)
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+                .filter(|event| event["command"] == command)
+                .collect();
+            let has_received = events
+                .iter()
+                .any(|event| event["event"] == "ipc.command.received");
+            let has_completed = events
+                .iter()
+                .any(|event| event["event"] == "ipc.command.completed");
+            if has_received && has_completed {
+                return events;
             }
             if std::time::Instant::now() >= deadline {
-                panic!("timed out waiting for log lines in {}", path.display());
+                panic!(
+                    "timed out waiting for {command} lifecycle events in {}",
+                    path.display()
+                );
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
@@ -252,13 +264,21 @@ mod tests {
 
         let _ = get_settings_with_span(&db).expect("get settings");
 
-        let lines = wait_for_lines(&log_path, 2);
-        let received: Value = serde_json::from_str(&lines[0]).expect("received json");
-        let completed: Value = serde_json::from_str(&lines[1]).expect("completed json");
+        // The sink is process-global: anything else running in this test
+        // binary writes to it too. This test is about the pair of events one
+        // command emits, so it reads those and ignores the traffic around them.
+        let events = wait_for_command_events(&log_path, "get_settings");
 
-        assert_eq!(received["event"], "ipc.command.received");
+        let received = events
+            .iter()
+            .find(|event| event["event"] == "ipc.command.received")
+            .expect("received event");
+        let completed = events
+            .iter()
+            .find(|event| event["event"] == "ipc.command.completed")
+            .expect("completed event");
+
         assert_eq!(received["command"], "get_settings");
-        assert_eq!(completed["event"], "ipc.command.completed");
         assert_eq!(completed["command"], "get_settings");
         assert_eq!(completed["status"], "ok");
     }

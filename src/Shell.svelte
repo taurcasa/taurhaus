@@ -7,6 +7,13 @@
   import ShellMainPanel from './lib/components/shell/ShellMainPanel.svelte'
   import ShellTitlebar from './lib/components/shell/ShellTitlebar.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
+  import ClaudeAccountChooser from './lib/components/ClaudeAccountChooser.svelte'
+  import {
+    claudeAccounts,
+    refreshClaudeAccounts,
+    requestClaudeLaunch,
+    resolveChooserAccounts,
+  } from './lib/claudeAccounts.svelte.js'
   import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import Sidebar from './lib/Sidebar.svelte'
@@ -302,6 +309,18 @@
     void loadModelCatalogFromSettings()
   })
 
+  // Account detection reads the WSL home through the daemon on Windows, so a
+  // daemon that arrives late has to be asked again — until then the chooser
+  // has nothing to offer.
+  let lastAccountDetectionDaemonStatus = null
+  $effect(() => {
+    const status = daemonStatus
+    if (status === lastAccountDetectionDaemonStatus) return
+    const reconnected = status === 'connected' && lastAccountDetectionDaemonStatus !== null
+    lastAccountDetectionDaemonStatus = status
+    void refreshClaudeAccounts({ force: reconnected })
+  })
+
   $effect(() => {
     void sessionController.loadForegroundProject()
   })
@@ -436,9 +455,16 @@
 
   function handleOverviewLaunchSession(tool) {
     if (!selectedProject) return
-    launchClaudeSession(selectedProject.id, 'fresh', tool)
-      .then(r => console.log('[overview] launch OK:', r))
-      .catch(e => console.error('[overview] launch FAILED:', e))
+    requestClaudeLaunch({
+      project: selectedProject,
+      mode: 'fresh',
+      tool,
+      launch: (projectId, mode, launchTool, accountId) =>
+        launchClaudeSession(projectId, mode, launchTool, accountId).then((r) =>
+          console.log('[overview] launch OK:', r)
+        ),
+      onError: (error) => console.error('[overview] launch FAILED:', error),
+    })
   }
 
   function handleOverviewOpenTerminal() {
@@ -592,6 +618,23 @@
   </div>
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={(action) => navigationController.handleSearchNavigate(action)} />
+
+  {#if claudeAccounts.pending}
+    <div
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-24"
+      data-testid="claude-account-chooser-overlay"
+    >
+      <ClaudeAccountChooser
+        accounts={resolveChooserAccounts()}
+        projectName={claudeAccounts.pending.projectName}
+        defaultAccountId={claudeAccounts.defaultAccountId}
+        degraded={claudeAccounts.degraded}
+        {dark}
+        onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
+        onCancel={() => claudeAccounts.pending?.cancel()}
+      />
+    </div>
+  {/if}
 
   {#if showAddProject}
     <AddProjectModal

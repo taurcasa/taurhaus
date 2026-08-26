@@ -81,6 +81,10 @@ fn json_number_u64(value: u64) -> Value {
 }
 
 pub(crate) fn publish_compaction_runtime_sessions(runtime_sessions: &[RuntimeSession]) {
+    // Which subscription a project's Claude session writes to has to be known
+    // after that session ends — that is when Resume asks.
+    super::claude_accounts::record_claude_transcripts(runtime_sessions);
+
     *LATEST_COMPACTION_RUNTIME_SESSIONS
         .get_or_init(|| Mutex::new(Vec::new()))
         .lock()

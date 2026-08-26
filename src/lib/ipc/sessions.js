@@ -67,12 +67,37 @@ export function listCliSessionSnapshot() {
   }))
 }
 
-export function launchClaudeSession(projectId, mode, cliTool) {
-  return invokeOrMock('launch_cli_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
-    tmux_session: 'taurhaus',
-    tmux_window: 'project',
-    tmux_pane: '%99',
+/**
+ * Which Claude subscription a launch would run on, before it runs.
+ *
+ * `needsChoice` is the only question the chooser exists for. The frontend
+ * cannot answer it alone: a resume runs in the config dir that owns the
+ * project's history, and only the backend can see which one that is.
+ */
+export function resolveClaudeLaunchAccount(projectId, mode) {
+  return invokeOrMock('resolve_claude_launch_account', { projectId, mode }, () => ({
+    accountId: null,
+    email: null,
+    source: 'default_config_dir',
+    needsChoice: false,
   }))
+}
+
+export function launchClaudeSession(projectId, mode, cliTool, claudeAccountId = null) {
+  return invokeOrMock(
+    'launch_cli_session',
+    {
+      projectId,
+      mode,
+      cliTool: cliTool ?? null,
+      claudeAccountId: claudeAccountId ?? null,
+    },
+    () => ({
+      tmux_session: 'taurhaus',
+      tmux_window: 'project',
+      tmux_pane: '%99',
+    })
+  )
 }
 
 export function stopClaudeSession(tmuxPane, cliTool) {

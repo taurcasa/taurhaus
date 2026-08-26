@@ -135,3 +135,12 @@ export function getRelationships(projectId) {
 export function dismissRelationship(relationshipId) {
   return invokeOrMock('dismiss_relationship', { relationshipId }, () => undefined)
 }
+
+/** Pin a project to one Claude subscription. `null` restores the default. */
+export function setProjectClaudeAccount(projectId, accountId) {
+  return invokeOrMock(
+    'set_project_claude_account',
+    { projectId, accountId: accountId ?? null },
+    () => undefined
+  )
+}

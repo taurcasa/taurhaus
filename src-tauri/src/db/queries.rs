@@ -6,7 +6,7 @@ use crate::models::Project;
 ///
 /// Expects columns in this order:
 ///   id, name, path, description, last_activity_at, hero_preference,
-///   created_at, updated_at, cached_branch, cached_is_dirty
+///   created_at, updated_at, cached_branch, cached_is_dirty, claude_account_id
 fn row_to_project(row: &Row) -> Result<Project, rusqlite::Error> {
     let dirty_int: Option<i32> = row.get(9)?;
     Ok(Project {
@@ -20,6 +20,7 @@ fn row_to_project(row: &Row) -> Result<Project, rusqlite::Error> {
         updated_at: row.get(7)?,
         cached_branch: row.get(8)?,
         cached_is_dirty: dirty_int.map(|v| v != 0),
+        claude_account_id: row.get(10)?,
     })
 }
 
@@ -47,7 +48,7 @@ pub fn insert_project(conn: &Connection, project: &Project) -> Result<(), rusqli
 pub fn get_project(conn: &Connection, id: &str) -> Result<Option<Project>, rusqlite::Error> {
     conn.query_row(
         "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at,
-                cached_branch, cached_is_dirty
+                cached_branch, cached_is_dirty, claude_account_id
          FROM projects WHERE id = ?1",
         [id],
         row_to_project,
@@ -64,7 +65,7 @@ pub fn project_count(conn: &Connection) -> Result<i64, rusqlite::Error> {
 pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at,
-                cached_branch, cached_is_dirty
+                cached_branch, cached_is_dirty, claude_account_id
          FROM projects
          ORDER BY last_activity_at DESC NULLS LAST",
     )?;
@@ -151,6 +152,20 @@ pub fn update_cached_git_status(
     Ok(changed > 0)
 }
 
+/// Select the Claude subscription a project launches on. `None` clears the
+/// choice, which puts the project back on the global default account.
+pub fn set_project_claude_account(
+    conn: &Connection,
+    id: &str,
+    account_id: Option<&str>,
+) -> Result<bool, rusqlite::Error> {
+    let changed = conn.execute(
+        "UPDATE projects SET claude_account_id = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![account_id, id],
+    )?;
+    Ok(changed > 0)
+}
+
 /// Check if a project is registered at the given path.
 pub fn project_exists_at_path(conn: &Connection, path: &str) -> Result<bool, rusqlite::Error> {
     let count: i64 = conn.query_row(
@@ -186,6 +201,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
             cached_branch: None,
             cached_is_dirty: None,
+            claude_account_id: None,
         }
     }
 
@@ -220,6 +236,7 @@ mod tests {
             updated_at: "2025-03-15T08:00:00Z".into(),
             cached_branch: None,
             cached_is_dirty: None,
+            claude_account_id: None,
         };
 
         insert_project(&conn, &project).unwrap();
@@ -406,6 +423,36 @@ mod tests {
         let (conn, _tmp) = test_db();
         let ok = update_cached_git_status(&conn, "no-such", Some("main"), false).unwrap();
         assert!(!ok);
+    }
+
+    #[test]
+    fn claude_account_is_none_until_the_project_picks_one() {
+        let (conn, _tmp) = test_db();
+        insert_project(&conn, &make_project("p1", "test", "/path")).unwrap();
+
+        let fetched = get_project(&conn, "p1").unwrap().unwrap();
+        assert_eq!(fetched.claude_account_id, None);
+
+        let ok = set_project_claude_account(&conn, "p1", Some("account-2")).unwrap();
+        assert!(ok);
+        let fetched = get_project(&conn, "p1").unwrap().unwrap();
+        assert_eq!(fetched.claude_account_id.as_deref(), Some("account-2"));
+        assert_eq!(
+            list_projects(&conn).unwrap()[0]
+                .claude_account_id
+                .as_deref(),
+            Some("account-2")
+        );
+
+        set_project_claude_account(&conn, "p1", None).unwrap();
+        let fetched = get_project(&conn, "p1").unwrap().unwrap();
+        assert_eq!(fetched.claude_account_id, None);
+    }
+
+    #[test]
+    fn setting_the_claude_account_of_an_unknown_project_reports_no_change() {
+        let (conn, _tmp) = test_db();
+        assert!(!set_project_claude_account(&conn, "no-such", Some("a")).unwrap());
     }
 
     #[test]

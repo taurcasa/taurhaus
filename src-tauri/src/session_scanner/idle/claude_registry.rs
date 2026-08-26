@@ -268,6 +268,20 @@ fn transcript_path(config_dir: &Path, entry: &RegistryEntry) -> Option<PathBuf> 
     path.is_file().then_some(path)
 }
 
+/// The config root a transcript belongs to — `transcript_path` read backwards.
+///
+/// A Claude transcript is always `<config dir>/projects/<slug>/<id>.jsonl`, so
+/// the account that owns a session is readable from the path alone. Anything
+/// that does not have that shape returns `None` rather than a guess.
+pub fn config_dir_for_transcript(transcript: &Path) -> Option<PathBuf> {
+    let slug_dir = transcript.parent()?;
+    let projects_dir = slug_dir.parent()?;
+    if projects_dir.file_name()? != PROJECTS_SUBDIR {
+        return None;
+    }
+    projects_dir.parent().map(Path::to_path_buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,6 +510,38 @@ mod tests {
 
         write_record_with_proc_start(tmp.path(), pid, "1");
         assert!(detect_idle_from_registry(PROJECT, pid, tmp.path()).is_none());
+    }
+
+    // Regression: c9669ef taught the scanner to build a transcript path from a
+    // config dir but left no way back, so a launch handed a session transcript
+    // could not tell which subscription's history it belongs to.
+    #[test]
+    fn config_dir_for_transcript_inverts_the_transcript_path() {
+        let tmp = TempDir::new().unwrap();
+        write_record(tmp.path(), 27051, "busy", "2.1.238");
+        write_transcript(tmp.path(), PROJECT);
+        let entry = read_entry(tmp.path(), 27051).unwrap();
+        let transcript = transcript_path(tmp.path(), &entry).expect("transcript");
+
+        assert_eq!(
+            config_dir_for_transcript(&transcript).as_deref(),
+            Some(tmp.path())
+        );
+    }
+
+    #[test]
+    fn config_dir_for_transcript_rejects_a_foreign_layout() {
+        for path in [
+            "/home/user/stray.jsonl",
+            "/home/user/.codex/sessions/2026/08/rollout-abc.jsonl",
+            "/home/user/.claude/projects/session.jsonl",
+        ] {
+            assert_eq!(
+                config_dir_for_transcript(Path::new(path)),
+                None,
+                "path {path}"
+            );
+        }
     }
 
     #[test]

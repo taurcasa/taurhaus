@@ -210,9 +210,12 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::mesh::check_mesh_install_status,
             commands::mesh::install_mesh,
             commands::logging::frontend_log,
+            commands::claude_accounts::list_claude_accounts,
+            commands::claude_accounts::set_project_claude_account,
             commands::command_center::list_cli_sessions,
             commands::command_center::list_cli_session_snapshot,
             commands::command_center::launch_cli_session,
+            commands::command_center::resolve_claude_launch_account,
             commands::command_center::stop_cli_session,
             commands::command_center::navigate_to_session,
             commands::command_center::record_session_activity,
@@ -422,6 +425,13 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
                     EffortIgnoreReason::Invalid => "invalid",
                 }),
             },
+            LaunchNote::ConfigDirIgnored { found } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement: None,
+                reason: None,
+            },
         }
     }
 }
@@ -509,6 +519,7 @@ fn render_launch_command_cli<R: Read>(
         team,
         codex_bypass_hook_trust: request.codex_bypass_hook_trust,
         codex_notify_executable: None,
+        claude_config_dir: None,
     }
     .render();
     validate_command_override(&rendered.command)?;

@@ -8,6 +8,7 @@
   import { hasLiveSession, rowTintForSessions, toolIndicators } from './sessionIndicator.js'
   import { buildSidebarProjection } from './sidebar.js'
   import { describeSessionActionError } from './errorCopy.js'
+  import { requestClaudeLaunch } from './claudeAccounts.svelte.js'
   import SidebarProjectList from './SidebarProjectList.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import HoverCard from './HoverCard.svelte'
@@ -288,13 +289,23 @@
 
   function ctxLaunchTool(mode, tool = 'claude') {
     if (!ctxMenu?.project) return
-    console.log(`[cmd-center] ${mode} ${tool} session:`, ctxMenu.project.id, ctxMenu.project.name)
-    launchClaudeSession(ctxMenu.project.id, mode, tool)
-      .then(r => console.log('[cmd-center] launch OK:', r))
-      .catch((error) => {
+    const project = ctxMenu.project
+    console.log(`[cmd-center] ${mode} ${tool} session:`, project.id, project.name)
+    // Claude launches may first ask which subscription to run on; the store
+    // opens the chooser and takes over from there.
+    requestClaudeLaunch({
+      project,
+      mode,
+      tool,
+      launch: (projectId, launchMode, launchTool, accountId) =>
+        launchClaudeSession(projectId, launchMode, launchTool, accountId).then((r) =>
+          console.log('[cmd-center] launch OK:', r)
+        ),
+      onError: (error) => {
         console.error('[cmd-center] launch FAILED:', error)
         showSidebarNotice(describeSessionActionError('launch', { tool }, error))
-      })
+      },
+    })
   }
 
   function hasNavigableTmuxTarget(session) {
@@ -344,14 +355,24 @@
 
   function ctxRestartTool(session) {
     if (!ctxMenu?.project || !session?.tmux_pane) return
-    const projectId = ctxMenu.project.id
+    const project = ctxMenu.project
     const tool = session.cli_tool
-    stopClaudeSession(session.tmux_pane, tool)
-      .then(() => launchClaudeSession(projectId, 'fresh', tool))
-      .catch((error) => {
+    const pane = session.tmux_pane
+    // The subscription is settled before anything is torn down: the chooser can
+    // open while the pane is still alive, so cancelling costs the user nothing.
+    requestClaudeLaunch({
+      project,
+      mode: 'fresh',
+      tool,
+      launch: (projectId, launchMode, launchTool, accountId) =>
+        stopClaudeSession(pane, launchTool).then(() =>
+          launchClaudeSession(projectId, launchMode, launchTool, accountId)
+        ),
+      onError: (error) => {
         console.error('Failed to restart session:', error)
         showSidebarNotice(describeSessionActionError('restart', { tool }, error))
-      })
+      },
+    })
   }
 
   /** Tool display names for context menu labels. */

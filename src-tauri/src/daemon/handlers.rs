@@ -80,12 +80,55 @@ pub(crate) fn dispatch(
         protocol::method::SET_CODEX_COMPACTION_MODE => {
             handle_set_codex_compaction_mode(&request.id, &request.params)
         }
+        protocol::method::LIST_CLAUDE_ACCOUNTS => handle_list_claude_accounts(&request.id),
+        protocol::method::CLAUDE_PROJECT_TRANSCRIPT => {
+            handle_claude_project_transcript(&request.id, &request.params)
+        }
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
             format!("Unknown method: {}", request.method),
         ),
     }
+}
+
+/// Claude subscriptions on the daemon's host — the Windows app cannot read the
+/// WSL home itself.
+fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
+    DaemonResponse::ok(
+        id,
+        protocol::ClaudeAccountsResult {
+            accounts: crate::session_scanner::claude_accounts::detect_claude_accounts_cached(),
+        },
+    )
+}
+
+/// The newest transcript a project has under any detected config dir — the
+/// account `--resume` has to run in. The files are the daemon's to read: on
+/// Windows they live in WSL, and the app never scans them.
+fn handle_claude_project_transcript(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::ClaudeProjectTranscriptParams =
+        match serde_json::from_value(params.clone()) {
+            Ok(params) => params,
+            Err(error) => {
+                return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string());
+            }
+        };
+
+    // The scan's config dirs, not its accounts: a `.claude.json` caught
+    // mid-rewrite names no account, and the transcripts beside it are still
+    // the only record of which subscription owns the project's history.
+    let config_dirs = crate::session_scanner::claude_accounts::transcript_config_dirs();
+    DaemonResponse::ok(
+        id,
+        protocol::ClaudeProjectTranscriptResult {
+            transcript: crate::session_scanner::claude_accounts::newest_project_transcript(
+                &config_dirs,
+                &params.project_path,
+            )
+            .map(|path| path.display().to_string()),
+        },
+    )
 }
 
 fn handle_set_codex_compaction_mode(id: &str, params: &serde_json::Value) -> DaemonResponse {
@@ -478,4 +521,46 @@ fn load_project_task_scan_inputs(
     let (sessions, _degraded) = crate::session_scanner::scan_sessions_for_runtime();
     let claude_index = build_claude_source_index_with_live_sessions(&sessions);
     (sessions, claude_index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session_scanner::claude_accounts::{install_scan_override, ClaudeScan};
+    use tempfile::TempDir;
+
+    // Regression: 760f776 answered `claude-project-transcript` from the config
+    // dirs of successfully parsed accounts only. On Windows this handler is the
+    // *only* thing that can see the transcripts, and a `.claude.json` caught
+    // mid-rewrite names no account — so the daemon reported no history and the
+    // app resumed the project in whichever subscription its own choice named.
+    #[test]
+    fn the_transcript_handler_reads_config_dirs_that_name_no_account() {
+        let home = TempDir::new().expect("home");
+        let config_dir = home.path().join(".claude-account2");
+        let project_path = "/home/user/projects/daemon-side";
+        let dir = config_dir
+            .join("projects")
+            .join(crate::session_scanner::idle::path_to_slug(project_path));
+        std::fs::create_dir_all(&dir).expect("transcript dir");
+        let transcript = dir.join("abc.jsonl");
+        std::fs::write(&transcript, "{}\n").expect("transcript");
+        let _scan = install_scan_override(ClaudeScan {
+            config_dirs: vec![config_dir],
+            accounts: Vec::new(),
+        });
+
+        let response = handle_claude_project_transcript(
+            "req-1",
+            &serde_json::json!({ "project_path": project_path }),
+        );
+
+        assert!(response.is_ok(), "{response:?}");
+        let result: protocol::ClaudeProjectTranscriptResult =
+            serde_json::from_value(response.result.expect("result")).expect("decode");
+        assert_eq!(
+            result.transcript.as_deref(),
+            Some(transcript.display().to_string().as_str())
+        );
+    }
 }

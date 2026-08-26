@@ -90,6 +90,9 @@ pub struct Project {
     pub cached_branch: Option<String>,
     /// Cached dirty status (populated by watcher/startup, may be None).
     pub cached_is_dirty: Option<bool>,
+    /// Claude subscription this project launches on. `None` = the global
+    /// default account.
+    pub claude_account_id: Option<String>,
 }
 
 /// Lightweight project summary sent to the frontend for the sidebar list.
@@ -103,6 +106,8 @@ pub struct ProjectSummary {
     pub last_activity_at: Option<String>,
     pub branch: Option<String>,
     pub is_dirty: Option<bool>,
+    /// Claude subscription this project launches on; `None` = the default.
+    pub claude_account_id: Option<String>,
 }
 
 impl ProjectSummary {
@@ -125,6 +130,7 @@ impl ProjectSummary {
             last_activity_at: project.last_activity_at.clone(),
             branch: project.cached_branch.clone(),
             is_dirty: project.cached_is_dirty,
+            claude_account_id: project.claude_account_id.clone(),
         }
     }
 }
@@ -144,6 +150,8 @@ pub struct ProjectDetail {
     pub updated_at: String,
     pub branch: Option<String>,
     pub is_dirty: Option<bool>,
+    /// Claude subscription this project launches on; `None` = the default.
+    pub claude_account_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -725,6 +733,11 @@ pub struct TerminalSettings {
     /// transcript parsing remains the explicit compatibility fallback.
     #[serde(default)]
     pub harness: HarnessSettings,
+    /// Claude subscription used by projects that made no choice of their own.
+    /// `None` = the account in `PlatformPaths::claude_dir()`.
+    #[serde(default)]
+    #[serde(alias = "claude_default_account_id")]
+    pub claude_default_account_id: Option<String>,
 }
 
 impl Default for TerminalSettings {
@@ -735,6 +748,7 @@ impl Default for TerminalSettings {
             tmux_layout: "new_window".into(),
             cli_commands: CliCommandSettings::default(),
             harness: HarnessSettings::default(),
+            claude_default_account_id: None,
         }
     }
 }
@@ -1029,11 +1043,16 @@ mod tests {
             last_activity_at: Some("2026-01-01T00:00:00Z".to_string()),
             branch: Some("main".to_string()),
             is_dirty: Some(true),
+            claude_account_id: Some("account-2".to_string()),
         };
         let value = serde_json::to_value(summary).expect("serialize project summary");
         assert!(value.get("activityState").is_some());
         assert!(value.get("lastActivityAt").is_some());
         assert!(value.get("isDirty").is_some());
+        assert_eq!(
+            value.get("claudeAccountId").and_then(|v| v.as_str()),
+            Some("account-2")
+        );
         assert!(value.get("activity_state").is_none());
     }
 
@@ -1151,6 +1170,7 @@ mod tests {
             updated_at: "2025-06-12T10:00:00Z".into(),
             cached_branch: Some("main".into()),
             cached_is_dirty: Some(false),
+            claude_account_id: None,
         };
 
         let json = serde_json::to_string(&project).unwrap();
@@ -1199,6 +1219,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".into(),
             cached_branch: None,
             cached_is_dirty: None,
+            claude_account_id: None,
         };
 
         let summary = ProjectSummary::from_project(&project, &default_thresholds(), fixed_now());
@@ -1222,6 +1243,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".into(),
             cached_branch: Some("develop".into()),
             cached_is_dirty: Some(true),
+            claude_account_id: None,
         };
 
         let summary = ProjectSummary::from_project(&project, &default_thresholds(), fixed_now());
@@ -1498,6 +1520,7 @@ mod tests {
                 tmux_layout: "new_window".into(),
                 cli_commands: CliCommandSettings::default(),
                 harness: HarnessSettings::default(),
+                claude_default_account_id: None,
             },
             ..Settings::default()
         }

@@ -4,6 +4,13 @@
   import { getSessionContext } from './context/SessionContext.js'
   import { themeTokens } from './themeTokens.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import ClaudeAccountChip from './components/ClaudeAccountChip.svelte'
+  import {
+    claudeAccounts,
+    effectiveClaudeAccountId,
+    refreshClaudeAccounts,
+    setProjectClaudeAccountChoice,
+  } from './claudeAccounts.svelte.js'
 
   let {
     dark = false,
@@ -30,6 +37,20 @@
   const relationshipsLoading = $derived.by(() => Boolean(data?.relationshipsLoading))
 
   const t = $derived(themeTokens(dark))
+
+  // Which subscription this project runs on. Hidden with a single account.
+  // The choice lives in the shared store, so the chip and the next launch —
+  // which may happen from the sidebar — always read the same answer.
+  const projectClaudeAccountId = $derived(effectiveClaudeAccountId(selectedProject))
+
+  function handleClaudeAccountSelect(accountId) {
+    if (!selectedProject?.id) return
+    void setProjectClaudeAccountChoice(selectedProject.id, accountId)
+  }
+
+  $effect(() => {
+    void refreshClaudeAccounts()
+  })
 
   const statusColor    = $derived(dark ? 'text-success-400' : 'text-success-600')
   const dangerColor    = $derived(dark ? 'text-danger-400/70 hover:text-danger-400' : 'text-danger-600/60 hover:text-danger-600')
@@ -143,6 +164,14 @@
     {#if selectedProject.activityState}
       <span class="text-[11px] {statusColor} font-medium capitalize self-baseline">{selectedProject.activityState}</span>
     {/if}
+    <ClaudeAccountChip
+      accounts={claudeAccounts.accounts}
+      selectedAccountId={projectClaudeAccountId}
+      defaultAccountId={claudeAccounts.defaultAccountId}
+      degraded={claudeAccounts.degraded}
+      {dark}
+      onSelect={handleClaudeAccountSelect}
+    />
     <!-- Quick actions — compact icon buttons -->
     <div class="ml-auto flex items-center gap-1 shrink-0" data-testid="quick-actions">
       {#each TOOLS as tool}

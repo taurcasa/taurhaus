@@ -1,3 +1,4 @@
+import ClaudeAccountHost from './hosts/ClaudeAccountHost.svelte'
 import HoverCardHost from './hosts/HoverCardHost.svelte'
 import MeshCanvasHost from './hosts/MeshCanvasHost.svelte'
 import MeshNodeDetailHost from './hosts/MeshNodeDetailHost.svelte'
@@ -9,6 +10,7 @@ import RosterDesignCHost from './hosts/RosterDesignCHost.svelte'
 import SidebarHost from './hosts/SidebarHost.svelte'
 import { configureVisualHostState } from './mockState.js'
 
+import { claudeAccountScenarios } from '../test/visual/fixtures/claudeAccount.fixtures.js'
 import { hoverCardScenarios } from '../test/visual/fixtures/hoverCard.fixtures.js'
 import { meshCanvasScenarios } from '../test/visual/fixtures/meshCanvas.fixtures.js'
 import { meshNodeDetailScenarios } from '../test/visual/fixtures/meshNodeDetail.fixtures.js'
@@ -81,6 +83,13 @@ export const visualRegistry = [
     component: SidebarHost,
     scenarios: sidebarScenarios,
     applyMocks: applySidebarMocks,
+  },
+  {
+    id: 'claude-account',
+    label: 'ClaudeAccount',
+    component: ClaudeAccountHost,
+    scenarios: claudeAccountScenarios,
+    applyMocks: applyNoopMocks,
   },
   {
     id: 'model-select',

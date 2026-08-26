@@ -497,8 +497,8 @@ fn try_start_daemon_native(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    if let Some(data_dir) = daemon_data_dir_env_value(log_path) {
-        cmd.env("TAURHAUS_DATA_DIR", data_dir);
+    for (key, value) in daemon_launch_env(log_path, true) {
+        cmd.env(key, value);
     }
     let child = cmd.spawn();
 
@@ -572,8 +572,12 @@ fn try_start_daemon_wsl(
 
     let mut cmd = wsl_command();
     cmd.arg("-d").arg(distro).arg("--");
-    if let Some(data_dir) = daemon_data_dir_env_value_for_launch(log_path, false) {
-        cmd.arg("env").arg(format!("TAURHAUS_DATA_DIR={data_dir}"));
+    let launch_env = daemon_launch_env(log_path, false);
+    if !launch_env.is_empty() {
+        cmd.arg("env");
+        for (key, value) in &launch_env {
+            cmd.arg(format!("{key}={value}"));
+        }
     }
     cmd.arg(binary_path)
         .arg("--port")
@@ -665,8 +669,37 @@ fn terminate_pid_gracefully(pid: u32, log_path: &Path) -> Result<(), std::io::Er
     Ok(())
 }
 
-fn daemon_data_dir_env_value(log_path: &Path) -> Option<String> {
-    daemon_data_dir_env_value_for_launch(log_path, is_native_daemon())
+/// Every root a spawned daemon has to be told about, in the form its own shell
+/// will read.
+///
+/// The data dir is where its state lives. The Claude root is what it *answers
+/// with*: the daemon scans Claude config dirs for the app's account and
+/// transcript questions, and it reads its own ambient `TAURHAUS_CLAUDE_DIR` to
+/// decide where to look. A Windows app pointed at an isolated root and a WSL
+/// daemon left on the real `~/.claude` are two different hosts as far as those
+/// answers go.
+fn daemon_launch_env(log_path: &Path, daemon_is_native: bool) -> Vec<(&'static str, String)> {
+    let mut env = Vec::new();
+    if let Some(data_dir) = daemon_data_dir_env_value_for_launch(log_path, daemon_is_native) {
+        env.push(("TAURHAUS_DATA_DIR", data_dir));
+    }
+    if let Some(claude_dir) = daemon_claude_dir_env_value_for_launch(daemon_is_native) {
+        env.push(("TAURHAUS_CLAUDE_DIR", claude_dir));
+    }
+    env
+}
+
+fn daemon_claude_dir_env_value_for_launch(daemon_is_native: bool) -> Option<String> {
+    let raw = crate::provider::platform_paths::PlatformPaths::claude_dir_override()?
+        .to_string_lossy()
+        .to_string();
+    if raw.is_empty() {
+        return None;
+    }
+    if daemon_is_native {
+        return Some(raw);
+    }
+    path::to_linux(&raw).or(Some(raw))
 }
 
 fn daemon_data_dir_env_value_for_launch(log_path: &Path, daemon_is_native: bool) -> Option<String> {
@@ -1301,6 +1334,52 @@ time.sleep(3600)
         assert_eq!(
             resolved,
             Some("/mnt/c/Users/me/AppData/Roaming/com.taurhaus.dev".to_string())
+        );
+    }
+
+    /// The daemon answers the app's Claude questions — which subscriptions
+    /// exist, which one owns a project's history — by scanning the root its own
+    /// `TAURHAUS_CLAUDE_DIR` names. A Windows app pointed at an isolated root
+    /// has to say so, or the WSL daemon reports the real `~/.claude` instead.
+    #[test]
+    fn a_wsl_daemon_launch_inherits_the_configured_claude_root() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        std::env::set_var(
+            "TAURHAUS_CLAUDE_DIR",
+            r"\\wsl.localhost\Ubuntu\home\me\e2e-root\.claude",
+        );
+        let log_path =
+            PathBuf::from(r"C:\Users\me\AppData\Roaming\com.taurhaus.dev\taurhaus.log.jsonl");
+
+        let env = daemon_launch_env(&log_path, false);
+
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+        assert_eq!(
+            env,
+            vec![
+                (
+                    "TAURHAUS_DATA_DIR",
+                    "/mnt/c/Users/me/AppData/Roaming/com.taurhaus.dev".to_string()
+                ),
+                (
+                    "TAURHAUS_CLAUDE_DIR",
+                    "/home/me/e2e-root/.claude".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_daemon_launch_without_a_claude_override_says_nothing_about_the_root() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+        let log_path = PathBuf::from("/tmp/taurhaus/taurhaus.log.jsonl");
+
+        let env = daemon_launch_env(&log_path, true);
+
+        assert_eq!(
+            env,
+            vec![("TAURHAUS_DATA_DIR", "/tmp/taurhaus".to_string())]
         );
     }
 }

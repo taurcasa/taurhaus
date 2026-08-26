@@ -50,6 +50,7 @@ const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 const KEY_CLI_COMMANDS: &str = "terminal.cli_commands";
 const KEY_TERMINAL_HARNESS: &str = "terminal.harness";
+const KEY_CLAUDE_DEFAULT_ACCOUNT: &str = "terminal.claude_default_account_id";
 const KEY_DARK_MODE: &str = "dark_mode";
 const KEY_PROJECT_DIALOG_LAST_PATH: &str = "project_dialog.last_path";
 
@@ -132,6 +133,10 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         None => defaults.terminal.harness.clone(),
     };
 
+    let claude_default_account_id = get_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
     let dark_mode = get_setting(conn, KEY_DARK_MODE)?
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.dark_mode);
@@ -162,6 +167,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             tmux_layout: terminal_tmux_layout,
             cli_commands,
             harness,
+            claude_default_account_id,
         },
         dark_mode,
         project_dialog_last_path,
@@ -169,8 +175,19 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
     })
 }
 
-/// Save all settings to the database.
+/// Save all settings to the database, as one write.
+///
+/// The keys are a single blob to everything that reads them: a launch reads the
+/// Claude default while the frontend reads the form it just submitted. A save
+/// that stopped halfway would leave those two disagreeing, so this either
+/// lands whole or changes nothing.
 pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusqlite::Error> {
+    let tx = conn.unchecked_transaction()?;
+    write_settings(&tx, settings)?;
+    tx.commit()
+}
+
+fn write_settings(conn: &Connection, settings: &Settings) -> Result<(), rusqlite::Error> {
     let scan_dirs_json =
         serde_json::to_string(&settings.scan_directories).unwrap_or_else(|_| "[]".to_string());
     set_setting(conn, KEY_SCAN_DIRS, &scan_dirs_json)?;
@@ -226,6 +243,13 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
         serde_json::to_string(&settings.terminal.harness).unwrap_or_else(|_| "{}".to_string());
     set_setting(conn, KEY_TERMINAL_HARNESS, &harness_json)?;
 
+    match settings.terminal.claude_default_account_id.as_deref() {
+        Some(account_id) => set_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT, account_id)?,
+        None => {
+            delete_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?;
+        }
+    }
+
     set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
     set_setting(
         conn,
@@ -249,6 +273,89 @@ mod tests {
         let tmp = NamedTempFile::new().unwrap();
         let conn = init_db(tmp.path()).unwrap();
         (conn, tmp)
+    }
+
+    #[test]
+    fn claude_default_account_round_trips_and_clears() {
+        let (conn, _tmp) = test_db();
+        let defaults = get_all_settings(&conn).unwrap();
+        assert_eq!(defaults.terminal.claude_default_account_id, None);
+
+        let mut settings = defaults;
+        settings.terminal.claude_default_account_id = Some("account-2".to_string());
+        save_settings(&conn, &settings).unwrap();
+        assert_eq!(
+            get_all_settings(&conn)
+                .unwrap()
+                .terminal
+                .claude_default_account_id
+                .as_deref(),
+            Some("account-2")
+        );
+
+        settings.terminal.claude_default_account_id = None;
+        save_settings(&conn, &settings).unwrap();
+        assert_eq!(
+            get_all_settings(&conn)
+                .unwrap()
+                .terminal
+                .claude_default_account_id,
+            None
+        );
+    }
+
+    /// A write that fails partway leaves the settings blob as it was.
+    ///
+    /// Regression: 518aace wrote every key in its own autocommit statement, so
+    /// a failure after `terminal.claude_default_account_id` kept the new
+    /// default on disk while the command reported failure and the frontend put
+    /// its old value back. Every launch then routed to a subscription the UI
+    /// said nothing about.
+    #[test]
+    fn a_failed_late_write_leaves_the_earlier_keys_alone() {
+        let (conn, _tmp) = test_db();
+        let mut settings = Settings {
+            scan_directories: vec!["~/projects".to_string()],
+            ..Settings::default()
+        };
+        settings.terminal.claude_default_account_id = Some("account-1".to_string());
+        save_settings(&conn, &settings).unwrap();
+
+        // `dark_mode` is written after the Claude default, so this fails the
+        // save halfway through — the way a disk error or a constraint would.
+        conn.execute_batch(
+            "CREATE TRIGGER fail_dark_mode BEFORE INSERT ON settings
+             WHEN NEW.key = 'dark_mode'
+             BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END;",
+        )
+        .unwrap();
+
+        settings.scan_directories = vec!["~/work".to_string()];
+        settings.terminal.claude_default_account_id = Some("account-2".to_string());
+        let error = save_settings(&conn, &settings).expect_err("the late write fails");
+        assert!(
+            error.to_string().contains("simulated write failure"),
+            "{error}"
+        );
+
+        let loaded = get_all_settings(&conn).unwrap();
+        assert_eq!(
+            loaded.terminal.claude_default_account_id.as_deref(),
+            Some("account-1")
+        );
+        assert_eq!(loaded.scan_directories, vec!["~/projects".to_string()]);
+
+        // Clearing the default is the same write, and rolls back the same way.
+        settings.terminal.claude_default_account_id = None;
+        save_settings(&conn, &settings).expect_err("the late write still fails");
+        assert_eq!(
+            get_all_settings(&conn)
+                .unwrap()
+                .terminal
+                .claude_default_account_id
+                .as_deref(),
+            Some("account-1")
+        );
     }
 
     #[test]

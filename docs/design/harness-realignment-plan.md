@@ -88,6 +88,8 @@ Requirement (user, 2026-08-21): adapters are sliced by *capability*, not by tool
 
 The `Fallback` column is the universal floor (tmux pane + mesh join/daemon/inbox/tasks + `/proc`); a native column upgrades a row, never replaces the floor. A new CLI starts floor-only on every row and earns columns slice by slice ("Capability model"). Gemini is floor-only today and **unverified** throughout (no binary on PATH, no live team, zero mesh code or tests — mesh-findings P19, Q13).
 
+**Follow-ups (from PR 16, Claude account selection).** PR 16 makes the Claude *subscription* a per-project capability: a config dir per project, rendered as a `CLAUDE_CONFIG_DIR` prefix by `LaunchSpec`, with a global default and resume deriving the account from the session transcript. Two things it deliberately does not do. Per-team accounts: agent inboxes live under the single `PlatformPaths::teams_dir()` (= `claude_dir()/teams`), so a team always runs on the default config dir, and `MeshTeamBuilder` says so in one line; making it per-team means making the teams-dir authority per-team (PR 6/7) and threading the same dir through mesh's `--claude-dir`. Shared history across subscriptions: Claude Code keeps `projects/` transcripts inside the config dir, so a project's history splits when its account changes; symlinking `projects/` across dirs is the obvious experiment and is flagged as risky, not scheduled. Both stay follow-ups; the resolution seam is already written as "config dir per tool", so Codex/Gemini account selection would slot in without a new abstraction.
+
 ## Execution plan
 
 Each PR is green under `just check-quick`; tests are written red first. Dependencies in brackets. PRs 0, 1, 2, 4, 6 are independent (PR 0 is a one-file pre-series fix); value lands with PR 0 (agents stop being taught wrong mesh commands), PR 1 (indicator), PR 2 (blackouts), PR 4 (`xhigh`). PR 0, 7b and 15 were added on 2026-08-21 from the mesh audit and the capability requirement; "Mesh: changes folded in" below maps the rest.
@@ -187,6 +189,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 11 taureval fidelity + matrix (cross-repo) | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds + taureval view-keying follow-up) | 6 (Opus: discarded LaunchNotes corrupting matrix cells; sweep-abort chain ×2 rounds; view currency keyed on whole run_config) | #24 |
 | 13 Codex native idle edge + CLI version gates | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 8 (Opus: macOS-unreachable edge; probe bypassing login shell/distro ×2 rounds; failed probe deleting the installed hook; per-tick sink parsing) | #25 |
 | 14 cleanup (cross-repo), mesh 0.2.20 | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 4 (Opus: mesh guard missed #{pane_dead}; skip path re-journalled forever and bypassed escalation; foreign-CLI skip permanent) | #26 |
+| 16 Claude account selection | Opus 5 | Codex ×2 | tbd | tbd | tbd |
 
 ## Spikes / unknowns
 

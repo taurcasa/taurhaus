@@ -60,6 +60,7 @@ fn setup_db_with_project(project_id: &str, project_path: &str) -> (DbState, Name
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
+            claude_account_id: None,
         },
     )
     .expect("insert project");
@@ -956,6 +957,7 @@ fn launch_cli_session_uses_daemon_success_response() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect("daemon launch should succeed");
 
@@ -1001,6 +1003,7 @@ fn launch_cli_session_logs_daemon_request_context() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect("daemon launch should succeed");
 
@@ -1047,6 +1050,7 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect("daemon launch should succeed");
 
@@ -1084,6 +1088,550 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
     assert_eq!(rendered["command"], "claude --dangerously-skip-permissions");
 }
 
+/// Detection is faked here on purpose: no test may read the developer's real
+/// `~/.claude*`, and this exercises the launch path, not detection.
+fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount> {
+    vec![
+        crate::session_scanner::claude_accounts::ClaudeAccount {
+            id: "account-1".to_string(),
+            config_dir: PathBuf::from("/home/user/.claude"),
+            email: "primary@example.com".to_string(),
+            display_name: Some("Primary".to_string()),
+            organization: None,
+            seat_tier: None,
+            logged_in: true,
+            is_default: true,
+            is_process_default: true,
+        },
+        crate::session_scanner::claude_accounts::ClaudeAccount {
+            id: "account-2".to_string(),
+            config_dir: PathBuf::from("/home/user/.claude-account2"),
+            email: "second@example.com".to_string(),
+            display_name: Some("Second".to_string()),
+            organization: None,
+            seat_tier: None,
+            logged_in: true,
+            is_default: false,
+            is_process_default: false,
+        },
+    ]
+}
+
+use crate::session_scanner::claude_accounts::{install_detection_override, DetectionOverrideGuard};
+
+fn with_fake_accounts() -> DetectionOverrideGuard {
+    install_detection_override(fake_accounts())
+}
+
+fn stub_launch_provider(daemon: &StubDaemon) -> ProviderState {
+    ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    }
+}
+
+fn launch_stub_daemon() -> StubDaemon {
+    start_stub_daemon(serde_json::json!({
+        "result": {
+            "tmux_session": "taurhaus",
+            "tmux_window": "2",
+            "tmux_pane": "%7"
+        },
+        "error": null
+    }))
+}
+
+// Regression: 791f6be rendered every Claude launch without a config dir, so a
+// project pinned to a second subscription still ran on `~/.claude`.
+#[test]
+fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+            .expect("store account");
+    }
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' claude --dangerously-skip-permissions"
+    );
+
+    let events = read_log_events(log_file_path.path());
+    let rendered = events
+        .iter()
+        .find(|event| event["event"] == "launch.command.rendered")
+        .expect("rendered launch event");
+    assert_eq!(rendered["claude_account"], "second@example.com");
+}
+
+#[test]
+fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p1", Some("deleted-account"))
+            .expect("store account");
+    }
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "claude --dangerously-skip-permissions"
+    );
+
+    let events = read_log_events(log_file_path.path());
+    let fallback = events
+        .iter()
+        .find(|event| event["event"] == "launch.account.fallback")
+        .expect("fallback event");
+    assert_eq!(fallback["project"], "p1");
+    assert_eq!(fallback["wanted"], "deleted-account");
+    assert_eq!(fallback["used"], "primary@example.com");
+    assert_eq!(fallback["reason"], "account_unavailable");
+}
+
+// Regression: 518aace read every daemon failure as an empty account list. A
+// Windows resume whose transcript lookup never ran then dropped to the
+// physical default config dir — a different subscription's history — without
+// a word in the log to say the question had gone unanswered.
+#[test]
+fn a_launch_whose_detection_failed_falls_back_and_says_why() {
+    use super::launching::{decide_launch_account, log_account_resolution};
+    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
+    use crate::session_scanner::claude_accounts::AccountRequest;
+
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    let launch = decide_launch_account(
+        &ClaudeAccountsResult {
+            accounts: Vec::new(),
+            source: "daemon".to_string(),
+            degraded: true,
+            error: Some("Daemon transport error: connection reset by peer".to_string()),
+        },
+        &TranscriptLookup {
+            transcript: None,
+            unavailable: Some("timed out waiting for daemon".to_string()),
+        },
+        AccountRequest {
+            requested_account_id: None,
+            session_transcript: None,
+            project_account_id: Some("account-2"),
+            default_account_id: None,
+        },
+    );
+    log_account_resolution("p1", &launch);
+
+    let events = read_log_events(log_file_path.path());
+    let fallback = events
+        .iter()
+        .find(|event| event["event"] == "launch.account.fallback")
+        .expect("fallback event");
+    assert_eq!(fallback["project"], "p1");
+    assert_eq!(fallback["reason"], "daemon_unavailable");
+    assert_eq!(fallback["wanted"], "account-2");
+    assert_eq!(fallback["used"], serde_json::Value::Null);
+}
+
+/// A transcript recovered from this process's own sightings placed the resume,
+/// so nothing fell back — a warning here would be noise.
+#[test]
+fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
+    use super::launching::decide_launch_account;
+    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
+    use crate::session_scanner::claude_accounts::AccountRequest;
+
+    let transcript =
+        PathBuf::from("/home/user/.claude-account2/projects/-tmp-project/session.jsonl");
+    let launch = decide_launch_account(
+        &ClaudeAccountsResult {
+            accounts: fake_accounts(),
+            source: "daemon".to_string(),
+            degraded: false,
+            error: None,
+        },
+        &TranscriptLookup {
+            transcript: Some(transcript.clone()),
+            unavailable: Some("timed out waiting for daemon".to_string()),
+        },
+        AccountRequest {
+            requested_account_id: None,
+            session_transcript: Some(transcript.as_path()),
+            project_account_id: Some("account-1"),
+            default_account_id: None,
+        },
+    );
+
+    assert!(launch.degraded.is_none());
+}
+
+#[test]
+fn a_codex_launch_never_receives_a_claude_config_dir() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+            .expect("store account");
+    }
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Codex),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(request.params["command_override"], "codex --yolo");
+}
+
+fn exited_claude_session(
+    project_path: &str,
+    transcript: &str,
+) -> crate::session_scanner::RuntimeSession {
+    crate::session_scanner::RuntimeSession {
+        pid: 9182,
+        project_path: project_path.to_string(),
+        tty: "/dev/pts/5".to_string(),
+        args: "claude".to_string(),
+        cli_tool: CliTool::Claude,
+        tmux_session: None,
+        tmux_window: None,
+        tmux_pane: None,
+        tmux_window_name: None,
+        state: SessionState::Idle,
+        session_id: Some("f3286b16-ffc7-4d16-915d-046705823a3d".to_string()),
+        jsonl_path: Some(transcript.to_string()),
+        recent_io: false,
+        last_output_age_secs: Some(12),
+        activity_confidence: Default::default(),
+        activity_attribution: Default::default(),
+        project_unattributed_active: false,
+        group_kind: SessionGroupKind::Standalone,
+        group_id: None,
+        group_label: None,
+        member_name: None,
+    }
+}
+
+// Regression: c982822 took the resume transcript from the live runtime
+// snapshot, which lists running processes only. Resume is reached for after
+// Claude has exited, and by then the session is gone from that snapshot — so
+// the subscription that owns the history was unavailable exactly when it had
+// to decide where `--resume` runs.
+#[test]
+fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p-resume", "/tmp/resume-project");
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    // The last session for this project ran on the second subscription.
+    crate::session_scanner::claude_accounts::record_claude_transcripts(&[exited_claude_session(
+        "/tmp/resume-project",
+        "/home/user/.claude-account2/projects/-tmp-resume-project/f3286b16.jsonl",
+    )]);
+    // Claude exited: no runtime snapshot mentions it any more.
+    crate::session_snapshot_cache::clear();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-resume".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' claude --dangerously-skip-permissions --resume"
+    );
+
+    let events = read_log_events(log_file_path.path());
+    assert!(
+        events
+            .iter()
+            .any(|event| event["event"] == "launch.account.derived_from_session"),
+        "{events:?}"
+    );
+}
+
+/// Accounts whose config dirs are real directories under `home`, so a launch
+/// can read the transcripts that decide a resume. Detection itself is faked:
+/// no test may read the developer's real `~/.claude*`.
+fn with_fake_accounts_under(home: &Path) -> DetectionOverrideGuard {
+    let mut accounts = fake_accounts();
+    accounts[0].config_dir = home.join(".claude");
+    accounts[1].config_dir = home.join(".claude-account2");
+    install_detection_override(accounts)
+}
+
+/// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
+fn write_transcript(config_dir: &Path, project_path: &str, name: &str) -> PathBuf {
+    let dir = config_dir
+        .join("projects")
+        .join(crate::session_scanner::idle::path_to_slug(project_path));
+    std::fs::create_dir_all(&dir).expect("transcript dir");
+    let path = dir.join(name);
+    std::fs::write(&path, "{}\n").expect("transcript");
+    path
+}
+
+// Regression: 518aace kept the project→transcript map in a process-local
+// mutex that only scans run by this process fill. A restarted app reaches
+// Resume with an empty map — and on Windows so does a running one, because the
+// app records sightings while seeding the bridge and steady-state updates
+// carry no transcript at all. The subscription that owns the project's history
+// was therefore lost exactly when it had to decide where `--resume` runs.
+#[test]
+fn resume_reads_the_account_from_the_transcripts_on_disk() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let home = TempDir::new().expect("home");
+    let _accounts = with_fake_accounts_under(home.path());
+    let project_path = "/tmp/restarted-project";
+    write_transcript(
+        &home.path().join(".claude-account2"),
+        project_path,
+        "f3286b16.jsonl",
+    );
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p-restart", project_path);
+    let (log_file, _log_file_path) = setup_log_file();
+
+    // This process never saw the session: nothing recorded a sighting.
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-restart".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        format!(
+            "CLAUDE_CONFIG_DIR='{}' claude --dangerously-skip-permissions --resume",
+            home.path().join(".claude-account2").display()
+        )
+    );
+}
+
+// Regression: c982822 rendered no `CLAUDE_CONFIG_DIR` whenever the selected
+// account sat in `PlatformPaths::claude_dir()` — which `TAURHAUS_CLAUDE_DIR`
+// moves. Claude Code reads only `CLAUDE_CONFIG_DIR`: with the variable unset it
+// uses the process's own `~/.claude`, so the configured root was silently
+// swapped for whatever subscription lives there. The fixture is the state that
+// override produces: taurhaus's default account is not the dir Claude Code
+// reads by itself.
+#[test]
+fn a_configured_claude_root_is_named_in_the_launch() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let mut accounts = fake_accounts();
+    accounts[0].config_dir = PathBuf::from("/tmp/e2e-run/claude");
+    accounts[0].is_process_default = false;
+    let _guard = install_detection_override(accounts);
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p-isolated", "/tmp/isolated-project");
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-isolated".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CLAUDE_CONFIG_DIR='/tmp/e2e-run/claude' claude --dangerously-skip-permissions"
+    );
+}
+
+fn preflight_provider() -> ProviderState {
+    ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    }
+}
+
+// Regression: c982822 let the chooser answer for every mode. `--resume` only
+// sees the history of the config dir it runs in, and an explicit answer
+// outranks the transcript that owns it — so a project whose history lives in a
+// second subscription resumed on whichever account the user picked in a dialog
+// that should never have opened. The frontend can only skip that dialog if the
+// backend says the launch is already placed.
+#[test]
+fn the_preflight_places_a_resume_from_the_transcript_that_owns_the_history() {
+    let home = TempDir::new().expect("home");
+    let _accounts = with_fake_accounts_under(home.path());
+    let project_path = "/tmp/preflight-project";
+    write_transcript(
+        &home.path().join(".claude-account2"),
+        project_path,
+        "abc.jsonl",
+    );
+    let (db, _db_file) = setup_db_with_project("p-preflight", project_path);
+
+    let placed = resolve_claude_launch_account_impl(
+        &db,
+        &preflight_provider(),
+        "p-preflight".to_string(),
+        LaunchMode::Resume,
+    )
+    .expect("preflight");
+
+    assert_eq!(placed.source, "session");
+    assert_eq!(placed.email.as_deref(), Some("second@example.com"));
+    assert!(!placed.needs_choice);
+}
+
+#[test]
+fn the_preflight_asks_when_no_history_and_no_choice_place_the_launch() {
+    let home = TempDir::new().expect("home");
+    let _accounts = with_fake_accounts_under(home.path());
+    let (db, _db_file) = setup_db_with_project("p-unplaced", "/tmp/unplaced-project");
+
+    let placed = resolve_claude_launch_account_impl(
+        &db,
+        &preflight_provider(),
+        "p-unplaced".to_string(),
+        LaunchMode::Resume,
+    )
+    .expect("preflight");
+
+    assert!(placed.needs_choice);
+}
+
+#[test]
+fn the_preflight_needs_no_choice_once_the_project_stored_one() {
+    let home = TempDir::new().expect("home");
+    let _accounts = with_fake_accounts_under(home.path());
+    let (db, _db_file) = setup_db_with_project("p-stored", "/tmp/stored-project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p-stored", Some("account-2"))
+            .expect("store account");
+    }
+
+    let placed = resolve_claude_launch_account_impl(
+        &db,
+        &preflight_provider(),
+        "p-stored".to_string(),
+        LaunchMode::Fresh,
+    )
+    .expect("preflight");
+
+    assert_eq!(placed.source, "project");
+    assert_eq!(placed.account_id.as_deref(), Some("account-2"));
+    assert!(!placed.needs_choice);
+}
+
 #[test]
 fn launch_cli_session_surfaces_daemon_error_message() {
     let daemon = start_stub_daemon(serde_json::json!({
@@ -1112,6 +1660,7 @@ fn launch_cli_session_surfaces_daemon_error_message() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect_err("daemon launch should return error");
 
@@ -1188,6 +1737,7 @@ fn launch_codex_resume_returns_project_not_found_for_invalid_project_id() {
         "missing-project".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect_err("missing project should fail");
 
@@ -1216,6 +1766,7 @@ fn launch_codex_resume_surfaces_fallback_error_when_daemon_is_unreachable() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect_err("daemon-unreachable fallback should still fail with useful error");
 
@@ -1277,6 +1828,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect("delegated resume should succeed");
 
@@ -1408,6 +1960,7 @@ fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect("ambiguous match should use raw launch");
 
@@ -1455,6 +2008,7 @@ fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect("non-team resume should use raw launch");
 

@@ -7,6 +7,14 @@ vi.mock('./ipc.js', () => ({
   launchClaudeSession: vi.fn(),
   stopClaudeSession: vi.fn(),
   removeProject: vi.fn(),
+  // A Claude launch asks the account store first, which detects before it
+  // decides whether the subscription chooser has to open.
+  listClaudeAccounts: vi.fn(() =>
+    Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
+  ),
+  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
+  resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
+  getSettings: vi.fn(() => Promise.resolve({ terminal: {} })),
 }))
 
 vi.mock('./sessionStore.svelte.js', () => ({
@@ -20,7 +28,8 @@ vi.mock('./sessionIndicator.js', () => ({
   toolIndicators: vi.fn(() => []),
 }))
 
-const { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } = await import('./ipc.js')
+const { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject, listClaudeAccounts } = await import('./ipc.js')
+const { claudeAccounts, resetClaudeAccountsForTest } = await import('./claudeAccounts.svelte.js')
 const { getSessionForProject, getSessionsForProject } = await import('./sessionStore.svelte.js')
 const { toolIndicators } = await import('./sessionIndicator.js')
 import Sidebar from './Sidebar.svelte'
@@ -44,6 +53,15 @@ describe('Sidebar component branches', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    // The account store is module state shared by the whole app, detection
+    // included: without this a test inherits the previous one's answer.
+    resetClaudeAccountsForTest()
+    listClaudeAccounts.mockResolvedValue({
+      accounts: [],
+      source: 'native',
+      degraded: false,
+      error: null,
+    })
     removeProject.mockResolvedValue(undefined)
     launchClaudeSession.mockResolvedValue({ ok: true })
     stopClaudeSession.mockResolvedValue(undefined)
@@ -745,7 +763,7 @@ describe('Sidebar component branches', () => {
     await fireEvent.mouseDown(screen.getByText('Restart Codex'))
     await waitFor(() => {
       expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
-      expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'fresh', 'codex')
+      expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'fresh', 'codex', null)
     })
 
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
@@ -756,6 +774,53 @@ describe('Sidebar component branches', () => {
     await waitFor(() => {
       expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
     })
+  })
+
+  // Regression: c982822 routed the sidebar's ordinary launches through
+  // requestClaudeLaunch but left Restart calling launchClaudeSession directly.
+  // On a host with two signed-in subscriptions and a project pinned to neither,
+  // that path can never open the chooser: it stopped the pane and took the
+  // backend fallback, so a one-off session could come back on the other
+  // subscription — and cancelling was not an option, the session was gone.
+  it('asks which subscription a restart runs on before stopping the session', async () => {
+    const project = makeProjects(1)[0]
+    const session = {
+      state: 'active',
+      cli_tool: 'claude',
+      tmux_pane: '%9',
+      tmux_session: 'team',
+      tmux_window: '2',
+    }
+    listClaudeAccounts.mockResolvedValue({
+      accounts: [
+        { id: 'account-1', email: 'a@example.com', logged_in: true, is_default: true },
+        { id: 'account-2', email: 'b@example.com', logged_in: true, is_default: false },
+      ],
+      source: 'native',
+      degraded: false,
+      error: null,
+    })
+    getSessionsForProject.mockImplementation(() => [session])
+
+    render(Sidebar, { props: { projects: [project] } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-item')).toBeInTheDocument()
+    })
+
+    await fireEvent.contextMenu(screen.getByTestId('project-item'))
+    await fireEvent.mouseDown(screen.getByText('Restart Claude'))
+
+    await waitFor(() => {
+      expect(claudeAccounts.pending).toMatchObject({ projectId: project.id, mode: 'fresh' })
+    })
+    // The pane is still alive: cancelling here must cost the user nothing.
+    expect(stopClaudeSession).not.toHaveBeenCalled()
+
+    await claudeAccounts.pending.confirm('account-2', true)
+
+    expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'claude')
+    expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'fresh', 'claude', 'account-2')
   })
 
   it('surfaces launch and stop failures from the session context menu', async () => {
