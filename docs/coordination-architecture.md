@@ -131,7 +131,14 @@ This lease still exists for daemon ownership coordination, but it is no longer t
 
 **Shipped**: only `HealthState` — Healthy, AwaitingRead, SuspectedStuck, Rebriefed, Suppressed, SessionDead. `health/transition.rs` is an identity placeholder (`transition(current) -> current`), there is no event enum, and `health/policy.rs` is a placeholder `RecoveryPolicy { cooldown_secs }`.
 
-**The only live health mutation** is `health -> SessionDead` from the liveness and pane-ownership checks in D17. The event vocabulary and recovery-evidence tiers below remain design intent, not code.
+**The live health mutations** are two, both written by `orchestrator/liveness.rs` during a reconciliation pass — there is no transition function between them:
+
+| Mutation | Trigger | Also writes |
+|---|---|---|
+| `-> SessionDead` | pane id missing, pane gone, pane dead, pane back to a shell, or the pane is foreign (D17 quarantine, `runtime/mod.rs`); also a vanished daemon pid at startup reconciliation | clears `session_id`/`jsonl_path`; terminates a stale non-Claude mesh daemon |
+| `-> Healthy` | the pane is alive and still owned (`PaneOwnership::Owned`), and the record was `SessionDead` or changed during the pass — a dead record recovers as soon as its pane is its own again | refreshes `last_seen_at`, re-detected `session_id`/`jsonl_path`, restarted daemon pid |
+
+Recovery is therefore pane-identity reconciliation, not the evidence tiers below. The event vocabulary and recovery-evidence tiers remain design intent, not code.
 
 **Planned events**: UnreadDetected, IdleThresholdMet, IoResumed, InboxCleared, CooldownExpired, SessionMissing, DeliveryFailed, ManualSuppress, ManualResume
 
@@ -231,11 +238,29 @@ src-tauri/src/
     reconcile.rs  reinjection.rs  roster.rs  validation.rs  state.rs
 ```
 
-### D13: Never modify agent config files
+### D13: Never modify agent instruction files; hook config is the one managed exception
 
 **Status**: Implemented
 
-**Decision**: Taurhaus never writes to CLAUDE.md, .codex-instructions.md, or any agent configuration files. All agent context delivery happens through inbox file writes — external and ephemeral.
+**Decision**: Taurhaus never writes to a project's or user's *instruction* files — CLAUDE.md, `.codex-instructions.md`, AGENTS.md. Those stay the user's.
+
+The one configuration taurhaus does own is the compact-hook registration, because a hook is the only way a tool hands its post-compaction turn back to us (`coordination/compact_hook.rs`):
+
+| Tool | Managed files | Condition |
+|---|---|---|
+| Claude | `<claude_dir>/settings.json` (`SessionStart` matcher `compact`) + `<claude_dir>/hooks/taurhaus-session-start-compact.*` | whenever any team has a managed Claude member — reconciled at startup and after team mutations |
+| Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | only when `harness.codex_compaction=hooks` (the setting defaults to `transcript`) and Codex ≥ 0.147; removed when the setting flips back |
+
+Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains foreign hooks — and settings files are rewritten atomically.
+
+**Two delivery channels, not one**, and compaction picks by path:
+
+| Path | Channel |
+|---|---|
+| hook path — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| transcript path — Codex in the default `transcript` mode | the card is appended to the member's inbox as an operator-originated message (`compaction_processor.rs` → `MeshInboxStore::append`) |
+
+Everything else — queued messages, operator notices — is an inbox write. Inbox files stay external and ephemeral.
 
 tmux is used to launch panes, and by the member `mesh daemon` to wake the agent; it is not a content channel. The bridged backend's sender-candidate chain and self-send were removed, so no sender is ever the recipient.
 
@@ -402,7 +427,15 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 **Decision**: A Claude *lead* is joined to mesh (`mesh join --team T --name <lead> --type lead --model <slug> --claude-dir <dir>`); non-lead Claude members are never joined.
 
 - The join is deferred until after `commit_runtime` — the last config save — so the credential exists by the time `mesh team-daemon start` authenticates.
-- When `state/control_auth/<lead>.json` is missing, the team daemon is skipped and `coordination.team_daemon.skipped { reason: missing_lead_control_auth_token_hash }` is emitted once per team.
+- Three separate gates are checked before `mesh team-daemon start`, in order. The first one that fails skips the daemon and emits `coordination.team_daemon.skipped { team_name, operator_name, reason, credential_path }`:
+
+| Condition | `reason` |
+|---|---|
+| `state/control_auth/<lead>.json` is not a file | `missing_lead_control_credential` |
+| the lead's `config.json` entry has no non-empty `controlAuthTokenHash` | `missing_lead_control_auth_token_hash` |
+| the lead's `config.json` entry has `isActive: false` | `inactive_lead_control_identity` |
+
+- The event is deduplicated per credential path *and* reason, so a team that moves from one failing gate to another logs both, and a repeated identical skip logs once. The skip state is cleared when all three gates pass.
 
 **Rationale**: The lead is the only Claude member that participates in mesh-level team control. Deferring the join is load-bearing: an earlier join wrote a credential that the final config save then clobbered, leaving the team daemon unable to authenticate.
 
