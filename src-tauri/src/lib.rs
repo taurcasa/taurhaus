@@ -52,9 +52,11 @@ pub mod templates;
 
 pub mod test_support;
 
+use std::io::{Read, Write};
 use std::sync::Mutex;
 use std::{io, process};
 
+use serde::Deserialize;
 use tauri_plugin_window_state::StateFlags;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -305,8 +307,157 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
+        Some("--launch-command") => Some(run_launch_command_cli(args.next().as_deref())),
+        Some("--render-onboarding") => Some(run_render_onboarding_cli(args.next().as_deref())),
         _ => None,
     }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchCommandCliRequest {
+    tool: crate::session_scanner::cli_tool::CliTool,
+    mode: crate::daemon::protocol::LaunchMode,
+    base: String,
+    model: Option<String>,
+    #[serde(default, alias = "reasoning_effort")]
+    reasoning_effort: Option<String>,
+    team: Option<LaunchCommandTeamCliRequest>,
+    #[serde(default, alias = "codex_bypass_hook_trust")]
+    codex_bypass_hook_trust: bool,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaunchCommandTeamCliRequest {
+    team_name: String,
+    agent_name: String,
+    role: crate::coordination::domain::MemberRole,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderOnboardingCliRequest {
+    tool: crate::session_scanner::cli_tool::CliTool,
+    team_name: String,
+    member_name: String,
+    lead_name: String,
+    role: crate::templates::types::RoleTemplate,
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_launch_command_cli(json_arg: Option<&str>) -> i32 {
+    match render_launch_command_cli(json_arg, io::stdin()) {
+        Ok(command) => write_renderer_stdout(io::stdout(), &command),
+        Err(error) => {
+            tracing::warn!(error = %error, "launch command renderer failed");
+            1
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn render_launch_command_cli<R: Read>(
+    json_arg: Option<&str>,
+    mut stdin: R,
+) -> Result<String, String> {
+    use crate::session_scanner::launch::{LaunchSpec, ModelSpec, TeamContext};
+
+    let json = read_renderer_request(json_arg, &mut stdin)?;
+    let request: LaunchCommandCliRequest =
+        serde_json::from_str(&json).map_err(|error| format!("invalid launch request: {error}"))?;
+    let mut model = request
+        .model
+        .as_deref()
+        .map(ModelSpec::parse_legacy)
+        .unwrap_or_default();
+    if request.reasoning_effort.is_some() {
+        model.reasoning_effort = request.reasoning_effort;
+    }
+    let team = request.team.as_ref().map(|team| TeamContext {
+        team_name: &team.team_name,
+        agent_name: &team.agent_name,
+        role: team.role,
+    });
+
+    Ok(LaunchSpec {
+        tool: request.tool,
+        mode: request.mode,
+        base: &request.base,
+        model,
+        team,
+        codex_bypass_hook_trust: request.codex_bypass_hook_trust,
+    }
+    .render()
+    .command)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_render_onboarding_cli(json_arg: Option<&str>) -> i32 {
+    match render_onboarding_cli(json_arg, io::stdin()) {
+        Ok(onboarding) => write_renderer_stdout(io::stdout(), &onboarding),
+        Err(error) => {
+            tracing::warn!(error = %error, "onboarding renderer failed");
+            1
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn render_onboarding_cli<R: Read>(json_arg: Option<&str>, mut stdin: R) -> Result<String, String> {
+    use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
+    use crate::session_scanner::cli_tool::CliTool;
+
+    let json = read_renderer_request(json_arg, &mut stdin)?;
+    let request: RenderOnboardingCliRequest = serde_json::from_str(&json)
+        .map_err(|error| format!("invalid onboarding request: {error}"))?;
+    let role_context = RoleContext::from(&request.role);
+    let rendered = if request.tool == CliTool::Claude {
+        DeliveryRenderer::render_claude_role_context(
+            &request.team_name,
+            &request.member_name,
+            &request.lead_name,
+            role_context,
+        )
+    } else {
+        DeliveryRenderer::render_onboarding(
+            &request.team_name,
+            &request.member_name,
+            &request.lead_name,
+            role_context,
+        )
+    };
+    Ok(rendered)
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn read_renderer_request<R: Read>(json_arg: Option<&str>, stdin: &mut R) -> Result<String, String> {
+    match json_arg {
+        Some(json) if json != "-" => Ok(json.to_string()),
+        _ => {
+            let mut json = String::new();
+            stdin
+                .read_to_string(&mut json)
+                .map_err(|error| format!("failed to read renderer request: {error}"))?;
+            if json.trim().is_empty() {
+                Err("renderer request JSON is required as an argument or on stdin".to_string())
+            } else {
+                Ok(json)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn write_renderer_stdout<W: Write>(mut stdout: W, payload: &str) -> i32 {
+    if let Err(error) = writeln!(stdout, "{payload}").and_then(|()| stdout.flush()) {
+        tracing::warn!(error = %error, "failed to write renderer output to stdout");
+        return 1;
+    }
+    0
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

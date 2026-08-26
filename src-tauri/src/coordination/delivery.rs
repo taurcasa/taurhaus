@@ -3,10 +3,10 @@
 use crate::coordination::requests::{
     BootstrapDelivery, DeliveryRequest, OperatorNoticeDelivery, RecoveryNudgeDelivery,
 };
-use crate::templates::types::BehavioralContract;
+use crate::templates::types::{BehavioralContract, RoleTemplate};
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct RoleContext<'a> {
+pub struct RoleContext<'a> {
     pub(crate) role_id: Option<&'a str>,
     pub(crate) communication_style: Option<&'a str>,
     pub(crate) instructions: Option<&'a str>,
@@ -17,13 +17,28 @@ pub(crate) struct RoleContext<'a> {
     pub(crate) capabilities: Option<&'a [String]>,
 }
 
+impl<'a> From<&'a RoleTemplate> for RoleContext<'a> {
+    fn from(role: &'a RoleTemplate) -> Self {
+        Self {
+            role_id: Some(&role.role_id),
+            communication_style: role.communication_style.as_deref(),
+            instructions: Some(&role.instructions),
+            behavioral_contract: Some(&role.behavioral_contract),
+            quality_gates: role.quality_gates.as_deref(),
+            handoff_expectations: role.handoff_expectations.as_deref(),
+            definition_of_done: role.definition_of_done.as_deref(),
+            capabilities: Some(&role.capabilities),
+        }
+    }
+}
+
 /// Renders typed delivery payloads into deterministic tmux text.
 #[derive(Debug, Default)]
 pub struct DeliveryRenderer;
 
 impl DeliveryRenderer {
     /// Render a deterministic onboarding template for non-Claude agents.
-    pub(crate) fn render_onboarding(
+    pub fn render_onboarding(
         team_name: &str,
         member_name: &str,
         lead_name: &str,
@@ -70,7 +85,7 @@ impl DeliveryRenderer {
     }
 
     /// Render role context for Claude agents as an initial team message.
-    pub(crate) fn render_claude_role_context(
+    pub fn render_claude_role_context(
         team_name: &str,
         member_name: &str,
         lead_name: &str,
