@@ -346,23 +346,17 @@ impl CliVersions {
 
 fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
     let mut command = cli_version_command(program);
-    tracing::info!(program, command = ?command, "Probing CLI version");
+    let argv = std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    tracing::info!(program, argv = ?argv, "Probing CLI version");
     let output = match crate::process_utils::run_command_with_timeout(
         &mut command,
         CLI_VERSION_TIMEOUT,
         &format!("{program} --version"),
     ) {
-        Ok(output) if output.status.success() => output,
-        Ok(output) => {
-            tracing::info!(
-                program,
-                status = ?output.status.code(),
-                stdout = %String::from_utf8_lossy(&output.stdout).trim(),
-                stderr = %String::from_utf8_lossy(&output.stderr).trim(),
-                "CLI version probe returned a non-zero status"
-            );
-            return None;
-        }
+        Ok(output) => output,
         Err(error) => {
             tracing::info!(program, error = %error, "CLI version probe unavailable");
             return None;
@@ -370,18 +364,21 @@ fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
     };
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let raw = if stdout.trim().is_empty() {
-        stderr.as_ref()
-    } else {
-        stdout.as_ref()
-    };
+    let raw = [stdout.trim(), stderr.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
     tracing::info!(
         program,
         status = ?output.status.code(),
-        raw_output = %raw.trim(),
+        raw_output = %raw,
         "CLI version probe completed"
     );
-    parse_cli_version(raw)
+    if !output.status.success() {
+        return None;
+    }
+    parse_cli_version(&raw)
 }
 
 fn cli_version_command(program: &str) -> Command {
@@ -397,13 +394,18 @@ fn cli_version_command_for_platform(
     let script = format!("{program} --version");
     match platform {
         AppPlatform::Windows => {
+            let interactive_script = format!(
+                r#"user_shell="$(getent passwd "$(id -u)" | cut -d: -f7)"; exec "${{user_shell:-sh}}" -ilc '{script}'"#
+            );
             let mut command = crate::daemon::launcher::wsl_command();
             if let Some(distro) = configured_distro {
                 command.args(crate::daemon::launcher::wsl_shell_args(
-                    distro, "-lc", &script,
+                    distro,
+                    "-lc",
+                    &interactive_script,
                 ));
             } else {
-                command.args(["-e", "sh", "-lc", script.as_str()]);
+                command.args(["-e", "sh", "-lc", interactive_script.as_str()]);
             }
             command
         }
@@ -412,7 +414,7 @@ fn cli_version_command_for_platform(
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| "sh".into());
             let mut command = Command::new(shell);
-            command.args(["-lc", script.as_str()]);
+            command.args(["-ilc", script.as_str()]);
             command
         }
     }
@@ -1303,10 +1305,10 @@ mod tests {
         assert!(queue.codex_queue_wake_supported);
     }
 
-    // Regression: 61e9a24 ran the Windows probe as `wsl -e codex`, bypassing
-    // the configured distro and login-shell PATH where nvm installs Codex.
+    // Regression: c0aa59a used a non-interactive login shell for the version
+    // probe, but managed panes source interactive rc files where nvm installs Codex.
     #[test]
-    fn windows_cli_version_probe_uses_configured_distro_login_shell() {
+    fn windows_cli_version_probe_uses_configured_distro_interactive_shell() {
         let command = cli_version_command_for_platform(
             AppPlatform::Windows,
             "codex",
@@ -1314,26 +1316,19 @@ mod tests {
         );
 
         assert_eq!(command.get_program(), "wsl");
-        assert_eq!(
-            command
-                .get_args()
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .collect::<Vec<_>>(),
-            vec![
-                "-d",
-                "Taurhaus-Distro",
-                "-e",
-                "sh",
-                "-lc",
-                "codex --version",
-            ]
-        );
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(&args[..5], ["-d", "Taurhaus-Distro", "-e", "sh", "-lc"]);
+        assert!(args[5].contains(r#"exec "${user_shell:-sh}" -ilc"#));
+        assert!(args[5].ends_with("'codex --version'"));
     }
 
-    // Regression: 61e9a24 executed the Unix probe directly, so GUI launches
-    // without the user's hydrated PATH could not resolve an nvm-installed CLI.
+    // Regression: c0aa59a switched the Unix probe to `-lc`, which still omits
+    // interactive rc files and cannot resolve this host's nvm-installed Codex.
     #[test]
-    fn unix_cli_version_probe_uses_login_shell() {
+    fn unix_cli_version_probe_uses_interactive_login_shell() {
         let command = cli_version_command_for_platform(AppPlatform::Linux, "codex", None);
         let args = command
             .get_args()
@@ -1341,7 +1336,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_ne!(command.get_program(), "codex");
-        assert_eq!(args, vec!["-lc", "codex --version"]);
+        assert_eq!(args, vec!["-ilc", "codex --version"]);
     }
 
     // Regression: 61e9a24 made `Default` launch two blocking subprocesses,

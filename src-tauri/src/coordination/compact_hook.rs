@@ -411,10 +411,12 @@ pub fn ensure_compact_hook_installed(
 }
 
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
-    if !crate::models::CliVersions::current().codex_compaction_hooks_supported {
-        return Ok(false);
+    match crate::models::CliVersions::current().codex_compaction_hooks_support() {
+        Some(true) => {
+            ensure_codex_compact_hook_installed_at(&PlatformPaths::codex_dir(), taurhaus_exe)
+        }
+        Some(false) | None => Ok(false),
     }
-    ensure_codex_compact_hook_installed_at(&PlatformPaths::codex_dir(), taurhaus_exe)
 }
 
 pub fn ensure_codex_compact_hook_installed_at(
