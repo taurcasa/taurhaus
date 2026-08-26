@@ -184,7 +184,7 @@ Who implemented and reviewed each PR, how many review rounds it took, and what t
 | 8 hub-owned focus, protocol 8 | Opus 5 | Codex ×2 | 5 (4 fix rounds) | 14 (Codex: per-pane focus; v7 acceptance on three reconnect paths; seed races; E2E vacuity; bridge auth; startup-fallback race) | #19 |
 | 9 compaction hook bridge (S6 proven) | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds + orchestrator default flip) | 12 (Opus: 2 blockers — stdout-poisoned hook responses, teams-dir walk failing settings saves; mode-flip reconciliation; liveness-blind fallback; retry flood; gate asymmetry) | #21 |
 | 10 frontend activity signal, protocol 10 | Opus 5 | Codex ×2 | 4 (3 fix rounds) | 5 (Codex: dropped final wall-clock interval; degraded state invisible to the frontend ×2 rounds; fallback accrual; protocol-9 break) | #23 |
-| 11 taureval fidelity + provenance | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
+| 11 taureval fidelity + matrix (cross-repo) | Codex gpt-5.6 | Opus ×2 | 4 (3 fix rounds + taureval view-keying follow-up) | 6 (Opus: discarded LaunchNotes corrupting matrix cells; sweep-abort chain ×2 rounds; view currency keyed on whole run_config) | #24 |
 
 ## Spikes / unknowns
 
