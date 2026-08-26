@@ -168,6 +168,7 @@ pub(crate) fn decode_daemon_runtime_session_snapshot(
             focus: None,
             foreground_project_path: None,
             degraded: false,
+            degraded_revision: 0,
         }),
     }
 }

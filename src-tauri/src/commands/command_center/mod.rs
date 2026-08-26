@@ -32,6 +32,7 @@ use self::launching::decode_daemon_launch_result;
 use self::launching::launch_cli_session_impl;
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
 use self::session_listing::list_cli_sessions_impl;
+pub use self::session_listing::CliSessionSnapshot;
 #[cfg(test)]
 use self::session_listing::{daemon_display_sessions, decode_daemon_session_list};
 use crate::commands::runtime_snapshot::daemon_runtime_session_snapshot;
@@ -45,8 +46,27 @@ pub fn list_cli_sessions(
     provider: State<'_, ProviderState>,
 ) -> IpcResult<Vec<DisplaySession>> {
     let span = IpcCommandSpan::start("list_cli_sessions");
-    let result =
-        list_cli_sessions_impl(&app, db.inner(), provider.inner()).ipc_cmd("list_cli_sessions");
+    let result = list_cli_sessions_impl(&app, db.inner(), provider.inner())
+        .map(|snapshot| snapshot.sessions)
+        .ipc_cmd("list_cli_sessions");
+    span.finish_result(&result);
+    result
+}
+
+/// The same sessions as `list_cli_sessions`, plus how they were obtained.
+///
+/// The store that polls when the daemon bridge is down measures time against
+/// the interval between two observations; a replayed or cached list is not one,
+/// and reading it as one credits the outage to the last state seen.
+#[tauri::command]
+pub fn list_cli_session_snapshot(
+    app: tauri::AppHandle,
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+) -> IpcResult<CliSessionSnapshot> {
+    let span = IpcCommandSpan::start("list_cli_session_snapshot");
+    let result = list_cli_sessions_impl(&app, db.inner(), provider.inner())
+        .ipc_cmd("list_cli_session_snapshot");
     span.finish_result(&result);
     result
 }

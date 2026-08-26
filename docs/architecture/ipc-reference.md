@@ -72,6 +72,7 @@ The backend currently registers a large set of `#[tauri::command]` functions (wi
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
 | `list_cli_sessions` | none | `Result<Vec<ClaudeSession>, String>` | `command_center.rs` | Lists active CLI sessions discovered from tmux/daemon state. |
+| `list_cli_session_snapshot` | none | `Result<CliSessionSnapshot, String>` | `command_center.rs` | The same sessions plus `freshness` (`fresh` \| `degraded` \| `cached` \| `unavailable`) — how the list was obtained. |
 | `launch_cli_session` | `projectId: string`, `mode: LaunchMode`, `cliTool?: CliTool \| null` | `Result<LaunchSessionResult, String>` | `command_center.rs` | Starts a new Claude/Codex/Gemini session for a project. |
 | `stop_cli_session` | `tmuxPane: string`, `cliTool?: CliTool \| null` | `Result<(), String>` | `command_center.rs` | Stops a running session by tmux pane ID. |
 | `navigate_to_session` | `tmuxSession: string`, `tmuxWindow: string`, `tmuxPane: string`, `openTerminal?: boolean` | `Result<(), String>` | `command_center.rs` | Focuses/navigates the desktop terminal to a target session pane. |
@@ -80,8 +81,9 @@ The backend currently registers a large set of `#[tauri::command]` functions (wi
 | `get_foreground_project` | none | `Result<Option<string>, String>` | `command_center.rs` | Returns the project currently owning foreground tmux focus, when known. |
 
 Session update behavior:
-- Tauri runtime uses event-driven `sessions-updated` (daemon long-poll bridge) for ongoing updates.
-- `list_cli_sessions` is still used for startup snapshot hydrate and for frontend-only mock-mode polling.
+- Tauri runtime uses event-driven `sessions-updated` (daemon long-poll bridge) for ongoing updates. Its payload carries `degraded` (the sessions are the hub's retained snapshot) and `observation_gap` (the interval this emission closes ran through a scanner blackout the app never heard start).
+- `list_cli_session_snapshot` is used for startup snapshot hydrate and for the fallback polling loop, which runs precisely when the bridge is down and so must know whether an answer is an observation at all.
+- `list_cli_sessions` returns the bare list for callers that only need the sessions (mesh pane lookup, E2E).
 
 ## Tasks commands
 

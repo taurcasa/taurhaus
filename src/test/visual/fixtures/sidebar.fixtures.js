@@ -30,6 +30,9 @@ function createSession({
   _duration = 8 * 60_000,
   _lastTransition = Date.now() - 90_000,
   project_unattributed_active = false,
+  activity_attribution = 'attributed',
+  activity_confidence = 'high',
+  _presenceStale = false,
 } = {}) {
   return {
     cli_tool,
@@ -45,6 +48,9 @@ function createSession({
     _duration,
     _lastTransition,
     project_unattributed_active,
+    activity_attribution,
+    activity_confidence,
+    _presenceStale,
   }
 }
 
@@ -110,6 +116,14 @@ const dormantCleanProject = createProject({
   activityState: 'dormant',
   branch: 'main',
   isDirty: false,
+})
+
+const activityLevelsProject = createProject({
+  id: 'project-activity-levels',
+  name: 'Activity Signal Levels',
+  path: '/projects/activity-levels',
+  activityState: 'active',
+  branch: 'main',
 })
 
 const teamRailTwoProject = createProject({
@@ -775,9 +789,50 @@ const team_rail_threshold_dark = createScenario({
   },
 })
 
+// One row per presented activity level: working, uncertain (unattributed),
+// uncertain (retained stale) and idle.
+const activity_levels_dark = createScenario({
+  name: 'activity_levels_dark',
+  theme: 'dark',
+  projects: [activityLevelsProject],
+  selectedProject: activityLevelsProject,
+  daemonStatus: 'connected',
+  sessionStore: {
+    sessionsByProject: {
+      '/projects/activity-levels': [
+        createSession({ cli_tool: 'claude', state: 'active', pid: 41, tmux_window: '1', tmux_pane: '%41' }),
+        createSession({
+          cli_tool: 'codex',
+          state: 'idle',
+          pid: 42,
+          tmux_window: '2',
+          tmux_pane: '%42',
+          project_unattributed_active: true,
+          activity_attribution: 'unattributed',
+          activity_confidence: 'low',
+        }),
+        createSession({ cli_tool: 'gemini', state: 'active', pid: 43, tmux_window: '3', tmux_pane: '%43', _presenceStale: true }),
+      ],
+    },
+    sessionByProject: {
+      '/projects/activity-levels': createSession({ cli_tool: 'claude', state: 'active', pid: 41, tmux_window: '1', tmux_pane: '%41' }),
+    },
+  },
+  expected: {
+    labels: [
+      'Activity Signal Levels',
+      'Claude: running',
+      'Codex: project active (unattributed)',
+      'Gemini: retained stale running',
+    ],
+    selectedProjectName: 'Activity Signal Levels',
+  },
+})
+
 export const sidebarScenarios = [
   active_claude_selected_dark,
   active_multiTool_dark,
+  activity_levels_dark,
   idle_codex_dark,
   dirty_noSession_dark,
   dormant_clean_dark,

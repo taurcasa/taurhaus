@@ -2,6 +2,7 @@
   import { getLatestSession, getRecentCommits, getRelationships } from './ipc.js'
   import { formatDuration } from './format.js'
   import { groupedSessionIndicators, hasLiveSession, sessionBadge, toolIcon } from './sessionIndicator.js'
+  import { activitySignal, isActiveLevel, isRetainedSignal } from './activitySignal.js'
 
   const FRESH_SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
   const DEFAULT_WIDTH = 312
@@ -26,6 +27,26 @@
   let latestCommit = $state(null)
   let relationships = $state([])
   let entered = $state(false)
+
+  /** Presented activity level → hover-card tone. */
+  const LEVEL_TONE = {
+    working: 'active',
+    active: 'active',
+    idle: 'waiting',
+    uncertain: 'recent',
+    offline: 'quiet',
+  }
+
+  /**
+   * Team header pill, keyed by the aggregate tone `sessionIndicator.js` derives.
+   * A team whose members are all retained-stale is not an idle team: it wears
+   * the same uncertain/info tone its member rows do.
+   */
+  const teamBadgeClasses = $derived.by(() => ({
+    active: 'bg-success-300/18 text-success-300 border border-success-300/55',
+    stale: 'bg-info-300/14 text-info-300 border border-info-300/45',
+    idle: 'bg-warning-300/18 text-warning-300 border border-warning-300/65',
+  }))
 
   const toneClasses = $derived.by(() => ({
     active: dark ? 'text-success-400' : 'text-success-600',
@@ -185,9 +206,10 @@
 
   function sessionPriority(session) {
     if (!session) return 0
-    if (session.state === 'active') return 3
-    if (session.project_unattributed_active) return 2
-    if (session.state === 'idle') return 1
+    const level = activitySignal(session).level
+    if (isActiveLevel(level)) return 3
+    if (level === 'uncertain') return 2
+    if (level === 'idle') return 1
     return 0
   }
 
@@ -233,20 +255,24 @@
     const badge = sessionBadge(session)
     const icon = toolIcon(session)
     const extraSuffix = extraCount > 0 ? ` +${extraCount} more` : ''
+    const signal = activitySignal(session)
 
-    if (session.state === 'active') {
+    if (isActiveLevel(signal.level)) {
       return {
-        tone: 'active',
+        tone: LEVEL_TONE[signal.level],
         body: `${badge.toolLabel} is working now${extraSuffix}`,
         meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Session is running',
         icon,
       }
     }
 
-    if (session.project_unattributed_active) {
+    if (signal.level === 'uncertain') {
+      const retained = isRetainedSignal(signal)
       return {
-        tone: 'recent',
-        body: `${badge.toolLabel} is active but we can't tell what it's doing${extraSuffix}`,
+        tone: LEVEL_TONE[signal.level],
+        body: retained
+          ? `${badge.toolLabel} was live — the last reading is stale${extraSuffix}`
+          : `${badge.toolLabel} is active but we can't tell what it's doing${extraSuffix}`,
         meta: session._duration != null ? `active ${formatDuration(session._duration)}` : 'Something\'s happening',
         icon,
       }
@@ -257,7 +283,7 @@
       : (session._duration != null ? `active ${formatDuration(session._duration)}` : 'Waiting for user input')
 
     return {
-      tone: 'waiting',
+      tone: LEVEL_TONE[signal.level] ?? 'waiting',
       body: `${badge.toolLabel} is waiting on input${extraSuffix}`,
       meta: idleMeta,
       icon,
@@ -304,7 +330,9 @@
   }
 
   function buildVerdict({ project, primarySession, latestSession, freshLatestSession, unresolvedItem }) {
-    if (primarySession?.state === 'active') {
+    const primaryLevel = primarySession ? activitySignal(primarySession).level : 'offline'
+
+    if (isActiveLevel(primaryLevel)) {
       return {
         tone: 'active',
         label: 'Active work in progress',
@@ -314,7 +342,15 @@
       }
     }
 
-    if (primarySession?.state === 'idle') {
+    if (primaryLevel === 'uncertain') {
+      return {
+        tone: 'recent',
+        label: 'Activity unconfirmed',
+        whyNow: 'A session is here, but the latest activity could not be attributed to it.',
+      }
+    }
+
+    if (primaryLevel === 'idle') {
       return {
         tone: 'waiting',
         label: 'Waiting on user input',
@@ -518,7 +554,10 @@
           <section class="rounded-lg px-2.5 py-2 border {ui.evidenceRow}">
             <div class="flex items-center justify-between gap-2">
               <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Mesh team</div>
-              <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold {team.isActive ? 'bg-success-300/18 text-success-300 border border-success-300/55' : 'bg-warning-300/18 text-warning-300 border border-warning-300/65'}">
+              <span
+                class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold {teamBadgeClasses[team.tone] ?? (team.isActive ? teamBadgeClasses.active : teamBadgeClasses.idle)}"
+                data-testid="hovercard-team-badge"
+              >
                 T{team.count}
               </span>
             </div>
@@ -526,13 +565,14 @@
             <ul class="mt-2 space-y-1.5">
               {#each team.members as member}
                 {@const badge = sessionBadge(member)}
+                {@const memberSignal = activitySignal(member)}
                 <li class="flex items-center justify-between gap-3 text-[11px] leading-[1.3]">
                   <div class="min-w-0 flex items-center gap-2">
                     <span class="truncate {ui.bodyText}">{member.member_name || badge.toolLabel}</span>
                     <span class="{ui.secondaryText}">{badge.toolLabel}</span>
                   </div>
-                  <span class="{member.state === 'active' ? toneClasses.active : toneClasses.waiting}">
-                    {member.state === 'active' ? 'Active' : 'Idle'}
+                  <span class="{toneClasses[LEVEL_TONE[memberSignal.level]] ?? toneClasses.waiting}">
+                    {memberSignal.label}
                   </span>
                 </li>
               {/each}

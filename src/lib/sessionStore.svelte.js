@@ -5,12 +5,23 @@
  * A project can have multiple concurrent sessions (e.g. Claude + Codex).
  * The store groups sessions by normalized project path.
  *
- * Also tracks per-session activity ticks in memory, enriching session
- * objects with _duration, _activeMs, _activePercent, _lastTransition.
+ * Also measures per-session activity in memory, enriching session objects
+ * with _duration, _activeMs, _activePercent, _lastTransition. Time is
+ * measured against the wall clock between two observations, not counted in
+ * polls: daemon updates are event-driven, so the gap between snapshots is
+ * whatever the daemon took to report a change.
  * On session disappearance, persists stats via recordSessionActivity IPC.
  *
+ * Every boundary that ends an interval goes through `accrueElapsed`: a new
+ * snapshot, the snapshot that finds a session gone, and an explicit stop. What
+ * the store refuses to measure is an interval it did not observe — a degraded
+ * snapshot, a cached or failed poll, or a dead daemon bridge suspends the
+ * trackers, so a scanner blackout is neither counted as work nor mistaken for
+ * idleness.
+ *
  * Update sources:
- * - `startPolling()` / `stopPolling()` for frontend-only mock mode.
+ * - `startPolling()` / `stopPolling()` for frontend-only mock mode and for the
+ *   fallback loop the app runs while the daemon bridge is down.
  * - `applyDaemonSessionUpdate()` for event-driven daemon updates.
  *
  * Usage:
@@ -20,7 +31,7 @@
  *   getSessionsForProject('/home/user/proj')  // → ClaudeSession[]
  */
 
-import { listClaudeSessions, listProjects, recordSessionActivity } from './ipc.js'
+import { listCliSessionSnapshot, listProjects, recordSessionActivity } from './ipc.js'
 import { normalizeProjectPath } from './pathUtils.js'
 
 const POLL_INTERVAL_MS = 500
@@ -39,10 +50,43 @@ let activePollIntervalMs = POLL_INTERVAL_MS
 /**
  * In-memory activity trackers keyed by PID.
  * Not reactive — only used to compute enrichment fields on each poll.
- * @type {Map<number, {firstSeen: number, activeTicks: number, totalTicks: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string}>}
+ * `activeMs`/`totalMs` accumulate the wall-clock interval since the previous
+ * observation, credited to the state that was in effect during it.
+ * `suspended` marks a tracker whose next interval was never observed.
+ * @type {Map<number, {firstSeen: number, activeMs: number, totalMs: number, lastSampleAt: number, lastState: string, lastTransitionTime: number, projectPath: string, projectId: string | null, cliTool: string, suspended: boolean}>}
  */
 let trackers = new Map()
 let projectIdByPath = new Map()
+
+/**
+ * Close the tracker's open interval at `now`, crediting the state that was in
+ * effect during it, and rebase for the next one.
+ *
+ * A suspended tracker rebases without crediting: the interval that just ended
+ * was a blackout, and a blackout belongs to no state — neither to the "active"
+ * the last observation reported nor to idleness.
+ */
+function accrueElapsed(tracker, now) {
+  const elapsedMs = Math.max(0, now - tracker.lastSampleAt)
+  tracker.lastSampleAt = now
+  if (tracker.suspended) return
+  tracker.totalMs += elapsedMs
+  if (tracker.lastState === 'active') {
+    tracker.activeMs += elapsedMs
+  }
+}
+
+/**
+ * Stop measuring until the next real observation.
+ * Called when the app admits it stopped seeing: a degraded snapshot (the hub is
+ * replaying its last good sessions) or a dead daemon bridge.
+ */
+function suspendActivityAccrual(now) {
+  for (const tracker of trackers.values()) {
+    accrueElapsed(tracker, now)
+    tracker.suspended = true
+  }
+}
 
 function stampSessionFreshness(session, now, isStale) {
   session._presenceStatus = isStale ? 'stale' : 'live'
@@ -133,16 +177,25 @@ async function persistSessionActivity(tracker, startedAt, endedAt, activeDuratio
   )
 }
 
-function flushTrackedActivity(trackersToFlush) {
-  const endedAt = new Date().toISOString()
+/**
+ * Persist and clear the given trackers.
+ *
+ * `now` is the boundary that ended measurement — the snapshot that found the
+ * session gone, or the stop. The interval since each tracker's last observation
+ * ends there and is credited before the totals are read; dropping it undercounts
+ * every session by up to one poll interval (Q-PRD-02).
+ */
+function flushTrackedActivity(trackersToFlush, now = Date.now()) {
+  const endedAt = new Date(now).toISOString()
   const flushes = []
 
   for (const tracker of trackersToFlush) {
-    if (!tracker || tracker.totalTicks <= 0) continue
+    if (!tracker) continue
 
+    accrueElapsed(tracker, now)
     const startedAt = new Date(tracker.firstSeen).toISOString()
-    const activeDurationMs = tracker.activeTicks * activePollIntervalMs
-    const totalDurationMs = tracker.totalTicks * activePollIntervalMs
+    const activeDurationMs = tracker.activeMs
+    const totalDurationMs = tracker.totalMs
 
     flushes.push(persistSessionActivity(
       tracker,
@@ -161,17 +214,53 @@ function flushTrackedActivity(trackersToFlush) {
 /** Callback invoked when polling receives a non-empty session snapshot. */
 let onSessionsReceived = null
 
-/** Perform a single poll and update the sessions map. */
+/**
+ * Read a poll answer as a list plus how it was obtained.
+ *
+ * A bare array is the legacy shape — it is a list nobody annotated, so it is
+ * taken at face value as an observation.
+ */
+function readPollSnapshot(result) {
+  if (Array.isArray(result)) {
+    return { list: result, freshness: 'fresh' }
+  }
+  return {
+    list: Array.isArray(result?.sessions) ? result.sessions : null,
+    freshness: result?.freshness ?? 'fresh',
+  }
+}
+
+/**
+ * Perform a single poll and update the sessions map.
+ *
+ * Polling runs precisely when the daemon bridge is down, so most of its answers
+ * are not observations: the backend replays a degraded hub snapshot, serves its
+ * on-disk cache, or has nothing at all. Only a fresh answer resumes
+ * measurement — anything else keeps the trackers suspended, and so does a
+ * rejected poll, which saw nothing by definition.
+ */
 async function poll() {
+  let result
   try {
-    const result = await listClaudeSessions()
-    applySessions(result)
-    if (onSessionsReceived && Array.isArray(result) && result.length > 0) {
-      onSessionsReceived(result)
-    }
+    result = await listCliSessionSnapshot()
   } catch (err) {
-    // On error, keep previous state (graceful degradation)
+    // On error, keep previous state (graceful degradation) and stop the clock.
+    suspendActivityAccrual(Date.now())
     console.warn('[sessionStore] poll failed:', err)
+    return
+  }
+
+  const { list, freshness } = readPollSnapshot(result)
+  const observed = freshness === 'fresh'
+  if (list === null || freshness === 'unavailable') {
+    // Nothing to show and nothing to measure: keep what is on screen.
+    applySessions(null)
+    return
+  }
+
+  applySessions(list, { degraded: !observed })
+  if (observed && onSessionsReceived && Array.isArray(list) && list.length > 0) {
+    onSessionsReceived(list)
   }
 }
 
@@ -182,10 +271,25 @@ async function poll() {
  * A snapshot without a sessions array is degraded (no observation), not an
  * empty inventory: it leaves sessions and trackers untouched so a backend gap
  * never flushes activity stats or resets _lastTransition.
+ *
+ * `degraded` says the sessions in the snapshot are the daemon hub's last good
+ * ones, replayed for continuity while its scanner is blind. They are stamped as
+ * such so the indicator reads uncertain instead of holding the last green
+ * reading, and their trackers stop measuring until a real observation returns.
+ *
+ * `observationGap` says the interval that *ended* with this snapshot ran
+ * through a blackout the app never heard start — one that was over again by the
+ * time this snapshot arrived. That interval is dropped rather than credited to
+ * the state in effect when it started. The edge *into* a blackout is not such a
+ * gap: the scanner was reporting normally until a cadence ago, and `degraded`
+ * suspends everything from there.
  */
-function applySessions(result) {
-  if (!Array.isArray(result)) return
+function applySessions(result, { degraded = false, observationGap = false } = {}) {
   const now = Date.now()
+  if (!Array.isArray(result)) {
+    suspendActivityAccrual(now)
+    return
+  }
 
   // Track which PIDs are still present
   const currentPids = new Set()
@@ -201,13 +305,15 @@ function applySessions(result) {
     if (!tracker) {
       tracker = {
         firstSeen: now,
-        activeTicks: 0,
-        totalTicks: 0,
+        activeMs: 0,
+        totalMs: 0,
+        lastSampleAt: now,
         lastState: session.state,
         lastTransitionTime: now,
         projectPath: session.project_path,
         projectId: session.project_id || null,
         cliTool: session.cli_tool || 'claude',
+        suspended: degraded,
       }
       trackers.set(pid, tracker)
     }
@@ -216,10 +322,11 @@ function applySessions(result) {
       tracker.projectId = session.project_id
     }
 
-    tracker.totalTicks++
-    if (session.state === 'active') {
-      tracker.activeTicks++
+    if (observationGap) {
+      tracker.suspended = true
     }
+    accrueElapsed(tracker, now)
+    tracker.suspended = degraded
 
     // Detect state transition
     if (session.state !== tracker.lastState) {
@@ -229,11 +336,12 @@ function applySessions(result) {
 
     // Enrich session object with computed fields
     session._duration = now - tracker.firstSeen
-    session._activeMs = tracker.activeTicks * activePollIntervalMs
-    session._activePercent = tracker.totalTicks > 0
-      ? Math.round((tracker.activeTicks / tracker.totalTicks) * 100)
-      : 0
+    session._activeMs = tracker.activeMs
+    session._activePercent = tracker.totalMs > 0
+      ? Math.round((tracker.activeMs / tracker.totalMs) * 100)
+      : (session.state === 'active' ? 100 : 0)
     session._lastTransition = tracker.lastTransitionTime
+    session.degraded = degraded
     stampSessionFreshness(session, now, false)
 
     const key = normalizeProjectPath(session.project_path)
@@ -242,20 +350,33 @@ function applySessions(result) {
     next.set(key, list)
   }
 
-  // Detect disappeared sessions and persist their stats
-  for (const [pid, tracker] of trackers) {
-    if (!currentPids.has(pid)) {
-      void Promise.allSettled(flushTrackedActivity([tracker]))
-      trackers.delete(pid)
+  // Detect disappeared sessions and persist their stats. A degraded snapshot
+  // is not evidence that anything ended, so it never retires a tracker: the
+  // next real observation does, without crediting the blackout.
+  if (!degraded) {
+    for (const [pid, tracker] of trackers) {
+      if (!currentPids.has(pid)) {
+        void Promise.allSettled(flushTrackedActivity([tracker], now))
+        trackers.delete(pid)
+      }
     }
   }
 
   sessions = next
 }
 
+/**
+ * Mark every retained session as stale presence — the daemon bridge is down.
+ *
+ * That is also the end of measurement: nothing observes these sessions until
+ * the bridge returns, so the trackers suspend rather than keep crediting the
+ * outage to whatever state they last saw.
+ */
 export function markSessionPresenceStale() {
+  const now = Date.now()
+  suspendActivityAccrual(now)
   if (sessions.size === 0) return
-  sessions = mapWithFreshness(sessions, Date.now(), true)
+  sessions = mapWithFreshness(sessions, now, true)
 }
 
 /**
@@ -302,12 +423,21 @@ export { DEFAULT_TAURI_POLL_INTERVAL_MS }
 
 /**
  * Apply sessions received from daemon `sessions-updated` events.
- * Payload shape: `{ version: number, sessions: ClaudeSession[] }`.
+ * Payload shape: `{ version: number, sessions: ClaudeSession[], degraded: bool }`.
+ *
+ * `degraded` marks the sessions as the hub's retained snapshot rather than a
+ * fresh observation; the bridge emits it on the edges of the daemon scanner
+ * going blind and recovering (`daemon_lifecycle.rs`). `observation_gap` covers
+ * what the flag cannot: a blackout that began and ended between two answers is
+ * over by the time the app hears about it, but the interval it ran through was
+ * still never observed.
  */
 export function applyDaemonSessionUpdate(payload) {
   const list = Array.isArray(payload) ? payload : payload?.sessions
-  if (!Array.isArray(list)) return
-  applySessions(list)
+  const degraded = !Array.isArray(payload) && payload?.degraded === true
+  const observationGap = !Array.isArray(payload)
+    && (payload?.observation_gap ?? payload?.observationGap) === true
+  applySessions(list, { degraded, observationGap })
 }
 
 /**
@@ -317,7 +447,9 @@ export function applyDaemonSessionUpdate(payload) {
  */
 export async function hydrateFromBackend() {
   try {
-    applySessions(await listClaudeSessions())
+    const { list, freshness } = readPollSnapshot(await listCliSessionSnapshot())
+    if (freshness === 'unavailable' || list === null) return
+    applySessions(list, { degraded: freshness !== 'fresh' })
   } catch (err) {
     console.warn('[sessionStore] hydrate failed:', err)
   }

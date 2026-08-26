@@ -1,4 +1,6 @@
 <script>
+  import { activityLevel } from '../activitySignal.js'
+
   let {
     start = { x: 0, y: 0 },
     end = { x: 0, y: 0 },
@@ -16,13 +18,23 @@
   let pathLength = $state(220)
   let initStage = $state('settled')
 
+  /**
+   * A runtime connection carries the target node's activity level; setup and
+   * initializing carry the canvas mode instead.
+   */
+  const LEVEL_TONE = {
+    working: 'active',
+    active: 'active',
+    idle: 'idle',
+    uncertain: 'idle',
+    offline: 'offline',
+  }
+
   const normalizedStatus = $derived.by(() => {
-    const value = String(status || '').toLowerCase()
+    const value = String(status || '').trim().toLowerCase()
     if (value === 'initializing') return 'initializing'
-    if (value === 'active') return 'active'
-    if (value === 'idle') return 'idle'
-    if (value === 'offline') return 'offline'
-    return 'setup'
+    if (!value || value === 'setup') return 'setup'
+    return LEVEL_TONE[activityLevel({ status: value })]
   })
 
   const path = $derived.by(() => {

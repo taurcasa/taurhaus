@@ -1,5 +1,6 @@
 <script>
   import { focusFirstInteractiveElement, handleModalKeydown, registerModalLayer } from '../a11y.js'
+  import { activitySignal } from '../activitySignal.js'
   import MarkdownRenderer from '../MarkdownRenderer.svelte'
   import ModelSelect from './ModelSelect.svelte'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
@@ -83,20 +84,19 @@
   const projectId = $derived.by(() => String(node?.projectId ?? node?.project_id ?? '').trim())
   const projectLabel = $derived.by(() => String(node?.projectLabel ?? node?.project_label ?? '').trim())
   const projectDisplay = $derived(projectLabel || projectId || 'No project')
-  const status = $derived.by(() => String(node?.status ?? node?.sessionStatus ?? node?.session_status ?? '').trim().toLowerCase())
+  const signal = $derived(activitySignal(node))
   const statusLabel = $derived.by(() => {
     if (isEditing) return editKind === 'lead' ? 'Lead' : 'Agent'
     if (normalizedContext !== 'runtime') return 'Template'
-    if (status === 'active') return 'Active'
-    if (status === 'idle') return 'Idle'
-    return 'Offline'
+    return signal.label
   })
   const statusDotTone = $derived.by(() => {
     if (normalizedContext !== 'runtime') {
       return dark ? 'bg-zinc-400' : 'bg-zinc-400'
     }
-    if (status === 'active') return dark ? 'bg-emerald-300' : 'bg-emerald-300'
-    if (status === 'idle') return dark ? 'bg-amber-300' : 'bg-amber-300'
+    if (signal.level === 'working' || signal.level === 'active') return 'bg-emerald-300'
+    if (signal.level === 'idle') return 'bg-amber-300'
+    if (signal.level === 'uncertain') return 'bg-sky-300'
     return dark ? 'bg-zinc-500' : 'bg-zinc-300'
   })
   const focusArea = $derived.by(() =>

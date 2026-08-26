@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { groupedSessionIndicators, hasLiveSession, isActiveSession, isStalePresence, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
+import { groupedSessionIndicators, hasLiveSession, isActiveSession, isRetainedReading, rowTintClass, rowTintForSessions, sessionBadge, toolIndicators, uniqueTools } from './sessionIndicator.js'
 import { getToolIcon } from './toolLogos.js'
 
 function session(overrides = {}) {
@@ -28,10 +28,11 @@ describe('sessionIndicator', () => {
     expect(isActiveSession(undefined)).toBe(false)
   })
 
-  it('detects stale retained session presence', () => {
-    expect(isStalePresence({ _presenceStale: true })).toBe(true)
-    expect(isStalePresence({ _presenceStatus: 'stale' })).toBe(true)
-    expect(isStalePresence({ state: 'active' })).toBe(false)
+  it('detects a retained reading through either way in', () => {
+    expect(isRetainedReading({ state: 'active', _presenceStale: true })).toBe(true)
+    expect(isRetainedReading({ state: 'active', _presenceStatus: 'stale' })).toBe(true)
+    expect(isRetainedReading({ state: 'active', degraded: true })).toBe(true)
+    expect(isRetainedReading({ state: 'active' })).toBe(false)
   })
 
   it('applies row tint only when session exists', () => {
@@ -198,6 +199,32 @@ describe('sessionIndicator', () => {
     expect(indicators[0].ariaLabel).toContain('unattributed')
   })
 
+  // Regression: the badge and the tool indicator derived activity separately,
+  // so an unattributed session showed an amber IDLE badge next to a blue
+  // "project active (unattributed)" indicator. Both now read one derivation
+  // (docs/design/harness-realignment-plan.md, PR 10).
+  it('badge and indicator agree on unattributed project activity', () => {
+    const unattributed = session({ state: 'idle', project_unattributed_active: true })
+    const badge = sessionBadge(unattributed)
+    const [indicator] = toolIndicators([unattributed])
+
+    expect(badge.signal.level).toBe('uncertain')
+    expect(badge.badgeClass).toContain('text-info-300')
+    expect(badge.ariaLabel).toContain('unattributed')
+    expect(indicator.colorClass).toBe('text-info-300')
+    expect(indicator.isUnattributed).toBe(true)
+  })
+
+  // Regression: a daemon gap makes the reading uncertain, it does not mean the
+  // session went idle — retained rows keep their last reported wording.
+  it('keeps the last reported wording for a retained stale session', () => {
+    const [indicator] = toolIndicators([session({ state: 'active', _presenceStale: true })])
+
+    expect(indicator.ariaLabel).toBe('Claude: retained stale running')
+    expect(indicator.isActive).toBe(true)
+    expect(indicator.toneClass).toBe('session-pill-stale')
+  })
+
   it('toolIndicators marks retained stale presence distinctly from live activity', () => {
     const indicators = toolIndicators([
       session({ state: 'active', cli_tool: 'codex', _presenceStale: true }),
@@ -243,6 +270,38 @@ describe('sessionIndicator', () => {
     expect(indicators[0].colorClass).toBe('text-info-300')
     expect(indicators[0].memberTools.map(tool => tool.toneClass)).toEqual(['session-pill-stale', 'session-pill-stale'])
     expect(indicators[0].ariaLabel).toContain('retained stale')
+  })
+
+  // Regression: commit 6c6f1cb routed every level through `activitySignal`, but
+  // the aggregate tone and the accessibility wording kept reading `_presence*`
+  // alone. The store stamps a degraded snapshot as *live* presence and sets
+  // `degraded` (`sessionStore.svelte.js`), so an all-degraded team wore the idle
+  // amber header while every member row underneath it read "Uncertain".
+  it('groupedSessionIndicators marks a degraded team as retained, not idle', () => {
+    const indicators = groupedSessionIndicators([
+      session({ degraded: true, _presenceStatus: 'live', _presenceStale: false, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
+      session({ degraded: true, _presenceStatus: 'live', _presenceStale: false, state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
+    ])
+
+    expect(indicators).toHaveLength(1)
+    expect(indicators[0].tone).toBe('stale')
+    expect(indicators[0].colorClass).toBe('text-info-300')
+    expect(indicators[0].isActive).toBe(false)
+    expect(indicators[0].ariaLabel).toContain('retained stale')
+    expect(indicators[0].ariaLabel).not.toContain('idle')
+  })
+
+  // Regression: same commit, single-session path — a degraded record kept the
+  // info-toned pill but announced itself as plain "running", so the screen
+  // reader was told the reading was current while the colour said it was not.
+  it('announces a degraded single session as retained', () => {
+    const [indicator] = toolIndicators([
+      session({ state: 'active', degraded: true, _presenceStatus: 'live', _presenceStale: false }),
+    ])
+
+    expect(indicator.ariaLabel).toBe('Claude: retained stale running')
+    expect(indicator.toneClass).toBe('session-pill-stale')
+    expect(indicator.colorClass).toBe('text-info-300')
   })
 
   it('toolIndicators shows a connector rail for a 2-member team even when only two sessions are present', () => {

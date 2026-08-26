@@ -209,6 +209,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::mesh::install_mesh,
             commands::logging::frontend_log,
             commands::command_center::list_cli_sessions,
+            commands::command_center::list_cli_session_snapshot,
             commands::command_center::launch_cli_session,
             commands::command_center::stop_cli_session,
             commands::command_center::navigate_to_session,

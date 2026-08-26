@@ -1,4 +1,6 @@
 <script>
+  import { activitySignal } from '../activitySignal.js'
+
   let {
     node = {},
     dark = false,
@@ -13,7 +15,7 @@
   const roleDescription = $derived.by(() =>
     String(node?.instructions ?? node?.description ?? '').trim()
   )
-  const status = $derived.by(() => String(node?.status ?? '').trim().toLowerCase())
+  const signal = $derived(activitySignal(node))
   const toolLabel = $derived.by(() => {
     const value = String(node?.tool ?? node?.cliTool ?? node?.cli_tool ?? '').trim().toLowerCase()
     if (value === 'claude') return 'Claude'
@@ -22,22 +24,22 @@
     return value || 'Unknown'
   })
   const model = $derived.by(() => String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim())
-  const statusLabel = $derived.by(() => {
-    if (status === 'active') return 'Active'
-    if (status === 'idle') return 'Idle'
-    if (status === 'offline') return 'Offline'
-    return 'Unknown'
-  })
+  const statusLabel = $derived(signal.label)
   const statusTone = $derived.by(() => {
-    if (status === 'active') {
+    if (signal.level === 'working' || signal.level === 'active') {
       return dark
         ? 'border-emerald-400/35 bg-emerald-500/14 text-emerald-100'
         : 'border-emerald-300/80 bg-emerald-50 text-emerald-800'
     }
-    if (status === 'idle') {
+    if (signal.level === 'idle') {
       return dark
         ? 'border-amber-400/35 bg-amber-500/14 text-amber-100'
         : 'border-amber-300/80 bg-amber-50 text-amber-800'
+    }
+    if (signal.level === 'uncertain') {
+      return dark
+        ? 'border-sky-400/35 bg-sky-500/14 text-sky-100'
+        : 'border-sky-300/80 bg-sky-50 text-sky-800'
     }
     return dark
       ? 'border-white/10 bg-white/[0.04] text-zinc-300'

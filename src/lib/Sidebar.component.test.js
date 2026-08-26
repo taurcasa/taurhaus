@@ -15,6 +15,7 @@ vi.mock('./sessionStore.svelte.js', () => ({
 }))
 
 vi.mock('./sessionIndicator.js', () => ({
+  hasLiveSession: vi.fn((session) => session?.state === 'active' || session?.state === 'idle'),
   rowTintForSessions: vi.fn(() => ''),
   toolIndicators: vi.fn(() => []),
 }))

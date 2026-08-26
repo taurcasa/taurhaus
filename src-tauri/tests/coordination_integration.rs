@@ -147,6 +147,7 @@ mod commands {
                         focus: None,
                         foreground_project_path: None,
                         degraded: false,
+                        degraded_revision: 0,
                     },
                 ),
             }

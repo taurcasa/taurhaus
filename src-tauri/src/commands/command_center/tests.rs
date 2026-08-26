@@ -1,3 +1,4 @@
+use super::session_listing::CliSessionFreshness;
 use super::*;
 use crate::commands::logging::{install_global_sink, LogFileState};
 use crate::commands::runtime_snapshot::{
@@ -508,15 +509,79 @@ fn daemon_display_sessions_reports_degraded_snapshot() {
         wsl_distro: None,
     };
 
-    let (sessions, degraded) = daemon_display_sessions(&provider)
+    let snapshot = daemon_display_sessions(&provider)
         .expect("snapshot call")
         .expect("connected daemon snapshot");
 
-    assert!(
-        degraded,
+    assert_eq!(
+        snapshot.freshness,
+        CliSessionFreshness::Degraded,
         "a degraded daemon snapshot must be reported as such"
     );
-    assert_eq!(sessions, vec![active_session_for("/tmp/project")]);
+    assert_eq!(
+        snapshot.sessions,
+        vec![active_session_for("/tmp/project")],
+        "continuity: the retained sessions still reach the app"
+    );
+}
+
+// Regression: fa572d4 suspended the app's activity trackers on a degraded
+// daemon snapshot, but the fallback polling path — the one the app runs
+// precisely when the daemon bridge is down — returned a bare `Vec` and dropped
+// both the degradation flag and the fact that the list came out of the on-disk
+// cache. Every fallback poll therefore looked like a fresh observation, undid
+// the suspension, and credited the outage to whatever state preceded it. The
+// polling answer now says how it was obtained.
+#[test]
+fn cli_session_freshness_says_whether_the_list_was_observed() {
+    assert_eq!(
+        CliSessionFreshness::classify(RuntimeSnapshotFreshness::Fresh, false),
+        CliSessionFreshness::Fresh
+    );
+    assert_eq!(
+        CliSessionFreshness::classify(RuntimeSnapshotFreshness::Fresh, true),
+        CliSessionFreshness::Degraded,
+        "a reachable daemon replaying its last good sessions is not an observation"
+    );
+    assert_eq!(
+        CliSessionFreshness::classify(RuntimeSnapshotFreshness::Cached, false),
+        CliSessionFreshness::Cached,
+        "an unreachable daemon's disk cache is older still"
+    );
+    assert_eq!(
+        CliSessionFreshness::classify(RuntimeSnapshotFreshness::Cached, true),
+        CliSessionFreshness::Cached
+    );
+    assert_eq!(
+        CliSessionFreshness::classify(RuntimeSnapshotFreshness::Unavailable, false),
+        CliSessionFreshness::Unavailable
+    );
+
+    // The app branches on these strings; they are part of the IPC contract.
+    assert_eq!(
+        serde_json::to_value(CliSessionFreshness::Fresh).unwrap(),
+        serde_json::json!("fresh")
+    );
+    assert_eq!(
+        serde_json::to_value(CliSessionFreshness::Degraded).unwrap(),
+        serde_json::json!("degraded")
+    );
+    assert_eq!(
+        serde_json::to_value(CliSessionFreshness::Cached).unwrap(),
+        serde_json::json!("cached")
+    );
+    assert_eq!(
+        serde_json::to_value(CliSessionFreshness::Unavailable).unwrap(),
+        serde_json::json!("unavailable")
+    );
+
+    // A daemon that is configured but has neither a live snapshot nor a cached
+    // one reports no sessions. That empty list is not an empty machine, and the
+    // app has to be able to tell them apart — otherwise it retires every
+    // tracker and persists the outage as "every session ended".
+    let unavailable = CliSessionSnapshot::unavailable();
+    assert!(unavailable.sessions.is_empty());
+    assert_eq!(unavailable.freshness, CliSessionFreshness::Unavailable);
 }
 
 #[test]

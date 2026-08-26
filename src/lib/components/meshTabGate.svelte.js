@@ -1,3 +1,5 @@
+import { activityLevel, isLiveLevel } from '../activitySignal.js'
+
 const PROJECT_SNAPSHOT_CACHE_MAX_AGE_MS = 5000
 
 export const INITIAL_RUNTIME_REFRESH_DELAY_MS = 120
@@ -55,10 +57,7 @@ export function createMeshTabGate({ state, refs, deps }) {
     if (!teamName) return 'none'
     const roster = Array.isArray(members) ? members : []
     if (roster.length === 0) return 'active'
-    const liveMembers = roster.filter((member) => {
-      const status = String(member?.sessionStatus ?? member?.status ?? '').trim().toLowerCase()
-      return status === 'active' || status === 'idle'
-    }).length
+    const liveMembers = roster.filter((member) => isLiveLevel(activityLevel(member))).length
     if (liveMembers === 0) return 'coldResume'
     if (liveMembers === roster.length) return 'active'
     return 'degraded'

@@ -1,5 +1,6 @@
 /** Session indicator semantics for sidebar rows and HoverCard display. */
 
+import { activityLevel, activitySignal, isActiveLevel, isLiveLevel, isRetainedSignal } from './activitySignal.js'
 import { getToolIcon, getToolName } from './toolLogos.js'
 
 const STACKING_THRESHOLD = 4
@@ -16,31 +17,39 @@ export function toolIcon(session, variant = 'default') {
   return getToolIcon(session?.cli_tool || 'claude', variant)
 }
 
-/** Return true when a row has an active or idle session. */
+/** Return true when a row has a session we still consider present. */
 export function hasLiveSession(session) {
-  return session?.state === 'active' || session?.state === 'idle'
+  return isLiveLevel(activityLevel(session))
 }
 
-export function isStalePresence(session) {
-  return session?._presenceStale === true || session?._presenceStatus === 'stale'
+/**
+ * Whether this row is a retained reading rather than an observed one.
+ *
+ * Read through `activitySignal`, never off `_presence*` directly: a degraded
+ * scan is stamped as *live* presence (the bridge is up, the scanner is blind),
+ * so a presence-only test calls it a healthy row and lands it in the idle
+ * bucket. The signal knows both ways in.
+ */
+export function isRetainedReading(session) {
+  return isRetainedSignal(activitySignal(session))
 }
 
 /** Return true when the tool is actively working (not waiting for input). */
 export function isActiveSession(session) {
-  return session?.state === 'active'
+  return isActiveLevel(activityLevel(session))
 }
 
 /** Row-level tint class when any live session exists. */
 export function rowTintClass(session) {
   if (!hasLiveSession(session)) return ''
-  return isStalePresence(session) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
+  return isRetainedReading(session) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
 }
 
 /** Row-level tint class when any session in the array is live. */
 export function rowTintForSessions(sessions) {
   if (!sessions || sessions.length === 0) return ''
   if (!sessions.some(s => hasLiveSession(s))) return ''
-  return sessions.some(isStalePresence) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
+  return sessions.some(isRetainedReading) ? 'bg-white/[0.015]' : 'bg-white/[0.03]'
 }
 
 function groupMetadata(session) {
@@ -51,29 +60,51 @@ function groupMetadata(session) {
   }
 }
 
+/** Rank used to order grouped members: working first, then idle, then gone. */
+function memberRank(member) {
+  const level = activityLevel(member)
+  if (isActiveLevel(level)) return 2
+  if (level === 'offline') return 0
+  return 1
+}
+
 function compareGroupedMembers(left, right) {
-  const leftRank = left?.state === 'active' ? 2 : left?.state === 'idle' ? 1 : 0
-  const rightRank = right?.state === 'active' ? 2 : right?.state === 'idle' ? 1 : 0
-  if (rightRank !== leftRank) return rightRank - leftRank
+  const rankDelta = memberRank(right) - memberRank(left)
+  if (rankDelta !== 0) return rankDelta
   return toolName(left).localeCompare(toolName(right))
 }
 
+const LEVEL_COLOR_CLASS = {
+  working: 'text-success-300',
+  active: 'text-success-300',
+  idle: 'text-warning-300',
+  uncertain: 'text-info-300',
+  offline: 'text-zinc-400',
+}
+
+const LEVEL_TONE_CLASS = {
+  working: 'session-pill-active',
+  active: 'session-pill-active',
+  idle: 'session-pill-idle',
+  uncertain: 'session-pill-stale',
+  offline: 'session-pill-idle',
+}
+
+/**
+ * The signal a retained record last reported, used for wording only: a daemon
+ * gap makes the reading uncertain, it does not mean the session went idle.
+ */
+function reportedSignal(session, signal) {
+  if (!isRetainedSignal(signal)) return signal
+  return activitySignal({ ...session, _presenceStale: false, _presenceStatus: 'live', degraded: false })
+}
+
 function sessionColorClass(session) {
-  if (isStalePresence(session)) {
-    return 'text-info-300'
-  }
-  const isActive = session?.state === 'active'
-  const isUnattributed = !isActive && session?.project_unattributed_active === true
-  return isActive
-    ? 'text-success-300'
-    : (isUnattributed ? 'text-info-300' : 'text-warning-300')
+  return LEVEL_COLOR_CLASS[activityLevel(session)]
 }
 
 function sessionToneClass(session) {
-  if (isStalePresence(session)) {
-    return 'session-pill-stale'
-  }
-  return session?.state === 'active' ? 'session-pill-active' : 'session-pill-idle'
+  return LEVEL_TONE_CLASS[activityLevel(session)]
 }
 
 function teamToolVisual(session, variant = 'default') {
@@ -83,7 +114,7 @@ function teamToolVisual(session, variant = 'default') {
     fullName: getToolName(tool),
     icon: getToolIcon(tool, variant),
     iconVariant: variant,
-    isActive: session?.state === 'active',
+    isActive: isActiveSession(session),
     colorClass: sessionColorClass(session),
     toneClass: sessionToneClass(session),
   }
@@ -94,10 +125,10 @@ function stackedTeamTools(members, variant = 'default') {
   const orderedTools = uniqueTools(liveMembers, variant)
   return orderedTools.map(toolEntry => {
     const matchingMembers = liveMembers.filter(member => (member?.cli_tool || 'claude') === toolEntry.tool)
-    const representative = matchingMembers.find(member => member?.state === 'active') || matchingMembers[0]
+    const representative = matchingMembers.find(isActiveSession) || matchingMembers[0]
     return {
       ...toolEntry,
-      isActive: representative?.state === 'active',
+      isActive: isActiveSession(representative),
       colorClass: sessionColorClass(representative),
       toneClass: sessionToneClass(representative),
     }
@@ -133,8 +164,8 @@ export function uniqueTools(sessions, variant = 'default') {
 
 function buildTeamIndicator(group) {
   const members = [...group.members].sort(compareGroupedMembers)
-  const isActive = members.some(member => member.state === 'active')
-  const isStale = members.some(isStalePresence)
+  const isActive = members.some(isActiveSession)
+  const isStale = members.some(isRetainedReading)
   const count = members.length
   const activityLabel = isStale ? 'retained stale' : (isActive ? 'active' : 'idle')
   const layout = count >= STACKING_THRESHOLD ? 'stack' : 'rail'
@@ -180,8 +211,8 @@ export function groupedSessionIndicators(sessions) {
   return [...grouped.values()]
     .filter(group => group.members.length >= TEAM_GROUP_MIN_MEMBERS)
     .sort((left, right) => {
-      const leftActive = left.members.some(member => member.state === 'active') ? 1 : 0
-      const rightActive = right.members.some(member => member.state === 'active') ? 1 : 0
+      const leftActive = left.members.some(isActiveSession) ? 1 : 0
+      const rightActive = right.members.some(isActiveSession) ? 1 : 0
       if (rightActive !== leftActive) return rightActive - leftActive
       if (right.members.length !== left.members.length) return right.members.length - left.members.length
       return left.groupLabel.localeCompare(right.groupLabel)
@@ -194,41 +225,51 @@ export function groupedSessionIndicators(sessions) {
  * - idle is intentionally more explicit because it requires user action.
  */
 export function sessionBadge(session) {
-  if (isStalePresence(session) && hasLiveSession(session)) {
+  const signal = activitySignal(session)
+  const interactive = Boolean(session?.tmux_session && session?.tmux_window && session?.tmux_pane)
+
+  if (signal.level === 'uncertain') {
+    const retained = isRetainedSignal(signal)
     return {
       visible: true,
-      label: 'STALE',
+      signal,
+      label: retained ? 'STALE' : 'IDLE',
       toolLabel: toolName(session),
       badgeClass: 'session-pill-stale rounded-[4px] bg-info-300/14 text-info-300 border border-info-300/45',
-      ariaLabel: `${toolName(session)} session presence retained stale during daemon gap`,
-      interactive: Boolean(session.tmux_session && session.tmux_window && session.tmux_pane),
+      ariaLabel: retained
+        ? `${toolName(session)} session presence retained stale during daemon gap`
+        : `${toolName(session)} session active but unattributed`,
+      interactive,
     }
   }
 
-  if (session?.state === 'idle') {
+  if (signal.level === 'idle') {
     return {
       visible: true,
+      signal,
       label: 'IDLE',
       toolLabel: toolName(session),
       badgeClass: 'session-pill-idle rounded-[4px] bg-warning-300/18 text-warning-300 border border-warning-300/65',
       ariaLabel: `${toolName(session)} session idle, waiting for input`,
-      interactive: Boolean(session.tmux_session && session.tmux_window && session.tmux_pane),
+      interactive,
     }
   }
 
-  if (session?.state === 'active') {
+  if (isActiveLevel(signal.level)) {
     return {
       visible: true,
+      signal,
       label: 'RUN',
       toolLabel: toolName(session),
       badgeClass: 'session-pill-active rounded-full bg-success-300/18 text-success-300 border border-success-300/55',
       ariaLabel: `${toolName(session)} session active`,
-      interactive: Boolean(session.tmux_session && session.tmux_window && session.tmux_pane),
+      interactive,
     }
   }
 
   return {
     visible: false,
+    signal,
     label: '',
     toolLabel: '',
     badgeClass: '',
@@ -272,10 +313,12 @@ function singleSessionIndicator(session) {
   const tool = session.cli_tool || 'claude'
   const name = getToolName(tool)
   const icon = getToolIcon(tool)
-  const isActive = session.state === 'active'
-  const isUnattributed = !isActive && session.project_unattributed_active === true
+  const signal = activitySignal(session)
+  const reported = reportedSignal(session, signal)
+  const isActive = isActiveLevel(reported.level)
+  const isUnattributed = reported.source === 'project'
   const interactive = Boolean(session.tmux_session && session.tmux_window && session.tmux_pane)
-  const isStale = isStalePresence(session)
+  const isStale = isRetainedSignal(signal)
   const statusLabel = isActive
     ? 'running'
     : (isUnattributed ? 'project active (unattributed)' : 'idle')
@@ -283,6 +326,7 @@ function singleSessionIndicator(session) {
   return {
     kind: 'session',
     session,
+    signal,
     tool,
     label: name[0],
     fullName: name,

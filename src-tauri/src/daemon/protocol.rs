@@ -21,7 +21,13 @@ use serde::{Deserialize, Serialize};
 /// omits it and would leave the app with a permanently dark indicator.
 /// v9: the app explicitly selects the daemon's Codex compaction mode instead of
 /// making the daemon guess the desktop settings database path.
-pub const PROTOCOL_VERSION: u32 = 9;
+/// v10: a scanner blackout got its own cursor — the app sends
+/// `since_degraded_revision` and the daemon answers `degraded` /
+/// `degraded_revision`. The gate has to refuse both mixed pairs: a v9 app never
+/// sends the cursor, so its long poll returns immediately forever once a
+/// blackout has happened, and a v9 daemon never sends the flags, so a v10 app
+/// would read every replayed snapshot as a live observation.
+pub const PROTOCOL_VERSION: u32 = 10;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -330,6 +336,12 @@ pub struct WaitSessionUpdatesParams {
     /// Client's last seen session snapshot version.
     #[serde(default)]
     pub since_version: u64,
+    /// Client's last seen degradation revision. The hub bumps it on every
+    /// scanner blackout edge without touching the version, so this is what
+    /// wakes the long poll for a blackout. Additive: older clients omit it and
+    /// the daemon answers exactly as it did before.
+    #[serde(default)]
+    pub since_degraded_revision: u64,
     /// Max time to wait for a newer snapshot. Clamped server-side.
     #[serde(default = "default_wait_session_timeout_ms")]
     pub timeout_ms: u64,
@@ -354,6 +366,19 @@ pub struct WaitSessionUpdatesResult {
     /// Project path the focused tmux window belongs to, resolved by the hub.
     #[serde(default)]
     pub focus_project_path: Option<String>,
+    /// The daemon scanner's latest cycle could not read its process inventory:
+    /// `sessions` is the hub's last good snapshot, replayed for continuity, and
+    /// the app must present it as unobserved rather than as the current truth.
+    /// Additive: older daemons omit the field and decode as `false`.
+    #[serde(default)]
+    pub degraded: bool,
+    /// The hub's degradation revision as of this answer: one bump per blackout
+    /// edge. A client whose cursor is behind it spanned an interval the scanner
+    /// did not observe, even when `degraded` is false because the blackout
+    /// already ended. Additive: older daemons omit it and decode as `0`, which
+    /// never advances and so never claims a gap.
+    #[serde(default)]
+    pub degraded_revision: u64,
 }
 
 /// `get_runtime_session_snapshot` result.
@@ -374,6 +399,11 @@ pub struct RuntimeSessionSnapshotResult {
     /// omit the field and decode as `false` (their behavior so far).
     #[serde(default)]
     pub degraded: bool,
+    /// The hub's blackout-edge counter as of this snapshot. The bridge adopts it
+    /// as its cursor when it seeds, so the long poll that follows reports only
+    /// blackouts from here on. Additive: older daemons omit it and decode as 0.
+    #[serde(default)]
+    pub degraded_revision: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -826,6 +856,10 @@ mod tests {
         let p: WaitSessionUpdatesParams = serde_json::from_str(json).unwrap();
         assert_eq!(p.since_version, 42);
         assert_eq!(p.timeout_ms, 15_000);
+        assert_eq!(
+            p.since_degraded_revision, 0,
+            "a client that does not track blackout edges asks as it always did"
+        );
     }
 
     #[test]
@@ -836,6 +870,8 @@ mod tests {
             sessions: vec![],
             focus: None,
             focus_project_path: None,
+            degraded: false,
+            degraded_revision: 0,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: WaitSessionUpdatesResult = serde_json::from_str(&json).unwrap();
@@ -855,6 +891,7 @@ mod tests {
             focus: None,
             foreground_project_path: None,
             degraded: true,
+            degraded_revision: 4,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("\"degraded\":true"));
@@ -897,6 +934,29 @@ mod tests {
         );
     }
 
+    // Regression: commit 2b47b3b gave a blackout its own cursor
+    // (`since_degraded_revision` in, `degraded_revision` out) but left
+    // PROTOCOL_VERSION at 9, so both mixed pairs passed the exact-version gate.
+    // A pre-PR10 app omits the cursor, it defaults to 0, and once a blackout has
+    // ever happened the daemon's revision is permanently above 0 — every long
+    // poll returns immediately and the bridge, which sleeps only between
+    // failures, spins. The other direction is quieter and just as wrong: a
+    // pre-PR10 daemon omits `degraded`/`degraded_revision`, so a new app decodes
+    // a healthy snapshot and silently loses blackout reporting. Both are fixed
+    // by making the version gate refuse the pair.
+    #[test]
+    fn protocol_version_excludes_daemons_without_degradation_cursor() {
+        // The last version whose wire had no blackout cursor in either direction.
+        let cursorless_daemon = 9;
+        assert!(
+            PROTOCOL_VERSION > cursorless_daemon,
+            "the blackout cursor changed the wire contract in both directions: bump \
+             PROTOCOL_VERSION so the exact-version gate refuses a pre-PR10 daemon \
+             instead of losing degradation, and so a pre-PR10 app is refused \
+             instead of spinning on immediate answers"
+        );
+    }
+
     #[test]
     fn wait_session_updates_result_roundtrips_focus() {
         let result = WaitSessionUpdatesResult {
@@ -905,6 +965,8 @@ mod tests {
             sessions: Vec::new(),
             focus: Some(focus_fixture()),
             focus_project_path: Some("/projects/mesh".to_string()),
+            degraded: false,
+            degraded_revision: 0,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert_eq!(
@@ -920,6 +982,35 @@ mod tests {
         let result: WaitSessionUpdatesResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.focus, None);
         assert_eq!(result.focus_project_path, None);
+        assert!(!result.degraded, "an omitted flag decodes as healthy");
+        assert_eq!(
+            result.degraded_revision, 0,
+            "an omitted revision never advances, so it never claims a blind interval"
+        );
+    }
+
+    // Regression: 6c6f1cb made the app present a degraded snapshot as
+    // uncertain, but `wait_session_updates` — the transport the session bridge
+    // actually lives on — carried no degradation status, so the retained
+    // sessions arrived indistinguishable from a fresh observation. Additive
+    // field: an older daemon omits it and decodes as healthy (above).
+    #[test]
+    fn wait_session_updates_result_roundtrips_degraded() {
+        let result = WaitSessionUpdatesResult {
+            version: 11,
+            changed: false,
+            sessions: Vec::new(),
+            focus: None,
+            focus_project_path: None,
+            degraded: true,
+            degraded_revision: 3,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"degraded\":true"));
+        assert_eq!(
+            serde_json::from_str::<WaitSessionUpdatesResult>(&json).unwrap(),
+            result
+        );
     }
 
     #[test]
@@ -931,6 +1022,7 @@ mod tests {
             focus: Some(focus_fixture()),
             foreground_project_path: Some("/projects/mesh".to_string()),
             degraded: false,
+            degraded_revision: 0,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["focus"]["session"], "taurhaus");

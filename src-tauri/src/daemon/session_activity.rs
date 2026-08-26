@@ -13,7 +13,7 @@ use crate::coordination::activity_export::{
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::tmux::{self, TmuxFocus};
-use crate::session_scanner::SessionState;
+use crate::session_scanner::{ActivityAttribution, ActivityConfidence, SessionState};
 use crate::session_scanner::{DisplaySession, RuntimeSession};
 
 /// Scanner cadence for daemon-owned session activity tracking.
@@ -41,6 +41,8 @@ pub struct RuntimeSessionSnapshot {
     /// The latest scanner cycle was degraded: the sessions are the last good
     /// snapshot kept for continuity, not an observation.
     pub degraded: bool,
+    /// Blackout-edge counter — see `SessionUpdate::degraded_revision`.
+    pub degraded_revision: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +52,17 @@ pub struct SessionUpdate {
     /// tmux focus as of `snapshot.version`, read under the same lock.
     pub focus: Option<TmuxFocus>,
     pub focus_project_path: Option<String>,
+    /// The sessions in `snapshot` are the last good ones, kept for continuity
+    /// while the scanner is blind — not an observation.
+    pub degraded: bool,
+    /// Monotonic count of degradation *edges* (healthy→degraded and back).
+    ///
+    /// A degraded cycle bumps no version — continuity data must not pass for a
+    /// new authoritative snapshot — so this is the cursor that carries a
+    /// blackout to the app: a waiter wakes when it moves, and a caller whose
+    /// cursor is behind knows the interval it just spanned was not observed,
+    /// even when the blackout began and ended inside one wait.
+    pub degraded_revision: u64,
 }
 
 #[derive(Default)]
@@ -61,10 +74,17 @@ struct HubState {
     focus: Option<TmuxFocus>,
     focus_project_path: Option<String>,
     /// Set by a degraded cycle, cleared by the next healthy commit. Lives
-    /// outside the versioned snapshot: a degraded cycle wakes no waiter.
+    /// outside the versioned snapshot: a degraded cycle bumps no version.
     degraded: bool,
+    /// Bumped on every `degraded` edge — the wait cursor for blackouts.
+    degraded_revision: u64,
 }
 
+/// The activity half of the hub's change signature.
+///
+/// Confidence and attribution are part of it because the app presents them
+/// (`src/lib/activitySignal.js`); `recent_io` and `last_output_age_secs` are
+/// deliberately excluded — they flip per poll and would defeat change-gating.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SessionEventSignature {
     pid: u32,
@@ -76,6 +96,8 @@ struct SessionEventSignature {
     tmux_pane: Option<String>,
     tmux_window_name: Option<String>,
     state: SessionState,
+    activity_confidence: ActivityConfidence,
+    activity_attribution: ActivityAttribution,
     project_unattributed_active: bool,
 }
 
@@ -90,6 +112,8 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
         tmux_pane: session.tmux_pane.clone(),
         tmux_window_name: session.tmux_window_name.clone(),
         state: session.state,
+        activity_confidence: session.activity_confidence,
+        activity_attribution: session.activity_attribution,
         project_unattributed_active: session.project_unattributed_active,
     }
 }
@@ -230,6 +254,8 @@ fn session_update(state: &HubState, changed: bool) -> SessionUpdate {
         },
         focus: state.focus.clone(),
         focus_project_path: state.focus_project_path.clone(),
+        degraded: state.degraded,
+        degraded_revision: state.degraded_revision,
     }
 }
 
@@ -282,14 +308,27 @@ impl SessionActivityHub {
             focus: guard.focus.clone(),
             focus_project_path: guard.focus_project_path.clone(),
             degraded: guard.degraded,
+            degraded_revision: guard.degraded_revision,
         }
     }
 
-    /// Wait until a version newer than `since_version` exists, or timeout.
+    /// Wait until a newer snapshot version or a newer degradation revision
+    /// exists, or timeout.
+    ///
+    /// Two cursors, because the hub has two kinds of news. A new version means
+    /// the sessions changed; a new degradation revision means the scanner went
+    /// blind or came back, which changes nothing about the sessions but does
+    /// change whether they are an observation. `changed` reports the first
+    /// only — waking on a blackout must never look like a fresh snapshot.
     ///
     /// If `timeout` is zero, returns immediately with `changed = false` unless
     /// a newer version is already available.
-    pub fn wait_for_update(&self, since_version: u64, timeout: Duration) -> SessionUpdate {
+    pub fn wait_for_update(
+        &self,
+        since_version: u64,
+        since_degraded_revision: u64,
+        timeout: Duration,
+    ) -> SessionUpdate {
         let wait_for = timeout.min(MAX_WAIT);
         let guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -297,13 +336,15 @@ impl SessionActivityHub {
             return session_update(&guard, true);
         }
 
-        if wait_for.is_zero() {
+        if wait_for.is_zero() || guard.degraded_revision > since_degraded_revision {
             return session_update(&guard, false);
         }
 
         let (guard, _timeout) = self
             .changed_cv
-            .wait_timeout_while(guard, wait_for, |s| s.version <= since_version)
+            .wait_timeout_while(guard, wait_for, |s| {
+                s.version <= since_version && s.degraded_revision <= since_degraded_revision
+            })
             .unwrap_or_else(|e| e.into_inner());
 
         let changed = guard.version > since_version;
@@ -316,6 +357,10 @@ impl SessionActivityHub {
     /// not bumped, no export is due, and the cadence holds its interval. The
     /// preserved snapshot is marked degraded until the next healthy commit so
     /// consumers read it as continuity data, not as an observation.
+    ///
+    /// Both degradation edges do bump `degraded_revision` and wake waiters:
+    /// the sessions are unchanged, but whether they are an observation is not,
+    /// and that is news the app cannot wait 20 s for.
     fn commit_cycle(
         &self,
         cycle: ScanCycle,
@@ -324,10 +369,14 @@ impl SessionActivityHub {
         now: Instant,
     ) -> CycleDecision {
         if cycle.degraded {
-            self.state
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .degraded = true;
+            {
+                let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                if !state.degraded {
+                    state.degraded = true;
+                    state.degraded_revision = state.degraded_revision.saturating_add(1);
+                    self.changed_cv.notify_all();
+                }
+            }
             return CycleDecision {
                 changed: false,
                 export_due: false,
@@ -349,10 +398,16 @@ impl SessionActivityHub {
         state.runtime_sessions = cycle.runtime_sessions;
         state.focus = cycle.focus;
         state.focus_project_path = cycle.focus_project_path;
+        let recovered = state.degraded;
         state.degraded = false;
+        if recovered {
+            state.degraded_revision = state.degraded_revision.saturating_add(1);
+        }
         if changed {
             state.version = state.version.saturating_add(1);
             state.initialized = true;
+        }
+        if changed || recovered {
             self.changed_cv.notify_all();
         }
 
@@ -445,8 +500,8 @@ mod tests {
             state,
             recent_io: false,
             last_output_age_secs: None,
-            activity_confidence: crate::session_scanner::ActivityConfidence::Low,
-            activity_attribution: crate::session_scanner::ActivityAttribution::None,
+            activity_confidence: ActivityConfidence::Low,
+            activity_attribution: ActivityAttribution::None,
             project_unattributed_active: false,
             group_kind: crate::session_scanner::SessionGroupKind::Standalone,
             group_id: None,
@@ -551,8 +606,9 @@ mod tests {
         assert_eq!(snapshot.sessions, active);
         assert_eq!(hub.runtime_snapshot().display_sessions, active);
         assert!(
-            !hub.wait_for_update(1, Duration::ZERO).changed,
-            "waiters must not wake on a degraded cycle"
+            !hub.wait_for_update(1, 0, Duration::ZERO).changed,
+            "a degraded cycle is never a session change (it does wake waiters \
+             on its own revision — see the blackout tests below)"
         );
 
         // Control: a healthy empty scan is a real change.
@@ -611,6 +667,149 @@ mod tests {
         let snapshot = hub.runtime_snapshot();
         assert!(!snapshot.degraded, "healthy commit must clear degraded");
         assert_eq!(snapshot.version, 1);
+    }
+
+    // Regression: 6c6f1cb taught the app to present a `degraded` record as
+    // uncertain, but the hub only exposed the flag on `runtime_snapshot()` —
+    // the long poll the session bridge lives on never carried it. A blind
+    // scanner therefore left the last good indicator green indefinitely.
+    // The flag rides the long-poll answer without bumping the version:
+    // continuity data stays continuity data (see the test above).
+    #[test]
+    fn a_long_poll_answer_reports_the_degraded_flag() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let active = vec![session_with_state(SessionState::Active)];
+
+        let _ = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, None, now);
+        let healthy = hub.wait_for_update(0, 0, Duration::ZERO);
+        assert!(healthy.changed);
+        assert!(!healthy.degraded);
+
+        let _ = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        let blind = hub.wait_for_update(1, 0, Duration::ZERO);
+        assert!(
+            !blind.changed,
+            "a degraded cycle bumps no version, so it is never a change"
+        );
+        assert!(
+            blind.degraded,
+            "the long poll must report that the sessions it carries are not an observation"
+        );
+        assert_eq!(blind.snapshot.sessions, active, "continuity data is kept");
+
+        let _ = hub.commit_cycle(cycle(active, false), &mut cadence, Some(now), now);
+        assert!(!hub.wait_for_update(1, 0, Duration::ZERO).degraded);
+    }
+
+    // Regression: fa572d4 gave `degraded` a ride on the long-poll answer, but
+    // the answer only comes back when the version moves or the bridge's 20 s
+    // budget expires, and a degraded cycle bumps no version. A blackout that
+    // started and ended inside one outstanding wait was therefore invisible:
+    // the answer carried `degraded: false` and the app credited the blind
+    // interval to whatever it last saw. Degradation edges now carry their own
+    // revision, so a caller whose cursor is behind learns that the interval it
+    // is about to measure was not observed — without the retained sessions
+    // ever being promoted to a new authoritative snapshot.
+    #[test]
+    fn a_blackout_inside_one_wait_still_reaches_the_next_answer() {
+        let hub = SessionActivityHub::new();
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let active = vec![session_with_state(SessionState::Active)];
+
+        let _ = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, None, now);
+        let seed = hub.wait_for_update(0, 0, Duration::ZERO);
+        assert!(seed.changed);
+        assert_eq!(seed.degraded_revision, 0);
+
+        // Both edges land while the app is parked in one long poll.
+        let _ = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        let _ = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, Some(now), now);
+
+        let answer = hub.wait_for_update(
+            seed.snapshot.version,
+            seed.degraded_revision,
+            Duration::ZERO,
+        );
+        assert!(!answer.changed, "the session list itself did not move");
+        assert!(!answer.degraded, "the scanner is healthy again");
+        assert_eq!(answer.snapshot.version, seed.snapshot.version);
+        assert_eq!(
+            answer.degraded_revision, 2,
+            "one bump per edge: went blind, came back"
+        );
+        assert!(
+            answer.degraded_revision > seed.degraded_revision,
+            "the caller must be able to see that its interval was not observed"
+        );
+
+        // Exactly once: nothing new to report at the caller's new cursor.
+        let settled = hub.wait_for_update(
+            answer.snapshot.version,
+            answer.degraded_revision,
+            Duration::ZERO,
+        );
+        assert!(!settled.changed);
+        assert_eq!(settled.degraded_revision, 2);
+    }
+
+    // Regression: fa572d4 — same defect from the waiter's side. `wait_for_update`
+    // blocked on the version alone, so neither edge of a scanner blackout woke
+    // the bridge's long poll; the app learned about a blackout at most once every
+    // 20 s, and only if it was still blind by then.
+    #[test]
+    fn a_parked_waiter_wakes_on_each_degradation_edge() {
+        use std::sync::mpsc;
+
+        let hub = Arc::new(SessionActivityHub::new());
+        let mut cadence = ScannerCadence::default();
+        let now = Instant::now();
+        let active = vec![session_with_state(SessionState::Active)];
+        let _ = hub.commit_cycle(cycle(active.clone(), false), &mut cadence, None, now);
+
+        let (tx, rx) = mpsc::channel();
+        let waiter_hub = Arc::clone(&hub);
+        let waiter = thread::spawn(move || {
+            let mut version = 1;
+            let mut degraded_revision = 0;
+            for _ in 0..2 {
+                let update =
+                    waiter_hub.wait_for_update(version, degraded_revision, Duration::from_secs(5));
+                version = update.snapshot.version;
+                degraded_revision = update.degraded_revision;
+                if tx.send(update).is_err() {
+                    return;
+                }
+            }
+        });
+
+        let _ = hub.commit_cycle(cycle(Vec::new(), true), &mut cadence, Some(now), now);
+        let went_blind = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the waiter must wake when the scanner goes blind");
+        assert!(went_blind.degraded);
+        assert!(!went_blind.changed, "a blackout is not a session change");
+        assert_eq!(went_blind.snapshot.version, 1);
+        assert_eq!(went_blind.degraded_revision, 1);
+
+        let _ = hub.commit_cycle(cycle(active, false), &mut cadence, Some(now), now);
+        let recovered = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the waiter must wake when the scanner comes back");
+        assert!(!recovered.degraded);
+        assert!(!recovered.changed, "the same sessions are not a change");
+        assert_eq!(recovered.snapshot.version, 1);
+        assert_eq!(recovered.degraded_revision, 2);
+
+        waiter.join().unwrap();
+        assert_eq!(
+            hub.wait_for_update(1, 2, Duration::from_millis(50))
+                .degraded_revision,
+            2,
+            "each edge is reported exactly once"
+        );
     }
 
     #[test]
@@ -713,7 +912,7 @@ mod tests {
             }
         );
         assert_eq!(hub.snapshot(), snapshot);
-        assert!(!hub.wait_for_update(1, Duration::ZERO).changed);
+        assert!(!hub.wait_for_update(1, 0, Duration::ZERO).changed);
 
         // Recovery: same sessions, no new version.
         HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
@@ -774,6 +973,40 @@ mod tests {
         }
     }
 
+    // Regression: 3f0d541 built `SessionEventSignature` from the coarse
+    // state alone, so a confidence or attribution downgrade on the same PID
+    // never bumped the version and never reached the app — which now presents
+    // those fields (`src/lib/activitySignal.js`).
+    #[test]
+    fn an_activity_confidence_change_is_a_change() {
+        let previous = vec![session_with_state(SessionState::Active)];
+        let mut next = previous.clone();
+        next[0].activity_confidence = ActivityConfidence::High;
+
+        assert!(activity_changed(&previous, &next));
+    }
+
+    #[test]
+    fn an_activity_attribution_change_is_a_change() {
+        let previous = vec![session_with_state(SessionState::Active)];
+        let mut next = previous.clone();
+        next[0].activity_attribution = ActivityAttribution::Attributed;
+
+        assert!(activity_changed(&previous, &next));
+    }
+
+    // `recent_io` and `last_output_age_secs` flip on nearly every poll; both
+    // stay out of the signature so change-gating keeps working.
+    #[test]
+    fn a_recent_io_or_output_age_flip_alone_is_not_a_change() {
+        let previous = vec![session_with_state(SessionState::Active)];
+        let mut next = previous.clone();
+        next[0].recent_io = !next[0].recent_io;
+        next[0].last_output_age_secs = Some(7);
+
+        assert!(!activity_changed(&previous, &next));
+    }
+
     // Regression: commits a53ad31 and f9c1e89. Focus travelled through tmux
     // hooks into a file the app watched, and the hub never versioned it, so a
     // focus-only change woke no waiter. Focus is a hub-owned snapshot field.
@@ -806,7 +1039,7 @@ mod tests {
         assert!(focused.changed, "a focus-only change must bump the version");
         assert_eq!(hub.snapshot().version, 2);
         assert!(
-            hub.wait_for_update(1, Duration::ZERO).changed,
+            hub.wait_for_update(1, 0, Duration::ZERO).changed,
             "waiters must wake on a focus-only change"
         );
         let snapshot = hub.runtime_snapshot();
