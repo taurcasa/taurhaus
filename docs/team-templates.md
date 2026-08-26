@@ -38,7 +38,7 @@ Advanced catalog/history/edit flows still exist through:
 
 `TemplateBrowserPanel` -> `TeamCustomizerPanel` -> `MeshSetupView`
 
-Manual setup remains available via **Blank slate**.
+Manual setup is the builder's own empty roster — drag roles in, or start from a quick preset and edit.
 
 ## The Mental Model
 
@@ -97,6 +97,12 @@ If those answers are unclear, the role is still too generic.
 Use this as the conceptual template for a role:
 
 ```yaml
+defaults:
+  cli_tool: codex
+  model: gpt-5.4          # bare slug
+  reasoning_effort: high  # separate field; null for Claude/Gemini roles
+  default_name_pattern: architect-{project}
+
 focus_area: "Architecture decisions and structural review"
 context_summary: "Carries long-lived context around module boundaries, design tradeoffs, and review history."
 behavior_summary: "Handles pattern choices independently; escalates direction changes immediately."
@@ -127,9 +133,13 @@ Then support it with:
 
 The current template system remains structurally the same, but the role schema now explicitly carries both context-steering and workflow fields:
 
-- **Role template**: tool/model defaults, `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`, instructions, behavioral contract, capabilities, constraints, and optional import provenance
+- **Role template**: `defaults` (`cli_tool`, `model`, `reasoning_effort`, `default_name_pattern`), `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `handoff_expectations`, `phase_scope`, `mode`, `inherits_from`, `required_artifacts`, `runtime_compact_summary`, instructions, behavioral contract, capabilities (optional — empty is allowed), constraints, and optional import provenance
 - **Team preset**: one lead role plus agent slots and preset-specific overrides. A preset can also pin the lead itself with `lead_overrides` (`model`, `reasoning_effort`); composition applies it on top of the lead role's defaults, and the advanced preset editor writes it when you edit the lead card.
 - **Composition**: resolved roster produced from the selected lead and slots
+
+### Model and reasoning effort
+
+The canonical on-disk form is a bare model slug plus a separate `reasoning_effort` under `defaults:` — all 38 bundled roles use it (`model: gpt-5.4` / `reasoning_effort: high`; `null` for Claude and Gemini roles). Legacy spellings `"gpt-5.4 high"` and `"gpt-5.4-high"` still load through `ModelSpec::parse_legacy` in composition and request normalization, and `SlotOverrides` — agent slots and `lead_overrides` — take `model` and `reasoning_effort` as separate fields too. Saving from the editor always writes the canonical form.
 
 That means this guide changes both **how to think about roles** and what concrete fields you should author.
 
@@ -205,21 +215,18 @@ Prefer outputs another human or agent can immediately use.
 
 ## Using Templates In Setup
 
-In Mesh setup, use **Start from template**:
+`MeshSetupView` hosts `MeshTeamBuilder`, the single setup surface. It combines:
 
-1. **Quick preset** to apply a known preset immediately
-2. **Browse catalog** to inspect role and preset metadata
-3. **Build custom team** to compose from role templates
-4. **Blank slate** to fall back to manual roster editing
-
-`MeshTeamBuilder` is now the default setup surface. It combines:
-
-- quick presets
-- searchable role catalog filters (`tool` + `kind`)
+- quick presets, applied in one click
+- a searchable role catalog with `tool`, `kind`, and `mode` filters, plus `Import YAML`, `New role`, and `Focus search` buttons
 - drag-and-drop lead / agent composition
-- inline roster editing for names, tools, models, project binding, and descriptions
+- inline roster editing for names, tools, models, project binding, and descriptions, with inline validation
 
-`Browse catalog` still opens the advanced template catalog for import/export/history work, and preset editing/saving can still flow through the advanced customizer panel when needed.
+Model editing uses the shared effort-aware `ModelSelect` (model plus reasoning effort). It keeps unknown YAML models as custom entries, shows deprecation hints, and displays an inherited role effort as the effective value. Its list comes from `ModelCatalog` on the terminal contract.
+
+The builder's catalog hand-off (`onBrowseCatalog`) opens `TemplateBrowserPanel` for advanced import/export/history work, and preset editing/saving can flow through the advanced customizer panel when needed.
+
+When more than one Claude account is registered, the builder notes that team members run on the default account — per-team account selection is a follow-up.
 
 ## Composition And Validation
 
@@ -241,11 +248,15 @@ Current lead-mode rule:
 
 Roles can now move across external agent-file formats through the adapter layer:
 
+`RoleExportFormat` is `Yaml | ClaudeAgent | CopilotAgent | AgentsMd | GeminiMd`.
+
 - **Export**:
+  - canonical role YAML
   - Claude agent files
   - Copilot agent files
   - instruction-only formats such as `AGENTS.md` and `GEMINI.md`
 - **Import**:
+  - role YAML (`Import YAML` in the roster builder)
   - Claude custom-agent Markdown
   - Copilot custom-agent Markdown
 
@@ -256,7 +267,9 @@ Imported roles persist provenance metadata:
 - import timestamp
 - `non_roundtrippable_fields` for lossy conversions
 
-For Taurhaus-authored Claude and Copilot exports, the adapter now round-trips the extended role fields through compiled Markdown sections. That means `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts` survive export/import when the file came from Taurhaus. Instruction-only exports such as `AGENTS.md` and `GEMINI.md` remain intentionally lossy and record that downgrade in provenance.
+For Taurhaus-authored Claude and Copilot exports, the adapter round-trips the extended role fields through compiled Markdown sections. That means `communication_style`, `quality_gates`, `definition_of_done`, `handoff_expectations`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts` survive export/import when the file came from Taurhaus. Instruction-only exports such as `AGENTS.md` and `GEMINI.md` remain intentionally lossy and record that downgrade in provenance.
+
+One field never survives a non-YAML export: `defaults.reasoning_effort` has no representation in Claude or Copilot frontmatter, so it is recorded as lossy for every format except YAML.
 
 The catalog UI surfaces that provenance so imported roles are visibly different from native Taurhaus roles, including in the filtered role catalog shown by `MeshTeamBuilder`.
 
@@ -287,10 +300,11 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (34)**:
+- **Roles (38)**:
   - legacy and imported-compatible roles such as `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-developer`, and `gemini-ui-specialist`
   - taurhaus-specific roles such as `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, and `taurhaus-designer`
   - v2 and v3 role families such as `v2-lead-claude`, `v2-developer-codex`, `v3-lead-claude`, `v3-architect-codex`, and `v3-product-checker-claude`
+  - newer specialist roles: `adversarial-reviewer-claude`, `docs-verifier-codex`, `quick-dev-codex`, `frontend-design-skill-developer`, `claude-design-lead`, `claude-product-checker`, `codex-product-lead`, `codex-qa`, `codex-vertical-slice-developer`
 - **Presets (4)**:
   - `pair`
   - `dev-team`
