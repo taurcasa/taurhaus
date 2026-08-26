@@ -148,7 +148,15 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just check-quick` | Fast feedback for iteration: Rust format auto-fix (`cargo fmt`) + Rust compilation (`cargo check --tests`) + frontend typecheck + frontend unit tests. |
 | `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). Team-lead serialized runs or pre-release only. |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
-| `just install-daemon` | Builds + copies daemon to `~/.local/bin/` |
+| `just install-daemon` | Builds, stops a running daemon, captures its `TAURHAUS_*`/`RUST_LOG` env and CLI args from `/proc`, normalizes them to `--data-dir <dir> --port <port>` (defaults `$TAURHAUS_DATA_DIR` or `~/.local/share/com.taurhaus.dev`, port 17233), atomically swaps the binary, then restarts it detached with the same env/args. |
+| `just build-mesh` | Resolves a lock-matching mesh binary via `scripts/resolve-mesh-binary.sh`, rebuilding the workspace binary when its `git_commit` differs from the lock. |
+| `just mesh-verify-lock` | Verifies the built mesh binary against `src-tauri/resources/mesh.lock.json`. |
+| `just update-mesh-lock VERSION [PROTOCOL] [SCHEMA] [COMMIT]` | Intentional entry point for bumping the mesh lock manifest. |
+| `just bundle-mesh` | Copies mesh into `src-tauri/resources/mesh` and writes `mesh.version` / `mesh.manifest.json`. Lock-verified. |
+| `just install-mesh` | Lock-verified mesh install to `~/.local/bin`. |
+| `just analyze-compaction` | Compaction reinjection pipeline health from current + rotated JSONL logs. |
+| `just test-compaction TOOL TEAM MEMBER` | Triggers a real managed compaction and verifies the hook/transcript + delivery path (also `test-compaction-claude` / `test-compaction-codex`). |
+| `just monitor` | Unified resource monitor (live table by default). |
 | `just bump VERSION` | Bump version in all files (tauri.conf.json, Cargo.toml, package.json, Cargo.lock, CHANGELOG.md) |
 | `just release` | Create GitHub Release from current version. Pushes to remote, uploads artifacts. |
 
@@ -197,6 +205,8 @@ Always use the `just` recipes for releases. Never manually create GitHub release
 ```
 
 The `release` recipe enforces: must be on `main`, working tree must be clean, tag must not already exist. Never replace assets on an existing release — if a fix is needed, bump the version and release again.
+
+**Mesh gate**: every platform build verifies the mesh binary against `src-tauri/resources/mesh.lock.json` (`build-linux` depends on `bundle-daemon bundle-mesh`; the macOS recipes fail on a lock mismatch). When a release depends on a mesh change, work through "Updating the bundled mesh release" in [`CONTRIBUTING.md`](CONTRIBUTING.md) (`update-mesh-lock` → `bundle-mesh` → `mesh-verify-lock` → `install-mesh`, then commit `mesh.lock.json`, `mesh.manifest.json`, `mesh.version`) **before** the build steps above.
 
 **Important**: The Windows exe is built **natively on Windows** via WSL2 interop (`powershell.exe -File` into the synced Windows workspace). We do NOT cross-compile from Linux. Never use `--target x86_64-pc-windows-msvc` from WSL, `cargo xwin`, or any cross-compilation approach. The `just build-windows` recipe handles everything — sync, Bun install, and the native Windows Tauri build.
 
