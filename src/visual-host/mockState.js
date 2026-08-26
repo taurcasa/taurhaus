@@ -9,6 +9,8 @@ function createDefaults() {
       stopClaudeSession: undefined,
       removeProject: undefined,
       openExternalUrl: undefined,
+      listClaudeAccounts: [],
+      setProjectClaudeAccount: undefined,
     },
     sessionStore: {
       sessionsByProject: {},

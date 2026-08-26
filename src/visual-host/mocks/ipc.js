@@ -35,3 +35,11 @@ export function removeProject(...args) {
 export function openExternalUrl(...args) {
   return asyncResult('openExternalUrl', args)
 }
+
+export function listClaudeAccounts(...args) {
+  return asyncResult('listClaudeAccounts', args)
+}
+
+export function setProjectClaudeAccount(...args) {
+  return asyncResult('setProjectClaudeAccount', args)
+}

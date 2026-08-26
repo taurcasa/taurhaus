@@ -882,6 +882,7 @@ describe('ipc module', () => {
         projectId: 'p1',
         mode: 'continue',
         cliTool: null,
+        claudeAccountId: null,
       })
       expect(result).toEqual(mockResult)
       delete window.__TAURI_INTERNALS__

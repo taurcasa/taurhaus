@@ -80,12 +80,24 @@ pub(crate) fn dispatch(
         protocol::method::SET_CODEX_COMPACTION_MODE => {
             handle_set_codex_compaction_mode(&request.id, &request.params)
         }
+        protocol::method::LIST_CLAUDE_ACCOUNTS => handle_list_claude_accounts(&request.id),
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
             format!("Unknown method: {}", request.method),
         ),
     }
+}
+
+/// Claude subscriptions on the daemon's host — the Windows app cannot read the
+/// WSL home itself.
+fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
+    DaemonResponse::ok(
+        id,
+        protocol::ClaudeAccountsResult {
+            accounts: crate::session_scanner::claude_accounts::detect_claude_accounts_cached(),
+        },
+    )
 }
 
 fn handle_set_codex_compaction_mode(id: &str, params: &serde_json::Value) -> DaemonResponse {

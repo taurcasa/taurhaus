@@ -7,6 +7,7 @@
     getPlatform,
   } from './ipc.js'
   import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
+  import { claudeAccounts, refreshClaudeAccounts } from './claudeAccounts.svelte.js'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
@@ -127,7 +128,33 @@
   $effect(() => {
     loadSettings()
     loadIndexStatus()
+    void refreshClaudeAccounts()
   })
+
+  const detectedClaudeAccounts = $derived(claudeAccounts.accounts)
+  const defaultClaudeAccount = $derived(
+    detectedClaudeAccounts.find((account) => account.is_default) ?? null
+  )
+  const selectedClaudeAccountId = $derived(
+    settings?.terminal?.claude_default_account_id ?? defaultClaudeAccount?.id ?? ''
+  )
+
+  function setDefaultClaudeAccount(accountId) {
+    ensureCliCommands()
+    // The default account is the one taurhaus already uses when nothing is
+    // selected; storing it explicitly would only go stale if it ever moves.
+    settings.terminal.claude_default_account_id =
+      accountId && accountId !== defaultClaudeAccount?.id ? accountId : null
+    saveSettings()
+  }
+
+  function claudeAccountLabel(account) {
+    return String(account?.display_name ?? '').trim() || account?.email || account?.id || ''
+  }
+
+  function claudeAccountMeta(account) {
+    return [account?.organization, account?.seat_tier].filter(Boolean).join(' · ')
+  }
 
   async function loadSettings() {
     loading = true
@@ -653,6 +680,46 @@
             </div>
           {/each}
         </section>
+
+        <!-- ═══ CLAUDE ACCOUNTS ═══ -->
+        {#if detectedClaudeAccounts.length >= 2}
+          <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-claude-accounts">
+            <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Claude accounts</h2>
+            <p class="text-[13px] {textTertiary} mb-3">
+              Projects without their own choice launch on the default account. Team members always run
+              on {claudeAccountLabel(defaultClaudeAccount)}.
+            </p>
+            <div class="space-y-2">
+              {#each detectedClaudeAccounts as account (account.id)}
+                <label
+                  class="flex items-start gap-3 rounded-md border {t.keyline} px-3 py-2 {account.logged_in ? '' : 'opacity-50'}"
+                  data-testid="claude-account-row-{account.id}"
+                >
+                  <input
+                    type="radio"
+                    name="claude-default-account"
+                    class="mt-1 h-3.5 w-3.5 accent-brand-500 {fieldFocusRing}"
+                    value={account.id}
+                    checked={selectedClaudeAccountId === account.id}
+                    disabled={!account.logged_in}
+                    onchange={() => setDefaultClaudeAccount(account.id)}
+                    data-testid="claude-account-default-{account.id}"
+                  />
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-[13px] {t.textBody}">{claudeAccountLabel(account)}</span>
+                    <span class="block text-[12px] {t.textSecondary}">{account.email}</span>
+                    {#if claudeAccountMeta(account)}
+                      <span class="block text-[11px] {textTertiary}">{claudeAccountMeta(account)}</span>
+                    {/if}
+                  </span>
+                  {#if !account.logged_in}
+                    <span class="text-[11px] {textTertiary}">Not logged in</span>
+                  {/if}
+                </label>
+              {/each}
+            </div>
+          </section>
+        {/if}
 
         <!-- ═══ MESH ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-mesh">

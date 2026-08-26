@@ -67,6 +67,8 @@ vi.mock('./lib/ipc.js', () => ({
   openExternalUrl: vi.fn(),
   getPlatform: vi.fn(),
   listClaudeSessions: vi.fn(),
+  listClaudeAccounts: vi.fn(() => Promise.resolve([])),
+  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
   startDaemon: vi.fn(),
 }))
 

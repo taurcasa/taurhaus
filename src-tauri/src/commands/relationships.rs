@@ -136,6 +136,7 @@ mod tests {
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
+            claude_account_id: None,
         };
 
         let conn = db.0.lock().expect("db lock");

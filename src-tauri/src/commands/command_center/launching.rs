@@ -1,5 +1,11 @@
+use std::path::PathBuf;
+
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::claude_accounts::{
+    resolve_launch_account, AccountRequest, AccountResolution, AccountSource,
+};
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
 };
@@ -7,6 +13,7 @@ use serde_json::{Map, Value};
 
 use super::*;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn launch_cli_session_impl(
     db: &DbState,
     provider: &ProviderState,
@@ -15,6 +22,7 @@ pub(super) fn launch_cli_session_impl(
     project_id: String,
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
+    claude_account_id: Option<String>,
 ) -> Result<protocol::LaunchSessionResult, String> {
     let tool = cli_tool.unwrap_or(CliTool::Claude);
 
@@ -34,7 +42,7 @@ pub(super) fn launch_cli_session_impl(
         launch_fields,
     );
 
-    let project_path = resolve_project_path(db, &project_id)?;
+    let (project_path, project_account_id) = resolve_project_launch_target(db, &project_id)?;
 
     let linux_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path.clone());
 
@@ -101,6 +109,17 @@ pub(super) fn launch_cli_session_impl(
     }
 
     let terminal_settings = load_terminal_settings(db);
+    let account = (tool == CliTool::Claude).then(|| {
+        resolve_claude_account(
+            provider,
+            &project_id,
+            &linux_path,
+            mode,
+            claude_account_id.as_deref(),
+            project_account_id.as_deref(),
+            terminal_settings.claude_default_account_id.as_deref(),
+        )
+    });
     let rendered = LaunchSpec {
         tool,
         mode,
@@ -108,6 +127,9 @@ pub(super) fn launch_cli_session_impl(
         model: ModelSpec::default(),
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
+        claude_config_dir: account
+            .as_ref()
+            .and_then(|resolution| resolution.config_dir.as_deref()),
         team: None,
     }
     .render();
@@ -119,6 +141,14 @@ pub(super) fn launch_cli_session_impl(
     rendered_fields.insert(
         "command".to_string(),
         Value::String(redact_command_for_logging(&tool_cmd)),
+    );
+    rendered_fields.insert(
+        "claude_account".to_string(),
+        account
+            .as_ref()
+            .and_then(|resolution| resolution.account.as_ref())
+            .map(|account| Value::String(account.email.clone()))
+            .unwrap_or(Value::Null),
     );
     crate::commands::logging::emit_global(
         "info",
@@ -156,6 +186,10 @@ pub(super) fn launch_cli_session_impl(
             LaunchNote::EffortIgnored { found, .. } => {
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides or cannot use the requested reasoning effort"
+            }
+            LaunchNote::ConfigDirIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base selects its own Claude config dir"
             }
         };
         crate::commands::logging::emit_global(
@@ -384,6 +418,101 @@ pub(super) fn launch_cli_session_impl(
         tmux_window: window,
         tmux_pane: pane,
     })
+}
+
+/// Pick the Claude subscription this launch runs on, and say so in the log.
+#[allow(clippy::too_many_arguments)]
+fn resolve_claude_account(
+    provider: &ProviderState,
+    project_id: &str,
+    linux_path: &str,
+    mode: LaunchMode,
+    requested_account_id: Option<&str>,
+    project_account_id: Option<&str>,
+    default_account_id: Option<&str>,
+) -> AccountResolution {
+    // `--continue`/`--resume` only see the history of the config dir they run
+    // in, so a session already known for this project decides the account.
+    let session_transcript = matches!(mode, LaunchMode::Continue | LaunchMode::Resume)
+        .then(|| live_session_transcript(linux_path))
+        .flatten();
+
+    let accounts = crate::commands::claude_accounts::claude_accounts(provider);
+    let resolution = resolve_launch_account(
+        &accounts,
+        &PlatformPaths::claude_dir(),
+        AccountRequest {
+            requested_account_id,
+            session_transcript: session_transcript.as_deref(),
+            project_account_id,
+            default_account_id,
+        },
+    );
+
+    if let Some(wanted) = resolution.fallback_from.as_deref() {
+        let mut fields = Map::new();
+        fields.insert("project".to_string(), Value::String(project_id.to_string()));
+        fields.insert("wanted".to_string(), Value::String(wanted.to_string()));
+        fields.insert(
+            "used".to_string(),
+            resolution
+                .account
+                .as_ref()
+                .map(|account| Value::String(account.email.clone()))
+                .unwrap_or(Value::Null),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "command_center",
+            "launch.account.fallback",
+            Some("Selected Claude account is unavailable; using the default".to_string()),
+            fields,
+        );
+    }
+
+    if resolution.source == AccountSource::Session {
+        let mut fields = Map::new();
+        fields.insert("project".to_string(), Value::String(project_id.to_string()));
+        fields.insert(
+            "config_dir".to_string(),
+            resolution
+                .config_dir
+                .as_ref()
+                .map(|dir| Value::String(dir.display().to_string()))
+                .unwrap_or(Value::Null),
+        );
+        crate::commands::logging::emit_global(
+            "info",
+            "command_center",
+            "launch.account.derived_from_session",
+            Some("Resuming on the account that owns the session transcript".to_string()),
+            fields,
+        );
+    }
+
+    resolution
+}
+
+/// Transcript of the Claude session this project already has, if the last
+/// runtime snapshot saw one. That transcript names its own config dir.
+fn live_session_transcript(linux_path: &str) -> Option<PathBuf> {
+    let project_key = crate::provider::path::normalize_project_path(linux_path);
+    let snapshot = crate::session_snapshot_cache::load()?;
+    snapshot
+        .runtime_sessions
+        .into_iter()
+        .filter(|session| {
+            session.cli_tool == CliTool::Claude
+                && crate::provider::path::normalize_project_path(&session.project_path)
+                    == project_key
+        })
+        .filter_map(|session| session.jsonl_path)
+        .map(PathBuf::from)
+        .max_by_key(|path| {
+            std::fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+        })
 }
 
 pub(super) fn decode_daemon_launch_result(

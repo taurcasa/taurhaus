@@ -60,6 +60,7 @@ fn setup_db_with_project(project_id: &str, project_path: &str) -> (DbState, Name
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
+            claude_account_id: None,
         },
     )
     .expect("insert project");
@@ -956,6 +957,7 @@ fn launch_cli_session_uses_daemon_success_response() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect("daemon launch should succeed");
 
@@ -1001,6 +1003,7 @@ fn launch_cli_session_logs_daemon_request_context() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect("daemon launch should succeed");
 
@@ -1047,6 +1050,7 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect("daemon launch should succeed");
 
@@ -1084,6 +1088,199 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
     assert_eq!(rendered["command"], "claude --dangerously-skip-permissions");
 }
 
+/// Detection is faked here on purpose: no test may read the developer's real
+/// `~/.claude*`, and this exercises the launch path, not detection.
+fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount> {
+    vec![
+        crate::session_scanner::claude_accounts::ClaudeAccount {
+            id: "account-1".to_string(),
+            config_dir: crate::provider::platform_paths::PlatformPaths::claude_dir(),
+            email: "primary@example.com".to_string(),
+            display_name: Some("Primary".to_string()),
+            organization: None,
+            seat_tier: None,
+            logged_in: true,
+            is_default: true,
+        },
+        crate::session_scanner::claude_accounts::ClaudeAccount {
+            id: "account-2".to_string(),
+            config_dir: PathBuf::from("/home/user/.claude-account2"),
+            email: "second@example.com".to_string(),
+            display_name: Some("Second".to_string()),
+            organization: None,
+            seat_tier: None,
+            logged_in: true,
+            is_default: false,
+        },
+    ]
+}
+
+struct DetectionOverrideGuard;
+
+impl Drop for DetectionOverrideGuard {
+    fn drop(&mut self) {
+        crate::session_scanner::claude_accounts::set_detection_override(None);
+    }
+}
+
+fn with_fake_accounts() -> DetectionOverrideGuard {
+    crate::session_scanner::claude_accounts::set_detection_override(Some(fake_accounts()));
+    DetectionOverrideGuard
+}
+
+fn stub_launch_provider(daemon: &StubDaemon) -> ProviderState {
+    ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: Some(
+            crate::provider::daemon_client::DaemonProvider::connect(&daemon.addr)
+                .expect("connect daemon provider"),
+        ),
+        wsl_distro: None,
+    }
+}
+
+fn launch_stub_daemon() -> StubDaemon {
+    start_stub_daemon(serde_json::json!({
+        "result": {
+            "tmux_session": "taurhaus",
+            "tmux_window": "2",
+            "tmux_pane": "%7"
+        },
+        "error": null
+    }))
+}
+
+// Regression: 791f6be rendered every Claude launch without a config dir, so a
+// project pinned to a second subscription still ran on `~/.claude`.
+#[test]
+fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+            .expect("store account");
+    }
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' claude --dangerously-skip-permissions"
+    );
+
+    let events = read_log_events(log_file_path.path());
+    let rendered = events
+        .iter()
+        .find(|event| event["event"] == "launch.command.rendered")
+        .expect("rendered launch event");
+    assert_eq!(rendered["claude_account"], "second@example.com");
+}
+
+#[test]
+fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p1", Some("deleted-account"))
+            .expect("store account");
+    }
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "claude --dangerously-skip-permissions"
+    );
+
+    let events = read_log_events(log_file_path.path());
+    let fallback = events
+        .iter()
+        .find(|event| event["event"] == "launch.account.fallback")
+        .expect("fallback event");
+    assert_eq!(fallback["project"], "p1");
+    assert_eq!(fallback["wanted"], "deleted-account");
+    assert_eq!(fallback["used"], "primary@example.com");
+}
+
+#[test]
+fn a_codex_launch_never_receives_a_claude_config_dir() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _accounts = with_fake_accounts();
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+            .expect("store account");
+    }
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Codex),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(request.params["command_override"], "codex --yolo");
+}
+
 #[test]
 fn launch_cli_session_surfaces_daemon_error_message() {
     let daemon = start_stub_daemon(serde_json::json!({
@@ -1112,6 +1309,7 @@ fn launch_cli_session_surfaces_daemon_error_message() {
         "p1".to_string(),
         LaunchMode::Fresh,
         Some(CliTool::Claude),
+        None,
     )
     .expect_err("daemon launch should return error");
 
@@ -1188,6 +1386,7 @@ fn launch_codex_resume_returns_project_not_found_for_invalid_project_id() {
         "missing-project".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect_err("missing project should fail");
 
@@ -1216,6 +1415,7 @@ fn launch_codex_resume_surfaces_fallback_error_when_daemon_is_unreachable() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect_err("daemon-unreachable fallback should still fail with useful error");
 
@@ -1277,6 +1477,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect("delegated resume should succeed");
 
@@ -1408,6 +1609,7 @@ fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect("ambiguous match should use raw launch");
 
@@ -1455,6 +1657,7 @@ fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
         "p1".to_string(),
         LaunchMode::Resume,
         Some(CliTool::Codex),
+        None,
     )
     .expect("non-team resume should use raw launch");
 

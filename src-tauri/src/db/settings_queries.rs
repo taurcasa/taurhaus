@@ -50,6 +50,7 @@ const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 const KEY_CLI_COMMANDS: &str = "terminal.cli_commands";
 const KEY_TERMINAL_HARNESS: &str = "terminal.harness";
+const KEY_CLAUDE_DEFAULT_ACCOUNT: &str = "terminal.claude_default_account_id";
 const KEY_DARK_MODE: &str = "dark_mode";
 const KEY_PROJECT_DIALOG_LAST_PATH: &str = "project_dialog.last_path";
 
@@ -132,6 +133,10 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         None => defaults.terminal.harness.clone(),
     };
 
+    let claude_default_account_id = get_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
     let dark_mode = get_setting(conn, KEY_DARK_MODE)?
         .and_then(|v| v.parse().ok())
         .unwrap_or(defaults.dark_mode);
@@ -162,6 +167,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             tmux_layout: terminal_tmux_layout,
             cli_commands,
             harness,
+            claude_default_account_id,
         },
         dark_mode,
         project_dialog_last_path,
@@ -226,6 +232,13 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<(), rusql
         serde_json::to_string(&settings.terminal.harness).unwrap_or_else(|_| "{}".to_string());
     set_setting(conn, KEY_TERMINAL_HARNESS, &harness_json)?;
 
+    match settings.terminal.claude_default_account_id.as_deref() {
+        Some(account_id) => set_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT, account_id)?,
+        None => {
+            delete_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?;
+        }
+    }
+
     set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
     set_setting(
         conn,
@@ -249,6 +262,35 @@ mod tests {
         let tmp = NamedTempFile::new().unwrap();
         let conn = init_db(tmp.path()).unwrap();
         (conn, tmp)
+    }
+
+    #[test]
+    fn claude_default_account_round_trips_and_clears() {
+        let (conn, _tmp) = test_db();
+        let defaults = get_all_settings(&conn).unwrap();
+        assert_eq!(defaults.terminal.claude_default_account_id, None);
+
+        let mut settings = defaults;
+        settings.terminal.claude_default_account_id = Some("account-2".to_string());
+        save_settings(&conn, &settings).unwrap();
+        assert_eq!(
+            get_all_settings(&conn)
+                .unwrap()
+                .terminal
+                .claude_default_account_id
+                .as_deref(),
+            Some("account-2")
+        );
+
+        settings.terminal.claude_default_account_id = None;
+        save_settings(&conn, &settings).unwrap();
+        assert_eq!(
+            get_all_settings(&conn)
+                .unwrap()
+                .terminal
+                .claude_default_account_id,
+            None
+        );
     }
 
     #[test]

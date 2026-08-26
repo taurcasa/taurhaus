@@ -7,6 +7,13 @@
   import ShellMainPanel from './lib/components/shell/ShellMainPanel.svelte'
   import ShellTitlebar from './lib/components/shell/ShellTitlebar.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
+  import ClaudeAccountChooser from './lib/components/ClaudeAccountChooser.svelte'
+  import {
+    claudeAccounts,
+    refreshClaudeAccounts,
+    requestClaudeLaunch,
+    resolveChooserAccounts,
+  } from './lib/claudeAccounts.svelte.js'
   import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import Sidebar from './lib/Sidebar.svelte'
@@ -303,6 +310,10 @@
   })
 
   $effect(() => {
+    void refreshClaudeAccounts()
+  })
+
+  $effect(() => {
     void sessionController.loadForegroundProject()
   })
 
@@ -436,9 +447,16 @@
 
   function handleOverviewLaunchSession(tool) {
     if (!selectedProject) return
-    launchClaudeSession(selectedProject.id, 'fresh', tool)
-      .then(r => console.log('[overview] launch OK:', r))
-      .catch(e => console.error('[overview] launch FAILED:', e))
+    requestClaudeLaunch({
+      project: selectedProject,
+      mode: 'fresh',
+      tool,
+      launch: (projectId, mode, launchTool, accountId) =>
+        launchClaudeSession(projectId, mode, launchTool, accountId).then((r) =>
+          console.log('[overview] launch OK:', r)
+        ),
+      onError: (error) => console.error('[overview] launch FAILED:', error),
+    })
   }
 
   function handleOverviewOpenTerminal() {
@@ -592,6 +610,21 @@
   </div>
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={(action) => navigationController.handleSearchNavigate(action)} />
+
+  {#if claudeAccounts.pending}
+    <div
+      class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-24"
+      data-testid="claude-account-chooser-overlay"
+    >
+      <ClaudeAccountChooser
+        accounts={resolveChooserAccounts()}
+        projectName={claudeAccounts.pending.projectName}
+        {dark}
+        onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
+        onCancel={() => claudeAccounts.pending?.cancel()}
+      />
+    </div>
+  {/if}
 
   {#if showAddProject}
     <AddProjectModal

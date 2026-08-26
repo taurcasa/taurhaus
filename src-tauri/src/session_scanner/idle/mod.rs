@@ -26,6 +26,7 @@ mod codex;
 mod gemini;
 
 pub use claude::ClaudeResolver;
+pub use claude_registry::config_dir_for_transcript;
 pub use codex::CodexResolver;
 pub use gemini::GeminiResolver;
 

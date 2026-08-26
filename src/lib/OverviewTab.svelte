@@ -4,6 +4,9 @@
   import { getSessionContext } from './context/SessionContext.js'
   import { themeTokens } from './themeTokens.js'
   import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import ClaudeAccountChip from './components/ClaudeAccountChip.svelte'
+  import { claudeAccounts, refreshClaudeAccounts } from './claudeAccounts.svelte.js'
+  import { setProjectClaudeAccount } from './ipc.js'
 
   let {
     dark = false,
@@ -30,6 +33,30 @@
   const relationshipsLoading = $derived.by(() => Boolean(data?.relationshipsLoading))
 
   const t = $derived(themeTokens(dark))
+
+  // Which subscription this project runs on. Hidden with a single account.
+  // The override is keyed by project so selecting another project drops it
+  // without an effect that writes state.
+  let claudeAccountOverride = $state(null)
+  const projectClaudeAccountId = $derived(
+    claudeAccountOverride && claudeAccountOverride.projectId === selectedProject?.id
+      ? claudeAccountOverride.accountId
+      : (selectedProject?.claudeAccountId ?? selectedProject?.claude_account_id ?? null)
+  )
+
+  function handleClaudeAccountSelect(accountId) {
+    const projectId = selectedProject?.id
+    if (!projectId) return
+    claudeAccountOverride = { projectId, accountId }
+    setProjectClaudeAccount(projectId, accountId).catch((error) => {
+      console.error('Failed to set the project Claude account:', error)
+      claudeAccountOverride = null
+    })
+  }
+
+  $effect(() => {
+    void refreshClaudeAccounts()
+  })
 
   const statusColor    = $derived(dark ? 'text-success-400' : 'text-success-600')
   const dangerColor    = $derived(dark ? 'text-danger-400/70 hover:text-danger-400' : 'text-danger-600/60 hover:text-danger-600')
@@ -143,6 +170,12 @@
     {#if selectedProject.activityState}
       <span class="text-[11px] {statusColor} font-medium capitalize self-baseline">{selectedProject.activityState}</span>
     {/if}
+    <ClaudeAccountChip
+      accounts={claudeAccounts.accounts}
+      selectedAccountId={projectClaudeAccountId}
+      {dark}
+      onSelect={handleClaudeAccountSelect}
+    />
     <!-- Quick actions — compact icon buttons -->
     <div class="ml-auto flex items-center gap-1 shrink-0" data-testid="quick-actions">
       {#each TOOLS as tool}

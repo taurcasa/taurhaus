@@ -8,6 +8,7 @@
   import { hasLiveSession, rowTintForSessions, toolIndicators } from './sessionIndicator.js'
   import { buildSidebarProjection } from './sidebar.js'
   import { describeSessionActionError } from './errorCopy.js'
+  import { requestClaudeLaunch } from './claudeAccounts.svelte.js'
   import SidebarProjectList from './SidebarProjectList.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import HoverCard from './HoverCard.svelte'
@@ -288,13 +289,23 @@
 
   function ctxLaunchTool(mode, tool = 'claude') {
     if (!ctxMenu?.project) return
-    console.log(`[cmd-center] ${mode} ${tool} session:`, ctxMenu.project.id, ctxMenu.project.name)
-    launchClaudeSession(ctxMenu.project.id, mode, tool)
-      .then(r => console.log('[cmd-center] launch OK:', r))
-      .catch((error) => {
+    const project = ctxMenu.project
+    console.log(`[cmd-center] ${mode} ${tool} session:`, project.id, project.name)
+    // Claude launches may first ask which subscription to run on; the store
+    // opens the chooser and takes over from there.
+    requestClaudeLaunch({
+      project,
+      mode,
+      tool,
+      launch: (projectId, launchMode, launchTool, accountId) =>
+        launchClaudeSession(projectId, launchMode, launchTool, accountId).then((r) =>
+          console.log('[cmd-center] launch OK:', r)
+        ),
+      onError: (error) => {
         console.error('[cmd-center] launch FAILED:', error)
         showSidebarNotice(describeSessionActionError('launch', { tool }, error))
-      })
+      },
+    })
   }
 
   function hasNavigableTmuxTarget(session) {

@@ -18,6 +18,7 @@
     resolveRoleTool,
   } from '../meshDefaults.js'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
+  import { claudeAccounts } from '../claudeAccounts.svelte.js'
   import { EMPTY_MODEL_CATALOG, resolveMemberModel, roleDeclaredEffort } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
@@ -68,6 +69,15 @@
   } = $props()
 
   const t = $derived(themeTokens(dark))
+  // Agent inboxes live under the single `PlatformPaths::teams_dir()`, so a team
+  // always runs on the default config dir even when a project picked another
+  // subscription. Per-team accounts need a per-team teams dir first.
+  const claudeTeamAccountNote = $derived.by(() => {
+    if (claudeAccounts.accounts.length < 2) return ''
+    const fallback = claudeAccounts.accounts.find((account) => account.is_default)
+    if (!fallback) return ''
+    return `Team members run on ${fallback.email} (per-team account selection is a follow-up).`
+  })
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
@@ -2179,6 +2189,12 @@
                 ? 'Pick roles from the left to build your lineup.'
                 : `${agents.length} agent${agents.length === 1 ? '' : 's'} supporting the lead.`}
             </p>
+
+            {#if claudeTeamAccountNote}
+              <p class="text-[11px] {t.textMuted}" data-testid="mesh-builder-claude-account-note">
+                {claudeTeamAccountNote}
+              </p>
+            {/if}
           </div>
         </div>
 

@@ -50,6 +50,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "archived_task_session_summaries",
         include_str!("migrations/011_archived_task_session_summaries.sql"),
     ),
+    (
+        12,
+        "project_claude_account",
+        include_str!("migrations/012_project_claude_account.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations

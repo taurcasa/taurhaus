@@ -67,12 +67,21 @@ export function listCliSessionSnapshot() {
   }))
 }
 
-export function launchClaudeSession(projectId, mode, cliTool) {
-  return invokeOrMock('launch_cli_session', { projectId, mode, cliTool: cliTool ?? null }, () => ({
-    tmux_session: 'taurhaus',
-    tmux_window: 'project',
-    tmux_pane: '%99',
-  }))
+export function launchClaudeSession(projectId, mode, cliTool, claudeAccountId = null) {
+  return invokeOrMock(
+    'launch_cli_session',
+    {
+      projectId,
+      mode,
+      cliTool: cliTool ?? null,
+      claudeAccountId: claudeAccountId ?? null,
+    },
+    () => ({
+      tmux_session: 'taurhaus',
+      tmux_window: 'project',
+      tmux_pane: '%99',
+    })
+  )
 }
 
 export function stopClaudeSession(tmuxPane, cliTool) {

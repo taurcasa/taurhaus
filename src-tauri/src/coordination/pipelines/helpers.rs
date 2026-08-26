@@ -485,6 +485,10 @@ fn render_team_launch_command(
         } else {
             None
         },
+        // Team members stay on the default config dir: agent inboxes live under
+        // `PlatformPaths::teams_dir()`, which is that one root. Moving a member
+        // to another subscription needs a per-team teams dir first.
+        claude_config_dir: None,
         team: (cli_tool == CliTool::Claude).then_some(TeamContext {
             team_name,
             agent_name,
@@ -552,6 +556,10 @@ fn render_team_launch_command(
             LaunchNote::EffortIgnored { found, .. } => {
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides or cannot use the role reasoning effort"
+            }
+            LaunchNote::ConfigDirIgnored { found } => {
+                fields.insert("found".to_string(), Value::String(found));
+                "Configured launch base selects its own Claude config dir"
             }
         };
         emit_global(

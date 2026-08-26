@@ -17,6 +17,9 @@ vi.mock('./ipc.js', () => ({
   getIndexStatus: vi.fn(),
   rebuildIndex: vi.fn(),
   getPlatform: vi.fn(),
+  listClaudeAccounts: vi.fn(() => Promise.resolve([])),
+  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
+  launchClaudeSession: vi.fn(() => Promise.resolve()),
 }))
 
 const { getSettings, updateSettings, getIndexStatus, rebuildIndex, getPlatform } = await import('./ipc.js')

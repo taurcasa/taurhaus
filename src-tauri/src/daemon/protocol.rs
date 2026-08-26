@@ -99,6 +99,9 @@ pub mod method {
     pub const UNWATCH: &str = "unwatch";
     pub const SHUTDOWN: &str = "shutdown";
     pub const SET_CODEX_COMPACTION_MODE: &str = "set_codex_compaction_mode";
+    /// Additive since protocol v10 (no version bump): a daemon that predates it
+    /// answers `UNKNOWN_METHOD`, which the app reads as "no accounts detected".
+    pub const LIST_CLAUDE_ACCOUNTS: &str = "list_claude_accounts";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -130,6 +133,16 @@ pub mod event {
 // ---------------------------------------------------------------------------
 // Method-specific param/result types
 // ---------------------------------------------------------------------------
+
+/// `list_claude_accounts` — Claude subscriptions the daemon's host can see.
+///
+/// Additive method: the app asks the daemon because on Windows the config dirs
+/// live inside WSL. An older daemon returns `UNKNOWN_METHOD` and the app then
+/// behaves as if a single default account existed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ClaudeAccountsResult {
+    pub accounts: Vec<crate::session_scanner::claude_accounts::ClaudeAccount>,
+}
 
 /// `ping` — health check
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
