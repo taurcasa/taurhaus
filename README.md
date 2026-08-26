@@ -22,6 +22,7 @@ taurhaus is built for exactly that situation:
 - **Get back up to speed** — README previews, recent commits, task history, session handoffs, and full-text search across everything.
 - **Run Mesh teams** — set up multi-agent teams, watch them work, add or remove members on the fly, and recover when things go sideways.
 - **Tune discovery and launch behavior** — configure which directories to scan, what to ignore, and how terminals launch — your settings actually control how the app behaves, not just what it displays.
+- **Pick the model and the account** — choose a model and reasoning effort per role or member from a catalog-driven picker, and pin a Claude subscription per project when a host has more than one signed in.
 
 ## Core workflows
 
@@ -69,7 +70,7 @@ What you can do:
 
 ### Compose and launch
 
-The setup flow lets you define a lead plus agents across different tools and projects, instead of manually wiring up tmux panes and hoping everything stays in sync.
+The setup flow lets you define a lead plus agents across different tools and projects, instead of manually wiring up tmux panes and hoping everything stays in sync. Each role or member gets its own model and reasoning effort, picked from a catalog that only offers the efforts that model actually supports.
 
 ![Mesh setup composition](docs/screenshots/readme-mesh-setup-composition.png)
 
@@ -181,6 +182,8 @@ The first-run wizard walks through:
 5. transition into the main app
 
 Your scan and ignore settings from the Settings panel apply to the wizard too — the same directories and exclusions are used everywhere.
+
+If more than one Claude subscription is signed in on the host, taurhaus asks once which account to use by default. Each project can then pin its own account, shown as a chip on the project overview.
 
 ### Quick start
 

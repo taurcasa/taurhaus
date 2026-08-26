@@ -63,7 +63,7 @@ Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `
 Use fast verification during implementation:
 
 ```bash
-just check-quick  # Fast gate: cargo check --tests + typecheck + frontend unit tests
+just check-quick  # Fast gate: cargo fmt + cargo check --tests + typecheck + frontend unit tests
 ```
 
 Core release-lane recipes (from `justfile`):
@@ -72,7 +72,7 @@ Core release-lane recipes (from `justfile`):
 |--------|---------|
 | `just test` | Full non-E2E test lane (Rust + frontend) |
 | `just test-fast` | Fast iteration lane (`cargo check --tests` + frontend tests) |
-| `just check-quick` | Per-task fast gate (`cargo check --tests`, `typecheck`, frontend tests) |
+| `just check-quick` | Per-task fast gate (`cargo fmt`, `cargo check --tests`, `typecheck`, frontend tests) |
 | `just check` | Full quality gate (`fmt`, `lint`, `typecheck`, `test`) for team-lead serialized runs or pre-release/PR validation |
 | `just metrics` | Quality KPI report (tests, coverage, build health, code size, E2E inventory) |
 | `just test-visual` | Browser-mode visual screenshot lane for mocked component states |
@@ -185,7 +185,8 @@ If the mesh repository has no configured remote, stop after the local commit; do
 src/                    # Svelte frontend
   lib/                  # Shared components and utilities
     components/         # Reusable UI components (mesh, templates, shell panels)
-    shell/              # Shell-level controllers (shortcuts, events, window, tmux)
+    shell/              # Shell-level controllers (daemon status, events, navigation, project
+                        #   selection, session lifecycle, shortcuts, state bridge, theme, window)
     ipc/                # IPC domain modules (client, projects, sessions, templates, etc.)
   Shell.svelte          # Main app layout
   App.svelte            # Entry point with splash screen
@@ -194,7 +195,9 @@ src-tauri/              # Rust backend
   src/
     commands/           # Tauri IPC command handlers
     coordination/       # Multi-agent team orchestration (mesh CLI, pipelines)
-    daemon/             # WSL daemon (launcher, protocol, server)
+    daemon/             # Companion daemon: WSL on Windows, native on macOS/Linux
+                        #   (launcher, protocol, server, session-activity hub, compaction,
+                        #   codex-notify, auth, watch)
     session_scanner/    # Multi-CLI session detection
     services/           # Shared backend services (task queries, task sync)
     db/                 # SQLite queries and migrations
