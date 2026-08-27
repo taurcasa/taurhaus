@@ -33,10 +33,14 @@
 //!   sends `rate_limits` gets that removal, rather than keeping a bridge
 //!   nothing can feed;
 //! * nothing is restored, removed or deleted on a guess: the row is taurhaus's
-//!   only while it names this config dir's own script by path — a user's script
-//!   that merely shares that basename is a status line like any other — and a
-//!   row that *is* ours whose record cannot be read stops the removal where it
-//!   stands, because the command it wraps is written down nowhere else.
+//!   only while it says exactly what an install wrote — a command that merely
+//!   contains this config dir's script path is a status line like any other —
+//!   and a row that *is* ours whose record cannot be read stops the removal
+//!   where it stands, because the command it wraps is written down nowhere
+//!   else;
+//! * neither generated file is published wider than the settings the wrapped
+//!   command came out of: the script is 0700 and the record 0600, because both
+//!   carry that command verbatim.
 //!
 //! Installation is idempotent and mirrors the compaction hook installer: a
 //! generated script under `<config dir>/hooks`, a record naming the executable
@@ -94,6 +98,10 @@ struct StatuslineRecord {
     executable: String,
     /// Where the script this record describes appends its records.
     sink: String,
+    /// The exact `statusLine` command this install wrote. A row is taurhaus's
+    /// when it says this and nothing else — see `is_taurhaus_status_line`.
+    /// Absent only in a record written before this build.
+    command: Option<String>,
     /// The `statusLine` value that was configured before taurhaus wrapped it.
     wrapped: Option<Value>,
 }
@@ -103,6 +111,7 @@ impl StatuslineRecord {
         json!({
             "executable": self.executable,
             "sink": self.sink,
+            "command": self.command.clone().map(Value::String).unwrap_or(Value::Null),
             "wrapped": self.wrapped.clone().unwrap_or(Value::Null),
         })
     }
@@ -111,6 +120,10 @@ impl StatuslineRecord {
         Some(Self {
             executable: value.get("executable")?.as_str()?.to_string(),
             sink: value.get("sink")?.as_str()?.to_string(),
+            command: value
+                .get("command")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             wrapped: value
                 .get("wrapped")
                 .filter(|wrapped| !wrapped.is_null())
@@ -196,26 +209,28 @@ fn install_statusline_at(
     // record takes long enough for a person — or Claude Code — to configure a
     // status line in between, and that command has to be wrapped like any
     // other, not overwritten by a decision that predates it.
+    let command = status_line_command(&script_command);
     for _ in 0..COMMIT_ATTEMPTS {
         let existing = load_settings(&settings_path)?.remove(STATUS_LINE_KEY);
         // Re-running against our own install must not wrap our own script: the
         // command the user actually configured is the one the record remembers.
-        let wrapped = if is_taurhaus_status_line(existing.as_ref(), &script_command) {
-            let Some(record) = read_record(&hooks_dir) else {
-                // The row is already ours, so that record is the only place the
-                // command it wraps is written down. Rebuilding the bridge from
-                // a record we cannot read would publish a renderer over a
-                // command nobody can name any more; leaving the install exactly
-                // as it stands costs at most a refreshed script.
-                return Ok(StatuslineInstall {
-                    skipped: Some("unreadable_record"),
-                    ..StatuslineInstall::default()
-                });
+        let wrapped =
+            if is_taurhaus_status_line(existing.as_ref(), &owned_command(&hooks_dir, &command)) {
+                let Some(record) = read_record(&hooks_dir) else {
+                    // The row is already ours, so that record is the only place the
+                    // command it wraps is written down. Rebuilding the bridge from
+                    // a record we cannot read would publish a renderer over a
+                    // command nobody can name any more; leaving the install exactly
+                    // as it stands costs at most a refreshed script.
+                    return Ok(StatuslineInstall {
+                        skipped: Some("unreadable_record"),
+                        ..StatuslineInstall::default()
+                    });
+                };
+                record.wrapped
+            } else {
+                existing.clone().filter(|value| !value.is_null())
             };
-            record.wrapped
-        } else {
-            existing.clone().filter(|value| !value.is_null())
-        };
 
         let script = render_script(
             &executable,
@@ -223,19 +238,25 @@ fn install_statusline_at(
             &sink_argument,
             wrapped_command(wrapped.as_ref()),
         );
-        let script_changed = publish_if_changed(&script_path, script.as_bytes(), true)?;
+        // 0700, not 0755: the wrapped command is written into this script
+        // verbatim, and it came out of a `settings.json` that is the user's to
+        // keep private. Nobody but its owner runs a status line anyway.
+        let script_changed = publish_if_changed(&script_path, script.as_bytes(), 0o700)?;
 
         let record = StatuslineRecord {
             executable: executable.clone(),
             sink: sink_argument.clone(),
+            command: Some(command.clone()),
             wrapped: wrapped.clone(),
         };
+        // And 0600 here for the same reason: the record holds that command
+        // whole, which is the point of it.
         let record_changed = publish_if_changed(
             &hooks_dir.join(RECORD_FILENAME),
             serde_json::to_vec_pretty(&record.to_value())
                 .map_err(|error| format!("failed to serialize the status line record: {error}"))?
                 .as_slice(),
-            false,
+            0o600,
         )?;
 
         // Only `type` and `command` are taurhaus's. Everything else on the row
@@ -248,10 +269,7 @@ fn install_statusline_at(
             _ => Map::new(),
         };
         desired.insert("type".to_string(), Value::String("command".to_string()));
-        desired.insert(
-            "command".to_string(),
-            Value::String(format!("bash {}", shell_quote(&script_command))),
-        );
+        desired.insert("command".to_string(), Value::String(command.clone()));
 
         before_commit();
         match commit_status_line(
@@ -306,10 +324,13 @@ fn remove_statusline_with(config_dir: &Path, before_commit: &dyn Fn()) -> Result
     // only record of what it wrapped removed beside it. So: read again, and
     // hand the command back to the row as it now stands.
     let mut released = false;
-    let script_reference = script_reference(&hooks_dir);
+    let ours = owned_command(
+        &hooks_dir,
+        &status_line_command(&script_reference(&hooks_dir)),
+    );
     for _ in 0..COMMIT_ATTEMPTS {
         let current = load_settings(&settings_path)?.get(STATUS_LINE_KEY).cloned();
-        if !is_taurhaus_status_line(current.as_ref(), &script_reference) {
+        if !is_taurhaus_status_line(current.as_ref(), &ours) {
             // A `statusLine` that does not name our script is somebody else's,
             // and giving them a command they replaced would be the same
             // overwrite this bridge exists to avoid. Nothing points at the
@@ -384,11 +405,12 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
     if fs::read_to_string(&script_path).ok().as_deref() != Some(expected.as_str()) {
         return false;
     }
+    let ours = record
+        .command
+        .unwrap_or_else(|| status_line_command(&script_reference(&hooks_dir)));
     load_settings(&config_dir.join(SETTINGS_FILENAME))
         .ok()
-        .is_some_and(|settings| {
-            is_taurhaus_status_line(settings.get(STATUS_LINE_KEY), &script_reference(&hooks_dir))
-        })
+        .is_some_and(|settings| is_taurhaus_status_line(settings.get(STATUS_LINE_KEY), &ours))
 }
 
 /// Install the bridge in every detected account, when the CLI can feed it.
@@ -697,15 +719,23 @@ fn push_lines(script: &mut String, lines: impl IntoIterator<Item = String>) {
     }
 }
 
-/// Whether this `statusLine` runs the script in *this* config dir's hooks.
+/// Whether this `statusLine` is the one taurhaus wrote.
 ///
-/// The whole path, not the basename: a user's own `taurhaus-statusline-mine.sh`
-/// shares that name, and both the ownership this asks about and the deletion it
-/// gates are questions about one exact file. Containment rather than equality,
-/// because the row stays ours through an edit to how it is invoked — `bash` for
-/// `/bin/bash`, an added flag — and a script the row still names in any form is
-/// one removal may not delete underneath it.
-fn is_taurhaus_status_line(value: Option<&Value>, script_path: &str) -> bool {
+/// The exact command, not a path found somewhere inside it. Containment answers
+/// a different question than the one being asked: `…/taurhaus-statusline.sh.backup`
+/// contains this config dir's script path without being this config dir's script,
+/// and would be claimed — then replaced — as taurhaus's own row. It gets the
+/// opposite wrong too, because the command written here shell-quotes that path
+/// and `shell_quote` breaks an apostrophe out of the quotes: under a home like
+/// `/home/o'connor` the row taurhaus had just written contains no such substring
+/// at all, and the next install wraps the script around itself.
+///
+/// So: the row is taurhaus's only while it says exactly what an install wrote —
+/// the command the record remembers, or, with no record to ask, the one this
+/// build would write for this config dir. A row edited by hand is the user's
+/// again, which is the safe way round: it is wrapped rather than overwritten,
+/// and the script under it is left where it stands rather than deleted.
+fn is_taurhaus_status_line(value: Option<&Value>, ours: &str) -> bool {
     let Some(value) = value else {
         return false;
     };
@@ -714,7 +744,23 @@ fn is_taurhaus_status_line(value: Option<&Value>, script_path: &str) -> bool {
         Value::Object(_) => value.get("command").and_then(Value::as_str).unwrap_or(""),
         _ => "",
     };
-    command.contains(script_path)
+    command == ours
+}
+
+/// The `statusLine` command a row of taurhaus's says, as this install wrote it.
+///
+/// The record's, so that a row stays recognisable across a change to how the
+/// installer renders this; this build's otherwise, so that a row whose record
+/// went missing is still taurhaus's rather than something to wrap again.
+fn owned_command(hooks_dir: &Path, generated: &str) -> String {
+    read_record(hooks_dir)
+        .and_then(|record| record.command)
+        .unwrap_or_else(|| generated.to_string())
+}
+
+/// How `settings.json` invokes the generated script.
+fn status_line_command(script_command: &str) -> String {
+    format!("bash {}", shell_quote(script_command))
 }
 
 /// The script's path as a `statusLine` in this config dir would name it.
@@ -855,7 +901,13 @@ fn write_settings(settings_path: &Path, settings: &Map<String, Value>) -> Result
 /// wraps, and a half-written one reads as "there was nothing to wrap". So both
 /// are filled beside their final name and renamed over it, which no reader can
 /// land inside of.
-fn publish_if_changed(path: &Path, payload: &[u8], executable: bool) -> Result<bool, String> {
+///
+/// `mode` is set before that rename, for two reasons: whatever appears under
+/// `path` has to be runnable the instant it appears there, and both files carry
+/// the command that was configured before the wrap — copied out of a
+/// `settings.json` that may well be 0600, and may well hold a token. A rename
+/// makes a *new* file, so a mode left to the umask is one taurhaus chose.
+fn publish_if_changed(path: &Path, payload: &[u8], mode: u32) -> Result<bool, String> {
     if fs::read(path).is_ok_and(|current| current == payload) {
         return Ok(false);
     }
@@ -872,20 +924,18 @@ fn publish_if_changed(path: &Path, payload: &[u8], executable: bool) -> Result<b
     fs::write(&temp_path, payload)
         .map_err(|error| format!("failed to write '{}': {error}", temp_path.display()))?;
     #[cfg(not(target_os = "windows"))]
-    if executable {
-        // Before the rename, so that whatever appears under `path` is runnable
-        // the instant it appears there.
+    {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(error) = fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o755)) {
+        if let Err(error) = fs::set_permissions(&temp_path, fs::Permissions::from_mode(mode)) {
             let _ = fs::remove_file(&temp_path);
             return Err(format!(
-                "failed to make '{}' executable: {error}",
+                "failed to set the mode of '{}': {error}",
                 temp_path.display()
             ));
         }
     }
     #[cfg(target_os = "windows")]
-    let _ = executable;
+    let _ = mode;
     if let Err(error) = fs::rename(&temp_path, path) {
         let _ = fs::remove_file(&temp_path);
         return Err(format!("failed to replace '{}': {error}", path.display()));
@@ -1568,8 +1618,8 @@ mod tests {
                 .expect("stat")
                 .permissions()
                 .mode()
-                & 0o111,
-            0o111
+                & 0o700,
+            0o700
         );
         assert!(script_of(&config_dir).contains(&new_exe.display().to_string()));
     }
@@ -1686,6 +1736,150 @@ mod tests {
         assert!(script_of(&config_dir).contains("/home/user/bin/taurhaus-statusline-mine.sh"));
         assert!(remove_statusline_at(&config_dir).expect("remove"));
         assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], theirs);
+    }
+
+    #[test]
+    fn a_config_dir_whose_path_holds_an_apostrophe_never_wraps_its_own_script() {
+        // Regression: 0ab7e1f decided whose row this is with
+        // `command.contains(script_path)`, while the command it writes
+        // shell-quotes that same path — and `shell_quote` breaks an embedded
+        // apostrophe out of the quotes as `'"'"'`. For a home like
+        // `/home/o'connor`, the row taurhaus had just written no longer
+        // contained the raw path, so the next install read its own row as the
+        // user's own status line and wrapped the script around an invocation of
+        // itself: a sink per install, forever.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join("o'connor").join(".claude");
+        let exe = temp.path().join("taurhaus-daemon");
+
+        let first =
+            ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+        let second = ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp))
+            .expect("second install");
+
+        assert!(first.changed && !first.wrapped);
+        assert_eq!(
+            second,
+            StatuslineInstall {
+                changed: false,
+                wrapped: false,
+                skipped: None,
+            },
+            "the bridge did not recognise the row it had just written"
+        );
+        let script = script_of(&config_dir);
+        assert_eq!(script.matches(USAGE_SINK_SUBCOMMAND).count(), 1);
+        assert!(
+            !script.contains(&script_filename()),
+            "the bridge wrapped itself: {script}"
+        );
+        assert!(statusline_is_installed_at(&config_dir));
+        // And the row it holds is still one removal recognises as its own.
+        assert!(remove_statusline_at(&config_dir).expect("remove"));
+        assert!(!settings_of(&config_dir).contains_key(STATUS_LINE_KEY));
+    }
+
+    #[test]
+    fn a_command_that_merely_extends_our_script_path_is_wrapped_rather_than_claimed() {
+        // Regression: 0ab7e1f claimed any command *containing* this config dir's
+        // script path, so a command of the user's own that merely starts with it
+        // — `…/taurhaus-statusline.sh.backup`, the copy they kept — read as
+        // taurhaus's own row. With a record from an earlier install still beside
+        // it, the install then replaced that command with its own and remembered
+        // the record's older `wrapped` value instead: the status line the user
+        // had actually configured was gone, with nothing left naming it.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({ "statusLine": { "type": "command", "command": "old-line.sh" } }),
+        );
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        let backup = format!(
+            "{}.backup",
+            config_dir
+                .join(HOOKS_DIRNAME)
+                .join(script_filename())
+                .display()
+        );
+        let theirs = json!({ "type": "command", "command": backup.clone() });
+        write_settings_json(&config_dir, json!({ "statusLine": theirs.clone() }));
+
+        let install =
+            ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("reinstall");
+
+        assert!(install.changed && install.wrapped);
+        assert!(
+            script_of(&config_dir).contains(&format!("{{\n{backup}\n}}\n")),
+            "the command the user configured was not wrapped: {}",
+            script_of(&config_dir)
+        );
+        assert_eq!(
+            read_record(&config_dir.join(HOOKS_DIRNAME))
+                .expect("record")
+                .wrapped,
+            Some(theirs.clone())
+        );
+        assert!(remove_statusline_at(&config_dir).expect("remove"));
+        assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], theirs);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_command_taurhaus_wraps_is_never_published_wider_than_the_settings_it_came_from() {
+        // Regression: 0ab7e1f published the generated script 0755 and the record
+        // with nothing but the process umask. Both carry the command that was
+        // configured before the wrap — verbatim in the script, whole in the
+        // record — so a `statusLine` the user kept inside a 0600 `settings.json`,
+        // any inline token with it, came back readable by every other account on
+        // the machine the moment taurhaus wrapped it.
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({
+                "statusLine": {
+                    "type": "command",
+                    "command": "render-line --token s3cr3t-not-for-everyone"
+                }
+            }),
+        );
+        let settings_path = config_dir.join(SETTINGS_FILENAME);
+        fs::set_permissions(&settings_path, fs::Permissions::from_mode(0o600)).expect("chmod");
+
+        ensure_statusline_installed_at(&config_dir, &temp.path().join("exe"), &sink_for(&temp))
+            .expect("install");
+
+        let script_path = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        let record_path = config_dir.join(HOOKS_DIRNAME).join(RECORD_FILENAME);
+        for path in [&script_path, &record_path] {
+            assert!(
+                fs::read_to_string(path)
+                    .expect("published")
+                    .contains("s3cr3t-not-for-everyone"),
+                "'{}' does not carry the wrapped command at all",
+                path.display()
+            );
+            assert_eq!(
+                fs::metadata(path).expect("stat").permissions().mode() & 0o077,
+                0,
+                "'{}' is readable by every other account on this machine",
+                path.display()
+            );
+        }
+        // And the script is still the owner's to run.
+        assert_eq!(
+            fs::metadata(&script_path)
+                .expect("stat")
+                .permissions()
+                .mode()
+                & 0o700,
+            0o700
+        );
     }
 
     #[cfg(unix)]

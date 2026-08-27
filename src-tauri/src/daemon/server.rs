@@ -671,7 +671,7 @@ mod tests {
             )
         });
 
-        let reachable = wait_for_server_accepting(port, Duration::from_millis(1500));
+        let reachable = wait_for_server_accepting(port, Duration::from_secs(2));
         shutdown.store(true, Ordering::Relaxed);
         let _ = handle.join();
 

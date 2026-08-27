@@ -16,11 +16,18 @@
 //! lock that is never waited on — a refresh that queues is a terminal line that
 //! queues with it, and a dropped record costs one keystroke.
 //!
+//! That lock is a sidecar, `claude-usage.jsonl.lock`, and never the sink itself:
+//! the cap is enforced by publishing a compacted file over the old one with a
+//! rename, so the only file everyone can agree on is one no rename ever touches.
+//! The rename is also what makes the cap survive the two-second deadline the
+//! status line runs under — a compaction that dies leaves the live sink whole
+//! rather than holding whichever accounts had been written back so far.
+//!
 //! The read side takes the opposite trade. It waits a bounded moment for that
 //! lock, and if it never comes it answers "unknown" rather than reading a file
-//! a writer is in the middle of truncating and rewriting: a half-read sink
-//! reports subscriptions as having no usage, and nothing on screen can tell
-//! that apart from a subscription that has never reported at all.
+//! a writer is in the middle of changing: a half-read sink reports
+//! subscriptions as having no usage, and nothing on screen can tell that apart
+//! from a subscription that has never reported at all.
 //!
 //! Nothing here reads credentials: the payload is Claude Code's own documented
 //! status-line contract, and the account id comes from the config dir's
@@ -232,36 +239,13 @@ pub fn append_usage_at(
         )
     })?;
 
-    let mut options = OpenOptions::new();
-    options.create(true).read(true).append(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path).map_err(|error| {
-        format!(
-            "failed to open Claude usage sink '{}': {error}",
-            path.display()
-        )
-    })?;
-    #[cfg(unix)]
-    fs::set_permissions(path, {
-        use std::os::unix::fs::PermissionsExt;
-        fs::Permissions::from_mode(0o600)
-    })
-    .map_err(|error| {
-        format!(
-            "failed to secure Claude usage sink '{}': {error}",
-            path.display()
-        )
-    })?;
+    let lock = open_sink_lock(path)?;
     // Never blocking. This runs from the status line of a live TUI, and a
     // refresh that waits is a terminal line that waits with it. Another
     // refresh holding the sink is either writing this same account's record —
     // which the throttle would have dropped anyway — or compacting, and the
     // next keystroke is a fraction of the 30 s throttle away.
-    if file.try_lock_exclusive().is_err() {
+    if lock.try_lock_exclusive().is_err() {
         return Ok(ClaudeUsageAppendOutcome {
             contended: true,
             ..ClaudeUsageAppendOutcome::default()
@@ -269,7 +253,12 @@ pub fn append_usage_at(
     }
 
     let result = (|| {
-        let truncated = compact_sink_if_needed(&mut file, path)?;
+        // Before the sink is opened, not after: compaction publishes a new file
+        // by renaming it over this path, so a handle taken in front of it would
+        // be a handle on the inode that rename retired — and every record
+        // appended through it would go to a file nothing can reach.
+        let truncated = compact_sink_if_needed(path)?;
+        let mut file = open_sink(path)?;
         if is_throttled(&mut file, record)? {
             return Ok(ClaudeUsageAppendOutcome {
                 written: false,
@@ -304,8 +293,72 @@ pub fn append_usage_at(
         })
     })();
 
-    let _ = FileExt::unlock(&file);
+    let _ = FileExt::unlock(&lock);
     result
+}
+
+/// The sink, opened for appending and readable only by its owner.
+fn open_sink(path: &Path) -> Result<File, String> {
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path).map_err(|error| {
+        format!(
+            "failed to open Claude usage sink '{}': {error}",
+            path.display()
+        )
+    })?;
+    #[cfg(unix)]
+    fs::set_permissions(path, {
+        use std::os::unix::fs::PermissionsExt;
+        fs::Permissions::from_mode(0o600)
+    })
+    .map_err(|error| {
+        format!(
+            "failed to secure Claude usage sink '{}': {error}",
+            path.display()
+        )
+    })?;
+    Ok(file)
+}
+
+/// The file every writer and reader of the sink coordinates on.
+///
+/// A sidecar, deliberately, and one that is only ever created — never renamed,
+/// never replaced. Compaction publishes a *new* sink by renaming one over the
+/// old, and a lock held on the file that rename retires is a lock nobody else
+/// can see: the next writer would take the same path's fresh inode, be told it
+/// holds the sink, and append beside a compaction still in flight. One file that
+/// outlives every compaction is what makes the lock mean the same thing to
+/// everyone.
+fn open_sink_lock(path: &Path) -> Result<File, String> {
+    let lock_path = sink_lock_path(path);
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(&lock_path).map_err(|error| {
+        format!(
+            "failed to open Claude usage lock '{}': {error}",
+            lock_path.display()
+        )
+    })
+}
+
+fn sink_lock_path(path: &Path) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new(CLAUDE_USAGE_FILENAME))
+        .to_os_string();
+    name.push(".lock");
+    path.with_file_name(name)
 }
 
 /// Whether this account already reported inside the throttle window.
@@ -348,28 +401,39 @@ fn parse_records(contents: &[u8]) -> Vec<ClaudeUsageRecord> {
         .collect()
 }
 
-fn compact_sink_if_needed(file: &mut File, path: &Path) -> Result<bool, String> {
-    let len = file
-        .metadata()
-        .map_err(|error| {
-            format!(
-                "failed to stat Claude usage sink '{}': {error}",
-                path.display()
-            )
-        })?
-        .len();
-    if len < MAX_CLAUDE_USAGE_BYTES {
+fn compact_sink_if_needed(path: &Path) -> Result<bool, String> {
+    compact_sink_if_needed_with(path, &|| Ok(()))
+}
+
+/// Cap the sink, keeping the newest record of every account it names.
+///
+/// The compacted file is built beside the live one and renamed over it, never
+/// written into it. The process doing this is a status-line subprocess Claude
+/// Code kills after two seconds, so "truncate, then write it back" has a window
+/// in which the live sink holds a prefix of the accounts — and a read landing
+/// after that window sees a file it can lock and parse perfectly well, and
+/// reports every account missing from the prefix as never having reported at
+/// all. A rename has no such window: the sink is either the whole old file or
+/// the whole new one, and a compaction that dies leaves the old one exactly as
+/// it was.
+///
+/// The caller holds the sidecar lock, which is what makes the rename safe for
+/// the writers as well: nobody else is holding a handle on the inode it retires.
+///
+/// `before_publish` runs in the moment before that rename — the only place a
+/// test can stand to be the failure. Production passes a no-op.
+fn compact_sink_if_needed_with(
+    path: &Path,
+    before_publish: &dyn Fn() -> Result<(), String>,
+) -> Result<bool, String> {
+    let Ok(metadata) = fs::metadata(path) else {
+        return Ok(false);
+    };
+    if metadata.len() < MAX_CLAUDE_USAGE_BYTES {
         return Ok(false);
     }
 
-    file.seek(SeekFrom::Start(0)).map_err(|error| {
-        format!(
-            "failed to seek Claude usage sink '{}': {error}",
-            path.display()
-        )
-    })?;
-    let mut contents = Vec::with_capacity(len.min(MAX_CLAUDE_USAGE_BYTES) as usize);
-    file.read_to_end(&mut contents).map_err(|error| {
+    let contents = fs::read(path).map_err(|error| {
         format!(
             "failed to read Claude usage sink '{}': {error}",
             path.display()
@@ -379,32 +443,49 @@ fn compact_sink_if_needed(file: &mut File, path: &Path) -> Result<bool, String> 
         .into_values()
         .collect::<Vec<_>>();
     retained.sort_by_key(|record| record.ts);
-
-    file.set_len(0).map_err(|error| {
-        format!(
-            "failed to cap Claude usage sink '{}': {error}",
-            path.display()
-        )
-    })?;
-    file.seek(SeekFrom::Start(0)).map_err(|error| {
-        format!(
-            "failed to rewind Claude usage sink '{}': {error}",
-            path.display()
-        )
-    })?;
+    let mut compacted = Vec::new();
     for record in retained {
-        serde_json::to_writer(&mut *file, &record).map_err(|error| {
+        serde_json::to_writer(&mut compacted, &record).map_err(|error| {
             format!(
                 "failed to retain Claude usage record '{}': {error}",
                 path.display()
             )
         })?;
-        file.write_all(b"\n").map_err(|error| {
-            format!(
-                "failed to retain Claude usage record '{}': {error}",
-                path.display()
-            )
-        })?;
+        compacted.push(b'\n');
+    }
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Claude usage path '{}' has no parent", path.display()))?;
+    let temp_path = parent.join(format!(
+        ".{}.tmp.{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(CLAUDE_USAGE_FILENAME),
+        std::process::id()
+    ));
+    let published = (|| {
+        let mut options = OpenOptions::new();
+        options.create(true).truncate(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&temp_path)
+            .map_err(|error| format!("failed to write '{}': {error}", temp_path.display()))?;
+        file.write_all(&compacted)
+            .map_err(|error| format!("failed to write '{}': {error}", temp_path.display()))?;
+        file.flush()
+            .map_err(|error| format!("failed to flush '{}': {error}", temp_path.display()))?;
+        before_publish()?;
+        fs::rename(&temp_path, path)
+            .map_err(|error| format!("failed to replace '{}': {error}", path.display()))
+    })();
+    if let Err(error) = published {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
     }
     Ok(true)
 }
@@ -432,29 +513,40 @@ fn latest_per_account(records: Vec<ClaudeUsageRecord>) -> HashMap<PathBuf, Claud
 /// read side — once per `list_claude_accounts`, not once per keystroke.
 ///
 /// `None` is "unknown", and it is not the same answer as an empty map. The
-/// writer that holds this file is compacting it: truncating it and writing it
-/// back. A read that goes ahead without the lock sees whatever has landed so
-/// far — half the accounts, or none of them — and reports the rest as having no
-/// usage, which is indistinguishable from a subscription that has never run.
-/// A missing sink, on the other hand, *is* an answer: nothing has reported yet.
+/// writer that holds the sink's lock is appending to it or compacting it, and a
+/// read that goes ahead regardless can see the file mid-change and report the
+/// accounts it missed as having no usage, which is indistinguishable from a
+/// subscription that has never run. A missing sink, on the other hand, *is* an
+/// answer: nothing has reported yet.
 pub fn latest_usage_records(path: &Path) -> Option<HashMap<PathBuf, ClaudeUsageRecord>> {
-    let Ok(mut file) = File::open(path) else {
+    if File::open(path).is_err() {
         return Some(HashMap::new());
+    }
+    let lock = match open_sink_lock(path) {
+        Ok(lock) => lock,
+        Err(error) => {
+            tracing::debug!(path = %path.display(), error, "Claude usage lock unavailable");
+            return None;
+        }
     };
-    if !wait_for_shared_lock(&file) {
+    if !wait_for_shared_lock(&lock) {
         tracing::debug!(
             path = %path.display(),
             "Claude usage sink stayed locked; leaving the numbers as they are"
         );
         return None;
     }
+    // Opened under the lock, because compaction renames a new sink over this
+    // path: a handle taken before the lock could be one on the retired inode.
     let records = (|| -> Result<Vec<ClaudeUsageRecord>, String> {
+        let mut file = File::open(path)
+            .map_err(|error| format!("failed to open Claude usage sink: {error}"))?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .map_err(|error| format!("failed to read Claude usage sink: {error}"))?;
         Ok(parse_records(&contents))
     })();
-    let _ = FileExt::unlock(&file);
+    let _ = FileExt::unlock(&lock);
     match records {
         Ok(records) => Some(latest_per_account(records)),
         Err(error) => {
@@ -838,6 +930,87 @@ mod tests {
     }
 
     #[test]
+    fn a_compaction_that_fails_before_it_publishes_keeps_every_accounts_last_number() {
+        // Regression: c1643dc compacted the sink in place — `set_len(0)` first,
+        // the records worth keeping written back after. The process doing that
+        // is a status-line subprocess Claude Code kills after two seconds, so an
+        // interrupted compaction leaves the live file holding a prefix of the
+        // accounts, or none of them. `latest_usage_records` then reads a file it
+        // can lock and parse perfectly well, and reports every account missing
+        // from that prefix as never having reported at all — so the last
+        // observation of a quiet subscription, which is exactly the one the user
+        // is deciding about, is gone for good.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
+        let quiet_dir = temp.path().join(".claude-account2");
+        let busy_dir = temp.path().join(".claude");
+        for dir in [&quiet_dir, &busy_dir] {
+            fs::create_dir_all(dir).expect("config dir");
+        }
+        {
+            let mut file = File::create(&sink).expect("sink");
+            let mut quiet = record(&quiet_dir, 0, 55.0);
+            quiet.account_id = Some("account-2".to_string());
+            writeln!(
+                file,
+                "{}",
+                serde_json::to_string(&quiet).expect("serialize")
+            )
+            .expect("write");
+            let mut seconds = 60;
+            while file.metadata().expect("stat").len() < MAX_CLAUDE_USAGE_BYTES {
+                for _ in 0..500 {
+                    let line = serde_json::to_string(&record(&busy_dir, seconds, 10.0))
+                        .expect("serialize");
+                    writeln!(file, "{line}").expect("write");
+                    seconds += 60;
+                }
+            }
+        }
+
+        let error =
+            compact_sink_if_needed_with(&sink, &|| Err("the status line's deadline".to_string()))
+                .expect_err("the injected failure is the compaction's answer");
+
+        assert!(error.contains("deadline"), "{error}");
+        let latest = latest_usage_records(&sink).expect("the sink can be read");
+        assert_eq!(
+            latest.len(),
+            2,
+            "a compaction that never finished emptied the live sink"
+        );
+        assert_eq!(
+            latest
+                .get(&config_dir_key(&quiet_dir))
+                .and_then(|record| record.five_hour)
+                .map(|window| window.used_percentage),
+            Some(55.0),
+            "the quiet account's only observation was lost"
+        );
+        let leftovers = fs::read_dir(temp.path())
+            .expect("read the sink's directory")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name.contains(".tmp."))
+            .collect::<Vec<_>>();
+        assert!(
+            leftovers.is_empty(),
+            "the failed compaction left {leftovers:?} behind"
+        );
+
+        // And the next append compacts for real, now that nothing is failing.
+        let outcome = append_usage_at(&sink, &record(&busy_dir, 10_000_000, 99.0)).expect("append");
+        assert!(outcome.truncated && outcome.written);
+        assert!(fs::metadata(&sink).expect("stat").len() < MAX_CLAUDE_USAGE_BYTES);
+        assert_eq!(
+            latest_usage_records(&sink)
+                .expect("the compacted sink can be read")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
     fn accounts_carry_the_latest_usage_of_their_own_config_dir() {
         let temp = tempfile::tempdir().expect("temp dir");
         let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
@@ -987,17 +1160,13 @@ mod tests {
         // line runs this on every keystroke, so a sink already held by another
         // refresh — or compacting five megabytes — stalled the terminal line
         // the user is looking at. A dropped record costs nothing: the next
-        // refresh is a keystroke away.
+        // refresh is a keystroke away. The lock is the sidecar now; what may not
+        // change is that the write path never waits on it.
         let temp = tempfile::tempdir().expect("temp dir");
         let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
         let config_dir = temp.path().join(".claude");
         fs::create_dir_all(&config_dir).expect("config dir");
-        let holder = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(&sink)
-            .expect("holder");
+        let holder = open_sink_lock(&sink).expect("holder");
         holder.lock_exclusive().expect("hold the sink");
 
         let started = std::time::Instant::now();
@@ -1093,17 +1262,18 @@ mod tests {
         let compacting = {
             let sink = sink.clone();
             std::thread::spawn(move || {
+                let lock = open_sink_lock(&sink).expect("lock file");
+                lock.lock_exclusive().expect("lock");
                 let mut file = OpenOptions::new()
                     .read(true)
                     .write(true)
                     .open(&sink)
                     .expect("open");
-                file.lock_exclusive().expect("lock");
                 file.set_len(0).expect("truncate");
                 std::thread::sleep(std::time::Duration::from_millis(200));
                 file.write_all(&original).expect("restore");
                 file.flush().expect("flush");
-                FileExt::unlock(&file).expect("unlock");
+                FileExt::unlock(&lock).expect("unlock");
             })
         };
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -1117,11 +1287,10 @@ mod tests {
     #[test]
     fn a_sink_held_past_the_wait_is_unknown_rather_than_half_read() {
         // Regression: a574720 waited half a second for a shared lock and then
-        // read the file anyway. The writer it waits for is compacting — it
-        // truncates the sink and writes it back — so a read that gives up sees
-        // whatever has been rewritten so far: one account's record and not the
-        // other's. Every account missing from that half then came back with no
-        // usage at all, which is the answer the lock was added to stop.
+        // read the file anyway. A read that gives up sees whatever the writer
+        // holding that lock has put there so far: one account's record and not
+        // the other's. Every account missing from that half then came back with
+        // no usage at all, which is the answer the lock was added to stop.
         let temp = tempfile::tempdir().expect("temp dir");
         let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
         let first_dir = temp.path().join(".claude");
@@ -1146,12 +1315,13 @@ mod tests {
             let sink = sink.clone();
             let whole = whole.clone();
             std::thread::spawn(move || {
+                let lock = open_sink_lock(&sink).expect("lock file");
+                lock.lock_exclusive().expect("lock");
                 let mut file = OpenOptions::new()
                     .read(true)
                     .write(true)
                     .open(&sink)
                     .expect("open");
-                file.lock_exclusive().expect("lock");
                 file.set_len(0).expect("truncate");
                 file.write_all(&half).expect("half a file");
                 file.flush().expect("flush");
@@ -1160,7 +1330,7 @@ mod tests {
                 file.seek(SeekFrom::Start(0)).expect("rewind");
                 file.write_all(&whole).expect("restore");
                 file.flush().expect("flush");
-                FileExt::unlock(&file).expect("unlock");
+                FileExt::unlock(&lock).expect("unlock");
             })
         };
         wait_for_reader.recv().expect("the writer got there first");
