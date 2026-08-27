@@ -67,14 +67,17 @@ just visual-shot-stop                                           # stop the serve
   `scenario`, `viewport`, and `theme` from `location.search`, and `chrome=0`
   drops its own controls so the shot is the fixture alone at window size.
 - Viewports are the host's presets: `desktop` (1920×1080), `laptop` (1366×768),
-  `narrow` (1024×768).
+  `narrow` (1024×768); themes are `light` and `dark` and nothing else (`exit 2`
+  — the host falls back for a theme it does not know, so an accepted `drak`
+  would file the scenario's own theme under that name).
 - A shot is evidence, so every way of producing an irrelevant one fails instead:
   the listener on the port must identify itself as the visual host (`exit 6`),
-  the page must report the fixture that was asked for — the host writes it into
-  `data-visual-host-fixture` and the same Edge run dumps the DOM (`exit 7`, the
-  usual cause being a mistyped component or scenario), Edge's exit status counts
-  (`exit 8`), and the browser runs under a wall clock (`exit 9`,
-  `VISUAL_SHOT_TIMEOUT_S`, default 90 s).
+  the page must report the state that was asked for — component, scenario,
+  viewport and theme, written into `data-visual-host-fixture` and read back from
+  the same Edge run's DOM dump (`exit 7`, the usual cause being a mistyped
+  component or scenario), Edge's exit status counts (`exit 8`), and the browser
+  runs under a wall clock that insists: TERM, then KILL (`exit 9`,
+  `VISUAL_SHOT_TIMEOUT_S` default 90 s, `VISUAL_SHOT_KILL_AFTER_S` default 5 s).
 - PNGs land in `C:\taurhaus_build\shots` and are **not** committed — `*.png` is
   gitignored outside `docs/`. Paste them into the PR description as before/after
   evidence.

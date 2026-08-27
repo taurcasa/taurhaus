@@ -129,6 +129,26 @@ describe('Sidebar account submenus', () => {
     expect(screen.queryByTestId('menu-item-claude-account')).not.toBeInTheDocument()
   })
 
+  // Regression: 6ec843e gave a subscription signed into two config dirs a row
+  // per dir, labelled by the dir. Both rows carry the same account uuid — the
+  // only address a launch has — so the second row launched the first dir while
+  // the menu ticked both. One subscription is one choice, and one choice is no
+  // question to ask.
+  it('offers no submenu when one subscription is signed into two config dirs', async () => {
+    listClaudeAccounts.mockResolvedValue(
+      detected([
+        { ...PRIMARY, config_dir: '/home/user/.claude' },
+        { ...PRIMARY, is_default: false, config_dir: '/home/user/.claude-copy' },
+      ])
+    )
+
+    await openProjectMenu()
+
+    await waitFor(() => expect(claudeAccounts.accounts).toHaveLength(1))
+    expect(screen.getByTestId('menu-item-new-claude-session')).not.toHaveAttribute('aria-haspopup')
+    expect(screen.queryByTestId('menu-item-claude-account')).not.toBeInTheDocument()
+  })
+
   // Regression: 74c7761 pinned the project to the account a launch row named.
   // The launch rows are per-launch overrides; the `Claude account` submenu is
   // where a project chooses the subscription it keeps.

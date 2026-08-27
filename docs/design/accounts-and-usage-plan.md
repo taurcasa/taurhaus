@@ -88,7 +88,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 | PR | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
-| 17a | Opus 5 | Codex ×2 | 1 | 5 (7 reported; both reviewers raised the pin and the duplicate-label crash) | tbd (`feat/pr17a-accounts-menu`) |
+| 17a | Opus 5 | Codex ×2 | 2 | 9 (round 1: 5 of 7 reported, both reviewers raising the pin and the duplicate-label crash; round 2: 4) | tbd (`feat/pr17a-accounts-menu`) |
 | 17b | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17d | Opus 5 | Codex ×2 | tbd | tbd | tbd |
@@ -154,3 +154,40 @@ degraded detection is logged on the way into the outage instead of once per
 right-click. Detection itself still retries on every opening — an existing
 guard (`c982822`) requires a daemon that reconnects to restore the list on the
 next right-click, and the call is one cheap daemon round trip.
+
+### Review round 2
+
+Four majors, all confirmed and fixed on the branch:
+
+- **A repeated account id could not reach the dir it advertised.** Round 1's
+  answer to the duplicate-label crash gave one subscription signed into two
+  config dirs a row per dir, labelled by the dir. Both rows carry the same
+  account uuid — the whole address a launch or a pin has — so the
+  `.claude-account2` row launched `.claude` and the menu ticked both. Detection
+  is now collapsed to one entry per id as it lands in the store, keeping the
+  entry the backend resolves that id to (the first that can run), so the chip,
+  the chooser and the submenus all offer exactly the choices a launch can
+  express. Addressing a second config dir of one subscription needs a launch
+  address that names the dir — 17b's resolution work, not a menu label.
+- **The chip menu did not move after the usage it asked for arrived.** Opening
+  it requests usage; the meters that answer make the menu taller and the chip
+  wider, and only scroll and resize asked for the clamp again. A menu opened
+  near an edge kept the coordinates its empty size earned. A `ResizeObserver`
+  now watches both ends of the anchoring, as `ContextMenu` already did for its
+  own rows.
+- **The screenshot lane's wall clock did not insist.** Plain `timeout` asks with
+  TERM; a hung renderer can ignore it and hold the lane indefinitely.
+  `--kill-after` follows with KILL, both timeout statuses are honoured, and the
+  fake browser in the test now traps TERM so the case is actually exercised.
+- **A shot could be filed under a theme it did not render.** `theme` went into
+  the URL unvalidated while the host silently falls back for one it does not
+  know, and the rendered identity named only the component and the scenario. The
+  script rejects anything but `light`/`dark`, the identity carries all four
+  parts (component, scenario, viewport, theme), and the host reports an unknown
+  theme or viewport as a fallback like any other.
+
+One more found while re-shooting the fixtures for the above: the visual host
+never set the `dark` class on the document that `Shell.svelte` and the
+browser-mode lane both set, so every dark shot framed a dark popup in a light
+panel. It sets it now — without which the new theme guard would have certified
+exactly that.

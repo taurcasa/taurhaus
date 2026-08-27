@@ -82,4 +82,18 @@ describe('readVisualHostQuery', () => {
     // An address that names nothing is not a mistyped one.
     expect(readVisualHostQuery('', bare).unknownRequest).toBe(false)
   })
+
+  // Regression: 74c7761 reported a fallback for the component and the scenario
+  // only. A shot of a popup is evidence about its size and its theme too, and
+  // `theme=drak` quietly rendered the scenario's own.
+  it('says so when the URL asked for a theme or a viewport that is not there', () => {
+    const bare = { registry: REGISTRY, viewports: VIEWPORTS }
+    const address = '?component=shell-popups&scenario=chooser-light'
+
+    expect(readVisualHostQuery(`${address}&theme=drak`, bare).unknownRequest).toBe(true)
+    expect(readVisualHostQuery(`${address}&viewport=huge`, bare).unknownRequest).toBe(true)
+    expect(
+      readVisualHostQuery(`${address}&viewport=laptop&theme=dark`, bare).unknownRequest
+    ).toBe(false)
+  })
 })

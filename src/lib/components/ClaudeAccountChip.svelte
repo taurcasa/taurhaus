@@ -84,6 +84,18 @@
     }
   })
 
+  // Both ends of the anchoring can change size after the menu opened: opening
+  // asks for fresh usage, and the meters that answer make the menu taller and
+  // the chip wider. Nothing else would ask for the clamp again, so the popup
+  // would keep the coordinates its empty size earned.
+  $effect(() => {
+    if (!open || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { anchorMoved += 1 })
+    if (chipEl) observer.observe(chipEl)
+    if (menuEl) observer.observe(menuEl)
+    return () => observer.disconnect()
+  })
+
   // Clicking anywhere else closes it — the menu is no longer inside the chip's
   // own subtree, so a stray click can no longer be caught by hover alone.
   $effect(() => {

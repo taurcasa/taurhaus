@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import ClaudeAccountChip from './ClaudeAccountChip.svelte'
@@ -224,6 +224,64 @@ describe('ClaudeAccountChip', () => {
     expect(Number.parseInt(menu.style.top, 10)).toBeLessThan(250)
 
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
+  })
+
+  // Regression: 74c7761 re-clamped this menu on a scroll or a window resize and
+  // on nothing else. Opening it asks for usage, and the meters that answer make
+  // both the chip and the menu bigger — so a menu opened near the bottom edge
+  // kept the top it was given while it was empty and ran off the screen.
+  it('re-clamps when the usage it asked for arrives', async () => {
+    const observers = []
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) {
+        this.callback = callback
+        this.targets = []
+        observers.push(this)
+      }
+      observe(target) { this.targets.push(target) }
+      disconnect() {}
+    })
+    const previousHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 400 })
+
+    const { rerender } = render(ClaudeAccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    // The chip grows a meter of its own, so its right edge moves with the menu.
+    let chipRight = 420
+    vi.spyOn(chip, 'getBoundingClientRect').mockImplementation(() => ({
+      left: 300, top: 300, right: chipRight, bottom: 322,
+      width: chipRight - 300, height: 22, x: 300, y: 300, toJSON() {},
+    }))
+
+    await fireEvent.click(chip)
+
+    const menu = screen.getByTestId('claude-account-menu')
+    let menuHeight = 60
+    vi.spyOn(menu, 'getBoundingClientRect').mockImplementation(() => ({
+      left: 0, top: 0, right: 224, bottom: menuHeight,
+      width: 224, height: menuHeight, x: 0, y: 0, toJSON() {},
+    }))
+    await waitFor(() => expect(menu.style.top).toBe('326px'))
+    expect(menu.style.left).toBe('196px')
+
+    // The numbers landed: two meters in the menu, one on the chip.
+    await rerender({
+      accounts: ACCOUNTS.map((account) => ({ ...account, usage: usageAt(40, 30, 1) })),
+    })
+    menuHeight = 200
+    chipRight = 500
+    observers.at(-1).callback([])
+
+    // No room below any more: above the chip, and right-aligned to its new edge.
+    await waitFor(() => expect(menu.style.top).toBe('96px'))
+    expect(menu.style.left).toBe('276px')
+    expect(observers.at(-1).targets).toEqual(expect.arrayContaining([chip, menu]))
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
+    vi.unstubAllGlobals()
   })
 
   it('clamps the menu inside the right edge of a narrow viewport', async () => {

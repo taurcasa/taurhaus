@@ -195,6 +195,28 @@ function keepKnownUsage(accounts) {
   }))
 }
 
+/**
+ * One entry per account a launch can name.
+ *
+ * Detection reports a config dir at a time, and the same subscription signed
+ * into two of them arrives twice under one account uuid. That uuid is the whole
+ * address a launch or a pin has, so two entries would offer a choice nothing
+ * downstream can express — picking the second would run the first — and the
+ * chip, the chooser and the submenus, which key their rows by it, would throw
+ * on the duplicate key.
+ *
+ * The entry kept is the one the backend resolves that id to: the first that can
+ * actually run, else the first seen.
+ */
+function addressableAccounts(accounts) {
+  const byId = new Map()
+  for (const account of accounts) {
+    const kept = byId.get(account.id)
+    if (!kept || (!kept.logged_in && account.logged_in)) byId.set(account.id, account)
+  }
+  return [...byId.values()]
+}
+
 function detectClaudeAccounts() {
   const accounts = Promise.resolve(listClaudeAccounts()).then((report) => {
     if (report?.degraded) {
@@ -212,7 +234,7 @@ function detectClaudeAccounts() {
       detection = null
       return
     }
-    claudeAccounts.accounts = keepKnownUsage(report?.accounts ?? [])
+    claudeAccounts.accounts = keepKnownUsage(addressableAccounts(report?.accounts ?? []))
     claudeAccounts.degraded = false
   })
   const settings = Promise.resolve(getSettings())

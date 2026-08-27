@@ -114,19 +114,14 @@ describe('accountMenu', () => {
     expect(new Set(children.map((child) => child.key)).size).toBe(2)
   })
 
-  // One subscription signed into two config dirs reports the same id and the
-  // same email twice: the dir is then the only thing that tells the rows apart,
-  // and the row's own position is the only unique key left.
-  it('keeps rows apart when the same account is signed into two dirs', () => {
-    const twice = { ...PRIMARY, display_name: 'Who', config_dir: '/home/user/.claude' }
-    const children = buildAccountMenuChildren({
-      accounts: [twice, { ...twice, config_dir: '/home/user/.claude-account2' }],
-    })
+  // Regression: 6ec843e labelled a repeated account by its config dir, which
+  // let two rows address the same account id — the only address a launch has.
+  // The store now hands over one account per id (`claudeAccounts.test.js`), and
+  // a row keyed by its position stays unique whatever a caller passes.
+  it('keys rows by position, so a repeated account cannot collide', () => {
+    const twice = { ...PRIMARY, display_name: 'Who' }
+    const children = buildAccountMenuChildren({ accounts: [twice, { ...twice }] })
 
-    expect(children.map((child) => child.label)).toEqual([
-      'Who (.claude)',
-      'Who (.claude-account2)',
-    ])
     expect(new Set(children.map((child) => child.key)).size).toBe(2)
   })
 })

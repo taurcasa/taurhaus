@@ -33,12 +33,15 @@ function startServer(body) {
 
 /**
  * A stand-in for Windows Edge: it prints a DOM and writes a PNG, or fails, or
- * hangs — the three things the real one can do to this script.
+ * hangs — with or without listening to the signal that asks it to stop. All of
+ * it is what the real one can do to this script.
  */
-function fakeEdge(dir, { mode = 'ok', fixture = 'shell-popups/chooser-light' } = {}) {
+function fakeEdge(dir, { mode = 'ok', fixture = 'shell-popups/chooser-light/laptop/light' } = {}) {
   const path = join(dir, 'fake-edge.sh')
   writeFileSync(path, `#!/usr/bin/env bash
 set -u
+# A hung renderer does not stop for TERM, and a lane that only asks waits.
+if [[ "${mode}" == "deaf" ]]; then trap '' TERM; for _ in $(seq 1 60); do sleep 0.5; done; fi
 if [[ "${mode}" == "slow" ]]; then sleep 5; fi
 if [[ "${mode}" == "fail" ]]; then echo "edge crashed" >&2; exit 3; fi
 for arg in "$@"; do
@@ -53,9 +56,11 @@ echo '<html><body><main data-visual-host-root data-visual-host-fixture="${fixtur
   return path
 }
 
-function runShot(dir, port, edge, extraEnv = {}) {
+const SHOT_ARGS = ['shell-popups', 'chooser-light', 'laptop', 'light']
+
+function runShot(dir, port, edge, extraEnv = {}, args = SHOT_ARGS) {
   return new Promise((resolve) => {
-    const child = spawn('bash', [SCRIPT, 'shell-popups', 'chooser-light', 'laptop', 'light'], {
+    const child = spawn('bash', [SCRIPT, ...args], {
       env: {
         ...process.env,
         VISUAL_SHOT_PORT: String(port),
@@ -112,10 +117,57 @@ describe('visual-shot.sh', () => {
     const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
     const port = await startServer(HOST_PAGE)
 
-    const result = await runShot(dir, port, fakeEdge(dir, { fixture: 'mesh-canvas/idle' }))
+    const result = await runShot(
+      dir,
+      port,
+      fakeEdge(dir, { fixture: 'mesh-canvas/idle/laptop/light' })
+    )
 
     expect(result.code).toBe(7)
     expect(result.stderr).toContain('mesh-canvas/idle')
+  })
+
+  // Regression: 6ec843e checked the component and the scenario the page
+  // rendered, and nothing else. The theme and the viewport are half of what a
+  // popup screenshot is evidence about.
+  it('refuses a page that rendered another theme or viewport', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
+    const port = await startServer(HOST_PAGE)
+
+    const themed = await runShot(
+      dir,
+      port,
+      fakeEdge(dir, { fixture: 'shell-popups/chooser-light/laptop/dark' })
+    )
+    expect(themed.code).toBe(7)
+    expect(themed.stderr).toContain('shell-popups/chooser-light/laptop/dark')
+
+    const sized = await runShot(
+      dir,
+      port,
+      fakeEdge(dir, { fixture: 'shell-popups/chooser-light/narrow/light' })
+    )
+    expect(sized.code).toBe(7)
+    expect(sized.stderr).toContain('shell-popups/chooser-light/narrow/light')
+  })
+
+  // Regression: 74c7761 put whatever `theme` said straight into the URL. The
+  // host falls back for a theme it does not know, so `theme=drak` shot the
+  // scenario's own theme, filed it under `drak`, and exited 0.
+  it('refuses a theme that is neither light nor dark', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
+    const port = await startServer(HOST_PAGE)
+
+    const result = await runShot(dir, port, fakeEdge(dir), {}, [
+      'shell-popups',
+      'chooser-light',
+      'laptop',
+      'drak',
+    ])
+
+    expect(result.code).toBe(2)
+    expect(result.stderr).toContain("Unknown theme 'drak'")
+    expect(readdirSync(dir)).not.toContain('shell-popups-chooser-light-laptop-drak.png')
   })
 
   // Regression: 74c7761 discarded Edge's exit status with `|| true`.
@@ -141,5 +193,24 @@ describe('visual-shot.sh', () => {
 
     expect(result.code).toBe(9)
     expect(result.stderr).toContain('timed out')
+  }, 20_000)
+
+  // Regression: 6ec843e wrapped the browser in a plain `timeout`, which asks
+  // with TERM and never insists. A renderer that ignores it — a hung one does —
+  // held the lane for as long as it liked, which is what the wall clock was
+  // added to prevent.
+  it('kills a browser that ignores the timeout', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
+    const port = await startServer(HOST_PAGE)
+
+    const started = Date.now()
+    const result = await runShot(dir, port, fakeEdge(dir, { mode: 'deaf' }), {
+      VISUAL_SHOT_TIMEOUT_S: '1',
+      VISUAL_SHOT_KILL_AFTER_S: '1',
+    })
+
+    expect(result.code).toBe(9)
+    expect(result.stderr).toContain('timed out')
+    expect(Date.now() - started).toBeLessThan(15_000)
   }, 20_000)
 })

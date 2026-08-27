@@ -88,6 +88,13 @@ case "$VIEWPORT" in
   *) echo "Unknown viewport '$VIEWPORT' (desktop|laptop|narrow)." >&2; exit 2 ;;
 esac
 
+# The host falls back to the scenario's own theme for a theme it does not know,
+# so `theme=drak` would render light, file itself under `drak`, and succeed.
+case "$THEME" in
+  light|dark) ;;
+  *) echo "Unknown theme '$THEME' (light|dark)." >&2; exit 2 ;;
+esac
+
 if [[ ! -x "$EDGE" ]]; then
   echo "Edge not found at: $EDGE" >&2
   echo "Set VISUAL_SHOT_EDGE to the msedge.exe path." >&2
@@ -135,7 +142,10 @@ trap 'rm -f "$DOM_FILE"' EXIT
 # `--dump-dom` returns the page this same run photographed, and the wall clock
 # bounds the process itself — the budget only bounds the page's own time.
 status=0
-timeout "${VISUAL_SHOT_TIMEOUT_S:-90}" "$EDGE" \
+TIMEOUT_S="${VISUAL_SHOT_TIMEOUT_S:-90}"
+# TERM asks; a hung renderer does not have to answer. `--kill-after` is what
+# turns the wall clock into one: KILL follows, and the lane returns either way.
+timeout --kill-after="${VISUAL_SHOT_KILL_AFTER_S:-5}s" "$TIMEOUT_S" "$EDGE" \
   --headless=new \
   --disable-gpu \
   --hide-scrollbars \
@@ -146,8 +156,9 @@ timeout "${VISUAL_SHOT_TIMEOUT_S:-90}" "$EDGE" \
   --screenshot="$WIN_PATH" \
   "$URL" >"$DOM_FILE" 2>/dev/null || status=$?
 
-if [[ "$status" -eq 124 ]]; then
-  echo "Edge timed out after ${VISUAL_SHOT_TIMEOUT_S:-90}s on $URL" >&2
+# 124: `timeout` gave up on it. 137: it had to be killed after ignoring TERM.
+if [[ "$status" -eq 124 || "$status" -eq 137 ]]; then
+  echo "Edge timed out after ${TIMEOUT_S}s on $URL" >&2
   exit 9
 fi
 if [[ "$status" -ne 0 ]]; then
@@ -155,9 +166,10 @@ if [[ "$status" -ne 0 ]]; then
   exit 8
 fi
 
-# The page names the fixture it rendered. Anything else means the URL addressed
-# a fixture that is not there and the host fell back to another one.
-WANTED="${COMPONENT}/${SCENARIO}"
+# The page names the state it rendered, all four parts of it: a shot is
+# evidence about one component, in one scenario, at one size, in one theme.
+# Anything else means the host fell back and the PNG shows something else.
+WANTED="${COMPONENT}/${SCENARIO}/${VIEWPORT}/${THEME}"
 if ! grep -q "data-visual-host-fixture=\"${WANTED}\"" "$DOM_FILE"; then
   RENDERED="$(grep -o 'data-visual-host-fixture="[^"]*"' "$DOM_FILE" | head -1 | cut -d'"' -f2)"
   echo "Asked for '${WANTED}' but the page rendered '${RENDERED:-nothing}'." >&2

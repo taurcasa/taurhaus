@@ -64,6 +64,16 @@
     return `${selectedEntry?.id}:${selectedScenario?.name}:${selectedTheme}:${selectedViewport?.id}`
   })
 
+  /**
+   * The theme is a class on the document — `Shell.svelte` sets it in the app,
+   * `renderVisual.js` in the browser-mode lane — and the panel surfaces in
+   * `app.css` read it from there. Without it a dark shot framed a dark popup in
+   * a light panel: a PNG filed under `dark` that was not one.
+   */
+  $effect(() => {
+    document.documentElement.classList.toggle('dark', selectedTheme === 'dark')
+  })
+
   const chromeTone = $derived(
     selectedTheme === 'dark'
       ? 'bg-[#0a1318] text-zinc-100'
@@ -86,11 +96,16 @@
 </svelte:head>
 
 <!-- The screenshot lane reads this back out of the rendered DOM: a shot is
-     evidence about one fixture, so the page has to say which one it is. -->
+     evidence about one component, in one scenario, at one size, in one theme,
+     so the page has to say which — a fallback in any of the four is a PNG of
+     something the lane was not asked for. -->
 <main
   class={`min-h-screen w-full ${chromeTone}`}
   data-testid="visual-host-root"
-  data-visual-host-fixture={`${selectedEntry?.id ?? ''}/${selectedScenario?.name ?? ''}`}
+  data-visual-host-fixture={
+    `${selectedEntry?.id ?? ''}/${selectedScenario?.name ?? ''}`
+    + `/${selectedViewport?.id ?? ''}/${selectedTheme}`
+  }
 >
   <div class={showChrome ? 'mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 py-6' : 'h-screen w-full'}>
     {#if showChrome}

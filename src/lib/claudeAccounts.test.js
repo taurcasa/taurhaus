@@ -104,6 +104,46 @@ describe('claudeAccounts store', () => {
     expect(loggedInAccounts()).toHaveLength(1)
   })
 
+  // Regression: 6ec843e kept one row per detected config dir, and one
+  // subscription signed into two of them is detected twice under the same
+  // account uuid. That uuid is the only address a launch or a pin has, so the
+  // `.claude-account2` row launched `.claude`, both rows read as the current
+  // one, and the chip and chooser — which key their rows by that id — threw
+  // `each_key_duplicate` on the pair.
+  it('keeps one account per id a launch can name', async () => {
+    const sameSubscriptionElsewhere = {
+      ...PRIMARY,
+      is_default: false,
+      config_dir: '/home/user/.claude-copy',
+    }
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, sameSubscriptionElsewhere, SECOND]))
+
+    await refreshClaudeAccounts()
+
+    expect(resolveChooserAccounts().map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+    expect(resolveChooserAccounts()[0].config_dir).toBe('/home/user/.claude')
+  })
+
+  // The kept row has to be the one the backend resolves that id to, which is
+  // the first that can actually run — not simply the first seen.
+  it('keeps the signed-in dir when the default dir of the same account is not', async () => {
+    listClaudeAccounts.mockResolvedValue(
+      detected([
+        { ...PRIMARY, logged_in: false },
+        { ...PRIMARY, is_default: false, config_dir: '/home/user/.claude-copy' },
+      ])
+    )
+
+    await refreshClaudeAccounts()
+
+    expect(resolveChooserAccounts()).toHaveLength(1)
+    expect(resolveChooserAccounts()[0].config_dir).toBe('/home/user/.claude-copy')
+    expect(loggedInAccounts()).toHaveLength(1)
+  })
+
   it('launches straight away when only one account is logged in', async () => {
     listClaudeAccounts.mockResolvedValue(detected([PRIMARY]))
     await refreshClaudeAccounts()
