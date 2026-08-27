@@ -103,6 +103,7 @@ pub mod method {
     pub const SET_CODEX_COMPACTION_MODE: &str = "set_codex_compaction_mode";
     pub const LIST_ACCOUNTS: &str = "list_accounts";
     pub const PROJECT_TRANSCRIPT: &str = "project_transcript";
+    pub const REFRESH_USAGE: &str = "refresh_usage";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";

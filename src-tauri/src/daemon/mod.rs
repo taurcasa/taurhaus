@@ -9,4 +9,5 @@ pub mod protocol;
 pub mod server;
 pub mod session_activity;
 pub mod session_listener;
+pub mod usage_poller;
 pub(crate) mod watch;

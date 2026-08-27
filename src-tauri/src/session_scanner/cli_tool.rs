@@ -493,7 +493,13 @@ impl CliToolSpec {
     pub fn usage_provider(
         &self,
     ) -> Option<&'static dyn crate::session_scanner::accounts::UsageProvider> {
-        None
+        static CLAUDE: crate::session_scanner::accounts::claude::ClaudeUsageProvider =
+            crate::session_scanner::accounts::claude::ClaudeUsageProvider;
+
+        match self.tool {
+            CliTool::Claude => Some(&CLAUDE),
+            CliTool::Codex | CliTool::Gemini => None,
+        }
     }
 
     pub fn matches_argv_token(&self, token: &str) -> bool {

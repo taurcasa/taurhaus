@@ -29,7 +29,8 @@ use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::types::RuntimeSession;
 
 use super::{
-    Account, AccountIdentity, AccountProvider, Severity, UsageSnapshot, UsageStatus, UsageWindow,
+    Account, AccountIdentity, AccountProvider, HttpClient, Severity, UsageProvider, UsageSnapshot,
+    UsageStatus, UsageWindow,
 };
 
 /// Per-account configuration file, at the root of every config dir.
@@ -117,6 +118,8 @@ struct CredentialsFile {
 
 #[derive(Debug, Deserialize)]
 struct OAuthCredentials {
+    #[serde(rename = "accessToken")]
+    access_token: Option<String>,
     #[serde(rename = "expiresAt")]
     expires_at: Option<i64>,
 }
@@ -132,6 +135,188 @@ fn credential_expires_at(config_dir: &Path) -> Option<i64> {
     } else {
         expires_at
     })
+}
+
+pub struct ClaudeUsageProvider;
+
+impl UsageProvider for ClaudeUsageProvider {
+    fn fetch(&self, dir: &Path, http: &dyn HttpClient) -> UsageSnapshot {
+        let observed_at = chrono::Utc::now();
+        let credentials = std::fs::read_to_string(dir.join(CREDENTIALS_FILENAME))
+            .ok()
+            .and_then(|raw| serde_json::from_str::<CredentialsFile>(&raw).ok())
+            .and_then(|file| file.oauth);
+        let Some(credentials) = credentials else {
+            return usage_snapshot(observed_at, UsageStatus::Unauthorized, Vec::new());
+        };
+        let expires_at = credentials.expires_at.map(epoch_seconds);
+        if expires_at.is_some_and(|expires| expires <= observed_at.timestamp()) {
+            return usage_snapshot(observed_at, UsageStatus::Unauthorized, Vec::new());
+        }
+        let Some(token) = credentials.access_token else {
+            return usage_snapshot(observed_at, UsageStatus::Unauthorized, Vec::new());
+        };
+        let user_agent = format!("taurhaus/{}", env!("CARGO_PKG_VERSION"));
+        let authorization = format!("Bearer {token}");
+        let headers = [
+            ("Authorization", authorization.as_str()),
+            ("anthropic-beta", "oauth-2025-04-20"),
+            ("Content-Type", "application/json"),
+            ("User-Agent", user_agent.as_str()),
+        ];
+        let response = match http.get(
+            "https://api.anthropic.com/api/oauth/usage",
+            &headers,
+            std::time::Duration::from_secs(5),
+        ) {
+            Ok(response) => response,
+            Err(_) => return usage_snapshot(observed_at, UsageStatus::Stale, Vec::new()),
+        };
+        if matches!(response.status, 401 | 403) {
+            return usage_snapshot(observed_at, UsageStatus::Unauthorized, Vec::new());
+        }
+        if response.status != 200 {
+            return usage_snapshot(observed_at, UsageStatus::Stale, Vec::new());
+        }
+        let Ok(payload) = serde_json::from_str::<UsagePayload>(&response.body) else {
+            return usage_snapshot(observed_at, UsageStatus::Stale, Vec::new());
+        };
+        let windows = normalize_usage(payload);
+        usage_snapshot(observed_at, UsageStatus::Ok, windows)
+    }
+}
+
+fn epoch_seconds(value: i64) -> i64 {
+    if value >= 1_000_000_000_000 {
+        value / 1_000
+    } else {
+        value
+    }
+}
+
+fn usage_snapshot(
+    observed_at: chrono::DateTime<chrono::Utc>,
+    status: UsageStatus,
+    windows: Vec<UsageWindow>,
+) -> UsageSnapshot {
+    UsageSnapshot {
+        observed_at,
+        status,
+        windows,
+        note: None,
+    }
+}
+
+#[derive(Deserialize)]
+struct UsagePayload {
+    #[serde(default)]
+    limits: Vec<UsageLimit>,
+    five_hour: Option<UsageMirror>,
+    seven_day: Option<UsageMirror>,
+    seven_day_sonnet: Option<UsageMirror>,
+}
+
+#[derive(Deserialize)]
+struct UsageLimit {
+    kind: String,
+    percent: f64,
+    severity: Option<String>,
+    resets_at: Option<String>,
+    #[serde(default)]
+    scope: Option<UsageScope>,
+    #[serde(default)]
+    is_active: bool,
+}
+
+#[derive(Deserialize)]
+struct UsageScope {
+    model: Option<UsageModel>,
+}
+
+#[derive(Deserialize)]
+struct UsageModel {
+    display_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct UsageMirror {
+    utilization: f64,
+    resets_at: Option<String>,
+}
+
+fn normalize_usage(payload: UsagePayload) -> Vec<UsageWindow> {
+    let mut windows: Vec<UsageWindow> = if payload.limits.is_empty() {
+        [
+            ("session", "Current session", payload.five_hour.as_ref()),
+            (
+                "weekly_all",
+                "Current week (all models)",
+                payload.seven_day.as_ref(),
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(key, title, mirror)| {
+            mirror.map(|mirror| UsageWindow {
+                key: key.to_string(),
+                title: title.to_string(),
+                used_percentage: mirror.utilization,
+                resets_at: parse_reset(mirror.resets_at.as_deref()),
+                severity: Severity::Normal,
+                is_active: false,
+            })
+        })
+        .collect()
+    } else {
+        payload
+            .limits
+            .into_iter()
+            .filter_map(|limit| {
+                let title = match limit.kind.as_str() {
+                    "session" => "Current session".to_string(),
+                    "weekly_all" => "Current week (all models)".to_string(),
+                    "weekly_scoped" => format!(
+                        "Current week ({})",
+                        limit
+                            .scope
+                            .as_ref()
+                            .and_then(|scope| scope.model.as_ref())
+                            .and_then(|model| model.display_name.as_deref())
+                            .unwrap_or("scoped")
+                    ),
+                    _ => return None,
+                };
+                Some(UsageWindow {
+                    key: limit.kind,
+                    title,
+                    used_percentage: limit.percent,
+                    resets_at: parse_reset(limit.resets_at.as_deref()),
+                    severity: match limit.severity.as_deref() {
+                        Some("warning") => Severity::Warning,
+                        Some("critical") => Severity::Critical,
+                        _ => Severity::Normal,
+                    },
+                    is_active: limit.is_active,
+                })
+            })
+            .collect()
+    };
+    if let Some(sonnet) = payload.seven_day_sonnet {
+        windows.push(UsageWindow {
+            key: "weekly_sonnet".to_string(),
+            title: "Current week (Sonnet only)".to_string(),
+            used_percentage: sonnet.utilization,
+            resets_at: parse_reset(sonnet.resets_at.as_deref()),
+            severity: Severity::Normal,
+            is_active: false,
+        });
+    }
+    windows
+}
+
+fn parse_reset(value: Option<&str>) -> Option<i64> {
+    value
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.timestamp())
 }
 
 /// One Claude subscription, identified by the config dir it lives in.
@@ -1758,5 +1943,123 @@ mod tests {
         );
 
         assert_eq!(resolved.source, AccountOrigin::Project);
+    }
+
+    struct FakeHttp {
+        status: u16,
+        body: String,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl super::super::HttpClient for FakeHttp {
+        fn get(
+            &self,
+            _url: &str,
+            _headers: &[(&str, &str)],
+            _timeout: std::time::Duration,
+        ) -> Result<super::super::HttpResponse, super::super::HttpError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(super::super::HttpResponse {
+                status: self.status,
+                body: self.body.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn oauth_usage_fixture_normalizes_windows_in_provider_order() {
+        // Regression: a574720 modeled usage as two status-line fields; the
+        // OAuth response adds an ordered scoped weekly window that must survive.
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CREDENTIALS_FILENAME),
+            r#"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":4102444800000}}"#,
+        )
+        .unwrap();
+        let http = FakeHttp {
+            status: 200,
+            body: include_str!("../../daemon/fixtures/claude-oauth-usage-2.1.247.json").to_string(),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+
+        let snapshot = ClaudeUsageProvider.fetch(dir.path(), &http);
+        assert_eq!(snapshot.status, UsageStatus::Ok);
+        assert_eq!(
+            snapshot
+                .windows
+                .iter()
+                .map(|window| (
+                    window.key.as_str(),
+                    window.title.as_str(),
+                    window.used_percentage
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("session", "Current session", 3.0),
+                ("weekly_all", "Current week (all models)", 28.0),
+                ("weekly_scoped", "Current week (Fable)", 29.0),
+            ]
+        );
+        assert!(snapshot
+            .windows
+            .iter()
+            .all(|window| window.resets_at.is_some()));
+    }
+
+    #[test]
+    fn expired_credentials_return_unauthorized_without_http() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CREDENTIALS_FILENAME),
+            r#"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":1}}"#,
+        )
+        .unwrap();
+        let http = FakeHttp {
+            status: 200,
+            body: "{}".to_string(),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+
+        let snapshot = ClaudeUsageProvider.fetch(dir.path(), &http);
+        assert_eq!(snapshot.status, UsageStatus::Unauthorized);
+        assert_eq!(http.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn oauth_usage_without_limits_uses_legacy_mirrors() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CREDENTIALS_FILENAME),
+            r#"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":4102444800000}}"#,
+        )
+        .unwrap();
+        let http = FakeHttp {
+            status: 200,
+            body: r#"{"five_hour":{"utilization":7,"resets_at":null},"seven_day":{"utilization":14,"resets_at":null},"seven_day_sonnet":null}"#.to_string(),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+        let snapshot = ClaudeUsageProvider.fetch(dir.path(), &http);
+        assert_eq!(snapshot.windows.len(), 2);
+        assert_eq!(snapshot.windows[0].used_percentage, 7.0);
+        assert_eq!(snapshot.windows[1].used_percentage, 14.0);
+    }
+
+    #[test]
+    fn oauth_usage_401_is_unauthorized() {
+        let dir = TempDir::new().unwrap();
+        fs::write(
+            dir.path().join(CREDENTIALS_FILENAME),
+            r#"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":4102444800000}}"#,
+        )
+        .unwrap();
+        let http = FakeHttp {
+            status: 401,
+            body: "{}".to_string(),
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        };
+        assert_eq!(
+            ClaudeUsageProvider.fetch(dir.path(), &http).status,
+            UsageStatus::Unauthorized
+        );
     }
 }

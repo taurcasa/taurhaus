@@ -84,6 +84,7 @@ pub(crate) fn dispatch(
         protocol::method::PROJECT_TRANSCRIPT => {
             handle_project_transcript(&request.id, &request.params)
         }
+        protocol::method::REFRESH_USAGE => handle_refresh_usage(&request.id, &request.params),
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
@@ -99,7 +100,8 @@ fn handle_list_accounts(id: &str, params: &serde_json::Value) -> DaemonResponse 
         Ok(params) => params,
         Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
     };
-    let accounts = crate::session_scanner::accounts::detect(params.tool);
+    let mut accounts = crate::session_scanner::accounts::detect(params.tool);
+    crate::daemon::usage_poller::attach_usage(params.tool, &mut accounts);
     // And an account that signed in since the last pass — or one whose
     // `.claude.json` was mid-rewrite when it ran — gets its status-line bridge
     // here rather than waiting for the next daemon start. Behind the reply, and
@@ -114,6 +116,17 @@ fn handle_list_accounts(id: &str, params: &serde_json::Value) -> DaemonResponse 
             degraded: false,
             error: None,
         },
+    )
+}
+
+fn handle_refresh_usage(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::ListAccountsParams = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    DaemonResponse::ok(
+        id,
+        serde_json::json!({"started": crate::daemon::usage_poller::refresh(params.tool)}),
     )
 }
 

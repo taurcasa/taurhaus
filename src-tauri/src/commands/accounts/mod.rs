@@ -76,6 +76,33 @@ pub fn list_accounts(
     result
 }
 
+#[tauri::command]
+pub fn refresh_accounts_usage(
+    provider: State<'_, ProviderState>,
+    tool: CliTool,
+) -> IpcResult<bool> {
+    let span = IpcCommandSpan::start("refresh_accounts_usage");
+    let result =
+        refresh_accounts_usage_impl(provider.inner(), tool).ipc_cmd("refresh_accounts_usage");
+    span.finish_result(&result);
+    result
+}
+
+fn refresh_accounts_usage_impl(provider: &ProviderState, tool: CliTool) -> Result<bool, String> {
+    if cfg!(target_os = "windows") {
+        let Some(daemon) = provider.daemon.as_ref() else {
+            return Ok(false);
+        };
+        let request = protocol::DaemonRequest::new(
+            format!("refresh-usage-{tool}"),
+            protocol::method::REFRESH_USAGE,
+            protocol::ListAccountsParams { tool },
+        );
+        return Ok(daemon.send_status_request(&request).is_ok());
+    }
+    Ok(crate::daemon::usage_poller::refresh(tool))
+}
+
 /// Reconcile the Claude status-line bridge behind this answer, on a native
 /// host.
 ///
@@ -105,8 +132,10 @@ pub(crate) fn accounts_report(provider: &ProviderState, tool: CliTool) -> Accoun
     if cfg!(target_os = "windows") {
         return daemon_accounts_report(provider, tool);
     }
+    let mut detected = accounts::detect(tool);
+    crate::daemon::usage_poller::attach_usage(tool, &mut detected);
     AccountsResult {
-        accounts: accounts::detect(tool),
+        accounts: detected,
         source: SOURCE_NATIVE.to_string(),
         degraded: false,
         error: None,

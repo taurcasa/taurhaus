@@ -850,6 +850,41 @@ pub trait HttpClient: Sync {
     ) -> Result<HttpResponse, HttpError>;
 }
 
+/// Production blocking client. Calls run only on the usage poller thread.
+pub struct ReqwestHttpClient;
+
+impl HttpClient for ReqwestHttpClient {
+    fn get(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        timeout: Duration,
+    ) -> Result<HttpResponse, HttpError> {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .build()
+            .map_err(|_| HttpError {
+                kind: HttpErrorKind::Network,
+            })?;
+        let mut request = client.get(url);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        let response = request.send().map_err(|error| HttpError {
+            kind: if error.is_timeout() {
+                HttpErrorKind::Timeout
+            } else {
+                HttpErrorKind::Network
+            },
+        })?;
+        let status = response.status().as_u16();
+        let body = response.text().map_err(|_| HttpError {
+            kind: HttpErrorKind::Network,
+        })?;
+        Ok(HttpResponse { status, body })
+    }
+}
+
 /// Per-tool account detection and resume derivation.
 pub trait AccountProvider: Sync {
     fn default_dir(&self, home: &Path) -> PathBuf;
