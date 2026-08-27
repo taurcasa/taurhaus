@@ -130,13 +130,15 @@ pub(super) fn launch_cli_session_impl(
                 &linux_path,
                 tool,
                 mode,
-                account_id.as_deref(),
-                project_account_memory.as_ref(),
-                terminal_settings
-                    .default_account_ids
-                    .get(&tool.to_string())
-                    .map(String::as_str),
-                base,
+                ResolveAccountOptions {
+                    requested_account_id: account_id.as_deref(),
+                    project_memory: project_account_memory.as_ref(),
+                    default_account_id: terminal_settings
+                        .default_account_ids
+                        .get(&tool.to_string())
+                        .map(String::as_str),
+                    base,
+                },
             );
             log_account_resolution(&project_id, tool, &launch);
             launch.resolution
@@ -481,12 +483,7 @@ pub(super) const TEAM_DEFAULT_ACCOUNT: &str = "team_default";
 /// The account this launch was explicitly asked to run on, if a tool that has
 /// accounts was asked at all.
 fn requested_account(tool: CliTool, account_id: Option<&str>) -> Option<&str> {
-    if crate::session_scanner::cli_tool::spec(tool)
-        .account_provider()
-        .is_none()
-    {
-        return None;
-    }
+    crate::session_scanner::cli_tool::spec(tool).account_provider()?;
     account_id.map(str::trim).filter(|id| !id.is_empty())
 }
 
@@ -546,16 +543,26 @@ pub(super) struct DegradedDetection {
 }
 
 /// Resolve one provider-backed tool account for a launch.
+struct ResolveAccountOptions<'a> {
+    requested_account_id: Option<&'a str>,
+    project_memory: Option<&'a crate::models::AccountMemory>,
+    default_account_id: Option<&'a str>,
+    base: &'a str,
+}
+
 fn resolve_account(
     provider: &ProviderState,
     linux_path: &str,
     tool: CliTool,
     mode: LaunchMode,
-    requested_account_id: Option<&str>,
-    project_memory: Option<&crate::models::AccountMemory>,
-    default_account_id: Option<&str>,
-    base: &str,
+    options: ResolveAccountOptions<'_>,
 ) -> LaunchAccount {
+    let ResolveAccountOptions {
+        requested_account_id,
+        project_memory,
+        default_account_id,
+        base,
+    } = options;
     let asked_for_an_account = requested_account_id.is_some_and(|id| !id.trim().is_empty());
     let mut transcript = TranscriptLookup::default();
     if !asked_for_an_account && matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
