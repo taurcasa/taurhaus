@@ -31,6 +31,27 @@ const LOGGED_OUT = {
   is_default: false,
 }
 
+/**
+ * Usage as the status line reports it. Times are relative to render so the
+ * fixtures keep meaning "just now" and "hours ago" whenever they are shot.
+ */
+function usage({ fiveHour, sevenDay, minutesAgo }) {
+  const now = Date.now()
+  return {
+    five_hour: { used_percentage: fiveHour, resets_at: Math.floor(now / 1000) + 2 * 3600 + 600 },
+    seven_day: { used_percentage: sevenDay, resets_at: Math.floor(now / 1000) + 41 * 3600 },
+    observed_at: new Date(now - minutesAgo * 60_000).toISOString(),
+  }
+}
+
+/** The same usage, with its five-hour window already past its reset. */
+function resetFiveHour(reported) {
+  return {
+    ...reported,
+    five_hour: { ...reported.five_hour, resets_at: Math.floor(Date.now() / 1000) - 600 },
+  }
+}
+
 export const claudeAccountScenarios = [
   {
     name: 'single-account-light',
@@ -72,6 +93,58 @@ export const claudeAccountScenarios = [
     theme: 'dark',
     accounts: [PRIMARY, SECOND, LOGGED_OUT],
     projectName: 'mesh',
+    selectedAccountId: null,
+    expected: { chooser: true, chip: true },
+  },
+  {
+    // The decision this feature exists for: one subscription nearly spent, the
+    // other wide open, both reported minutes ago.
+    name: 'usage-fresh-light',
+    theme: 'light',
+    accounts: [
+      { ...PRIMARY, usage: usage({ fiveHour: 91, sevenDay: 62, minutesAgo: 2 }) },
+      { ...SECOND, usage: usage({ fiveHour: 12, sevenDay: 8, minutesAgo: 4 }) },
+    ],
+    projectName: 'taurhaus',
+    selectedAccountId: null,
+    expected: { chooser: true, chip: true },
+  },
+  {
+    name: 'usage-fresh-dark',
+    theme: 'dark',
+    accounts: [
+      { ...PRIMARY, usage: usage({ fiveHour: 26, sevenDay: 17, minutesAgo: 1 }) },
+      { ...SECOND, usage: usage({ fiveHour: 78, sevenDay: 44, minutesAgo: 6 }) },
+    ],
+    projectName: 'taurhaus',
+    selectedAccountId: 'account-2',
+    expected: { chooser: true, chip: true },
+  },
+  {
+    // Usage only flows while a session of that account runs, so hours-old
+    // numbers are the normal case, and they say so instead of their reset.
+    name: 'usage-stale-light',
+    theme: 'light',
+    accounts: [
+      { ...PRIMARY, usage: usage({ fiveHour: 54, sevenDay: 33, minutesAgo: 260 }) },
+      SECOND,
+    ],
+    projectName: 'taurhaus',
+    selectedAccountId: null,
+    expected: { chooser: true, chip: true },
+  },
+  {
+    // A five-hour window that reset while the app stayed open. The percentage
+    // beside it describes a window that no longer exists, and this account is
+    // the one that just got its headroom back — so the row goes, and only the
+    // seven-day number is still spoken for.
+    name: 'usage-window-reset-light',
+    theme: 'light',
+    accounts: [
+      { ...PRIMARY, usage: resetFiveHour(usage({ fiveHour: 91, sevenDay: 62, minutesAgo: 40 })) },
+      { ...SECOND, usage: usage({ fiveHour: 12, sevenDay: 8, minutesAgo: 4 }) },
+    ],
+    projectName: 'taurhaus',
     selectedAccountId: null,
     expected: { chooser: true, chip: true },
   },

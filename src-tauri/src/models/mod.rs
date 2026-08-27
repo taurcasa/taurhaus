@@ -286,6 +286,11 @@ pub enum AppPlatform {
 const CODEX_NATIVE_HOOKS_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_NATIVE_NOTIFY_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_QUEUE_WAKE_MIN_VERSION: (u32, u32, u32) = (0, 149, 0);
+/// The oldest Claude Code build observed to send `rate_limits` on the status
+/// line. Captured live on 2026-08-27 against 2.1.246; older builds are not
+/// documented to carry the block, so the usage bridge stays out of their
+/// settings rather than rewriting a `statusLine` for numbers that never come.
+const CLAUDE_STATUSLINE_USAGE_MIN_VERSION: (u32, u32, u32) = (2, 1, 246);
 const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -296,6 +301,7 @@ pub struct CliVersions {
     pub codex_compaction_hooks_supported: bool,
     pub codex_notify_supported: bool,
     pub codex_queue_wake_supported: bool,
+    pub claude_statusline_usage_supported: bool,
 }
 
 static CLI_VERSIONS: LazyLock<CliVersions> = LazyLock::new(CliVersions::probe);
@@ -315,9 +321,24 @@ impl CliVersions {
             codex_compaction_hooks_supported = versions.codex_compaction_hooks_supported,
             codex_notify_supported = versions.codex_notify_supported,
             codex_queue_wake_supported = versions.codex_queue_wake_supported,
+            claude_statusline_usage_supported = versions.claude_statusline_usage_supported,
             "CLI versions detected for native harness capability gates"
         );
         versions
+    }
+
+    /// A fresh read of `claude --version`, for a caller that has to decide
+    /// again rather than once.
+    ///
+    /// `current` is filled by the first probe this process ever runs and then
+    /// answers with it forever, which is right for a gate decided at startup
+    /// and wrong for one reconciled on a timer: a probe that timed out, or a
+    /// `claude` the user has upgraded or downgraded since, would never be read
+    /// again. Only the Claude fields of the returned value mean anything — the
+    /// Codex gates stay as they are decided at startup, and this deliberately
+    /// does not pay for a second probe to fill them.
+    pub fn probe_claude() -> Self {
+        Self::from_versions(None, probe_cli_version("claude"))
     }
 
     pub fn codex_compaction_hooks_support(&self) -> Option<bool> {
@@ -339,6 +360,7 @@ impl CliVersions {
         claude: Option<((u32, u32, u32), String)>,
     ) -> Self {
         let codex_parsed = codex.as_ref().map(|(version, _)| *version);
+        let claude_parsed = claude.as_ref().map(|(version, _)| *version);
         Self {
             codex: codex.map(|(_, normalized)| normalized),
             claude: claude.map(|(_, normalized)| normalized),
@@ -348,6 +370,8 @@ impl CliVersions {
                 .is_some_and(|version| version >= CODEX_NATIVE_NOTIFY_MIN_VERSION),
             codex_queue_wake_supported: codex_parsed
                 .is_some_and(|version| version >= CODEX_QUEUE_WAKE_MIN_VERSION),
+            claude_statusline_usage_supported: claude_parsed
+                .is_some_and(|version| version >= CLAUDE_STATUSLINE_USAGE_MIN_VERSION),
         }
     }
 }
@@ -1327,6 +1351,23 @@ mod tests {
         assert!(queue.codex_queue_wake_supported);
     }
 
+    // Regression: d6839a3 gated only Codex capabilities on a CLI version. The
+    // status line is the only documented source of subscription usage, and its
+    // `rate_limits` block exists in 2.1.246 (captured live) but is undocumented
+    // for older builds — installing the bridge there would rewrite a user's
+    // `statusLine` for numbers that never arrive.
+    #[test]
+    fn the_usage_status_line_is_gated_on_the_claude_version_that_sends_rate_limits() {
+        let observed = CliVersions::from_outputs(None, Some("2.1.246 (Claude Code)"));
+        assert!(observed.claude_statusline_usage_supported);
+
+        let older = CliVersions::from_outputs(None, Some("2.1.238 (Claude Code)"));
+        assert!(!older.claude_statusline_usage_supported);
+
+        let unknown = CliVersions::from_outputs(None, None);
+        assert!(!unknown.claude_statusline_usage_supported);
+    }
+
     // Regression: c0aa59a used a non-interactive login shell for the version
     // probe, but managed panes source interactive rc files where nvm installs Codex.
     #[test]
@@ -1373,6 +1414,7 @@ mod tests {
                 codex_compaction_hooks_supported: false,
                 codex_notify_supported: false,
                 codex_queue_wake_supported: false,
+                claude_statusline_usage_supported: false,
             }
         );
     }

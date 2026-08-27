@@ -20,6 +20,7 @@ const {
   effectiveClaudeAccountId,
   loggedInAccounts,
   refreshClaudeAccounts,
+  refreshClaudeAccountUsage,
   requestClaudeLaunch,
   resolveChooserAccounts,
   resetClaudeAccountsForTest,
@@ -238,6 +239,86 @@ describe('claudeAccounts store', () => {
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  // Regression: 79be608 folded usage into account detection, which the store
+  // caches for a minute and OverviewTab asked for once on mount. Every later
+  // status-line report was invisible until something forced detection again,
+  // so the chip a user opened to compare subscriptions showed mount-time
+  // numbers — for a feature whose whole point is the current one.
+  it('refreshes usage without waiting for the detection cache to expire', async () => {
+    listClaudeAccounts.mockResolvedValue(
+      detected([PRIMARY, { ...SECOND, usage: null }])
+    )
+    await refreshClaudeAccounts()
+    expect(claudeAccounts.accounts[1].usage).toBe(null)
+
+    const usage = {
+      five_hour: { used_percentage: 81, resets_at: 1787784600 },
+      seven_day: { used_percentage: 44, resets_at: 1788300000 },
+      observed_at: '2026-08-27T12:00:00Z',
+    }
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage }]))
+
+    await refreshClaudeAccountUsage()
+
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+    // The accounts themselves are detection's answer, not this call's.
+    expect(claudeAccounts.accounts.map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+  })
+
+  // Regression: a574720 copied every account's usage from the report, `null`
+  // included. The sink cannot be read while a compacting writer holds it, and
+  // the backend answers such a refresh with no numbers at all — so the meter on
+  // screen went blank for an account whose record was still on disk. The
+  // numbers carry the moment they were observed, so keeping the last ones is
+  // the honest answer: the meter labels its own age.
+  it('keeps the numbers it has when a refresh brings none', async () => {
+    const usage = {
+      five_hour: { used_percentage: 81, resets_at: 1787784600 },
+      seven_day: { used_percentage: 44, resets_at: 1788300000 },
+      observed_at: '2026-08-27T12:00:00Z',
+    }
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage }]))
+    await refreshClaudeAccounts()
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage: null }]))
+    await refreshClaudeAccountUsage()
+
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+
+    // Detection answers with the same numbers from the same file, so it keeps
+    // them for the same reason.
+    await refreshClaudeAccounts({ force: true })
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+  })
+
+  it('keeps the accounts it knows when a usage refresh cannot run', async () => {
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts()
+
+    listClaudeAccounts.mockResolvedValue(degraded())
+    await refreshClaudeAccountUsage()
+
+    expect(claudeAccounts.accounts.map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+  })
+
+  it('reads usage again before asking which subscription to launch on', async () => {
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts()
+    listClaudeAccounts.mockClear()
+
+    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+    expect(listClaudeAccounts).toHaveBeenCalled()
   })
 
   it('a default chosen in settings takes effect without a reload', async () => {

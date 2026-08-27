@@ -38,6 +38,7 @@ const EMPTY_CLI_VERSIONS = {
   codex_compaction_hooks_supported: false,
   codex_notify_supported: false,
   codex_queue_wake_supported: false,
+  claude_statusline_usage_supported: false,
 }
 
 const DEFAULT_TERMINAL_CONTRACTS = {
@@ -128,6 +129,11 @@ function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
       versions.codex_queue_wake_supported ??
         versions.codexQueueWakeSupported ??
         defaults.codex_queue_wake_supported,
+    ),
+    claude_statusline_usage_supported: Boolean(
+      versions.claude_statusline_usage_supported ??
+        versions.claudeStatuslineUsageSupported ??
+        defaults.claude_statusline_usage_supported,
     ),
   }
 }
@@ -339,6 +345,37 @@ function normalizeMeshInstallStatus(raw) {
   }
 }
 
+function normalizeUsageWindow(raw) {
+  const window = raw && typeof raw === 'object' ? raw : null
+  if (!window) return null
+  const used = Number(window.used_percentage ?? window.usedPercentage)
+  if (!Number.isFinite(used)) return null
+  const resetsAt = Number(window.resets_at ?? window.resetsAt)
+  return {
+    used_percentage: used,
+    resets_at: Number.isFinite(resetsAt) ? resetsAt : null,
+  }
+}
+
+/**
+ * What a subscription's status line last reported. `null` when nothing has:
+ * usage only flows while a session of that account runs, and "not reported" is
+ * a different answer from "0 % used".
+ */
+function normalizeClaudeAccountUsage(raw) {
+  const usage = raw && typeof raw === 'object' ? raw : null
+  if (!usage) return null
+  const fiveHour = normalizeUsageWindow(usage.five_hour ?? usage.fiveHour)
+  const sevenDay = normalizeUsageWindow(usage.seven_day ?? usage.sevenDay)
+  if (!fiveHour && !sevenDay) return null
+  const observedAt = usage.observed_at ?? usage.observedAt ?? null
+  return {
+    five_hour: fiveHour,
+    seven_day: sevenDay,
+    observed_at: observedAt == null ? null : String(observedAt),
+  }
+}
+
 function normalizeClaudeAccount(raw) {
   const account = raw && typeof raw === 'object' ? raw : {}
   const id = String(account.id ?? '').trim()
@@ -355,6 +392,7 @@ function normalizeClaudeAccount(raw) {
     seat_tier: seatTier == null ? null : String(seatTier).trim() || null,
     logged_in: Boolean(account.logged_in ?? account.loggedIn),
     is_default: Boolean(account.is_default ?? account.isDefault),
+    usage: normalizeClaudeAccountUsage(account.usage),
   }
 }
 

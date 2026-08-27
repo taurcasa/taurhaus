@@ -3,6 +3,8 @@
    * Which Claude subscription this project runs on, and a menu to change it.
    * Hidden entirely when the host has a single account — the common case.
    */
+  import ClaudeUsageMeter from './ClaudeUsageMeter.svelte'
+
   let {
     accounts = [],
     selectedAccountId = null,
@@ -12,9 +14,32 @@
     degraded = false,
     dark = false,
     onSelect = () => {},
+    /**
+     * Ask for current usage. The menu is where two subscriptions get compared,
+     * and the numbers behind them move while the project stays mounted.
+     */
+    onRequestUsage = () => {},
   } = $props()
 
   let open = $state(false)
+
+  /** How often an open menu asks again. Percentages move in tens of seconds. */
+  const USAGE_POLL_MS = 30 * 1000
+
+  // Only `open` is read synchronously, so the poll restarts when the menu
+  // opens and closes — not every time the parent hands down a new callback.
+  $effect(() => {
+    if (!open) return
+    const timer = setInterval(() => onRequestUsage(), USAGE_POLL_MS)
+    return () => clearInterval(timer)
+  })
+
+  function toggle() {
+    open = !open
+    // The first ask belongs to the click, not to the effect: an effect that
+    // re-runs would otherwise spend an IPC every time.
+    if (open) onRequestUsage()
+  }
 
   const visible = $derived(accounts.length >= 2)
   // What a project inherits: the configured global default while it can run,
@@ -40,6 +65,7 @@
       : 'border-brand-200/60 bg-white text-zinc-800 shadow-xl shadow-brand-900/10'
   )
   const itemTone = $derived(dark ? 'hover:bg-zinc-900' : 'hover:bg-brand-50')
+  const dividerTone = $derived(dark ? 'border-white/[0.08]' : 'border-brand-200/70')
   const metaTone = $derived(dark ? 'text-zinc-500' : 'text-zinc-500')
   const focusRing = $derived(
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30'
@@ -72,12 +98,19 @@
       {title}
       aria-haspopup="menu"
       aria-expanded={open}
-      onclick={() => (open = !open)}
+      onclick={toggle}
       data-testid="claude-account-chip"
     >
       <span class="max-w-[10rem] truncate">{labelFor(selected)}</span>
       {#if inherited}
         <span class="{metaTone} text-[10px]">default</span>
+      {/if}
+      {#if selected?.usage}
+        <!-- `empty:hidden`: the meter renders nothing once every window it had
+             has reset, and a divider with nothing after it reads as a bug. -->
+        <span class="border-l pl-1.5 empty:hidden {dividerTone}">
+          <ClaudeUsageMeter usage={selected.usage} {dark} compact />
+        </span>
       {/if}
     </button>
 
@@ -105,6 +138,11 @@
             <span class="text-[10px] {metaTone}">
               {account.email}{account.logged_in ? '' : ' · not logged in'}
             </span>
+            {#if account.usage}
+              <span class="mt-1 w-full">
+                <ClaudeUsageMeter usage={account.usage} {dark} />
+              </span>
+            {/if}
           </button>
         {/each}
         {#if selectedAccountId}

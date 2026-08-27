@@ -1102,6 +1102,7 @@ fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount
             logged_in: true,
             is_default: true,
             is_process_default: true,
+            usage: None,
         },
         crate::session_scanner::claude_accounts::ClaudeAccount {
             id: "account-2".to_string(),
@@ -1113,6 +1114,7 @@ fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount
             logged_in: true,
             is_default: false,
             is_process_default: false,
+            usage: None,
         },
     ]
 }
