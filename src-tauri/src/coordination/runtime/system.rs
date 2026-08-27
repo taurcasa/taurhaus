@@ -62,53 +62,57 @@ fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
 
 /// Test seam: stands in for the scanner so identity detection can be driven
 /// through healthy and degraded scans.
+///
+/// Scoped to the thread that installs it. Detection is synchronous, so the
+/// installing test is the only caller its scan can reach — a sibling test
+/// polling the scanner in parallel is served the ordinary empty scan and can
+/// neither observe nor consume someone else's script.
 #[cfg(test)]
 type RuntimeScanOverride = fn() -> (Vec<RuntimeSessionInfo>, bool);
 #[cfg(test)]
-static RUNTIME_SCAN_OVERRIDE: std::sync::Mutex<Option<RuntimeScanOverride>> =
-    std::sync::Mutex::new(None);
-/// Serializes tests that install the runtime scan override.
-#[cfg(test)]
-static DETECT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+thread_local! {
+    static RUNTIME_SCAN_OVERRIDE: std::cell::Cell<Option<RuntimeScanOverride>> =
+        const { std::cell::Cell::new(None) };
+}
 
 #[cfg(test)]
 fn collect_runtime_sessions() -> (Vec<RuntimeSessionInfo>, bool) {
-    let scan = *RUNTIME_SCAN_OVERRIDE
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    match scan {
+    match RUNTIME_SCAN_OVERRIDE.with(std::cell::Cell::get) {
         Some(scan) => scan(),
         None => (Vec::new(), false),
     }
 }
 
+/// Install or clear this thread's scan override.
+#[cfg(test)]
+fn set_runtime_scan_override(scan: Option<RuntimeScanOverride>) {
+    RUNTIME_SCAN_OVERRIDE.with(|slot| slot.set(scan));
+}
+
 /// Test seam for scanner-level tests: routes identity detection through the
-/// real `scan_sessions_for_runtime` for as long as the guard lives, serialized
-/// against the scripted scans of this module's own tests.
+/// real `scan_sessions_for_runtime` for as long as the guard lives, on the
+/// thread that installed it.
 #[cfg(test)]
 pub(crate) struct RealRuntimeScan {
-    _lock: std::sync::MutexGuard<'static, ()>,
+    /// The override lives on the installing thread, so the guard must not
+    /// travel to another one and clear the wrong slot.
+    _not_send: std::marker::PhantomData<*const ()>,
 }
 
 #[cfg(test)]
 impl RealRuntimeScan {
     pub(crate) fn install() -> Self {
-        let lock = DETECT_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        *RUNTIME_SCAN_OVERRIDE
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = Some(scan_runtime_sessions);
-        Self { _lock: lock }
+        set_runtime_scan_override(Some(scan_runtime_sessions));
+        Self {
+            _not_send: std::marker::PhantomData,
+        }
     }
 }
 
 #[cfg(test)]
 impl Drop for RealRuntimeScan {
     fn drop(&mut self) {
-        *RUNTIME_SCAN_OVERRIDE
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = None;
+        set_runtime_scan_override(None);
     }
 }
 
@@ -586,12 +590,14 @@ fn non_empty(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::MutexGuard;
+    use std::cell::Cell;
 
-    static SCAN_CALLS: AtomicUsize = AtomicUsize::new(0);
-    /// Scans before this count are degraded; the rest are healthy.
-    static DEGRADED_SCANS: AtomicUsize = AtomicUsize::new(usize::MAX);
+    thread_local! {
+        /// Scans the installed script has served on this thread.
+        static SCAN_CALLS: Cell<usize> = const { Cell::new(0) };
+        /// Scans before this count are degraded; the rest are healthy.
+        static DEGRADED_SCANS: Cell<usize> = const { Cell::new(usize::MAX) };
+    }
 
     const PANE: &str = "%7";
 
@@ -646,37 +652,43 @@ mod tests {
     /// Degraded scans hand back the last good snapshot, which still maps the
     /// pane to the previous CLI's transcript; healthy scans see the new one.
     fn scripted_scan() -> (Vec<RuntimeSessionInfo>, bool) {
-        let call = SCAN_CALLS.fetch_add(1, Ordering::SeqCst);
-        if call < DEGRADED_SCANS.load(Ordering::SeqCst) {
+        let call = SCAN_CALLS.with(|calls| {
+            let call = calls.get();
+            calls.set(call + 1);
+            call
+        });
+        if call < DEGRADED_SCANS.with(Cell::get) {
             (vec![stale_cached_session()], true)
         } else {
             (vec![fresh_session()], false)
         }
     }
 
+    /// Owns the script and its counter for the test that installs it: both live
+    /// on this thread, so no sibling test can be served or counted here.
     struct ScanOverride {
-        _lock: MutexGuard<'static, ()>,
+        _not_send: std::marker::PhantomData<*const ()>,
     }
 
     impl ScanOverride {
         fn install(degraded_scans: usize) -> Self {
-            let lock = DETECT_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            SCAN_CALLS.store(0, Ordering::SeqCst);
-            DEGRADED_SCANS.store(degraded_scans, Ordering::SeqCst);
-            *RUNTIME_SCAN_OVERRIDE
-                .lock()
-                .unwrap_or_else(|error| error.into_inner()) = Some(scripted_scan);
-            Self { _lock: lock }
+            SCAN_CALLS.with(|calls| calls.set(0));
+            DEGRADED_SCANS.with(|scans| scans.set(degraded_scans));
+            set_runtime_scan_override(Some(scripted_scan));
+            Self {
+                _not_send: std::marker::PhantomData,
+            }
+        }
+
+        /// Scans this guard's script has served.
+        fn calls(&self) -> usize {
+            SCAN_CALLS.with(Cell::get)
         }
     }
 
     impl Drop for ScanOverride {
         fn drop(&mut self) {
-            *RUNTIME_SCAN_OVERRIDE
-                .lock()
-                .unwrap_or_else(|error| error.into_inner()) = None;
+            set_runtime_scan_override(None);
         }
     }
 
@@ -689,7 +701,7 @@ mod tests {
     // identities, keep polling, and report no session when the outage lasts.
     #[test]
     fn detect_runtime_session_ignores_degraded_snapshot_and_keeps_polling() {
-        let _override = ScanOverride::install(usize::MAX);
+        let scans = ScanOverride::install(usize::MAX);
 
         let detected = SystemCoordinationRuntime
             .detect_runtime_session(PANE, CliTool::Codex)
@@ -701,7 +713,7 @@ mod tests {
             "a degraded scan must never bind the cached identity"
         );
         assert_eq!(
-            SCAN_CALLS.load(Ordering::SeqCst),
+            scans.calls(),
             SESSION_DETECT_ATTEMPTS,
             "every attempt must poll the scanner again"
         );
@@ -711,7 +723,7 @@ mod tests {
     // detection window, the fresh observation is bound, not the stale one.
     #[test]
     fn detect_runtime_session_binds_first_healthy_scan_after_degraded_ones() {
-        let _override = ScanOverride::install(2);
+        let scans = ScanOverride::install(2);
 
         let detected = SystemCoordinationRuntime
             .detect_runtime_session(PANE, CliTool::Codex)
@@ -724,6 +736,44 @@ mod tests {
                 jsonl_path: Some(PathBuf::from("/tmp/fresh-session.jsonl")),
             }
         );
-        assert_eq!(SCAN_CALLS.load(Ordering::SeqCst), 3);
+        assert_eq!(scans.calls(), 3);
+    }
+
+    // Regression: 790d7a2 made the scan override and its call counter
+    // process-global while only the tests that install one take a lock. Any
+    // sibling test that polls the scanner meanwhile — the onboarding E2E drives
+    // `detect_runtime_session` on the real runtime in the same binary — was
+    // served this script and counted against it, so
+    // `detect_runtime_session_ignores_degraded_snapshot_and_keeps_polling`
+    // failed with `left: 11, right: 6`. The script belongs to the thread that
+    // installed it: nobody else is served it, and nobody else can count.
+    #[test]
+    fn scripted_scan_is_scoped_to_the_thread_that_installed_it() {
+        let scans = ScanOverride::install(usize::MAX);
+
+        let sibling = std::thread::spawn(|| {
+            (0..5)
+                .map(|_| collect_runtime_sessions())
+                .collect::<Vec<_>>()
+        })
+        .join()
+        .expect("sibling scan thread");
+
+        assert!(
+            sibling
+                .iter()
+                .all(|(sessions, degraded)| sessions.is_empty() && !*degraded),
+            "a sibling thread must never be served this test's scripted scan"
+        );
+
+        let (sessions, degraded) = collect_runtime_sessions();
+        assert!(degraded);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id.as_deref(), Some("stale-session"));
+        assert_eq!(
+            scans.calls(),
+            1,
+            "the guard counts only the scans of the test that installed it"
+        );
     }
 }
