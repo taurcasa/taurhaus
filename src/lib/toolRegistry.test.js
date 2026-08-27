@@ -7,6 +7,8 @@ import {
   configureToolRegistry,
   resetToolRegistry,
   toolDescriptor,
+  toolDisplayName,
+  toolMedallionAccent,
   tools,
 } from './toolRegistry.js'
 
@@ -30,5 +32,15 @@ describe('toolRegistry', () => {
 
     expect(tools()).toEqual(contract)
     expect(toolDescriptor('mesh').label).toBe('Codex Contract')
+  })
+
+  it('preserves product names and runtime medallion accents from before the registry refactor', () => {
+    // Regression: 91f4d3f replaced Settings product names and the runtime role
+    // palette with the generic registry label/accent pair.
+    expect(toolDisplayName('claude')).toBe('Claude Code')
+    expect(toolDisplayName('gemini')).toBe('Gemini CLI')
+    expect(toolMedallionAccent('claude')).toBe('amber')
+    expect(toolMedallionAccent('codex')).toBe('emerald')
+    expect(toolMedallionAccent('gemini')).toBe('sky')
   })
 })

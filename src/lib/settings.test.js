@@ -457,6 +457,17 @@ describe('Settings component', () => {
     })
   })
 
+  it('keeps the CLI product names in the command settings headings', async () => {
+    // Regression: 91f4d3f rendered short registry labels in place of the
+    // existing Claude Code and Gemini CLI product names.
+    render(Settings, { props: defaultProps() })
+
+    const section = await screen.findByTestId('settings-cli-tools')
+    expect(section).toHaveTextContent('Claude Code')
+    expect(section).toHaveTextContent('Codex')
+    expect(section).toHaveTextContent('Gemini CLI')
+  })
+
   it('terminal emulator dropdown has Windows Terminal and Custom options', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => {

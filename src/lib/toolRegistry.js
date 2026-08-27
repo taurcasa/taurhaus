@@ -26,7 +26,9 @@ export const FALLBACK_TOOLS = Object.freeze([
   {
     id: 'claude',
     label: 'Claude',
+    displayName: 'Claude Code',
     accent: 'emerald',
+    medallionAccent: 'amber',
     defaultAgentRoleId: 'claude-reviewer',
     aliases: ['claude', 'claude_native'],
     capabilities: {
@@ -54,7 +56,9 @@ export const FALLBACK_TOOLS = Object.freeze([
   {
     id: 'codex',
     label: 'Codex',
+    displayName: 'Codex',
     accent: 'sky',
+    medallionAccent: 'emerald',
     defaultAgentRoleId: 'codex-developer',
     aliases: ['codex', 'mesh', 'mesh_bridged'],
     capabilities: {
@@ -82,7 +86,9 @@ export const FALLBACK_TOOLS = Object.freeze([
   {
     id: 'gemini',
     label: 'Gemini',
+    displayName: 'Gemini CLI',
     accent: 'violet',
+    medallionAccent: 'sky',
     defaultAgentRoleId: 'custom-doc-writer',
     aliases: ['gemini'],
     capabilities: {
@@ -165,7 +171,12 @@ function normalizeDescriptor(raw) {
   return {
     id,
     label: String(raw.label ?? id).trim() || id,
+    displayName:
+      String(raw.displayName ?? raw.display_name ?? raw.label ?? id).trim() || id,
     accent: String(raw.accent ?? 'brand').trim() || 'brand',
+    medallionAccent:
+      String(raw.medallionAccent ?? raw.medallion_accent ?? raw.accent ?? 'brand').trim() ||
+      'brand',
     defaultAgentRoleId: stringOrNull(raw.defaultAgentRoleId ?? raw.default_agent_role_id),
     aliases,
     capabilities: normalizeCapabilities(raw.capabilities),
@@ -226,8 +237,16 @@ export function toolLabel(value, fallback = 'Unknown') {
   return toolDescriptor(value)?.label ?? fallback
 }
 
+export function toolDisplayName(value, fallback = 'Unknown') {
+  return toolDescriptor(value)?.displayName ?? fallback
+}
+
 export function toolAccent(value, fallback = 'brand') {
   return toolDescriptor(value)?.accent ?? fallback
+}
+
+export function toolMedallionAccent(value, fallback = 'brand') {
+  return toolDescriptor(value)?.medallionAccent ?? fallback
 }
 
 export function toolCounts(items, readTool) {

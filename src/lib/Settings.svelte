@@ -644,7 +644,7 @@
             {@const tool = descriptor.id}
             <div class="mb-4 last:mb-0">
               <div class="flex items-center justify-between mb-2">
-                <h3 class="text-[12px] font-medium {t.textBody}">{descriptor.label}</h3>
+                <h3 class="text-[12px] font-medium {t.textBody}">{descriptor.displayName}</h3>
                 <button
                   class="text-[11px] {t.linkColor} transition-colors {buttonFocusRing}"
                   onclick={() => resetToolDefaults(tool)}

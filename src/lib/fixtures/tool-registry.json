@@ -2,7 +2,9 @@
   {
     "id": "claude",
     "label": "Claude",
+    "displayName": "Claude Code",
     "accent": "emerald",
+    "medallionAccent": "amber",
     "defaultAgentRoleId": "claude-reviewer",
     "aliases": ["claude", "claude_native"],
     "capabilities": {
@@ -30,7 +32,9 @@
   {
     "id": "codex",
     "label": "Codex",
+    "displayName": "Codex",
     "accent": "sky",
+    "medallionAccent": "emerald",
     "defaultAgentRoleId": "codex-developer",
     "aliases": ["codex", "mesh", "mesh_bridged"],
     "capabilities": {
@@ -58,7 +62,9 @@
   {
     "id": "gemini",
     "label": "Gemini",
+    "displayName": "Gemini CLI",
     "accent": "violet",
+    "medallionAccent": "sky",
     "defaultAgentRoleId": "custom-doc-writer",
     "aliases": ["gemini"],
     "capabilities": {

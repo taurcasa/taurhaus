@@ -21,7 +21,7 @@ pub use types::{
     TaskDetail, TaskResult, TaskStatus, UnifiedTask,
 };
 
-use crate::session_scanner::cli_tool::all;
+use crate::session_scanner::cli_tool::{all, CliToolSpec};
 use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::ClaudeSourceIndex;
 
@@ -40,26 +40,51 @@ pub fn get_tasks_for_project_with_index(
     sessions: &[RuntimeSession],
     claude_index: Option<&ClaudeSourceIndex>,
 ) -> TaskResult {
+    get_tasks_for_project_with(
+        project_path,
+        sessions,
+        |entry, tool_sessions, index| {
+            entry
+                .transcript_parser()
+                .map(|parser| parser.get_tasks(project_path, tool_sessions, index))
+                .unwrap_or(ScanOutcome::DefinitivelyEmpty)
+        },
+        gemini::get_tasks,
+        claude_index,
+    )
+}
+
+fn get_tasks_for_project_with<TF, GF>(
+    project_path: &str,
+    sessions: &[RuntimeSession],
+    mut get_transcript_tasks: TF,
+    get_gemini_tasks: GF,
+    claude_index: Option<&ClaudeSourceIndex>,
+) -> TaskResult
+where
+    TF: FnMut(&CliToolSpec, &[&RuntimeSession], Option<&ClaudeSourceIndex>) -> ScanOutcome,
+    GF: Fn(&str) -> ScanOutcome,
+{
     let mut result = TaskResult::empty();
 
     for entry in all() {
-        let Some(parser) = entry.transcript_parser() else {
+        if entry.transcript_parser().is_none() {
             continue;
-        };
+        }
         let tool_sessions = sessions
             .iter()
-            .filter(|session| session.cli_tool == parser.tool())
+            .filter(|session| session.cli_tool == entry.tool)
             .collect::<Vec<_>>();
         apply_source_outcome(
             &mut result,
             entry.name,
-            parser.get_tasks(project_path, &tool_sessions, claude_index),
+            get_transcript_tasks(entry, &tool_sessions, claude_index),
         );
     }
 
     // Gemini's TODO.md integration is project-local, not a verified transcript
     // format, so it remains a separate non-transcript source.
-    apply_source_outcome(&mut result, "gemini", gemini::get_tasks(project_path));
+    apply_source_outcome(&mut result, "gemini", get_gemini_tasks(project_path));
     result
 }
 
@@ -83,11 +108,14 @@ mod tests {
 
     #[test]
     fn empty_sessions_returns_empty_result() {
-        let temp = tempfile::tempdir().expect("task scanner project");
+        // Regression: e17f3eb deleted the injected scanner seam, making this
+        // unit test read live ~/.claude* and walk ~/.codex/sessions.
         let sessions: Vec<RuntimeSession> = Vec::new();
-        let result = get_tasks_for_project_with_index(
-            temp.path().to_str().expect("UTF-8 temp path"),
+        let result = get_tasks_for_project_with(
+            "/nonexistent/task-scanner-test-project",
             &sessions,
+            |_entry, _sessions, _index| ScanOutcome::DefinitivelyEmpty,
+            |_project_path| ScanOutcome::DefinitivelyEmpty,
             None,
         );
         // Should not error — parsers gracefully return empty vecs for missing data

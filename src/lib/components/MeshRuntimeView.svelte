@@ -5,7 +5,7 @@
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
   import { getToolIcon } from '../toolLogos.js'
-  import { toolAccent, toolCounts, toolLabel, tools } from '../toolRegistry.js'
+  import { toolCounts, toolLabel, toolMedallionAccent, tools } from '../toolRegistry.js'
   import MeshCanvas from './MeshCanvas.svelte'
 import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MeshRuntimeBar from './MeshRuntimeBar.svelte'
@@ -165,7 +165,11 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
   }
 
   function roleMedallionTone(tool) {
-    switch (toolAccent(tool)) {
+    switch (toolMedallionAccent(tool)) {
+      case 'amber':
+        return dark
+          ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
+          : 'border-amber-300/70 bg-amber-50 text-amber-800'
       case 'emerald':
         return dark
           ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
@@ -174,10 +178,6 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
         return dark
           ? 'border-sky-400/35 bg-sky-500/12 text-sky-200'
           : 'border-sky-300/70 bg-sky-50 text-sky-800'
-      case 'violet':
-        return dark
-          ? 'border-violet-400/35 bg-violet-500/12 text-violet-200'
-          : 'border-violet-300/70 bg-violet-50 text-violet-800'
       default:
         return dark
           ? 'border-brand-400/35 bg-brand-500/12 text-brand-200'

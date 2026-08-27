@@ -139,12 +139,14 @@ pub struct CliToolSpec {
     pub default_commands: ToolCommands,
     pub label: &'static str,
     pub accent: &'static str,
+    pub medallion_accent: &'static str,
     pub default_agent_role_id: &'static str,
     pub capabilities: CliCapabilities,
     pub stop_strategy: StopStrategy,
     pub process_activity_signal: ProcessActivitySignal,
     pub pane_binding: bool,
     pub display_name: &'static str,
+    pub settings_label: &'static str,
     /// Base directory name under `$HOME` (e.g., ".claude", ".codex", ".gemini").
     pub base_dir_name: &'static str,
     /// Subdirectory within the base dir that contains project session data.
@@ -171,6 +173,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             label: "Claude",
             accent: "emerald",
+            medallion_accent: "amber",
             default_agent_role_id: "claude-reviewer",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
@@ -197,6 +200,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Claude Code",
+            settings_label: "Claude Code",
             base_dir_name: ".claude",
             projects_subdir: "projects",
             session_extension: "jsonl",
@@ -216,6 +220,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             label: "Codex",
             accent: "sky",
+            medallion_accent: "emerald",
             default_agent_role_id: "codex-developer",
             capabilities: CliCapabilities {
                 model_flag: Some("-m"),
@@ -245,6 +250,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: true,
             display_name: "Codex CLI",
+            settings_label: "Codex",
             base_dir_name: ".codex",
             projects_subdir: "sessions",
             session_extension: "jsonl",
@@ -264,6 +270,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             label: "Gemini",
             accent: "violet",
+            medallion_accent: "sky",
             default_agent_role_id: "custom-doc-writer",
             capabilities: CliCapabilities {
                 model_flag: Some("-m"),
@@ -290,6 +297,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             process_activity_signal: ProcessActivitySignal::Tcp,
             pane_binding: false,
             display_name: "Gemini CLI",
+            settings_label: "Gemini CLI",
             base_dir_name: ".gemini",
             projects_subdir: "tmp",
             session_extension: "jsonl",
@@ -439,7 +447,9 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
 pub struct CliToolDescriptor {
     pub id: CliTool,
     pub label: String,
+    pub display_name: String,
     pub accent: String,
+    pub medallion_accent: String,
     pub default_agent_role_id: String,
     pub aliases: Vec<String>,
     pub capabilities: CliCapabilityDescriptor,
@@ -450,7 +460,9 @@ impl From<&CliToolSpec> for CliToolDescriptor {
         Self {
             id: value.tool,
             label: value.label.to_string(),
+            display_name: value.settings_label.to_string(),
             accent: value.accent.to_string(),
+            medallion_accent: value.medallion_accent.to_string(),
             default_agent_role_id: value.default_agent_role_id.to_string(),
             aliases: value
                 .aliases
