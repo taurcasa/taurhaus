@@ -18,6 +18,44 @@ use crate::task_scanner::types::{ScanOutcome, TaskStatus, UnifiedTask};
 use std::fs;
 use std::path::Path;
 
+/// Parser slice for harness transcript-backed tasks and compaction signals.
+pub trait TranscriptParser: Send + Sync {
+    fn tool(&self) -> CliTool;
+
+    fn get_tasks(
+        &self,
+        project_path: &str,
+        sessions: &[&RuntimeSession],
+        claude_index: Option<&ClaudeSourceIndex>,
+    ) -> ScanOutcome;
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    fn parse_compaction_boundary(
+        &self,
+        _line: &str,
+        _jsonl_offset: u64,
+    ) -> Option<crate::session_scanner::compaction_extractor::ParsedSignalBoundary> {
+        None
+    }
+}
+
+pub struct ClaudeTranscriptParser;
+
+impl TranscriptParser for ClaudeTranscriptParser {
+    fn tool(&self) -> CliTool {
+        CliTool::Claude
+    }
+
+    fn get_tasks(
+        &self,
+        project_path: &str,
+        sessions: &[&RuntimeSession],
+        claude_index: Option<&ClaudeSourceIndex>,
+    ) -> ScanOutcome {
+        get_tasks_with_index(project_path, sessions, claude_index)
+    }
+}
+
 /// Maximum file size to parse (1 MB). Skip larger files as a safety measure.
 const MAX_FILE_SIZE: u64 = 1_024 * 1_024;
 

@@ -15,6 +15,63 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use super::claude::TranscriptParser;
+
+pub struct CodexTranscriptParser;
+
+impl TranscriptParser for CodexTranscriptParser {
+    fn tool(&self) -> CliTool {
+        CliTool::Codex
+    }
+
+    fn get_tasks(
+        &self,
+        project_path: &str,
+        sessions: &[&RuntimeSession],
+        _claude_index: Option<&crate::task_scanner::claude_index::ClaudeSourceIndex>,
+    ) -> ScanOutcome {
+        get_tasks(project_path, sessions)
+    }
+
+    #[cfg(feature = "mesh-bridged-backend")]
+    fn parse_compaction_boundary(
+        &self,
+        line: &str,
+        jsonl_offset: u64,
+    ) -> Option<crate::session_scanner::compaction_extractor::ParsedSignalBoundary> {
+        use crate::coordination::stores::CompactionSignalKind;
+        use serde_json::Value;
+
+        let parsed: Value = serde_json::from_str(line).ok()?;
+        let timestamp = parsed
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.with_timezone(&Utc))?;
+        let signal_kind = match parsed.get("type").and_then(Value::as_str) {
+            Some("compacted") => CompactionSignalKind::Compacted,
+            Some("event_msg")
+                if parsed
+                    .get("payload")
+                    .and_then(|payload| payload.get("type"))
+                    .and_then(Value::as_str)
+                    == Some("context_compacted") =>
+            {
+                CompactionSignalKind::ContextCompacted
+            }
+            _ => return None,
+        };
+
+        Some(
+            crate::session_scanner::compaction_extractor::ParsedSignalBoundary {
+                timestamp,
+                jsonl_offset,
+                signal_kind,
+            },
+        )
+    }
+}
+
 /// How many bytes from the end of file to read when searching for update_plan.
 /// 256KB is generous — plans are small, and we want the last one.
 const TAIL_READ_SIZE: u64 = 256 * 1024;

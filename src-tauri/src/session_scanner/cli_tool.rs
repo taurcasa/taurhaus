@@ -415,6 +415,19 @@ impl CliToolSpec {
         }
     }
 
+    pub fn transcript_parser(&self) -> Option<&'static dyn crate::task_scanner::TranscriptParser> {
+        static CLAUDE: crate::task_scanner::claude::ClaudeTranscriptParser =
+            crate::task_scanner::claude::ClaudeTranscriptParser;
+        static CODEX: crate::task_scanner::codex::CodexTranscriptParser =
+            crate::task_scanner::codex::CodexTranscriptParser;
+
+        match self.tool {
+            CliTool::Claude => Some(&CLAUDE),
+            CliTool::Codex => Some(&CODEX),
+            CliTool::Gemini => None,
+        }
+    }
+
     pub(crate) fn session_resolver(
         &self,
     ) -> &'static dyn crate::session_scanner::idle::SessionResolver {

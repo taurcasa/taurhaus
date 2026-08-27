@@ -239,3 +239,35 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
 
     assert!(spec(CliTool::Gemini).compaction_signal_source().is_none());
 }
+
+#[test]
+fn transcript_parsers_match_declared_capabilities() {
+    // Regression: commit 9a66d1c wired transcript formats at their consumers;
+    // parser availability must be declared once for every registered harness.
+    for entry in all() {
+        assert_eq!(
+            entry.transcript_parser().is_some(),
+            entry.capabilities.transcript_parser,
+            "{} transcript parser declaration",
+            entry.name
+        );
+    }
+
+    let codex = spec(CliTool::Codex)
+        .transcript_parser()
+        .expect("Codex transcript parser");
+    let boundary = codex
+        .parse_compaction_boundary(
+            r#"{"timestamp":"2026-08-27T08:00:00Z","type":"compacted"}"#,
+            123,
+        )
+        .expect("Codex compaction boundary");
+    assert_eq!(boundary.jsonl_offset, 123);
+
+    assert!(spec(CliTool::Claude)
+        .transcript_parser()
+        .expect("Claude transcript parser")
+        .parse_compaction_boundary("{}", 0)
+        .is_none());
+    assert!(spec(CliTool::Gemini).transcript_parser().is_none());
+}

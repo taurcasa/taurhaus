@@ -12,7 +12,6 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use uuid::Uuid;
 
 use super::{cli_tool::CliTool, RuntimeSession};
@@ -83,10 +82,10 @@ struct ManagedCodexTranscript {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ParsedSignalBoundary {
-    timestamp: DateTime<Utc>,
-    jsonl_offset: u64,
-    signal_kind: CompactionSignalKind,
+pub struct ParsedSignalBoundary {
+    pub timestamp: DateTime<Utc>,
+    pub jsonl_offset: u64,
+    pub signal_kind: CompactionSignalKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -799,32 +798,9 @@ fn read_appended_compaction_boundaries(
 }
 
 fn parse_signal_boundary(line: &str, jsonl_offset: u64) -> Option<ParsedSignalBoundary> {
-    let parsed: Value = serde_json::from_str(line).ok()?;
-    let timestamp = parsed
-        .get("timestamp")
-        .and_then(Value::as_str)
-        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|value| value.with_timezone(&Utc))?;
-
-    let signal_kind = match parsed.get("type").and_then(Value::as_str) {
-        Some("compacted") => CompactionSignalKind::Compacted,
-        Some("event_msg")
-            if parsed
-                .get("payload")
-                .and_then(|payload| payload.get("type"))
-                .and_then(Value::as_str)
-                == Some("context_compacted") =>
-        {
-            CompactionSignalKind::ContextCompacted
-        }
-        _ => return None,
-    };
-
-    Some(ParsedSignalBoundary {
-        timestamp,
-        jsonl_offset,
-        signal_kind,
-    })
+    crate::session_scanner::cli_tool::spec(CliTool::Codex)
+        .transcript_parser()?
+        .parse_compaction_boundary(line, jsonl_offset)
 }
 
 pub fn latest_compaction_timestamp(jsonl_path: &Path) -> Option<DateTime<Utc>> {

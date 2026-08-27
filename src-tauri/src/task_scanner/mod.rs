@@ -15,11 +15,14 @@ pub mod codex;
 pub mod gemini;
 pub mod types;
 
+pub use claude::TranscriptParser;
 pub use types::{
     ArchivedSession, ArchivedSessionsResult, ScanOutcome, SessionInfo, SourceScanOutcome,
     TaskDetail, TaskResult, TaskStatus, UnifiedTask,
 };
 
+use crate::session_scanner::cli_tool::all;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::ClaudeSourceIndex;
@@ -39,16 +42,30 @@ pub fn get_tasks_for_project_with_index(
     sessions: &[RuntimeSession],
     claude_index: Option<&ClaudeSourceIndex>,
 ) -> TaskResult {
-    get_tasks_for_project_with(
-        project_path,
-        sessions,
-        claude::get_tasks_with_index,
-        codex::get_tasks,
-        gemini::get_tasks,
-        claude_index,
-    )
+    let mut result = TaskResult::empty();
+
+    for entry in all() {
+        let Some(parser) = entry.transcript_parser() else {
+            continue;
+        };
+        let tool_sessions = sessions
+            .iter()
+            .filter(|session| session.cli_tool == parser.tool())
+            .collect::<Vec<_>>();
+        apply_source_outcome(
+            &mut result,
+            entry.name,
+            parser.get_tasks(project_path, &tool_sessions, claude_index),
+        );
+    }
+
+    // Gemini's TODO.md integration is project-local, not a verified transcript
+    // format, so it remains a separate non-transcript source.
+    apply_source_outcome(&mut result, "gemini", gemini::get_tasks(project_path));
+    result
 }
 
+#[cfg(test)]
 fn get_tasks_for_project_with<CF, XF, GF>(
     project_path: &str,
     sessions: &[RuntimeSession],
