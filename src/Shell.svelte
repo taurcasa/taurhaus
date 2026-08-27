@@ -1,19 +1,20 @@
 <script>
   import { onMount } from 'svelte'
-  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchClaudeSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions, startDaemon } from './lib/ipc.js'
+  import { listProjects, getProject, getRecentCommits, getAllCommits, getReadme, getLatestSession, listSessions, getRelationships, dismissRelationship, isTauri, isFirstRun, getSettings, updateSettings, getDaemonStatus, checkDaemonInstallStatus, installDaemon, launchCliSession, navigateToSession, getForegroundProject, getRemoteUrl, checkPathType, openExternalUrl, getPlatform, listClaudeSessions, startDaemon } from './lib/ipc.js'
   import { getSessionForProject, getSessions, applyDaemonSessionUpdate, hydrateFromBackend as hydrateSessionsFromBackend, markSessionPresenceStale, DEFAULT_TAURI_POLL_INTERVAL_MS } from './lib/sessionStore.svelte.js'
   import * as assetCache from './lib/assetCache.js'
   import { anyPathMatches } from './lib/fileChange.js'
   import ShellMainPanel from './lib/components/shell/ShellMainPanel.svelte'
   import ShellTitlebar from './lib/components/shell/ShellTitlebar.svelte'
   import SearchOverlay from './lib/SearchOverlay.svelte'
-  import ClaudeAccountChooser from './lib/components/ClaudeAccountChooser.svelte'
+  import AccountChooser from './lib/components/AccountChooser.svelte'
   import {
-    claudeAccounts,
-    refreshClaudeAccounts,
-    requestClaudeLaunch,
+    accountState,
+    pendingAccountChoice,
+    refreshAccounts,
+    requestLaunch,
     resolveChooserAccounts,
-  } from './lib/claudeAccounts.svelte.js'
+  } from './lib/accounts.svelte.js'
   import AddProjectModal from './lib/AddProjectModal.svelte'
   import FirstRunWizard from './lib/FirstRunWizard.svelte'
   import Sidebar from './lib/Sidebar.svelte'
@@ -37,7 +38,7 @@
   import { setSessionContext } from './lib/context/SessionContext.js'
   import { setModelCatalogContext } from './lib/context/ModelCatalogContext.js'
   import { EMPTY_MODEL_CATALOG } from './lib/modelCatalog.js'
-  import { configureToolRegistry } from './lib/toolRegistry.js'
+  import { configureToolRegistry, tools as registryTools } from './lib/toolRegistry.js'
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
 
   let { initialDaemonStatus = undefined } = $props()
@@ -46,6 +47,10 @@
   let codeThemeLight = $state(DEFAULT_LIGHT_THEME)
   let codeThemeDark = $state(DEFAULT_DARK_THEME)
   const codeTheme = $derived(dark ? codeThemeDark : codeThemeLight)
+  const pendingAccount = $derived(pendingAccountChoice())
+  const pendingAccountState = $derived(
+    pendingAccount ? accountState(pendingAccount.tool) : null
+  )
 
   $effect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -320,7 +325,9 @@
     if (status === lastAccountDetectionDaemonStatus) return
     const reconnected = status === 'connected' && lastAccountDetectionDaemonStatus !== null
     lastAccountDetectionDaemonStatus = status
-    void refreshClaudeAccounts({ force: reconnected })
+    for (const tool of registryTools().filter((entry) => entry.capabilities.accountSelection)) {
+      void refreshAccounts(tool.id, { force: reconnected })
+    }
   })
 
   $effect(() => {
@@ -457,12 +464,12 @@
 
   function handleOverviewLaunchSession(tool) {
     if (!selectedProject) return
-    requestClaudeLaunch({
+    requestLaunch({
       project: selectedProject,
       mode: 'fresh',
       tool,
       launch: (projectId, mode, launchTool, accountId) =>
-        launchClaudeSession(projectId, mode, launchTool, accountId).then((r) =>
+        launchCliSession(projectId, mode, launchTool, accountId).then((r) =>
           console.log('[overview] launch OK:', r)
         ),
       onError: (error) => console.error('[overview] launch FAILED:', error),
@@ -621,18 +628,19 @@
 
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={(action) => navigationController.handleSearchNavigate(action)} />
 
-  {#if claudeAccounts.pending}
+  {#if pendingAccount && pendingAccountState}
     <!-- The chooser brings its own `data-shell-overlay` backdrop: a wrapper
          here would inherit the frame's `position: relative` and drop it out of
          the viewport. -->
-    <ClaudeAccountChooser
-      accounts={resolveChooserAccounts()}
-      projectName={claudeAccounts.pending.projectName}
-      defaultAccountId={claudeAccounts.defaultAccountId}
-      degraded={claudeAccounts.degraded}
+    <AccountChooser
+      tool={pendingAccount.tool}
+      accounts={resolveChooserAccounts(pendingAccount.tool)}
+      projectName={pendingAccount.projectName}
+      defaultAccountId={pendingAccountState.defaultAccountId}
+      degraded={pendingAccountState.degraded}
       {dark}
-      onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
-      onCancel={() => claudeAccounts.pending?.cancel()}
+      onConfirm={(accountId, remember) => pendingAccount?.confirm(accountId, remember)}
+      onCancel={() => pendingAccount?.cancel()}
     />
   {/if}
 

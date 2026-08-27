@@ -13,9 +13,11 @@
    * the window. Owning the overlay here is what makes that unforgettable, the
    * way `SearchOverlay` and `AddProjectModal` already do it.
    */
-  import ClaudeUsageMeter from './ClaudeUsageMeter.svelte'
+  import UsageMeter from './UsageMeter.svelte'
+  import { toolDescriptor } from '../toolRegistry.js'
 
   let {
+    tool,
     accounts = [],
     projectName = '',
     /** The account configured as the global default, if the user chose one. */
@@ -26,6 +28,8 @@
     onConfirm = () => {},
     onCancel = () => {},
   } = $props()
+
+  const toolLabel = $derived(toolDescriptor(tool)?.label ?? tool)
 
   let rememberChoice = $state(true)
   let panel = $state(null)
@@ -61,11 +65,11 @@
   )
 
   function labelFor(account) {
-    return String(account?.display_name ?? '').trim() || account?.email || account?.id || ''
+    return String(account?.display_name ?? '').trim() || account?.label || account?.id || ''
   }
 
   function metaFor(account) {
-    return [account?.organization, account?.seat_tier].filter(Boolean).join(' · ')
+    return [account?.organization, account?.plan].filter(Boolean).join(' · ')
   }
 
   function choose(account) {
@@ -94,7 +98,7 @@
 <div
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-8"
   data-shell-overlay
-  data-testid="claude-account-chooser-overlay"
+  data-testid="account-chooser-overlay"
   onmousedown={(event) => { if (event.target === event.currentTarget) onCancel() }}
 >
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -102,17 +106,17 @@
   bind:this={panel}
   class="w-[22rem] max-w-full max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border p-3 {panelTone}"
   role="dialog"
-  aria-label="Choose a Claude account"
+  aria-label="Choose a {toolLabel} account"
   tabindex="-1"
   onkeydown={handleKeydown}
-  data-testid="claude-account-chooser"
+  data-testid="account-chooser"
 >
   <p class="mb-2 text-[11px] font-semibold uppercase tracking-wider {headingTone}">
-    Claude account{projectName ? ` · ${projectName}` : ''}
+    {toolLabel} account{projectName ? ` · ${projectName}` : ''}
   </p>
 
   {#if degraded}
-    <p class="mb-2 text-[11px] {metaTone}" data-testid="claude-accounts-degraded">
+    <p class="mb-2 text-[11px] {metaTone}" data-testid="accounts-degraded">
       Accounts unavailable (daemon offline) — using last known
     </p>
   {/if}
@@ -124,24 +128,24 @@
         class="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 {optionTone} {focusRing}"
         disabled={!account.logged_in}
         onclick={() => choose(account)}
-        data-testid="claude-account-option-{account.id}"
+        data-testid="account-option-{account.id}"
       >
         <span class="min-w-0 flex-1">
           <span class="block truncate text-[13px] font-medium">{labelFor(account)}</span>
-          <span class="block truncate text-[11px] {metaTone}">{account.email}</span>
+          <span class="block truncate text-[11px] {metaTone}">{account.label}</span>
           {#if metaFor(account)}
             <span class="block truncate text-[10px] {metaTone}">{metaFor(account)}</span>
           {/if}
           {#if account.usage}
             <span class="mt-1.5 block max-w-[12rem]">
-              <ClaudeUsageMeter usage={account.usage} {dark} />
+              <UsageMeter {tool} usage={account.usage} {dark} />
             </span>
           {/if}
         </span>
         {#if account.id === defaultAccount?.id}
           <span
             class="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium {badgeTone}"
-            data-testid="claude-account-default-badge">Default</span
+            data-testid="account-default-badge">Default</span
           >
         {/if}
         {#if !account.logged_in}
@@ -156,7 +160,7 @@
       type="checkbox"
       class="h-3.5 w-3.5 accent-brand-500 {focusRing}"
       bind:checked={rememberChoice}
-      data-testid="claude-account-remember"
+      data-testid="account-remember"
     />
     Remember for this project
   </label>

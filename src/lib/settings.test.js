@@ -12,17 +12,18 @@ import '@testing-library/jest-dom/vitest'
 
 // Mock IPC module
 vi.mock('./ipc.js', () => ({
+  refreshAccountsUsage: vi.fn(() => Promise.resolve(true)),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   getIndexStatus: vi.fn(),
   rebuildIndex: vi.fn(),
   getPlatform: vi.fn(),
-  listClaudeAccounts: vi.fn(() =>
+  listAccounts: vi.fn(() =>
     Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
   ),
-  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
-  launchClaudeSession: vi.fn(() => Promise.resolve()),
-  resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
+  setProjectAccount: vi.fn(() => Promise.resolve()),
+  launchCliSession: vi.fn(() => Promise.resolve()),
+  resolveLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
 }))
 
 const {
@@ -31,12 +32,11 @@ const {
   getIndexStatus,
   rebuildIndex,
   getPlatform,
-  listClaudeAccounts,
-  launchClaudeSession,
+  listAccounts,
+  launchCliSession,
 } = await import('./ipc.js')
-const { claudeAccounts, requestClaudeLaunch, resetClaudeAccountsForTest } = await import(
-  './claudeAccounts.svelte.js'
-)
+const { accountState, requestLaunch, resetAccountsForTest } = await import('./accounts.svelte.js')
+const claudeAccounts = accountState('claude')
 
 import Settings from './Settings.svelte'
 
@@ -133,9 +133,9 @@ describe('Settings component', () => {
     getPlatform.mockResolvedValue('windows')
     // The account store is module state shared by the whole app, detection
     // included: without this a test inherits the previous one's answer.
-    resetClaudeAccountsForTest()
-    listClaudeAccounts.mockResolvedValue(detected([]))
-    launchClaudeSession.mockResolvedValue({ tmux_pane: '%1' })
+    resetAccountsForTest()
+    listAccounts.mockResolvedValue(detected([]))
+    launchCliSession.mockResolvedValue({ tmux_pane: '%1' })
   })
 
   /** What the backend answers when detection ran. */
@@ -153,27 +153,27 @@ describe('Settings component', () => {
   // reads the old persisted one — so a failed save left the UI claiming one
   // subscription while every launch used another.
   it('keeps the shared default untouched when saving it fails', async () => {
-    listClaudeAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
     updateSettings.mockRejectedValueOnce(new Error('disk full'))
     render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
 
-    await fireEvent.click(screen.getByTestId('claude-account-default-account-2'))
+    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
 
     await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
     expect(claudeAccounts.defaultAccountId).toBe(null)
 
-    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
-    expect(launchClaudeSession).not.toHaveBeenCalled()
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    expect(launchCliSession).not.toHaveBeenCalled()
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
   })
 
   it('shares the chosen default once it is persisted', async () => {
-    listClaudeAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
     render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
 
-    await fireEvent.click(screen.getByTestId('claude-account-default-account-2'))
+    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
 
     await waitFor(() => expect(claudeAccounts.defaultAccountId).toBe('account-2'))
   })

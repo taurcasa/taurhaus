@@ -3,9 +3,11 @@
    * Which Claude subscription this project runs on, and a menu to change it.
    * Hidden entirely when the host has a single account — the common case.
    */
-  import ClaudeUsageMeter from './ClaudeUsageMeter.svelte'
+  import UsageMeter from './UsageMeter.svelte'
+  import { toolDescriptor } from '../toolRegistry.js'
 
   let {
+    tool,
     accounts = [],
     /** Bindable so a fixture or a test can mount the menu already open. */
     open = $bindable(false),
@@ -14,6 +16,7 @@
     defaultAccountId = null,
     /** Detection could not run: these are the accounts last known, not current. */
     degraded = false,
+    origin = null,
     dark = false,
     onSelect = () => {},
     /**
@@ -22,6 +25,8 @@
      */
     onRequestUsage = () => {},
   } = $props()
+
+  const toolLabel = $derived(toolDescriptor(tool)?.label ?? tool)
 
   /** How often an open menu asks again. Percentages move in tens of seconds. */
   const USAGE_POLL_MS = 30 * 1000
@@ -163,16 +168,26 @@
   )
 
   function labelFor(account) {
-    return String(account?.display_name ?? '').trim() || account?.email || ''
+    return String(account?.display_name ?? '').trim() || account?.label || account?.id || ''
   }
+
+  const originHint = $derived(
+    origin === 'last_used'
+      ? 'last used'
+      : origin === 'base_command'
+        ? 'from launch command'
+        : origin === 'default' || origin === 'default_config_dir'
+          ? 'default'
+          : ''
+  )
 
   const staleNote = 'Accounts unavailable (daemon offline) — using last known'
   const title = $derived(
     degraded
       ? staleNote
       : selected
-        ? `${selected.email}${inherited ? ' (default account)' : ''}`
-        : 'No Claude account detected'
+        ? `${selected.label ?? selected.email ?? labelFor(selected)}${originHint ? ` (${originHint})` : ''}`
+        : `No ${toolLabel} account detected`
   )
 
   function pick(accountId) {
@@ -191,17 +206,17 @@
       aria-haspopup="menu"
       aria-expanded={open}
       onclick={toggle}
-      data-testid="claude-account-chip"
+      data-testid="account-chip"
     >
       <span class="max-w-[10rem] truncate">{labelFor(selected)}</span>
-      {#if inherited}
-        <span class="{metaTone} text-[10px]">default</span>
+      {#if originHint || inherited}
+        <span class="{metaTone} text-[10px]">{originHint || 'default'}</span>
       {/if}
       {#if selected?.usage}
         <!-- `empty:hidden`: the meter renders nothing once every window it had
              has reset, and a divider with nothing after it reads as a bug. -->
         <span class="border-l pl-1.5 empty:hidden {dividerTone}">
-          <ClaudeUsageMeter usage={selected.usage} {dark} compact />
+          <UsageMeter {tool} usage={selected.usage} {dark} compact />
         </span>
       {/if}
     </button>
@@ -212,10 +227,10 @@
         class="fixed z-[100] w-56 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border p-1 {menuTone}"
         style="left: {menuLeft}px; top: {menuTop}px;"
         role="menu"
-        data-testid="claude-account-menu"
+        data-testid="account-menu"
       >
         {#if degraded}
-          <p class="px-2 py-1 text-[10px] {metaTone}" data-testid="claude-accounts-degraded">
+          <p class="px-2 py-1 text-[10px] {metaTone}" data-testid="accounts-degraded">
             {staleNote}
           </p>
         {/if}
@@ -226,15 +241,15 @@
             class="flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-50 {itemTone} {focusRing}"
             disabled={!account.logged_in}
             onclick={() => pick(account.id)}
-            data-testid="claude-account-menu-item-{account.id}"
+            data-testid="account-menu-item-{account.id}"
           >
             <span class="text-[12px]">{labelFor(account)}</span>
             <span class="text-[10px] {metaTone}">
-              {account.email}{account.logged_in ? '' : ' · not logged in'}
+              {account.label}{account.logged_in ? '' : ' · not logged in'}
             </span>
             {#if account.usage}
               <span class="mt-1 w-full">
-                <ClaudeUsageMeter usage={account.usage} {dark} />
+                <UsageMeter {tool} usage={account.usage} {dark} />
               </span>
             {/if}
           </button>
@@ -245,7 +260,7 @@
             role="menuitem"
             class="mt-1 w-full rounded-md px-2 py-1.5 text-left text-[11px] {metaTone} {itemTone} {focusRing}"
             onclick={() => pick(null)}
-            data-testid="claude-account-menu-clear"
+            data-testid="account-menu-clear"
           >
             Use the default account
           </button>

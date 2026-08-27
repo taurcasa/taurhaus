@@ -34,7 +34,7 @@ describe('Account popups inside the shell markup', () => {
       props: { scenario, theme: scenario.theme },
     })
 
-    const overlays = screen.getAllByTestId('claude-account-chooser-overlay')
+    const overlays = screen.getAllByTestId('account-chooser-overlay')
     expect(overlays).toHaveLength(1)
 
     const [overlay] = overlays
@@ -44,7 +44,7 @@ describe('Account popups inside the shell markup', () => {
 
     // Fixed means the viewport, not the frame's flex column: the dialog is
     // centred in the window rather than sitting under everything else.
-    const dialog = screen.getByTestId('claude-account-chooser').getBoundingClientRect()
+    const dialog = screen.getByTestId('account-chooser').getBoundingClientRect()
     expect(dialog.top).toBeGreaterThan(0)
     expect(dialog.bottom).toBeLessThanOrEqual(window.innerHeight)
   })

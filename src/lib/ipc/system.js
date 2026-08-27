@@ -359,55 +359,70 @@ function normalizeUsageWindow(raw) {
   if (!Number.isFinite(used)) return null
   const resetsAt = Number(window.resets_at ?? window.resetsAt)
   return {
+    key: String(window.key ?? ''),
+    title: String(window.title ?? ''),
     used_percentage: used,
     resets_at: Number.isFinite(resetsAt) ? resetsAt : null,
+    severity: String(window.severity ?? 'normal'),
+    is_active: Boolean(window.is_active ?? window.isActive ?? true),
   }
 }
 
-/**
- * What a subscription's status line last reported. `null` when nothing has:
- * usage only flows while a session of that account runs, and "not reported" is
- * a different answer from "0 % used".
- */
-function normalizeClaudeAccountUsage(raw) {
+function normalizeAccountUsage(raw) {
   const usage = raw && typeof raw === 'object' ? raw : null
   if (!usage) return null
-  const fiveHour = normalizeUsageWindow(usage.five_hour ?? usage.fiveHour)
-  const sevenDay = normalizeUsageWindow(usage.seven_day ?? usage.sevenDay)
-  if (!fiveHour && !sevenDay) return null
+  const windows = Array.isArray(usage.windows)
+    ? usage.windows.map(normalizeUsageWindow).filter(Boolean)
+    : []
   const observedAt = usage.observed_at ?? usage.observedAt ?? null
   return {
-    five_hour: fiveHour,
-    seven_day: sevenDay,
     observed_at: observedAt == null ? null : String(observedAt),
+    status: String(usage.status ?? 'ok'),
+    windows,
+    note: usage.note == null ? null : String(usage.note),
   }
 }
 
-function normalizeClaudeAccount(raw) {
+function normalizeAccount(raw) {
   const account = raw && typeof raw === 'object' ? raw : {}
   const id = String(account.id ?? '').trim()
   if (!id) return null
-  const displayName = account.display_name ?? account.displayName ?? null
-  const configDir = account.config_dir ?? account.configDir ?? ''
-  const seatTier = account.seat_tier ?? account.seatTier ?? null
+  const identity = account.identity && typeof account.identity === 'object' ? account.identity : {}
+  const displayName = identity.display_name ?? identity.displayName ?? null
+  const plan = identity.plan ?? null
   return {
+    tool: String(account.tool ?? ''),
     id,
-    config_dir: String(configDir ?? ''),
-    email: String(account.email ?? '').trim(),
+    dir: String(account.dir ?? ''),
+    identity: {
+      id: String(identity.id ?? id),
+      label: String(identity.label ?? '').trim(),
+      display_name: displayName == null ? null : String(displayName).trim() || null,
+      organization:
+        identity.organization == null ? null : String(identity.organization).trim() || null,
+      plan: plan == null ? null : String(plan).trim() || null,
+      logged_in: Boolean(identity.logged_in ?? identity.loggedIn),
+      credential_expires_at:
+        identity.credential_expires_at ?? identity.credentialExpiresAt ?? null,
+    },
+    // Flat aliases keep generic rendering terse and ease the 0.6.8 UI migration.
+    label: String(identity.label ?? '').trim(),
     display_name: displayName == null ? null : String(displayName).trim() || null,
-    organization: account.organization == null ? null : String(account.organization).trim() || null,
-    seat_tier: seatTier == null ? null : String(seatTier).trim() || null,
-    logged_in: Boolean(account.logged_in ?? account.loggedIn),
+    organization:
+      identity.organization == null ? null : String(identity.organization).trim() || null,
+    plan: plan == null ? null : String(plan).trim() || null,
+    logged_in: Boolean(identity.logged_in ?? identity.loggedIn),
     is_default: Boolean(account.is_default ?? account.isDefault),
-    usage: normalizeClaudeAccountUsage(account.usage),
+    is_process_default: Boolean(account.is_process_default ?? account.isProcessDefault),
+    usage: normalizeAccountUsage(account.usage),
   }
 }
 
-function normalizeClaudeAccountsResult(raw) {
+function normalizeAccountsResult(raw) {
   const result = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   const accounts = Array.isArray(result.accounts) ? result.accounts : []
   return {
-    accounts: accounts.map(normalizeClaudeAccount).filter(Boolean),
+    accounts: accounts.map(normalizeAccount).filter(Boolean),
     source: String(result.source ?? 'native'),
     degraded: Boolean(result.degraded),
     error: result.error == null ? null : String(result.error),
@@ -423,13 +438,17 @@ function normalizeClaudeAccountsResult(raw) {
  * per-project accounts existed. An empty list with `degraded: true` is silence:
  * nothing answered, and callers keep whatever they last knew.
  */
-export function listClaudeAccounts() {
-  return invokeOrMock('list_claude_accounts', undefined, () => ({
+export function listAccounts(tool) {
+  return invokeOrMock('list_accounts', { tool }, () => ({
     accounts: [],
     source: 'native',
     degraded: false,
     error: null,
-  })).then(normalizeClaudeAccountsResult)
+  })).then(normalizeAccountsResult)
+}
+
+export function refreshAccountsUsage(tool) {
+  return invokeOrMock('refresh_accounts_usage', { tool }, () => false)
 }
 
 export function search(query, limit = 20) {

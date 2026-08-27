@@ -20,8 +20,8 @@ export function navigateToSession(...args) {
   return asyncResult('navigateToSession', args)
 }
 
-export function launchClaudeSession(...args) {
-  return asyncResult('launchClaudeSession', args)
+export function launchCliSession(...args) {
+  return asyncResult('launchCliSession', args)
 }
 
 export function stopClaudeSession(...args) {
@@ -36,10 +36,10 @@ export function openExternalUrl(...args) {
   return asyncResult('openExternalUrl', args)
 }
 
-export function listClaudeAccounts(...args) {
-  return asyncResult('listClaudeAccounts', args)
+export function listAccounts(...args) {
+  return asyncResult('listAccounts', args)
 }
 
-export function setProjectClaudeAccount(...args) {
-  return asyncResult('setProjectClaudeAccount', args)
+export function setProjectAccount(...args) {
+  return asyncResult('setProjectAccount', args)
 }

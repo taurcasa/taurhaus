@@ -8,8 +8,8 @@
    * `OverviewTab.svelte`. A popup that positions itself against an ancestor is
    * only worth shooting where those ancestors exist.
    */
-  import ClaudeAccountChip from '../../lib/components/ClaudeAccountChip.svelte'
-  import ClaudeAccountChooser from '../../lib/components/ClaudeAccountChooser.svelte'
+  import AccountChip from '../../lib/components/AccountChip.svelte'
+  import AccountChooser from '../../lib/components/AccountChooser.svelte'
   import ContextMenu from '../../lib/ContextMenu.svelte'
   import { buildAccountMenuChildren } from '../../lib/accountMenu.js'
 
@@ -73,7 +73,8 @@
           <div class="flex items-center gap-3">
             <h1 class="text-[18px] font-semibold tracking-[-0.02em]">taurhaus</h1>
             <span class="text-[11px] font-mono opacity-50 self-baseline">main</span>
-            <ClaudeAccountChip
+            <AccountChip
+              tool={scenario?.tool ?? 'claude'}
               {accounts}
               selectedAccountId={scenario?.selectedAccountId ?? null}
               defaultAccountId={scenario?.defaultAccountId ?? null}
@@ -109,7 +110,8 @@
          frame, with the chooser's own overlay and nothing wrapped around it.
          A wrapper here would hide the very bug this fixture exists to catch —
          `.shell-frame > *` is `position: relative` unless the child opts out. -->
-    <ClaudeAccountChooser
+    <AccountChooser
+      tool={scenario?.tool ?? 'claude'}
       {accounts}
       projectName={scenario?.projectName ?? ''}
       defaultAccountId={scenario?.defaultAccountId ?? null}

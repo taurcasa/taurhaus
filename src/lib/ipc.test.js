@@ -568,17 +568,16 @@ describe('ipc module', () => {
     })
   })
 
-  describe('listClaudeAccounts()', () => {
+  describe('listAccounts()', () => {
     it('carries the accounts and the state of detection', async () => {
       window.__TAURI_INTERNALS__ = {}
       tauriCore.invoke.mockResolvedValue({
         accounts: [
           {
+            tool: 'claude',
             id: 'account-1',
-            config_dir: '/home/user/.claude',
-            email: 'a@example.com',
-            display_name: 'A',
-            logged_in: true,
+            dir: '/home/user/.claude',
+            identity: { id: 'account-1', label: 'a@example.com', displayName: 'A', loggedIn: true },
             is_default: true,
           },
         ],
@@ -587,9 +586,9 @@ describe('ipc module', () => {
         error: null,
       })
 
-      const result = await ipc.listClaudeAccounts()
+      const result = await ipc.listAccounts('claude')
 
-      expect(tauriCore.invoke).toHaveBeenCalledWith('list_claude_accounts')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('list_accounts', { tool: 'claude' })
       expect(result.accounts).toHaveLength(1)
       expect(result.source).toBe('daemon')
       expect(result.degraded).toBe(false)
@@ -607,7 +606,7 @@ describe('ipc module', () => {
         error: 'The WSL daemon is not reachable',
       })
 
-      const result = await ipc.listClaudeAccounts()
+      const result = await ipc.listAccounts('claude')
 
       expect(result.accounts).toEqual([])
       expect(result.degraded).toBe(true)
@@ -623,33 +622,74 @@ describe('ipc module', () => {
       tauriCore.invoke.mockResolvedValue({
         accounts: [
           {
+            tool: 'claude',
             id: 'account-1',
-            configDir: '/home/user/.claude',
-            email: 'a@example.com',
-            loggedIn: true,
+            dir: '/home/user/.claude',
+            identity: { id: 'account-1', label: 'a@example.com', loggedIn: true },
             isDefault: true,
             usage: {
-              fiveHour: { usedPercentage: 26, resetsAt: 1787784600 },
-              sevenDay: { usedPercentage: 17, resetsAt: 1788300000 },
+              status: 'ok',
+              windows: [
+                { key: 'session', title: 'Current session', usedPercentage: 26, resetsAt: 1787784600, severity: 'normal', isActive: true },
+                { key: 'weekly_all', title: 'Current week (all models)', usedPercentage: 17, resetsAt: 1788300000, severity: 'normal', isActive: true },
+              ],
               observedAt: '2026-08-27T00:29:00Z',
             },
           },
-          { id: 'account-2', config_dir: '/home/user/.claude-work', email: 'b@example.com' },
+          { tool: 'claude', id: 'account-2', dir: '/home/user/.claude-work', identity: { id: 'account-2', label: 'b@example.com' } },
         ],
         source: 'native',
         degraded: false,
         error: null,
       })
 
-      const result = await ipc.listClaudeAccounts()
+      const result = await ipc.listAccounts('claude')
 
       expect(result.accounts[0].usage).toEqual({
-        five_hour: { used_percentage: 26, resets_at: 1787784600 },
-        seven_day: { used_percentage: 17, resets_at: 1788300000 },
         observed_at: '2026-08-27T00:29:00Z',
+        status: 'ok',
+        windows: [
+          { key: 'session', title: 'Current session', used_percentage: 26, resets_at: 1787784600, severity: 'normal', is_active: true },
+          { key: 'weekly_all', title: 'Current week (all models)', used_percentage: 17, resets_at: 1788300000, severity: 'normal', is_active: true },
+        ],
+        note: null,
       })
       // An account nothing has reported for stays without usage; it is not 0 %.
       expect(result.accounts[1].usage).toBeNull()
+      delete window.__TAURI_INTERNALS__
+    })
+  })
+
+  describe('generic account commands', () => {
+    it('refreshes usage for one tool', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(true)
+
+      await ipc.refreshAccountsUsage('claude')
+
+      expect(tauriCore.invoke).toHaveBeenCalledWith('refresh_accounts_usage', { tool: 'claude' })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('pins and resolves accounts with the tool on the wire', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue(undefined)
+
+      await ipc.setProjectAccount('p1', 'claude', 'account-2')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('set_project_account', {
+        projectId: 'p1',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      tauriCore.invoke.mockResolvedValue({ accountId: 'account-2' })
+      await ipc.resolveLaunchAccount('p1', 'claude', 'resume', 's1')
+      expect(tauriCore.invoke).toHaveBeenCalledWith('resolve_launch_account', {
+        projectId: 'p1',
+        tool: 'claude',
+        mode: 'resume',
+        sessionId: 's1',
+      })
       delete window.__TAURI_INTERNALS__
     })
   })
@@ -957,19 +997,19 @@ describe('ipc module', () => {
     })
   })
 
-  describe('launchClaudeSession()', () => {
+  describe('launchCliSession()', () => {
     it('calls invoke with project ID and mode', async () => {
       window.__TAURI_INTERNALS__ = {}
       const mockResult = { tmux_window: 'proj', tmux_pane: '%5' }
       tauriCore.invoke.mockResolvedValue(mockResult)
 
-      const result = await ipc.launchClaudeSession('p1', 'continue')
+      const result = await ipc.launchCliSession('p1', 'continue')
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('launch_cli_session', {
         projectId: 'p1',
         mode: 'continue',
         cliTool: null,
-        claudeAccountId: null,
+        accountId: null,
       })
       expect(result).toEqual(mockResult)
       delete window.__TAURI_INTERNALS__
@@ -977,7 +1017,7 @@ describe('ipc module', () => {
 
     it('returns mock result when not in Tauri', async () => {
       delete window.__TAURI_INTERNALS__
-      const result = await ipc.launchClaudeSession('p1', 'fresh')
+      const result = await ipc.launchCliSession('p1', 'fresh')
 
       expect(result).toHaveProperty('tmux_window')
       expect(result).toHaveProperty('tmux_pane')

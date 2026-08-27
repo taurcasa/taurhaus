@@ -1,6 +1,6 @@
 <script>
   import { getContextMenuPoint } from './a11y.js'
-  import { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject } from './ipc.js'
+  import { navigateToSession, launchCliSession, stopClaudeSession, removeProject } from './ipc.js'
   import { getProjectContext } from './context/ProjectContext.js'
   import { getSessionContext } from './context/SessionContext.js'
   import { normalizeProjectPath } from './pathUtils.js'
@@ -9,14 +9,14 @@
   import { buildSidebarProjection } from './sidebar.js'
   import { describeSessionActionError } from './errorCopy.js'
   import {
-    activeClaudeAccountId,
-    claudeAccounts,
+    activeAccountId,
+    accountState,
     launchFollowsHistory,
-    refreshClaudeAccounts,
+    refreshAccounts,
     resolveChooserAccounts,
-    setProjectClaudeAccountChoice,
-    requestClaudeLaunch,
-  } from './claudeAccounts.svelte.js'
+    rememberChoice,
+    requestLaunch,
+  } from './accounts.svelte.js'
   import {
     accountSubmenuApplies,
     buildAccountMenuChildren,
@@ -315,19 +315,19 @@
     showSidebarNotice(`${project?.name ?? 'This project'} continued on the team's default account`)
   }
 
-  function ctxLaunchTool(mode, tool = 'claude', accountId = null) {
+  function ctxLaunchTool(mode, tool = tools()[0]?.id, accountId = null) {
     if (!ctxMenu?.project) return
     const project = ctxMenu.project
     console.log(`[cmd-center] ${mode} ${tool} session:`, project.id, project.name)
     // A launch without a named account may first ask which subscription to run
     // on; the store opens the chooser and takes over from there.
-    requestClaudeLaunch({
+    requestLaunch({
       project,
       mode,
       tool,
       accountId,
       launch: (projectId, launchMode, launchTool, launchAccountId) =>
-        launchClaudeSession(projectId, launchMode, launchTool, launchAccountId).then((r) => {
+        launchCliSession(projectId, launchMode, launchTool, launchAccountId).then((r) => {
           console.log('[cmd-center] launch OK:', r)
           noteAccountNotApplied(project, r)
         }),
@@ -390,14 +390,14 @@
     const pane = session.tmux_pane
     // The subscription is settled before anything is torn down: the chooser can
     // open while the pane is still alive, so cancelling costs the user nothing.
-    requestClaudeLaunch({
+    requestLaunch({
       project,
       mode: 'fresh',
       tool,
       accountId,
       launch: (projectId, launchMode, launchTool, launchAccountId) =>
         stopClaudeSession(pane, launchTool).then(() =>
-          launchClaudeSession(projectId, launchMode, launchTool, launchAccountId)
+          launchCliSession(projectId, launchMode, launchTool, launchAccountId)
         ),
       onError: (error) => {
         console.error('Failed to restart session:', error)
@@ -415,7 +415,9 @@
    */
   $effect(() => {
     if (!ctxMenu) return
-    void refreshClaudeAccounts()
+    for (const tool of tools().filter((entry) => entry.capabilities.accountSelection)) {
+      void refreshAccounts(tool.id)
+    }
   })
 
   /**
@@ -436,7 +438,7 @@
    * follow-up.
    */
   function withAccountSubmenu(item, tool, onPick, mode = 'fresh', sessions = []) {
-    const accounts = resolveChooserAccounts()
+    const accounts = resolveChooserAccounts(tool)
     if (!accountSubmenuApplies(tool, accounts)) return item
     const delegated = launchDelegatesToTeam(mode, tool, sessions)
     return {
@@ -445,7 +447,7 @@
         accounts,
         activeAccountId: launchFollowsHistory(mode)
           ? null
-          : activeClaudeAccountId(ctxMenu?.project),
+          : activeAccountId(ctxMenu?.project, tool),
         onSelect: onPick,
         disabledNote: delegated ? TEAM_ACCOUNT_NOTE : null,
       }),
@@ -453,10 +455,10 @@
   }
 
   /** Pin the project to an account (or clear it) without launching anything. */
-  function ctxPinAccount(accountId) {
+  function ctxPinAccount(tool, accountId) {
     const projectId = ctxMenu?.project?.id
     if (!projectId) return
-    void setProjectClaudeAccountChoice(projectId, accountId)
+    void rememberChoice(projectId, tool, accountId)
   }
 
   /**
@@ -465,37 +467,44 @@
    * inheriting the default.
    */
   function accountPinItems() {
-    const accounts = resolveChooserAccounts()
-    const pinnedId = effectiveProjectAccountId()
     return tools()
-      .filter((descriptor) => accountSubmenuApplies(descriptor.id, accounts))
-      .map((descriptor) => ({
-        label: `${descriptor.label} account`,
-        icon: CTX_ICON_USER,
-        children: [
-          ...buildAccountMenuChildren({
-            accounts,
-            activeAccountId: pinnedId,
-            onSelect: ctxPinAccount,
-          }),
-          {
-            label: 'Use default',
-            check: !pinnedId,
-            action: () => ctxPinAccount(null),
-          },
-        ],
-      }))
+      .filter((descriptor) =>
+        accountSubmenuApplies(descriptor.id, resolveChooserAccounts(descriptor.id))
+      )
+      .map((descriptor) => {
+        const tool = descriptor.id
+        const detected = resolveChooserAccounts(tool)
+        const pinnedId = effectiveProjectAccountId(tool)
+        return {
+          label: `${descriptor.label} account`,
+          icon: CTX_ICON_USER,
+          children: [
+            ...buildAccountMenuChildren({
+              accounts: detected,
+              activeAccountId: pinnedId,
+              onSelect: (accountId) => ctxPinAccount(tool, accountId),
+            }),
+            {
+              label: 'Use default',
+              check: !pinnedId,
+              action: () => ctxPinAccount(tool, null),
+            },
+          ],
+        }
+      })
   }
 
   /** What this project has pinned for itself, as opposed to what it inherits. */
-  function effectiveProjectAccountId() {
+  function effectiveProjectAccountId(tool) {
     const project = ctxMenu?.project
     if (!project) return null
     const projectId = project.id
-    if (projectId && projectId in claudeAccounts.projectChoices) {
-      return claudeAccounts.projectChoices[projectId]
+    const state = accountState(tool)
+    if (projectId && projectId in state.projectChoices) {
+      return state.projectChoices[projectId]
     }
-    return project.claudeAccountId ?? project.claude_account_id ?? null
+    const memory = project.accountMemory?.[tool] ?? project.account_memory?.[tool]
+    return memory?.origin === 'pinned' ? (memory.accountId ?? memory.account_id ?? null) : null
   }
 
   /** Generate session-specific context menu items based on current session state. */

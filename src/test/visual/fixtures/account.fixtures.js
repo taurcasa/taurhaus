@@ -1,32 +1,32 @@
 const PRIMARY = {
   id: 'account-1',
-  config_dir: '/home/user/.claude',
-  email: 'stierms@gmail.com',
+  dir: '/home/user/.claude',
+  label: 'stierms@gmail.com',
   display_name: 'Who',
   organization: "stierms@gmail.com's Organization",
-  seat_tier: 'claude_max',
+  plan: 'claude_max',
   logged_in: true,
   is_default: true,
 }
 
 const SECOND = {
   id: 'account-2',
-  config_dir: '/home/user/.claude-account2',
-  email: 'm.stier@giesi.com',
+  dir: '/home/user/.claude-account2',
+  label: 'm.stier@giesi.com',
   display_name: 'Matthias',
   organization: "m.stier@giesi.com's Organization",
-  seat_tier: 'claude_max',
+  plan: 'claude_max',
   logged_in: true,
   is_default: false,
 }
 
 const LOGGED_OUT = {
   id: 'account-3',
-  config_dir: '/home/user/.claude-work',
-  email: 'work@example.com',
+  dir: '/home/user/.claude-work',
+  label: 'work@example.com',
   display_name: 'Work',
   organization: 'Acme Inc',
-  seat_tier: 'team',
+  plan: 'team',
   logged_in: false,
   is_default: false,
 }
@@ -35,11 +35,15 @@ const LOGGED_OUT = {
  * Usage as the status line reports it. Times are relative to render so the
  * fixtures keep meaning "just now" and "hours ago" whenever they are shot.
  */
-function usage({ fiveHour, sevenDay, minutesAgo }) {
+function usage({ fiveHour, sevenDay, minutesAgo, status = 'ok' }) {
   const now = Date.now()
   return {
-    five_hour: { used_percentage: fiveHour, resets_at: Math.floor(now / 1000) + 2 * 3600 + 600 },
-    seven_day: { used_percentage: sevenDay, resets_at: Math.floor(now / 1000) + 41 * 3600 },
+    status,
+    windows: [
+      { key: 'session', title: 'Current session', used_percentage: fiveHour, resets_at: Math.floor(now / 1000) + 2 * 3600 + 600, severity: fiveHour > 89 ? 'critical' : 'normal', is_active: true },
+      { key: 'weekly_all', title: 'Current week (all models)', used_percentage: sevenDay, resets_at: Math.floor(now / 1000) + 41 * 3600, severity: 'normal', is_active: true },
+      { key: 'weekly_scoped', title: 'Current week (Fable)', used_percentage: Math.min(100, sevenDay + 9), resets_at: Math.floor(now / 1000) + 41 * 3600, severity: sevenDay > 69 ? 'warning' : 'normal', is_active: true },
+    ],
     observed_at: new Date(now - minutesAgo * 60_000).toISOString(),
   }
 }
@@ -48,11 +52,15 @@ function usage({ fiveHour, sevenDay, minutesAgo }) {
 function resetFiveHour(reported) {
   return {
     ...reported,
-    five_hour: { ...reported.five_hour, resets_at: Math.floor(Date.now() / 1000) - 600 },
+    windows: reported.windows.map((window) =>
+      window.key === 'session'
+        ? { ...window, resets_at: Math.floor(Date.now() / 1000) - 600 }
+        : window
+    ),
   }
 }
 
-export const claudeAccountScenarios = [
+export const accountScenarios = [
   {
     name: 'single-account-light',
     theme: 'light',
@@ -126,7 +134,7 @@ export const claudeAccountScenarios = [
     name: 'usage-stale-light',
     theme: 'light',
     accounts: [
-      { ...PRIMARY, usage: usage({ fiveHour: 54, sevenDay: 33, minutesAgo: 260 }) },
+      { ...PRIMARY, usage: usage({ fiveHour: 54, sevenDay: 33, minutesAgo: 260, status: 'stale' }) },
       SECOND,
     ],
     projectName: 'taurhaus',

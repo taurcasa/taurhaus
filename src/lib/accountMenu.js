@@ -64,7 +64,13 @@ export function accountSubmenuApplies(tool, accounts) {
 
 /** Display name, falling back to the email that is always there. */
 function accountLabel(account) {
-  return String(account?.display_name ?? '').trim() || account?.email || account?.id || ''
+  return (
+    String(account?.display_name ?? '').trim() ||
+    account?.label ||
+    account?.email ||
+    account?.id ||
+    ''
+  )
 }
 
 /**
@@ -84,7 +90,8 @@ function labelsFor(accounts) {
   return accounts.map((account) => {
     const label = accountLabel(account)
     if ((counts.get(label) ?? 0) < 2) return label
-    return account?.email ? `${label} (${account.email})` : label
+    const identity = account?.label || account?.email
+    return identity ? `${label} (${identity})` : label
   })
 }
 
@@ -92,25 +99,28 @@ function labelsFor(accounts) {
  * The one place a menu row says how much of a subscription is left.
  *
  * A window whose reset has passed describes a window that no longer exists, so
- * it is dropped — the same rule `ClaudeUsageMeter` applies, for the same
+ * it is dropped — the same rule `UsageMeter` applies, for the same
  * reason. An account nothing has reported for gets no meta at all rather than a
  * row of zeroes.
  */
 export function accountUsageMeta(account, now = Date.now()) {
   const usage = account?.usage
   if (!usage) return ''
-  return [
-    { label: '5h', window: usage.five_hour },
-    { label: '7d', window: usage.seven_day },
-  ]
-    .filter(({ window }) => {
+  const windows = Array.isArray(usage.windows)
+    ? usage.windows.filter((window) => window.key !== 'session')
+    : [
+        usage.five_hour ? { title: '5h', ...usage.five_hour } : null,
+        usage.seven_day ? { title: '7d', ...usage.seven_day } : null,
+      ].filter(Boolean)
+  return windows
+    .filter((window) => {
       const used = Number(window?.used_percentage)
       if (!Number.isFinite(used)) return false
       if (window.resets_at == null) return true
       const resetsAt = Number(window.resets_at)
       return !(Number.isFinite(resetsAt) && resetsAt * 1000 <= now)
     })
-    .map(({ label, window }) => `${label} ${Math.round(Number(window.used_percentage))}%`)
+    .map((window) => `${window.title} ${Math.round(Number(window.used_percentage))}%`)
     .join(' · ')
 }
 

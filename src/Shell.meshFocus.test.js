@@ -43,6 +43,7 @@ function lastTextByTestId(testId) {
 }
 
 vi.mock('./lib/ipc.js', () => ({
+  refreshAccountsUsage: vi.fn(() => Promise.resolve(true)),
   listProjects: vi.fn(),
   getProject: vi.fn(),
   getRecentCommits: vi.fn(),
@@ -59,7 +60,7 @@ vi.mock('./lib/ipc.js', () => ({
   getDaemonStatus: vi.fn(),
   checkDaemonInstallStatus: vi.fn(),
   installDaemon: vi.fn(),
-  launchClaudeSession: vi.fn(),
+  launchCliSession: vi.fn(),
   navigateToSession: vi.fn(),
   getForegroundProject: vi.fn(),
   getRemoteUrl: vi.fn(),
@@ -67,10 +68,10 @@ vi.mock('./lib/ipc.js', () => ({
   openExternalUrl: vi.fn(),
   getPlatform: vi.fn(),
   listClaudeSessions: vi.fn(),
-  listClaudeAccounts: vi.fn(() =>
+  listAccounts: vi.fn(() =>
     Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
   ),
-  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
+  setProjectAccount: vi.fn(() => Promise.resolve()),
   startDaemon: vi.fn(),
 }))
 

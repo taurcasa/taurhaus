@@ -4,14 +4,15 @@
   import { getSessionContext } from './context/SessionContext.js'
   import { themeTokens } from './themeTokens.js'
   import { getToolName, TOOL_ICONS } from './toolLogos.js'
-  import ClaudeAccountChip from './components/ClaudeAccountChip.svelte'
+  import AccountChip from './components/AccountChip.svelte'
   import {
-    claudeAccounts,
-    effectiveClaudeAccountId,
-    refreshClaudeAccounts,
-    refreshClaudeAccountUsage,
-    setProjectClaudeAccountChoice,
-  } from './claudeAccounts.svelte.js'
+    accountState,
+    effectiveAccount,
+    refreshAccounts,
+    refreshUsage,
+    rememberChoice,
+  } from './accounts.svelte.js'
+  import { tools as registryTools } from './toolRegistry.js'
 
   let {
     dark = false,
@@ -39,18 +40,21 @@
 
   const t = $derived(themeTokens(dark))
 
-  // Which subscription this project runs on. Hidden with a single account.
-  // The choice lives in the shared store, so the chip and the next launch —
-  // which may happen from the sidebar — always read the same answer.
-  const projectClaudeAccountId = $derived(effectiveClaudeAccountId(selectedProject))
+  const accountTools = $derived(
+    registryTools().filter(
+      (tool) => tool.capabilities.accountSelection && accountState(tool.id).accounts.length >= 2
+    )
+  )
 
-  function handleClaudeAccountSelect(accountId) {
+  function handleAccountSelect(tool, accountId) {
     if (!selectedProject?.id) return
-    void setProjectClaudeAccountChoice(selectedProject.id, accountId)
+    void rememberChoice(selectedProject.id, tool, accountId)
   }
 
   $effect(() => {
-    void refreshClaudeAccounts()
+    for (const tool of registryTools().filter((entry) => entry.capabilities.accountSelection)) {
+      void refreshAccounts(tool.id)
+    }
   })
 
   const statusColor    = $derived(dark ? 'text-success-400' : 'text-success-600')
@@ -165,15 +169,21 @@
     {#if selectedProject.activityState}
       <span class="text-[11px] {statusColor} font-medium capitalize self-baseline">{selectedProject.activityState}</span>
     {/if}
-    <ClaudeAccountChip
-      accounts={claudeAccounts.accounts}
-      selectedAccountId={projectClaudeAccountId}
-      defaultAccountId={claudeAccounts.defaultAccountId}
-      degraded={claudeAccounts.degraded}
-      {dark}
-      onSelect={handleClaudeAccountSelect}
-      onRequestUsage={() => void refreshClaudeAccountUsage()}
-    />
+    {#each accountTools as tool (tool.id)}
+      {@const state = accountState(tool.id)}
+      {@const effective = effectiveAccount(selectedProject, tool.id)}
+      <AccountChip
+        tool={tool.id}
+        accounts={state.accounts}
+        selectedAccountId={effective.account?.id ?? null}
+        defaultAccountId={state.defaultAccountId}
+        degraded={state.degraded}
+        origin={effective.origin}
+        {dark}
+        onSelect={(accountId) => handleAccountSelect(tool.id, accountId)}
+        onRequestUsage={() => void refreshUsage(tool.id)}
+      />
+    {/each}
     <!-- Quick actions — compact icon buttons -->
     <div class="ml-auto flex items-center gap-1 shrink-0" data-testid="quick-actions">
       {#each TOOLS as tool}
