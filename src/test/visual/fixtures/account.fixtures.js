@@ -32,7 +32,7 @@ const LOGGED_OUT = {
 }
 
 /**
- * Usage as the status line reports it. Times are relative to render so the
+ * Usage as the provider reports it. Times are relative to render so the
  * fixtures keep meaning "just now" and "hours ago" whenever they are shot.
  */
 function usage({ fiveHour, sevenDay, minutesAgo, status = 'ok' }) {

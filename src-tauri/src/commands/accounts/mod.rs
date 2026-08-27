@@ -146,11 +146,6 @@ pub(crate) fn set_project_account_impl(
     Ok(())
 }
 
-/// The newest Claude transcript for a project, read where the transcripts are.
-///
-/// This is what makes `--resume` land on the subscription that owns a project's
-/// history after the session that wrote it is gone — including after a restart,
-/// and on Windows, where the app never sees the sessions the daemon scans.
 /// The newest transcript for one tool and project, read where that tool runs.
 pub(crate) fn project_transcript(
     provider: &ProviderState,
@@ -216,7 +211,7 @@ fn daemon_project_transcript_lookup(
     );
     transcript_lookup_from(daemon_answer(
         daemon.send_status_request(&request),
-        "Claude transcript",
+        "Project transcript",
     ))
 }
 

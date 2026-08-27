@@ -73,20 +73,21 @@ The backend currently registers 89 `#[tauri::command]` functions in `src-tauri/s
 |---|---|---|---|---|
 | `list_cli_sessions` | none | `Result<Vec<ClaudeSession>, String>` | `command_center.rs` | Lists active CLI sessions discovered from tmux/daemon state. |
 | `list_cli_session_snapshot` | none | `Result<CliSessionSnapshot, String>` | `command_center.rs` | The same sessions plus `freshness` (`fresh` \| `degraded` \| `cached` \| `unavailable`) — how the list was obtained. |
-| `launch_cli_session` | `projectId: string`, `mode: LaunchMode`, `cliTool?: CliTool \| null`, `claudeAccountId?: string \| null` | `Result<LaunchSessionResult, String>` | `command_center.rs` | Starts a new Claude/Codex/Gemini session for a project. |
+| `launch_cli_session` | `projectId: string`, `mode: LaunchMode`, `cliTool?: CliTool \| null`, `accountId?: string \| null` | `Result<LaunchSessionResult, String>` | `command_center.rs` | Starts a new CLI session for a project with an optional provider account. |
 | `stop_cli_session` | `tmuxPane: string`, `cliTool?: CliTool \| null` | `Result<(), String>` | `command_center.rs` | Stops a running session by tmux pane ID. |
 | `navigate_to_session` | `tmuxSession: string`, `tmuxWindow: string`, `tmuxPane: string`, `openTerminal?: boolean` | `Result<(), String>` | `command_center.rs` | Focuses/navigates the desktop terminal to a target session pane. |
 | `record_session_activity` | `projectPath: string`, `cliTool: string`, `startedAt: string`, `endedAt: string`, `activeDurationMs: number`, `totalDurationMs: number` | `Result<(), String>` | `command_center.rs` | Persists measured activity stats for a completed session. |
 | `get_project_activity` | `projectPath: string` | `Result<ProjectActivityStats, String>` | `command_center.rs` | Returns aggregated activity totals for a project path. |
 | `get_foreground_project` | none | `Result<Option<string>, String>` | `command_center.rs` | Returns the project currently owning foreground tmux focus, when known. |
 
-## Claude account commands
+## Account and usage commands
 
 | Command | Parameters (frontend args) | Return type | Module | Description |
 |---|---|---|---|---|
-| `list_claude_accounts` | none | `Result<ClaudeAccountsResult, String>` | `claude_accounts/mod.rs` | Claude subscriptions (config dirs) detected natively, or via the daemon on Windows. |
-| `set_project_claude_account` | `projectId: string`, `accountId?: string \| null` | `Result<(), String>` | `claude_accounts/mod.rs` | Records which account a project launches on. `null` restores the global default. |
-| `resolve_claude_launch_account` | `projectId: string`, `mode: LaunchMode` | `Result<ClaudeLaunchAccount, String>` | `command_center.rs` | Decides the account for one launch, from the project's stored choice and the last session's transcript. |
+| `list_accounts` | `tool: CliTool` | `Result<AccountsResult, String>` | `accounts/mod.rs` | Detects provider accounts natively, or through the daemon on Windows, and attaches memory-only usage snapshots. |
+| `refresh_accounts_usage` | `tool: CliTool` | `Result<bool, String>` | `accounts/mod.rs` | Requests a debounced usage refresh for the tool's detected accounts. |
+| `set_project_account` | `projectId: string`, `tool: CliTool`, `accountId?: string \| null` | `Result<(), String>` | `accounts/mod.rs` | Pins an account for a project and tool; `null` removes the pin. |
+| `resolve_launch_account` | `projectId: string`, `tool: CliTool`, `mode: LaunchMode`, `sessionId?: string \| null` | `Result<LaunchAccountPreview, String>` | `command_center/mod.rs` | Resolves the effective account and origin without launching. |
 
 Session update behavior:
 - Tauri runtime uses event-driven `sessions-updated` (daemon long-poll bridge) for ongoing updates. Its payload carries `degraded` (the sessions are the hub's retained snapshot) and `observation_gap` (the interval this emission closes ran through a scanner blackout the app never heard start).

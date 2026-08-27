@@ -39,7 +39,6 @@ const EMPTY_CLI_VERSIONS = {
   codex_compaction_hooks_supported: false,
   codex_notify_supported: false,
   codex_queue_wake_supported: false,
-  claude_statusline_usage_supported: false,
 }
 
 const DEFAULT_TERMINAL_CONTRACTS = {
@@ -133,11 +132,6 @@ function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
       versions.codex_queue_wake_supported ??
         versions.codexQueueWakeSupported ??
         defaults.codex_queue_wake_supported,
-    ),
-    claude_statusline_usage_supported: Boolean(
-      versions.claude_statusline_usage_supported ??
-        versions.claudeStatuslineUsageSupported ??
-        defaults.claude_statusline_usage_supported,
     ),
   }
 }

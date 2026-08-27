@@ -800,8 +800,12 @@ describe('ipc module', () => {
         codex_compaction_hooks_supported: true,
         codex_notify_supported: true,
         codex_queue_wake_supported: true,
-        claude_statusline_usage_supported: false,
       })
+      // Regression: a574720 exposed the retired status-line usage capability
+      // on the frontend terminal contract after the bridge itself was removed.
+      expect(result.terminal_contract.cli_versions).not.toHaveProperty(
+        'claude_statusline_usage_supported',
+      )
       delete window.__TAURI_INTERNALS__
     })
 

@@ -521,7 +521,7 @@ fn note_team_account_ignored(project_id: &str, wanted: &str) {
         "command_center",
         "launch.account.ignored_for_team",
         Some(
-            "Team resume runs on the team's config dir; the chosen Claude account was not applied"
+            "Team resume runs on the team's config dir; the chosen account was not applied"
                 .to_string(),
         ),
         fields,

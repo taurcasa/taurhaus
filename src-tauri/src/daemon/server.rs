@@ -83,7 +83,7 @@ pub fn run(
 ) -> std::io::Result<()> {
     // Passed as a closure rather than called here so `run_for_test` never
     // writes into real config dirs.
-    run_with_installer(config, shutdown, provider, None, retire_legacy_bridge)
+    run_with_legacy_cleanup(config, shutdown, provider, None, retire_legacy_bridge)
 }
 
 fn retire_legacy_bridge() {
@@ -91,19 +91,19 @@ fn retire_legacy_bridge() {
 }
 
 /// Start the daemon, with legacy bridge cleanup running beside the listener.
-fn run_with_installer<F>(
+fn run_with_legacy_cleanup<F>(
     config: &DaemonConfig,
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
     compaction_teams_dir: Option<std::path::PathBuf>,
-    installer: F,
+    cleanup: F,
 ) -> std::io::Result<()>
 where
     F: FnOnce() + Send + 'static,
 {
     if let Err(error) = std::thread::Builder::new()
         .name("claude-statusline-retire".to_string())
-        .spawn(installer)
+        .spawn(cleanup)
     {
         tracing::warn!(error = %error, "Legacy Claude status line cleanup not spawned");
     }
@@ -246,16 +246,16 @@ pub(crate) fn run_for_test(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
-    run_for_test_with_installer(config, shutdown, provider, || {})
+    run_for_test_with_legacy_cleanup(config, shutdown, provider, || {})
 }
 
-/// `run_for_test`, with the status-line install a test wants to time.
+/// `run_for_test`, with legacy cleanup a test wants to time.
 #[cfg(test)]
-pub(crate) fn run_for_test_with_installer<F>(
+pub(crate) fn run_for_test_with_legacy_cleanup<F>(
     config: &DaemonConfig,
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
-    installer: F,
+    cleanup: F,
 ) -> std::io::Result<()>
 where
     F: FnOnce() + Send + 'static,
@@ -263,12 +263,12 @@ where
     // Regression: 9f723d3 removed the off-WSL compaction gate, so in-process
     // daemon tests began rewriting the developer's real Claude teams state.
     let claude_root = tempfile::tempdir()?;
-    run_with_installer(
+    run_with_legacy_cleanup(
         config,
         shutdown,
         provider,
         Some(claude_root.path().join("teams")),
-        installer,
+        cleanup,
     )
 }
 
@@ -616,13 +616,13 @@ mod tests {
     }
 
     // Regression: 79be608 installed the Claude status-line bridge from `run`,
-    // synchronously, before the listener existed. That install probes
+    // synchronously, before the listener existed. That work probed
     // `claude --version` with a five second timeout, while `daemon::launcher`
     // gives the whole daemon five seconds to become reachable — so one hung
     // CLI probe cost an otherwise healthy daemon its startup and pushed the
     // app onto the local fallback.
     #[test]
-    fn a_slow_status_line_install_never_delays_the_listener() {
+    fn slow_legacy_cleanup_never_delays_the_listener() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
         let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -640,7 +640,7 @@ mod tests {
                 idle_timeout_secs: None,
                 auth_token: None,
             };
-            run_for_test_with_installer(
+            run_for_test_with_legacy_cleanup(
                 &config,
                 server_shutdown,
                 Arc::new(LocalProvider),
@@ -657,7 +657,7 @@ mod tests {
 
         assert!(
             reachable,
-            "the daemon must bind before the status-line install, not after it"
+            "the daemon must bind before legacy cleanup completes"
         );
     }
 

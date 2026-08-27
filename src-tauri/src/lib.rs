@@ -293,10 +293,8 @@ pub fn run() {
         .with_writer(io::stderr)
         .init();
 
-    // Before anything a process start normally pays for. This binary is also
-    // the status-line sink, and Claude Code re-runs the status line on every
-    // refresh — per keystroke — so a login shell here would be spent per
-    // keystroke too.
+    // Resolve the interactive shell environment before coordination or app
+    // startup needs native CLI paths.
     #[cfg(target_os = "macos")]
     inherit_macos_shell_env();
 

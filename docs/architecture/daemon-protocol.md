@@ -168,7 +168,7 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | `list_runtime_sessions` | — | `RuntimeSession[]` | Runtime-authoritative session list including transcript/session metadata for coordination and compaction logic. |
 | `get_runtime_session_snapshot` | — | `{ version, display_sessions[], runtime_sessions[], focus?, foreground_project_path, degraded, degraded_revision }` | One-shot seed of the hub snapshot. `foreground_project_path` is the legacy wire name for the hub's `focus_project_path`. |
 | `wait_session_updates` | `{ since_version, since_degraded_revision, timeout_ms }` | `{ version, changed, sessions[], focus?, focus_project_path?, degraded, degraded_revision }` | Long-poll for a newer session snapshot version. `timeout_ms` defaults to 15000 and is clamped server-side. |
-| `launch_session` | `{ project_path, mode, cli_tool?, tmux_layout?, command_override? }` | `{ tmux_session?, tmux_window, tmux_pane }` | Launch a CLI tool in a tmux pane |
+| `launch_session` | `{ project_path, mode, cli_tool?, tmux_layout?, command_override?, account_dir? }` | `{ tmux_session?, tmux_window, tmux_pane }` | Launch a CLI tool in a tmux pane |
 | `stop_session` | `{ tmux_pane, cli_tool? }` | — | Stop a running CLI tool session |
 | `navigate_to_session` | `{ tmux_session, tmux_window, tmux_pane }` | — | Focus a tmux pane |
 
@@ -180,14 +180,15 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 **CLI tools** (`cli_tool` field, defaults to `claude`):
 - `claude`, `codex`, `gemini`
 
-### Claude accounts
+### Accounts and usage (protocol 11)
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
-| `list_claude_accounts` | — | `ClaudeAccountsResult` (`{ accounts[] }`) | Claude config dirs visible to the daemon's host. Additive since v10 — an older daemon answers `UNKNOWN_METHOD` and the app reads that as "no accounts detected". |
-| `claude_project_transcript` | `{ project_path }` | `{ transcript }` | Which subscription owns a project's Claude history, decided by transcript mtime. Additive since v10 — on `UNKNOWN_METHOD` a resume falls back to the project's own stored choice. |
+| `list_accounts` | `{ tool }` | `AccountsResult` (`{ accounts[], degraded, error? }`) | Provider accounts visible to the daemon's host, with cached in-memory usage attached. |
+| `project_transcript` | `{ tool, project }` | `{ transcript }` | The newest provider transcript that owns the tool's project history. |
+| `refresh_usage` | `{ tool }` | `{ ok }` | Requests an on-demand, debounced provider usage refresh. |
 
-Both are Windows-shaped: the Claude config dirs and transcripts live inside WSL, so only the daemon can read them.
+On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. Protocol 11 ships with app 0.6.9; older Claude-only account methods are intentionally incompatible.
 
 ### Session activity stream (app bridge)
 

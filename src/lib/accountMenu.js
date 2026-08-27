@@ -5,9 +5,8 @@
  * `accountSelection`, never because of what the tool is called — the next tool
  * to gain accounts gets the same submenu without touching this file's callers.
  *
- * Usage is rendered as one compact string here and nowhere else. Today it reads
- * the two windows the status-line bridge reports; when the generic usage
- * snapshot lands it changes in this one function.
+ * Usage is rendered from the provider's ordered windows as one compact string
+ * here and nowhere else.
  */
 
 import { toolDescriptor } from './toolRegistry.js'
