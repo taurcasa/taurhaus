@@ -21,10 +21,10 @@
       "transcriptCompactionSignals": false,
       "catalog": true,
       "sessionRoot": "appManagedClaudeDir",
-      "configDirEnv": "CLAUDE_CONFIG_DIR",
+      "accountSelector": "CLAUDE_CONFIG_DIR",
       "accountSelection": true,
       "teamConfigNamespace": true,
-      "usageBridge": true,
+      "usage": true,
       "notifySink": false,
       "hookTrust": false
     }
@@ -51,10 +51,10 @@
       "transcriptCompactionSignals": true,
       "catalog": true,
       "sessionRoot": "toolHome",
-      "configDirEnv": null,
+      "accountSelector": "CODEX_HOME",
       "accountSelection": false,
       "teamConfigNamespace": false,
-      "usageBridge": false,
+      "usage": false,
       "notifySink": true,
       "hookTrust": true
     }
@@ -81,10 +81,10 @@
       "transcriptCompactionSignals": false,
       "catalog": true,
       "sessionRoot": "toolHome",
-      "configDirEnv": null,
+      "accountSelector": "GEMINI_CLI_HOME",
       "accountSelection": false,
       "teamConfigNamespace": false,
-      "usageBridge": false,
+      "usage": false,
       "notifySink": false,
       "hookTrust": false
     }

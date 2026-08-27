@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::daemon::claude_usage::ClaudeAccountUsage;
 use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::accounts::AccountOrigin;
 use crate::session_scanner::types::RuntimeSession;
 
 /// Per-account configuration file, at the root of every config dir.
@@ -127,38 +128,6 @@ struct OauthAccount {
     organization_type: Option<String>,
 }
 
-/// Where a launch's account came from. Ordered by precedence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountSource {
-    /// The user picked it for this launch (the chooser).
-    Request,
-    /// Derived from the transcript of the session being resumed.
-    Session,
-    /// The project's stored choice.
-    Project,
-    /// The global default account.
-    GlobalDefault,
-    /// Nothing selected an account and the default config dir is signed out,
-    /// so a detected account that can actually run took over.
-    SignedIn,
-    /// Nothing selected an account: the default config dir it is.
-    DefaultConfigDir,
-}
-
-impl AccountSource {
-    /// Stable wire name, for the frontend and the log.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Request => "request",
-            Self::Session => "session",
-            Self::Project => "project",
-            Self::GlobalDefault => "global_default",
-            Self::SignedIn => "signed_in",
-            Self::DefaultConfigDir => "default_config_dir",
-        }
-    }
-}
-
 /// Everything that can select an account for one launch.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AccountRequest<'a> {
@@ -177,7 +146,7 @@ pub struct AccountResolution {
     /// user's command is unchanged.
     pub config_dir: Option<PathBuf>,
     pub account: Option<ClaudeAccount>,
-    pub source: AccountSource,
+    pub source: AccountOrigin,
     /// The account id that was asked for but could not be used.
     pub fallback_from: Option<String>,
     /// Nothing selected this launch's account and more than one subscription
@@ -743,7 +712,7 @@ pub fn resolve_launch_account(
             return AccountResolution {
                 config_dir: Some(config_dir),
                 account: None,
-                source: AccountSource::Session,
+                source: AccountOrigin::Session,
                 fallback_from: None,
                 needs_choice: false,
             };
@@ -751,7 +720,7 @@ pub fn resolve_launch_account(
         return AccountResolution {
             config_dir: None,
             account: None,
-            source: AccountSource::DefaultConfigDir,
+            source: AccountOrigin::DefaultConfigDir,
             fallback_from: None,
             needs_choice: false,
         };
@@ -761,7 +730,7 @@ pub fn resolve_launch_account(
     // just answered this question for this launch.
     if let Some(wanted) = trimmed(request.requested_account_id) {
         return match usable(accounts, wanted) {
-            Some(account) => selected(account, AccountSource::Request),
+            Some(account) => selected(account, AccountOrigin::Request),
             None => fallback(
                 accounts,
                 request.default_account_id,
@@ -787,7 +756,7 @@ pub fn resolve_launch_account(
             return AccountResolution {
                 config_dir: (!implicit).then_some(config_dir),
                 account,
-                source: AccountSource::Session,
+                source: AccountOrigin::Session,
                 fallback_from: None,
                 needs_choice: false,
             };
@@ -796,7 +765,7 @@ pub fn resolve_launch_account(
 
     if let Some(wanted) = trimmed(request.project_account_id) {
         return match usable(accounts, wanted) {
-            Some(account) => selected(account, AccountSource::Project),
+            Some(account) => selected(account, AccountOrigin::Project),
             None => fallback(
                 accounts,
                 request.default_account_id,
@@ -835,7 +804,7 @@ fn fallback(
         if let Some(account) = usable(accounts, wanted) {
             return AccountResolution {
                 fallback_from,
-                ..selected(account, AccountSource::GlobalDefault)
+                ..selected(account, AccountOrigin::GlobalDefault)
             };
         }
         fallback_from = fallback_from.or_else(|| Some(wanted.to_string()));
@@ -860,7 +829,7 @@ fn fallback(
                 .filter(|account| !account.is_process_default)
                 .map(|account| account.config_dir.clone()),
             account: default_account.cloned(),
-            source: AccountSource::DefaultConfigDir,
+            source: AccountOrigin::DefaultConfigDir,
             fallback_from,
             needs_choice,
         };
@@ -870,7 +839,7 @@ fn fallback(
         Some(account) => AccountResolution {
             fallback_from,
             needs_choice,
-            ..selected(account, AccountSource::SignedIn)
+            ..selected(account, AccountOrigin::SignedIn)
         },
         // Every detected account is signed out. Nothing here can improve on
         // the default config dir, and the login prompt is the honest outcome.
@@ -879,7 +848,7 @@ fn fallback(
                 .filter(|account| !account.is_process_default)
                 .map(|account| account.config_dir.clone()),
             account: default_account.cloned(),
-            source: AccountSource::DefaultConfigDir,
+            source: AccountOrigin::DefaultConfigDir,
             fallback_from,
             needs_choice,
         },
@@ -889,7 +858,7 @@ fn fallback(
 /// Resolution for an account that was found and can run. The config dir is
 /// omitted only for the dir Claude Code reads with `CLAUDE_CONFIG_DIR` unset,
 /// so nothing changes for a host with a single subscription.
-fn selected(account: &ClaudeAccount, source: AccountSource) -> AccountResolution {
+fn selected(account: &ClaudeAccount, source: AccountOrigin) -> AccountResolution {
     AccountResolution {
         config_dir: (!account.is_process_default).then(|| account.config_dir.clone()),
         account: Some(account.clone()),
@@ -1069,7 +1038,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Request);
+        assert_eq!(resolved.source, AccountOrigin::Request);
         assert_eq!(
             resolved.config_dir.as_deref(),
             Some(home.path().join(".claude-account2").as_path())
@@ -1090,7 +1059,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Project);
+        assert_eq!(resolved.source, AccountOrigin::Project);
         assert_eq!(
             resolved.account.as_ref().map(|a| a.email.as_str()),
             Some("m.stier@giesi.com")
@@ -1109,7 +1078,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::GlobalDefault);
+        assert_eq!(resolved.source, AccountOrigin::GlobalDefault);
         assert_eq!(
             resolved.config_dir.as_deref(),
             Some(home.path().join(".claude-account2").as_path())
@@ -1147,7 +1116,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::DefaultConfigDir);
+        assert_eq!(resolved.source, AccountOrigin::DefaultConfigDir);
         assert_eq!(resolved.config_dir, None);
         assert_eq!(resolved.fallback_from.as_deref(), Some("deleted-account"));
     }
@@ -1190,7 +1159,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::DefaultConfigDir);
+        assert_eq!(resolved.source, AccountOrigin::DefaultConfigDir);
         assert_eq!(resolved.fallback_from, None);
         assert_eq!(resolved.config_dir, None);
     }
@@ -1218,7 +1187,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Session);
+        assert_eq!(resolved.source, AccountOrigin::Session);
         assert_eq!(
             resolved.config_dir.as_deref(),
             Some(home.path().join(".claude-account2").as_path())
@@ -1248,7 +1217,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Request);
+        assert_eq!(resolved.source, AccountOrigin::Request);
         assert_eq!(resolved.config_dir, None);
     }
 
@@ -1291,7 +1260,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Project);
+        assert_eq!(resolved.source, AccountOrigin::Project);
         assert_eq!(
             resolved.config_dir.as_deref(),
             Some(home.path().join(".claude-account2").as_path())
@@ -1349,7 +1318,7 @@ mod tests {
 
         let resolved = resolve_launch_account(&accounts, request());
 
-        assert_eq!(resolved.source, AccountSource::SignedIn);
+        assert_eq!(resolved.source, AccountOrigin::SignedIn);
         assert_eq!(
             resolved.config_dir.as_deref(),
             Some(home.path().join(".claude-account2").as_path())
@@ -1373,7 +1342,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::GlobalDefault);
+        assert_eq!(resolved.source, AccountOrigin::GlobalDefault);
         assert_eq!(resolved.fallback_from.as_deref(), Some("deleted-account"));
         assert_eq!(
             resolved.config_dir.as_deref(),
@@ -1602,7 +1571,7 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Session);
+        assert_eq!(resolved.source, AccountOrigin::Session);
         assert_eq!(
             resolved.config_dir.as_deref(),
             Some(Path::new("/home/user/.claude-account2"))
@@ -1716,6 +1685,6 @@ mod tests {
             },
         );
 
-        assert_eq!(resolved.source, AccountSource::Project);
+        assert_eq!(resolved.source, AccountOrigin::Project);
     }
 }

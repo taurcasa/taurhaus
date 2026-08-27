@@ -360,7 +360,7 @@ impl LaunchSpec<'_> {
                 // Last, so the assignment lands in front of the team
                 // environment the arm may have just prepended.
                 if let Some(config_dir) = self.claude_config_dir {
-                    if let Some(config_dir_env) = capabilities.config_dir_env {
+                    if let Some(config_dir_env) = capabilities.account_selector {
                         if command_contains_flag(self.base, config_dir_env) {
                             notes.push(LaunchNote::ConfigDirIgnored {
                                 found: config_dir_env.to_string(),

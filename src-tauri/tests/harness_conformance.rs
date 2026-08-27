@@ -154,10 +154,10 @@ fn registry_declares_native_and_floor_capabilities() {
     // features in their callers; capability ownership belongs in the registry.
     let claude = spec(CliTool::Claude);
     assert_eq!(
-        claude.capabilities.config_dir_env,
+        claude.capabilities.account_selector,
         Some("CLAUDE_CONFIG_DIR")
     );
-    assert!(claude.capabilities.usage_bridge);
+    assert!(claude.capabilities.usage);
     assert!(claude.capabilities.native_inbox_poller);
     assert_eq!(claude.stop_strategy, StopStrategy::SlashExit);
 
@@ -182,6 +182,33 @@ fn registry_declares_native_and_floor_capabilities() {
             entry.name
         );
     }
+}
+
+#[test]
+fn account_selectors_are_declared_independently_of_provider_rollout() {
+    // Regression: commit 07fc8f3 overloaded `config_dir_env` as both launch
+    // data and an account-provider predicate, preventing floor-only provider
+    // rollout for Codex and Gemini.
+    assert_eq!(
+        all()
+            .iter()
+            .map(|entry| (entry.tool, entry.capabilities.account_selector))
+            .collect::<Vec<_>>(),
+        vec![
+            (CliTool::Claude, Some("CLAUDE_CONFIG_DIR")),
+            (CliTool::Codex, Some("CODEX_HOME")),
+            (CliTool::Gemini, Some("GEMINI_CLI_HOME")),
+        ]
+    );
+
+    assert_eq!(
+        all()
+            .iter()
+            .filter(|entry| entry.capabilities.usage)
+            .map(|entry| entry.tool)
+            .collect::<Vec<_>>(),
+        vec![CliTool::Claude]
+    );
 }
 
 #[test]
@@ -210,12 +237,12 @@ fn claude_only_capabilities_are_declared_independently() {
         .collect::<Vec<_>>();
     assert_eq!(team_namespace_tools, vec![CliTool::Claude]);
 
-    let usage_bridge_tools = all()
+    let usage_tools = all()
         .iter()
-        .filter(|entry| entry.capabilities.usage_bridge)
+        .filter(|entry| entry.capabilities.usage)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(usage_bridge_tools, vec![CliTool::Claude]);
+    assert_eq!(usage_tools, vec![CliTool::Claude]);
 }
 
 #[test]

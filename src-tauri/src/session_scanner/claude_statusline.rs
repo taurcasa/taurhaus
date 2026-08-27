@@ -501,7 +501,7 @@ pub fn ensure_statusline_bridge(taurhaus_exe: &Path) {
 fn usage_bridge_is_declared() -> bool {
     crate::session_scanner::cli_tool::all()
         .iter()
-        .any(|entry| entry.capabilities.usage_bridge)
+        .any(|entry| entry.capabilities.usage)
 }
 
 /// Whether enough has passed since the last pass to run another — stamping

@@ -107,10 +107,10 @@ pub struct CliCapabilities {
     pub transcript_compaction_signals: bool,
     pub catalog: bool,
     pub session_root: SessionRoot,
-    pub config_dir_env: Option<&'static str>,
+    pub account_selector: Option<&'static str>,
     pub account_selection: bool,
     pub team_config_namespace: bool,
-    pub usage_bridge: bool,
+    pub usage: bool,
     pub notify_sink: bool,
     pub hook_trust: bool,
 }
@@ -189,10 +189,10 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 transcript_compaction_signals: false,
                 catalog: true,
                 session_root: SessionRoot::AppManagedClaudeDir,
-                config_dir_env: Some("CLAUDE_CONFIG_DIR"),
+                account_selector: Some("CLAUDE_CONFIG_DIR"),
                 account_selection: true,
                 team_config_namespace: true,
-                usage_bridge: true,
+                usage: true,
                 notify_sink: false,
                 hook_trust: false,
             },
@@ -239,10 +239,10 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 transcript_compaction_signals: true,
                 catalog: true,
                 session_root: SessionRoot::ToolHome,
-                config_dir_env: None,
+                account_selector: Some("CODEX_HOME"),
                 account_selection: false,
                 team_config_namespace: false,
-                usage_bridge: false,
+                usage: false,
                 notify_sink: true,
                 hook_trust: true,
             },
@@ -286,10 +286,10 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 transcript_compaction_signals: false,
                 catalog: true,
                 session_root: SessionRoot::ToolHome,
-                config_dir_env: None,
+                account_selector: Some("GEMINI_CLI_HOME"),
                 account_selection: false,
                 team_config_namespace: false,
-                usage_bridge: false,
+                usage: false,
                 notify_sink: false,
                 hook_trust: false,
             },
@@ -408,10 +408,10 @@ pub struct CliCapabilityDescriptor {
     pub transcript_compaction_signals: bool,
     pub catalog: bool,
     pub session_root: SessionRoot,
-    pub config_dir_env: Option<String>,
+    pub account_selector: Option<String>,
     pub account_selection: bool,
     pub team_config_namespace: bool,
-    pub usage_bridge: bool,
+    pub usage: bool,
     pub notify_sink: bool,
     pub hook_trust: bool,
 }
@@ -432,10 +432,10 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
             transcript_compaction_signals: value.transcript_compaction_signals,
             catalog: value.catalog,
             session_root: value.session_root,
-            config_dir_env: value.config_dir_env.map(str::to_string),
+            account_selector: value.account_selector.map(str::to_string),
             account_selection: value.account_selection,
             team_config_namespace: value.team_config_namespace,
-            usage_bridge: value.usage_bridge,
+            usage: value.usage,
             notify_sink: value.notify_sink,
             hook_trust: value.hook_trust,
         }
@@ -475,6 +475,21 @@ impl From<&CliToolSpec> for CliToolDescriptor {
 }
 
 impl CliToolSpec {
+    /// Account provider for this tool. Provider rollout follows selector
+    /// declaration, so a declared selector may temporarily use the floor.
+    pub fn account_provider(
+        &self,
+    ) -> Option<&'static dyn crate::session_scanner::accounts::AccountProvider> {
+        None
+    }
+
+    /// Usage provider for this tool. Implementations are added per provider.
+    pub fn usage_provider(
+        &self,
+    ) -> Option<&'static dyn crate::session_scanner::accounts::UsageProvider> {
+        None
+    }
+
     pub fn matches_argv_token(&self, token: &str) -> bool {
         self.argv_signatures.iter().any(|signature| {
             if signature.starts_with('@') {

@@ -1,9 +1,10 @@
 use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::session_scanner::accounts::AccountOrigin;
 use crate::session_scanner::claude_accounts::{
     configured_root_to_name, remembered_claude_transcript, resolve_launch_account,
-    to_launch_namespace, AccountRequest, AccountResolution, AccountSource,
+    to_launch_namespace, AccountRequest, AccountResolution,
 };
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
@@ -578,7 +579,7 @@ pub(super) fn decide_launch_account(
     // launch that fell through to the fallback lost something.
     let derived = matches!(
         resolution.source,
-        AccountSource::Request | AccountSource::Session
+        AccountOrigin::Request | AccountOrigin::Session
     );
     let unanswered = accounts.degraded || transcript.unavailable.is_some();
     let degraded = (unanswered && !derived).then_some(DegradedDetection {
@@ -645,7 +646,7 @@ pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
         );
     }
 
-    if resolution.source == AccountSource::Session {
+    if resolution.source == AccountOrigin::Session {
         let mut fields = Map::new();
         fields.insert("project".to_string(), Value::String(project_id.to_string()));
         fields.insert(
