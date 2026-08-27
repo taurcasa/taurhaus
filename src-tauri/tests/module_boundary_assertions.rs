@@ -365,24 +365,26 @@ fn claude_provider_has_no_parallel_generic_account_stack() {
 }
 
 #[test]
-fn account_usage_http_uses_one_shared_rustls_client() {
-    // Regression: c11770e selected native-tls and built a new blocking client
-    // per fetch, adding system TLS coupling and discarding every connection pool.
+fn account_usage_http_uses_one_shared_existing_tls_client() {
+    // Regression: 2f8246c selected reqwest's rustls feature, which defaults to
+    // aws-lc-rs and added a second native crypto toolchain (aws-lc-sys) to the
+    // Windows and macOS release graph even though git2 already carries OpenSSL.
     let manifest = read_source("Cargo.toml");
     let reqwest = manifest
         .lines()
         .find(|line| line.starts_with("reqwest = "))
         .expect("direct reqwest dependency");
     assert!(
-        reqwest.contains("\"rustls\""),
-        "reqwest must use rustls: {reqwest}"
+        reqwest.contains("\"native-tls\""),
+        "reqwest must reuse the native TLS stack already in the graph: {reqwest}"
     );
     assert!(
-        !reqwest.contains("native-tls"),
-        "reqwest reintroduced native TLS: {reqwest}"
+        !reqwest.contains("\"rustls\""),
+        "reqwest must not add the rustls/aws-lc stack: {reqwest}"
     );
 
-    let accounts = read_source("src/session_scanner/accounts/mod.rs");
+    let accounts =
+        source_without_test_only_items(&read_source("src/session_scanner/accounts/mod.rs"));
     assert!(accounts.contains("static REQWEST_HTTP_CLIENT"));
     assert_eq!(
         accounts
@@ -390,6 +392,25 @@ fn account_usage_http_uses_one_shared_rustls_client() {
             .count(),
         1,
         "the shared client should be the only client construction site"
+    );
+}
+
+#[test]
+fn scanner_account_memory_never_opens_the_app_database() {
+    // Regression: 967f956 opened taurhaus.db from the scanner, so the WSL
+    // daemon wrote the Windows app's WAL database through /mnt drvfs and the
+    // native daemon raced the app through an unconfigured second connection.
+    let accounts =
+        source_without_test_only_items(&read_source("src/session_scanner/accounts/mod.rs"));
+    assert!(
+        !accounts.contains("rusqlite::Connection::open"),
+        "account memory must use the app-owned DbState connection"
+    );
+
+    let scanner_cache = read_source("src/session_scanner/cache.rs");
+    assert!(
+        !scanner_cache.contains("record_live_session_accounts"),
+        "the scanner may emit observations but must never persist account memory"
     );
 }
 

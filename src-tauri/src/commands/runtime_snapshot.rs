@@ -165,6 +165,7 @@ pub(crate) fn decode_daemon_runtime_session_snapshot(
             version: 0,
             display_sessions: Vec::new(),
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: None,
             foreground_project_path: None,
             degraded: false,

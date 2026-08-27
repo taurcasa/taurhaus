@@ -399,6 +399,10 @@ pub struct WaitSessionUpdatesResult {
     pub changed: bool,
     /// Full session snapshot for the reported version.
     pub sessions: Vec<crate::session_scanner::DisplaySession>,
+    /// Account bindings observed beside the session snapshot. The daemon owns
+    /// process inspection; only the app persists these through its DbState.
+    #[serde(default)]
+    pub account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     /// tmux focus as of this version. Additive: older daemons omit it.
     #[serde(default)]
     pub focus: Option<crate::session_scanner::tmux::TmuxFocus>,
@@ -426,6 +430,8 @@ pub struct RuntimeSessionSnapshotResult {
     pub version: u64,
     pub display_sessions: Vec<crate::session_scanner::DisplaySession>,
     pub runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
+    #[serde(default)]
+    pub account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     /// tmux focus owned by the daemon hub. Serializes with the legacy
     /// `session`/`window` keys so an older app still decodes it.
     #[serde(default)]
@@ -905,10 +911,18 @@ mod tests {
 
     #[test]
     fn wait_session_updates_result_roundtrip() {
+        // Regression: 967f956 let the scanner write SQLite directly. Moving
+        // ownership to the app requires this credential-free observation to
+        // survive the daemon protocol boundary instead.
         let r = WaitSessionUpdatesResult {
             version: 7,
             changed: true,
             sessions: vec![],
+            account_observations: vec![crate::session_scanner::accounts::LiveAccountObservation {
+                project_path: "/projects/taurhaus".to_string(),
+                tool: crate::session_scanner::CliTool::Claude,
+                account_id: "account-1".to_string(),
+            }],
             focus: None,
             focus_project_path: None,
             degraded: false,
@@ -929,6 +943,7 @@ mod tests {
             version: 9,
             display_sessions: vec![],
             runtime_sessions: vec![],
+            account_observations: vec![],
             focus: None,
             foreground_project_path: None,
             degraded: true,
@@ -1014,6 +1029,7 @@ mod tests {
             version: 7,
             changed: true,
             sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: Some(focus_fixture()),
             focus_project_path: Some("/projects/mesh".to_string()),
             degraded: false,
@@ -1051,6 +1067,7 @@ mod tests {
             version: 11,
             changed: false,
             sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: None,
             focus_project_path: None,
             degraded: true,
@@ -1070,6 +1087,7 @@ mod tests {
             version: 4,
             display_sessions: Vec::new(),
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: Some(focus_fixture()),
             foreground_project_path: Some("/projects/mesh".to_string()),
             degraded: false,

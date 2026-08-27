@@ -636,7 +636,6 @@ fn unix_now() -> u64 {
 }
 
 struct LastUsedWrite {
-    account_id: String,
     selector_key: String,
     checked_at: Instant,
 }
@@ -657,26 +656,8 @@ fn live_account_check_is_due(
     })
 }
 
-/// Persist a scanner or launch observation without disturbing a user pin.
-pub fn remember_last_used(
-    project_id: &str,
-    tool: CliTool,
-    account_id: &str,
-) -> Result<bool, String> {
-    if cfg!(test) {
-        // Unit launches must not open the developer's app-data database. Their
-        // real persistence seam is exercised through `remember_last_used_in`.
-        return Ok(false);
-    }
-    let db_path =
-        crate::provider::platform_paths::PlatformPaths::app_data_root().join("taurhaus.db");
-    if !db_path.exists() {
-        return Ok(false);
-    }
-    let connection = rusqlite::Connection::open(db_path).map_err(|error| error.to_string())?;
-    remember_last_used_in(&connection, project_id, tool, account_id)
-}
-
+/// Persist a launch observation through the app-owned database connection
+/// without disturbing a user pin.
 pub(crate) fn remember_last_used_in(
     connection: &rusqlite::Connection,
     project_id: &str,
@@ -692,64 +673,57 @@ pub(crate) fn remember_last_used_in(
     .map_err(|error| error.to_string())
 }
 
-struct LiveAccountObservation {
-    throttle_key: (String, CliTool),
-    tool: CliTool,
+/// A scanner observation that the app may fold into project account memory.
+///
+/// The scanner owns process inspection; the app owns SQLite. This small wire
+/// value is the boundary between them and never contains credentials.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveAccountObservation {
+    pub project_path: String,
+    pub tool: CliTool,
+    pub account_id: String,
+}
+
+struct AccountPersistenceCheck {
     account_id: String,
-    selector_key: String,
+    checked_at: Instant,
 }
 
-fn persist_live_account_observations(
-    connection: &rusqlite::Connection,
-    project_ids: &HashMap<String, String>,
-    checks: &mut HashMap<(String, CliTool), LastUsedWrite>,
-    observations: &[LiveAccountObservation],
-    now: Instant,
-) -> Result<usize, String> {
-    let mut persisted = 0;
-    for observation in observations {
-        if !live_account_check_is_due(
-            checks,
-            &observation.throttle_key,
-            Some(&observation.selector_key),
-            now,
-        ) {
-            continue;
-        }
-        let Some(project_id) = project_ids.get(&observation.throttle_key.0) else {
-            continue;
-        };
-        let changed = checks
-            .get(&observation.throttle_key)
-            .is_none_or(|write| write.account_id != observation.account_id);
-        if changed
-            && remember_last_used_in(
-                connection,
-                project_id,
-                observation.tool,
-                &observation.account_id,
-            )?
-        {
-            persisted += 1;
-        }
-        checks.insert(
-            observation.throttle_key.clone(),
-            LastUsedWrite {
-                account_id: observation.account_id.clone(),
-                selector_key: observation.selector_key.clone(),
-                checked_at: now,
-            },
-        );
-    }
-    Ok(persisted)
-}
+static LAST_PERSISTED_OBSERVATIONS: Mutex<
+    Option<HashMap<(String, CliTool), AccountPersistenceCheck>>,
+> = Mutex::new(None);
 
-/// Bind live selector values back to project memory. This runs on the scanner
-/// thread, where per-process environments are available.
 #[cfg(not(test))]
-pub(crate) fn record_live_session_accounts(sessions: &[RuntimeSession]) {
+struct PendingLiveAccountObservation {
+    throttle_key: (String, CliTool),
+    selector_key: String,
+    observation: LiveAccountObservation,
+}
+
+#[cfg(not(test))]
+fn remember_live_account_check(
+    checks: &mut HashMap<(String, CliTool), LastUsedWrite>,
+    observation: &PendingLiveAccountObservation,
+    now: Instant,
+) {
+    checks.insert(
+        observation.throttle_key.clone(),
+        LastUsedWrite {
+            selector_key: observation.selector_key.clone(),
+            checked_at: now,
+        },
+    );
+}
+
+/// Resolve live selector values on the scanner side and emit memory
+/// observations for the app. No database is opened here.
+#[cfg(not(test))]
+pub(crate) fn observe_live_session_accounts(
+    sessions: &[RuntimeSession],
+) -> Vec<LiveAccountObservation> {
     if cfg!(target_os = "windows") {
-        return;
+        return Vec::new();
     }
 
     let now = Instant::now();
@@ -797,7 +771,7 @@ pub(crate) fn record_live_session_accounts(sessions: &[RuntimeSession]) {
         })
         .collect::<Vec<_>>();
     if candidates.is_empty() {
-        return;
+        return Vec::new();
     }
 
     let mut account_dirs: HashMap<CliTool, Vec<(PathBuf, String)>> = HashMap::new();
@@ -825,46 +799,35 @@ pub(crate) fn record_live_session_accounts(sessions: &[RuntimeSession]) {
                     .get(&tool)?
                     .iter()
                     .find_map(|(dir, id)| (*dir == selected_key).then(|| id.clone()))?;
-                Some(LiveAccountObservation {
+                Some(PendingLiveAccountObservation {
                     throttle_key,
-                    tool,
-                    account_id,
                     selector_key,
+                    observation: LiveAccountObservation {
+                        project_path: session.project_path.clone(),
+                        tool,
+                        account_id,
+                    },
                 })
             },
         )
         .collect::<Vec<_>>();
     if observations.is_empty() {
-        return;
+        return Vec::new();
     }
 
-    let db_path =
-        crate::provider::platform_paths::PlatformPaths::app_data_root().join("taurhaus.db");
-    let connection = if db_path.exists() {
-        rusqlite::Connection::open(db_path).ok()
-    } else {
-        None
-    };
-    let project_ids = connection
-        .as_ref()
-        .map(project_ids_by_path)
-        .unwrap_or_default();
-
-    let Some(connection) = connection.as_ref() else {
-        return;
-    };
     let mut writes = LAST_USED_WRITES
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     let writes = writes.get_or_insert_with(HashMap::new);
-    if let Err(error) =
-        persist_live_account_observations(connection, &project_ids, writes, &observations, now)
-    {
-        tracing::warn!(error = %error, "failed to remember live session account");
+    for observation in &observations {
+        remember_live_account_check(writes, observation, now);
     }
+    observations
+        .into_iter()
+        .map(|observation| observation.observation)
+        .collect()
 }
 
-#[cfg(not(test))]
 fn project_ids_by_path(connection: &rusqlite::Connection) -> HashMap<String, String> {
     let Ok(mut statement) = connection.prepare("SELECT id, path FROM projects") else {
         return HashMap::new();
@@ -877,6 +840,68 @@ fn project_ids_by_path(connection: &rusqlite::Connection) -> HashMap<String, Str
     rows.filter_map(Result::ok)
         .map(|(id, path)| (crate::provider::path::normalize_project_path(&path), id))
         .collect()
+}
+
+/// Persist scanner observations through the app's managed SQLite connection.
+pub(crate) fn persist_live_account_observations_in(
+    connection: &rusqlite::Connection,
+    observations: &[LiveAccountObservation],
+) -> Result<usize, String> {
+    let mut checks = LAST_PERSISTED_OBSERVATIONS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let checks = checks.get_or_insert_with(HashMap::new);
+    persist_live_account_observations_with_checks(connection, observations, checks, Instant::now())
+}
+
+fn persist_live_account_observations_with_checks(
+    connection: &rusqlite::Connection,
+    observations: &[LiveAccountObservation],
+    checks: &mut HashMap<(String, CliTool), AccountPersistenceCheck>,
+    now: Instant,
+) -> Result<usize, String> {
+    let due = observations
+        .iter()
+        .filter_map(|observation| {
+            let project_key =
+                crate::provider::path::normalize_project_path(&observation.project_path);
+            let key = (project_key, observation.tool);
+            let is_due = checks.get(&key).is_none_or(|check| {
+                check.account_id != observation.account_id
+                    || now.saturating_duration_since(check.checked_at) >= Duration::from_secs(60)
+            });
+            if !is_due {
+                return None;
+            }
+            checks.insert(
+                key.clone(),
+                AccountPersistenceCheck {
+                    account_id: observation.account_id.clone(),
+                    checked_at: now,
+                },
+            );
+            Some((key.0, observation))
+        })
+        .collect::<Vec<_>>();
+    if due.is_empty() {
+        return Ok(0);
+    }
+    let project_ids = project_ids_by_path(connection);
+    let mut persisted = 0;
+    for (project_key, observation) in due {
+        let Some(project_id) = project_ids.get(&project_key) else {
+            continue;
+        };
+        if remember_last_used_in(
+            connection,
+            project_id,
+            observation.tool,
+            &observation.account_id,
+        )? {
+            persisted += 1;
+        }
+    }
+    Ok(persisted)
 }
 
 /// Resolve the display label for the account that owns an archived transcript.
@@ -914,7 +939,11 @@ pub fn account_label_for_session(
 }
 
 #[cfg(test)]
-pub(crate) fn record_live_session_accounts(_sessions: &[RuntimeSession]) {}
+pub(crate) fn observe_live_session_accounts(
+    _sessions: &[RuntimeSession],
+) -> Vec<LiveAccountObservation> {
+    Vec::new()
+}
 
 /// Newest transcript for a project across all candidate account dirs.
 pub fn newest_project_transcript(
@@ -1264,13 +1293,12 @@ mod tests {
         let checks = HashMap::from([(
             key.clone(),
             LastUsedWrite {
-                account_id: "account-1".to_string(),
                 selector_key: "/accounts/one".to_string(),
                 checked_at: now,
             },
         )]);
 
-        assert_eq!(checks[&key].account_id, "account-1");
+        assert_eq!(checks[&key].selector_key, "/accounts/one");
         assert!(!live_account_check_is_due(
             &checks,
             &key,
@@ -1292,9 +1320,9 @@ mod tests {
     }
 
     #[test]
-    fn live_account_observations_persist_and_exercise_the_throttle() {
-        // Regression: 967f956 cfg-erased the scanner account-memory path under
-        // `cargo test`, leaving both the write and its one-minute throttle dark.
+    fn live_account_observations_persist_only_on_change() {
+        // Regression: 967f956 left the live account-memory write and its
+        // one-minute throttle without an executable database seam in tests.
         let database = tempfile::NamedTempFile::new().unwrap();
         let connection = crate::db::init_db(database.path()).unwrap();
         connection
@@ -1305,34 +1333,29 @@ mod tests {
                 [],
             )
             .unwrap();
-        let project_key = crate::provider::path::normalize_project_path("/projects/one");
-        let project_ids = HashMap::from([(project_key.clone(), "project-1".to_string())]);
-        let mut checks = HashMap::new();
-        let now = Instant::now();
         let mut observations = vec![LiveAccountObservation {
-            throttle_key: (project_key, CliTool::Claude),
+            project_path: "/projects/one".to_string(),
             tool: CliTool::Claude,
             account_id: "account-1".to_string(),
-            selector_key: "/accounts/one".to_string(),
         }];
+        let mut checks = HashMap::new();
+        let now = Instant::now();
 
         assert_eq!(
-            persist_live_account_observations(
+            persist_live_account_observations_with_checks(
                 &connection,
-                &project_ids,
-                &mut checks,
                 &observations,
+                &mut checks,
                 now,
             )
             .unwrap(),
             1
         );
         assert_eq!(
-            persist_live_account_observations(
+            persist_live_account_observations_with_checks(
                 &connection,
-                &project_ids,
-                &mut checks,
                 &observations,
+                &mut checks,
                 now + Duration::from_secs(10),
             )
             .unwrap(),
@@ -1340,13 +1363,11 @@ mod tests {
         );
 
         observations[0].account_id = "account-2".to_string();
-        observations[0].selector_key = "/accounts/two".to_string();
         assert_eq!(
-            persist_live_account_observations(
+            persist_live_account_observations_with_checks(
                 &connection,
-                &project_ids,
-                &mut checks,
                 &observations,
+                &mut checks,
                 now + Duration::from_secs(10),
             )
             .unwrap(),
@@ -1354,6 +1375,45 @@ mod tests {
         );
         let memory = crate::db::queries::project_account_memory(&connection, "project-1").unwrap();
         assert_eq!(memory["claude"].account_id, "account-2");
+    }
+
+    #[test]
+    fn unknown_project_observations_are_still_throttled() {
+        // Regression: 2f8246c recorded the throttle only after a project-row
+        // match, so a session outside taurhaus reopened SQLite and rescanned
+        // every project on every 500 ms daemon cycle forever.
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        let project_key = crate::provider::path::normalize_project_path("/projects/unknown");
+        let throttle_key = (project_key, CliTool::Claude);
+        let observations = vec![LiveAccountObservation {
+            project_path: "/projects/unknown".to_string(),
+            tool: CliTool::Claude,
+            account_id: "account-1".to_string(),
+        }];
+        let mut checks = HashMap::new();
+        let now = Instant::now();
+
+        assert_eq!(
+            persist_live_account_observations_with_checks(
+                &connection,
+                &observations,
+                &mut checks,
+                now,
+            )
+            .unwrap(),
+            0
+        );
+        assert!(checks.contains_key(&throttle_key));
+        assert_eq!(
+            persist_live_account_observations_with_checks(
+                &connection,
+                &observations,
+                &mut checks,
+                now + Duration::from_secs(10),
+            )
+            .unwrap(),
+            0
+        );
     }
 
     #[test]

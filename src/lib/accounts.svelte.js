@@ -145,6 +145,9 @@ export function rememberChoice(projectOrId, tool, accountId) {
 
 const detections = new Map()
 const DETECTION_TTL_MS = 60_000
+const USAGE_SYNC_RETRY_MS = 250
+const USAGE_SYNC_DEADLINE_MS = 30_000
+const usageSyncTimers = new Map()
 
 export function refreshAccounts(tool = providerTool(), { force = false } = {}) {
   const id = toolId(tool)
@@ -157,23 +160,61 @@ export function refreshAccounts(tool = providerTool(), { force = false } = {}) {
   return promise
 }
 
+function usageObservation(account) {
+  return account?.usage?.observed_at ?? null
+}
+
+function mergeUsageReport(state, report, pending) {
+  if (report?.degraded) return pending
+  const usageById = new Map(
+    (report?.accounts ?? [])
+      .filter((account) => account.usage)
+      .map((account) => [account.id, account.usage])
+  )
+  state.accounts = state.accounts.map((account) =>
+    usageById.has(account.id) ? { ...account, usage: usageById.get(account.id) } : account
+  )
+  return new Map(
+    [...pending].filter(([accountId, observedAt]) => {
+      const next = usageById.get(accountId)?.observed_at ?? null
+      return next == null || next === observedAt
+    })
+  )
+}
+
+function scheduleUsageSync(tool, pending, deadline) {
+  if (pending.size === 0 || Date.now() >= deadline) return
+  const previous = usageSyncTimers.get(tool)
+  if (previous) clearTimeout(previous)
+  const timer = setTimeout(async () => {
+    if (usageSyncTimers.get(tool) === timer) usageSyncTimers.delete(tool)
+    try {
+      const report = await listAccounts(tool)
+      const remaining = mergeUsageReport(mutableAccountState(tool), report, pending)
+      scheduleUsageSync(tool, remaining, deadline)
+    } catch (error) {
+      console.warn('Failed to read refreshed account usage:', error)
+    }
+  }, USAGE_SYNC_RETRY_MS)
+  timer?.unref?.()
+  usageSyncTimers.set(tool, timer)
+}
+
 export function refreshUsage(tool = providerTool()) {
   const id = toolId(tool)
   const state = mutableAccountState(id)
+  const pending = new Map(
+    state.accounts
+      .filter((account) => account.logged_in)
+      .map((account) => [account.id, usageObservation(account)])
+  )
   return Promise.resolve(refreshAccountsUsage(id))
-    .then(() => listAccounts(id))
-    .then((report) => {
-      if (report?.degraded) return
-      const usageById = new Map(
-        (report?.accounts ?? [])
-          .filter((account) => account.usage)
-          .map((account) => [account.id, account.usage])
-      )
-      state.accounts = state.accounts.map((account) =>
-        usageById.has(account.id)
-          ? { ...account, usage: usageById.get(account.id) }
-          : account
-      )
+    .then((scheduled) => listAccounts(id).then((report) => ({ report, scheduled })))
+    .then(({ report, scheduled }) => {
+      const remaining = mergeUsageReport(state, report, pending)
+      if (scheduled) {
+        scheduleUsageSync(id, remaining, Date.now() + USAGE_SYNC_DEADLINE_MS)
+      }
     })
     .catch((error) => {
       console.warn('Failed to refresh account usage:', error)
@@ -298,6 +339,8 @@ export function pendingAccountChoice() {
 }
 
 export function resetAccountsForTest() {
+  for (const timer of usageSyncTimers.values()) clearTimeout(timer)
+  usageSyncTimers.clear()
   for (const state of Object.values(accounts.byTool)) {
     state.accounts = []
     state.degraded = false

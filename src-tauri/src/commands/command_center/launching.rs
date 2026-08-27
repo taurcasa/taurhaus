@@ -337,7 +337,12 @@ pub(super) fn launch_cli_session_impl(
                             custom_command: terminal_settings.custom_command,
                         },
                     );
-                    remember_resolved_account(&project_id, tool, resolved_account_id.as_deref());
+                    remember_resolved_account(
+                        db,
+                        &project_id,
+                        tool,
+                        resolved_account_id.as_deref(),
+                    );
                     return Ok(result);
                 }
                 Ok(response) => {
@@ -442,7 +447,7 @@ pub(super) fn launch_cli_session_impl(
         Some(&tool_cmd),
     )
     .map_err(|e| format!("Failed to launch session: {e}"))?;
-    remember_resolved_account(&project_id, tool, resolved_account_id.as_deref());
+    remember_resolved_account(db, &project_id, tool, resolved_account_id.as_deref());
 
     #[cfg(target_os = "macos")]
     {
@@ -462,8 +467,21 @@ pub(super) fn launch_cli_session_impl(
     })
 }
 
-fn remember_resolved_account(project_id: &str, tool: CliTool, account_id: Option<&str>) {
-    remember_resolved_account_with(project_id, tool, account_id, accounts::remember_last_used);
+fn remember_resolved_account(
+    db: &DbState,
+    project_id: &str,
+    tool: CliTool,
+    account_id: Option<&str>,
+) {
+    remember_resolved_account_with(
+        project_id,
+        tool,
+        account_id,
+        |project_id, tool, account_id| {
+            let connection = db.0.lock().map_err(|error| error.to_string())?;
+            accounts::remember_last_used_in(&connection, project_id, tool, account_id)
+        },
+    );
 }
 
 pub(super) fn remember_resolved_account_with<F>(

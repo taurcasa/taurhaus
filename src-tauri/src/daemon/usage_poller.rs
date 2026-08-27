@@ -129,11 +129,15 @@ pub fn refresh(tool: CliTool) -> bool {
     }
     drop(state);
 
+    if !force {
+        return false;
+    }
+
     match run_on_poller_thread(move || {
         let _serial = POLL_SERIAL
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        poll(tool, force);
+        poll(tool, true);
     }) {
         Ok(()) => force,
         Err(error) => {
@@ -166,17 +170,15 @@ fn ensure_scheduler() {
     });
 }
 
-fn run_on_poller_thread<F, T>(job: F) -> Result<T, String>
+fn run_on_poller_thread<F>(job: F) -> Result<(), String>
 where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
+    F: FnOnce() + Send + 'static,
 {
     std::thread::Builder::new()
         .name("account-usage-refresh".to_string())
         .spawn(job)
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "account usage refresh thread panicked".to_string())
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn poll(tool: CliTool, force: bool) {
@@ -360,18 +362,32 @@ mod tests {
     }
 
     #[test]
-    fn requested_refresh_waits_for_the_poller_thread() {
-        // Regression: c11770e detached the requested fetch, then let the same
-        // interaction list the previous snapshot before HTTP could complete.
-        let before = Instant::now();
-        let worker_name = run_on_poller_thread(|| {
-            std::thread::sleep(Duration::from_millis(30));
-            std::thread::current().name().map(str::to_string)
-        })
-        .expect("poller thread");
+    fn requested_refresh_returns_before_the_poller_thread_finishes() {
+        // Regression: 2f8246c joined the on-demand poll thread inside the
+        // daemon handler. One five-second HTTP timeout then outlived the
+        // client's five-second RPC budget and disconnected every pool slot.
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (returned_tx, returned_rx) = std::sync::mpsc::channel();
+        let caller = std::thread::spawn(move || {
+            let result = run_on_poller_thread(move || {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            });
+            returned_tx.send(result).unwrap();
+        });
 
-        assert!(before.elapsed() >= Duration::from_millis(30));
-        assert_eq!(worker_name.as_deref(), Some("account-usage-refresh"));
+        started_rx
+            .recv_timeout(Duration::from_millis(500))
+            .expect("poller thread started");
+        let returned_without_waiting = returned_rx.recv_timeout(Duration::from_millis(50)).is_ok();
+        release_tx.send(()).unwrap();
+        caller.join().unwrap();
+
+        assert!(
+            returned_without_waiting,
+            "the refresh RPC must acknowledge scheduling, not network completion"
+        );
     }
 
     #[test]

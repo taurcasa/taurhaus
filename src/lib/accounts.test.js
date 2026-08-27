@@ -320,6 +320,32 @@ describe('claudeAccounts store', () => {
     ])
   })
 
+  it('re-reads usage after an asynchronous refresh is acknowledged', async () => {
+    // Regression: 2f8246c made the refresh RPC wait for network completion.
+    // Returning promptly avoids daemon disconnects, so the frontend must keep
+    // reading until the poller's newer observation is visible.
+    vi.useFakeTimers()
+    try {
+      const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
+      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      listAccounts.mockResolvedValue(previousReport)
+      await refreshAccounts('claude')
+      listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
+
+      await refreshUsage('claude')
+      expect(claudeAccounts.accounts[1].usage).toEqual(previousUsage)
+
+      await vi.advanceTimersByTimeAsync(250)
+
+      expect(claudeAccounts.accounts[1].usage).toEqual(refreshedUsage)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
   // Regression: a574720 copied every account's usage from the report, `null`
   // included. The sink cannot be read while a compacting writer holds it, and
   // the backend answers such a refresh with no numbers at all — so the meter on

@@ -10,7 +10,6 @@ pub(crate) fn store(snapshot: &RuntimeSessionSnapshotResult) {
     // the account a session belongs to has to outlive it — Resume asks after
     // the process is gone.
     crate::session_scanner::accounts::record_session_transcripts(&snapshot.runtime_sessions);
-    crate::session_scanner::accounts::record_live_session_accounts(&snapshot.runtime_sessions);
 
     let mut guard = SESSION_SNAPSHOT_CACHE
         .lock()

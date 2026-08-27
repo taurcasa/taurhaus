@@ -28,6 +28,7 @@ vi.mock('./sessionIndicator.js', () => ({
 const {
   launchCliSession,
   listAccounts,
+  refreshAccountsUsage,
   setProjectAccount,
   stopClaudeSession,
   resolveLaunchAccount,
@@ -119,6 +120,14 @@ describe('Sidebar account submenus', () => {
 
     expect(screen.getByTestId('menu-item-new-codex-session')).not.toHaveAttribute('aria-haspopup')
     expect(screen.getByTestId('menu-item-resume-gemini')).not.toHaveAttribute('aria-haspopup')
+  })
+
+  it('requests usage when the account context menu opens', async () => {
+    // Regression: 179a767 refreshed account detection for a newly opened
+    // sidebar menu but never triggered usage, leaving every compact meter empty.
+    await openProjectMenu()
+
+    await waitFor(() => expect(refreshAccountsUsage).toHaveBeenCalledWith('claude'))
   })
 
   it('offers no submenu when the host has only one usable account', async () => {

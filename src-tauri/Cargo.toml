@@ -56,7 +56,7 @@ base64 = "0.22"
 ctrlc = "3"
 socket2 = { version = "0.5", features = ["all"] }
 fs2 = "0.4.3"
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libproc = "0.14"

@@ -13,6 +13,7 @@
     accountState,
     launchFollowsHistory,
     refreshAccounts,
+    refreshUsage,
     resolveChooserAccounts,
     rememberChoice,
     requestLaunch,
@@ -416,7 +417,7 @@
   $effect(() => {
     if (!ctxMenu) return
     for (const tool of tools().filter((entry) => entry.capabilities.accountSelection)) {
-      void refreshAccounts(tool.id)
+      void refreshAccounts(tool.id).then(() => refreshUsage(tool.id))
     }
   })
 
