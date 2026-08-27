@@ -36,6 +36,7 @@ pub struct RuntimeSessionSnapshot {
     pub version: u64,
     pub display_sessions: Vec<DisplaySession>,
     pub runtime_sessions: Vec<RuntimeSession>,
+    pub account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     pub focus: Option<TmuxFocus>,
     pub focus_project_path: Option<String>,
     /// The latest scanner cycle was degraded: the sessions are the last good
@@ -52,6 +53,7 @@ pub struct SessionUpdate {
     /// tmux focus as of `snapshot.version`, read under the same lock.
     pub focus: Option<TmuxFocus>,
     pub focus_project_path: Option<String>,
+    pub account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     /// The sessions in `snapshot` are the last good ones, kept for continuity
     /// while the scanner is blind — not an observation.
     pub degraded: bool,
@@ -71,6 +73,7 @@ struct HubState {
     version: u64,
     display_sessions: Vec<DisplaySession>,
     runtime_sessions: Vec<RuntimeSession>,
+    account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     focus: Option<TmuxFocus>,
     focus_project_path: Option<String>,
     /// Set by a degraded cycle, cleared by the next healthy commit. Lives
@@ -196,6 +199,7 @@ impl ScannerCadence {
 struct ScanCycle {
     display_sessions: Vec<DisplaySession>,
     runtime_sessions: Vec<RuntimeSession>,
+    account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     focus: Option<TmuxFocus>,
     focus_project_path: Option<String>,
     /// Some client reports its window as focused: someone is looking.
@@ -221,6 +225,7 @@ fn scan_cycle(teams_dir: &Path) -> ScanCycle {
         return ScanCycle {
             display_sessions: Vec::new(),
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: None,
             focus_project_path: None,
             focused: false,
@@ -228,6 +233,8 @@ fn scan_cycle(teams_dir: &Path) -> ScanCycle {
         };
     }
 
+    let account_observations =
+        crate::session_scanner::accounts::observe_live_session_accounts(&runtime_sessions);
     enrich_sessions_with_team_membership(teams_dir, &mut display_sessions);
     enrich_runtime_sessions_with_team_membership(teams_dir, &mut runtime_sessions);
     let clients = tmux::list_clients();
@@ -238,6 +245,7 @@ fn scan_cycle(teams_dir: &Path) -> ScanCycle {
     ScanCycle {
         display_sessions,
         runtime_sessions,
+        account_observations,
         focus,
         focus_project_path,
         focused: tmux::any_client_focused(&clients),
@@ -254,6 +262,7 @@ fn session_update(state: &HubState, changed: bool) -> SessionUpdate {
         },
         focus: state.focus.clone(),
         focus_project_path: state.focus_project_path.clone(),
+        account_observations: state.account_observations.clone(),
         degraded: state.degraded,
         degraded_revision: state.degraded_revision,
     }
@@ -305,6 +314,7 @@ impl SessionActivityHub {
             version: guard.version,
             display_sessions: guard.display_sessions.clone(),
             runtime_sessions: guard.runtime_sessions.clone(),
+            account_observations: guard.account_observations.clone(),
             focus: guard.focus.clone(),
             focus_project_path: guard.focus_project_path.clone(),
             degraded: guard.degraded,
@@ -396,6 +406,34 @@ impl SessionActivityHub {
         // Keep latest metadata; only a change generates a new version/event.
         state.display_sessions = cycle.display_sessions;
         state.runtime_sessions = cycle.runtime_sessions;
+        // Account observations are throttled scanner output, so an empty
+        // cycle means "nothing new", not "forget the last binding". Keep the
+        // latest observation while its project/tool still has a live session;
+        // this gives the app's long poll a stable delivery window.
+        let live_account_keys = state
+            .runtime_sessions
+            .iter()
+            .map(|session| {
+                (
+                    crate::provider::path::normalize_project_path(&session.project_path),
+                    session.cli_tool,
+                )
+            })
+            .collect::<std::collections::HashSet<_>>();
+        state.account_observations.retain(|observation| {
+            live_account_keys.contains(&(
+                crate::provider::path::normalize_project_path(&observation.project_path),
+                observation.tool,
+            ))
+        });
+        for observation in cycle.account_observations {
+            state.account_observations.retain(|current| {
+                current.tool != observation.tool
+                    || crate::provider::path::normalize_project_path(&current.project_path)
+                        != crate::provider::path::normalize_project_path(&observation.project_path)
+            });
+            state.account_observations.push(observation);
+        }
         state.focus = cycle.focus;
         state.focus_project_path = cycle.focus_project_path;
         let recovered = state.degraded;
@@ -562,6 +600,7 @@ mod tests {
         ScanCycle {
             display_sessions,
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: None,
             focus_project_path: None,
             focused: false,
@@ -966,6 +1005,7 @@ mod tests {
         ScanCycle {
             display_sessions,
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus,
             focus_project_path: focus_project_path.map(str::to_string),
             focused: false,

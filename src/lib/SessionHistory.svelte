@@ -254,6 +254,9 @@
             {#if formatRelativeTime(session.last_archived_at)}
               <span class="text-[10px] {t.textMuted}" data-testid="last-archived">archived {formatRelativeTime(session.last_archived_at)}</span>
             {/if}
+            {#if session.account_label}
+              <span class="text-[10px] {t.textMuted}" data-testid="session-account-label">{session.account_label}</span>
+            {/if}
 
             <!-- Spacer -->
             <span class="flex-1"></span>

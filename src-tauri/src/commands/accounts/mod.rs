@@ -1,9 +1,9 @@
-//! Claude subscription accounts, as the frontend sees them.
+//! Tool accounts, as the frontend sees them.
 //!
 //! Detection runs where the config dirs are: in-process on Linux and macOS, in
 //! the WSL daemon on Windows. Three answers come back from that daemon and they
 //! mean different things. A daemon that predates the additive
-//! `list_claude_accounts` method answers `UNKNOWN_METHOD`, and an empty list is
+//! `list_accounts` method answers `UNKNOWN_METHOD`, and an empty list is
 //! then the honest answer — the chooser and the chip stay hidden, and launches
 //! keep rendering exactly as they did before this feature existed. A daemon
 //! that is *gone* has answered nothing at all: that empty list is silence, it
@@ -23,9 +23,8 @@ use crate::commands::projects::DbState;
 use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
-use crate::session_scanner::claude_accounts::{
-    detect_claude_accounts_cached, newest_project_transcript, transcript_config_dirs, ClaudeAccount,
-};
+use crate::session_scanner::accounts::{self, Account};
+use crate::session_scanner::cli_tool::CliTool;
 use crate::ProviderState;
 
 /// Detection ran in this process.
@@ -35,15 +34,12 @@ pub(crate) const SOURCE_DAEMON: &str = "daemon";
 
 const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
 
-/// The detected accounts, and whether they are an answer at all.
+/// Detected accounts for one registry tool.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClaudeAccountsResult {
-    pub accounts: Vec<ClaudeAccount>,
-    /// Where detection ran: `daemon` on Windows, `native` everywhere else.
+pub struct AccountsResult {
+    pub accounts: Vec<Account>,
     pub source: String,
-    /// Detection could not run. `accounts` is empty because nothing answered,
-    /// not because nobody is signed in.
     pub degraded: bool,
     pub error: Option<String>,
 }
@@ -69,117 +65,117 @@ pub(crate) enum DaemonAnswer<T> {
 }
 
 #[tauri::command]
-pub fn list_claude_accounts(provider: State<'_, ProviderState>) -> IpcResult<ClaudeAccountsResult> {
-    let span = IpcCommandSpan::start("list_claude_accounts");
-    let result =
-        Ok::<_, String>(claude_accounts_report(provider.inner())).ipc_cmd("list_claude_accounts");
+pub fn list_accounts(
+    provider: State<'_, ProviderState>,
+    tool: CliTool,
+) -> IpcResult<AccountsResult> {
+    let span = IpcCommandSpan::start("list_accounts");
+    let result = Ok::<_, String>(accounts_report(provider.inner(), tool)).ipc_cmd("list_accounts");
     span.finish_result(&result);
-    ensure_claude_statusline_bridge();
     result
-}
-
-/// Reconcile the Claude status-line bridge behind this answer, on a native
-/// host.
-///
-/// The daemon does this whenever it serves `list_claude_accounts`, but on Linux
-/// and macOS that request never reaches it — detection runs in this process —
-/// so an account signed in since the daemon started would have no bridge, and
-/// no usage, until it restarted.
-///
-/// The *installed daemon* is what goes into the generated script, never this
-/// process: both reach the same file, and a script naming whichever one ran
-/// last would be rewritten by the other on its next pass. A host with no daemon
-/// installed gets nothing rather than a script pointing at a binary that is not
-/// there.
-fn ensure_claude_statusline_bridge() {
-    if cfg!(target_os = "windows") {
-        return;
-    }
-    let daemon_exe = crate::provider::platform_paths::PlatformPaths::daemon_binary_path();
-    if !daemon_exe.exists() {
-        return;
-    }
-    crate::session_scanner::claude_statusline::ensure_statusline_bridge_soon(daemon_exe);
 }
 
 #[tauri::command]
-pub fn set_project_claude_account(
-    db: State<'_, DbState>,
-    project_id: String,
-    account_id: Option<String>,
-) -> IpcResult<()> {
-    let span = IpcCommandSpan::start("set_project_claude_account");
-    let result = set_project_claude_account_impl(db.inner(), &project_id, account_id.as_deref())
-        .ipc_cmd("set_project_claude_account");
+pub fn refresh_accounts_usage(
+    provider: State<'_, ProviderState>,
+    tool: CliTool,
+) -> IpcResult<bool> {
+    let span = IpcCommandSpan::start("refresh_accounts_usage");
+    let result =
+        refresh_accounts_usage_impl(provider.inner(), tool).ipc_cmd("refresh_accounts_usage");
     span.finish_result(&result);
     result
 }
 
-pub(crate) fn set_project_claude_account_impl(
-    db: &DbState,
-    project_id: &str,
-    account_id: Option<&str>,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let changed =
-        queries::set_project_claude_account(&conn, project_id, account_id).sanitize_err()?;
-    if !changed {
-        return Err("Project not found".to_string());
+fn refresh_accounts_usage_impl(provider: &ProviderState, tool: CliTool) -> Result<bool, String> {
+    if cfg!(target_os = "windows") {
+        let Some(daemon) = provider.daemon.as_ref() else {
+            return Ok(false);
+        };
+        let request = protocol::DaemonRequest::new(
+            format!("refresh-usage-{tool}"),
+            protocol::method::REFRESH_USAGE,
+            protocol::ListAccountsParams { tool },
+        );
+        return Ok(daemon.send_status_request(&request).is_ok());
     }
-    Ok(())
+    Ok(crate::daemon::usage_poller::refresh(tool))
 }
 
-/// The detected accounts, from whichever side of the WSL boundary can see them.
-pub(crate) fn claude_accounts_report(provider: &ProviderState) -> ClaudeAccountsResult {
+/// Detected accounts, from whichever side of the WSL boundary can see them.
+pub(crate) fn accounts_report(provider: &ProviderState, tool: CliTool) -> AccountsResult {
     if cfg!(target_os = "windows") {
-        return daemon_accounts_report(provider);
+        return daemon_accounts_report(provider, tool);
     }
-    let mut accounts = detect_claude_accounts_cached();
-    // Detection is cached for a minute; usage is read fresh, because the whole
-    // point of it is to be current when the chooser opens.
-    crate::daemon::claude_usage::attach_usage(&mut accounts);
-    ClaudeAccountsResult {
-        accounts,
+    let mut detected = accounts::detect(tool);
+    crate::daemon::usage_poller::attach_usage(tool, &mut detected);
+    AccountsResult {
+        accounts: detected,
         source: SOURCE_NATIVE.to_string(),
         degraded: false,
         error: None,
     }
 }
 
-/// The newest Claude transcript for a project, read where the transcripts are.
-///
-/// This is what makes `--resume` land on the subscription that owns a project's
-/// history after the session that wrote it is gone — including after a restart,
-/// and on Windows, where the app never sees the sessions the daemon scans.
-pub(crate) fn claude_project_transcript(
+#[tauri::command]
+pub fn set_project_account(
+    db: State<'_, DbState>,
+    project_id: String,
+    tool: CliTool,
+    account_id: Option<String>,
+) -> IpcResult<()> {
+    let span = IpcCommandSpan::start("set_project_account");
+    let result = set_project_account_impl(db.inner(), &project_id, tool, account_id.as_deref())
+        .ipc_cmd("set_project_account");
+    span.finish_result(&result);
+    result
+}
+
+pub(crate) fn set_project_account_impl(
+    db: &DbState,
+    project_id: &str,
+    tool: CliTool,
+    account_id: Option<&str>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let changed = queries::set_project_account(&conn, project_id, &tool.to_string(), account_id)
+        .sanitize_err()?;
+    if !changed {
+        return Err("Project not found".to_string());
+    }
+    Ok(())
+}
+
+/// The newest transcript for one tool and project, read where that tool runs.
+pub(crate) fn project_transcript(
     provider: &ProviderState,
+    tool: CliTool,
     project_path: &str,
 ) -> TranscriptLookup {
     if cfg!(target_os = "windows") {
-        return daemon_transcript_lookup(provider, project_path);
+        return daemon_project_transcript_lookup(provider, tool, project_path);
     }
-    // The config dirs, not the accounts: a `.claude.json` caught mid-rewrite
-    // names no account, and the history it sits next to must not disappear
-    // with it.
     TranscriptLookup {
-        transcript: newest_project_transcript(&transcript_config_dirs(), project_path),
+        transcript: accounts::newest_project_transcript(
+            tool,
+            &accounts::transcript_dirs(tool),
+            project_path,
+        ),
         unavailable: None,
     }
 }
 
-fn daemon_accounts_report(provider: &ProviderState) -> ClaudeAccountsResult {
-    daemon_accounts_report_from(daemon_claude_accounts(provider))
+fn daemon_accounts_report(provider: &ProviderState, tool: CliTool) -> AccountsResult {
+    daemon_accounts_report_from(daemon_accounts(provider, tool))
 }
 
-fn daemon_accounts_report_from(
-    answer: DaemonAnswer<protocol::ClaudeAccountsResult>,
-) -> ClaudeAccountsResult {
+fn daemon_accounts_report_from(answer: DaemonAnswer<protocol::AccountsResult>) -> AccountsResult {
     let (accounts, degraded, error) = match answer {
-        DaemonAnswer::Value(result) => (result.accounts, false, None),
+        DaemonAnswer::Value(result) => (result.accounts, result.degraded, result.error),
         DaemonAnswer::Unsupported => (Vec::new(), false, None),
         DaemonAnswer::Unavailable(error) => (Vec::new(), true, Some(error)),
     };
-    ClaudeAccountsResult {
+    AccountsResult {
         accounts,
         source: SOURCE_DAEMON.to_string(),
         degraded,
@@ -187,7 +183,11 @@ fn daemon_accounts_report_from(
     }
 }
 
-fn daemon_transcript_lookup(provider: &ProviderState, project_path: &str) -> TranscriptLookup {
+fn daemon_project_transcript_lookup(
+    provider: &ProviderState,
+    tool: CliTool,
+    project_path: &str,
+) -> TranscriptLookup {
     let Some(daemon) = provider.daemon.as_ref() else {
         return TranscriptLookup {
             transcript: None,
@@ -202,20 +202,21 @@ fn daemon_transcript_lookup(provider: &ProviderState, project_path: &str) -> Tra
     }
 
     let request = protocol::DaemonRequest::new(
-        "claude-project-transcript",
-        protocol::method::CLAUDE_PROJECT_TRANSCRIPT,
-        protocol::ClaudeProjectTranscriptParams {
-            project_path: project_path.to_string(),
+        format!("project-transcript-{tool}"),
+        protocol::method::PROJECT_TRANSCRIPT,
+        protocol::ProjectTranscriptParams {
+            tool,
+            project: project_path.to_string(),
         },
     );
     transcript_lookup_from(daemon_answer(
         daemon.send_status_request(&request),
-        "Claude transcript",
+        "Project transcript",
     ))
 }
 
 fn transcript_lookup_from(
-    answer: DaemonAnswer<protocol::ClaudeProjectTranscriptResult>,
+    answer: DaemonAnswer<protocol::ProjectTranscriptResult>,
 ) -> TranscriptLookup {
     match answer {
         DaemonAnswer::Value(result) => TranscriptLookup {
@@ -232,9 +233,10 @@ fn transcript_lookup_from(
     }
 }
 
-fn daemon_claude_accounts(
+fn daemon_accounts(
     provider: &ProviderState,
-) -> DaemonAnswer<protocol::ClaudeAccountsResult> {
+    tool: CliTool,
+) -> DaemonAnswer<protocol::AccountsResult> {
     let Some(daemon) = provider.daemon.as_ref() else {
         return DaemonAnswer::Unavailable("The WSL daemon is not running".to_string());
     };
@@ -243,11 +245,11 @@ fn daemon_claude_accounts(
     }
 
     let request = protocol::DaemonRequest::new(
-        "list-claude-accounts",
-        protocol::method::LIST_CLAUDE_ACCOUNTS,
-        serde_json::Value::Null,
+        format!("list-accounts-{tool}"),
+        protocol::method::LIST_ACCOUNTS,
+        protocol::ListAccountsParams { tool },
     );
-    daemon_answer(daemon.send_status_request(&request), "Claude accounts")
+    daemon_answer(daemon.send_status_request(&request), "tool accounts")
 }
 
 /// Read one daemon response for what it means, not just for what it carries.

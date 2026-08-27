@@ -30,6 +30,7 @@ pub(crate) fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Erro
     telemetry::emit_startup_app_started();
     telemetry::emit_startup_paths_resolved(&setup_paths);
     telemetry::emit_startup_logging_initialized(&setup_paths);
+    bootstrap::spawn_legacy_statusline_cleanup();
     telemetry::emit_startup_database_started(&setup_paths);
     let database_started_at = Instant::now();
     let conn = match setup::initialize_database(&setup_paths) {

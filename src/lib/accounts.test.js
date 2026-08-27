@@ -1,0 +1,754 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('./ipc.js', () => ({
+  refreshAccountsUsage: vi.fn(() => Promise.resolve(true)),
+  listAccounts: vi.fn(),
+  setProjectAccount: vi.fn(),
+  launchCliSession: vi.fn(),
+  resolveLaunchAccount: vi.fn(),
+  getSettings: vi.fn(),
+}))
+
+const {
+  listAccounts,
+  setProjectAccount,
+  launchCliSession,
+  resolveLaunchAccount,
+  getSettings,
+} = await import('./ipc.js')
+const {
+  accountState,
+  activeAccountId,
+  effectiveAccount,
+  loggedInAccounts,
+  refreshAccounts,
+  refreshUsage,
+  requestLaunch,
+  resolveChooserAccounts,
+  resetAccountsForTest,
+  setDefaultAccount,
+} = await import('./accounts.svelte.js')
+
+const claudeAccounts = accountState('claude')
+function effectiveClaudeAccountId(project) {
+  if (project?.id && project.id in claudeAccounts.projectChoices) {
+    return claudeAccounts.projectChoices[project.id]
+  }
+  return project?.accountMemory?.claude?.accountId ?? null
+}
+
+const PRIMARY = {
+  id: 'account-1',
+  email: 'stierms@gmail.com',
+  display_name: 'Who',
+  organization: "stierms@gmail.com's Organization",
+  seat_tier: 'claude_max',
+  logged_in: true,
+  is_default: true,
+  config_dir: '/home/user/.claude',
+}
+
+const SECOND = {
+  id: 'account-2',
+  email: 'm.stier@giesi.com',
+  display_name: 'Matthias',
+  organization: "m.stier@giesi.com's Organization",
+  seat_tier: 'claude_max',
+  logged_in: true,
+  is_default: false,
+  config_dir: '/home/user/.claude-account2',
+}
+
+const THIRD = {
+  id: 'account-3',
+  email: 'third@example.com',
+  display_name: 'Third',
+  organization: null,
+  seat_tier: null,
+  logged_in: true,
+  is_default: false,
+  config_dir: '/home/user/.claude-third',
+}
+
+/** What the backend answers when detection ran. */
+const detected = (accounts) => ({
+  accounts,
+  source: 'native',
+  degraded: false,
+  error: null,
+})
+
+/** What it answers when the daemon could not be asked at all. */
+const degraded = (error = 'The WSL daemon is not reachable') => ({
+  accounts: [],
+  source: 'daemon',
+  degraded: true,
+  error,
+})
+
+describe('claudeAccounts store', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetAccountsForTest()
+    setProjectAccount.mockResolvedValue(undefined)
+    launchCliSession.mockResolvedValue({ tmux_pane: '%1' })
+    resolveLaunchAccount.mockResolvedValue({
+      accountId: null,
+      source: 'default_config_dir',
+      needsChoice: true,
+    })
+    getSettings.mockResolvedValue({ terminal: { default_account_ids: {} } })
+  })
+
+  it('keeps a logged-out account visible for the chooser but out of the count', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
+
+    await refreshAccounts('claude')
+
+    expect(claudeAccounts.accounts).toHaveLength(2)
+    expect(resolveChooserAccounts('claude').map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+    expect(loggedInAccounts('claude')).toHaveLength(1)
+  })
+
+  // Regression: 6ec843e kept one row per detected config dir, and one
+  // subscription signed into two of them is detected twice under the same
+  // account uuid. That uuid is the only address a launch or a pin has, so the
+  // `.claude-account2` row launched `.claude`, both rows read as the current
+  // one, and the chip and chooser — which key their rows by that id — threw
+  // `each_key_duplicate` on the pair.
+  it('keeps one account per id a launch can name', async () => {
+    const sameSubscriptionElsewhere = {
+      ...PRIMARY,
+      is_default: false,
+      config_dir: '/home/user/.claude-copy',
+    }
+    listAccounts.mockResolvedValue(detected([PRIMARY, sameSubscriptionElsewhere, SECOND]))
+
+    await refreshAccounts('claude')
+
+    expect(resolveChooserAccounts('claude').map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+    expect(resolveChooserAccounts('claude')[0].config_dir).toBe('/home/user/.claude')
+  })
+
+  // The kept row has to be the one the backend resolves that id to, which is
+  // the first that can actually run — not simply the first seen.
+  it('keeps the signed-in dir when the default dir of the same account is not', async () => {
+    listAccounts.mockResolvedValue(
+      detected([
+        { ...PRIMARY, logged_in: false },
+        { ...PRIMARY, is_default: false, config_dir: '/home/user/.claude-copy' },
+      ])
+    )
+
+    await refreshAccounts('claude')
+
+    expect(resolveChooserAccounts('claude')).toHaveLength(1)
+    expect(resolveChooserAccounts('claude')[0].config_dir).toBe('/home/user/.claude-copy')
+    expect(loggedInAccounts('claude')).toHaveLength(1)
+  })
+
+  it('launches straight away when only one account is logged in', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY]))
+    await refreshAccounts('claude')
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+  })
+
+  it('never asks for a non-Claude tool', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'codex' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'codex', null)
+  })
+
+  it('asks once when two accounts are logged in and the project stored no choice', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1', mode: 'fresh' })
+  })
+
+  it('remembers the choice for the project and launches on it', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    await claudeAccounts.pending.confirm('account-2', true)
+
+    expect(setProjectAccount).toHaveBeenCalledWith('p1', 'claude', 'account-2')
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    expect(claudeAccounts.pending).toBe(null)
+  })
+
+  it('does not store the choice when the user unticks remember', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    await claudeAccounts.pending.confirm('account-2', false)
+
+    expect(setProjectAccount).not.toHaveBeenCalled()
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+  })
+
+  it('skips the chooser once the project has a stored account', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    await requestLaunch({
+      project: { id: 'p1', accountMemory: { claude: { accountId: 'account-2', origin: 'pinned' } } },
+      mode: 'continue',
+      tool: 'claude',
+    })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'continue', 'claude', null)
+  })
+
+  it('cancelling the chooser launches nothing', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    claudeAccounts.pending.cancel()
+
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toBe(null)
+  })
+
+  it('a detection failure never blocks the launch', async () => {
+    listAccounts.mockRejectedValue(new Error('daemon down'))
+    await refreshAccounts('claude')
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+  })
+
+  // Regression: c982822 decided whether to ask from the project object the
+  // caller happened to hold and updated nothing after storing the answer, so
+  // the same project asked again on every launch of the app session.
+  it('asks once and never again once the choice is remembered', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    const project = { id: 'p1' }
+    await requestLaunch({ project, mode: 'fresh', tool: 'claude' })
+    await claudeAccounts.pending.confirm('account-2', true)
+
+    await requestLaunch({ project, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchCliSession).toHaveBeenCalledTimes(2)
+    expect(effectiveClaudeAccountId(project)).toBe('account-2')
+  })
+
+  it('a failed store drops the remembered choice again', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    setProjectAccount.mockRejectedValue(new Error('db locked'))
+    const project = { id: 'p1' }
+    await requestLaunch({ project, mode: 'fresh', tool: 'claude' })
+
+    await claudeAccounts.pending.confirm('account-2', true)
+
+    expect(effectiveClaudeAccountId(project)).toBe(null)
+  })
+
+  // Regression: c982822 left the configured global default to the backend
+  // alone. The chooser asked anyway, and Enter pinned the project to whichever
+  // account happened to sit in the default config dir.
+  it('never asks when a global default account is configured', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    getSettings.mockResolvedValue({ terminal: { default_account_ids: { claude: 'account-2' } } })
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(claudeAccounts.defaultAccountId).toBe('account-2')
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+  })
+
+  it('asks again when the configured global default is no longer usable', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }, THIRD]))
+    getSettings.mockResolvedValue({ terminal: { default_account_ids: { claude: 'account-2' } } })
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  // Regression: 79be608 folded usage into account detection, which the store
+  // caches for a minute and OverviewTab asked for once on mount. Every later
+  // status-line report was invisible until something forced detection again,
+  // so the chip a user opened to compare subscriptions showed mount-time
+  // numbers — for a feature whose whole point is the current one.
+  it('refreshes usage without waiting for the detection cache to expire', async () => {
+    listAccounts.mockResolvedValue(
+      detected([PRIMARY, { ...SECOND, usage: null }])
+    )
+    await refreshAccounts('claude')
+    expect(claudeAccounts.accounts[1].usage).toBe(null)
+
+    const usage = {
+      five_hour: { used_percentage: 81, resets_at: 1787784600 },
+      seven_day: { used_percentage: 44, resets_at: 1788300000 },
+      observed_at: '2026-08-27T12:00:00Z',
+    }
+    listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage }]))
+
+    await refreshUsage('claude')
+
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+    // The accounts themselves are detection's answer, not this call's.
+    expect(claudeAccounts.accounts.map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+  })
+
+  it('re-reads usage after an asynchronous refresh is acknowledged', async () => {
+    // Regression: 2f8246c made the refresh RPC wait for network completion.
+    // Returning promptly avoids daemon disconnects, so the frontend must keep
+    // reading until the poller's newer observation is visible.
+    vi.useFakeTimers()
+    try {
+      const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
+      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      listAccounts.mockResolvedValue(previousReport)
+      await refreshAccounts('claude')
+      listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
+
+      await refreshUsage('claude')
+      expect(claudeAccounts.accounts[1].usage).toEqual(previousUsage)
+
+      await vi.advanceTimersByTimeAsync(250)
+
+      expect(claudeAccounts.accounts[1].usage).toEqual(refreshedUsage)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops syncing when an account still has no usage', async () => {
+    // Regression: 701cd7c treated a missing usage entry as still pending, so
+    // one account with no snapshot kept list_accounts running at 4 Hz for the
+    // full 30-second deadline even after every observable snapshot advanced.
+    vi.useFakeTimers()
+    try {
+      const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
+      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      listAccounts.mockResolvedValue(previousReport)
+      await refreshAccounts('claude')
+      listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
+
+      await refreshUsage('claude')
+      await vi.advanceTimersByTimeAsync(250)
+      expect(claudeAccounts.accounts[1].usage).toEqual(refreshedUsage)
+
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(listAccounts).toHaveBeenCalledTimes(3)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  it('backs repeated usage reads off geometrically', async () => {
+    // Regression: 701cd7c retried list_accounts at a fixed 250 ms cadence for
+    // up to 30 seconds while the usage poller was still producing a snapshot.
+    vi.useFakeTimers()
+    try {
+      const usage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const report = detected([{ ...PRIMARY, usage }])
+      listAccounts.mockResolvedValue(report)
+      await refreshAccounts('claude')
+      await refreshUsage('claude')
+
+      await vi.advanceTimersByTimeAsync(250)
+      expect(listAccounts).toHaveBeenCalledTimes(3)
+
+      await vi.advanceTimersByTimeAsync(250)
+      expect(listAccounts).toHaveBeenCalledTimes(3)
+
+      await vi.advanceTimersByTimeAsync(250)
+      expect(listAccounts).toHaveBeenCalledTimes(4)
+
+      await vi.advanceTimersByTimeAsync(999)
+      expect(listAccounts).toHaveBeenCalledTimes(4)
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(listAccounts).toHaveBeenCalledTimes(5)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  // Regression: a574720 copied every account's usage from the report, `null`
+  // included. The sink cannot be read while a compacting writer holds it, and
+  // the backend answers such a refresh with no numbers at all — so the meter on
+  // screen went blank for an account whose record was still on disk. The
+  // numbers carry the moment they were observed, so keeping the last ones is
+  // the honest answer: the meter labels its own age.
+  it('keeps the numbers it has when a refresh brings none', async () => {
+    const usage = {
+      five_hour: { used_percentage: 81, resets_at: 1787784600 },
+      seven_day: { used_percentage: 44, resets_at: 1788300000 },
+      observed_at: '2026-08-27T12:00:00Z',
+    }
+    listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage }]))
+    await refreshAccounts('claude')
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+
+    listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage: null }]))
+    await refreshUsage('claude')
+
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+
+    // Detection answers with the same numbers from the same file, so it keeps
+    // them for the same reason.
+    await refreshAccounts('claude', { force: true })
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+  })
+
+  it('keeps the accounts it knows when a usage refresh cannot run', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    listAccounts.mockResolvedValue(degraded())
+    await refreshUsage('claude')
+
+    expect(claudeAccounts.accounts.map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+  })
+
+  it('reads usage again before asking which subscription to launch on', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    listAccounts.mockClear()
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+    expect(listAccounts).toHaveBeenCalled()
+  })
+
+  it('a default chosen in settings takes effect without a reload', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    setDefaultAccount('claude', 'account-2')
+
+    expect(claudeAccounts.defaultAccountId).toBe('account-2')
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    expect(claudeAccounts.pending).toBe(null)
+  })
+
+  // Regression: c982822 read the account list synchronously while detection
+  // was still in flight, so a launch clicked during startup silently ran on
+  // the backend default instead of asking.
+  it('waits for detection that is still in flight', async () => {
+    let publish
+    listAccounts.mockReturnValue(
+      new Promise((resolve) => {
+        publish = resolve
+      })
+    )
+    const detecting = refreshAccounts('claude')
+
+    const launching = requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    publish(detected([PRIMARY, SECOND]))
+    await detecting
+    await launching
+
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  // Regression: c982822 applied the chooser to every mode. `--resume` only
+  // sees the history of the config dir it runs in, and the backend derives
+  // that dir from the project's last transcript — but an explicit answer from
+  // the chooser outranks it, so a resume was pinned to whichever account the
+  // user picked in a dialog that should never have opened.
+  it('never asks for a resume the backend can already place', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    resolveLaunchAccount.mockResolvedValue({
+      accountId: 'account-2',
+      source: 'session',
+      needsChoice: false,
+    })
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toBe(null)
+    expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+  })
+
+  it('asks for a resume the backend cannot place', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    resolveLaunchAccount.mockResolvedValue({
+      accountId: null,
+      source: 'default_config_dir',
+      needsChoice: true,
+    })
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1', mode: 'resume' })
+  })
+
+  // Regression: c982822 treated any stored project account id as an answer.
+  // A pinned account that logged out is not one: the backend refuses it, and
+  // with the default config dir signed out too the launch landed on an account
+  // nobody chose while several usable ones waited.
+  it('asks again when the stored project account can no longer run', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }, THIRD]))
+
+    await requestLaunch({
+      project: { id: 'p1', accountMemory: { claude: { accountId: 'account-2', origin: 'pinned' } } },
+      mode: 'fresh',
+      tool: 'claude',
+    })
+
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  // Regression: 518aace let the backend answer every daemon failure with a
+  // successful empty list. The store believed it: the chooser stopped asking,
+  // the chip disappeared, and launches ran on whichever subscription the
+  // default config dir happened to hold — while both accounts were still
+  // signed in and nothing on screen said otherwise.
+  it('keeps the accounts it last knew when detection is degraded', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    listAccounts.mockResolvedValue(degraded())
+    await refreshAccounts('claude', { force: true })
+
+    expect(claudeAccounts.accounts.map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+    expect(claudeAccounts.degraded).toBe(true)
+  })
+
+  it('still asks which subscription to use while detection is degraded', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+    listAccounts.mockResolvedValue(degraded())
+    await refreshAccounts('claude', { force: true })
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(launchCliSession).not.toHaveBeenCalled()
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  it('detects again after a degraded answer instead of caching it', async () => {
+    listAccounts.mockResolvedValueOnce(degraded())
+    await refreshAccounts('claude')
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+
+    await refreshAccounts('claude')
+
+    expect(claudeAccounts.degraded).toBe(false)
+    expect(claudeAccounts.accounts).toHaveLength(2)
+  })
+
+  // Regression: 74c7761 asked for detection on every context-menu opening, and
+  // a degraded answer warned every time. Every warn crosses the logging bridge,
+  // so right-clicking during a daemon outage wrote an unbounded stream of the
+  // same line. The outage is one event; the recovery is the next one.
+  it('warns once while detection stays degraded, and again when it returns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listAccounts.mockResolvedValue(degraded())
+
+    await refreshAccounts('claude')
+    await refreshAccounts('claude', { force: true })
+    await refreshAccounts('claude', { force: true })
+
+    const degradedWarnings = () =>
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes('Account detection is unavailable')
+      ).length
+    expect(degradedWarnings()).toBe(1)
+
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude', { force: true })
+    listAccounts.mockResolvedValue(degraded())
+    await refreshAccounts('claude', { force: true })
+
+    expect(degradedWarnings()).toBe(2)
+    warn.mockRestore()
+  })
+
+  it('a rejected detection keeps the last known accounts too', async () => {
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshAccounts('claude')
+
+    listAccounts.mockRejectedValue(new Error('daemon down'))
+    await refreshAccounts('claude', { force: true })
+
+    expect(claudeAccounts.accounts).toHaveLength(2)
+    expect(claudeAccounts.degraded).toBe(true)
+  })
+
+  // Regression: c982822 cached a failed detection as an empty account list for
+  // the full 60 s TTL, so a daemon that connected a moment later could not
+  // restore the chooser.
+  it('detects again after a failure instead of caching the empty list', async () => {
+    listAccounts.mockRejectedValueOnce(new Error('daemon down'))
+    await refreshAccounts('claude')
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+    expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  describe('an account picked in the context menu', () => {
+    // Regression: c982822 made the chooser the only way to name an account, so
+    // the sidebar's launch items could not carry the answer the user had
+    // already given by picking a row. An explicit id is the decision itself:
+    // it must launch, not reopen the question.
+    it('launches on it without opening the chooser', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshAccounts('claude')
+
+      await requestLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    // Regression: 74c7761 pinned the project to whatever a launch row named
+    // when the project had chosen nothing. A pin is written by the chooser's
+    // remember, the chip, and the Account submenu — a row picked for one launch
+    // is one launch, and it must not move every later launch with it.
+    it('pins nothing: the row is this launch, not the project default', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshAccounts('claude')
+
+      await requestLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(setProjectAccount).not.toHaveBeenCalled()
+      expect(effectiveClaudeAccountId({ id: 'p1' })).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    it('leaves a project that already chose alone — one launch is not a new pin', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshAccounts('claude')
+
+      await requestLaunch({
+        project: { id: 'p1', accountMemory: { claude: { accountId: 'account-1', origin: 'pinned' } } },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(setProjectAccount).not.toHaveBeenCalled()
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    it('starts the launch without waiting for a database write', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshAccounts('claude')
+      setProjectAccount.mockImplementation(() => new Promise(() => {}))
+
+      await requestLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+  })
+
+  describe('the account a launch would use today', () => {
+    it('applies every generic precedence slice in order', () => {
+      const state = accountState('claude')
+      state.accounts = [
+        { ...PRIMARY, is_process_default: true },
+        SECOND,
+        THIRD,
+      ]
+      const project = {
+        id: 'p1',
+        explicitAccountIds: { claude: 'account-3' },
+        sessionAccountIds: { claude: 'account-2' },
+        accountMemory: { claude: { accountId: 'account-1', origin: 'pinned' } },
+        baseCommandAccountIds: { claude: 'account-2' },
+      }
+
+      expect(effectiveAccount(project, 'claude').origin).toBe('explicit')
+      delete project.explicitAccountIds
+      expect(effectiveAccount(project, 'claude').origin).toBe('session')
+      delete project.sessionAccountIds
+      expect(effectiveAccount(project, 'claude').origin).toBe('pinned')
+      project.accountMemory.claude = { accountId: 'account-3', origin: 'last_used' }
+      expect(effectiveAccount(project, 'claude').origin).toBe('last_used')
+      delete project.accountMemory
+      state.defaultAccountId = 'account-3'
+      expect(effectiveAccount(project, 'claude').origin).toBe('default')
+      state.defaultAccountId = null
+      expect(effectiveAccount(project, 'claude').origin).toBe('base_command')
+      delete project.baseCommandAccountIds
+      expect(effectiveAccount(project, 'claude').origin).toBe('default_config_dir')
+    })
+
+    it('follows pin, then global default, then the default config dir', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshAccounts('claude')
+
+      expect(activeAccountId({ id: 'p1' }, 'claude')).toBe('account-1')
+
+      setDefaultAccount('claude', 'account-2')
+      expect(activeAccountId({ id: 'p1' }, 'claude')).toBe('account-2')
+
+      expect(activeAccountId({ id: 'p1', accountMemory: { claude: { accountId: 'account-1', origin: 'pinned' } } }, 'claude')).toBe('account-1')
+    })
+
+    it('ignores a pin whose account cannot run', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
+      await refreshAccounts('claude')
+
+      expect(activeAccountId({ id: 'p1', accountMemory: { claude: { accountId: 'account-2', origin: 'pinned' } } }, 'claude')).toBe('account-1')
+    })
+  })
+})

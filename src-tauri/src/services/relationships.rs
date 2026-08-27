@@ -243,7 +243,7 @@ mod tests {
             updated_at: "2026-01-01T00:00:00Z".to_string(),
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         }
     }
 

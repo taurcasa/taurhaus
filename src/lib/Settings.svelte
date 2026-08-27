@@ -8,10 +8,12 @@
   } from './ipc.js'
   import { buildFrontendFallbackTerminalContract } from './ipc/system.js'
   import {
-    claudeAccounts,
-    refreshClaudeAccounts,
-    setGlobalClaudeAccount,
-  } from './claudeAccounts.svelte.js'
+    accountState,
+    refreshAccounts,
+    refreshUsage,
+    setDefaultAccount,
+  } from './accounts.svelte.js'
+  import UsageMeter from './components/UsageMeter.svelte'
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
@@ -86,6 +88,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
+        default_account_ids: {},
         harness: { codex_compaction: 'hooks' },
       },
       terminal_contract: terminalContract,
@@ -134,37 +137,65 @@
   $effect(() => {
     loadSettings()
     loadIndexStatus()
-    void refreshClaudeAccounts()
+    for (const tool of cliTools.filter((entry) => entry.capabilities.accountSelection)) {
+      void refreshAccounts(tool.id).then(() => refreshUsage(tool.id))
+    }
   })
 
-  const detectedClaudeAccounts = $derived(claudeAccounts.accounts)
-  const defaultClaudeAccount = $derived(
-    detectedClaudeAccounts.find((account) => account.is_default) ?? null
-  )
-  const selectedClaudeAccountId = $derived(
-    settings?.terminal?.claude_default_account_id ?? defaultClaudeAccount?.id ?? ''
+  const accountTools = $derived(
+    cliTools.filter(
+      (tool) => tool.capabilities.accountSelection && accountState(tool.id).accounts.length >= 2
+    )
   )
 
-  async function setDefaultClaudeAccount(accountId) {
+  function selectedAccountId(tool) {
+    const state = accountState(tool)
+    return (
+      settings?.terminal?.default_account_ids?.[tool] ??
+      settings?.terminal?.defaultAccountIds?.[tool] ??
+      state.accounts.find((account) => account.is_default)?.id ??
+      ''
+    )
+  }
+
+  async function setToolDefaultAccount(tool, accountId) {
     ensureCliCommands()
-    // Stored verbatim, including the account in the default config dir: this
-    // is the answer projects inherit, and the chooser stops asking once it
-    // exists.
-    const previous = settings.terminal.claude_default_account_id ?? null
-    settings.terminal.claude_default_account_id = accountId || null
-    // The shared store routes launches, so it may only learn a default that
-    // actually persisted — otherwise the UI claims one subscription while the
-    // backend still reads the old one.
-    if (await saveSettings()) setGlobalClaudeAccount(accountId || null)
-    else settings.terminal.claude_default_account_id = previous
+    settings.terminal.default_account_ids ??= {}
+    const previous = settings.terminal.default_account_ids[tool] ?? null
+    if (accountId) settings.terminal.default_account_ids[tool] = accountId
+    else delete settings.terminal.default_account_ids[tool]
+    if (await saveSettings()) setDefaultAccount(tool, accountId || null)
+    else if (previous == null) delete settings.terminal.default_account_ids[tool]
+    else settings.terminal.default_account_ids[tool] = previous
   }
 
-  function claudeAccountLabel(account) {
-    return String(account?.display_name ?? '').trim() || account?.email || account?.id || ''
+  function accountLabel(account) {
+    return String(account?.display_name ?? '').trim() || account?.label || account?.id || ''
   }
 
-  function claudeAccountMeta(account) {
-    return [account?.organization, account?.seat_tier].filter(Boolean).join(' · ')
+  function accountMeta(account) {
+    return [account?.organization, account?.plan].filter(Boolean).join(' · ')
+  }
+
+  function effectiveDefault(tool) {
+    const state = accountState(tool.id)
+    const selected = state.accounts.find((account) => account.id === selectedAccountId(tool.id))
+    if (selected) return { account: selected, origin: 'default' }
+    const selector = tool.capabilities.accountSelector
+    const commands = settings?.terminal?.cli_commands?.[tool.id] ?? {}
+    for (const command of Object.values(commands)) {
+      const match = selector && String(command).match(new RegExp(`${selector}=['\"]?([^'\" ]+)`))
+      const account = match && state.accounts.find((candidate) => candidate.dir === match[1])
+      if (account) return { account, origin: `from your launch command \"${command}\"` }
+    }
+    return {
+      account: state.accounts.find((account) => account.is_process_default || account.is_default),
+      origin: 'default config directory',
+    }
+  }
+
+  function focusCliCommands(tool) {
+    document.querySelector(`[data-testid="cli-${tool}-fresh"]`)?.focus()
   }
 
   async function loadSettings() {
@@ -696,42 +727,59 @@
           {/each}
         </section>
 
-        <!-- ═══ CLAUDE ACCOUNTS ═══ -->
-        {#if detectedClaudeAccounts.length >= 2}
-          <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-claude-accounts">
-            <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Claude accounts</h2>
-            <p class="text-[13px] {textTertiary} mb-3">
-              Projects without an account of their own launch on the one selected here. Team members
-              always run on {claudeAccountLabel(defaultClaudeAccount)} — agent inboxes live in that
-              config dir.
-            </p>
-            <div class="space-y-2">
-              {#each detectedClaudeAccounts as account (account.id)}
-                <label
-                  class="flex items-start gap-3 rounded-md border {t.keyline} px-3 py-2 {account.logged_in ? '' : 'opacity-50'}"
-                  data-testid="claude-account-row-{account.id}"
-                >
-                  <input
-                    type="radio"
-                    name="claude-default-account"
-                    class="mt-1 h-3.5 w-3.5 accent-brand-500 {fieldFocusRing}"
-                    value={account.id}
-                    checked={selectedClaudeAccountId === account.id}
-                    disabled={!account.logged_in}
-                    onchange={() => setDefaultClaudeAccount(account.id)}
-                    data-testid="claude-account-default-{account.id}"
-                  />
-                  <span class="min-w-0 flex-1">
-                    <span class="block text-[13px] {t.textBody}">{claudeAccountLabel(account)}</span>
-                    <span class="block text-[12px] {t.textSecondary}">{account.email}</span>
-                    {#if claudeAccountMeta(account)}
-                      <span class="block text-[11px] {textTertiary}">{claudeAccountMeta(account)}</span>
-                    {/if}
-                  </span>
-                  {#if !account.logged_in}
-                    <span class="text-[11px] {textTertiary}">Not logged in</span>
-                  {/if}
-                </label>
+        <!-- ═══ ACCOUNTS ═══ -->
+        {#if accountTools.length}
+          <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-accounts">
+            <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Accounts</h2>
+            <div class="space-y-4">
+              {#each accountTools as tool (tool.id)}
+                {@const state = accountState(tool.id)}
+                {@const effective = effectiveDefault(tool)}
+                <div data-testid="settings-accounts-{tool.id}">
+                  <div class="mb-2 flex items-center justify-between">
+                    <h3 class="text-[13px] font-semibold {t.textBody}">{tool.label}</h3>
+                    <button
+                      type="button"
+                      class="text-[11px] text-brand-500 hover:underline {buttonFocusRing}"
+                      onclick={() => focusCliCommands(tool.id)}
+                    >CLI commands</button>
+                  </div>
+                  <div class="space-y-2">
+                    {#each state.accounts as account (account.id)}
+                      <label
+                        class="flex items-start gap-3 rounded-md border {t.keyline} px-3 py-2 {account.logged_in ? '' : 'opacity-50'}"
+                        data-testid="account-row-{tool.id}-{account.id}"
+                      >
+                        <input
+                          type="radio"
+                          name="{tool.id}-default-account"
+                          class="mt-1 h-3.5 w-3.5 accent-brand-500 {fieldFocusRing}"
+                          value={account.id}
+                          checked={selectedAccountId(tool.id) === account.id}
+                          disabled={!account.logged_in}
+                          onchange={() => setToolDefaultAccount(tool.id, account.id)}
+                          data-testid="account-default-{tool.id}-{account.id}"
+                        />
+                        <span class="min-w-0 flex-1">
+                          <span class="block text-[13px] {t.textBody}">{accountLabel(account)}</span>
+                          <span class="block text-[12px] {t.textSecondary}">{account.label}</span>
+                          {#if accountMeta(account)}
+                            <span class="block text-[11px] {textTertiary}">{accountMeta(account)}</span>
+                          {/if}
+                          {#if account.usage}
+                            <span class="mt-1 block"><UsageMeter tool={tool.id} usage={account.usage} {dark} compact /></span>
+                          {/if}
+                        </span>
+                        {#if !account.logged_in}
+                          <span class="text-[11px] {textTertiary}">Not logged in</span>
+                        {/if}
+                      </label>
+                    {/each}
+                  </div>
+                  <p class="mt-2 text-[11px] {textTertiary}" data-testid="effective-default-{tool.id}">
+                    Effective default: {effective.account ? accountLabel(effective.account) : 'none'} — {effective.origin}
+                  </p>
+                </div>
               {/each}
             </div>
           </section>

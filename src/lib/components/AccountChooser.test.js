@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
-import ClaudeAccountChooser from './ClaudeAccountChooser.svelte'
+import AccountChooser from './AccountChooser.svelte'
 
 const appCss = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8')
 
@@ -41,7 +41,7 @@ const ACCOUNTS = [
 function renderChooser(overrides = {}) {
   const onConfirm = vi.fn()
   const onCancel = vi.fn()
-  render(ClaudeAccountChooser, {
+  render(AccountChooser, {
     props: {
       accounts: ACCOUNTS,
       projectName: 'taurhaus',
@@ -62,28 +62,34 @@ function usageAt(fiveHour, sevenDay, minutesAgo) {
   }
 }
 
-describe('ClaudeAccountChooser', () => {
+describe('AccountChooser', () => {
+  it('uses the selected tool label', () => {
+    renderChooser({ tool: 'codex' })
+
+    expect(screen.getByRole('dialog', { name: 'Choose a Codex account' })).toBeInTheDocument()
+  })
+
   it('lists every account and marks the default', () => {
     renderChooser()
 
-    expect(screen.getByTestId('claude-account-option-account-1')).toHaveTextContent('Who')
-    expect(screen.getByTestId('claude-account-option-account-1')).toHaveTextContent(
+    expect(screen.getByTestId('account-option-account-1')).toHaveTextContent('Who')
+    expect(screen.getByTestId('account-option-account-1')).toHaveTextContent(
       'stierms@gmail.com'
     )
-    expect(screen.getByTestId('claude-account-default-badge')).toBeInTheDocument()
+    expect(screen.getByTestId('account-default-badge')).toBeInTheDocument()
   })
 
   it('disables an account that is not logged in', () => {
     renderChooser()
 
-    expect(screen.getByTestId('claude-account-option-account-3')).toBeDisabled()
-    expect(screen.getByTestId('claude-account-option-account-3')).toHaveTextContent('Not logged in')
+    expect(screen.getByTestId('account-option-account-3')).toBeDisabled()
+    expect(screen.getByTestId('account-option-account-3')).toHaveTextContent('Not logged in')
   })
 
   it('remembers the choice by default and reports both back', async () => {
     const { onConfirm } = renderChooser()
 
-    await fireEvent.click(screen.getByTestId('claude-account-option-account-2'))
+    await fireEvent.click(screen.getByTestId('account-option-account-2'))
 
     expect(onConfirm).toHaveBeenCalledWith('account-2', true)
   })
@@ -91,15 +97,15 @@ describe('ClaudeAccountChooser', () => {
   it('passes remember=false when the checkbox is cleared', async () => {
     const { onConfirm } = renderChooser()
 
-    await fireEvent.click(screen.getByTestId('claude-account-remember'))
-    await fireEvent.click(screen.getByTestId('claude-account-option-account-2'))
+    await fireEvent.click(screen.getByTestId('account-remember'))
+    await fireEvent.click(screen.getByTestId('account-option-account-2'))
 
     expect(onConfirm).toHaveBeenCalledWith('account-2', false)
   })
 
   it('Enter picks the default account and Escape cancels', async () => {
     const { onConfirm, onCancel } = renderChooser()
-    const panel = screen.getByTestId('claude-account-chooser')
+    const panel = screen.getByTestId('account-chooser')
 
     await fireEvent.keyDown(panel, { key: 'Enter' })
     expect(onConfirm).toHaveBeenCalledWith('account-1', true)
@@ -114,11 +120,11 @@ describe('ClaudeAccountChooser', () => {
   it('Enter takes the configured global default and the badge marks it', async () => {
     const { onConfirm } = renderChooser({ defaultAccountId: 'account-2' })
 
-    expect(screen.getByTestId('claude-account-option-account-2')).toContainElement(
-      screen.getByTestId('claude-account-default-badge')
+    expect(screen.getByTestId('account-option-account-2')).toContainElement(
+      screen.getByTestId('account-default-badge')
     )
 
-    await fireEvent.keyDown(screen.getByTestId('claude-account-chooser'), { key: 'Enter' })
+    await fireEvent.keyDown(screen.getByTestId('account-chooser'), { key: 'Enter' })
 
     expect(onConfirm).toHaveBeenCalledWith('account-2', true)
   })
@@ -126,7 +132,7 @@ describe('ClaudeAccountChooser', () => {
   it('Enter ignores a configured default that cannot run', async () => {
     const { onConfirm } = renderChooser({ defaultAccountId: 'account-3' })
 
-    await fireEvent.keyDown(screen.getByTestId('claude-account-chooser'), { key: 'Enter' })
+    await fireEvent.keyDown(screen.getByTestId('account-chooser'), { key: 'Enter' })
 
     expect(onConfirm).toHaveBeenCalledWith('account-1', true)
   })
@@ -137,8 +143,8 @@ describe('ClaudeAccountChooser', () => {
   it('keeps offering the last known accounts when detection is degraded', () => {
     renderChooser({ degraded: true })
 
-    expect(screen.getByTestId('claude-account-option-account-1')).toBeInTheDocument()
-    expect(screen.getByTestId('claude-accounts-degraded')).toHaveTextContent(
+    expect(screen.getByTestId('account-option-account-1')).toBeInTheDocument()
+    expect(screen.getByTestId('accounts-degraded')).toHaveTextContent(
       'Accounts unavailable (daemon offline) — using last known'
     )
   })
@@ -146,12 +152,12 @@ describe('ClaudeAccountChooser', () => {
   it('says nothing about the daemon while detection works', () => {
     renderChooser()
 
-    expect(screen.queryByTestId('claude-accounts-degraded')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('accounts-degraded')).not.toBeInTheDocument()
   })
   // Regression: d6839a3 asked which subscription to run on without saying what
   // was left of either one — the single moment the answer actually matters.
   it('shows each account usage so the user can pick the one with headroom', () => {
-    render(ClaudeAccountChooser, {
+    render(AccountChooser, {
       props: {
         accounts: [
           { ...ACCOUNTS[0], usage: usageAt(91, 62, 1) },
@@ -164,10 +170,28 @@ describe('ClaudeAccountChooser', () => {
       },
     })
 
-    expect(screen.getByTestId('claude-account-option-account-1')).toHaveTextContent('5h 91%')
-    expect(screen.getByTestId('claude-account-option-account-2')).toHaveTextContent('5h 12%')
+    expect(screen.getByTestId('account-option-account-1')).toHaveTextContent('5h 91%')
+    expect(screen.getByTestId('account-option-account-2')).toHaveTextContent('5h 12%')
     // The logged-out account has no record, and an empty meter is the answer.
-    expect(screen.getByTestId('claude-account-option-account-3')).not.toHaveTextContent('%')
+    expect(screen.getByTestId('account-option-account-3')).not.toHaveTextContent('%')
+  })
+
+  // Regression: c11770e made the requested refresh observable only before the
+  // chooser opened. Unlike AccountChip, an open chooser never asked again, so
+  // its comparison stayed frozen while the dialog remained on screen.
+  it('re-polls usage while the chooser remains open', async () => {
+    vi.useFakeTimers()
+    const onRequestUsage = vi.fn()
+    try {
+      renderChooser({ onRequestUsage })
+
+      expect(onRequestUsage).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(onRequestUsage).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   // Regression: c982822 mounted this chooser as a bare `fixed inset-0` div
@@ -179,11 +203,11 @@ describe('ClaudeAccountChooser', () => {
   it('mounts as a viewport overlay the shell frame does not reposition', () => {
     renderChooser()
 
-    const overlay = screen.getByTestId('claude-account-chooser-overlay')
+    const overlay = screen.getByTestId('account-chooser-overlay')
     expect(overlay).toHaveAttribute('data-shell-overlay')
     expect(overlay.className).toContain('fixed')
     expect(overlay.className).toContain('inset-0')
-    expect(overlay).toContainElement(screen.getByTestId('claude-account-chooser'))
+    expect(overlay).toContainElement(screen.getByTestId('account-chooser'))
 
     expect(appCss).toContain('.shell-frame > :not([data-shell-overlay])')
   })
@@ -194,11 +218,11 @@ describe('ClaudeAccountChooser', () => {
   it('centres the dialog and scrolls it instead of overflowing the viewport', () => {
     renderChooser()
 
-    const overlay = screen.getByTestId('claude-account-chooser-overlay')
+    const overlay = screen.getByTestId('account-chooser-overlay')
     expect(overlay.className).toContain('items-center')
     expect(overlay.className).not.toContain('pt-24')
 
-    const dialog = screen.getByTestId('claude-account-chooser')
+    const dialog = screen.getByTestId('account-chooser')
     expect(dialog.className).toContain('max-h-[calc(100vh-4rem)]')
     expect(dialog.className).toContain('overflow-y-auto')
   })

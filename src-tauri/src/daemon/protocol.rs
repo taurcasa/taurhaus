@@ -27,7 +27,9 @@ use serde::{Deserialize, Serialize};
 /// sends the cursor, so its long poll returns immediately forever once a
 /// blackout has happened, and a v9 daemon never sends the flags, so a v10 app
 /// would read every replayed snapshot as a live observation.
-pub const PROTOCOL_VERSION: u32 = 10;
+/// v11: account discovery and transcript lookup became tool-parameterised;
+/// app and daemon ship together in 0.6.9 and must use the same wire names.
+pub const PROTOCOL_VERSION: u32 = 11;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -99,13 +101,9 @@ pub mod method {
     pub const UNWATCH: &str = "unwatch";
     pub const SHUTDOWN: &str = "shutdown";
     pub const SET_CODEX_COMPACTION_MODE: &str = "set_codex_compaction_mode";
-    /// Additive since protocol v10 (no version bump): a daemon that predates it
-    /// answers `UNKNOWN_METHOD`, which the app reads as "no accounts detected".
-    pub const LIST_CLAUDE_ACCOUNTS: &str = "list_claude_accounts";
-    /// Additive since protocol v10 (no version bump): a daemon that predates it
-    /// answers `UNKNOWN_METHOD`, and a resume then falls back to the project's
-    /// own choice.
-    pub const CLAUDE_PROJECT_TRANSCRIPT: &str = "claude_project_transcript";
+    pub const LIST_ACCOUNTS: &str = "list_accounts";
+    pub const PROJECT_TRANSCRIPT: &str = "project_transcript";
+    pub const REFRESH_USAGE: &str = "refresh_usage";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -138,28 +136,28 @@ pub mod event {
 // Method-specific param/result types
 // ---------------------------------------------------------------------------
 
-/// `list_claude_accounts` — Claude subscriptions the daemon's host can see.
-///
-/// Additive method: the app asks the daemon because on Windows the config dirs
-/// live inside WSL. An older daemon returns `UNKNOWN_METHOD` and the app then
-/// behaves as if a single default account existed.
+/// `list_accounts` — tool accounts the daemon's host can see.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ClaudeAccountsResult {
-    pub accounts: Vec<crate::session_scanner::claude_accounts::ClaudeAccount>,
-}
-
-/// `claude_project_transcript` — which subscription owns a project's history.
-///
-/// Windows-shaped for the same reason: the transcripts live in WSL, so only the
-/// daemon can compare their mtimes. Sessions are gone from every snapshot by
-/// the time a user reaches for Resume; the files are not.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ClaudeProjectTranscriptParams {
-    pub project_path: String,
+pub struct ListAccountsParams {
+    pub tool: crate::session_scanner::cli_tool::CliTool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ClaudeProjectTranscriptResult {
+pub struct AccountsResult {
+    pub accounts: Vec<crate::session_scanner::accounts::Account>,
+    pub degraded: bool,
+    pub error: Option<String>,
+}
+
+/// `project_transcript` — which account owns a project's history.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProjectTranscriptParams {
+    pub tool: crate::session_scanner::cli_tool::CliTool,
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProjectTranscriptResult {
     pub transcript: Option<String>,
 }
 
@@ -401,6 +399,10 @@ pub struct WaitSessionUpdatesResult {
     pub changed: bool,
     /// Full session snapshot for the reported version.
     pub sessions: Vec<crate::session_scanner::DisplaySession>,
+    /// Account bindings observed beside the session snapshot. The daemon owns
+    /// process inspection; only the app persists these through its DbState.
+    #[serde(default)]
+    pub account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     /// tmux focus as of this version. Additive: older daemons omit it.
     #[serde(default)]
     pub focus: Option<crate::session_scanner::tmux::TmuxFocus>,
@@ -428,6 +430,8 @@ pub struct RuntimeSessionSnapshotResult {
     pub version: u64,
     pub display_sessions: Vec<crate::session_scanner::DisplaySession>,
     pub runtime_sessions: Vec<crate::session_scanner::RuntimeSession>,
+    #[serde(default)]
+    pub account_observations: Vec<crate::session_scanner::accounts::LiveAccountObservation>,
     /// tmux focus owned by the daemon hub. Serializes with the legacy
     /// `session`/`window` keys so an older app still decodes it.
     #[serde(default)]
@@ -907,10 +911,18 @@ mod tests {
 
     #[test]
     fn wait_session_updates_result_roundtrip() {
+        // Regression: 967f956 let the scanner write SQLite directly. Moving
+        // ownership to the app requires this credential-free observation to
+        // survive the daemon protocol boundary instead.
         let r = WaitSessionUpdatesResult {
             version: 7,
             changed: true,
             sessions: vec![],
+            account_observations: vec![crate::session_scanner::accounts::LiveAccountObservation {
+                project_path: "/projects/taurhaus".to_string(),
+                tool: crate::session_scanner::CliTool::Claude,
+                account_id: "account-1".to_string(),
+            }],
             focus: None,
             focus_project_path: None,
             degraded: false,
@@ -931,6 +943,7 @@ mod tests {
             version: 9,
             display_sessions: vec![],
             runtime_sessions: vec![],
+            account_observations: vec![],
             focus: None,
             foreground_project_path: None,
             degraded: true,
@@ -1001,11 +1014,22 @@ mod tests {
     }
 
     #[test]
+    fn protocol_version_excludes_daemons_with_claude_only_account_methods() {
+        // Regression: commit d6839a3 added Claude-only account methods without
+        // a protocol bump; replacing those wire names requires the exact-version
+        // gate to reject both mixed app/daemon pairs.
+        assert_eq!(PROTOCOL_VERSION, 11);
+        assert_eq!(method::LIST_ACCOUNTS, "list_accounts");
+        assert_eq!(method::PROJECT_TRANSCRIPT, "project_transcript");
+    }
+
+    #[test]
     fn wait_session_updates_result_roundtrips_focus() {
         let result = WaitSessionUpdatesResult {
             version: 7,
             changed: true,
             sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: Some(focus_fixture()),
             focus_project_path: Some("/projects/mesh".to_string()),
             degraded: false,
@@ -1043,6 +1067,7 @@ mod tests {
             version: 11,
             changed: false,
             sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: None,
             focus_project_path: None,
             degraded: true,
@@ -1062,6 +1087,7 @@ mod tests {
             version: 4,
             display_sessions: Vec::new(),
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus: Some(focus_fixture()),
             foreground_project_path: Some("/projects/mesh".to_string()),
             degraded: false,

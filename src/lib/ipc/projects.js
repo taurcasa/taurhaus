@@ -136,11 +136,11 @@ export function dismissRelationship(relationshipId) {
   return invokeOrMock('dismiss_relationship', { relationshipId }, () => undefined)
 }
 
-/** Pin a project to one Claude subscription. `null` restores the default. */
-export function setProjectClaudeAccount(projectId, accountId) {
+/** Pin a project to one tool account. `null` restores inherited resolution. */
+export function setProjectAccount(projectId, tool, accountId) {
   return invokeOrMock(
-    'set_project_claude_account',
-    { projectId, accountId: accountId ?? null },
+    'set_project_account',
+    { projectId, tool, accountId: accountId ?? null },
     () => undefined
   )
 }

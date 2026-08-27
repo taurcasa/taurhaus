@@ -55,6 +55,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "project_claude_account",
         include_str!("migrations/012_project_claude_account.sql"),
     ),
+    (
+        13,
+        "project_tool_accounts",
+        include_str!("migrations/013_project_tool_accounts.sql"),
+    ),
 ];
 
 /// Ensure the `_migrations` tracking table exists, then apply any migrations
@@ -111,6 +116,45 @@ mod tests {
             versions.len(),
             MIGRATIONS.len(),
             "Migration versions must be unique"
+        );
+    }
+
+    #[test]
+    fn migration_013_copies_the_legacy_claude_pin() {
+        // Regression: commit d6839a3 stored the account only in
+        // `projects.claude_account_id`; generic account memory must preserve
+        // that 0.6.8 choice without continuing to read the legacy column.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);",
+        )
+        .unwrap();
+        for &(version, name, sql) in &MIGRATIONS[..12] {
+            conn.execute_batch(sql).unwrap();
+            conn.execute(
+                "INSERT INTO _migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))",
+                rusqlite::params![version, name],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO projects (id, name, path, created_at, updated_at, claude_account_id) VALUES ('p1', 'one', '/tmp/one', datetime('now'), datetime('now'), 'account-2')",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let memory: (String, String, String) = conn
+            .query_row(
+                "SELECT tool, account_id, origin FROM project_tool_accounts WHERE project_id = 'p1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            memory,
+            ("claude".into(), "account-2".into(), "pinned".into())
         );
     }
 }

@@ -168,6 +168,21 @@ pub fn get_archived_sessions(
         })
         .collect();
 
+    for session in &mut sessions {
+        let Some(session_id) = session.session_id.as_deref() else {
+            continue;
+        };
+        session.account_label = session.sources.iter().find_map(|source| {
+            source.parse::<CliTool>().ok().and_then(|tool| {
+                crate::session_scanner::accounts::account_label_for_session(
+                    tool,
+                    &normalized_path,
+                    session_id,
+                )
+            })
+        });
+    }
+
     sessions.sort_by(|a, b| match (&b.started_at, &a.started_at) {
         (Some(b_start), Some(a_start)) => b_start.cmp(a_start),
         (Some(_), None) => std::cmp::Ordering::Less,
@@ -464,6 +479,7 @@ fn build_cached_archived_session(
     if let Some(summary) = summary {
         return crate::task_scanner::ArchivedSession {
             session_id: summary.session_id.clone(),
+            account_label: None,
             started_at: summary.started_at.clone(),
             ended_at: summary.ended_at.clone(),
             duration_ms: summary.duration_ms,
@@ -489,6 +505,7 @@ fn build_cached_archived_session(
         } else {
             raw_tasks.iter().find_map(|task| task.session_id.clone())
         },
+        account_label: None,
         started_at,
         ended_at,
         duration_ms,
@@ -734,7 +751,7 @@ mod tests {
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
         let conn = db.0.lock().expect("db lock");
         crate::db::queries::insert_project(&conn, &project).expect("insert project");
@@ -852,6 +869,75 @@ mod tests {
         assert_eq!(
             query.result.sessions[0].enrichment_warnings,
             vec!["History enrichment pending background refresh.".to_string()]
+        );
+    }
+
+    #[test]
+    fn archived_session_payload_includes_the_transcript_account_label() {
+        // Regression: 179a767 added `session.account_label` markup without a
+        // producer, so every archived-session row omitted its account.
+        let project_path = "/projects/archive-label";
+        let session_id = "session-label";
+        let config = tempfile::tempdir().unwrap();
+        let account_dir = config.path().join(".claude-second");
+        let transcript = account_dir
+            .join("projects")
+            .join(crate::session_scanner::idle::path_to_slug(project_path))
+            .join(format!("{session_id}.jsonl"));
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, "{}\n").unwrap();
+        let _accounts = crate::session_scanner::accounts::install_detection_override(
+            CliTool::Claude,
+            crate::session_scanner::accounts::AccountScan {
+                config_dirs: vec![account_dir.clone()],
+                accounts: vec![crate::session_scanner::accounts::Account {
+                    tool: CliTool::Claude,
+                    id: "account-label".to_string(),
+                    dir: account_dir,
+                    identity: crate::session_scanner::accounts::AccountIdentity {
+                        id: "account-label".to_string(),
+                        label: "label@example.com".to_string(),
+                        display_name: Some("Labelled account".to_string()),
+                        organization: None,
+                        plan: None,
+                        logged_in: true,
+                        credential_expires_at: None,
+                    },
+                    is_default: false,
+                    is_process_default: false,
+                    usage: None,
+                }],
+            },
+        );
+        let (db, _tmp) = test_db_state();
+        insert_project(&db, "proj-archive-label", project_path);
+        let mut task = make_archived_task(
+            "claude",
+            session_id,
+            Some(session_id),
+            "2026-03-01T10:00:00Z",
+            "2026-03-01T11:00:00Z",
+        );
+        task.project_path = project_path.to_string();
+        {
+            let conn = db.0.lock().expect("db lock");
+            crate::db::task_queries::upsert_task(&conn, &task).expect("insert archived task");
+            crate::db::task_queries::archive_or_delete_stale_tasks(
+                &conn,
+                project_path,
+                "claude",
+                session_id,
+                &[],
+            )
+            .expect("archive");
+        }
+
+        let query = get_archived_sessions(&db, &local_provider_state(), project_path.to_string())
+            .expect("archived sessions");
+
+        assert_eq!(
+            query.result.sessions[0].account_label.as_deref(),
+            Some("Labelled account")
         );
     }
 }

@@ -14,6 +14,9 @@ use taurhaus_lib::coordination::runtime::{RecordingCoordinationRuntime, RuntimeC
 use taurhaus_lib::coordination::stores::MeshInboxStore;
 use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::{CliCommandSettings, ModelCatalog};
+use taurhaus_lib::session_scanner::accounts::{
+    HttpClient, HttpError, HttpErrorKind, HttpResponse, UsageStatus,
+};
 use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
 use taurhaus_lib::session_scanner::idle::{IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{
@@ -86,13 +89,57 @@ fn launch_rendering_stays_byte_identical_to_the_pre_refactor_goldens() {
             }),
             codex_bypass_hook_trust: golden.bypass_hook_trust,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
         }
         .render();
 
         assert_eq!(format!("{}\n", rendered.command), golden.expected);
         assert!(rendered.notes.is_empty());
     }
+}
+
+#[test]
+fn account_dir_launch_cases_use_each_registry_selector() {
+    // Regression: d6839a3 rendered the account directory only inside the
+    // Claude launch arm; provider rollout must need data, not another branch.
+    let commands = CliCommandSettings::default();
+    let rendered = all()
+        .iter()
+        .map(|entry| {
+            let account_dir = std::path::PathBuf::from(format!("/accounts/{}", entry.name));
+            let command = LaunchSpec {
+                tool: entry.tool,
+                mode: LaunchMode::Fresh,
+                base: base_command(&commands, entry.tool, LaunchMode::Fresh),
+                model: ModelSpec::default(),
+                team: None,
+                codex_bypass_hook_trust: false,
+                codex_notify_executable: None,
+                account_dir: Some(&account_dir),
+                selector: entry.capabilities.account_selector,
+            }
+            .render()
+            .command;
+            let selector = entry
+                .capabilities
+                .account_selector
+                .expect("account-dir conformance case has a selector");
+            assert_eq!(
+                command.matches(&format!("{selector}=")).count(),
+                1,
+                "{} selector must be rendered exactly once",
+                entry.name
+            );
+            format!("{}={command}", entry.name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert_eq!(
+        format!("{rendered}\n"),
+        include_str!("fixtures/launch/account-dirs.golden.txt")
+    );
 }
 
 #[test]
@@ -154,10 +201,10 @@ fn registry_declares_native_and_floor_capabilities() {
     // features in their callers; capability ownership belongs in the registry.
     let claude = spec(CliTool::Claude);
     assert_eq!(
-        claude.capabilities.config_dir_env,
+        claude.capabilities.account_selector,
         Some("CLAUDE_CONFIG_DIR")
     );
-    assert!(claude.capabilities.usage_bridge);
+    assert!(claude.capabilities.usage);
     assert!(claude.capabilities.native_inbox_poller);
     assert_eq!(claude.stop_strategy, StopStrategy::SlashExit);
 
@@ -179,6 +226,134 @@ fn registry_declares_native_and_floor_capabilities() {
         assert!(
             !entry.capabilities.runtime_session_capture || entry.capabilities.session_source,
             "{} cannot capture a runtime session without a session source",
+            entry.name
+        );
+    }
+}
+
+#[test]
+fn account_selectors_are_declared_independently_of_provider_rollout() {
+    // Regression: commit 07fc8f3 overloaded `config_dir_env` as both launch
+    // data and an account-provider predicate, preventing floor-only provider
+    // rollout for Codex and Gemini.
+    assert_eq!(
+        all()
+            .iter()
+            .map(|entry| (entry.tool, entry.capabilities.account_selector))
+            .collect::<Vec<_>>(),
+        vec![
+            (CliTool::Claude, Some("CLAUDE_CONFIG_DIR")),
+            (CliTool::Codex, Some("CODEX_HOME")),
+            (CliTool::Gemini, Some("GEMINI_CLI_HOME")),
+        ]
+    );
+
+    assert_eq!(
+        all()
+            .iter()
+            .filter(|entry| entry.capabilities.usage)
+            .map(|entry| entry.tool)
+            .collect::<Vec<_>>(),
+        vec![CliTool::Claude]
+    );
+}
+
+#[test]
+fn claude_account_provider_is_registered_behind_the_capability_slice() {
+    // Regression: commits d6839a3 and a574720 put Claude account detection in
+    // command call sites, so adding another provider required cloning the
+    // whole pipeline instead of registering one account slice.
+    assert!(spec(CliTool::Claude).account_provider().is_some());
+    assert!(spec(CliTool::Codex).account_provider().is_none());
+    assert!(spec(CliTool::Gemini).account_provider().is_none());
+}
+
+struct ConformanceHttp {
+    status: Option<u16>,
+}
+
+impl HttpClient for ConformanceHttp {
+    fn get(
+        &self,
+        _url: &str,
+        _headers: &[(&str, &str)],
+        _timeout: std::time::Duration,
+    ) -> Result<HttpResponse, HttpError> {
+        match self.status {
+            Some(status) => Ok(HttpResponse {
+                status,
+                body: String::new(),
+            }),
+            None => Err(HttpError {
+                kind: HttpErrorKind::Network,
+            }),
+        }
+    }
+}
+
+#[test]
+fn account_and_usage_provider_slices_obey_the_registry_contract() {
+    // Regression: commits d6839a3 and a574720 wired account detection and
+    // usage directly to Claude, leaving new registry entries without a tested
+    // provider floor or injectable HTTP boundary.
+    for entry in all() {
+        let provider = entry.account_provider();
+        if entry.capabilities.account_selector.is_some() && provider.is_none() {
+            assert!(
+                !entry.capabilities.account_selection && !entry.capabilities.usage,
+                "{} must stay on the logged provider floor until its slice lands",
+                entry.name
+            );
+        }
+
+        if let Some(provider) = provider {
+            let home = tempfile::tempdir().expect("empty account-provider home");
+            let default_dir = provider.default_dir(home.path());
+            assert_eq!(
+                provider.candidate_dirs(home.path(), &[]),
+                vec![default_dir.clone()],
+                "{} empty-home candidates",
+                entry.name
+            );
+            fs::create_dir_all(&default_dir).expect("empty provider default dir");
+            assert_eq!(
+                provider.identify(&default_dir),
+                None,
+                "{} must not invent an identity for an empty directory",
+                entry.name
+            );
+        }
+
+        let usage = entry.usage_provider();
+        assert_eq!(
+            entry.capabilities.usage,
+            usage.is_some(),
+            "{} usage capability/provider mismatch",
+            entry.name
+        );
+        let Some(usage) = usage else {
+            continue;
+        };
+        let config_dir = tempfile::tempdir().expect("usage fixture account dir");
+        fs::write(
+            config_dir.path().join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"conformance-token","expiresAt":4102444800000}}"#,
+        )
+        .expect("usage fixture credentials");
+        assert_eq!(
+            usage
+                .fetch(config_dir.path(), &ConformanceHttp { status: None })
+                .status,
+            UsageStatus::Stale,
+            "{} network failure status",
+            entry.name
+        );
+        assert_eq!(
+            usage
+                .fetch(config_dir.path(), &ConformanceHttp { status: Some(401) },)
+                .status,
+            UsageStatus::Unauthorized,
+            "{} rejected credential status",
             entry.name
         );
     }
@@ -210,12 +385,12 @@ fn claude_only_capabilities_are_declared_independently() {
         .collect::<Vec<_>>();
     assert_eq!(team_namespace_tools, vec![CliTool::Claude]);
 
-    let usage_bridge_tools = all()
+    let usage_tools = all()
         .iter()
-        .filter(|entry| entry.capabilities.usage_bridge)
+        .filter(|entry| entry.capabilities.usage)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(usage_bridge_tools, vec![CliTool::Claude]);
+    assert_eq!(usage_tools, vec![CliTool::Claude]);
 }
 
 #[test]
@@ -270,7 +445,8 @@ fn absent_catalog_and_launch_flags_use_the_declared_floor() {
         team: None,
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
-        claude_config_dir: None,
+        account_dir: None,
+        selector: None,
     }
     .render_with_capabilities(capabilities);
 

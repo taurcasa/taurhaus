@@ -1,6 +1,6 @@
 <script>
-  import ClaudeAccountChip from '../../lib/components/ClaudeAccountChip.svelte'
-  import ClaudeAccountChooser from '../../lib/components/ClaudeAccountChooser.svelte'
+  import AccountChip from '../../lib/components/AccountChip.svelte'
+  import AccountChooser from '../../lib/components/AccountChooser.svelte'
 
   let { scenario, theme = 'light' } = $props()
 
@@ -15,11 +15,13 @@
     <span class="block text-[10px] font-medium uppercase tracking-wide {labelTone}">
       Project header chip
     </span>
-    <ClaudeAccountChip
+    <AccountChip
+      tool="claude"
       {accounts}
       selectedAccountId={scenario?.selectedAccountId ?? null}
       defaultAccountId={scenario?.defaultAccountId ?? null}
       {dark}
+      origin={scenario?.origin ?? 'last_used'}
       onSelect={() => {}}
     />
   </div>
@@ -29,7 +31,8 @@
       <span class="block text-[10px] font-medium uppercase tracking-wide {labelTone}">
         Launch chooser
       </span>
-      <ClaudeAccountChooser
+      <AccountChooser
+        tool="claude"
         {accounts}
         projectName={scenario?.projectName ?? ''}
         defaultAccountId={scenario?.defaultAccountId ?? null}

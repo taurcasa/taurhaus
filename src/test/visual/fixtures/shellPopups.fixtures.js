@@ -1,7 +1,7 @@
 /**
  * The two account popups, mounted the way the app mounts them.
  *
- * `claudeAccount.fixtures.js` renders the chooser and the chip on a bare page,
+ * `account.fixtures.js` renders the chooser and the chip on a bare page,
  * which is why a placement bug could ship unseen: both popups position
  * themselves against ancestors the bare page does not have. These scenarios
  * carry the surrounding markup — the shell frame for the chooser, the Overview

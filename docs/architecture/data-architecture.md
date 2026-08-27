@@ -40,13 +40,17 @@ Current implementation follows these rules:
 5. Compaction, watcher, and operational snapshot files are derived/supporting state, not roster truth.
 6. Tool transcript files remain external source material owned by Claude/Codex/Gemini, not by Taurhaus.
 
+## App and Daemon Protocol Pairing
+
+Version 0.6.9 uses daemon protocol **11**. Generic account discovery, usage refresh, and tool-agnostic transcript lookup changed the contract, so the 0.6.9 app and daemon ship as a pair and reject a mismatched peer instead of attempting partial compatibility.
+
 ## Storage Inventory
 
 ### 1. App-Owned Persistent State
 
 | Store | Path | Format | Primary writer | Primary readers | Authority level | Notes |
 |---|---|---|---|---|---|---|
-| Main app DB | `app_data_dir()/taurhaus.db` | SQLite | Taurhaus backend | Taurhaus backend | Authoritative for app metadata/history | Initialized in `src-tauri/src/db/mod.rs`; WAL + FK enabled |
+| Main app DB | `app_data_dir()/taurhaus.db` | SQLite | Taurhaus backend | Taurhaus backend | Authoritative for app metadata/history | Initialized in `src-tauri/src/db/mod.rs`; WAL + FK enabled. `project_tool_accounts` stores one `pinned` or `last_used` account id per project and tool |
 | Search index | `app_data_dir()/search_index/` | tantivy index dir | Taurhaus backend | Taurhaus backend | Derived / rebuildable | Projection of filesystem + commits + sessions |
 | Structured log | `app_data_dir()/taurhaus.log.jsonl` | JSONL + rotated segments | Taurhaus frontend/backend | Humans, scripts, diagnostics | Audit/telemetry | Async append-only sink from `commands/logging.rs` |
 | Template storage | `app_data_dir()/templates/` or `<TAURHAUS_DATA_DIR>/templates/` | YAML + git metadata | Taurhaus backend | Taurhaus backend + UI | Authoritative for user templates | Separate from coordination state |
@@ -85,14 +89,16 @@ There is exactly one teams-dir authority: `PlatformPaths::teams_dir()` = `claude
 | Claude Code | session transcripts | `~/.claude/projects/<slug>/*.jsonl` | Claude Code | observe/parse |
 | Claude Code | task files | `~/.claude/tasks/{session-id}/*.json` | Claude Code | observe/import |
 | Claude Code | sessions registry | `<CLAUDE_CONFIG_DIR>/sessions/<pid>.json` | Claude Code | observe — **authoritative** session identity and `busy`/`idle`/`waiting`/`shell` state |
-| Claude Code | account config dirs | `~/.claude`, `~/.claude-*` (`.credentials.json`, `.claude.json`) | Claude Code | observe only, for the per-project account chooser; taurhaus never writes them |
+| Claude Code | account config dirs and OAuth usage | `~/.claude`, `~/.claude-*` (`.credentials.json`, `.claude.json`) | Claude Code | observe identities and read a token at request time for the native usage endpoint; taurhaus never writes, persists, logs, or refreshes credentials |
 | Codex | session transcripts | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex | observe/parse |
 | Gemini CLI | chats | `~/.gemini/tmp/<dir-or-hash>/chats/*.json` | Gemini CLI | observe/parse |
 | Gemini CLI | task file | `TODO.md` in project root | Gemini/user | observe/import |
 
 These files are not part of Taurhaus master data. They are upstream evidence sources used to derive runtime/session/task state.
 
-The sessions registry is resolved per process, not per app: taurhaus reads the `CLAUDE_CONFIG_DIR` of that pid (`/proc/<pid>/environ` on Linux, `ps -Eww` on macOS) and guards the record with `procStart`, so two subscriptions running side by side never read each other's state. The chosen account per project is recorded in SQLite as `projects.claude_account_id` (migration 012; `NULL` = global default account).
+The sessions registry is resolved per process, not per app: taurhaus reads the registry-declared account selector of that pid (`/proc/<pid>/environ` on Linux, `ps -Eww` on macOS) and guards the record with `procStart`, so subscriptions running side by side never read each other's state. Account memory is recorded in SQLite as `project_tool_accounts(project_id, tool, account_id, origin)`; `origin` is `pinned` or `last_used`. The legacy `projects.claude_account_id` column remains only for schema compatibility after migration 013 and is no longer read or written.
+
+Usage snapshots and OAuth tokens are intentionally absent from this inventory: snapshots live in process memory only, and tokens exist only inside one provider fetch call. Polling uses injected fake HTTP clients in tests and never contacts a live endpoint there.
 
 ## Authoritative Answers
 

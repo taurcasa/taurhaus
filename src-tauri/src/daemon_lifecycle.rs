@@ -1114,6 +1114,9 @@ pub(crate) fn start_session_updates_bridge(app: AppHandle) {
                             continue;
                         }
 
+                        if !update.degraded {
+                            persist_live_account_observations(&app, &update.account_observations);
+                        }
                         since_version = update.version;
                         if take_focus_change(
                             &mut last_focus,
@@ -1430,6 +1433,38 @@ fn fetch_snapshot_direct(
     crate::commands::runtime_snapshot::decode_daemon_runtime_session_snapshot(response.result)
 }
 
+/// Persist scanner-owned account observations through the app-owned DbState.
+/// The daemon never opens taurhaus.db, which is especially important when the
+/// daemon is in WSL and the app database lives across the drvfs boundary.
+fn persist_live_account_observations(
+    app: &AppHandle,
+    observations: &[crate::session_scanner::accounts::LiveAccountObservation],
+) {
+    if observations.is_empty() {
+        return;
+    }
+    let db = app.state::<crate::commands::projects::DbState>();
+    let connection = match db.0.lock() {
+        Ok(connection) => connection,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to lock account-memory database");
+            return;
+        }
+    };
+    match crate::session_scanner::accounts::persist_live_account_observations_in(
+        &connection,
+        observations,
+    ) {
+        Ok(changed) if changed > 0 => {
+            tracing::debug!(changed, "remembered live session accounts");
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to remember live session account");
+        }
+    }
+}
+
 fn emit_current_session_snapshot(
     app: &AppHandle,
     addr: &str,
@@ -1476,6 +1511,9 @@ fn emit_current_session_snapshot(
 
     // Cache for the polling path (list_cli_sessions)
     crate::session_snapshot_cache::store(&snapshot);
+    if !snapshot.degraded {
+        persist_live_account_observations(app, &snapshot.account_observations);
+    }
 
     if focus_changed {
         emit_tmux_focus_changed(
@@ -1546,7 +1584,7 @@ mod tests {
             updated_at: "2026-01-01T00:00:00Z".to_string(),
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         }
     }
 
@@ -2034,6 +2072,7 @@ mod tests {
             version,
             display_sessions: Vec::new(),
             runtime_sessions: Vec::new(),
+            account_observations: Vec::new(),
             focus,
             foreground_project_path: project_path.map(str::to_string),
             degraded: false,

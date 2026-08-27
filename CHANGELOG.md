@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Generic accounts and native usage core** — account detection, per-project pins and last-used memory, launch/resume resolution, selector rendering, account UI, and ordered usage windows are tool-agnostic capability slices. Claude is the first provider and reads its OAuth usage endpoint with request-time-only credentials; the 0.6.8 status-line bridge is retired and removed once without changing foreign status-line commands.
+
+### Changed
+
+- **0.6.9 app and daemon ship together on protocol 11** — generic `list_accounts`, usage refresh, and tool-agnostic transcript requests replace the Claude-only daemon contract. A 0.6.9 app deliberately rejects an older daemon (and conversely) rather than mixing account semantics across versions.
+
 ## [0.6.8] - 2026-08-27
 
 Harness realignment wrap-up. Several Claude subscriptions per host become a first-class choice (per project, with live usage per subscription), Codex idle detection is authoritative via its own turn-complete notification, tool-specific code is confined to capability slices behind one registry, and the documentation set describes the code as it is. Daemon protocol stays **10** — the bundled daemon is still updated with the app (new additive daemon method: `LIST_CLAUDE_ACCOUNTS`).

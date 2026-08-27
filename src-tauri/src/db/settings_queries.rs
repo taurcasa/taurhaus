@@ -50,6 +50,7 @@ const KEY_TERMINAL_CUSTOM_COMMAND: &str = "terminal.custom_command";
 const KEY_TERMINAL_TMUX_LAYOUT: &str = "terminal.tmux_layout";
 const KEY_CLI_COMMANDS: &str = "terminal.cli_commands";
 const KEY_TERMINAL_HARNESS: &str = "terminal.harness";
+const KEY_DEFAULT_ACCOUNT_IDS: &str = "terminal.default_account_ids";
 const KEY_CLAUDE_DEFAULT_ACCOUNT: &str = "terminal.claude_default_account_id";
 const KEY_DARK_MODE: &str = "dark_mode";
 const KEY_PROJECT_DIALOG_LAST_PATH: &str = "project_dialog.last_path";
@@ -133,9 +134,18 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
         None => defaults.terminal.harness.clone(),
     };
 
-    let claude_default_account_id = get_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
+    let mut default_account_ids: std::collections::HashMap<String, String> =
+        get_setting(conn, KEY_DEFAULT_ACCOUNT_IDS)?
+            .and_then(|value| serde_json::from_str(&value).ok())
+            .unwrap_or_default();
+    if !default_account_ids.contains_key("claude") {
+        if let Some(account_id) = get_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        {
+            default_account_ids.insert("claude".to_string(), account_id);
+        }
+    }
 
     let dark_mode = get_setting(conn, KEY_DARK_MODE)?
         .and_then(|v| v.parse().ok())
@@ -167,7 +177,7 @@ pub fn get_all_settings(conn: &Connection) -> Result<Settings, rusqlite::Error> 
             tmux_layout: terminal_tmux_layout,
             cli_commands,
             harness,
-            claude_default_account_id,
+            default_account_ids,
         },
         dark_mode,
         project_dialog_last_path,
@@ -243,12 +253,10 @@ fn write_settings(conn: &Connection, settings: &Settings) -> Result<(), rusqlite
         serde_json::to_string(&settings.terminal.harness).unwrap_or_else(|_| "{}".to_string());
     set_setting(conn, KEY_TERMINAL_HARNESS, &harness_json)?;
 
-    match settings.terminal.claude_default_account_id.as_deref() {
-        Some(account_id) => set_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT, account_id)?,
-        None => {
-            delete_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?;
-        }
-    }
+    let default_account_ids = serde_json::to_string(&settings.terminal.default_account_ids)
+        .unwrap_or_else(|_| "{}".to_string());
+    set_setting(conn, KEY_DEFAULT_ACCOUNT_IDS, &default_account_ids)?;
+    delete_setting(conn, KEY_CLAUDE_DEFAULT_ACCOUNT)?;
 
     set_setting(conn, KEY_DARK_MODE, &settings.dark_mode.to_string())?;
     set_setting(
@@ -276,32 +284,38 @@ mod tests {
     }
 
     #[test]
-    fn claude_default_account_round_trips_and_clears() {
+    fn default_account_ids_round_trip_and_retire_the_legacy_key() {
         let (conn, _tmp) = test_db();
         let defaults = get_all_settings(&conn).unwrap();
-        assert_eq!(defaults.terminal.claude_default_account_id, None);
+        assert!(defaults.terminal.default_account_ids.is_empty());
 
         let mut settings = defaults;
-        settings.terminal.claude_default_account_id = Some("account-2".to_string());
+        settings
+            .terminal
+            .default_account_ids
+            .insert("claude".to_string(), "account-2".to_string());
         save_settings(&conn, &settings).unwrap();
         assert_eq!(
             get_all_settings(&conn)
                 .unwrap()
                 .terminal
-                .claude_default_account_id
-                .as_deref(),
+                .default_account_ids
+                .get("claude")
+                .map(String::as_str),
             Some("account-2")
         );
-
-        settings.terminal.claude_default_account_id = None;
-        save_settings(&conn, &settings).unwrap();
         assert_eq!(
-            get_all_settings(&conn)
-                .unwrap()
-                .terminal
-                .claude_default_account_id,
+            get_setting(&conn, KEY_CLAUDE_DEFAULT_ACCOUNT).unwrap(),
             None
         );
+
+        settings.terminal.default_account_ids.remove("claude");
+        save_settings(&conn, &settings).unwrap();
+        assert!(get_all_settings(&conn)
+            .unwrap()
+            .terminal
+            .default_account_ids
+            .is_empty());
     }
 
     /// A write that fails partway leaves the settings blob as it was.
@@ -318,7 +332,10 @@ mod tests {
             scan_directories: vec!["~/projects".to_string()],
             ..Settings::default()
         };
-        settings.terminal.claude_default_account_id = Some("account-1".to_string());
+        settings
+            .terminal
+            .default_account_ids
+            .insert("claude".to_string(), "account-1".to_string());
         save_settings(&conn, &settings).unwrap();
 
         // `dark_mode` is written after the Claude default, so this fails the
@@ -331,7 +348,10 @@ mod tests {
         .unwrap();
 
         settings.scan_directories = vec!["~/work".to_string()];
-        settings.terminal.claude_default_account_id = Some("account-2".to_string());
+        settings
+            .terminal
+            .default_account_ids
+            .insert("claude".to_string(), "account-2".to_string());
         let error = save_settings(&conn, &settings).expect_err("the late write fails");
         assert!(
             error.to_string().contains("simulated write failure"),
@@ -340,20 +360,25 @@ mod tests {
 
         let loaded = get_all_settings(&conn).unwrap();
         assert_eq!(
-            loaded.terminal.claude_default_account_id.as_deref(),
+            loaded
+                .terminal
+                .default_account_ids
+                .get("claude")
+                .map(String::as_str),
             Some("account-1")
         );
         assert_eq!(loaded.scan_directories, vec!["~/projects".to_string()]);
 
         // Clearing the default is the same write, and rolls back the same way.
-        settings.terminal.claude_default_account_id = None;
+        settings.terminal.default_account_ids.remove("claude");
         save_settings(&conn, &settings).expect_err("the late write still fails");
         assert_eq!(
             get_all_settings(&conn)
                 .unwrap()
                 .terminal
-                .claude_default_account_id
-                .as_deref(),
+                .default_account_ids
+                .get("claude")
+                .map(String::as_str),
             Some("account-1")
         );
     }

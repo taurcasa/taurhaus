@@ -222,6 +222,8 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/models/mod.rs",
         "src/session_scanner/cli_tool.rs",
         "src/session_scanner/compaction_extractor.rs",
+        "src/session_scanner/accounts/claude.rs",
+        "src/session_scanner/accounts/legacy_statusline.rs",
         "src/session_scanner/idle/claude.rs",
         "src/session_scanner/idle/codex.rs",
         "src/session_scanner/launch.rs",
@@ -230,7 +232,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/task_scanner/gemini.rs",
         "src/templates/adapters.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 59;
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 66;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
@@ -266,5 +268,185 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     assert_eq!(
         allowed_count, EXPECTED_RUNTIME_LITERAL_COUNT,
         "update consumers instead of growing the pinned CliTool literal count"
+    );
+}
+
+#[test]
+fn retired_claude_account_bridge_identifiers_do_not_return() {
+    // Regression: commits d6839a3 and a574720 made the account pipeline and
+    // status-line usage bridge Claude-named end to end, preventing another
+    // provider from sharing the core.
+    let mut files = Vec::new();
+    collect_rs_files(&crate_root().join("src"), &mut files);
+    let forbidden = ["claude_accounts", "claude_usage", "claude_statusline"];
+    let violations = files
+        .into_iter()
+        .filter_map(|path| {
+            let source = fs::read_to_string(&path).ok()?;
+            let found = forbidden
+                .iter()
+                .copied()
+                .filter(|identifier| source.contains(identifier))
+                .collect::<Vec<_>>();
+            (!found.is_empty()).then(|| {
+                format!(
+                    "{}: {found:?}",
+                    path.strip_prefix(crate_root()).unwrap_or(&path).display()
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "retired Claude-specific account identifiers returned: {violations:?}"
+    );
+}
+
+#[test]
+fn generic_account_core_contains_no_tool_identity_literals() {
+    // Regression: commits d6839a3 and a574720 put tool identity in generic
+    // account consumers, then c11770e hardcoded Claude's credential filename
+    // in the poller; both identities belong in provider slices only.
+    const GENERIC_ACCOUNT_FILES: &[&str] = &[
+        "src/session_scanner/accounts/mod.rs",
+        "src/daemon/usage_poller.rs",
+        "src/commands/accounts/mod.rs",
+    ];
+    let literals = [
+        "CliTool::Claude",
+        "CliTool::Codex",
+        "CliTool::Gemini",
+        "\"claude\"",
+        "\"codex\"",
+        "\"gemini\"",
+        "\".credentials.json\"",
+    ];
+    let violations = GENERIC_ACCOUNT_FILES
+        .iter()
+        .filter_map(|path| {
+            let source = read_source(path);
+            let runtime = source_without_test_only_items(&source);
+            let found = literals
+                .iter()
+                .copied()
+                .filter(|literal| runtime.contains(literal))
+                .collect::<Vec<_>>();
+            (!found.is_empty()).then(|| format!("{path}: {found:?}"))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "tool literals escaped provider slices: {violations:?}"
+    );
+}
+
+#[test]
+fn claude_provider_has_no_parallel_generic_account_stack() {
+    // Regression: b2ad272 moved detection and resolution behind the generic
+    // provider but retained a second public Claude-only cache and resolver,
+    // allowing future callers to select the wrong precedence contract.
+    let source = read_source("src/session_scanner/accounts/claude.rs");
+    for superseded in [
+        "pub struct AccountRequest",
+        "pub struct AccountResolution",
+        "pub struct ClaudeScan",
+        "pub fn detect_accounts_in",
+        "pub fn scan_claude_config_cached",
+        "pub fn detect_accounts_cached",
+        "pub fn transcript_config_dirs",
+        "pub fn newest_project_transcript",
+        "pub fn resolve_launch_account",
+    ] {
+        assert!(
+            !source.contains(superseded),
+            "superseded Claude-only account authority remains: {superseded}"
+        );
+    }
+}
+
+#[test]
+fn account_usage_http_uses_one_shared_existing_tls_client() {
+    // Regression: 2f8246c selected reqwest's rustls feature, which defaults to
+    // aws-lc-rs and added a second native crypto toolchain (aws-lc-sys) to the
+    // Windows and macOS release graph even though git2 already carries OpenSSL.
+    let manifest = read_source("Cargo.toml");
+    let reqwest = manifest
+        .lines()
+        .find(|line| line.starts_with("reqwest = "))
+        .expect("direct reqwest dependency");
+    assert!(
+        reqwest.contains("\"native-tls\""),
+        "reqwest must reuse the native TLS stack already in the graph: {reqwest}"
+    );
+    assert!(
+        !reqwest.contains("\"rustls\""),
+        "reqwest must not add the rustls/aws-lc stack: {reqwest}"
+    );
+
+    let accounts =
+        source_without_test_only_items(&read_source("src/session_scanner/accounts/mod.rs"));
+    assert!(accounts.contains("static REQWEST_HTTP_CLIENT"));
+    assert_eq!(
+        accounts
+            .match_indices("reqwest::blocking::Client::builder()")
+            .count(),
+        1,
+        "the shared client should be the only client construction site"
+    );
+}
+
+#[test]
+fn scanner_account_memory_never_opens_the_app_database() {
+    // Regression: 967f956 opened taurhaus.db from the scanner, so the WSL
+    // daemon wrote the Windows app's WAL database through /mnt drvfs and the
+    // native daemon raced the app through an unconfigured second connection.
+    let accounts =
+        source_without_test_only_items(&read_source("src/session_scanner/accounts/mod.rs"));
+    assert!(
+        !accounts.contains("rusqlite::Connection::open"),
+        "account memory must use the app-owned DbState connection"
+    );
+
+    let scanner_cache = read_source("src/session_scanner/cache.rs");
+    assert!(
+        !scanner_cache.contains("record_live_session_accounts"),
+        "the scanner may emit observations but must never persist account memory"
+    );
+}
+
+#[test]
+fn configured_account_root_remains_override_only() {
+    // Regression: b2ad272 treated Windows' derived WSL Claude root as an
+    // explicit override and changed selector-free launch renderings.
+    let source = read_source("src/session_scanner/accounts/mod.rs");
+    let function = source
+        .split("pub fn configured_default_dir")
+        .nth(1)
+        .and_then(|tail| tail.split("pub fn to_launch_namespace").next())
+        .expect("configured_default_dir body");
+    assert!(function.contains("claude_dir_override()"));
+    assert!(!function.contains("PlatformPaths::claude_dir()"));
+}
+
+#[test]
+fn legacy_settings_replacement_stays_std_only_and_atomic() {
+    // Regression: d91737a rewrote settings.json in place; the first fix then
+    // pulled tempfile into production for one same-directory rename.
+    let legacy_source = read_source("src/session_scanner/accounts/legacy_statusline.rs");
+    let source = runtime_section(&legacy_source);
+    assert!(source.contains("settings.json.tmp"));
+    assert!(source.contains("fs::rename(&staged_path, settings_path)"));
+    assert!(!source.contains("tempfile::"));
+
+    let manifest = read_source("Cargo.toml");
+    let production = manifest
+        .split("[dev-dependencies]")
+        .next()
+        .expect("production dependency section");
+    assert!(
+        !production
+            .lines()
+            .any(|line| line.starts_with("tempfile = ")),
+        "tempfile must remain test-only"
     );
 }

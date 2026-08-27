@@ -21,8 +21,7 @@ mod daemon;
 mod scans;
 mod types;
 
-pub mod claude_accounts;
-pub mod claude_statusline;
+pub mod accounts;
 pub mod cli_tool;
 pub mod compaction_extractor;
 pub mod compaction_watcher;

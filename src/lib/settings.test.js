@@ -12,31 +12,32 @@ import '@testing-library/jest-dom/vitest'
 
 // Mock IPC module
 vi.mock('./ipc.js', () => ({
+  refreshAccountsUsage: vi.fn(() => Promise.resolve(true)),
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   getIndexStatus: vi.fn(),
   rebuildIndex: vi.fn(),
   getPlatform: vi.fn(),
-  listClaudeAccounts: vi.fn(() =>
+  listAccounts: vi.fn(() =>
     Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
   ),
-  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
-  launchClaudeSession: vi.fn(() => Promise.resolve()),
-  resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
+  setProjectAccount: vi.fn(() => Promise.resolve()),
+  launchCliSession: vi.fn(() => Promise.resolve()),
+  resolveLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
 }))
 
 const {
+  refreshAccountsUsage,
   getSettings,
   updateSettings,
   getIndexStatus,
   rebuildIndex,
   getPlatform,
-  listClaudeAccounts,
-  launchClaudeSession,
+  listAccounts,
+  launchCliSession,
 } = await import('./ipc.js')
-const { claudeAccounts, requestClaudeLaunch, resetClaudeAccountsForTest } = await import(
-  './claudeAccounts.svelte.js'
-)
+const { accountState, requestLaunch, resetAccountsForTest } = await import('./accounts.svelte.js')
+const claudeAccounts = accountState('claude')
 
 import Settings from './Settings.svelte'
 
@@ -133,9 +134,9 @@ describe('Settings component', () => {
     getPlatform.mockResolvedValue('windows')
     // The account store is module state shared by the whole app, detection
     // included: without this a test inherits the previous one's answer.
-    resetClaudeAccountsForTest()
-    listClaudeAccounts.mockResolvedValue(detected([]))
-    launchClaudeSession.mockResolvedValue({ tmux_pane: '%1' })
+    resetAccountsForTest()
+    listAccounts.mockResolvedValue(detected([]))
+    launchCliSession.mockResolvedValue({ tmux_pane: '%1' })
   })
 
   /** What the backend answers when detection ran. */
@@ -146,6 +147,25 @@ describe('Settings component', () => {
     { id: 'account-2', email: 'b@example.com', display_name: 'B', logged_in: true, is_default: false },
   ]
 
+  it('refreshes usage after account detection on mount', async () => {
+    // Regression: c11770e only listed accounts from Settings, so the compact
+    // meters never requested a current snapshot.
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(refreshAccountsUsage).toHaveBeenCalledWith('claude'))
+  })
+
+  it('hides the accounts card when no tool has multiple accounts', async () => {
+    // Regression: c11770e exposed account controls to single-account users,
+    // contradicting the chooser and overview visibility rule.
+    listAccounts.mockResolvedValue(detected([TWO_ACCOUNTS[0]]))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(listAccounts).toHaveBeenCalled())
+    expect(screen.queryByTestId('settings-accounts')).toBeNull()
+  })
+
   // Regression: c982822 pushed the newly chosen default into the shared account
   // store before the write landed, and restored neither the store nor the form
   // when it failed. requestClaudeLaunch reads that store as an established
@@ -153,27 +173,41 @@ describe('Settings component', () => {
   // reads the old persisted one — so a failed save left the UI claiming one
   // subscription while every launch used another.
   it('keeps the shared default untouched when saving it fails', async () => {
-    listClaudeAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
     updateSettings.mockRejectedValueOnce(new Error('disk full'))
     render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
 
-    await fireEvent.click(screen.getByTestId('claude-account-default-account-2'))
+    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
 
     await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
     expect(claudeAccounts.defaultAccountId).toBe(null)
 
-    await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
-    expect(launchClaudeSession).not.toHaveBeenCalled()
+    await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+    expect(launchCliSession).not.toHaveBeenCalled()
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
   })
 
-  it('shares the chosen default once it is persisted', async () => {
-    listClaudeAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+  it('removes an absent default key when a settings save fails', async () => {
+    // Regression: c11770e rolled an absent string map entry back to null,
+    // making every later Rust settings deserialization fail.
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    updateSettings.mockRejectedValueOnce(new Error('disk full'))
     render(Settings, { props: defaultProps() })
-    await waitFor(() => expect(screen.getByTestId('settings-claude-accounts')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
 
-    await fireEvent.click(screen.getByTestId('claude-account-default-account-2'))
+    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
+    await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
+
+    expect(updateSettings.mock.calls[0][0].terminal.default_account_ids).toEqual({})
+  })
+
+  it('shares the chosen default once it is persisted', async () => {
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
+
+    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
 
     await waitFor(() => expect(claudeAccounts.defaultAccountId).toBe('account-2'))
   })

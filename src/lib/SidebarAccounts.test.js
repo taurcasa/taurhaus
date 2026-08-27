@@ -3,13 +3,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/sve
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('./ipc.js', () => ({
+  refreshAccountsUsage: vi.fn(() => Promise.resolve(true)),
   navigateToSession: vi.fn(),
-  launchClaudeSession: vi.fn(),
+  launchCliSession: vi.fn(),
   stopClaudeSession: vi.fn(),
   removeProject: vi.fn(),
-  listClaudeAccounts: vi.fn(),
-  setProjectClaudeAccount: vi.fn(),
-  resolveClaudeLaunchAccount: vi.fn(),
+  listAccounts: vi.fn(),
+  setProjectAccount: vi.fn(),
+  resolveLaunchAccount: vi.fn(),
   getSettings: vi.fn(),
 }))
 
@@ -25,15 +26,17 @@ vi.mock('./sessionIndicator.js', () => ({
 }))
 
 const {
-  launchClaudeSession,
-  listClaudeAccounts,
-  setProjectClaudeAccount,
+  launchCliSession,
+  listAccounts,
+  refreshAccountsUsage,
+  setProjectAccount,
   stopClaudeSession,
-  resolveClaudeLaunchAccount,
+  resolveLaunchAccount,
   getSettings,
 } = await import('./ipc.js')
 const { getSessionsForProject } = await import('./sessionStore.svelte.js')
-const { claudeAccounts, resetClaudeAccountsForTest } = await import('./claudeAccounts.svelte.js')
+const { accountState, resetAccountsForTest } = await import('./accounts.svelte.js')
+const claudeAccounts = accountState('claude')
 import Sidebar from './Sidebar.svelte'
 
 const PRIMARY = {
@@ -82,18 +85,18 @@ async function openProjectMenu(project = PROJECT) {
   await waitFor(() => expect(screen.getByTestId('project-item')).toBeInTheDocument())
   await fireEvent.contextMenu(screen.getByTestId('project-item'))
   // The menu builds from detected accounts, and detection is an IPC round trip.
-  await waitFor(() => expect(listClaudeAccounts).toHaveBeenCalled())
+  await waitFor(() => expect(listAccounts).toHaveBeenCalled())
 }
 
 describe('Sidebar account submenus', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    resetClaudeAccountsForTest()
-    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND, LOGGED_OUT]))
-    setProjectClaudeAccount.mockResolvedValue(undefined)
-    launchClaudeSession.mockResolvedValue({ ok: true })
+    resetAccountsForTest()
+    listAccounts.mockResolvedValue(detected([PRIMARY, SECOND, LOGGED_OUT]))
+    setProjectAccount.mockResolvedValue(undefined)
+    launchCliSession.mockResolvedValue({ ok: true })
     stopClaudeSession.mockResolvedValue(undefined)
-    resolveClaudeLaunchAccount.mockResolvedValue({ needsChoice: true })
+    resolveLaunchAccount.mockResolvedValue({ needsChoice: true })
     getSettings.mockResolvedValue({ terminal: { claude_default_account_id: null } })
     getSessionsForProject.mockImplementation(() => [])
   })
@@ -119,8 +122,16 @@ describe('Sidebar account submenus', () => {
     expect(screen.getByTestId('menu-item-resume-gemini')).not.toHaveAttribute('aria-haspopup')
   })
 
+  it('requests usage when the account context menu opens', async () => {
+    // Regression: 179a767 refreshed account detection for a newly opened
+    // sidebar menu but never triggered usage, leaving every compact meter empty.
+    await openProjectMenu()
+
+    await waitFor(() => expect(refreshAccountsUsage).toHaveBeenCalledWith('claude'))
+  })
+
   it('offers no submenu when the host has only one usable account', async () => {
-    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, LOGGED_OUT]))
+    listAccounts.mockResolvedValue(detected([PRIMARY, LOGGED_OUT]))
 
     await openProjectMenu()
 
@@ -135,7 +146,7 @@ describe('Sidebar account submenus', () => {
   // the menu ticked both. One subscription is one choice, and one choice is no
   // question to ask.
   it('offers no submenu when one subscription is signed into two config dirs', async () => {
-    listClaudeAccounts.mockResolvedValue(
+    listAccounts.mockResolvedValue(
       detected([
         { ...PRIMARY, config_dir: '/home/user/.claude' },
         { ...PRIMARY, is_default: false, config_dir: '/home/user/.claude-copy' },
@@ -159,9 +170,9 @@ describe('Sidebar account submenus', () => {
     await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
 
     await waitFor(() => {
-      expect(launchClaudeSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
+      expect(launchCliSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
     })
-    expect(setProjectClaudeAccount).not.toHaveBeenCalled()
+    expect(setProjectAccount).not.toHaveBeenCalled()
     expect(claudeAccounts.pending).toBe(null)
   })
 
@@ -169,7 +180,7 @@ describe('Sidebar account submenus', () => {
   // the flyout keyed its rows by that label. Two subscriptions of the same
   // named user crashed the submenu instead of rendering it.
   it('renders both rows when two accounts share a display name', async () => {
-    listClaudeAccounts.mockResolvedValue(
+    listAccounts.mockResolvedValue(
       detected([PRIMARY, { ...SECOND, display_name: 'Who' }, LOGGED_OUT])
     )
 
@@ -209,7 +220,7 @@ describe('Sidebar account submenus', () => {
   })
 
   it('marks the account the launch would use today and meters each one', async () => {
-    listClaudeAccounts.mockResolvedValue(
+    listAccounts.mockResolvedValue(
       detected([
         {
           ...PRIMARY,
@@ -245,7 +256,7 @@ describe('Sidebar account submenus', () => {
     await waitFor(() => {
       expect(claudeAccounts.pending).toMatchObject({ projectId: 'project-0', mode: 'fresh' })
     })
-    expect(launchClaudeSession).not.toHaveBeenCalled()
+    expect(launchCliSession).not.toHaveBeenCalled()
   })
 
   it('pins from the Claude account submenu without launching, and clears it again', async () => {
@@ -255,16 +266,16 @@ describe('Sidebar account submenus', () => {
     await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
 
     await waitFor(() => {
-      expect(setProjectClaudeAccount).toHaveBeenCalledWith('project-0', 'account-2')
+      expect(setProjectAccount).toHaveBeenCalledWith('project-0', 'claude', 'account-2')
     })
-    expect(launchClaudeSession).not.toHaveBeenCalled()
+    expect(launchCliSession).not.toHaveBeenCalled()
 
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
     await hoverOpenSubmenu('menu-item-claude-account')
     await fireEvent.mouseDown(screen.getByTestId('submenu-item-use-default'))
 
     await waitFor(() => {
-      expect(setProjectClaudeAccount).toHaveBeenLastCalledWith('project-0', null)
+      expect(setProjectAccount).toHaveBeenLastCalledWith('project-0', 'claude', null)
     })
   })
 
@@ -280,7 +291,7 @@ describe('Sidebar account submenus', () => {
 
     await waitFor(() => {
       expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'claude')
-      expect(launchClaudeSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
+      expect(launchCliSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
     })
   })
 
@@ -314,7 +325,7 @@ describe('Sidebar account submenus', () => {
     )
 
     await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
-    expect(launchClaudeSession).not.toHaveBeenCalled()
+    expect(launchCliSession).not.toHaveBeenCalled()
 
     // A fresh session starts its own history, so it still picks its account.
     await fireEvent.mouseEnter(screen.getByTestId('menu-item-new-claude-session'))
@@ -332,7 +343,7 @@ describe('Sidebar account submenus', () => {
   // team is running, so the menu cannot always see the delegation coming — the
   // launch result is the backstop.
   it('says so when the backend ran the launch on the team default', async () => {
-    launchClaudeSession.mockResolvedValue({
+    launchCliSession.mockResolvedValue({
       tmux_session: 'taurhaus',
       tmux_window: '2',
       tmux_pane: '%7',
@@ -368,7 +379,7 @@ describe('Sidebar account submenus', () => {
     await fireEvent.keyDown(window, { key: 'Enter' })
 
     await waitFor(() => {
-      expect(launchClaudeSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
+      expect(launchCliSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
     })
   })
 })

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
-import ClaudeAccountChip from './ClaudeAccountChip.svelte'
+import AccountChip from './AccountChip.svelte'
 
 const ACCOUNTS = [
   {
@@ -30,35 +30,49 @@ function usageAt(fiveHour, sevenDay, minutesAgo) {
   }
 }
 
-describe('ClaudeAccountChip', () => {
+describe('AccountChip', () => {
+  it('shows the generic resolution origin hint', () => {
+    render(AccountChip, {
+      props: {
+        tool: 'claude',
+        accounts: ACCOUNTS,
+        selectedAccountId: 'account-2',
+        origin: 'last_used',
+        onSelect: vi.fn(),
+      },
+    })
+
+    expect(screen.getByTestId('account-chip')).toHaveTextContent('last used')
+  })
+
   it('stays hidden when only one account exists', () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: [ACCOUNTS[0]], selectedAccountId: null, onSelect: vi.fn() },
     })
 
-    expect(screen.queryByTestId('claude-account-chip')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('account-chip')).not.toBeInTheDocument()
   })
 
   it('shows the default account when the project stored no choice', () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: null, onSelect: vi.fn() },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     expect(chip).toHaveTextContent('Who')
     expect(chip).toHaveAttribute('title', expect.stringContaining('stierms@gmail.com'))
   })
 
   it('shows the project account and changes it through the menu', async () => {
     const onSelect = vi.fn()
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-2', onSelect },
     })
 
-    expect(screen.getByTestId('claude-account-chip')).toHaveTextContent('Matthias')
+    expect(screen.getByTestId('account-chip')).toHaveTextContent('Matthias')
 
-    await fireEvent.click(screen.getByTestId('claude-account-chip'))
-    await fireEvent.click(screen.getByTestId('claude-account-menu-item-account-1'))
+    await fireEvent.click(screen.getByTestId('account-chip'))
+    await fireEvent.click(screen.getByTestId('account-menu-item-account-1'))
 
     expect(onSelect).toHaveBeenCalledWith('account-1')
   })
@@ -67,7 +81,7 @@ describe('ClaudeAccountChip', () => {
   // the physical `~/.claude` dir, so a project inheriting a global default
   // configured in Settings advertised the wrong subscription.
   it('shows the configured global default for an inheriting project', () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: {
         accounts: ACCOUNTS,
         selectedAccountId: null,
@@ -76,13 +90,13 @@ describe('ClaudeAccountChip', () => {
       },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     expect(chip).toHaveTextContent('Matthias')
     expect(chip).toHaveAttribute('title', expect.stringContaining('m.stier@giesi.com'))
   })
 
   it('falls back to the default config dir when the configured default is gone', () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: {
         accounts: ACCOUNTS,
         selectedAccountId: null,
@@ -91,17 +105,17 @@ describe('ClaudeAccountChip', () => {
       },
     })
 
-    expect(screen.getByTestId('claude-account-chip')).toHaveTextContent('Who')
+    expect(screen.getByTestId('account-chip')).toHaveTextContent('Who')
   })
 
   it('offers clearing the project choice back to the default', async () => {
     const onSelect = vi.fn()
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-2', onSelect },
     })
 
-    await fireEvent.click(screen.getByTestId('claude-account-chip'))
-    await fireEvent.click(screen.getByTestId('claude-account-menu-clear'))
+    await fireEvent.click(screen.getByTestId('account-chip'))
+    await fireEvent.click(screen.getByTestId('account-menu-clear'))
 
     expect(onSelect).toHaveBeenCalledWith(null)
   })
@@ -109,7 +123,7 @@ describe('ClaudeAccountChip', () => {
   // Regression: 518aace read a daemon failure as an empty account list, so the
   // chip vanished mid-session and the project's subscription went unnamed.
   it('stays visible and says the list is stale when detection is degraded', async () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: {
         accounts: ACCOUNTS,
         selectedAccountId: 'account-2',
@@ -118,11 +132,11 @@ describe('ClaudeAccountChip', () => {
       },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     expect(chip).toHaveTextContent('Matthias')
 
     await fireEvent.click(chip)
-    expect(screen.getByTestId('claude-accounts-degraded')).toHaveTextContent(
+    expect(screen.getByTestId('accounts-degraded')).toHaveTextContent(
       'Accounts unavailable (daemon offline) — using last known'
     )
   })
@@ -134,16 +148,16 @@ describe('ClaudeAccountChip', () => {
       { ...ACCOUNTS[0], usage: usageAt(26, 17, 2) },
       { ...ACCOUNTS[1], usage: usageAt(81, 44, 2) },
     ]
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts, selectedAccountId: 'account-2', onSelect: vi.fn() },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     expect(chip).toHaveTextContent('5h 81%')
 
     await fireEvent.click(chip)
-    expect(screen.getByTestId('claude-account-menu-item-account-1')).toHaveTextContent('5h 26%')
-    expect(screen.getByTestId('claude-account-menu-item-account-2')).toHaveTextContent('7d 44%')
+    expect(screen.getByTestId('account-menu-item-account-1')).toHaveTextContent('5h 26%')
+    expect(screen.getByTestId('account-menu-item-account-2')).toHaveTextContent('7d 44%')
   })
 
   // Regression: 79be608 only ever read usage during account *detection*, which
@@ -152,26 +166,26 @@ describe('ClaudeAccountChip', () => {
   // opening the menu to compare subscriptions showed numbers from mount time.
   it('asks for fresh usage when the menu is opened', async () => {
     const onRequestUsage = vi.fn()
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onRequestUsage, onSelect: vi.fn() },
     })
 
     expect(onRequestUsage).not.toHaveBeenCalled()
 
-    await fireEvent.click(screen.getByTestId('claude-account-chip'))
+    await fireEvent.click(screen.getByTestId('account-chip'))
 
     expect(onRequestUsage).toHaveBeenCalledTimes(1)
   })
 
   it('says nothing about usage for an account no status line has reported', async () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
     })
 
-    expect(screen.getByTestId('claude-account-chip')).not.toHaveTextContent('%')
+    expect(screen.getByTestId('account-chip')).not.toHaveTextContent('%')
 
-    await fireEvent.click(screen.getByTestId('claude-account-chip'))
-    expect(screen.queryByTestId('claude-usage-meter')).not.toBeInTheDocument()
+    await fireEvent.click(screen.getByTestId('account-chip'))
+    expect(screen.queryByTestId('usage-meter')).not.toBeInTheDocument()
   })
 
   // Regression: c982822 positioned this menu `absolute` inside the Overview
@@ -179,11 +193,11 @@ describe('ClaudeAccountChip', () => {
   // positioned and clipped by the `overflow-hidden` main panel. It is a popup:
   // it belongs to the viewport, measured and clamped like `ContextMenu`.
   it('anchors the menu to the viewport instead of an ancestor', async () => {
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
       left: 300, top: 60, right: 420, bottom: 82, width: 120, height: 22, x: 300, y: 60,
       toJSON() {},
@@ -191,7 +205,7 @@ describe('ClaudeAccountChip', () => {
 
     await fireEvent.click(chip)
 
-    const menu = screen.getByTestId('claude-account-menu')
+    const menu = screen.getByTestId('account-menu')
     expect(menu.className).toContain('fixed')
     expect(menu.className).not.toContain('absolute')
     expect(menu.style.top).toBe('86px')
@@ -201,11 +215,11 @@ describe('ClaudeAccountChip', () => {
     const previousHeight = window.innerHeight
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 300 })
 
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
       left: 300, top: 250, right: 420, bottom: 272, width: 120, height: 22, x: 300, y: 250,
       toJSON() {},
@@ -213,7 +227,7 @@ describe('ClaudeAccountChip', () => {
 
     await fireEvent.click(chip)
 
-    const menu = screen.getByTestId('claude-account-menu')
+    const menu = screen.getByTestId('account-menu')
     vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
       left: 0, top: 0, right: 224, bottom: 200, width: 224, height: 200, x: 0, y: 0,
       toJSON() {},
@@ -244,11 +258,11 @@ describe('ClaudeAccountChip', () => {
     const previousHeight = window.innerHeight
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 400 })
 
-    const { rerender } = render(ClaudeAccountChip, {
+    const { rerender } = render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     // The chip grows a meter of its own, so its right edge moves with the menu.
     let chipRight = 420
     vi.spyOn(chip, 'getBoundingClientRect').mockImplementation(() => ({
@@ -258,7 +272,7 @@ describe('ClaudeAccountChip', () => {
 
     await fireEvent.click(chip)
 
-    const menu = screen.getByTestId('claude-account-menu')
+    const menu = screen.getByTestId('account-menu')
     let menuHeight = 60
     vi.spyOn(menu, 'getBoundingClientRect').mockImplementation(() => ({
       left: 0, top: 0, right: 224, bottom: menuHeight,
@@ -288,11 +302,11 @@ describe('ClaudeAccountChip', () => {
     const previousWidth = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 })
 
-    render(ClaudeAccountChip, {
+    render(AccountChip, {
       props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
     })
 
-    const chip = screen.getByTestId('claude-account-chip')
+    const chip = screen.getByTestId('account-chip')
     vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
       left: 320, top: 60, right: 390, bottom: 82, width: 70, height: 22, x: 320, y: 60,
       toJSON() {},
@@ -300,7 +314,7 @@ describe('ClaudeAccountChip', () => {
 
     await fireEvent.click(chip)
 
-    const menu = screen.getByTestId('claude-account-menu')
+    const menu = screen.getByTestId('account-menu')
     vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
       left: 0, top: 0, right: 224, bottom: 200, width: 224, height: 200, x: 0, y: 0,
       toJSON() {},

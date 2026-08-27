@@ -18,7 +18,7 @@
     resolveRoleTool,
   } from '../meshDefaults.js'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
-  import { claudeAccounts } from '../claudeAccounts.svelte.js'
+  import { accountState } from '../accounts.svelte.js'
   import { EMPTY_MODEL_CATALOG, resolveMemberModel, roleDeclaredEffort } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
@@ -79,11 +79,14 @@
   // Agent inboxes live under the single `PlatformPaths::teams_dir()`, so a team
   // always runs on the default config dir even when a project picked another
   // subscription. Per-team accounts need a per-team teams dir first.
-  const claudeTeamAccountNote = $derived.by(() => {
-    if (claudeAccounts.accounts.length < 2) return ''
-    const fallback = claudeAccounts.accounts.find((account) => account.is_default)
+  const teamAccountNote = $derived.by(() => {
+    const provider = tools().find((tool) => tool.capabilities.teamConfigNamespace)
+    if (!provider) return ''
+    const detected = accountState(provider.id).accounts
+    if (detected.length < 2) return ''
+    const fallback = detected.find((account) => account.is_default)
     if (!fallback) return ''
-    return `Team members run on ${fallback.email} (per-team account selection is a follow-up).`
+    return `Team members run on ${fallback.label ?? fallback.email} (per-team account selection is a follow-up).`
   })
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
@@ -2196,9 +2199,9 @@
                 : `${agents.length} agent${agents.length === 1 ? '' : 's'} supporting the lead.`}
             </p>
 
-            {#if claudeTeamAccountNote}
-              <p class="text-[11px] {t.textMuted}" data-testid="mesh-builder-claude-account-note">
-                {claudeTeamAccountNote}
+            {#if teamAccountNote}
+              <p class="text-[11px] {t.textMuted}" data-testid="mesh-builder-account-note">
+                {teamAccountNote}
               </p>
             {/if}
           </div>

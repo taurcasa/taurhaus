@@ -23,6 +23,12 @@ use serde_json::{Map, Value};
 use super::cli_tool::CliTool;
 use crate::platform::apply_background_command_settings;
 
+/// Read one account-selector value from a live tool process.
+#[cfg(not(test))]
+pub(crate) fn process_selector_value(pid: u32, selector: &str) -> Option<std::path::PathBuf> {
+    crate::platform::process_env_var(pid, selector).map(std::path::PathBuf::from)
+}
+
 /// Information about a running CLI tool process.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcessInfo {

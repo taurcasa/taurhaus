@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -74,6 +75,29 @@ impl ActivityState {
 // Project (ADR-007)
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountMemoryOrigin {
+    Pinned,
+    LastUsed,
+}
+
+impl AccountMemoryOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pinned => "pinned",
+            Self::LastUsed => "last_used",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountMemory {
+    pub account_id: String,
+    pub origin: AccountMemoryOrigin,
+}
+
 /// Database row for a project.  Used for persistence and query results.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -90,9 +114,8 @@ pub struct Project {
     pub cached_branch: Option<String>,
     /// Cached dirty status (populated by watcher/startup, may be None).
     pub cached_is_dirty: Option<bool>,
-    /// Claude subscription this project launches on. `None` = the global
-    /// default account.
-    pub claude_account_id: Option<String>,
+    #[serde(default)]
+    pub account_memory: HashMap<String, AccountMemory>,
 }
 
 /// Lightweight project summary sent to the frontend for the sidebar list.
@@ -106,8 +129,7 @@ pub struct ProjectSummary {
     pub last_activity_at: Option<String>,
     pub branch: Option<String>,
     pub is_dirty: Option<bool>,
-    /// Claude subscription this project launches on; `None` = the default.
-    pub claude_account_id: Option<String>,
+    pub account_memory: HashMap<String, AccountMemory>,
 }
 
 impl ProjectSummary {
@@ -130,7 +152,7 @@ impl ProjectSummary {
             last_activity_at: project.last_activity_at.clone(),
             branch: project.cached_branch.clone(),
             is_dirty: project.cached_is_dirty,
-            claude_account_id: project.claude_account_id.clone(),
+            account_memory: project.account_memory.clone(),
         }
     }
 }
@@ -150,8 +172,7 @@ pub struct ProjectDetail {
     pub updated_at: String,
     pub branch: Option<String>,
     pub is_dirty: Option<bool>,
-    /// Claude subscription this project launches on; `None` = the default.
-    pub claude_account_id: Option<String>,
+    pub account_memory: HashMap<String, AccountMemory>,
 }
 
 // ---------------------------------------------------------------------------
@@ -286,11 +307,6 @@ pub enum AppPlatform {
 const CODEX_NATIVE_HOOKS_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_NATIVE_NOTIFY_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_QUEUE_WAKE_MIN_VERSION: (u32, u32, u32) = (0, 149, 0);
-/// The oldest Claude Code build observed to send `rate_limits` on the status
-/// line. Captured live on 2026-08-27 against 2.1.246; older builds are not
-/// documented to carry the block, so the usage bridge stays out of their
-/// settings rather than rewriting a `statusLine` for numbers that never come.
-const CLAUDE_STATUSLINE_USAGE_MIN_VERSION: (u32, u32, u32) = (2, 1, 246);
 const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -301,7 +317,6 @@ pub struct CliVersions {
     pub codex_compaction_hooks_supported: bool,
     pub codex_notify_supported: bool,
     pub codex_queue_wake_supported: bool,
-    pub claude_statusline_usage_supported: bool,
 }
 
 static CLI_VERSIONS: LazyLock<CliVersions> = LazyLock::new(CliVersions::probe);
@@ -321,24 +336,9 @@ impl CliVersions {
             codex_compaction_hooks_supported = versions.codex_compaction_hooks_supported,
             codex_notify_supported = versions.codex_notify_supported,
             codex_queue_wake_supported = versions.codex_queue_wake_supported,
-            claude_statusline_usage_supported = versions.claude_statusline_usage_supported,
             "CLI versions detected for native harness capability gates"
         );
         versions
-    }
-
-    /// A fresh read of `claude --version`, for a caller that has to decide
-    /// again rather than once.
-    ///
-    /// `current` is filled by the first probe this process ever runs and then
-    /// answers with it forever, which is right for a gate decided at startup
-    /// and wrong for one reconciled on a timer: a probe that timed out, or a
-    /// `claude` the user has upgraded or downgraded since, would never be read
-    /// again. Only the Claude fields of the returned value mean anything — the
-    /// Codex gates stay as they are decided at startup, and this deliberately
-    /// does not pay for a second probe to fill them.
-    pub fn probe_claude() -> Self {
-        Self::from_versions(None, probe_cli_version("claude"))
     }
 
     pub fn codex_compaction_hooks_support(&self) -> Option<bool> {
@@ -360,7 +360,6 @@ impl CliVersions {
         claude: Option<((u32, u32, u32), String)>,
     ) -> Self {
         let codex_parsed = codex.as_ref().map(|(version, _)| *version);
-        let claude_parsed = claude.as_ref().map(|(version, _)| *version);
         Self {
             codex: codex.map(|(_, normalized)| normalized),
             claude: claude.map(|(_, normalized)| normalized),
@@ -370,8 +369,6 @@ impl CliVersions {
                 .is_some_and(|version| version >= CODEX_NATIVE_NOTIFY_MIN_VERSION),
             codex_queue_wake_supported: codex_parsed
                 .is_some_and(|version| version >= CODEX_QUEUE_WAKE_MIN_VERSION),
-            claude_statusline_usage_supported: claude_parsed
-                .is_some_and(|version| version >= CLAUDE_STATUSLINE_USAGE_MIN_VERSION),
         }
     }
 }
@@ -760,7 +757,7 @@ pub enum CodexCompactionMode {
     Transcript,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSettings {
     /// Terminal emulator to use:
@@ -783,11 +780,48 @@ pub struct TerminalSettings {
     /// transcript parsing remains the explicit compatibility fallback.
     #[serde(default)]
     pub harness: HarnessSettings,
-    /// Claude subscription used by projects that made no choice of their own.
-    /// `None` = the account in `PlatformPaths::claude_dir()`.
+    /// Per-tool global defaults. Missing keys use the provider's default dir.
+    pub default_account_ids: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TerminalSettingsWire {
+    emulator: String,
+    #[serde(alias = "custom_command")]
+    custom_command: String,
+    #[serde(alias = "tmux_layout")]
+    tmux_layout: String,
+    #[serde(default, alias = "cli_commands")]
+    cli_commands: CliCommandSettings,
     #[serde(default)]
-    #[serde(alias = "claude_default_account_id")]
-    pub claude_default_account_id: Option<String>,
+    harness: HarnessSettings,
+    #[serde(default, alias = "default_account_ids")]
+    default_account_ids: HashMap<String, String>,
+    #[serde(default, alias = "claude_default_account_id")]
+    claude_default_account_id: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for TerminalSettings {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let mut wire = TerminalSettingsWire::deserialize(deserializer)?;
+        if let Some(account_id) = wire.claude_default_account_id.take() {
+            wire.default_account_ids
+                .entry("claude".to_string())
+                .or_insert(account_id);
+        }
+        Ok(Self {
+            emulator: wire.emulator,
+            custom_command: wire.custom_command,
+            tmux_layout: wire.tmux_layout,
+            cli_commands: wire.cli_commands,
+            harness: wire.harness,
+            default_account_ids: wire.default_account_ids,
+        })
+    }
 }
 
 impl Default for TerminalSettings {
@@ -798,7 +832,7 @@ impl Default for TerminalSettings {
             tmux_layout: "new_window".into(),
             cli_commands: CliCommandSettings::default(),
             harness: HarnessSettings::default(),
-            claude_default_account_id: None,
+            default_account_ids: HashMap::new(),
         }
     }
 }
@@ -1093,16 +1127,23 @@ mod tests {
             last_activity_at: Some("2026-01-01T00:00:00Z".to_string()),
             branch: Some("main".to_string()),
             is_dirty: Some(true),
-            claude_account_id: Some("account-2".to_string()),
+            account_memory: HashMap::from([(
+                "claude".to_string(),
+                AccountMemory {
+                    account_id: "account-2".to_string(),
+                    origin: AccountMemoryOrigin::Pinned,
+                },
+            )]),
         };
         let value = serde_json::to_value(summary).expect("serialize project summary");
         assert!(value.get("activityState").is_some());
         assert!(value.get("lastActivityAt").is_some());
         assert!(value.get("isDirty").is_some());
         assert_eq!(
-            value.get("claudeAccountId").and_then(|v| v.as_str()),
+            value["accountMemory"]["claude"]["accountId"].as_str(),
             Some("account-2")
         );
+        assert!(value.get("claudeAccountId").is_none());
         assert!(value.get("activity_state").is_none());
     }
 
@@ -1115,6 +1156,32 @@ mod tests {
         assert!(value.get("projectDialogLastPath").is_some());
         assert!(value.get("terminalContract").is_some());
         assert!(value.get("scan_directories").is_none());
+    }
+
+    #[test]
+    fn terminal_settings_migrate_the_legacy_claude_default_without_reserializing_it() {
+        // Regression: commit d6839a3 persisted one Claude-specific default;
+        // the generic settings blob must retain its value under the tool key
+        // and retire the old key on the next save.
+        let settings: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "customCommand": "",
+            "tmuxLayout": "new_window",
+            "claudeDefaultAccountId": "account-2"
+        }))
+        .unwrap();
+        assert_eq!(
+            settings
+                .default_account_ids
+                .get("claude")
+                .map(String::as_str),
+            Some("account-2")
+        );
+
+        let encoded = serde_json::to_value(settings).unwrap();
+        assert!(encoded.get("defaultAccountIds").is_some());
+        assert!(encoded.get("claudeDefaultAccountId").is_none());
+        assert!(encoded.get("claude_default_account_id").is_none());
     }
 
     // AC-1: Active for activity < 7 days ago
@@ -1220,7 +1287,7 @@ mod tests {
             updated_at: "2025-06-12T10:00:00Z".into(),
             cached_branch: Some("main".into()),
             cached_is_dirty: Some(false),
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
 
         let json = serde_json::to_string(&project).unwrap();
@@ -1269,7 +1336,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".into(),
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
 
         let summary = ProjectSummary::from_project(&project, &default_thresholds(), fixed_now());
@@ -1293,7 +1360,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".into(),
             cached_branch: Some("develop".into()),
             cached_is_dirty: Some(true),
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
 
         let summary = ProjectSummary::from_project(&project, &default_thresholds(), fixed_now());
@@ -1377,23 +1444,6 @@ mod tests {
         assert!(queue.codex_queue_wake_supported);
     }
 
-    // Regression: d6839a3 gated only Codex capabilities on a CLI version. The
-    // status line is the only documented source of subscription usage, and its
-    // `rate_limits` block exists in 2.1.246 (captured live) but is undocumented
-    // for older builds — installing the bridge there would rewrite a user's
-    // `statusLine` for numbers that never arrive.
-    #[test]
-    fn the_usage_status_line_is_gated_on_the_claude_version_that_sends_rate_limits() {
-        let observed = CliVersions::from_outputs(None, Some("2.1.246 (Claude Code)"));
-        assert!(observed.claude_statusline_usage_supported);
-
-        let older = CliVersions::from_outputs(None, Some("2.1.238 (Claude Code)"));
-        assert!(!older.claude_statusline_usage_supported);
-
-        let unknown = CliVersions::from_outputs(None, None);
-        assert!(!unknown.claude_statusline_usage_supported);
-    }
-
     // Regression: c0aa59a used a non-interactive login shell for the version
     // probe, but managed panes source interactive rc files where nvm installs Codex.
     #[test]
@@ -1440,7 +1490,6 @@ mod tests {
                 codex_compaction_hooks_supported: false,
                 codex_notify_supported: false,
                 codex_queue_wake_supported: false,
-                claude_statusline_usage_supported: false,
             }
         );
     }
@@ -1600,7 +1649,7 @@ mod tests {
                 tmux_layout: "new_window".into(),
                 cli_commands: CliCommandSettings::default(),
                 harness: HarnessSettings::default(),
-                claude_default_account_id: None,
+                default_account_ids: HashMap::new(),
             },
             ..Settings::default()
         }

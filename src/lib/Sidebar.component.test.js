@@ -3,17 +3,18 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/sve
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('./ipc.js', () => ({
+  refreshAccountsUsage: vi.fn(() => Promise.resolve(true)),
   navigateToSession: vi.fn(),
-  launchClaudeSession: vi.fn(),
+  launchCliSession: vi.fn(),
   stopClaudeSession: vi.fn(),
   removeProject: vi.fn(),
   // A Claude launch asks the account store first, which detects before it
   // decides whether the subscription chooser has to open.
-  listClaudeAccounts: vi.fn(() =>
+  listAccounts: vi.fn(() =>
     Promise.resolve({ accounts: [], source: 'native', degraded: false, error: null })
   ),
-  setProjectClaudeAccount: vi.fn(() => Promise.resolve()),
-  resolveClaudeLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
+  setProjectAccount: vi.fn(() => Promise.resolve()),
+  resolveLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
   getSettings: vi.fn(() => Promise.resolve({ terminal: {} })),
 }))
 
@@ -28,8 +29,9 @@ vi.mock('./sessionIndicator.js', () => ({
   toolIndicators: vi.fn(() => []),
 }))
 
-const { navigateToSession, launchClaudeSession, stopClaudeSession, removeProject, listClaudeAccounts } = await import('./ipc.js')
-const { claudeAccounts, resetClaudeAccountsForTest } = await import('./claudeAccounts.svelte.js')
+const { navigateToSession, launchCliSession, stopClaudeSession, removeProject, listAccounts } = await import('./ipc.js')
+const { accountState, resetAccountsForTest } = await import('./accounts.svelte.js')
+const claudeAccounts = accountState('claude')
 const { getSessionForProject, getSessionsForProject } = await import('./sessionStore.svelte.js')
 const { toolIndicators } = await import('./sessionIndicator.js')
 import Sidebar from './Sidebar.svelte'
@@ -55,15 +57,15 @@ describe('Sidebar component branches', () => {
     vi.clearAllMocks()
     // The account store is module state shared by the whole app, detection
     // included: without this a test inherits the previous one's answer.
-    resetClaudeAccountsForTest()
-    listClaudeAccounts.mockResolvedValue({
+    resetAccountsForTest()
+    listAccounts.mockResolvedValue({
       accounts: [],
       source: 'native',
       degraded: false,
       error: null,
     })
     removeProject.mockResolvedValue(undefined)
-    launchClaudeSession.mockResolvedValue({ ok: true })
+    launchCliSession.mockResolvedValue({ ok: true })
     stopClaudeSession.mockResolvedValue(undefined)
     navigateToSession.mockResolvedValue(undefined)
 
@@ -763,7 +765,7 @@ describe('Sidebar component branches', () => {
     await fireEvent.mouseDown(screen.getByText('Restart Codex'))
     await waitFor(() => {
       expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'codex')
-      expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'fresh', 'codex', null)
+      expect(launchCliSession).toHaveBeenCalledWith(project.id, 'fresh', 'codex', null)
     })
 
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
@@ -777,7 +779,7 @@ describe('Sidebar component branches', () => {
   })
 
   // Regression: c982822 routed the sidebar's ordinary launches through
-  // requestClaudeLaunch but left Restart calling launchClaudeSession directly.
+  // requestClaudeLaunch but left Restart calling launchCliSession directly.
   // On a host with two signed-in subscriptions and a project pinned to neither,
   // that path can never open the chooser: it stopped the pane and took the
   // backend fallback, so a one-off session could come back on the other
@@ -791,7 +793,7 @@ describe('Sidebar component branches', () => {
       tmux_session: 'team',
       tmux_window: '2',
     }
-    listClaudeAccounts.mockResolvedValue({
+    listAccounts.mockResolvedValue({
       accounts: [
         { id: 'account-1', email: 'a@example.com', logged_in: true, is_default: true },
         { id: 'account-2', email: 'b@example.com', logged_in: true, is_default: false },
@@ -820,7 +822,7 @@ describe('Sidebar component branches', () => {
     await claudeAccounts.pending.confirm('account-2', true)
 
     expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'claude')
-    expect(launchClaudeSession).toHaveBeenCalledWith(project.id, 'fresh', 'claude', 'account-2')
+    expect(launchCliSession).toHaveBeenCalledWith(project.id, 'fresh', 'claude', 'account-2')
   })
 
   it('surfaces launch and stop failures from the session context menu', async () => {
@@ -834,7 +836,7 @@ describe('Sidebar component branches', () => {
     }
 
     getSessionsForProject.mockImplementation(() => [session])
-    launchClaudeSession.mockRejectedValueOnce(new Error('boom'))
+    launchCliSession.mockRejectedValueOnce(new Error('boom'))
     stopClaudeSession.mockRejectedValueOnce(new Error('boom'))
 
     render(Sidebar, {

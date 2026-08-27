@@ -1103,6 +1103,7 @@ mod tests {
             version: 5,
             display_sessions: vec![DisplaySession::from(session.clone())],
             runtime_sessions: vec![session],
+            account_observations: Vec::new(),
             focus: None,
             foreground_project_path: None,
             degraded,

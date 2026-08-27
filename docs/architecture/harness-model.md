@@ -32,9 +32,11 @@ The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool
 
 `model` and `reasoning_effort` are separate fields everywhere: role templates and presets (`model:` + `reasoning_effort:`; legacy `"gpt-5.4 high"` spellings still load), persisted per team member, hydrated on resume (member → role default → catalog default), and rendered per CLI by `LaunchSpec` (`src-tauri/src/session_scanner/launch.rs`). Effort is validated per tool; an unknown or unsupported value is logged (`launch.effort.invalid`) and dropped — never silently. A backend `ModelCatalog` on the terminal contract feeds one effort-aware `ModelSelect` in the UI; the catalog is a suggestion list, not an allowlist, so user-added models keep their declared effort. Every launch logs the rendered command (`launch.command.rendered`).
 
-## One account per project
+## Accounts and usage
 
-Claude Code selects a subscription purely through `CLAUDE_CONFIG_DIR`. taurhaus detects accounts from config dirs (labelled from each dir's `oauthAccount`), remembers a choice per project with a global default, renders the `CLAUDE_CONFIG_DIR` prefix in `LaunchSpec`, and — because session history lives inside the config dir — derives the account for a resume from where the session's transcript lives. Teams still run on the default config dir (their inboxes live under `<config dir>/teams`); per-team accounts are a follow-up. Usage per subscription comes from Claude Code's documented statusline payload (`rate_limits.five_hour` / `seven_day`) through a per-account sink.
+Account selection is a capability slice, not a Claude-only path. A provider discovers tool-owned config directories and identities; the generic core remembers `pinned` and `last_used` choices per project and tool, resolves explicit → session → pin → last-used → global default → base-command selector → default-dir precedence, and renders the registry's selector in `LaunchSpec`. Resumes derive their account from the provider's transcript layout. Tools without a provider stay on the logged single-account floor.
+
+Usage is a second provider slice attached to each detected account as an in-memory snapshot. Providers read the CLI's credential file at request time and call its native usage endpoint through an injectable HTTP boundary; taurhaus never logs, persists, refreshes, or otherwise owns the token. Claude currently implements both slices through `CLAUDE_CONFIG_DIR` and the OAuth usage endpoint. Codex and Gemini declare their selectors in the registry, while their providers arrive independently. The retired Claude status-line bridge is uninstalled once without disturbing foreign status-line commands.
 
 ## App and daemon move together
 

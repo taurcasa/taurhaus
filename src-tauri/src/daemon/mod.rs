@@ -1,5 +1,4 @@
 pub mod auth;
-pub mod claude_usage;
 pub mod codex_notify;
 pub(crate) mod compaction;
 pub mod event_listener;
@@ -9,4 +8,5 @@ pub mod protocol;
 pub mod server;
 pub mod session_activity;
 pub mod session_listener;
+pub mod usage_poller;
 pub(crate) mod watch;

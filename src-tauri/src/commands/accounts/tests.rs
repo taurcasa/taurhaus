@@ -1,6 +1,6 @@
 use super::*;
 use crate::db::queries;
-use crate::session_scanner::claude_accounts::{install_scan_override, ClaudeScan};
+use crate::session_scanner::accounts::{install_detection_override, AccountScan};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::{NamedTempFile, TempDir};
@@ -22,7 +22,7 @@ fn db_with_project(project_id: &str) -> (DbState, NamedTempFile) {
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         },
     )
     .expect("insert project");
@@ -34,17 +34,19 @@ fn stored_account(db: &DbState, project_id: &str) -> Option<String> {
     queries::get_project(&conn, project_id)
         .expect("get project")
         .expect("project exists")
-        .claude_account_id
+        .account_memory
+        .get("claude")
+        .map(|memory| memory.account_id.clone())
 }
 
 #[test]
 fn setting_and_clearing_a_project_account_round_trips() {
     let (db, _tmp) = db_with_project("p1");
 
-    set_project_claude_account_impl(&db, "p1", Some("account-2")).expect("set account");
+    set_project_account_impl(&db, "p1", CliTool::Claude, Some("account-2")).expect("set account");
     assert_eq!(stored_account(&db, "p1").as_deref(), Some("account-2"));
 
-    set_project_claude_account_impl(&db, "p1", None).expect("clear account");
+    set_project_account_impl(&db, "p1", CliTool::Claude, None).expect("clear account");
     assert_eq!(stored_account(&db, "p1"), None);
 }
 
@@ -52,7 +54,7 @@ fn setting_and_clearing_a_project_account_round_trips() {
 fn setting_the_account_of_an_unknown_project_is_an_error() {
     let (db, _tmp) = db_with_project("p1");
 
-    let error = set_project_claude_account_impl(&db, "missing", Some("account-2"))
+    let error = set_project_account_impl(&db, "missing", CliTool::Claude, Some("account-2"))
         .expect_err("unknown project");
 
     assert!(error.contains("Project not found"), "{error}");
@@ -68,7 +70,7 @@ fn a_missing_daemon_yields_a_degraded_report_instead_of_an_error() {
         wsl_distro: None,
     };
 
-    let report = daemon_accounts_report(&provider);
+    let report = daemon_accounts_report(&provider, CliTool::Claude);
 
     assert!(report.accounts.is_empty());
     assert!(report.degraded, "a daemon that cannot be asked is degraded");
@@ -82,7 +84,7 @@ fn a_missing_daemon_yields_a_degraded_report_instead_of_an_error() {
 // with it — while the accounts were still there and still signed in.
 #[test]
 fn a_daemon_that_never_answered_is_degraded_not_empty() {
-    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::AccountsResult>(
         Err(crate::errors::AppError::DaemonTransport(
             "connection reset by peer".to_string(),
         )),
@@ -103,7 +105,7 @@ fn an_undecodable_account_list_is_degraded_not_empty() {
     let response =
         protocol::DaemonResponse::ok("list-claude-accounts", serde_json::json!({"accounts": 7}));
 
-    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::AccountsResult>(
         Ok(response),
         "Claude accounts",
     ));
@@ -119,10 +121,10 @@ fn an_older_daemon_reports_no_accounts_without_degrading() {
     let response = protocol::DaemonResponse::err(
         "list-claude-accounts",
         "UNKNOWN_METHOD",
-        "Unknown method: list_claude_accounts",
+        "Unknown method: list_accounts",
     );
 
-    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::AccountsResult>(
         Ok(response),
         "Claude accounts",
     ));
@@ -136,7 +138,7 @@ fn an_older_daemon_reports_no_accounts_without_degrading() {
 /// project's history. A lookup that never ran must not read as "no history".
 #[test]
 fn a_transcript_lookup_the_daemon_could_not_answer_says_so() {
-    let lookup = transcript_lookup_from(daemon_answer::<protocol::ClaudeProjectTranscriptResult>(
+    let lookup = transcript_lookup_from(daemon_answer::<protocol::ProjectTranscriptResult>(
         Err(crate::errors::AppError::DaemonTransport(
             "timed out waiting for daemon".to_string(),
         )),
@@ -155,7 +157,7 @@ fn an_older_daemon_reports_no_transcript_without_degrading() {
         "Unknown method: claude_project_transcript",
     );
 
-    let lookup = transcript_lookup_from(daemon_answer::<protocol::ClaudeProjectTranscriptResult>(
+    let lookup = transcript_lookup_from(daemon_answer::<protocol::ProjectTranscriptResult>(
         Ok(response),
         "Claude transcript",
     ));
@@ -190,17 +192,20 @@ fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
     std::fs::write(config_dir.join(".claude.json"), "").expect("config file");
     let project_path = "/home/user/projects/mid-write";
     let transcript = write_transcript(&config_dir, project_path, "abc.jsonl");
-    let _scan = install_scan_override(ClaudeScan {
-        config_dirs: vec![config_dir],
-        accounts: Vec::new(),
-    });
+    let _scan = install_detection_override(
+        CliTool::Claude,
+        AccountScan {
+            config_dirs: vec![config_dir],
+            accounts: Vec::new(),
+        },
+    );
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: None,
         wsl_distro: None,
     };
 
-    let lookup = claude_project_transcript(&provider, project_path);
+    let lookup = project_transcript(&provider, CliTool::Claude, project_path);
     assert_eq!(lookup.transcript.as_deref(), Some(transcript.as_path()));
     assert_eq!(lookup.unavailable, None);
 }

@@ -1,4 +1,4 @@
-use super::session_listing::CliSessionFreshness;
+use super::session_listing::{persist_local_account_observations, CliSessionFreshness};
 use super::*;
 use crate::commands::logging::{install_global_sink, LogFileState};
 use crate::commands::runtime_snapshot::{
@@ -60,7 +60,7 @@ fn setup_db_with_project(project_id: &str, project_path: &str) -> (DbState, Name
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         },
     )
     .expect("insert project");
@@ -585,6 +585,28 @@ fn cli_session_freshness_says_whether_the_list_was_observed() {
 }
 
 #[test]
+fn local_session_account_observations_reach_project_memory() {
+    // Regression: 701cd7c moved scanner-owned account observations onto the
+    // daemon snapshot wire but left the app's healthy local-scan fallback with
+    // no DbState producer, so daemonless Linux/macOS scans forgot last-used.
+    let (db, _db_file) = setup_db_with_project("project-1", "/projects/one");
+    let observations = vec![crate::session_scanner::accounts::LiveAccountObservation {
+        project_path: "/projects/one".to_string(),
+        tool: CliTool::Claude,
+        account_id: "account-1".to_string(),
+    }];
+
+    assert_eq!(
+        persist_local_account_observations(&db, &observations).unwrap(),
+        1
+    );
+    let connection = db.0.lock().unwrap();
+    let memory = crate::db::queries::project_account_memory(&connection, "project-1").unwrap();
+    assert_eq!(memory["claude"].account_id, "account-1");
+    assert_eq!(memory["claude"].origin.as_str(), "last_used");
+}
+
+#[test]
 fn daemon_session_decode_handles_missing_invalid_and_valid_payloads() {
     assert!(decode_daemon_session_list(None).unwrap().is_empty());
     assert!(
@@ -1100,28 +1122,38 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
 
 /// Detection is faked here on purpose: no test may read the developer's real
 /// `~/.claude*`, and this exercises the launch path, not detection.
-fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount> {
+fn fake_accounts() -> Vec<crate::session_scanner::accounts::Account> {
     vec![
-        crate::session_scanner::claude_accounts::ClaudeAccount {
+        crate::session_scanner::accounts::Account {
+            tool: CliTool::Claude,
             id: "account-1".to_string(),
-            config_dir: PathBuf::from("/home/user/.claude"),
-            email: "primary@example.com".to_string(),
-            display_name: Some("Primary".to_string()),
-            organization: None,
-            seat_tier: None,
-            logged_in: true,
+            dir: PathBuf::from("/home/user/.claude"),
+            identity: crate::session_scanner::accounts::AccountIdentity {
+                id: "account-1".to_string(),
+                label: "primary@example.com".to_string(),
+                display_name: Some("Primary".to_string()),
+                organization: None,
+                plan: None,
+                logged_in: true,
+                credential_expires_at: None,
+            },
             is_default: true,
             is_process_default: true,
             usage: None,
         },
-        crate::session_scanner::claude_accounts::ClaudeAccount {
+        crate::session_scanner::accounts::Account {
+            tool: CliTool::Claude,
             id: "account-2".to_string(),
-            config_dir: PathBuf::from("/home/user/.claude-account2"),
-            email: "second@example.com".to_string(),
-            display_name: Some("Second".to_string()),
-            organization: None,
-            seat_tier: None,
-            logged_in: true,
+            dir: PathBuf::from("/home/user/.claude-account2"),
+            identity: crate::session_scanner::accounts::AccountIdentity {
+                id: "account-2".to_string(),
+                label: "second@example.com".to_string(),
+                display_name: Some("Second".to_string()),
+                organization: None,
+                plan: None,
+                logged_in: true,
+                credential_expires_at: None,
+            },
             is_default: false,
             is_process_default: false,
             usage: None,
@@ -1129,10 +1161,49 @@ fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount
     ]
 }
 
-use crate::session_scanner::claude_accounts::{install_detection_override, DetectionOverrideGuard};
+#[test]
+fn a_launched_account_is_persisted_through_the_real_memory_query() {
+    // Regression: 967f956 cfg-erased launch account memory under `cargo test`,
+    // so the headline launch -> last_used behavior could regress unnoticed.
+    let (db, _db_file) = setup_db_with_project("p-last-used", "/tmp/last-used");
+    let conn = db.0.lock().expect("db lock");
+
+    super::launching::remember_resolved_account_with(
+        "p-last-used",
+        CliTool::Claude,
+        Some("account-2"),
+        |project_id, tool, account_id| {
+            crate::session_scanner::accounts::remember_last_used_in(
+                &conn, project_id, tool, account_id,
+            )
+        },
+    );
+
+    let memory =
+        crate::db::queries::project_account_memory(&conn, "p-last-used").expect("account memory");
+    assert_eq!(memory["claude"].account_id, "account-2");
+    assert_eq!(
+        memory["claude"].origin,
+        crate::models::AccountMemoryOrigin::LastUsed
+    );
+}
+
+use crate::session_scanner::accounts::{install_detection_override, DetectionOverrideGuard};
 
 fn with_fake_accounts() -> DetectionOverrideGuard {
-    install_detection_override(fake_accounts())
+    install_fake_accounts(fake_accounts())
+}
+
+fn install_fake_accounts(
+    accounts: Vec<crate::session_scanner::accounts::Account>,
+) -> DetectionOverrideGuard {
+    install_detection_override(
+        CliTool::Claude,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: accounts.iter().map(|account| account.dir.clone()).collect(),
+            accounts,
+        },
+    )
 }
 
 fn stub_launch_provider(daemon: &StubDaemon) -> ProviderState {
@@ -1168,7 +1239,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("account-2"))
             .expect("store account");
     }
     let (log_file, log_file_path) = setup_log_file();
@@ -1180,7 +1251,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     // coordination pipelines emit the very same `launch.command.rendered` event
     // (`coordination/pipelines/helpers.rs`) from tests that hold no log guard,
     // so their record still lands in this file and a `find` on the event name
-    // alone can take it — it carries no `claude_account`, and the assertion
+    // alone can take it — it carries no `account`, and the assertion
     // below failed on a null. This decoy is that record, written where the race
     // would put it, so the selection has to be provenance-based to pass.
     crate::commands::logging::emit_global(
@@ -1230,7 +1301,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
             event["event"] == "launch.command.rendered" && event["component"] == "command_center"
         })
         .expect("rendered launch event");
-    assert_eq!(rendered["claude_account"], "second@example.com");
+    assert_eq!(rendered["account"], "second@example.com");
 }
 
 #[test]
@@ -1242,7 +1313,7 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p1", Some("deleted-account"))
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("deleted-account"))
             .expect("store account");
     }
     let (log_file, log_file_path) = setup_log_file();
@@ -1289,15 +1360,15 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
 #[test]
 fn a_launch_whose_detection_failed_falls_back_and_says_why() {
     use super::launching::{decide_launch_account, log_account_resolution};
-    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
-    use crate::session_scanner::claude_accounts::AccountRequest;
+    use crate::commands::accounts::{AccountsResult, TranscriptLookup};
+    use crate::session_scanner::accounts::AccountRequest;
 
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let (log_file, log_file_path) = setup_log_file();
     install_global_sink(&log_file);
 
     let launch = decide_launch_account(
-        &ClaudeAccountsResult {
+        &AccountsResult {
             accounts: Vec::new(),
             source: "daemon".to_string(),
             degraded: true,
@@ -1307,14 +1378,15 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
             transcript: None,
             unavailable: Some("timed out waiting for daemon".to_string()),
         },
+        crate::session_scanner::cli_tool::spec(CliTool::Claude)
+            .account_provider()
+            .expect("Claude account provider"),
         AccountRequest {
-            requested_account_id: None,
-            session_transcript: None,
-            project_account_id: Some("account-2"),
-            default_account_id: None,
+            pinned_account_id: Some("account-2"),
+            ..Default::default()
         },
     );
-    log_account_resolution("p1", &launch);
+    log_account_resolution("p1", CliTool::Claude, &launch);
 
     let events = read_log_events(&log_file, log_file_path.path());
     let fallback = events
@@ -1332,13 +1404,13 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
 #[test]
 fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
     use super::launching::decide_launch_account;
-    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
-    use crate::session_scanner::claude_accounts::AccountRequest;
+    use crate::commands::accounts::{AccountsResult, TranscriptLookup};
+    use crate::session_scanner::accounts::AccountRequest;
 
     let transcript =
         PathBuf::from("/home/user/.claude-account2/projects/-tmp-project/session.jsonl");
     let launch = decide_launch_account(
-        &ClaudeAccountsResult {
+        &AccountsResult {
             accounts: fake_accounts(),
             source: "daemon".to_string(),
             degraded: false,
@@ -1348,11 +1420,13 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
             transcript: Some(transcript.clone()),
             unavailable: Some("timed out waiting for daemon".to_string()),
         },
+        crate::session_scanner::cli_tool::spec(CliTool::Claude)
+            .account_provider()
+            .expect("Claude account provider"),
         AccountRequest {
-            requested_account_id: None,
             session_transcript: Some(transcript.as_path()),
-            project_account_id: Some("account-1"),
-            default_account_id: None,
+            pinned_account_id: Some("account-1"),
+            ..Default::default()
         },
     );
 
@@ -1360,7 +1434,7 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
 }
 
 #[test]
-fn a_codex_launch_never_receives_a_claude_config_dir() {
+fn a_codex_launch_never_receives_a_account_dir() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let _accounts = with_fake_accounts();
     let daemon = launch_stub_daemon();
@@ -1368,7 +1442,7 @@ fn a_codex_launch_never_receives_a_claude_config_dir() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("account-2"))
             .expect("store account");
     }
     let (log_file, _log_file_path) = setup_log_file();
@@ -1439,7 +1513,7 @@ fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
     install_global_sink(&log_file);
 
     // The last session for this project ran on the second subscription.
-    crate::session_scanner::claude_accounts::record_claude_transcripts(&[exited_claude_session(
+    crate::session_scanner::accounts::record_session_transcripts(&[exited_claude_session(
         "/tmp/resume-project",
         "/home/user/.claude-account2/projects/-tmp-resume-project/f3286b16.jsonl",
     )]);
@@ -1483,9 +1557,9 @@ fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
 /// no test may read the developer's real `~/.claude*`.
 fn with_fake_accounts_under(home: &Path) -> DetectionOverrideGuard {
     let mut accounts = fake_accounts();
-    accounts[0].config_dir = home.join(".claude");
-    accounts[1].config_dir = home.join(".claude-account2");
-    install_detection_override(accounts)
+    accounts[0].dir = home.join(".claude");
+    accounts[1].dir = home.join(".claude-account2");
+    install_fake_accounts(accounts)
 }
 
 /// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
@@ -1560,9 +1634,9 @@ fn resume_reads_the_account_from_the_transcripts_on_disk() {
 fn a_configured_claude_root_is_named_in_the_launch() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let mut accounts = fake_accounts();
-    accounts[0].config_dir = PathBuf::from("/tmp/e2e-run/claude");
+    accounts[0].dir = PathBuf::from("/tmp/e2e-run/claude");
     accounts[0].is_process_default = false;
-    let _guard = install_detection_override(accounts);
+    let _guard = install_fake_accounts(accounts);
     let daemon = launch_stub_daemon();
     let provider = stub_launch_provider(&daemon);
     let (db, _db_file) = setup_db_with_project("p-isolated", "/tmp/isolated-project");
@@ -1618,16 +1692,18 @@ fn the_preflight_places_a_resume_from_the_transcript_that_owns_the_history() {
     );
     let (db, _db_file) = setup_db_with_project("p-preflight", project_path);
 
-    let placed = resolve_claude_launch_account_impl(
+    let placed = resolve_launch_account_preview_impl(
         &db,
         &preflight_provider(),
         "p-preflight".to_string(),
+        CliTool::Claude,
         LaunchMode::Resume,
+        None,
     )
     .expect("preflight");
 
-    assert_eq!(placed.source, "session");
-    assert_eq!(placed.email.as_deref(), Some("second@example.com"));
+    assert_eq!(placed.origin, "session");
+    assert_eq!(placed.label.as_deref(), Some("second@example.com"));
     assert!(!placed.needs_choice);
 }
 
@@ -1637,11 +1713,13 @@ fn the_preflight_asks_when_no_history_and_no_choice_place_the_launch() {
     let _accounts = with_fake_accounts_under(home.path());
     let (db, _db_file) = setup_db_with_project("p-unplaced", "/tmp/unplaced-project");
 
-    let placed = resolve_claude_launch_account_impl(
+    let placed = resolve_launch_account_preview_impl(
         &db,
         &preflight_provider(),
         "p-unplaced".to_string(),
+        CliTool::Claude,
         LaunchMode::Resume,
+        None,
     )
     .expect("preflight");
 
@@ -1655,19 +1733,21 @@ fn the_preflight_needs_no_choice_once_the_project_stored_one() {
     let (db, _db_file) = setup_db_with_project("p-stored", "/tmp/stored-project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p-stored", Some("account-2"))
+        crate::db::queries::set_project_account(&conn, "p-stored", "claude", Some("account-2"))
             .expect("store account");
     }
 
-    let placed = resolve_claude_launch_account_impl(
+    let placed = resolve_launch_account_preview_impl(
         &db,
         &preflight_provider(),
         "p-stored".to_string(),
+        CliTool::Claude,
         LaunchMode::Fresh,
+        None,
     )
     .expect("preflight");
 
-    assert_eq!(placed.source, "project");
+    assert_eq!(placed.origin, "project");
     assert_eq!(placed.account_id.as_deref(), Some("account-2"));
     assert!(!placed.needs_choice);
 }
@@ -2077,7 +2157,7 @@ fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
 // Regression: 74c7761 gave every Claude launch row an account submenu, and the
 // row forwards the account it names. A Continue/Resume for a project that is
 // exactly one team member's is delegated to coordination before
-// `claude_account_id` is ever read, so the picked subscription did nothing and
+// `account_id` is ever read, so the picked subscription did nothing and
 // said nothing. Teams run on the team's own config dir; the launch now reports
 // the account it could not apply.
 #[test]

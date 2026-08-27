@@ -210,12 +210,13 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             commands::mesh::check_mesh_install_status,
             commands::mesh::install_mesh,
             commands::logging::frontend_log,
-            commands::claude_accounts::list_claude_accounts,
-            commands::claude_accounts::set_project_claude_account,
+            commands::accounts::list_accounts,
+            commands::accounts::refresh_accounts_usage,
+            commands::accounts::set_project_account,
             commands::command_center::list_cli_sessions,
             commands::command_center::list_cli_session_snapshot,
             commands::command_center::launch_cli_session,
-            commands::command_center::resolve_claude_launch_account,
+            commands::command_center::resolve_launch_account,
             commands::command_center::stop_cli_session,
             commands::command_center::navigate_to_session,
             commands::command_center::record_session_activity,
@@ -292,15 +293,8 @@ pub fn run() {
         .with_writer(io::stderr)
         .init();
 
-    // Before anything a process start normally pays for. This binary is also
-    // the status-line sink, and Claude Code re-runs the status line on every
-    // refresh — per keystroke — so a login shell here would be spent per
-    // keystroke too.
-    #[cfg(feature = "mesh-bridged-backend")]
-    if let Some(args) = claude_usage_sink_args(std::env::args().skip(1)) {
-        process::exit(run_claude_usage_sink_cli(args.into_iter()));
-    }
-
+    // Resolve the interactive shell environment before coordination or app
+    // startup needs native CLI paths.
     #[cfg(target_os = "macos")]
     inherit_macos_shell_env();
 
@@ -311,25 +305,6 @@ pub fn run() {
 
     if let Err(error) = build_app().run(tauri::generate_context!()) {
         tracing::error!(error = %error, "error while running taurhaus");
-    }
-}
-
-/// The sink's own arguments, when this process *is* a status-line refresh.
-///
-/// Answered from argv alone, and answered first: Claude Code re-runs the
-/// status-line command on every refresh, so anything this binary does before
-/// reading the payload is paid for per keystroke.
-#[cfg(feature = "mesh-bridged-backend")]
-fn claude_usage_sink_args<I>(args: I) -> Option<Vec<String>>
-where
-    I: IntoIterator<Item = String>,
-{
-    let mut args = args.into_iter();
-    match args.next().as_deref() {
-        Some(crate::session_scanner::claude_statusline::USAGE_SINK_SUBCOMMAND) => {
-            Some(args.collect())
-        }
-        _ => None,
     }
 }
 
@@ -460,7 +435,7 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
                     EffortIgnoreReason::Invalid => "invalid",
                 }),
             },
-            LaunchNote::ConfigDirIgnored { found } => Self {
+            LaunchNote::SelectorIgnored { found } => Self {
                 event,
                 flag: None,
                 found: Some(found),
@@ -554,7 +529,8 @@ fn render_launch_command_cli<R: Read>(
         team,
         codex_bypass_hook_trust: request.codex_bypass_hook_trust,
         codex_notify_executable: None,
-        claude_config_dir: None,
+        account_dir: None,
+        selector: None,
     }
     .render();
     validate_command_override(&rendered.command)?;
@@ -710,33 +686,6 @@ fn run_compact_hook_cli() -> i32 {
     0
 }
 
-/// The native counterpart of `taurhaus-daemon claude-usage-sink`.
-///
-/// On Linux and macOS the app binary is what the generated status-line script
-/// calls. It stays as bare as the daemon's mode — Claude Code re-runs it on
-/// every refresh — so no log sink is installed and nothing but the rendered
-/// line reaches stdout.
-#[cfg(feature = "mesh-bridged-backend")]
-fn run_claude_usage_sink_cli(args: impl Iterator<Item = String>) -> i32 {
-    let parsed = match crate::daemon::claude_usage::parse_usage_sink_args(args) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            eprintln!("{error}");
-            return 2;
-        }
-    };
-    if let Err(error) = crate::daemon::claude_usage::run_usage_sink(
-        &parsed,
-        io::stdin().lock(),
-        io::stdout().lock(),
-        &crate::provider::platform_paths::PlatformPaths::claude_usage_path(),
-        chrono::Utc::now(),
-    ) {
-        eprintln!("{error}");
-    }
-    0
-}
-
 #[cfg(feature = "mesh-bridged-backend")]
 fn write_claude_compact_hook_stdout<W: io::Write>(mut stdout: W, payload: &str) -> io::Result<()> {
     stdout.write_all(payload.as_bytes())?;
@@ -765,9 +714,7 @@ fn init_coordination_cli_log_sink() -> Option<crate::commands::logging::LogFileS
 
 #[cfg(all(test, feature = "mesh-bridged-backend"))]
 mod tests {
-    use super::{
-        claude_usage_sink_args, init_coordination_cli_log_sink, write_claude_compact_hook_stdout,
-    };
+    use super::{init_coordination_cli_log_sink, write_claude_compact_hook_stdout};
 
     use serde_json::Value;
     use std::fs;
@@ -824,30 +771,6 @@ mod tests {
         .expect("json log");
         assert_eq!(entry["event"], "test.cli_hook_logging");
         assert_eq!(entry["component"], "coordination");
-    }
-
-    // Regression: 79be608 dispatched `claude-usage-sink` from
-    // `maybe_run_coordination_cli_mode`, which `run` reaches only *after*
-    // `inherit_macos_shell_env` — a `/bin/zsh -lc` with no timeout. Claude Code
-    // re-runs the status line on every refresh, per keystroke, so on macOS
-    // every refresh paid for a full login-shell start before the payload was
-    // even read, and a slow shell profile blanked the status line outright.
-    #[test]
-    fn the_status_line_sink_is_recognised_before_any_environment_work() {
-        assert_eq!(
-            claude_usage_sink_args(
-                ["claude-usage-sink", "--config-dir", "/home/user/.claude"].map(str::to_string)
-            ),
-            Some(vec![
-                "--config-dir".to_string(),
-                "/home/user/.claude".to_string()
-            ])
-        );
-        assert_eq!(
-            claude_usage_sink_args(["--launch-command", "{}"].map(str::to_string)),
-            None
-        );
-        assert_eq!(claude_usage_sink_args(Vec::new()), None);
     }
 
     #[test]

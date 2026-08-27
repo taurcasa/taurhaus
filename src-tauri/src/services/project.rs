@@ -48,7 +48,7 @@ pub fn register_project(
         updated_at: now,
         cached_branch: None,
         cached_is_dirty: None,
-        claude_account_id: None,
+        account_memory: Default::default(),
     };
 
     queries::insert_project(conn, &project).map_err(|e| {
@@ -152,7 +152,7 @@ fn to_project_detail(project: &Project, thresholds: &ActivityThresholds) -> Proj
         updated_at: project.updated_at.clone(),
         branch: None,
         is_dirty: None,
-        claude_account_id: project.claude_account_id.clone(),
+        account_memory: project.account_memory.clone(),
     }
 }
 

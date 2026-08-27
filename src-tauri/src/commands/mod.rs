@@ -1,4 +1,4 @@
-pub mod claude_accounts;
+pub mod accounts;
 pub mod command_center;
 #[cfg(feature = "mesh-bridged-backend")]
 pub mod coordination;

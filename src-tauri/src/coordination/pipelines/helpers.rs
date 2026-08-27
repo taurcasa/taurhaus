@@ -18,7 +18,7 @@ use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
-use crate::session_scanner::claude_accounts::{configured_root_to_name, to_launch_namespace};
+use crate::session_scanner::accounts::{configured_default_dir, to_launch_namespace};
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
@@ -483,7 +483,7 @@ fn render_team_launch_command(
     let capabilities = spec(cli_tool).capabilities;
     let team_config_dir = capabilities
         .team_config_namespace
-        .then(configured_root_to_name)
+        .then(|| configured_default_dir(cli_tool))
         .flatten()
         .map(|dir| to_launch_namespace(&dir));
     let rendered = LaunchSpec {
@@ -497,7 +497,8 @@ fn render_team_launch_command(
         } else {
             None
         },
-        claude_config_dir: team_config_dir.as_deref(),
+        account_dir: team_config_dir.as_deref(),
+        selector: capabilities.account_selector,
         team: capabilities.team_flags.then_some(TeamContext {
             team_name,
             agent_name,
@@ -574,9 +575,9 @@ fn render_team_launch_command(
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides or cannot use the role reasoning effort"
             }
-            LaunchNote::ConfigDirIgnored { found } => {
+            LaunchNote::SelectorIgnored { found } => {
                 fields.insert("found".to_string(), Value::String(found));
-                "Configured launch base selects its own Claude config dir"
+                "Configured launch base selects its own account directory"
             }
         };
         emit_global(
