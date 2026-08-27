@@ -1214,6 +1214,13 @@ mod tests {
     // exactly when it has a controlling terminal (the test binary's own
     // terminal is inherited, and a test run has one only when it was started
     // from a terminal).
+    //
+    // Regression: 06b432d scanned straight after `spawn`, which returns at the
+    // fork — until the child execs, /proc still shows the parent's argv, the
+    // child is no CLI tool yet, and the scan misses it ("live /proc inventory
+    // must list the claude-named child"). Reproduced in 1 of 60 runs with every
+    // core loaded. Wait for the exec to land in /proc, then read one settled
+    // inventory.
     #[cfg(target_os = "linux")]
     #[test]
     fn scan_process_ids_reads_live_inventory_without_ps() {
@@ -1232,19 +1239,15 @@ mod tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn sleep as claude");
-        let entries = read_inventory_entries();
-        let pids = scan_process_ids();
         let child_pid = child.id();
+        let entry = wait_for_inventory_entry(child_pid);
+        let pids = scan_process_ids();
         kill_and_reap(&mut child);
 
-        let entries = entries.expect("/proc inventory readable");
         let pids = pids.expect("/proc inventory readable");
-        let entry = entries
-            .iter()
-            .find(|entry| entry.pid == child_pid)
-            .unwrap_or_else(|| {
-                panic!("live /proc inventory must list the claude-named child {child_pid}")
-            });
+        let entry = entry.unwrap_or_else(|| {
+            panic!("live /proc inventory must list the claude-named child {child_pid}")
+        });
         assert_eq!(
             pids.contains(&child_pid),
             entry.has_terminal,
@@ -1263,6 +1266,21 @@ mod tests {
         std::os::unix::fs::symlink("/bin/sleep", &path).expect("symlink sleep as claude");
         let path = path.to_string_lossy().to_string();
         (dir, path)
+    }
+
+    /// Poll the live inventory until it lists `pid` as a CLI tool — `spawn`
+    /// returns at the fork, and the child is only tool-named once it has exec'd.
+    #[cfg(target_os = "linux")]
+    fn wait_for_inventory_entry(pid: u32) -> Option<InventoryEntry> {
+        for _ in 0..100 {
+            if let Some(entries) = read_inventory_entries() {
+                if let Some(entry) = entries.into_iter().find(|entry| entry.pid == pid) {
+                    return Some(entry);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        None
     }
 
     /// Poll the live inventory until an entry's args start with `prefix`.
