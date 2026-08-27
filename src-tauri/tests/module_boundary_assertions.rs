@@ -232,7 +232,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/task_scanner/gemini.rs",
         "src/templates/adapters.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 67;
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 66;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
@@ -305,8 +305,8 @@ fn retired_claude_account_bridge_identifiers_do_not_return() {
 #[test]
 fn generic_account_core_contains_no_tool_identity_literals() {
     // Regression: commits d6839a3 and a574720 put tool identity in generic
-    // account consumers; literals belong in the registry, provider slices,
-    // and fixtures only.
+    // account consumers, then c11770e hardcoded Claude's credential filename
+    // in the poller; both identities belong in provider slices only.
     const GENERIC_ACCOUNT_FILES: &[&str] = &[
         "src/session_scanner/accounts/mod.rs",
         "src/daemon/usage_poller.rs",
@@ -319,6 +319,7 @@ fn generic_account_core_contains_no_tool_identity_literals() {
         "\"claude\"",
         "\"codex\"",
         "\"gemini\"",
+        "\".credentials.json\"",
     ];
     let violations = GENERIC_ACCOUNT_FILES
         .iter()
@@ -336,5 +337,95 @@ fn generic_account_core_contains_no_tool_identity_literals() {
     assert!(
         violations.is_empty(),
         "tool literals escaped provider slices: {violations:?}"
+    );
+}
+
+#[test]
+fn claude_provider_has_no_parallel_generic_account_stack() {
+    // Regression: b2ad272 moved detection and resolution behind the generic
+    // provider but retained a second public Claude-only cache and resolver,
+    // allowing future callers to select the wrong precedence contract.
+    let source = read_source("src/session_scanner/accounts/claude.rs");
+    for superseded in [
+        "pub struct AccountRequest",
+        "pub struct AccountResolution",
+        "pub struct ClaudeScan",
+        "pub fn detect_accounts_in",
+        "pub fn scan_claude_config_cached",
+        "pub fn detect_accounts_cached",
+        "pub fn transcript_config_dirs",
+        "pub fn newest_project_transcript",
+        "pub fn resolve_launch_account",
+    ] {
+        assert!(
+            !source.contains(superseded),
+            "superseded Claude-only account authority remains: {superseded}"
+        );
+    }
+}
+
+#[test]
+fn account_usage_http_uses_one_shared_rustls_client() {
+    // Regression: c11770e selected native-tls and built a new blocking client
+    // per fetch, adding system TLS coupling and discarding every connection pool.
+    let manifest = read_source("Cargo.toml");
+    let reqwest = manifest
+        .lines()
+        .find(|line| line.starts_with("reqwest = "))
+        .expect("direct reqwest dependency");
+    assert!(
+        reqwest.contains("\"rustls\""),
+        "reqwest must use rustls: {reqwest}"
+    );
+    assert!(
+        !reqwest.contains("native-tls"),
+        "reqwest reintroduced native TLS: {reqwest}"
+    );
+
+    let accounts = read_source("src/session_scanner/accounts/mod.rs");
+    assert!(accounts.contains("static REQWEST_HTTP_CLIENT"));
+    assert_eq!(
+        accounts
+            .match_indices("reqwest::blocking::Client::builder()")
+            .count(),
+        1,
+        "the shared client should be the only client construction site"
+    );
+}
+
+#[test]
+fn configured_account_root_remains_override_only() {
+    // Regression: b2ad272 treated Windows' derived WSL Claude root as an
+    // explicit override and changed selector-free launch renderings.
+    let source = read_source("src/session_scanner/accounts/mod.rs");
+    let function = source
+        .split("pub fn configured_default_dir")
+        .nth(1)
+        .and_then(|tail| tail.split("pub fn to_launch_namespace").next())
+        .expect("configured_default_dir body");
+    assert!(function.contains("claude_dir_override()"));
+    assert!(!function.contains("PlatformPaths::claude_dir()"));
+}
+
+#[test]
+fn legacy_settings_replacement_stays_std_only_and_atomic() {
+    // Regression: d91737a rewrote settings.json in place; the first fix then
+    // pulled tempfile into production for one same-directory rename.
+    let legacy_source = read_source("src/session_scanner/accounts/legacy_statusline.rs");
+    let source = runtime_section(&legacy_source);
+    assert!(source.contains("settings.json.tmp"));
+    assert!(source.contains("fs::rename(&staged_path, settings_path)"));
+    assert!(!source.contains("tempfile::"));
+
+    let manifest = read_source("Cargo.toml");
+    let production = manifest
+        .split("[dev-dependencies]")
+        .next()
+        .expect("production dependency section");
+    assert!(
+        !production
+            .lines()
+            .any(|line| line.starts_with("tempfile = ")),
+        "tempfile must remain test-only"
     );
 }

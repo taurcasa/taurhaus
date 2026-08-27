@@ -60,8 +60,7 @@ pub fn uninstall(config_dir: &Path) -> Result<bool, String> {
     }
     let encoded = serde_json::to_vec_pretty(&Value::Object(settings))
         .map_err(|error| format!("failed to serialize '{}': {error}", settings_path.display()))?;
-    fs::write(&settings_path, encoded)
-        .map_err(|error| format!("failed to write '{}': {error}", settings_path.display()))?;
+    replace_settings_atomically(&settings_path, &encoded)?;
 
     for path in [
         hooks.join(SHELL_SCRIPT),
@@ -75,6 +74,30 @@ pub fn uninstall(config_dir: &Path) -> Result<bool, String> {
         }
     }
     Ok(true)
+}
+
+fn replace_settings_atomically(settings_path: &Path, encoded: &[u8]) -> Result<(), String> {
+    let permissions = fs::metadata(settings_path)
+        .ok()
+        .map(|row| row.permissions());
+    let parent = settings_path.parent().unwrap_or_else(|| Path::new("."));
+    let staged_path = parent.join("settings.json.tmp");
+    fs::write(&staged_path, encoded)
+        .map_err(|error| format!("failed to stage '{}': {error}", settings_path.display()))?;
+    if let Some(permissions) = permissions {
+        fs::set_permissions(&staged_path, permissions).map_err(|error| {
+            format!(
+                "failed to preserve permissions for '{}': {error}",
+                settings_path.display()
+            )
+        })?;
+    }
+    fs::rename(&staged_path, settings_path).map_err(|error| {
+        format!(
+            "failed to replace '{}' atomically: {error}",
+            settings_path.display()
+        )
+    })
 }
 
 fn load_settings(path: &Path) -> Result<Map<String, Value>, String> {

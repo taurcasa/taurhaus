@@ -303,8 +303,6 @@ pub fn run() {
         process::exit(exit_code);
     }
 
-    crate::session_scanner::accounts::legacy_statusline::retire_once();
-
     if let Err(error) = build_app().run(tauri::generate_context!()) {
         tracing::error!(error = %error, "error while running taurhaus");
     }
