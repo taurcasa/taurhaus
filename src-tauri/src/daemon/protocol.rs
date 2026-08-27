@@ -335,7 +335,7 @@ fn default_cli_tool() -> crate::session_scanner::cli_tool::CliTool {
 }
 
 /// `launch_session` result
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct LaunchSessionResult {
     /// Which tmux session the window was created in. Optional for backward
     /// compat with older daemons that don't send this field.
@@ -343,6 +343,15 @@ pub struct LaunchSessionResult {
     pub tmux_session: Option<String>,
     pub tmux_window: String,
     pub tmux_pane: String,
+    /// Whether the account this launch was asked to run on was applied.
+    /// `None` when nothing asked for one; `Some(false)` when something else
+    /// decided the config dir and the request could not be honoured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_applied: Option<bool>,
+    /// Why `account_applied` is false, as a stable token the frontend matches
+    /// on rather than a sentence it would have to parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_note: Option<String>,
 }
 
 /// `stop_session` params
@@ -834,6 +843,8 @@ mod tests {
             tmux_session: Some("0".to_string()),
             tmux_window: "proj".to_string(),
             tmux_pane: "%5".to_string(),
+            account_applied: Some(false),
+            account_note: Some("team_default".to_string()),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: LaunchSessionResult = serde_json::from_str(&json).unwrap();

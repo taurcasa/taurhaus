@@ -16,6 +16,7 @@ const {
   getSettings,
 } = await import('./ipc.js')
 const {
+  activeClaudeAccountId,
   claudeAccounts,
   effectiveClaudeAccountId,
   loggedInAccounts,
@@ -100,6 +101,46 @@ describe('claudeAccounts store', () => {
       'account-1',
       'account-2',
     ])
+    expect(loggedInAccounts()).toHaveLength(1)
+  })
+
+  // Regression: 6ec843e kept one row per detected config dir, and one
+  // subscription signed into two of them is detected twice under the same
+  // account uuid. That uuid is the only address a launch or a pin has, so the
+  // `.claude-account2` row launched `.claude`, both rows read as the current
+  // one, and the chip and chooser — which key their rows by that id — threw
+  // `each_key_duplicate` on the pair.
+  it('keeps one account per id a launch can name', async () => {
+    const sameSubscriptionElsewhere = {
+      ...PRIMARY,
+      is_default: false,
+      config_dir: '/home/user/.claude-copy',
+    }
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, sameSubscriptionElsewhere, SECOND]))
+
+    await refreshClaudeAccounts()
+
+    expect(resolveChooserAccounts().map((account) => account.id)).toEqual([
+      'account-1',
+      'account-2',
+    ])
+    expect(resolveChooserAccounts()[0].config_dir).toBe('/home/user/.claude')
+  })
+
+  // The kept row has to be the one the backend resolves that id to, which is
+  // the first that can actually run — not simply the first seen.
+  it('keeps the signed-in dir when the default dir of the same account is not', async () => {
+    listClaudeAccounts.mockResolvedValue(
+      detected([
+        { ...PRIMARY, logged_in: false },
+        { ...PRIMARY, is_default: false, config_dir: '/home/user/.claude-copy' },
+      ])
+    )
+
+    await refreshClaudeAccounts()
+
+    expect(resolveChooserAccounts()).toHaveLength(1)
+    expect(resolveChooserAccounts()[0].config_dir).toBe('/home/user/.claude-copy')
     expect(loggedInAccounts()).toHaveLength(1)
   })
 
@@ -444,6 +485,33 @@ describe('claudeAccounts store', () => {
     expect(claudeAccounts.accounts).toHaveLength(2)
   })
 
+  // Regression: 74c7761 asked for detection on every context-menu opening, and
+  // a degraded answer warned every time. Every warn crosses the logging bridge,
+  // so right-clicking during a daemon outage wrote an unbounded stream of the
+  // same line. The outage is one event; the recovery is the next one.
+  it('warns once while detection stays degraded, and again when it returns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listClaudeAccounts.mockResolvedValue(degraded())
+
+    await refreshClaudeAccounts()
+    await refreshClaudeAccounts({ force: true })
+    await refreshClaudeAccounts({ force: true })
+
+    const degradedWarnings = () =>
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes('Claude account detection is unavailable')
+      ).length
+    expect(degradedWarnings()).toBe(1)
+
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts({ force: true })
+    listClaudeAccounts.mockResolvedValue(degraded())
+    await refreshClaudeAccounts({ force: true })
+
+    expect(degradedWarnings()).toBe(2)
+    warn.mockRestore()
+  })
+
   it('a rejected detection keeps the last known accounts too', async () => {
     listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
@@ -466,5 +534,97 @@ describe('claudeAccounts store', () => {
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  describe('an account picked in the context menu', () => {
+    // Regression: c982822 made the chooser the only way to name an account, so
+    // the sidebar's launch items could not carry the answer the user had
+    // already given by picking a row. An explicit id is the decision itself:
+    // it must launch, not reopen the question.
+    it('launches on it without opening the chooser', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    // Regression: 74c7761 pinned the project to whatever a launch row named
+    // when the project had chosen nothing. A pin is written by the chooser's
+    // remember, the chip, and the Account submenu — a row picked for one launch
+    // is one launch, and it must not move every later launch with it.
+    it('pins nothing: the row is this launch, not the project default', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(setProjectClaudeAccount).not.toHaveBeenCalled()
+      expect(effectiveClaudeAccountId({ id: 'p1' })).toBe(null)
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    it('leaves a project that already chose alone — one launch is not a new pin', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1', claude_account_id: 'account-1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(setProjectClaudeAccount).not.toHaveBeenCalled()
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    it('starts the launch without waiting for a database write', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+      setProjectClaudeAccount.mockImplementation(() => new Promise(() => {}))
+
+      await requestClaudeLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+  })
+
+  describe('the account a launch would use today', () => {
+    it('follows pin, then global default, then the default config dir', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      expect(activeClaudeAccountId({ id: 'p1' })).toBe('account-1')
+
+      setGlobalClaudeAccount('account-2')
+      expect(activeClaudeAccountId({ id: 'p1' })).toBe('account-2')
+
+      expect(activeClaudeAccountId({ id: 'p1', claude_account_id: 'account-1' })).toBe('account-1')
+    })
+
+    it('ignores a pin whose account cannot run', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
+      await refreshClaudeAccounts()
+
+      expect(activeClaudeAccountId({ id: 'p1', claude_account_id: 'account-2' })).toBe('account-1')
+    })
   })
 })

@@ -211,6 +211,19 @@ test-frontend:
 test-visual:
     bunx vitest run --config vitest.visual.config.js
 
+# Shoot one visual-host fixture at one viewport with Windows Edge headless.
+#
+# The browser-mode lane above renders components in isolation; this one renders
+# a fixture at a real window size, which is the only way to see a popup that
+# depends on the viewport. Starts the visual host on port 5211 if nothing is
+# already listening there, and stops only a server it started itself.
+visual-shot COMPONENT SCENARIO VIEWPORT="laptop" THEME="light" OUT="":
+    ./scripts/visual-shot.sh "{{COMPONENT}}" "{{SCENARIO}}" "{{VIEWPORT}}" "{{THEME}}" "{{OUT}}"
+
+# Stop the visual host started by `just visual-shot` (never another one).
+visual-shot-stop:
+    ./scripts/visual-shot.sh --stop
+
 # Regenerate README screenshots from the dedicated visual shot list.
 capture-readme-screenshots:
     ./scripts/export-readme-screenshots.sh

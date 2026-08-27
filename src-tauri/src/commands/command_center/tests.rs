@@ -2073,3 +2073,151 @@ fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
     assert_eq!(result.tmux_pane, "%8");
     assert!(runtime.calls().is_empty());
 }
+
+// Regression: 74c7761 gave every Claude launch row an account submenu, and the
+// row forwards the account it names. A Continue/Resume for a project that is
+// exactly one team member's is delegated to coordination before
+// `claude_account_id` is ever read, so the picked subscription did nothing and
+// said nothing. Teams run on the team's own config dir; the launch now reports
+// the account it could not apply.
+#[test]
+fn delegated_resume_reports_the_account_it_could_not_apply() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("temp teams dir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
+    let (db, _db_file) = setup_db_with_project("p-team-account", "/tmp/project");
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+    let (log_file, log_file_path) = setup_log_file();
+    install_global_sink(&log_file);
+
+    save_team_member(
+        tmp.path(),
+        "architecture-final",
+        "developer2",
+        "/tmp/project",
+        CliTool::Claude,
+    );
+    save_member_runtime_record(
+        tmp.path(),
+        "architecture-final",
+        "developer2",
+        MemberRuntimeRecord {
+            schema_version: 3,
+            member_name: "developer2".to_string(),
+            cli_tool: Some(CliTool::Claude),
+            project_path: Some(PathBuf::from("/tmp/project")),
+            pane_id: Some("%9".to_string()),
+            pane_pid: None,
+            pane_start_time: None,
+            session_id: None,
+            jsonl_path: None,
+            daemon_pid: None,
+            health: HealthState::SessionDead,
+            delivery_lease: None,
+            attached_at: Some(chrono::Utc::now()),
+            last_seen_at: Some(chrono::Utc::now()),
+        },
+    );
+
+    let result = launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        Some(&coordination_state),
+        "p-team-account".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Claude),
+        Some("account-2".to_string()),
+    )
+    .expect("delegated resume should succeed");
+
+    assert_eq!(result.account_applied, Some(false));
+    assert_eq!(result.account_note.as_deref(), Some("team_default"));
+
+    let events = read_log_events(&log_file, log_file_path.path());
+    let ignored = events
+        .iter()
+        .find(|event| event["event"] == "launch.account.ignored_for_team")
+        .expect("ignored-for-team event");
+    assert_eq!(ignored["project_id"], "p-team-account");
+    assert_eq!(ignored["wanted"], "account-2");
+}
+
+// A delegated resume nobody named an account for has nothing to report: the
+// team's config dir is the only answer there ever was.
+#[test]
+fn delegated_resume_without_a_requested_account_reports_nothing() {
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("temp teams dir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
+    let (db, _db_file) = setup_db_with_project("p-team-plain", "/tmp/project");
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+    let (log_file, _log_file) = setup_log_file();
+
+    save_team_member(
+        tmp.path(),
+        "architecture-final",
+        "developer2",
+        "/tmp/project",
+        CliTool::Claude,
+    );
+    save_member_runtime_record(
+        tmp.path(),
+        "architecture-final",
+        "developer2",
+        MemberRuntimeRecord {
+            schema_version: 3,
+            member_name: "developer2".to_string(),
+            cli_tool: Some(CliTool::Claude),
+            project_path: Some(PathBuf::from("/tmp/project")),
+            pane_id: Some("%9".to_string()),
+            pane_pid: None,
+            pane_start_time: None,
+            session_id: None,
+            jsonl_path: None,
+            daemon_pid: None,
+            health: HealthState::SessionDead,
+            delivery_lease: None,
+            attached_at: Some(chrono::Utc::now()),
+            last_seen_at: Some(chrono::Utc::now()),
+        },
+    );
+
+    let result = launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        Some(&coordination_state),
+        "p-team-plain".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Claude),
+        None,
+    )
+    .expect("delegated resume should succeed");
+
+    assert_eq!(result.account_applied, None);
+    assert_eq!(result.account_note, None);
+}
+
+// One warning per project per run: the menu offers the choice on every
+// right-click, and a log line per click says nothing the first one did not.
+#[test]
+fn team_account_notice_warns_once_per_project() {
+    use super::launching::first_team_account_notice;
+
+    assert!(first_team_account_notice("project-notice-once"));
+    assert!(!first_team_account_notice("project-notice-once"));
+    assert!(first_team_account_notice("project-notice-other"));
+}

@@ -430,6 +430,7 @@ pub(crate) fn handle_launch_session(id: &str, params: &serde_json::Value) -> Dae
                 tmux_session: Some(session),
                 tmux_window: window,
                 tmux_pane: pane,
+                ..Default::default()
             },
         ),
         Err(e) => DaemonResponse::err(id, "LAUNCH_ERROR", e),

@@ -10,8 +10,15 @@ taurhaus has three frontend test lanes:
 |---|---|---|---|
 | JSDOM Vitest | `bun run test` | logic, state, DOM interaction, unit assertions | simulated DOM, no real browser |
 | Vitest Browser Mode | `just test-visual` | component screenshots with mocked state | real browser rendering |
+| Window-size shot | `just visual-shot C S [V] [T]` | one fixture at a real window size | real browser at 1920/1366/1024 |
 | README screenshot export | `just capture-readme-screenshots` | curated marketing/docs screenshots | real browser rendering |
 | WDIO + `tauri-driver` | `just test-e2e`, `just test-e2e-full` | real integration and full workflows | real app + real backend |
+
+`just visual-shot` is the lane for anything positioned against the *viewport* —
+overlays, anchored menus, submenus. Browser Mode renders into a fixed 960×640
+test page, so a popup that measures the window cannot be judged there. See
+[`testing-guide.md`](./testing-guide.md#full-window-screenshots-just-visual-shot)
+for flags, the port/pid rules, and where the PNGs land.
 
 Use the lightest lane that answers the question.
 

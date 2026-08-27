@@ -61,3 +61,6 @@ src-tauri/resources/*
 !docs/*.png
 !docs/screenshots/**
 !src/lib/assets/grouped-icons/*.png
+
+# Visual screenshot lane (server pid/log)
+.visual-shot/

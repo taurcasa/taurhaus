@@ -41,6 +41,51 @@ just test-frontend        # Run all frontend Vitest tests
 just test-visual          # Run browser-mode visual screenshot tests
 ```
 
+#### Full-window screenshots (`just visual-shot`)
+
+`just test-visual` renders a component into a 960×640 test page. A popup that
+positions itself against the *viewport* — the account chooser overlay, the
+account chip's menu, the context menu and its submenus — cannot be judged
+there: it needs a real window at a real size, with the app's own frame markup
+around it.
+
+```bash
+just visual-shot shell-popups chooser-light laptop light        # prints the PNG's WSL path
+just visual-shot shell-popups chip-menu-dark narrow dark shot   # custom output name
+just visual-shot-stop                                           # stop the server it started
+```
+
+- Starts the visual host on port 5211 (`--strictPort`) **only if nothing is
+  already listening there**, and `visual-shot-stop` kills only a pid it wrote
+  down and re-verified with `ps`. Somebody else's `bun run dev:visual` is never
+  touched.
+- Shoots with Windows Edge headless (`msedge.exe --headless=new --screenshot`)
+  against `http://localhost:5211/?component=…&scenario=…&viewport=…&theme=…&chrome=0`.
+  `VISUAL_SHOT_EDGE`, `VISUAL_SHOT_PORT`, and `VISUAL_SHOT_WINDOWS_DIR` override
+  the browser, port, and output directory.
+- The URL is the fixture's address: the visual host reads `component`,
+  `scenario`, `viewport`, and `theme` from `location.search`, and `chrome=0`
+  drops its own controls so the shot is the fixture alone at window size.
+- Viewports are the host's presets: `desktop` (1920×1080), `laptop` (1366×768),
+  `narrow` (1024×768); themes are `light` and `dark` and nothing else (`exit 2`
+  — the host falls back for a theme it does not know, so an accepted `drak`
+  would file the scenario's own theme under that name).
+- A shot is evidence, so every way of producing an irrelevant one fails instead:
+  the listener on the port must identify itself as the visual host (`exit 6`),
+  the page must report the state that was asked for — component, scenario,
+  viewport and theme, written into `data-visual-host-fixture` and read back from
+  the same Edge run's DOM dump (`exit 7`, the usual cause being a mistyped
+  component or scenario; matched as a fixed string, so a name carrying `.` or
+  `*` cannot match the host's fallback), the file must be a PNG whose IHDR says
+  exactly the viewport preset's pixels (`exit 10` — the run forces
+  `--force-device-scale-factor=1`, so a shot that comes back another size was
+  rendered at another window size), Edge's exit status counts (`exit 8`), and
+  the browser runs under a wall clock that insists: TERM, then KILL (`exit 9`,
+  `VISUAL_SHOT_TIMEOUT_S` default 90 s, `VISUAL_SHOT_KILL_AFTER_S` default 5 s).
+- PNGs land in `C:\taurhaus_build\shots` and are **not** committed — `*.png` is
+  gitignored outside `docs/`. Paste them into the PR description as before/after
+  evidence.
+
 **Vitest cwd gotcha**: Vitest must run from the project root (`/home/user/projects/taurhaus`), not from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this automatically.
 
 Test files follow the pattern `*.test.js` alongside the source they test (e.g., `src/lib/format.test.js`).
@@ -82,6 +127,8 @@ Test specs live in `e2e/specs/` and are split by workflow/domain rather than by 
 | `just test-rust-integration` | System/integration tests |
 | `just test-frontend` | Vitest frontend tests |
 | `just test-visual` | Browser-mode visual screenshot lane |
+| `just visual-shot C S [V] [T] [OUT]` | One fixture shot at window size via Edge headless |
+| `just visual-shot-stop` | Stop the visual host `visual-shot` started |
 | `just test-daemon-connectivity` | Manual daemon connectivity chain checks |
 | `just test-e2e` | Tier 1 E2E |
 | `just test-e2e-full` | Tier 1 + Tier 2 E2E |
@@ -177,6 +224,8 @@ This applies to frontend tasks only — backend tasks skip visual review.
 | `e2e/specs/regressions.js` | E2E regression test suite |
 | `vitest.config.ts` | Frontend unit test configuration |
 | `vitest.visual.config.js` | Browser-mode visual test configuration |
+| `scripts/visual-shot.sh` | Edge-headless window-size screenshot lane |
+| `src/visual-host/query.js` | URL → fixture address for the visual host |
 | `e2e/wdio.conf.js` | WebdriverIO configuration |
 | `scripts/rust-test-bisect.sh` | Rust lane/module bisect helper |
 

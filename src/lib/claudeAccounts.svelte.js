@@ -87,6 +87,24 @@ export function effectiveClaudeAccountId(project) {
 }
 
 /**
+ * The account a launch from this project would land on today.
+ *
+ * The same precedence the backend applies, as far as the frontend can see it:
+ * the project's pin, then the configured global default, then the account in
+ * the default config dir. It is what a menu ticks — "this is the one you get if
+ * you just click the row" — and nothing more; the backend still has the last
+ * word, and a resume still follows its transcript.
+ */
+export function activeClaudeAccountId(project) {
+  return (
+    usableAccountId(effectiveClaudeAccountId(project)) ??
+    globalClaudeAccount()?.id ??
+    claudeAccounts.accounts.find((account) => account.is_default && account.logged_in)?.id ??
+    null
+  )
+}
+
+/**
  * Pin a project to an account (or `null` to inherit), optimistically: the chip
  * and the next launch see it immediately, and a failed write puts it back.
  */
@@ -177,18 +195,46 @@ function keepKnownUsage(accounts) {
   }))
 }
 
+/**
+ * One entry per account a launch can name.
+ *
+ * Detection reports a config dir at a time, and the same subscription signed
+ * into two of them arrives twice under one account uuid. That uuid is the whole
+ * address a launch or a pin has, so two entries would offer a choice nothing
+ * downstream can express — picking the second would run the first — and the
+ * chip, the chooser and the submenus, which key their rows by it, would throw
+ * on the duplicate key.
+ *
+ * The entry kept is the one the backend resolves that id to: the first that can
+ * actually run, else the first seen.
+ */
+function addressableAccounts(accounts) {
+  const byId = new Map()
+  for (const account of accounts) {
+    const kept = byId.get(account.id)
+    if (!kept || (!kept.logged_in && account.logged_in)) byId.set(account.id, account)
+  }
+  return [...byId.values()]
+}
+
 function detectClaudeAccounts() {
   const accounts = Promise.resolve(listClaudeAccounts()).then((report) => {
     if (report?.degraded) {
       // A daemon that dropped out has signed nobody out. Its empty list is
       // silence, not an answer: keep the accounts we last knew, say they are
       // stale, and leave the next caller free to ask again.
-      console.warn('Claude account detection is unavailable:', report.error)
+      //
+      // The outage is one event, and every context-menu opening asks again:
+      // warning per attempt would write the same line into the log for as long
+      // as the user keeps right-clicking. The state change is the news.
+      if (!claudeAccounts.degraded) {
+        console.warn('Claude account detection is unavailable:', report.error)
+      }
       claudeAccounts.degraded = true
       detection = null
       return
     }
-    claudeAccounts.accounts = keepKnownUsage(report?.accounts ?? [])
+    claudeAccounts.accounts = keepKnownUsage(addressableAccounts(report?.accounts ?? []))
     claudeAccounts.degraded = false
   })
   const settings = Promise.resolve(getSettings())
@@ -205,8 +251,9 @@ function detectClaudeAccounts() {
       // goes ahead on whatever the backend resolves. The accounts we already
       // know stay on screen — a failed call is not evidence they are gone —
       // and the failure is not cached, so a daemon that connects a moment
-      // later restores the real list.
-      console.warn('Failed to detect Claude accounts:', error)
+      // later restores the real list. It is logged on the way into the outage
+      // and not once per retry, for the reason above.
+      if (!claudeAccounts.degraded) console.warn('Failed to detect Claude accounts:', error)
       claudeAccounts.degraded = true
       detection = null
     })
@@ -214,6 +261,17 @@ function detectClaudeAccounts() {
 
 /** Modes whose account the history decides, not the user. */
 const HISTORY_MODES = new Set(['resume', 'continue'])
+
+/**
+ * Whether this mode's account comes from the session being reopened.
+ *
+ * A menu ticks the account a click would land on. For these modes the backend
+ * reads it off the transcript, so there is nothing here to tick: the pin the
+ * frontend knows about is not what the launch would use.
+ */
+export function launchFollowsHistory(mode) {
+  return HISTORY_MODES.has(mode)
+}
 
 /**
  * Whether the backend already knows which subscription this launch runs on.
@@ -240,25 +298,34 @@ async function backendPlacesLaunch(projectId, mode) {
  * Launch a session, asking which subscription to use only when the answer is
  * genuinely unknown.
  *
+ * `accountId` is the user having already answered — picked from the context
+ * menu's account submenu. There is nothing left to ask, so nothing is asked and
+ * nothing is written: a row picked for one launch is one launch. The project's
+ * standing choice is made where a standing choice is made — the chooser's
+ * "Remember for this project", the chip, and the `Claude account` submenu.
+ *
  * `launch` is injected by tests; production uses the IPC directly.
  */
 export async function requestClaudeLaunch({
   project,
   mode,
   tool = 'claude',
+  accountId = null,
   launch = launchClaudeSession,
   onError = null,
 }) {
   const projectId = project?.id
   if (!projectId) return
 
-  const run = (accountId) =>
-    Promise.resolve(launch(projectId, mode, tool, accountId ?? null)).catch((error) => {
+  const run = (chosenAccountId) =>
+    Promise.resolve(launch(projectId, mode, tool, chosenAccountId ?? null)).catch((error) => {
       if (onError) onError(error)
       else console.error('[cmd-center] launch FAILED:', error)
     })
 
   if (!toolDescriptor(tool)?.capabilities.accountSelection) return run(null)
+
+  if (accountId) return run(accountId)
 
   // Detection may still be in flight (a launch clicked during startup); asking
   // an empty list would skip the chooser and run on the backend default.

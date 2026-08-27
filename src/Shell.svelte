@@ -622,20 +622,18 @@
   <SearchOverlay bind:open={searchOpen} {dark} onNavigate={(action) => navigationController.handleSearchNavigate(action)} />
 
   {#if claudeAccounts.pending}
-    <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-24"
-      data-testid="claude-account-chooser-overlay"
-    >
-      <ClaudeAccountChooser
-        accounts={resolveChooserAccounts()}
-        projectName={claudeAccounts.pending.projectName}
-        defaultAccountId={claudeAccounts.defaultAccountId}
-        degraded={claudeAccounts.degraded}
-        {dark}
-        onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
-        onCancel={() => claudeAccounts.pending?.cancel()}
-      />
-    </div>
+    <!-- The chooser brings its own `data-shell-overlay` backdrop: a wrapper
+         here would inherit the frame's `position: relative` and drop it out of
+         the viewport. -->
+    <ClaudeAccountChooser
+      accounts={resolveChooserAccounts()}
+      projectName={claudeAccounts.pending.projectName}
+      defaultAccountId={claudeAccounts.defaultAccountId}
+      degraded={claudeAccounts.degraded}
+      {dark}
+      onConfirm={(accountId, remember) => claudeAccounts.pending?.confirm(accountId, remember)}
+      onCancel={() => claudeAccounts.pending?.cancel()}
+    />
   {/if}
 
   {#if showAddProject}

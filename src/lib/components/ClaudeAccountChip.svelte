@@ -7,6 +7,8 @@
 
   let {
     accounts = [],
+    /** Bindable so a fixture or a test can mount the menu already open. */
+    open = $bindable(false),
     selectedAccountId = null,
     /** The account configured as the global default, if the user chose one. */
     defaultAccountId = null,
@@ -21,10 +23,99 @@
     onRequestUsage = () => {},
   } = $props()
 
-  let open = $state(false)
-
   /** How often an open menu asks again. Percentages move in tens of seconds. */
   const USAGE_POLL_MS = 30 * 1000
+
+  /** Breathing room between the menu and the window edge, as `ContextMenu`. */
+  const VIEWPORT_MARGIN = 8
+  /** The `w-56` the menu renders at, for the first paint before it is measured. */
+  const ASSUMED_WIDTH = 224
+
+  let chipEl = $state(null)
+  let menuEl = $state(null)
+  let menuLeft = $state(0)
+  let menuTop = $state(0)
+  /** Bumped by anything that can have moved the chip under an open menu. */
+  let anchorMoved = $state(0)
+
+  /**
+   * The menu belongs to the viewport, not to the header it hangs off.
+   *
+   * Positioned `absolute`, it was laid out against whichever ancestor happened
+   * to be positioned and clipped by the Overview panel's `overflow-hidden`. So
+   * it is measured and clamped the same way `ContextMenu` is: below the chip
+   * when there is room, above it when there is not, never past an edge.
+   */
+  $effect(() => {
+    void anchorMoved
+    if (!open || !chipEl) return
+
+    const anchor = chipEl.getBoundingClientRect()
+    const menu = menuEl?.getBoundingClientRect()
+    const width = menu?.width || ASSUMED_WIDTH
+    const height = menu?.height ?? 0
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+
+    // Right-aligned to the chip, the way the chip's own menu has always read.
+    let left = anchor.right - width
+    if (left + width > vw - VIEWPORT_MARGIN) left = vw - width - VIEWPORT_MARGIN
+    menuLeft = Math.max(VIEWPORT_MARGIN, left)
+
+    let top = anchor.bottom + 4
+    if (height && top + height > vh - VIEWPORT_MARGIN) {
+      // Flip above the chip when the space below cannot hold the menu.
+      const above = anchor.top - height - 4
+      top = above >= VIEWPORT_MARGIN ? above : Math.max(VIEWPORT_MARGIN, vh - height - VIEWPORT_MARGIN)
+    }
+    menuTop = Math.max(VIEWPORT_MARGIN, top)
+  })
+
+  // A popup anchored to the viewport has to follow the thing it is anchored
+  // to: the Overview body scrolls under the header, and the window resizes.
+  $effect(() => {
+    if (!open) return
+    const reposition = () => { anchorMoved += 1 }
+    window.addEventListener('resize', reposition)
+    window.addEventListener('scroll', reposition, true)
+    return () => {
+      window.removeEventListener('resize', reposition)
+      window.removeEventListener('scroll', reposition, true)
+    }
+  })
+
+  // Both ends of the anchoring can change size after the menu opened: opening
+  // asks for fresh usage, and the meters that answer make the menu taller and
+  // the chip wider. Nothing else would ask for the clamp again, so the popup
+  // would keep the coordinates its empty size earned.
+  $effect(() => {
+    if (!open || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { anchorMoved += 1 })
+    if (chipEl) observer.observe(chipEl)
+    if (menuEl) observer.observe(menuEl)
+    return () => observer.disconnect()
+  })
+
+  // Clicking anywhere else closes it — the menu is no longer inside the chip's
+  // own subtree, so a stray click can no longer be caught by hover alone.
+  $effect(() => {
+    if (!open) return
+    function handlePointerDown(event) {
+      if (chipEl?.contains(event.target) || menuEl?.contains(event.target)) return
+      open = false
+    }
+    function handleKeydown(event) {
+      if (event.key !== 'Escape') return
+      open = false
+      chipEl?.focus()
+    }
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleKeydown)
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeydown)
+    }
+  })
 
   // Only `open` is read synchronously, so the poll restarts when the menu
   // opens and closes — not every time the parent hands down a new callback.
@@ -91,8 +182,9 @@
 </script>
 
 {#if visible}
-  <div class="relative inline-block">
+  <div class="inline-block">
     <button
+      bind:this={chipEl}
       type="button"
       class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors {chipTone} {focusRing}"
       {title}
@@ -116,7 +208,9 @@
 
     {#if open}
       <div
-        class="absolute right-0 z-30 mt-1 w-56 rounded-lg border p-1 {menuTone}"
+        bind:this={menuEl}
+        class="fixed z-[100] w-56 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border p-1 {menuTone}"
+        style="left: {menuLeft}px; top: {menuTop}px;"
         role="menu"
         data-testid="claude-account-menu"
       >

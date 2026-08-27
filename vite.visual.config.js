@@ -12,8 +12,11 @@ const visualHostRootPlugin = {
   name: 'visual-host-root-rewrite',
   configureServer(server) {
     server.middlewares.use((req, _res, next) => {
-      if (req.url === '/' || req.url === '/index.html') {
-        req.url = '/visual-host.html'
+      // Compare the path only: the screenshot lane addresses a fixture with a
+      // query string, and `/?component=…` is not `/`.
+      const [path, query] = String(req.url ?? '').split('?')
+      if (path === '/' || path === '/index.html') {
+        req.url = query ? `/visual-host.html?${query}` : '/visual-host.html'
       }
       next()
     })
