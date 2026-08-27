@@ -17,6 +17,7 @@ import {
   resolveClaudeLaunchAccount,
   setProjectClaudeAccount,
 } from './ipc.js'
+import { toolDescriptor } from './toolRegistry.js'
 
 export const claudeAccounts = $state({
   /** Every detected account, logged in or not. */
@@ -257,7 +258,7 @@ export async function requestClaudeLaunch({
       else console.error('[cmd-center] launch FAILED:', error)
     })
 
-  if (tool !== 'claude') return run(null)
+  if (!toolDescriptor(tool)?.capabilities.accountSelection) return run(null)
 
   // Detection may still be in flight (a launch clicked during startup); asking
   // an empty list would skip the chooser and run on the backend default.

@@ -54,7 +54,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
   const t = $derived(themeTokens(dark))
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
-  const toolOptions = tools()
+  const toolOptions = $derived(tools())
   let nodeDetailAnchor = $state(null)
   let detailOpenPerf = $state(null)
   const detailNode = $derived.by(() => {
@@ -168,16 +168,20 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
     switch (toolAccent(tool)) {
       case 'emerald':
         return dark
-          ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
-          : 'border-amber-300/70 bg-amber-50 text-amber-800'
-      case 'violet':
+          ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
+          : 'border-emerald-300/70 bg-emerald-50 text-emerald-800'
+      case 'sky':
         return dark
           ? 'border-sky-400/35 bg-sky-500/12 text-sky-200'
           : 'border-sky-300/70 bg-sky-50 text-sky-800'
+      case 'violet':
+        return dark
+          ? 'border-violet-400/35 bg-violet-500/12 text-violet-200'
+          : 'border-violet-300/70 bg-violet-50 text-violet-800'
       default:
         return dark
-          ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
-          : 'border-emerald-300/70 bg-emerald-50 text-emerald-800'
+          ? 'border-brand-400/35 bg-brand-500/12 text-brand-200'
+          : 'border-brand-300/70 bg-brand-50 text-brand-800'
     }
   }
 

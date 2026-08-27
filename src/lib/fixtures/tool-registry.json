@@ -1,0 +1,83 @@
+[
+  {
+    "id": "claude",
+    "label": "Claude",
+    "accent": "emerald",
+    "defaultAgentRoleId": "claude-reviewer",
+    "aliases": ["claude", "claude_native"],
+    "capabilities": {
+      "modelFlag": "--model",
+      "effortFlag": { "kind": "argument", "flag": "--effort" },
+      "displayNameFlag": "-n",
+      "teamFlags": true,
+      "nativeInboxPoller": true,
+      "sessionSource": true,
+      "authoritativeIdle": true,
+      "compactionHook": true,
+      "transcriptParser": true,
+      "transcriptCompactionSignals": false,
+      "catalog": true,
+      "sessionRoot": "appManagedClaudeDir",
+      "configDirEnv": "CLAUDE_CONFIG_DIR",
+      "accountSelection": true,
+      "teamConfigNamespace": true,
+      "usageBridge": true,
+      "notifySink": false,
+      "hookTrust": false
+    }
+  },
+  {
+    "id": "codex",
+    "label": "Codex",
+    "accent": "sky",
+    "defaultAgentRoleId": "codex-developer",
+    "aliases": ["codex", "mesh", "mesh_bridged"],
+    "capabilities": {
+      "modelFlag": "-m",
+      "effortFlag": { "kind": "config", "flag": "-c", "key": "model_reasoning_effort" },
+      "displayNameFlag": null,
+      "teamFlags": false,
+      "nativeInboxPoller": false,
+      "sessionSource": true,
+      "authoritativeIdle": true,
+      "compactionHook": true,
+      "transcriptParser": true,
+      "transcriptCompactionSignals": true,
+      "catalog": true,
+      "sessionRoot": "toolHome",
+      "configDirEnv": null,
+      "accountSelection": false,
+      "teamConfigNamespace": false,
+      "usageBridge": false,
+      "notifySink": true,
+      "hookTrust": true
+    }
+  },
+  {
+    "id": "gemini",
+    "label": "Gemini",
+    "accent": "violet",
+    "defaultAgentRoleId": "custom-doc-writer",
+    "aliases": ["gemini"],
+    "capabilities": {
+      "modelFlag": "-m",
+      "effortFlag": null,
+      "displayNameFlag": null,
+      "teamFlags": false,
+      "nativeInboxPoller": false,
+      "sessionSource": true,
+      "authoritativeIdle": false,
+      "compactionHook": false,
+      "transcriptParser": false,
+      "transcriptCompactionSignals": false,
+      "catalog": true,
+      "sessionRoot": "toolHome",
+      "configDirEnv": null,
+      "accountSelection": false,
+      "teamConfigNamespace": false,
+      "usageBridge": false,
+      "notifySink": false,
+      "hookTrust": false
+    }
+  }
+]

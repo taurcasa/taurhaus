@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   FALLBACK_TOOLS,
@@ -7,84 +10,16 @@ import {
   tools,
 } from './toolRegistry.js'
 
-const CONTRACT_TOOLS = [
-  {
-    id: 'claude',
-    label: 'Claude',
-    accent: 'emerald',
-    aliases: ['claude', 'claude_native'],
-    capabilities: {
-      modelFlag: '--model',
-      effortFlag: { kind: 'argument', flag: '--effort' },
-      displayNameFlag: '-n',
-      teamFlags: true,
-      nativeInboxPoller: true,
-      sessionSource: true,
-      authoritativeIdle: true,
-      compactionHook: true,
-      transcriptParser: true,
-      transcriptCompactionSignals: false,
-      catalog: true,
-      configDirEnv: 'CLAUDE_CONFIG_DIR',
-      usageBridge: true,
-      notifySink: false,
-      hookTrust: false,
-    },
-  },
-  {
-    id: 'codex',
-    label: 'Codex',
-    accent: 'sky',
-    aliases: ['codex', 'mesh', 'mesh_bridged'],
-    capabilities: {
-      modelFlag: '-m',
-      effortFlag: { kind: 'config', flag: '-c', key: 'model_reasoning_effort' },
-      displayNameFlag: null,
-      teamFlags: false,
-      nativeInboxPoller: false,
-      sessionSource: true,
-      authoritativeIdle: true,
-      compactionHook: true,
-      transcriptParser: true,
-      transcriptCompactionSignals: true,
-      catalog: true,
-      configDirEnv: null,
-      usageBridge: false,
-      notifySink: true,
-      hookTrust: true,
-    },
-  },
-  {
-    id: 'gemini',
-    label: 'Gemini',
-    accent: 'violet',
-    aliases: ['gemini'],
-    capabilities: {
-      modelFlag: '-m',
-      effortFlag: null,
-      displayNameFlag: null,
-      teamFlags: false,
-      nativeInboxPoller: false,
-      sessionSource: false,
-      authoritativeIdle: false,
-      compactionHook: false,
-      transcriptParser: false,
-      transcriptCompactionSignals: false,
-      catalog: true,
-      configDirEnv: null,
-      usageBridge: false,
-      notifySink: false,
-      hookTrust: false,
-    },
-  },
-]
+const CONTRACT_TOOLS = JSON.parse(
+  readFileSync(resolve(process.cwd(), 'src/lib/fixtures/tool-registry.json'), 'utf8')
+)
 
 beforeEach(() => resetToolRegistry())
 
 describe('toolRegistry', () => {
   it('keeps the pre-settings fallback byte-equivalent to the backend contract', () => {
-    // Regression: commit cb32d7a added frontend tool branches independently of
-    // backend detection; the fallback must be the same registry data as IPC.
+    // Regression: 07fc8f3 added frontend tool data independently of the Rust
+    // registry; the shared fixture is also asserted by the Rust conformance test.
     expect(FALLBACK_TOOLS).toEqual(CONTRACT_TOOLS)
   })
 

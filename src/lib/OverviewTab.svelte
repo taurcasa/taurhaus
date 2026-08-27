@@ -3,7 +3,7 @@
   import { getProjectContext } from './context/ProjectContext.js'
   import { getSessionContext } from './context/SessionContext.js'
   import { themeTokens } from './themeTokens.js'
-  import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { getToolName, TOOL_ICONS } from './toolLogos.js'
   import ClaudeAccountChip from './components/ClaudeAccountChip.svelte'
   import {
     claudeAccounts,
@@ -181,7 +181,7 @@
         <button
           class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {actionBtnBase}"
           onclick={() => handleLaunchSession(tool)}
-          title={TOOL_NAMES[tool]}
+          title={getToolName(tool)}
           data-testid="action-launch-{tool}"
         >
           <svg class="w-3.5 h-3.5 shrink-0" viewBox={icon.viewBox} fill="currentColor">

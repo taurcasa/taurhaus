@@ -601,24 +601,37 @@ impl Default for ModelCatalog {
 }
 
 impl ModelCatalog {
-    pub fn default_for(tool: CliTool) -> &'static ModelCatalogEntry {
-        match tool {
-            CliTool::Claude => &MODEL_CATALOG.claude[0],
-            CliTool::Codex => &MODEL_CATALOG.codex[0],
-            CliTool::Gemini => &MODEL_CATALOG.gemini[0],
+    pub fn entries_for(tool: CliTool) -> &'static [ModelCatalogEntry] {
+        if !crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .catalog
+        {
+            return &[];
         }
-    }
-
-    pub fn entry_for(tool: CliTool, model_id: &str) -> Option<&'static ModelCatalogEntry> {
-        let entries = match tool {
+        match tool {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
             CliTool::Gemini => &MODEL_CATALOG.gemini,
-        };
-        entries.iter().find(|entry| entry.id == model_id)
+        }
+    }
+
+    pub fn default_for(tool: CliTool) -> &'static ModelCatalogEntry {
+        &Self::entries_for(tool)[0]
+    }
+
+    pub fn entry_for(tool: CliTool, model_id: &str) -> Option<&'static ModelCatalogEntry> {
+        Self::entries_for(tool)
+            .iter()
+            .find(|entry| entry.id == model_id)
     }
 
     pub fn supports_effort(tool: CliTool, model_id: Option<&str>, effort: &str) -> bool {
+        if !crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .catalog
+        {
+            return false;
+        }
         match tool {
             CliTool::Claude => CLAUDE_EFFORTS.contains(&effort),
             // Known catalog entry: its own effort list. Unknown (user-added /

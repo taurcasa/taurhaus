@@ -482,8 +482,7 @@ fn render_team_launch_command(
     // launched without the assignment writes its inbox where no team reads.
     let capabilities = spec(cli_tool).capabilities;
     let team_config_dir = capabilities
-        .config_dir_env
-        .is_some()
+        .team_config_namespace
         .then(configured_root_to_name)
         .flatten()
         .map(|dir| to_launch_namespace(&dir));

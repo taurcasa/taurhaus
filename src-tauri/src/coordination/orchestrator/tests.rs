@@ -4269,11 +4269,13 @@ fn initialize_team_codex_lead_launch_new_uses_sidecar_lifecycle() {
 
 #[test]
 fn initialize_team_gemini_lead_launch_new_uses_sidecar_lifecycle() {
+    // Regression: f90b362 dropped Gemini transcript identity while extracting
+    // SessionSource; sidecar delivery does not imply session capture is absent.
     assert_non_claude_lead_launch_new_uses_sidecar(
         "gemini",
         "gemini-2.5-pro",
         "architecture-final-init-gemini-lead",
-        false,
+        true,
     );
 }
 

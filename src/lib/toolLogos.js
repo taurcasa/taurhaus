@@ -1,5 +1,5 @@
 /**
- * Shared SVG icon data and display names for CLI tools.
+ * Shared SVG icon data for CLI tools.
  *
  * Single source of truth — imported by sessionIndicator.js,
  * TaskBoard.svelte, TaskDetailPanel.svelte, SessionHistory.svelte.
@@ -10,6 +10,8 @@
  * Codex:  OpenAI blossom/knot (Bootstrap Icons, 16x16)
  * Gemini: Google four-pointed sparkle (scaled from official, 65x65)
  */
+
+import { toolLabel } from './toolRegistry.js'
 
 export const TOOL_ICONS = {
   claude: {
@@ -42,13 +44,6 @@ const TOOL_SIDEBAR_SMALL_ICONS = {
   },
 }
 
-/** Display names for each CLI tool. */
-export const TOOL_NAMES = {
-  claude: 'Claude',
-  codex: 'Codex',
-  gemini: 'Gemini',
-}
-
 /** Get icon data for a tool key, with claude fallback. */
 export function getToolIcon(tool, variant = 'default') {
   if (variant === 'sidebarSmall') {
@@ -59,5 +54,5 @@ export function getToolIcon(tool, variant = 'default') {
 
 /** Get display name for a tool key, with claude fallback. */
 export function getToolName(tool) {
-  return TOOL_NAMES[tool] || 'Claude'
+  return toolLabel(tool, 'Claude')
 }

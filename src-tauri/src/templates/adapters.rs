@@ -393,7 +393,7 @@ fn import_claude_agent_at(
         frontmatter.model,
         None,
         frontmatter.tools.unwrap_or_default().into_vec(),
-        CliTool::from_alias("claude").expect("Claude adapter tool is registered"),
+        CliTool::Claude,
     )
 }
 
@@ -418,7 +418,7 @@ fn import_copilot_agent_at(
         frontmatter.model,
         frontmatter.description,
         Vec::new(),
-        CliTool::from_alias("codex").expect("Copilot adapter tool is registered"),
+        CliTool::Codex,
     )
 }
 

@@ -603,8 +603,7 @@ fn config_dirs_of_live_sessions() -> Vec<PathBuf> {
         .filter(|session| {
             crate::session_scanner::cli_tool::spec(session.cli_tool)
                 .capabilities
-                .config_dir_env
-                .is_some()
+                .account_selection
         })
         .filter_map(|session| session.jsonl_path)
         .filter_map(|transcript| {
@@ -638,8 +637,7 @@ pub(crate) fn record_claude_transcripts(sessions: &[RuntimeSession]) {
     for session in sessions.iter().filter(|session| {
         crate::session_scanner::cli_tool::spec(session.cli_tool)
             .capabilities
-            .config_dir_env
-            .is_some()
+            .account_selection
     }) {
         let Some(transcript) = session.jsonl_path.as_deref() else {
             continue;

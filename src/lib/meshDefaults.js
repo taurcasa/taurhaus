@@ -1,4 +1,4 @@
-export { TOOL_OPTIONS } from './toolRegistry.js'
+export { toolOptions } from './toolRegistry.js'
 export { normalizeTool } from './toolRegistry.js'
 
 import { normalizeTool } from './toolRegistry.js'

@@ -84,6 +84,13 @@ pub enum EffortFlag {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SessionRoot {
+    ToolHome,
+    AppManagedClaudeDir,
+}
+
 /// Capability declarations consumed by tool-agnostic call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
@@ -98,7 +105,10 @@ pub struct CliCapabilities {
     pub transcript_parser: bool,
     pub transcript_compaction_signals: bool,
     pub catalog: bool,
+    pub session_root: SessionRoot,
     pub config_dir_env: Option<&'static str>,
+    pub account_selection: bool,
+    pub team_config_namespace: bool,
     pub usage_bridge: bool,
     pub notify_sink: bool,
     pub hook_trust: bool,
@@ -128,6 +138,7 @@ pub struct CliToolSpec {
     pub default_commands: ToolCommands,
     pub label: &'static str,
     pub accent: &'static str,
+    pub default_agent_role_id: &'static str,
     pub capabilities: CliCapabilities,
     pub stop_strategy: StopStrategy,
     pub process_activity_signal: ProcessActivitySignal,
@@ -159,6 +170,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             label: "Claude",
             accent: "emerald",
+            default_agent_role_id: "claude-reviewer",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
@@ -171,7 +183,10 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 transcript_parser: true,
                 transcript_compaction_signals: false,
                 catalog: true,
+                session_root: SessionRoot::AppManagedClaudeDir,
                 config_dir_env: Some("CLAUDE_CONFIG_DIR"),
+                account_selection: true,
+                team_config_namespace: true,
                 usage_bridge: true,
                 notify_sink: false,
                 hook_trust: false,
@@ -199,6 +214,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             label: "Codex",
             accent: "sky",
+            default_agent_role_id: "codex-developer",
             capabilities: CliCapabilities {
                 model_flag: Some("-m"),
                 effort_flag: Some(EffortFlag::Config {
@@ -214,7 +230,10 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 transcript_parser: true,
                 transcript_compaction_signals: true,
                 catalog: true,
+                session_root: SessionRoot::ToolHome,
                 config_dir_env: None,
+                account_selection: false,
+                team_config_namespace: false,
                 usage_bridge: false,
                 notify_sink: true,
                 hook_trust: true,
@@ -242,19 +261,23 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             label: "Gemini",
             accent: "violet",
+            default_agent_role_id: "custom-doc-writer",
             capabilities: CliCapabilities {
                 model_flag: Some("-m"),
                 effort_flag: None,
                 display_name_flag: None,
                 team_flags: false,
                 native_inbox_poller: false,
-                session_source: false,
+                session_source: true,
                 authoritative_idle: false,
                 compaction_hook: false,
                 transcript_parser: false,
                 transcript_compaction_signals: false,
                 catalog: true,
+                session_root: SessionRoot::ToolHome,
                 config_dir_env: None,
+                account_selection: false,
+                team_config_namespace: false,
                 usage_bridge: false,
                 notify_sink: false,
                 hook_trust: false,
@@ -331,13 +354,6 @@ pub fn infer_from_model(model: &str) -> CliTool {
         .unwrap_or_else(bridged_default)
 }
 
-pub fn transcript_compaction_tool() -> Option<CliTool> {
-    all()
-        .iter()
-        .find(|entry| entry.capabilities.transcript_compaction_signals)
-        .map(|entry| entry.tool)
-}
-
 pub fn native_inbox_tool() -> Option<CliTool> {
     all()
         .iter()
@@ -378,7 +394,10 @@ pub struct CliCapabilityDescriptor {
     pub transcript_parser: bool,
     pub transcript_compaction_signals: bool,
     pub catalog: bool,
+    pub session_root: SessionRoot,
     pub config_dir_env: Option<String>,
+    pub account_selection: bool,
+    pub team_config_namespace: bool,
     pub usage_bridge: bool,
     pub notify_sink: bool,
     pub hook_trust: bool,
@@ -398,7 +417,10 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
             transcript_parser: value.transcript_parser,
             transcript_compaction_signals: value.transcript_compaction_signals,
             catalog: value.catalog,
+            session_root: value.session_root,
             config_dir_env: value.config_dir_env.map(str::to_string),
+            account_selection: value.account_selection,
+            team_config_namespace: value.team_config_namespace,
             usage_bridge: value.usage_bridge,
             notify_sink: value.notify_sink,
             hook_trust: value.hook_trust,
@@ -412,6 +434,7 @@ pub struct CliToolDescriptor {
     pub id: CliTool,
     pub label: String,
     pub accent: String,
+    pub default_agent_role_id: String,
     pub aliases: Vec<String>,
     pub capabilities: CliCapabilityDescriptor,
 }
@@ -422,6 +445,7 @@ impl From<&CliToolSpec> for CliToolDescriptor {
             id: value.tool,
             label: value.label.to_string(),
             accent: value.accent.to_string(),
+            default_agent_role_id: value.default_agent_role_id.to_string(),
             aliases: value
                 .aliases
                 .iter()
@@ -451,13 +475,21 @@ impl CliToolSpec {
             crate::session_scanner::idle::ClaudeRegistrySessionSource;
         static CODEX: crate::session_scanner::idle::CodexSessionSource =
             crate::session_scanner::idle::CodexSessionSource;
+        static GEMINI: std::sync::OnceLock<crate::session_scanner::idle::GeminiResolver> =
+            std::sync::OnceLock::new();
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
+
+        if !self.capabilities.session_source {
+            return &NONE;
+        }
 
         match self.tool {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
-            CliTool::Gemini => &NONE,
+            CliTool::Gemini => {
+                GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new)
+            }
         }
     }
 
@@ -484,6 +516,10 @@ impl CliToolSpec {
             crate::coordination::compact_hook::ClaudeCompactionSignalSource;
         static CODEX: crate::coordination::compact_hook::CodexCompactionSignalSource =
             crate::coordination::compact_hook::CodexCompactionSignalSource;
+
+        if !self.capabilities.compaction_hook {
+            return None;
+        }
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),

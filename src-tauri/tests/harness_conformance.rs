@@ -1,9 +1,21 @@
+#![cfg(feature = "mesh-bridged-backend")]
+
+use std::fs;
+use std::sync::Arc;
+
 use pretty_assertions::assert_eq;
+use taurhaus_lib::coordination::backend::MeshBridgedBackend;
 use taurhaus_lib::coordination::domain::MemberRole;
+use taurhaus_lib::coordination::orchestrator::CoordinationOrchestrator;
+use taurhaus_lib::coordination::requests::{
+    AgentSetupConfig, DeliveryRequest, InitializeTeamRequest, LeadMode, OperatorNoticeDelivery,
+};
+use taurhaus_lib::coordination::runtime::{RecordingCoordinationRuntime, RuntimeCall};
+use taurhaus_lib::coordination::stores::MeshInboxStore;
 use taurhaus_lib::daemon::protocol::LaunchMode;
-use taurhaus_lib::models::CliCommandSettings;
-use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, StopStrategy};
-use taurhaus_lib::session_scanner::idle::IdleResult;
+use taurhaus_lib::models::{CliCommandSettings, ModelCatalog};
+use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
+use taurhaus_lib::session_scanner::idle::{IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
 use taurhaus_lib::session_scanner::process::detect_cli_tool;
 use taurhaus_lib::session_scanner::SessionState;
@@ -123,6 +135,15 @@ fn registry_is_complete_and_drives_the_terminal_contract() {
             Some(entry.tool)
         );
     }
+
+    let frontend_fixture: Vec<taurhaus_lib::session_scanner::cli_tool::CliToolDescriptor> =
+        serde_json::from_str(include_str!("../../src/lib/fixtures/tool-registry.json"))
+            .expect("frontend registry fixture");
+    assert_eq!(
+        taurhaus_lib::session_scanner::cli_tool::descriptors(),
+        frontend_fixture,
+        "Rust descriptors and the pre-settings frontend fallback must stay identical"
+    );
 }
 
 #[test]
@@ -152,10 +173,193 @@ fn registry_declares_native_and_floor_capabilities() {
 }
 
 #[test]
+fn claude_only_capabilities_are_declared_independently() {
+    // Regression: d6839a3 and a574720 introduced Claude account selection and
+    // usage bridging; 07fc8f3 then overloaded config_dir_env as the predicate
+    // for account discovery, session roots, and team config namespaces.
+    let app_managed_roots = all()
+        .iter()
+        .filter(|entry| entry.capabilities.session_root == SessionRoot::AppManagedClaudeDir)
+        .map(|entry| entry.tool)
+        .collect::<Vec<_>>();
+    assert_eq!(app_managed_roots, vec![CliTool::Claude]);
+
+    let account_tools = all()
+        .iter()
+        .filter(|entry| entry.capabilities.account_selection)
+        .map(|entry| entry.tool)
+        .collect::<Vec<_>>();
+    assert_eq!(account_tools, vec![CliTool::Claude]);
+
+    let team_namespace_tools = all()
+        .iter()
+        .filter(|entry| entry.capabilities.team_config_namespace)
+        .map(|entry| entry.tool)
+        .collect::<Vec<_>>();
+    assert_eq!(team_namespace_tools, vec![CliTool::Claude]);
+
+    let usage_bridge_tools = all()
+        .iter()
+        .filter(|entry| entry.capabilities.usage_bridge)
+        .map(|entry| entry.tool)
+        .collect::<Vec<_>>();
+    assert_eq!(usage_bridge_tools, vec![CliTool::Claude]);
+}
+
+#[test]
+fn catalog_defaults_conform_for_every_registry_entry() {
+    // Regression: 07fc8f3 declared catalog capability data without checking
+    // that every registry entry has a valid default model and effort pair.
+    for entry in all() {
+        let catalog_entries = ModelCatalog::entries_for(entry.tool);
+        if entry.capabilities.catalog {
+            assert!(!catalog_entries.is_empty(), "{} catalog", entry.name);
+            let default = ModelCatalog::default_for(entry.tool);
+            assert!(
+                ModelCatalog::entry_for(entry.tool, &default.id).is_some(),
+                "{} default model",
+                entry.name
+            );
+            if let Some(effort) = default.default_effort.as_deref() {
+                assert!(
+                    ModelCatalog::supports_effort(entry.tool, Some(&default.id), effort),
+                    "{} default effort",
+                    entry.name
+                );
+            }
+        } else {
+            assert!(
+                catalog_entries.is_empty(),
+                "{} declares catalog: none",
+                entry.name
+            );
+        }
+    }
+}
+
+fn setup_config(tool: CliTool) -> AgentSetupConfig {
+    let default = ModelCatalog::default_for(tool);
+    AgentSetupConfig {
+        name: "team-lead".to_string(),
+        cli_tool: tool.to_string(),
+        model: default.id.clone(),
+        reasoning_effort: default.default_effort.clone(),
+        project_id: "/tmp/taurhaus-conformance-project".to_string(),
+        description: None,
+        role_id: None,
+        role_name: None,
+        focus_area: None,
+        context_summary: None,
+        behavior_summary: None,
+        communication_style: None,
+        runtime_compact_summary: None,
+        instructions: None,
+        behavioral_contract: None,
+        quality_gates: None,
+        handoff_expectations: None,
+        definition_of_done: None,
+        phase_scope: None,
+        mode: None,
+        inherits_from: None,
+        required_artifacts: None,
+        capabilities: None,
+    }
+}
+
+#[test]
+fn every_registry_entry_launches_and_receives_an_operator_notice_through_the_floor() {
+    // Regression: 07fc8f3 added registry entries without exercising the real
+    // tmux/mesh launch and inbox-delivery floor for every registered harness.
+    for entry in all() {
+        let temp = tempfile::tempdir().expect("coordination conformance root");
+        let team_name = format!("{}-conformance", entry.name);
+        let credential_dir = temp
+            .path()
+            .join(&team_name)
+            .join("state")
+            .join("control_auth");
+        fs::create_dir_all(&credential_dir).expect("credential dir");
+        fs::write(
+            credential_dir.join("team-lead.json"),
+            r#"{"name":"team-lead","token":"conformance-token"}"#,
+        )
+        .expect("lead credential");
+
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_mesh_join_teams_dir(temp.path());
+        let backend = Arc::new(MeshBridgedBackend::new_with_teams_dir(
+            temp.path().to_path_buf(),
+        ));
+        let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+            temp.path().to_path_buf(),
+            backend,
+            runtime.clone(),
+        );
+        let report = orchestrator
+            .initialize_team(&InitializeTeamRequest {
+                team_name: team_name.clone(),
+                team_description: Some("harness conformance".to_string()),
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config(entry.tool),
+                agents: vec![],
+            })
+            .expect("team launch");
+        assert!(
+            report.failed_step.is_none(),
+            "{} launch failed: {report:?}",
+            entry.name
+        );
+
+        orchestrator
+            .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
+                member_name: "team-lead".to_string(),
+                team_name: team_name.clone(),
+                message: format!("{} conformance notice", entry.name),
+                sender_name: Some("operator".to_string()),
+                operational_context: None,
+            }))
+            .expect("operator notice");
+
+        let calls = runtime.calls();
+        assert!(
+            calls
+                .iter()
+                .any(|call| matches!(call, RuntimeCall::CreatePane { .. })),
+            "{} pane launch",
+            entry.name
+        );
+        assert!(
+            calls
+                .iter()
+                .any(|call| matches!(call, RuntimeCall::SendKeys { .. })),
+            "{} command launch",
+            entry.name
+        );
+        assert_eq!(
+            calls
+                .iter()
+                .any(|call| matches!(call, RuntimeCall::SpawnDaemon { .. })),
+            !entry.capabilities.native_inbox_poller,
+            "{} member daemon floor",
+            entry.name
+        );
+        let inbox =
+            MeshInboxStore::load(temp.path(), &team_name, "team-lead").expect("operator inbox");
+        assert!(
+            inbox
+                .iter()
+                .any(|message| message.text == format!("{} conformance notice", entry.name)),
+            "{} inbox append",
+            entry.name
+        );
+    }
+}
+
+#[test]
 fn undeclared_session_source_uses_the_non_authoritative_floor() {
-    // Regression: commit cb32d7a made Gemini identity depend on a bespoke
-    // project transcript lookup; an undeclared source must stay on the floor.
-    let result = spec(CliTool::Gemini).session_source().resolve(
+    // Regression: f90b362 must preserve a non-authoritative floor for future
+    // harnesses that declare no transcript-backed session source.
+    let result = taurhaus_lib::session_scanner::idle::NoSessionSource.resolve(
         "/tmp/taurhaus-conformance-project",
         42,
         Some("%42"),
@@ -221,13 +425,9 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
             "transcript_path": transcript,
         })
         .to_string();
-        assert_eq!(
-            source
-                .parse_payload(&payload)
-                .expect("source parses payload")
-                .inferred_tool(),
-            Some(tool)
-        );
+        let parsed: taurhaus_lib::coordination::compact_hook::CompactHookInput =
+            serde_json::from_str(&payload).expect("shared hook payload");
+        assert_eq!(parsed.inferred_tool(), Some(tool));
 
         assert!(source
             .remove(&config_dir)

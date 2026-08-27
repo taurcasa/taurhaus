@@ -1,6 +1,7 @@
 <script>
   import { statusBadgeClass, statusLabel } from './taskHelpers.js'
-  import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { TOOL_ICONS } from './toolLogos.js'
+  import { toolLabel as registeredToolLabel } from './toolRegistry.js'
   import { themeTokens } from './themeTokens.js'
   import MarkdownRenderer from './MarkdownRenderer.svelte'
 
@@ -24,11 +25,9 @@
   const depChipText   = $derived(dark ? 'text-zinc-300' : 'text-zinc-600')
   const depChipHover  = $derived(dark ? 'hover:bg-zinc-700' : 'hover:bg-zinc-200')
 
-  const SOURCE_LABELS = TOOL_NAMES
-
   // Resolve tool icon reactively from props
   const toolIcon = $derived(TOOL_ICONS[task.source] || TOOL_ICONS.claude)
-  const toolLabel = $derived(SOURCE_LABELS[task.source] || task.source)
+  const toolLabel = $derived(registeredToolLabel(task.source, task.source))
 
   // Close on Escape key
   function handleKeydown(e) {

@@ -2,7 +2,8 @@
   import { tick } from 'svelte'
   import { getProjectTasks, getTaskDetail } from './ipc.js'
   import { groupTasksByStatus } from './taskHelpers.js'
-  import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { TOOL_ICONS } from './toolLogos.js'
+  import { toolLabel } from './toolRegistry.js'
   import { themeTokens } from './themeTokens.js'
   import { createAsyncGuard } from './asyncGuard.js'
   import { getProjectContext } from './context/ProjectContext.js'
@@ -40,8 +41,6 @@
   let taskDetail = $state(null)
   let taskDetailError = $state(null)
   const taskListFetchGuard = createAsyncGuard()
-
-  const SOURCE_LABELS = TOOL_NAMES
 
   // Column definitions (static keys + labels; dot color resolved via $derived)
   const COLUMNS = [
@@ -438,7 +437,7 @@
                   <svg class="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                   </svg>
-                  <span>{SOURCE_LABELS[source] || source}: {message}</span>
+                  <span>{toolLabel(source, source)}: {message}</span>
                 </div>
               {/each}
             </div>
@@ -522,7 +521,7 @@
   >
     <!-- Top line: tool icon + subject -->
     <div class="flex items-start gap-2">
-      <span class="w-[14px] h-[14px] shrink-0 mt-0.5 {t.textTertiary}" aria-label={SOURCE_LABELS[task.source] || task.source}>
+      <span class="w-[14px] h-[14px] shrink-0 mt-0.5 {t.textTertiary}" aria-label={toolLabel(task.source, task.source)}>
         <svg class="w-[12px] h-[12px]" viewBox={icon.viewBox} fill="currentColor" aria-hidden="true">
           <path d={icon.path}/>
         </svg>

@@ -28,10 +28,11 @@ pub struct ClaudeSourceIndex {
 /// Build Claude source index using default user directories and live sessions.
 pub fn build_claude_source_index() -> ClaudeSourceIndex {
     let tasks_base = PlatformPaths::claude_dir().join("tasks");
-    let projects_base = PlatformPaths::tool_session_root(
-        crate::session_scanner::cli_tool::native_inbox_tool()
-            .expect("a native inbox tool is registered"),
-    );
+    let Some(native_tool) = crate::session_scanner::cli_tool::native_inbox_tool() else {
+        tracing::warn!("Claude source index disabled: no native-inbox harness is registered");
+        return ClaudeSourceIndex::default();
+    };
+    let projects_base = PlatformPaths::tool_session_root(native_tool);
     let teams_base = PlatformPaths::teams_dir();
     // Continuity read: live sessions only add session id -> project path
     // mappings (merged with offline discovery); a degraded scan keeps the last
@@ -46,10 +47,11 @@ pub fn build_claude_source_index_with_live_sessions(
     live_sessions: &[RuntimeSession],
 ) -> ClaudeSourceIndex {
     let tasks_base = PlatformPaths::claude_dir().join("tasks");
-    let projects_base = PlatformPaths::tool_session_root(
-        crate::session_scanner::cli_tool::native_inbox_tool()
-            .expect("a native inbox tool is registered"),
-    );
+    let Some(native_tool) = crate::session_scanner::cli_tool::native_inbox_tool() else {
+        tracing::warn!("Claude source index disabled: no native-inbox harness is registered");
+        return ClaudeSourceIndex::default();
+    };
+    let projects_base = PlatformPaths::tool_session_root(native_tool);
     let teams_base = PlatformPaths::teams_dir();
 
     build_claude_source_index_in(live_sessions, &tasks_base, &projects_base, &teams_base)

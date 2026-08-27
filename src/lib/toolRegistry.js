@@ -1,3 +1,5 @@
+import { createToolRegistryState } from './toolRegistryState.svelte.js'
+
 const CAPABILITY_DEFAULTS = Object.freeze({
   modelFlag: null,
   effortFlag: null,
@@ -10,7 +12,10 @@ const CAPABILITY_DEFAULTS = Object.freeze({
   transcriptParser: false,
   transcriptCompactionSignals: false,
   catalog: false,
+  sessionRoot: 'toolHome',
   configDirEnv: null,
+  accountSelection: false,
+  teamConfigNamespace: false,
   usageBridge: false,
   notifySink: false,
   hookTrust: false,
@@ -21,6 +26,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     id: 'claude',
     label: 'Claude',
     accent: 'emerald',
+    defaultAgentRoleId: 'claude-reviewer',
     aliases: ['claude', 'claude_native'],
     capabilities: {
       modelFlag: '--model',
@@ -34,7 +40,10 @@ export const FALLBACK_TOOLS = Object.freeze([
       transcriptParser: true,
       transcriptCompactionSignals: false,
       catalog: true,
+      sessionRoot: 'appManagedClaudeDir',
       configDirEnv: 'CLAUDE_CONFIG_DIR',
+      accountSelection: true,
+      teamConfigNamespace: true,
       usageBridge: true,
       notifySink: false,
       hookTrust: false,
@@ -44,6 +53,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     id: 'codex',
     label: 'Codex',
     accent: 'sky',
+    defaultAgentRoleId: 'codex-developer',
     aliases: ['codex', 'mesh', 'mesh_bridged'],
     capabilities: {
       modelFlag: '-m',
@@ -57,7 +67,10 @@ export const FALLBACK_TOOLS = Object.freeze([
       transcriptParser: true,
       transcriptCompactionSignals: true,
       catalog: true,
+      sessionRoot: 'toolHome',
       configDirEnv: null,
+      accountSelection: false,
+      teamConfigNamespace: false,
       usageBridge: false,
       notifySink: true,
       hookTrust: true,
@@ -67,6 +80,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     id: 'gemini',
     label: 'Gemini',
     accent: 'violet',
+    defaultAgentRoleId: 'custom-doc-writer',
     aliases: ['gemini'],
     capabilities: {
       modelFlag: '-m',
@@ -74,13 +88,16 @@ export const FALLBACK_TOOLS = Object.freeze([
       displayNameFlag: null,
       teamFlags: false,
       nativeInboxPoller: false,
-      sessionSource: false,
+      sessionSource: true,
       authoritativeIdle: false,
       compactionHook: false,
       transcriptParser: false,
       transcriptCompactionSignals: false,
       catalog: true,
+      sessionRoot: 'toolHome',
       configDirEnv: null,
+      accountSelection: false,
+      teamConfigNamespace: false,
       usageBridge: false,
       notifySink: false,
       hookTrust: false,
@@ -88,7 +105,7 @@ export const FALLBACK_TOOLS = Object.freeze([
   },
 ])
 
-let currentTools = FALLBACK_TOOLS
+const registryState = createToolRegistryState(FALLBACK_TOOLS)
 
 function stringOrNull(value) {
   if (value == null) return null
@@ -117,7 +134,13 @@ function normalizeCapabilities(raw) {
       capability(source, 'transcriptCompactionSignals', 'transcript_compaction_signals')
     ),
     catalog: Boolean(capability(source, 'catalog', 'catalog')),
+    sessionRoot:
+      stringOrNull(capability(source, 'sessionRoot', 'session_root', 'toolHome')) ?? 'toolHome',
     configDirEnv: stringOrNull(capability(source, 'configDirEnv', 'config_dir_env', null)),
+    accountSelection: Boolean(capability(source, 'accountSelection', 'account_selection')),
+    teamConfigNamespace: Boolean(
+      capability(source, 'teamConfigNamespace', 'team_config_namespace')
+    ),
     usageBridge: Boolean(capability(source, 'usageBridge', 'usage_bridge')),
     notifySink: Boolean(capability(source, 'notifySink', 'notify_sink')),
     hookTrust: Boolean(capability(source, 'hookTrust', 'hook_trust')),
@@ -136,6 +159,7 @@ function normalizeDescriptor(raw) {
     id,
     label: String(raw.label ?? id).trim() || id,
     accent: String(raw.accent ?? 'brand').trim() || 'brand',
+    defaultAgentRoleId: stringOrNull(raw.defaultAgentRoleId ?? raw.default_agent_role_id),
     aliases,
     capabilities: normalizeCapabilities(raw.capabilities),
   }
@@ -148,30 +172,41 @@ export function normalizeToolDescriptors(raw, fallback = FALLBACK_TOOLS) {
 }
 
 export function configureToolRegistry(raw) {
-  currentTools = normalizeToolDescriptors(raw)
-  return currentTools
+  registryState.tools = normalizeToolDescriptors(raw)
+  return registryState.tools
 }
 
 export function resetToolRegistry() {
-  currentTools = FALLBACK_TOOLS
+  registryState.tools = FALLBACK_TOOLS
 }
 
 export function tools() {
-  return currentTools
+  return registryState.tools
 }
 
 export function toolDescriptor(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
-  return currentTools.find((entry) => entry.aliases.includes(normalized)) ?? null
+  return tools().find((entry) => entry.aliases.includes(normalized)) ?? null
 }
 
-export const TOOL_OPTIONS = Object.freeze(FALLBACK_TOOLS.map((entry) => entry.id))
+export function toolOptions() {
+  return tools().map((entry) => entry.id)
+}
+
+export function defaultToolForRole(kind) {
+  const wantsNativeInbox = String(kind ?? '').trim().toLowerCase() === 'lead'
+  return (
+    tools().find(
+      (entry) => entry.capabilities.nativeInboxPoller === wantsNativeInbox
+    )?.id ?? fallbackDescriptor()?.id ?? ''
+  )
+}
 
 function fallbackDescriptor(value = null) {
   return (
     toolDescriptor(value) ??
-    currentTools.find((entry) => entry.capabilities.nativeInboxPoller) ??
-    currentTools[0] ??
+    tools().find((entry) => entry.capabilities.nativeInboxPoller) ??
+    tools()[0] ??
     null
   )
 }
@@ -190,7 +225,7 @@ export function toolAccent(value, fallback = 'brand') {
 
 export function toolCounts(items, readTool) {
   const values = Array.isArray(items) ? items : []
-  const counts = Object.fromEntries(currentTools.map((entry) => [entry.id, 0]))
+  const counts = Object.fromEntries(tools().map((entry) => [entry.id, 0]))
   for (const item of values) {
     const id = toolDescriptor(readTool(item))?.id
     if (id && Object.hasOwn(counts, id)) counts[id] += 1

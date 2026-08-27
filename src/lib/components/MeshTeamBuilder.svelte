@@ -23,7 +23,13 @@
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { getToolIcon } from '../toolLogos.js'
-  import { toolAccent, toolCounts, toolLabel, tools } from '../toolRegistry.js'
+  import {
+    defaultToolForRole,
+    toolAccent,
+    toolCounts,
+    toolLabel,
+    tools,
+  } from '../toolRegistry.js'
   import { projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
@@ -81,7 +87,7 @@
   })
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
-  const toolOptions = tools()
+  const toolOptions = $derived(tools())
 
   // The effort a role-bound roster row actually launches with when it declares
   // none itself: the backend refills it from the role template.
@@ -213,7 +219,7 @@
     (roleTemplates ?? [])
       .filter((role) => role && (role.roleId || role.name))
       .map((role) => {
-        const tool = resolveRoleTool(role, role.kind === 'lead' ? 'claude' : 'codex')
+        const tool = resolveRoleTool(role, defaultToolForRole(role.kind))
         const model = resolveRoleModel(role)
         const reasoningEffort = resolveRoleReasoningEffort(role)
         return {

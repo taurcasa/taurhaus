@@ -469,6 +469,10 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
 /// the thread, so a burst of requests costs one pass rather than one thread
 /// each.
 pub fn ensure_statusline_bridge_soon(taurhaus_exe: PathBuf) {
+    if !usage_bridge_is_declared() {
+        tracing::warn!("Claude usage status line skipped: no usage bridge harness is registered");
+        return;
+    }
     if !pass_is_due(&LAST_BRIDGE_PASS, Instant::now()) {
         return;
     }
@@ -484,10 +488,20 @@ pub fn ensure_statusline_bridge_soon(taurhaus_exe: PathBuf) {
 /// daemon startup, which runs the install beside the listener rather than in
 /// front of it.
 pub fn ensure_statusline_bridge(taurhaus_exe: &Path) {
+    if !usage_bridge_is_declared() {
+        tracing::warn!("Claude usage status line skipped: no usage bridge harness is registered");
+        return;
+    }
     if !pass_is_due(&LAST_BRIDGE_PASS, Instant::now()) {
         return;
     }
     install_statusline_for_detected_accounts(taurhaus_exe);
+}
+
+fn usage_bridge_is_declared() -> bool {
+    crate::session_scanner::cli_tool::all()
+        .iter()
+        .any(|entry| entry.capabilities.usage_bridge)
 }
 
 /// Whether enough has passed since the last pass to run another — stamping

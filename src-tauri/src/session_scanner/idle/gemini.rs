@@ -15,6 +15,13 @@ impl GeminiResolver {
         let base_dir = dirs::home_dir().map(|h| h.join(".gemini").join("tmp"));
         Self { base_dir }
     }
+
+    #[cfg(test)]
+    fn with_base_dir(base_dir: PathBuf) -> Self {
+        Self {
+            base_dir: Some(base_dir),
+        }
+    }
 }
 
 impl Default for GeminiResolver {
@@ -30,6 +37,12 @@ impl SessionResolver for GeminiResolver {
             None => return IdleResult::idle(),
         };
         gemini_detect_idle(project_path, base)
+    }
+}
+
+impl SessionSource for GeminiResolver {
+    fn resolve(&self, project_path: &str, _pid: u32, _pane_id: Option<&str>) -> IdleResult {
+        self.detect_idle(project_path)
     }
 }
 
@@ -118,6 +131,28 @@ mod tests {
         assert_eq!(result.state, SessionState::Active);
         assert_eq!(result.session_id.as_deref(), Some("abc12345"));
         assert!(result.jsonl_path.is_some());
+    }
+
+    #[test]
+    fn gemini_runtime_source_preserves_transcript_identity() {
+        // Regression: f90b362 replaced Gemini's project-scoped resolver with
+        // NoSessionSource, dropping its session id, transcript path, and mtime
+        // activity from every runtime scan.
+        let tmp = TempDir::new().unwrap();
+        let project = "/home/user/projects/runtime-gemini";
+        let chats_dir = tmp.path().join("runtime-gemini").join("chats");
+        fs::create_dir_all(&chats_dir).unwrap();
+        let session = chats_dir.join("session-2026-08-27T10-00-feedface.json");
+        File::create(&session).unwrap();
+
+        let source = GeminiResolver::with_base_dir(tmp.path().to_path_buf());
+        let result = detect_runtime_idle_with_source(project, 4242, Some("%42"), &source);
+
+        assert_eq!(result.state, SessionState::Active);
+        assert_eq!(result.session_id.as_deref(), Some("feedface"));
+        assert_eq!(result.jsonl_path.as_deref(), session.to_str());
+        assert!(result.last_output_age_secs.is_some());
+        assert!(!result.authoritative);
     }
 
     #[test]

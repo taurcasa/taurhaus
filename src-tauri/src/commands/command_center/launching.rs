@@ -111,8 +111,7 @@ pub(super) fn launch_cli_session_impl(
     let terminal_settings = load_terminal_settings(db);
     let account = crate::session_scanner::cli_tool::spec(tool)
         .capabilities
-        .config_dir_env
-        .is_some()
+        .account_selection
         .then(|| {
             let launch = resolve_claude_account(
                 provider,

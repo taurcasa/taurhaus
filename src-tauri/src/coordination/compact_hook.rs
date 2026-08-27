@@ -133,37 +133,10 @@ impl CompactHookFailureStage {
 pub trait CompactionSignalSource: Send + Sync {
     fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError>;
     fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError>;
-    fn parse_payload(&self, raw: &str) -> Result<CompactHookInput, serde_json::Error> {
-        serde_json::from_str(raw)
-    }
 }
 
 fn parse_compact_hook_input(raw: &str) -> Result<CompactHookInput, serde_json::Error> {
-    let payload: CompactHookInput = serde_json::from_str(raw)?;
-    let Some(source) = payload
-        .inferred_tool()
-        .and_then(compaction_signal_source_for)
-    else {
-        return Ok(payload);
-    };
-    source.parse_payload(raw)
-}
-
-fn compaction_signal_source_for(tool: CliTool) -> Option<&'static dyn CompactionSignalSource> {
-    #[cfg(not(test))]
-    {
-        crate::session_scanner::cli_tool::spec(tool).compaction_signal_source()
-    }
-    #[cfg(test)]
-    {
-        static CLAUDE: ClaudeCompactionSignalSource = ClaudeCompactionSignalSource;
-        static CODEX: CodexCompactionSignalSource = CodexCompactionSignalSource;
-        match tool {
-            CliTool::Claude => Some(&CLAUDE),
-            CliTool::Codex => Some(&CODEX),
-            CliTool::Gemini => None,
-        }
-    }
+    serde_json::from_str(raw)
 }
 
 pub struct ClaudeCompactionSignalSource;

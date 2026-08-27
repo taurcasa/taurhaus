@@ -10,6 +10,11 @@ vi.mock('../ipc.js', () => ({
 import * as ipc from '../ipc.js'
 import TeamCustomizerPanel from './TeamCustomizerPanel.svelte'
 import { TEST_MODEL_CATALOG } from '../../test/fixtures/modelCatalog.js'
+import {
+  FALLBACK_TOOLS,
+  configureToolRegistry,
+  resetToolRegistry,
+} from '../toolRegistry.js'
 
 function baseTeamConfig() {
   return {
@@ -41,6 +46,7 @@ function baseTeamConfig() {
 describe('TeamCustomizerPanel - Save as Preset', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetToolRegistry()
     ipc.upsertTeamPreset.mockResolvedValue({ presetId: 'new-preset', name: 'New Preset' })
   })
 
@@ -123,6 +129,35 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
             overrides: { model: 'gpt-5.4', reasoningEffort: 'high' },
           }),
         ],
+      })
+    )
+  })
+
+  it('uses the registry role default independently of the presentation accent', async () => {
+    // Regression: 91f4d3f replaced tool identity with accent identity, so a
+    // harmless palette change silently changed the persisted role template.
+    const contract = structuredClone(FALLBACK_TOOLS)
+    contract.find((entry) => entry.id === 'codex').accent = 'emerald'
+    contract.find((entry) => entry.id === 'codex').defaultAgentRoleId = 'codex-developer'
+    configureToolRegistry(contract)
+
+    render(TeamCustomizerPanel, {
+      props: {
+        open: true,
+        teamConfig: baseTeamConfig(),
+        projectPath: '/projects/taurhaus',
+      },
+    })
+
+    await fireEvent.click(await screen.findByTestId('team-customizer-save-preset-trigger'))
+    await fireEvent.input(screen.getByTestId('save-preset-name-input'), {
+      target: { value: 'Semantic Registry' },
+    })
+    await fireEvent.click(screen.getByTestId('save-preset-confirm'))
+
+    expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSlots: [expect.objectContaining({ roleId: 'codex-developer' })],
       })
     )
   })

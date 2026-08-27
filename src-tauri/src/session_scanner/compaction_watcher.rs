@@ -231,8 +231,7 @@ impl CompactionSignalWatcherCore {
             let context = recovered_context.expect("recovered_count guarantees context");
             self.note_missed_event_recovery(recovered_count as u64)?;
             emit_compaction_watcher_missed_event_recovered(CompactionWatcherMissedEventRecovered {
-                tool: crate::session_scanner::cli_tool::transcript_compaction_tool()
-                    .expect("a transcript compaction source is registered"),
+                tool: context.tool,
                 recovered_count,
                 team_name: None,
                 member_name: None,

@@ -2,7 +2,7 @@
   import ModelSelect from './ModelSelect.svelte'
   import SlideOver from './SlideOver.svelte'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
-  import { TOOL_OPTIONS } from '../meshDefaults.js'
+  import { toolOptions } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
 
@@ -20,7 +20,7 @@
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
-  const toolOptions = TOOL_OPTIONS
+  const availableTools = $derived(toolOptions())
 
   let name = $state('')
   let roleId = $state('')
@@ -221,7 +221,7 @@
                 onchange={handleToolChange}
                 data-testid="role-editor-tool-select"
               >
-                {#each toolOptions as opt}
+                {#each availableTools as opt}
                   <option value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
                 {/each}
               </select>

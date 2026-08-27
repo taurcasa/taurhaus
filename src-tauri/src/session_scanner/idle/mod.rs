@@ -27,10 +27,10 @@ mod gemini;
 
 pub use claude::ClaudeResolver;
 pub use claude_registry::{
-    config_dir_for_transcript, ActivitySource, AuthoritativeState, SessionSource,
+    config_dir_for_transcript, ActivitySource, AuthoritativeState, NoSessionSource, SessionSource,
 };
 pub(crate) use claude_registry::{
-    ClaudeRegistryActivitySource, ClaudeRegistrySessionSource, NoActivitySource, NoSessionSource,
+    ClaudeRegistryActivitySource, ClaudeRegistrySessionSource, NoActivitySource,
 };
 pub use codex::CodexResolver;
 pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
@@ -130,9 +130,20 @@ pub fn detect_runtime_idle(
     pane_id: Option<&str>,
     tool: CliTool,
 ) -> IdleResult {
-    crate::session_scanner::cli_tool::spec(tool)
-        .session_source()
-        .resolve(project_path, pid, pane_id)
+    let tool_spec = crate::session_scanner::cli_tool::spec(tool);
+    let mut result =
+        detect_runtime_idle_with_source(project_path, pid, pane_id, tool_spec.session_source());
+    result.authoritative &= tool_spec.capabilities.authoritative_idle;
+    result
+}
+
+fn detect_runtime_idle_with_source(
+    project_path: &str,
+    pid: u32,
+    pane_id: Option<&str>,
+    source: &dyn SessionSource,
+) -> IdleResult {
+    source.resolve(project_path, pid, pane_id)
 }
 
 #[cfg(test)]
