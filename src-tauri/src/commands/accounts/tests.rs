@@ -1,6 +1,6 @@
 use super::*;
 use crate::db::queries;
-use crate::session_scanner::claude_accounts::{install_scan_override, ClaudeScan};
+use crate::session_scanner::accounts::claude::{install_scan_override, ClaudeScan};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::{NamedTempFile, TempDir};
@@ -68,7 +68,7 @@ fn a_missing_daemon_yields_a_degraded_report_instead_of_an_error() {
         wsl_distro: None,
     };
 
-    let report = daemon_accounts_report(&provider);
+    let report = daemon_accounts_report(&provider, CliTool::Claude);
 
     assert!(report.accounts.is_empty());
     assert!(report.degraded, "a daemon that cannot be asked is degraded");
@@ -82,7 +82,7 @@ fn a_missing_daemon_yields_a_degraded_report_instead_of_an_error() {
 // with it — while the accounts were still there and still signed in.
 #[test]
 fn a_daemon_that_never_answered_is_degraded_not_empty() {
-    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::AccountsResult>(
         Err(crate::errors::AppError::DaemonTransport(
             "connection reset by peer".to_string(),
         )),
@@ -103,7 +103,7 @@ fn an_undecodable_account_list_is_degraded_not_empty() {
     let response =
         protocol::DaemonResponse::ok("list-claude-accounts", serde_json::json!({"accounts": 7}));
 
-    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::AccountsResult>(
         Ok(response),
         "Claude accounts",
     ));
@@ -119,10 +119,10 @@ fn an_older_daemon_reports_no_accounts_without_degrading() {
     let response = protocol::DaemonResponse::err(
         "list-claude-accounts",
         "UNKNOWN_METHOD",
-        "Unknown method: list_claude_accounts",
+        "Unknown method: list_accounts",
     );
 
-    let report = daemon_accounts_report_from(daemon_answer::<protocol::ClaudeAccountsResult>(
+    let report = daemon_accounts_report_from(daemon_answer::<protocol::AccountsResult>(
         Ok(response),
         "Claude accounts",
     ));
@@ -136,7 +136,7 @@ fn an_older_daemon_reports_no_accounts_without_degrading() {
 /// project's history. A lookup that never ran must not read as "no history".
 #[test]
 fn a_transcript_lookup_the_daemon_could_not_answer_says_so() {
-    let lookup = transcript_lookup_from(daemon_answer::<protocol::ClaudeProjectTranscriptResult>(
+    let lookup = transcript_lookup_from(daemon_answer::<protocol::ProjectTranscriptResult>(
         Err(crate::errors::AppError::DaemonTransport(
             "timed out waiting for daemon".to_string(),
         )),
@@ -155,7 +155,7 @@ fn an_older_daemon_reports_no_transcript_without_degrading() {
         "Unknown method: claude_project_transcript",
     );
 
-    let lookup = transcript_lookup_from(daemon_answer::<protocol::ClaudeProjectTranscriptResult>(
+    let lookup = transcript_lookup_from(daemon_answer::<protocol::ProjectTranscriptResult>(
         Ok(response),
         "Claude transcript",
     ));

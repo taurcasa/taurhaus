@@ -25,6 +25,10 @@ use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::accounts::AccountOrigin;
 use crate::session_scanner::types::RuntimeSession;
 
+use super::{
+    Account, AccountIdentity, AccountProvider, Severity, UsageSnapshot, UsageStatus, UsageWindow,
+};
+
 /// Per-account configuration file, at the root of every config dir.
 const CONFIG_FILENAME: &str = ".claude.json";
 
@@ -68,6 +72,65 @@ const fn host_credential_store() -> CredentialStore {
     }
 }
 
+/// Claude Code account detection behind the registry capability slice.
+pub struct ClaudeAccountProvider;
+
+impl AccountProvider for ClaudeAccountProvider {
+    fn default_dir(&self, home: &Path) -> PathBuf {
+        home.join(DEFAULT_CONFIG_DIRNAME)
+    }
+
+    fn candidate_dirs(&self, home: &Path, live_selector_values: &[PathBuf]) -> Vec<PathBuf> {
+        config_dir_candidates(home, live_selector_values, &self.default_dir(home))
+    }
+
+    fn identify(&self, dir: &Path) -> Option<AccountIdentity> {
+        let account = read_account(dir, false, false, host_credential_store())?;
+        Some(AccountIdentity {
+            id: account.id,
+            label: account.email,
+            display_name: account.display_name,
+            organization: account.organization,
+            plan: account.seat_tier,
+            logged_in: account.logged_in,
+            credential_expires_at: credential_expires_at(dir),
+        })
+    }
+
+    fn session_dir(&self, transcript: &Path) -> Option<PathBuf> {
+        transcript.ancestors().find_map(|ancestor| {
+            (ancestor.file_name().and_then(|name| name.to_str()) == Some(PROJECTS_SUBDIR))
+                .then(|| ancestor.parent().map(Path::to_path_buf))
+                .flatten()
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CredentialsFile {
+    #[serde(rename = "claudeAiOauth")]
+    oauth: Option<OAuthCredentials>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OAuthCredentials {
+    #[serde(rename = "expiresAt")]
+    expires_at: Option<i64>,
+}
+
+fn credential_expires_at(config_dir: &Path) -> Option<i64> {
+    let raw = std::fs::read_to_string(config_dir.join(CREDENTIALS_FILENAME)).ok()?;
+    let expires_at = serde_json::from_str::<CredentialsFile>(&raw)
+        .ok()?
+        .oauth?
+        .expires_at?;
+    Some(if expires_at >= 1_000_000_000_000 {
+        expires_at / 1_000
+    } else {
+        expires_at
+    })
+}
+
 /// One Claude subscription, identified by the config dir it lives in.
 ///
 /// `Eq` is deliberately absent: `usage` carries the percentages Claude Code
@@ -102,6 +165,91 @@ pub struct ClaudeAccount {
     /// things and only the last of them is a number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<ClaudeAccountUsage>,
+}
+
+impl From<ClaudeAccount> for Account {
+    fn from(account: ClaudeAccount) -> Self {
+        let usage = account.usage.map(|usage| {
+            let mut windows = Vec::new();
+            if let Some(window) = usage.five_hour {
+                windows.push(UsageWindow {
+                    key: "session".to_string(),
+                    title: "Current session".to_string(),
+                    used_percentage: window.used_percentage,
+                    resets_at: window.resets_at,
+                    severity: Severity::Normal,
+                    is_active: true,
+                });
+            }
+            if let Some(window) = usage.seven_day {
+                windows.push(UsageWindow {
+                    key: "weekly_all".to_string(),
+                    title: "Current week (all models)".to_string(),
+                    used_percentage: window.used_percentage,
+                    resets_at: window.resets_at,
+                    severity: Severity::Normal,
+                    is_active: true,
+                });
+            }
+            UsageSnapshot {
+                observed_at: usage.observed_at,
+                status: UsageStatus::Ok,
+                windows,
+                note: None,
+            }
+        });
+        Self {
+            tool: crate::session_scanner::cli_tool::CliTool::Claude,
+            id: account.id.clone(),
+            dir: account.config_dir,
+            identity: AccountIdentity {
+                id: account.id,
+                label: account.email,
+                display_name: account.display_name,
+                organization: account.organization,
+                plan: account.seat_tier,
+                logged_in: account.logged_in,
+                credential_expires_at: None,
+            },
+            is_default: account.is_default,
+            is_process_default: account.is_process_default,
+            usage,
+        }
+    }
+}
+
+pub(crate) fn into_legacy_account(account: Account) -> ClaudeAccount {
+    let usage = account.usage.map(|usage| ClaudeAccountUsage {
+        five_hour: usage
+            .windows
+            .iter()
+            .find(|window| window.key == "session")
+            .map(|window| crate::daemon::claude_usage::ClaudeUsageWindow {
+                used_percentage: window.used_percentage,
+                resets_at: window.resets_at,
+            }),
+        seven_day: usage
+            .windows
+            .iter()
+            .find(|window| window.key == "weekly_all")
+            .map(|window| crate::daemon::claude_usage::ClaudeUsageWindow {
+                used_percentage: window.used_percentage,
+                resets_at: window.resets_at,
+            }),
+        observed_at: usage.observed_at,
+    });
+    ClaudeAccount {
+        id: account.id,
+        config_dir: account.dir,
+        email: account.identity.label,
+        display_name: account.identity.display_name,
+        organization: account.identity.organization,
+        seat_tier: account.identity.plan,
+        logged_in: account.identity.logged_in,
+        is_default: account.is_default,
+        is_process_default: account.is_process_default,
+        usage,
+    }
 }
 
 /// `.claude.json`, reduced to the account block. Every other key is ignored;
@@ -940,6 +1088,53 @@ mod tests {
         let default_dir = home.path().join(".claude");
         let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
         (home, accounts)
+    }
+
+    #[test]
+    fn account_provider_identifies_fixture_identity_and_credential_expiry() {
+        // Regression: commits d6839a3 and a574720 left identity and credential
+        // state inside the Claude-only command pipeline instead of the provider.
+        let home = TempDir::new().unwrap();
+        let dir = write_account(
+            home.path(),
+            ".claude",
+            PRIMARY_ID,
+            "fixture@example.com",
+            true,
+        );
+        fs::write(
+            dir.join(CREDENTIALS_FILENAME),
+            r#"{"claudeAiOauth":{"expiresAt":1788283433000}}"#,
+        )
+        .unwrap();
+
+        let identity = ClaudeAccountProvider
+            .identify(&dir)
+            .expect("fixture account");
+
+        assert_eq!(identity.id, PRIMARY_ID);
+        assert_eq!(identity.label, "fixture@example.com");
+        assert_eq!(identity.plan.as_deref(), Some("claude_max"));
+        assert!(identity.logged_in);
+        assert_eq!(identity.credential_expires_at, Some(1_788_283_433));
+    }
+
+    #[test]
+    fn account_provider_empty_home_has_only_the_default_candidate() {
+        let home = TempDir::new().unwrap();
+        assert_eq!(
+            ClaudeAccountProvider.candidate_dirs(home.path(), &[]),
+            vec![home.path().join(DEFAULT_CONFIG_DIRNAME)]
+        );
+    }
+
+    #[test]
+    fn account_provider_derives_the_config_dir_from_a_transcript() {
+        let transcript = Path::new("/tmp/account/projects/project/session.jsonl");
+        assert_eq!(
+            ClaudeAccountProvider.session_dir(transcript).as_deref(),
+            Some(Path::new("/tmp/account"))
+        );
     }
 
     #[test]

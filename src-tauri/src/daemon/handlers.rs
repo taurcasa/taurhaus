@@ -80,9 +80,9 @@ pub(crate) fn dispatch(
         protocol::method::SET_CODEX_COMPACTION_MODE => {
             handle_set_codex_compaction_mode(&request.id, &request.params)
         }
-        protocol::method::LIST_CLAUDE_ACCOUNTS => handle_list_claude_accounts(&request.id),
-        protocol::method::CLAUDE_PROJECT_TRANSCRIPT => {
-            handle_claude_project_transcript(&request.id, &request.params)
+        protocol::method::LIST_ACCOUNTS => handle_list_accounts(&request.id, &request.params),
+        protocol::method::PROJECT_TRANSCRIPT => {
+            handle_project_transcript(&request.id, &request.params)
         }
         _ => DaemonResponse::err(
             &request.id,
@@ -92,13 +92,14 @@ pub(crate) fn dispatch(
     }
 }
 
-/// Claude subscriptions on the daemon's host — the Windows app cannot read the
-/// WSL home itself.
-fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
-    let mut accounts = crate::session_scanner::claude_accounts::detect_claude_accounts_cached();
-    // The usage sink is written on the daemon's side of the WSL boundary too:
-    // the status line runs in the same Linux shell Claude Code does.
-    crate::daemon::claude_usage::attach_usage(&mut accounts);
+/// Tool accounts on the daemon's host — the Windows app cannot read the WSL
+/// homes itself.
+fn handle_list_accounts(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::ListAccountsParams = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    let accounts = crate::session_scanner::accounts::detect(params.tool);
     // And an account that signed in since the last pass — or one whose
     // `.claude.json` was mid-rewrite when it ran — gets its status-line bridge
     // here rather than waiting for the next daemon start. Behind the reply, and
@@ -106,31 +107,31 @@ fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
     if let Ok(exe) = std::env::current_exe() {
         crate::session_scanner::claude_statusline::ensure_statusline_bridge_soon(exe);
     }
-    DaemonResponse::ok(id, protocol::ClaudeAccountsResult { accounts })
-}
-
-/// The newest transcript a project has under any detected config dir — the
-/// account `--resume` has to run in. The files are the daemon's to read: on
-/// Windows they live in WSL, and the app never scans them.
-fn handle_claude_project_transcript(id: &str, params: &serde_json::Value) -> DaemonResponse {
-    let params: protocol::ClaudeProjectTranscriptParams =
-        match serde_json::from_value(params.clone()) {
-            Ok(params) => params,
-            Err(error) => {
-                return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string());
-            }
-        };
-
-    // The scan's config dirs, not its accounts: a `.claude.json` caught
-    // mid-rewrite names no account, and the transcripts beside it are still
-    // the only record of which subscription owns the project's history.
-    let config_dirs = crate::session_scanner::claude_accounts::transcript_config_dirs();
     DaemonResponse::ok(
         id,
-        protocol::ClaudeProjectTranscriptResult {
-            transcript: crate::session_scanner::claude_accounts::newest_project_transcript(
+        protocol::AccountsResult {
+            accounts,
+            degraded: false,
+            error: None,
+        },
+    )
+}
+
+/// The newest transcript a project has under any detected account dir.
+fn handle_project_transcript(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::ProjectTranscriptParams = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+
+    let config_dirs = crate::session_scanner::accounts::transcript_dirs(params.tool);
+    DaemonResponse::ok(
+        id,
+        protocol::ProjectTranscriptResult {
+            transcript: crate::session_scanner::accounts::newest_project_transcript(
+                params.tool,
                 &config_dirs,
-                &params.project_path,
+                &params.project,
             )
             .map(|path| path.display().to_string()),
         },
@@ -533,7 +534,8 @@ fn load_project_task_scan_inputs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session_scanner::claude_accounts::{install_scan_override, ClaudeScan};
+    use crate::session_scanner::accounts::{install_detection_override, AccountScan};
+    use crate::session_scanner::cli_tool::CliTool;
     use tempfile::TempDir;
 
     // Regression: 760f776 answered `claude-project-transcript` from the config
@@ -552,18 +554,21 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("transcript dir");
         let transcript = dir.join("abc.jsonl");
         std::fs::write(&transcript, "{}\n").expect("transcript");
-        let _scan = install_scan_override(ClaudeScan {
-            config_dirs: vec![config_dir],
-            accounts: Vec::new(),
-        });
+        let _scan = install_detection_override(
+            CliTool::Claude,
+            AccountScan {
+                config_dirs: vec![config_dir],
+                accounts: Vec::new(),
+            },
+        );
 
-        let response = handle_claude_project_transcript(
+        let response = handle_project_transcript(
             "req-1",
-            &serde_json::json!({ "project_path": project_path }),
+            &serde_json::json!({ "tool": "claude", "project": project_path }),
         );
 
         assert!(response.is_ok(), "{response:?}");
-        let result: protocol::ClaudeProjectTranscriptResult =
+        let result: protocol::ProjectTranscriptResult =
             serde_json::from_value(response.result.expect("result")).expect("decode");
         assert_eq!(
             result.transcript.as_deref(),

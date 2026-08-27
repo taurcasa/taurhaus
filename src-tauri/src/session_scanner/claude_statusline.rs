@@ -76,7 +76,7 @@ use serde_json::{json, Map, Value};
 
 use crate::models::CliVersions;
 use crate::provider::path;
-use crate::session_scanner::claude_accounts::detect_claude_accounts_cached;
+use crate::session_scanner::accounts::claude::detect_claude_accounts_cached;
 use taurhaus_lib::logging::emit_global;
 
 const SETTINGS_FILENAME: &str = "settings.json";
@@ -2396,8 +2396,8 @@ mod tests {
     }
 
     /// A detected account, as the scan would report one for this config dir.
-    fn account_at(config_dir: &Path) -> crate::session_scanner::claude_accounts::ClaudeAccount {
-        crate::session_scanner::claude_accounts::ClaudeAccount {
+    fn account_at(config_dir: &Path) -> crate::session_scanner::accounts::claude::ClaudeAccount {
+        crate::session_scanner::accounts::claude::ClaudeAccount {
             id: config_dir.display().to_string(),
             config_dir: config_dir.to_path_buf(),
             email: "user@example.com".to_string(),
@@ -2420,7 +2420,7 @@ mod tests {
         // used — until the daemon happened to be restarted. A pass reconciles
         // whatever the scan reports at the time it runs, and one runs whenever
         // anything asks for the accounts.
-        use crate::session_scanner::claude_accounts::install_detection_override;
+        use crate::session_scanner::accounts::claude::install_detection_override;
 
         // A pass reports what it did through the global sink, so it takes the
         // same guard every other test that emits does — in the same order as
@@ -2458,7 +2458,7 @@ mod tests {
         // that happened to be mid-rewrite during the one pass at startup was
         // therefore left unbridged for the life of the daemon, on nothing worse
         // than timing.
-        use crate::session_scanner::claude_accounts::{
+        use crate::session_scanner::accounts::claude::{
             install_detection_override, install_scan_override, ClaudeScan,
         };
 
@@ -2506,7 +2506,7 @@ mod tests {
         // answered "unknown" for the life of the daemon, and the minute-based
         // passes that exist to catch up re-read that same stale answer instead
         // of asking again. No probe, no bridge, until a restart.
-        use crate::session_scanner::claude_accounts::install_detection_override;
+        use crate::session_scanner::accounts::claude::install_detection_override;
 
         let _log = crate::test_support::acquire_global_log_test_guard();
         let temp = tempfile::tempdir().expect("temp dir");
@@ -2535,7 +2535,7 @@ mod tests {
         // went back to an older `claude`, so the removal
         // `statusline_bridge_action` asks for never ran and their status line
         // stayed wrapped for a sink nothing feeds.
-        use crate::session_scanner::claude_accounts::install_detection_override;
+        use crate::session_scanner::accounts::claude::install_detection_override;
 
         let _log = crate::test_support::acquire_global_log_test_guard();
         let temp = tempfile::tempdir().expect("temp dir");

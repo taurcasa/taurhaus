@@ -9,7 +9,7 @@ pub(crate) fn store(snapshot: &RuntimeSessionSnapshotResult) {
     // On Windows this is the only view of the WSL sessions the app gets, and
     // the account a session belongs to has to outlive it — Resume asks after
     // the process is gone.
-    crate::session_scanner::claude_accounts::record_claude_transcripts(&snapshot.runtime_sessions);
+    crate::session_scanner::accounts::claude::record_claude_transcripts(&snapshot.runtime_sessions);
 
     let mut guard = SESSION_SNAPSHOT_CACHE
         .lock()

@@ -18,7 +18,7 @@ use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
-use crate::session_scanner::claude_accounts::{configured_root_to_name, to_launch_namespace};
+use crate::session_scanner::accounts::claude::{configured_root_to_name, to_launch_namespace};
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{

@@ -212,6 +212,16 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
 }
 
 #[test]
+fn claude_account_provider_is_registered_behind_the_capability_slice() {
+    // Regression: commits d6839a3 and a574720 put Claude account detection in
+    // command call sites, so adding another provider required cloning the
+    // whole pipeline instead of registering one account slice.
+    assert!(spec(CliTool::Claude).account_provider().is_some());
+    assert!(spec(CliTool::Codex).account_provider().is_none());
+    assert!(spec(CliTool::Gemini).account_provider().is_none());
+}
+
+#[test]
 fn claude_only_capabilities_are_declared_independently() {
     // Regression: d6839a3 and a574720 introduced Claude account selection and
     // usage bridging; 07fc8f3 then overloaded config_dir_env as the predicate

@@ -1,11 +1,11 @@
-use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
+use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
-use crate::session_scanner::accounts::AccountOrigin;
-use crate::session_scanner::claude_accounts::{
+use crate::session_scanner::accounts::claude::{
     configured_root_to_name, remembered_claude_transcript, resolve_launch_account,
     to_launch_namespace, AccountRequest, AccountResolution,
 };
+use crate::session_scanner::accounts::AccountOrigin;
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
 };
@@ -539,14 +539,13 @@ fn resolve_claude_account(
     let asked_for_an_account = requested_account_id.is_some_and(|id| !id.trim().is_empty());
     let mut transcript = TranscriptLookup::default();
     if !asked_for_an_account && matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
-        transcript =
-            crate::commands::claude_accounts::claude_project_transcript(provider, linux_path);
+        transcript = crate::commands::accounts::claude_project_transcript(provider, linux_path);
         if transcript.transcript.is_none() {
             transcript.transcript = remembered_claude_transcript(linux_path);
         }
     }
 
-    let accounts = crate::commands::claude_accounts::claude_accounts_report(provider);
+    let accounts = crate::commands::accounts::claude_accounts_report(provider);
     decide_launch_account(
         &accounts,
         &transcript,

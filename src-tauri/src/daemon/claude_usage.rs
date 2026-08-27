@@ -42,7 +42,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
-use crate::session_scanner::claude_accounts::ClaudeAccount;
+use crate::session_scanner::accounts::claude::ClaudeAccount;
 
 pub const CLAUDE_USAGE_FILENAME: &str = "claude-usage.jsonl";
 

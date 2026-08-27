@@ -1100,9 +1100,9 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
 
 /// Detection is faked here on purpose: no test may read the developer's real
 /// `~/.claude*`, and this exercises the launch path, not detection.
-fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount> {
+fn fake_accounts() -> Vec<crate::session_scanner::accounts::claude::ClaudeAccount> {
     vec![
-        crate::session_scanner::claude_accounts::ClaudeAccount {
+        crate::session_scanner::accounts::claude::ClaudeAccount {
             id: "account-1".to_string(),
             config_dir: PathBuf::from("/home/user/.claude"),
             email: "primary@example.com".to_string(),
@@ -1114,7 +1114,7 @@ fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount
             is_process_default: true,
             usage: None,
         },
-        crate::session_scanner::claude_accounts::ClaudeAccount {
+        crate::session_scanner::accounts::claude::ClaudeAccount {
             id: "account-2".to_string(),
             config_dir: PathBuf::from("/home/user/.claude-account2"),
             email: "second@example.com".to_string(),
@@ -1129,7 +1129,9 @@ fn fake_accounts() -> Vec<crate::session_scanner::claude_accounts::ClaudeAccount
     ]
 }
 
-use crate::session_scanner::claude_accounts::{install_detection_override, DetectionOverrideGuard};
+use crate::session_scanner::accounts::claude::{
+    install_detection_override, DetectionOverrideGuard,
+};
 
 fn with_fake_accounts() -> DetectionOverrideGuard {
     install_detection_override(fake_accounts())
@@ -1289,8 +1291,8 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
 #[test]
 fn a_launch_whose_detection_failed_falls_back_and_says_why() {
     use super::launching::{decide_launch_account, log_account_resolution};
-    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
-    use crate::session_scanner::claude_accounts::AccountRequest;
+    use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
+    use crate::session_scanner::accounts::claude::AccountRequest;
 
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let (log_file, log_file_path) = setup_log_file();
@@ -1332,8 +1334,8 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
 #[test]
 fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
     use super::launching::decide_launch_account;
-    use crate::commands::claude_accounts::{ClaudeAccountsResult, TranscriptLookup};
-    use crate::session_scanner::claude_accounts::AccountRequest;
+    use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
+    use crate::session_scanner::accounts::claude::AccountRequest;
 
     let transcript =
         PathBuf::from("/home/user/.claude-account2/projects/-tmp-project/session.jsonl");
@@ -1439,7 +1441,7 @@ fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
     install_global_sink(&log_file);
 
     // The last session for this project ran on the second subscription.
-    crate::session_scanner::claude_accounts::record_claude_transcripts(&[exited_claude_session(
+    crate::session_scanner::accounts::claude::record_claude_transcripts(&[exited_claude_session(
         "/tmp/resume-project",
         "/home/user/.claude-account2/projects/-tmp-resume-project/f3286b16.jsonl",
     )]);

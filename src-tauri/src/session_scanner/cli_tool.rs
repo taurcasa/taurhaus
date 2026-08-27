@@ -480,7 +480,13 @@ impl CliToolSpec {
     pub fn account_provider(
         &self,
     ) -> Option<&'static dyn crate::session_scanner::accounts::AccountProvider> {
-        None
+        static CLAUDE: crate::session_scanner::accounts::claude::ClaudeAccountProvider =
+            crate::session_scanner::accounts::claude::ClaudeAccountProvider;
+
+        match self.tool {
+            CliTool::Claude => Some(&CLAUDE),
+            CliTool::Codex | CliTool::Gemini => None,
+        }
     }
 
     /// Usage provider for this tool. Implementations are added per provider.
