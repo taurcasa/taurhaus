@@ -588,7 +588,10 @@ fn detect_member_session_identity(
     context: &MemberActivationContext,
     pane_id: &str,
 ) -> Result<DetectedRuntimeSession, CoordinationError> {
-    if !spec(context.member.cli_tool).capabilities.session_source {
+    if !spec(context.member.cli_tool)
+        .capabilities
+        .runtime_session_capture
+    {
         return Ok(DetectedRuntimeSession::default());
     }
 

@@ -166,10 +166,20 @@ fn registry_declares_native_and_floor_capabilities() {
     assert_eq!(codex.stop_strategy, StopStrategy::Interrupt);
 
     let gemini = spec(CliTool::Gemini);
+    assert!(gemini.capabilities.session_source);
+    assert!(!gemini.capabilities.runtime_session_capture);
     assert!(!gemini.capabilities.compaction_hook);
     assert!(!gemini.capabilities.transcript_parser);
     assert!(!gemini.capabilities.catalog || gemini.capabilities.model_flag.is_some());
     assert_eq!(gemini.stop_strategy, StopStrategy::SlashExit);
+
+    for entry in all() {
+        assert!(
+            !entry.capabilities.runtime_session_capture || entry.capabilities.session_source,
+            "{} cannot capture a runtime session without a session source",
+            entry.name
+        );
+    }
 }
 
 #[test]

@@ -423,7 +423,7 @@ impl CoordinationOrchestrator {
                 }
             }
 
-            if spec(member.cli_tool).capabilities.session_source {
+            if spec(member.cli_tool).capabilities.runtime_session_capture {
                 if let Some(pane_id) = runtime.pane_id.as_deref() {
                     match self
                         .runtime

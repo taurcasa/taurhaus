@@ -255,7 +255,7 @@ impl CoordinationOrchestrator {
 fn capture_session_identity_message(member: &Member, runtime_state: &PendingResumeState) -> String {
     if !crate::session_scanner::cli_tool::spec(member.cli_tool)
         .capabilities
-        .session_source
+        .runtime_session_capture
     {
         return "session identity not required".to_string();
     }
