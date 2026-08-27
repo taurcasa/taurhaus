@@ -1,12 +1,25 @@
 <script>
   import { resetVisualHostState } from './mockState.js'
   import { getRegistryEntry, viewportPresets, visualRegistry } from './registry.js'
+  import { readVisualHostQuery } from './query.js'
 
-  let selectedComponentId = $state(visualRegistry[0]?.id ?? '')
-  let selectedScenarioName = $state(visualRegistry[0]?.scenarios?.[0]?.name ?? '')
-  let selectedViewportId = $state(viewportPresets[0]?.id ?? 'desktop')
-  let selectedTheme = $state(visualRegistry[0]?.scenarios?.[0]?.theme ?? 'light')
-  let renderVersion = $state(0)
+  /**
+   * The URL is the address of a fixture state, so a headless browser can shoot
+   * one without a human touching the selects. `chrome=0` drops the controls so
+   * the screenshot is the fixture panel and nothing else.
+   */
+  const query = readVisualHostQuery(
+    typeof location === 'undefined' ? '' : location.search,
+    { registry: visualRegistry, viewports: viewportPresets },
+  )
+
+  let selectedComponentId = $state(query.componentId)
+  let selectedScenarioName = $state(query.scenarioName)
+  let selectedViewportId = $state(query.viewportId)
+  let selectedTheme = $state(query.theme)
+  const showChrome = query.chrome
+  /** A theme named in the URL outranks the scenario's own. */
+  const themePinned = query.themePinned
 
   const selectedEntry = $derived(getRegistryEntry(selectedComponentId))
   const selectedViewport = $derived(
@@ -27,16 +40,28 @@
 
   $effect(() => {
     if (!selectedScenario) return
+    if (themePinned) return
     selectedTheme = selectedScenario.theme ?? 'light'
   })
 
-  $effect(() => {
+  /**
+   * The fixture's mocks, applied before it renders, and the key that remounts
+   * it when they change.
+   *
+   * This ran as an effect that bumped a counter inside the `{#key}`, which
+   * mounted every fixture twice: once against the default mocks, then again.
+   * A component that measures itself in an effect — every popup that positions
+   * against the viewport does — lost that measurement to the remount and
+   * rendered at 0,0. Deriving the key runs the mocks in the render pass that
+   * uses them, so a fixture mounts once, with the right data.
+   */
+  const fixtureKey = $derived.by(() => {
     resetVisualHostState()
     selectedEntry?.applyMocks?.(selectedScenario, {
       theme: selectedTheme,
       viewport: selectedViewport,
     })
-    renderVersion += 1
+    return `${selectedEntry?.id}:${selectedScenario?.name}:${selectedTheme}:${selectedViewport?.id}`
   })
 
   const chromeTone = $derived(
@@ -60,8 +85,9 @@
   <title>taurhaus Visual Host</title>
 </svelte:head>
 
-<main class={`min-h-screen w-full ${chromeTone}`}>
-  <div class="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 py-6">
+<main class={`min-h-screen w-full ${chromeTone}`} data-testid="visual-host-root">
+  <div class={showChrome ? 'mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 py-6' : 'h-screen w-full'}>
+    {#if showChrome}
     <header class={`rounded-3xl border p-5 ${panelTone}`}>
       <div class="flex flex-wrap items-center gap-3">
         <div class="min-w-[220px] flex-1">
@@ -133,33 +159,47 @@
         </div>
       </div>
     </header>
+    {/if}
 
-    <section class={`flex-1 rounded-[32px] border p-5 ${panelTone}`}>
-      <div class="mb-3 flex items-center justify-between gap-4 text-sm opacity-70">
-        <p>{selectedEntry?.label} / {selectedScenario?.name ?? 'no scenario'}</p>
-        <p>{selectedViewport.width} x {selectedViewport.height}</p>
-      </div>
+    {#snippet fixture()}
+      {#if selectedScenario}
+        {#key fixtureKey}
+          <selectedEntry.component
+            scenario={selectedScenario}
+            theme={selectedTheme}
+            viewport={selectedViewport}
+          />
+        {/key}
+      {/if}
+    {/snippet}
 
-      <div
-        class={`overflow-auto rounded-[28px] border p-6 ${viewportTone}`}
-        data-testid="visual-host-viewport"
-        style={`height: min(72vh, ${selectedViewport.height + 80}px);`}
-      >
-        <div
-          class="mx-auto rounded-[24px] border border-dashed border-brand-500/20 p-6"
-          style={`width: min(100%, ${selectedViewport.width}px); min-height: ${selectedViewport.height}px;`}
-        >
-          {#if selectedScenario}
-            {#key `${selectedEntry?.id}:${selectedScenario.name}:${selectedTheme}:${renderVersion}`}
-              <selectedEntry.component
-                scenario={selectedScenario}
-                theme={selectedTheme}
-                viewport={selectedViewport}
-              />
-            {/key}
-          {/if}
+    {#if showChrome}
+      <section class={`flex-1 rounded-[32px] border p-5 ${panelTone}`}>
+        <div class="mb-3 flex items-center justify-between gap-4 text-sm opacity-70">
+          <p>{selectedEntry?.label} / {selectedScenario?.name ?? 'no scenario'}</p>
+          <p>{selectedViewport.width} x {selectedViewport.height}</p>
         </div>
-      </div>
-    </section>
+
+        <div
+          class={`overflow-auto rounded-[28px] border p-6 ${viewportTone}`}
+          data-testid="visual-host-viewport"
+          style={`height: min(72vh, ${selectedViewport.height + 80}px);`}
+        >
+          <div
+            class="mx-auto rounded-[24px] border border-dashed border-brand-500/20 p-6"
+            style={`width: min(100%, ${selectedViewport.width}px); min-height: ${selectedViewport.height}px;`}
+          >
+            {@render fixture()}
+          </div>
+        </div>
+      </section>
+    {:else}
+      <!-- Bare: a `fixed` popup is positioned against the browser viewport, so
+           the only honest shot of one is a window sized to the preset with no
+           host frame around the fixture. -->
+      <section class="h-screen w-full" data-testid="visual-host-viewport">
+        {@render fixture()}
+      </section>
+    {/if}
   </div>
 </main>

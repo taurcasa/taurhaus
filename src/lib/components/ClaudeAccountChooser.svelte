@@ -5,6 +5,13 @@
    * Shown only when a host has two or more signed-in accounts and the project
    * has not chosen yet. Enter takes the default account so the common answer
    * costs a keystroke.
+   *
+   * The dialog carries its own overlay. It has to: `.shell-frame` gives every
+   * child `position: relative` unless the child opts out with
+   * `data-shell-overlay`, and a caller that forgets loses the fixed positioning
+   * entirely — the dialog drops to the bottom of the frame's column, half off
+   * the window. Owning the overlay here is what makes that unforgettable, the
+   * way `SearchOverlay` and `AddProjectModal` already do it.
    */
   import ClaudeUsageMeter from './ClaudeUsageMeter.svelte'
 
@@ -83,10 +90,17 @@
   })
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-8"
+  data-shell-overlay
+  data-testid="claude-account-chooser-overlay"
+  onmousedown={(event) => { if (event.target === event.currentTarget) onCancel() }}
+>
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={panel}
-  class="w-[22rem] max-w-full rounded-xl border p-3 {panelTone}"
+  class="w-[22rem] max-w-full max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border p-3 {panelTone}"
   role="dialog"
   aria-label="Choose a Claude account"
   tabindex="-1"
@@ -146,4 +160,5 @@
     />
     Remember for this project
   </label>
+</div>
 </div>

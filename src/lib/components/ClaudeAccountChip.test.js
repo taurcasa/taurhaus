@@ -173,4 +173,86 @@ describe('ClaudeAccountChip', () => {
     await fireEvent.click(screen.getByTestId('claude-account-chip'))
     expect(screen.queryByTestId('claude-usage-meter')).not.toBeInTheDocument()
   })
+
+  // Regression: c982822 positioned this menu `absolute` inside the Overview
+  // header, so it was laid out against whatever ancestor happened to be
+  // positioned and clipped by the `overflow-hidden` main panel. It is a popup:
+  // it belongs to the viewport, measured and clamped like `ContextMenu`.
+  it('anchors the menu to the viewport instead of an ancestor', async () => {
+    render(ClaudeAccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
+      left: 300, top: 60, right: 420, bottom: 82, width: 120, height: 22, x: 300, y: 60,
+      toJSON() {},
+    })
+
+    await fireEvent.click(chip)
+
+    const menu = screen.getByTestId('claude-account-menu')
+    expect(menu.className).toContain('fixed')
+    expect(menu.className).not.toContain('absolute')
+    expect(menu.style.top).toBe('86px')
+  })
+
+  it('flips the menu above the chip when the viewport has no room below', async () => {
+    const previousHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 300 })
+
+    render(ClaudeAccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
+      left: 300, top: 250, right: 420, bottom: 272, width: 120, height: 22, x: 300, y: 250,
+      toJSON() {},
+    })
+
+    await fireEvent.click(chip)
+
+    const menu = screen.getByTestId('claude-account-menu')
+    vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 224, bottom: 200, width: 224, height: 200, x: 0, y: 0,
+      toJSON() {},
+    })
+    // Re-measure with the menu's real height in hand, the way a resize does.
+    await fireEvent(window, new Event('resize'))
+
+    expect(Number.parseInt(menu.style.top, 10)).toBeLessThan(250)
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
+  })
+
+  it('clamps the menu inside the right edge of a narrow viewport', async () => {
+    const previousWidth = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 })
+
+    render(ClaudeAccountChip, {
+      props: { accounts: ACCOUNTS, selectedAccountId: 'account-1', onSelect: vi.fn() },
+    })
+
+    const chip = screen.getByTestId('claude-account-chip')
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
+      left: 320, top: 60, right: 390, bottom: 82, width: 70, height: 22, x: 320, y: 60,
+      toJSON() {},
+    })
+
+    await fireEvent.click(chip)
+
+    const menu = screen.getByTestId('claude-account-menu')
+    vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 224, bottom: 200, width: 224, height: 200, x: 0, y: 0,
+      toJSON() {},
+    })
+    await fireEvent(window, new Event('resize'))
+
+    const left = Number.parseInt(menu.style.left, 10)
+    expect(left).toBeGreaterThanOrEqual(8)
+    expect(left + 224).toBeLessThanOrEqual(400 - 8)
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth })
+  })
 })

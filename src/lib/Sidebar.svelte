@@ -8,7 +8,16 @@
   import { hasLiveSession, rowTintForSessions, toolIndicators } from './sessionIndicator.js'
   import { buildSidebarProjection } from './sidebar.js'
   import { describeSessionActionError } from './errorCopy.js'
-  import { requestClaudeLaunch } from './claudeAccounts.svelte.js'
+  import {
+    activeClaudeAccountId,
+    claudeAccounts,
+    refreshClaudeAccounts,
+    resolveChooserAccounts,
+    setProjectClaudeAccountChoice,
+    requestClaudeLaunch,
+  } from './claudeAccounts.svelte.js'
+  import { accountSubmenuApplies, buildAccountMenuChildren } from './accountMenu.js'
+  import { toolLabel, tools } from './toolRegistry.js'
   import SidebarProjectList from './SidebarProjectList.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import HoverCard from './HoverCard.svelte'
@@ -284,21 +293,23 @@
   const CTX_ICON_CLOCK = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>'
   const CTX_ICON_RESTART = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>'
   const CTX_ICON_STOP = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 7.5A2.25 2.25 0 0 1 7.5 5.25h9a2.25 2.25 0 0 1 2.25 2.25v9a2.25 2.25 0 0 1-2.25 2.25h-9a2.25 2.25 0 0 1-2.25-2.25v-9Z"/></svg>'
+  const CTX_ICON_USER = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>'
   const CTX_ICON_COPY = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"/></svg>'
   const CTX_ICON_TRASH = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>'
 
-  function ctxLaunchTool(mode, tool = 'claude') {
+  function ctxLaunchTool(mode, tool = 'claude', accountId = null) {
     if (!ctxMenu?.project) return
     const project = ctxMenu.project
     console.log(`[cmd-center] ${mode} ${tool} session:`, project.id, project.name)
-    // Claude launches may first ask which subscription to run on; the store
-    // opens the chooser and takes over from there.
+    // A launch without a named account may first ask which subscription to run
+    // on; the store opens the chooser and takes over from there.
     requestClaudeLaunch({
       project,
       mode,
       tool,
-      launch: (projectId, launchMode, launchTool, accountId) =>
-        launchClaudeSession(projectId, launchMode, launchTool, accountId).then((r) =>
+      accountId,
+      launch: (projectId, launchMode, launchTool, launchAccountId) =>
+        launchClaudeSession(projectId, launchMode, launchTool, launchAccountId).then((r) =>
           console.log('[cmd-center] launch OK:', r)
         ),
       onError: (error) => {
@@ -353,7 +364,7 @@
     closeContextMenu()
   }
 
-  function ctxRestartTool(session) {
+  function ctxRestartTool(session, accountId = null) {
     if (!ctxMenu?.project || !session?.tmux_pane) return
     const project = ctxMenu.project
     const tool = session.cli_tool
@@ -364,9 +375,10 @@
       project,
       mode: 'fresh',
       tool,
-      launch: (projectId, launchMode, launchTool, accountId) =>
+      accountId,
+      launch: (projectId, launchMode, launchTool, launchAccountId) =>
         stopClaudeSession(pane, launchTool).then(() =>
-          launchClaudeSession(projectId, launchMode, launchTool, accountId)
+          launchClaudeSession(projectId, launchMode, launchTool, launchAccountId)
         ),
       onError: (error) => {
         console.error('Failed to restart session:', error)
@@ -375,8 +387,84 @@
     })
   }
 
-  /** Tool display names for context menu labels. */
-  const TOOL_DISPLAY = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }
+  /**
+   * Detected accounts for the open menu.
+   *
+   * The submenus are built from the detected list, and detection is a cached
+   * IPC round trip — asking when the menu opens means the first right-click of
+   * a session fills the submenus in rather than showing none.
+   */
+  $effect(() => {
+    if (!ctxMenu) return
+    void refreshClaudeAccounts()
+  })
+
+  /**
+   * Turn a launch item into an account submenu parent, when its tool has
+   * accounts to choose between.
+   *
+   * The capability comes from the registry, never from the tool's name: the
+   * next tool to gain account selection grows the same submenu on the same day
+   * its descriptor says so. `onPick` receives the account the user named.
+   */
+  function withAccountSubmenu(item, tool, onPick) {
+    const accounts = resolveChooserAccounts()
+    if (!accountSubmenuApplies(tool, accounts)) return item
+    return {
+      ...item,
+      children: buildAccountMenuChildren({
+        accounts,
+        activeAccountId: activeClaudeAccountId(ctxMenu?.project),
+        onSelect: onPick,
+      }),
+    }
+  }
+
+  /** Pin the project to an account (or clear it) without launching anything. */
+  function ctxPinAccount(accountId) {
+    const projectId = ctxMenu?.project?.id
+    if (!projectId) return
+    void setProjectClaudeAccountChoice(projectId, accountId)
+  }
+
+  /**
+   * A `<Tool> account` submenu per tool that has accounts to choose between:
+   * the same rows, but a pin instead of a launch, plus the way back to
+   * inheriting the default.
+   */
+  function accountPinItems() {
+    const accounts = resolveChooserAccounts()
+    const pinnedId = effectiveProjectAccountId()
+    return tools()
+      .filter((descriptor) => accountSubmenuApplies(descriptor.id, accounts))
+      .map((descriptor) => ({
+        label: `${descriptor.label} account`,
+        icon: CTX_ICON_USER,
+        children: [
+          ...buildAccountMenuChildren({
+            accounts,
+            activeAccountId: pinnedId,
+            onSelect: ctxPinAccount,
+          }),
+          {
+            label: 'Use default',
+            check: !pinnedId,
+            action: () => ctxPinAccount(null),
+          },
+        ],
+      }))
+  }
+
+  /** What this project has pinned for itself, as opposed to what it inherits. */
+  function effectiveProjectAccountId() {
+    const project = ctxMenu?.project
+    if (!project) return null
+    const projectId = project.id
+    if (projectId && projectId in claudeAccounts.projectChoices) {
+      return claudeAccounts.projectChoices[projectId]
+    }
+    return project.claudeAccountId ?? project.claude_account_id ?? null
+  }
 
   /** Generate session-specific context menu items based on current session state. */
   function sessionCtxItems() {
@@ -392,27 +480,37 @@
       items.push({ separator: true })
     }
 
+    const launch = (label, mode, tool, icon) => withAccountSubmenu(
+      { label, action: () => ctxLaunchTool(mode, tool), icon },
+      tool,
+      (accountId) => ctxLaunchTool(mode, tool, accountId),
+    )
+
     // Continue is only distinct for Claude.
-    items.push({ label: 'Continue Claude', action: () => ctxLaunchTool('continue', 'claude'), icon: CTX_ICON_PLAY })
+    items.push(launch('Continue Claude', 'continue', 'claude', CTX_ICON_PLAY))
 
     // New session remains distinct for all tools.
     items.push({ separator: true })
-    items.push({ label: 'New Claude Session', action: () => ctxLaunchTool('fresh', 'claude'), icon: CTX_ICON_PLUS })
-    items.push({ label: 'New Codex Session', action: () => ctxLaunchTool('fresh', 'codex'), icon: CTX_ICON_PLUS })
-    items.push({ label: 'New Gemini Session', action: () => ctxLaunchTool('fresh', 'gemini'), icon: CTX_ICON_PLUS })
+    items.push(launch('New Claude Session', 'fresh', 'claude', CTX_ICON_PLUS))
+    items.push(launch('New Codex Session', 'fresh', 'codex', CTX_ICON_PLUS))
+    items.push(launch('New Gemini Session', 'fresh', 'gemini', CTX_ICON_PLUS))
 
     // Resume stays distinct for Claude, Codex, and Gemini.
     items.push({ separator: true })
-    items.push({ label: 'Resume Claude', action: () => ctxLaunchTool('resume', 'claude'), icon: CTX_ICON_CLOCK })
-    items.push({ label: 'Resume Codex', action: () => ctxLaunchTool('resume', 'codex'), icon: CTX_ICON_CLOCK })
-    items.push({ label: 'Resume Gemini', action: () => ctxLaunchTool('resume', 'gemini'), icon: CTX_ICON_CLOCK })
+    items.push(launch('Resume Claude', 'resume', 'claude', CTX_ICON_CLOCK))
+    items.push(launch('Resume Codex', 'resume', 'codex', CTX_ICON_CLOCK))
+    items.push(launch('Resume Gemini', 'resume', 'gemini', CTX_ICON_CLOCK))
 
     // Per-tool stop/restart for each running session
     if (liveSessions.length > 0) {
       items.push({ separator: true })
       for (const s of liveSessions) {
-        const name = TOOL_DISPLAY[s.cli_tool] || 'Session'
-        items.push({ label: `Restart ${name}`, action: () => ctxRestartTool(s), icon: CTX_ICON_RESTART })
+        const name = toolLabel(s.cli_tool, 'Session')
+        items.push(withAccountSubmenu(
+          { label: `Restart ${name}`, action: () => ctxRestartTool(s), icon: CTX_ICON_RESTART },
+          s.cli_tool,
+          (accountId) => ctxRestartTool(s, accountId),
+        ))
         items.push({
           label: ctxConfirmStop ? `Confirm stop ${name}?` : `Stop ${name}`,
           action: () => ctxStopTool(s),
@@ -421,6 +519,14 @@
           icon: CTX_ICON_STOP,
         })
       }
+    }
+
+    // The pin sits after the launch group: it is about this project's default,
+    // not about starting anything now.
+    const pinItems = accountPinItems()
+    if (pinItems.length) {
+      items.push({ separator: true })
+      items.push(...pinItems)
     }
 
     return items

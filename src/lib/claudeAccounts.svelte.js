@@ -87,6 +87,24 @@ export function effectiveClaudeAccountId(project) {
 }
 
 /**
+ * The account a launch from this project would land on today.
+ *
+ * The same precedence the backend applies, as far as the frontend can see it:
+ * the project's pin, then the configured global default, then the account in
+ * the default config dir. It is what a menu ticks — "this is the one you get if
+ * you just click the row" — and nothing more; the backend still has the last
+ * word, and a resume still follows its transcript.
+ */
+export function activeClaudeAccountId(project) {
+  return (
+    usableAccountId(effectiveClaudeAccountId(project)) ??
+    globalClaudeAccount()?.id ??
+    claudeAccounts.accounts.find((account) => account.is_default && account.logged_in)?.id ??
+    null
+  )
+}
+
+/**
  * Pin a project to an account (or `null` to inherit), optimistically: the chip
  * and the next launch see it immediately, and a failed write puts it back.
  */
@@ -240,25 +258,41 @@ async function backendPlacesLaunch(projectId, mode) {
  * Launch a session, asking which subscription to use only when the answer is
  * genuinely unknown.
  *
+ * `accountId` is the user having already answered — picked from the context
+ * menu's account submenu. There is nothing left to ask, so nothing is asked:
+ * the launch runs on that account, and a project that had chosen nothing keeps
+ * it, which is what the chooser's "Remember for this project" already defaults
+ * to. A project with a pin of its own is left alone: one launch elsewhere is
+ * not a decision to move.
+ *
  * `launch` is injected by tests; production uses the IPC directly.
  */
 export async function requestClaudeLaunch({
   project,
   mode,
   tool = 'claude',
+  accountId = null,
+  remember = true,
   launch = launchClaudeSession,
   onError = null,
 }) {
   const projectId = project?.id
   if (!projectId) return
 
-  const run = (accountId) =>
-    Promise.resolve(launch(projectId, mode, tool, accountId ?? null)).catch((error) => {
+  const run = (chosenAccountId) =>
+    Promise.resolve(launch(projectId, mode, tool, chosenAccountId ?? null)).catch((error) => {
       if (onError) onError(error)
       else console.error('[cmd-center] launch FAILED:', error)
     })
 
   if (!toolDescriptor(tool)?.capabilities.accountSelection) return run(null)
+
+  if (accountId) {
+    const stored = remember && !effectiveClaudeAccountId(project)
+      ? setProjectClaudeAccountChoice(projectId, accountId)
+      : Promise.resolve()
+    return stored.then(() => run(accountId))
+  }
 
   // Detection may still be in flight (a launch clicked during startup); asking
   // an empty list would skip the chooser and run on the backend default.

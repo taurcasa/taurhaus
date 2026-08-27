@@ -143,6 +143,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just dev` | Full Tauri dev mode (frontend + backend hot-reload) |
 | `just dev-frontend` | Frontend dev server only (no Rust backend) |
 | `just test-visual` | Browser-mode visual screenshot lane for mocked component states. |
+| `just visual-shot C S [V] [T] [OUT]` | One visual-host fixture shot at a real window size (Edge headless). For viewport-anchored popups the 960x640 browser lane cannot judge. `just visual-shot-stop` stops only the server it started. |
 | `just metrics` | Quality KPI snapshot (tests, coverage, build health, code size, E2E inventory). |
 | `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
@@ -217,7 +218,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 **Vitest cwd gotcha**: Vitest must run from the project root, NOT from `src-tauri/`. If `bunx vitest run` reports "No test files found", you're in the wrong directory. The `just test` recipe handles this, but if running vitest manually, always `cd` to the checkout root first.
 
-**Manual visual review host**: `bun run dev:visual` starts the Vite visual fixture host for mocked component states. Use it for rapid layout iteration; use `just test-visual` for automated screenshot coverage.
+**Manual visual review host**: `bun run dev:visual` starts the Vite visual fixture host for mocked component states. Use it for rapid layout iteration; use `just test-visual` for automated screenshot coverage. The host reads `?component=&scenario=&viewport=&theme=&chrome=0` from the URL, which is how `just visual-shot` addresses one fixture.
 
 ## Architecture Summary
 
@@ -259,6 +260,9 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/ModelSelect.svelte` | Effort-aware model picker used by `MeshTeamBuilder` and `RoleEditor`. |
 | `src/lib/claudeAccounts.svelte.js` | Frontend Claude account state; drives `ClaudeAccountChooser.svelte` (Shell) and `ClaudeAccountChip.svelte` (OverviewTab). |
 | `src/lib/HoverCard.svelte` | Sidebar hover preview focused on current activity, latest change, and relationship cues. |
+| `src/lib/ContextMenu.svelte` | The app's context menu, with one level of account submenus (hover intent, grace corridor, viewport-clamped flyout). |
+| `src/lib/accountMenu.js` | Registry-driven account rows for a context menu; the one place compact usage is rendered as menu text. |
+| `scripts/visual-shot.sh` | Edge-headless window-size screenshot lane behind `just visual-shot`. |
 | `src/lib/components/MeshTab.svelte` | Mesh orchestration state machine (gate/setup/init/runtime) |
 | `src/lib/components/meshTabController.svelte.js` | Controller state/actions for `MeshTab.svelte`. |
 | `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing shell that hosts the primary team-builder surface. |

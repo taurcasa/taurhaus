@@ -88,7 +88,31 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 | PR | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
-| 17a | Opus 5 | Codex ×2 | tbd | tbd | tbd |
+| 17a | Opus 5 | Codex ×2 | tbd | tbd | tbd (`feat/pr17a-accounts-menu`) |
 | 17b | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17d | Opus 5 | Codex ×2 | tbd | tbd | tbd |
+
+## 17a findings
+
+The popup placement bug, reproduced with real renders through the new
+`just visual-shot` lane (Edge headless at the three viewport presets, app frame
+markup around the fixture):
+
+- **Chooser** — `app.css` gives every direct child of `.shell-frame`
+  `position: relative` unless it carries `data-shell-overlay`. The chooser
+  overlay added in `c982822` did not, so `position: fixed` was overridden and
+  the dialog became the last item of the frame's flex column: bottom of the
+  window, half cut off, exactly as reported. `SearchOverlay` and
+  `AddProjectModal` already opt out; the chooser now owns its own overlay root
+  (with the attribute) so a caller cannot forget it again.
+- **Chip menu** — positioned `absolute` inside the Overview header, so it was
+  laid out against whatever ancestor happened to be positioned and clipped by
+  the main panel's `overflow-hidden`. Now measured and clamped against the
+  viewport like `ContextMenu` (flip above the chip, clamp both edges,
+  reposition on scroll/resize).
+- **Visual host** — `VisualHost.svelte` bumped a `renderVersion` counter inside
+  its `{#key}` from an effect, mounting every fixture twice. A component that
+  measures itself in an effect lost that measurement to the remount and
+  rendered at 0,0 — which is why a viewport-anchored popup could not be shot at
+  all. Mocks are now applied in a derived key, so a fixture mounts once.

@@ -7,6 +7,7 @@ import ModelSelectHost from './hosts/ModelSelectHost.svelte'
 import RosterDesignAHost from './hosts/RosterDesignAHost.svelte'
 import RosterDesignBHost from './hosts/RosterDesignBHost.svelte'
 import RosterDesignCHost from './hosts/RosterDesignCHost.svelte'
+import ShellPopupsHost from './hosts/ShellPopupsHost.svelte'
 import SidebarHost from './hosts/SidebarHost.svelte'
 import { configureVisualHostState } from './mockState.js'
 
@@ -17,6 +18,7 @@ import { meshNodeDetailScenarios } from '../test/visual/fixtures/meshNodeDetail.
 import { meshTeamBuilderScenarios } from '../test/visual/fixtures/meshTeamBuilder.fixtures.js'
 import { modelSelectScenarios } from '../test/visual/fixtures/modelSelect.fixtures.js'
 import { rosterDesignScenarios } from '../test/visual/fixtures/rosterDesigns.fixtures.js'
+import { shellPopupsScenarios } from '../test/visual/fixtures/shellPopups.fixtures.js'
 import { sidebarScenarios } from '../test/visual/fixtures/sidebar.fixtures.js'
 
 export const viewportPresets = [
@@ -89,6 +91,13 @@ export const visualRegistry = [
     label: 'ClaudeAccount',
     component: ClaudeAccountHost,
     scenarios: claudeAccountScenarios,
+    applyMocks: applyNoopMocks,
+  },
+  {
+    id: 'shell-popups',
+    label: 'Shell popups (account chooser / chip menu / account submenu)',
+    component: ShellPopupsHost,
+    scenarios: shellPopupsScenarios,
     applyMocks: applyNoopMocks,
   },
   {

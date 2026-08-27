@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
@@ -243,5 +243,240 @@ describe('ContextMenu', () => {
 
     expect(remove).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ContextMenu submenus', () => {
+  const CHILDREN = [
+    { label: 'Who', meta: '5h 3% · 7d 27%', check: true, action: vi.fn() },
+    { label: 'Matthias', meta: '5h 61% · 7d 44%', action: vi.fn() },
+    { label: 'Work', meta: 'not logged in', disabled: true, action: vi.fn() },
+  ]
+
+  function renderWithSubmenu(overrides = {}) {
+    const onClose = vi.fn()
+    const parentAction = vi.fn()
+    const items = [
+      { label: 'Copy path', action: vi.fn() },
+      { label: 'New Claude Session', action: parentAction, children: CHILDREN },
+      { label: 'Resume Claude', action: vi.fn(), children: CHILDREN },
+      // A row that is nothing but its children: the pin submenu's shape.
+      { label: 'Claude account', children: CHILDREN },
+    ]
+    render(ContextMenu, { props: { items, onClose, ...overrides } })
+    return { onClose, parentAction }
+  }
+
+  /** Hover-open, which is how a parent that owns an action reveals its flyout. */
+  async function hoverOpen(testid) {
+    await fireEvent.mouseEnter(screen.getByTestId(testid))
+    await vi.advanceTimersByTimeAsync(HOVER_INTENT_MS + 10)
+  }
+
+  const HOVER_INTENT_MS = 150
+
+  function anchorRects(parent, flyout, { parentRect = {}, flyoutRect = {} } = {}) {
+    vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue({
+      left: 100, top: 200, right: 260, bottom: 228, width: 160, height: 28, x: 100, y: 200,
+      toJSON() {}, ...parentRect,
+    })
+    if (flyout) {
+      vi.spyOn(flyout, 'getBoundingClientRect').mockReturnValue({
+        left: 0, top: 0, right: 200, bottom: 120, width: 200, height: 120, x: 0, y: 0,
+        toJSON() {}, ...flyoutRect,
+      })
+    }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('marks a parent row and opens a childrenonly row on click', async () => {
+    renderWithSubmenu()
+
+    const parent = screen.getByTestId('menu-item-new-claude-session')
+    expect(parent).toHaveAttribute('aria-haspopup', 'menu')
+    expect(parent).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('context-submenu')).not.toBeInTheDocument()
+
+    const pinRow = screen.getByTestId('menu-item-claude-account')
+    await fireEvent.mouseDown(pinRow)
+
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
+    expect(pinRow).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  // Regression: the account submenus must not turn a one-click launch into a
+  // two-step. A parent that carries an action runs it on click; only its
+  // hover flyout offers the accounts.
+  it('runs the parent action on click instead of opening its flyout', async () => {
+    const { onClose, parentAction } = renderWithSubmenu()
+
+    await fireEvent.mouseDown(screen.getByTestId('menu-item-new-claude-session'))
+
+    expect(parentAction).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('context-submenu')).not.toBeInTheDocument()
+  })
+
+  it('opens the flyout on hover only after the intent delay', async () => {
+    renderWithSubmenu()
+
+    await fireEvent.mouseEnter(screen.getByTestId('menu-item-new-claude-session'))
+    expect(screen.queryByTestId('context-submenu')).not.toBeInTheDocument()
+
+    await vi.advanceTimersByTimeAsync(160)
+
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
+  })
+
+  it('keeps the flyout open while the pointer crosses into it', async () => {
+    renderWithSubmenu()
+
+    const parent = screen.getByTestId('menu-item-new-claude-session')
+    await hoverOpen('menu-item-new-claude-session')
+    await fireEvent.mouseLeave(parent)
+
+    // Mid-corridor: the pointer is between the row and the flyout.
+    await vi.advanceTimersByTimeAsync(120)
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
+
+    await fireEvent.mouseEnter(screen.getByTestId('context-submenu'))
+    await vi.advanceTimersByTimeAsync(400)
+
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
+  })
+
+  it('closes the flyout when the pointer leaves it without coming back', async () => {
+    renderWithSubmenu()
+
+    const parent = screen.getByTestId('menu-item-new-claude-session')
+    await hoverOpen('menu-item-new-claude-session')
+    await fireEvent.mouseLeave(parent)
+    await vi.advanceTimersByTimeAsync(260)
+
+    expect(screen.queryByTestId('context-submenu')).not.toBeInTheDocument()
+  })
+
+  it('opens with ArrowRight and closes with ArrowLeft and Escape', async () => {
+    const { onClose } = renderWithSubmenu()
+
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowRight' })
+
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
+
+    await fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.queryByTestId('context-submenu')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
+
+    // Escape closes the flyout only; the root menu is still the user's context.
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('context-submenu')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders the check column and the meta text on every child', async () => {
+    renderWithSubmenu()
+
+    await hoverOpen('menu-item-new-claude-session')
+
+    expect(screen.getByTestId('submenu-item-who')).toHaveTextContent('5h 3% · 7d 27%')
+    expect(screen.getByTestId('submenu-check-who')).toHaveAttribute('data-checked', 'true')
+    expect(screen.getByTestId('submenu-check-matthias')).toHaveAttribute('data-checked', 'false')
+    expect(screen.getByTestId('submenu-item-work')).toBeDisabled()
+    expect(screen.getByTestId('submenu-item-work')).toHaveTextContent('not logged in')
+  })
+
+  it('activates a child with the keyboard and closes the whole menu', async () => {
+    const { onClose } = renderWithSubmenu()
+
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(CHILDREN[1].action).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('activates a child by click without running the parent action', async () => {
+    const { onClose, parentAction } = renderWithSubmenu()
+
+    await hoverOpen('menu-item-new-claude-session')
+    await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
+
+    expect(CHILDREN[1].action).toHaveBeenCalledTimes(1)
+    expect(parentAction).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps one flyout open at a time', async () => {
+    renderWithSubmenu()
+
+    await hoverOpen('menu-item-new-claude-session')
+    await fireEvent.mouseLeave(screen.getByTestId('menu-item-new-claude-session'))
+    await hoverOpen('menu-item-resume-claude')
+
+    expect(screen.getAllByTestId('context-submenu')).toHaveLength(1)
+    expect(screen.getByTestId('menu-item-new-claude-session')).toHaveAttribute(
+      'aria-expanded', 'false'
+    )
+    expect(screen.getByTestId('menu-item-resume-claude')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('places the flyout beside the parent row and flips it left when the viewport is narrow', async () => {
+    const previousWidth = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1200 })
+
+    renderWithSubmenu()
+    const parent = screen.getByTestId('menu-item-new-claude-session')
+    anchorRects(parent, null, {
+      parentRect: { left: 400, right: 560, width: 160, x: 400 },
+    })
+
+    await hoverOpen('menu-item-new-claude-session')
+    const flyout = screen.getByTestId('context-submenu')
+    vi.spyOn(flyout, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 200, bottom: 120, width: 200, height: 120, x: 0, y: 0,
+      toJSON() {},
+    })
+    await fireEvent(window, new Event('resize'))
+
+    // Wide window: the flyout sits against the row's right edge.
+    expect(Number.parseInt(flyout.style.left, 10)).toBe(558)
+
+    // Narrow window: no room on the right, so it flips to the row's left edge.
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 600 })
+    await fireEvent(window, new Event('resize'))
+
+    expect(Number.parseInt(flyout.style.left, 10)).toBe(202)
+
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth })
+  })
+
+  it('searches the open level with typeahead', async () => {
+    renderWithSubmenu()
+
+    await hoverOpen('menu-item-new-claude-session')
+    await fireEvent.keyDown(window, { key: 'm' })
+    await fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(CHILDREN[1].action).toHaveBeenCalledTimes(1)
   })
 })

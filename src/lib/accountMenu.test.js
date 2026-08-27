@@ -1,0 +1,97 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import {
+  accountSubmenuApplies,
+  accountUsageMeta,
+  buildAccountMenuChildren,
+  toolSelectsAccounts,
+} from './accountMenu.js'
+import { configureToolRegistry, resetToolRegistry } from './toolRegistry.js'
+
+const NOW = Date.parse('2026-08-27T10:00:00Z')
+
+function usage({ fiveHour = null, sevenDay = null, fiveHourResetsAt, sevenDayResetsAt } = {}) {
+  return {
+    five_hour:
+      fiveHour == null
+        ? null
+        : {
+            used_percentage: fiveHour,
+            resets_at: fiveHourResetsAt ?? Math.floor(NOW / 1000) + 3600,
+          },
+    seven_day:
+      sevenDay == null
+        ? null
+        : {
+            used_percentage: sevenDay,
+            resets_at: sevenDayResetsAt ?? Math.floor(NOW / 1000) + 90_000,
+          },
+    observed_at: new Date(NOW - 60_000).toISOString(),
+  }
+}
+
+const PRIMARY = { id: 'account-1', email: 'a@example.com', display_name: 'Who', logged_in: true }
+const SECOND = { id: 'account-2', email: 'b@example.com', display_name: '', logged_in: true }
+const LOGGED_OUT = { id: 'account-3', email: 'c@example.com', display_name: 'Work', logged_in: false }
+
+describe('accountMenu', () => {
+  afterEach(() => {
+    resetToolRegistry()
+  })
+
+  it('takes account support from the registry capability, not the tool name', () => {
+    expect(toolSelectsAccounts('claude')).toBe(true)
+    expect(toolSelectsAccounts('codex')).toBe(false)
+
+    // The next tool to gain accounts needs no change here.
+    configureToolRegistry([
+      { id: 'codex', label: 'Codex', capabilities: { account_selection: true } },
+      { id: 'claude', label: 'Claude', capabilities: { account_selection: false } },
+    ])
+
+    expect(toolSelectsAccounts('codex')).toBe(true)
+    expect(toolSelectsAccounts('claude')).toBe(false)
+  })
+
+  it('offers a submenu only when the host has a real choice', () => {
+    expect(accountSubmenuApplies('claude', [PRIMARY])).toBe(false)
+    expect(accountSubmenuApplies('claude', [PRIMARY, LOGGED_OUT])).toBe(false)
+    expect(accountSubmenuApplies('claude', [PRIMARY, SECOND])).toBe(true)
+    expect(accountSubmenuApplies('codex', [PRIMARY, SECOND])).toBe(false)
+  })
+
+  it('renders compact usage and drops a window whose reset has passed', () => {
+    expect(accountUsageMeta({ usage: usage({ fiveHour: 3.4, sevenDay: 27.2 }) }, NOW)).toBe(
+      '5h 3% · 7d 27%'
+    )
+    expect(
+      accountUsageMeta(
+        { usage: usage({ fiveHour: 91, sevenDay: 62, fiveHourResetsAt: Math.floor(NOW / 1000) - 60 }) },
+        NOW
+      )
+    ).toBe('7d 62%')
+    expect(accountUsageMeta({ usage: null }, NOW)).toBe('')
+  })
+
+  it('builds one child per account, checked, metered, and disabled where it must be', () => {
+    const onSelect = vi.fn()
+    const children = buildAccountMenuChildren({
+      accounts: [
+        { ...PRIMARY, usage: usage({ fiveHour: 3, sevenDay: 27 }) },
+        SECOND,
+        LOGGED_OUT,
+      ],
+      activeAccountId: 'account-2',
+      onSelect,
+    })
+
+    expect(children.map((child) => child.label)).toEqual(['Who', 'b@example.com', 'Work'])
+    expect(children[0].check).toBe(false)
+    expect(children[1].check).toBe(true)
+    expect(children[2].disabled).toBe(true)
+    expect(children[2].meta).toBe('not logged in')
+
+    children[1].action()
+    expect(onSelect).toHaveBeenCalledWith('account-2')
+  })
+})

@@ -16,6 +16,7 @@ const {
   getSettings,
 } = await import('./ipc.js')
 const {
+  activeClaudeAccountId,
   claudeAccounts,
   effectiveClaudeAccountId,
   loggedInAccounts,
@@ -466,5 +467,93 @@ describe('claudeAccounts store', () => {
     await requestClaudeLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
 
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  describe('an account picked in the context menu', () => {
+    // Regression: c982822 made the chooser the only way to name an account, so
+    // the sidebar's launch items could not carry the answer the user had
+    // already given by picking a row. An explicit id is the decision itself:
+    // it must launch, not reopen the question.
+    it('launches on it without opening the chooser', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    it('pins the project that had no choice of its own', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(setProjectClaudeAccount).toHaveBeenCalledWith('p1', 'account-2')
+      expect(effectiveClaudeAccountId({ id: 'p1' })).toBe('account-2')
+    })
+
+    it('leaves a project that already chose alone — one launch is not a new pin', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1', claude_account_id: 'account-1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+      })
+
+      expect(setProjectClaudeAccount).not.toHaveBeenCalled()
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+
+    it('honours remember=false and pins nothing', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      await requestClaudeLaunch({
+        project: { id: 'p1' },
+        mode: 'fresh',
+        tool: 'claude',
+        accountId: 'account-2',
+        remember: false,
+      })
+
+      expect(setProjectClaudeAccount).not.toHaveBeenCalled()
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+  })
+
+  describe('the account a launch would use today', () => {
+    it('follows pin, then global default, then the default config dir', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshClaudeAccounts()
+
+      expect(activeClaudeAccountId({ id: 'p1' })).toBe('account-1')
+
+      setGlobalClaudeAccount('account-2')
+      expect(activeClaudeAccountId({ id: 'p1' })).toBe('account-2')
+
+      expect(activeClaudeAccountId({ id: 'p1', claude_account_id: 'account-1' })).toBe('account-1')
+    })
+
+    it('ignores a pin whose account cannot run', async () => {
+      listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
+      await refreshClaudeAccounts()
+
+      expect(activeClaudeAccountId({ id: 'p1', claude_account_id: 'account-2' })).toBe('account-1')
+    })
   })
 })
