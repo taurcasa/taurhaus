@@ -1100,28 +1100,38 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
 
 /// Detection is faked here on purpose: no test may read the developer's real
 /// `~/.claude*`, and this exercises the launch path, not detection.
-fn fake_accounts() -> Vec<crate::session_scanner::accounts::claude::ClaudeAccount> {
+fn fake_accounts() -> Vec<crate::session_scanner::accounts::Account> {
     vec![
-        crate::session_scanner::accounts::claude::ClaudeAccount {
+        crate::session_scanner::accounts::Account {
+            tool: CliTool::Claude,
             id: "account-1".to_string(),
-            config_dir: PathBuf::from("/home/user/.claude"),
-            email: "primary@example.com".to_string(),
-            display_name: Some("Primary".to_string()),
-            organization: None,
-            seat_tier: None,
-            logged_in: true,
+            dir: PathBuf::from("/home/user/.claude"),
+            identity: crate::session_scanner::accounts::AccountIdentity {
+                id: "account-1".to_string(),
+                label: "primary@example.com".to_string(),
+                display_name: Some("Primary".to_string()),
+                organization: None,
+                plan: None,
+                logged_in: true,
+                credential_expires_at: None,
+            },
             is_default: true,
             is_process_default: true,
             usage: None,
         },
-        crate::session_scanner::accounts::claude::ClaudeAccount {
+        crate::session_scanner::accounts::Account {
+            tool: CliTool::Claude,
             id: "account-2".to_string(),
-            config_dir: PathBuf::from("/home/user/.claude-account2"),
-            email: "second@example.com".to_string(),
-            display_name: Some("Second".to_string()),
-            organization: None,
-            seat_tier: None,
-            logged_in: true,
+            dir: PathBuf::from("/home/user/.claude-account2"),
+            identity: crate::session_scanner::accounts::AccountIdentity {
+                id: "account-2".to_string(),
+                label: "second@example.com".to_string(),
+                display_name: Some("Second".to_string()),
+                organization: None,
+                plan: None,
+                logged_in: true,
+                credential_expires_at: None,
+            },
             is_default: false,
             is_process_default: false,
             usage: None,
@@ -1129,12 +1139,49 @@ fn fake_accounts() -> Vec<crate::session_scanner::accounts::claude::ClaudeAccoun
     ]
 }
 
-use crate::session_scanner::accounts::claude::{
-    install_detection_override, DetectionOverrideGuard,
-};
+#[test]
+fn a_launched_account_is_persisted_through_the_real_memory_query() {
+    // Regression: 967f956 cfg-erased launch account memory under `cargo test`,
+    // so the headline launch -> last_used behavior could regress unnoticed.
+    let (db, _db_file) = setup_db_with_project("p-last-used", "/tmp/last-used");
+    let conn = db.0.lock().expect("db lock");
+
+    super::launching::remember_resolved_account_with(
+        "p-last-used",
+        CliTool::Claude,
+        Some("account-2"),
+        |project_id, tool, account_id| {
+            crate::session_scanner::accounts::remember_last_used_in(
+                &conn, project_id, tool, account_id,
+            )
+        },
+    );
+
+    let memory =
+        crate::db::queries::project_account_memory(&conn, "p-last-used").expect("account memory");
+    assert_eq!(memory["claude"].account_id, "account-2");
+    assert_eq!(
+        memory["claude"].origin,
+        crate::models::AccountMemoryOrigin::LastUsed
+    );
+}
+
+use crate::session_scanner::accounts::{install_detection_override, DetectionOverrideGuard};
 
 fn with_fake_accounts() -> DetectionOverrideGuard {
-    install_detection_override(fake_accounts())
+    install_fake_accounts(fake_accounts())
+}
+
+fn install_fake_accounts(
+    accounts: Vec<crate::session_scanner::accounts::Account>,
+) -> DetectionOverrideGuard {
+    install_detection_override(
+        CliTool::Claude,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: accounts.iter().map(|account| account.dir.clone()).collect(),
+            accounts,
+        },
+    )
 }
 
 fn stub_launch_provider(daemon: &StubDaemon) -> ProviderState {
@@ -1342,7 +1389,7 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
         PathBuf::from("/home/user/.claude-account2/projects/-tmp-project/session.jsonl");
     let launch = decide_launch_account(
         &AccountsResult {
-            accounts: fake_accounts().into_iter().map(Into::into).collect(),
+            accounts: fake_accounts(),
             source: "daemon".to_string(),
             degraded: false,
             error: None,
@@ -1488,9 +1535,9 @@ fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
 /// no test may read the developer's real `~/.claude*`.
 fn with_fake_accounts_under(home: &Path) -> DetectionOverrideGuard {
     let mut accounts = fake_accounts();
-    accounts[0].config_dir = home.join(".claude");
-    accounts[1].config_dir = home.join(".claude-account2");
-    install_detection_override(accounts)
+    accounts[0].dir = home.join(".claude");
+    accounts[1].dir = home.join(".claude-account2");
+    install_fake_accounts(accounts)
 }
 
 /// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
@@ -1565,9 +1612,9 @@ fn resume_reads_the_account_from_the_transcripts_on_disk() {
 fn a_configured_claude_root_is_named_in_the_launch() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let mut accounts = fake_accounts();
-    accounts[0].config_dir = PathBuf::from("/tmp/e2e-run/claude");
+    accounts[0].dir = PathBuf::from("/tmp/e2e-run/claude");
     accounts[0].is_process_default = false;
-    let _guard = install_detection_override(accounts);
+    let _guard = install_fake_accounts(accounts);
     let daemon = launch_stub_daemon();
     let provider = stub_launch_provider(&daemon);
     let (db, _db_file) = setup_db_with_project("p-isolated", "/tmp/isolated-project");

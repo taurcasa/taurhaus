@@ -1,6 +1,6 @@
 use super::*;
 use crate::db::queries;
-use crate::session_scanner::accounts::claude::{install_scan_override, ClaudeScan};
+use crate::session_scanner::accounts::{install_detection_override, AccountScan};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::{NamedTempFile, TempDir};
@@ -192,10 +192,13 @@ fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
     std::fs::write(config_dir.join(".claude.json"), "").expect("config file");
     let project_path = "/home/user/projects/mid-write";
     let transcript = write_transcript(&config_dir, project_path, "abc.jsonl");
-    let _scan = install_scan_override(ClaudeScan {
-        config_dirs: vec![config_dir],
-        accounts: Vec::new(),
-    });
+    let _scan = install_detection_override(
+        CliTool::Claude,
+        AccountScan {
+            config_dirs: vec![config_dir],
+            accounts: Vec::new(),
+        },
+    );
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: None,

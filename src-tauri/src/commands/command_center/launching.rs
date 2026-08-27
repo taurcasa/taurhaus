@@ -463,10 +463,21 @@ pub(super) fn launch_cli_session_impl(
 }
 
 fn remember_resolved_account(project_id: &str, tool: CliTool, account_id: Option<&str>) {
+    remember_resolved_account_with(project_id, tool, account_id, accounts::remember_last_used);
+}
+
+pub(super) fn remember_resolved_account_with<F>(
+    project_id: &str,
+    tool: CliTool,
+    account_id: Option<&str>,
+    remember: F,
+) where
+    F: FnOnce(&str, CliTool, &str) -> Result<bool, String>,
+{
     let Some(account_id) = account_id else {
         return;
     };
-    if let Err(error) = accounts::remember_last_used(project_id, tool, account_id) {
+    if let Err(error) = remember(project_id, tool, account_id) {
         tracing::warn!(tool = %tool, error = %error, "failed to remember launched account");
     }
 }

@@ -49,11 +49,9 @@ pub mod session_scanner {
     }
 
     pub mod accounts {
-        pub mod claude {
-            pub use taurhaus_lib::session_scanner::accounts::claude::{
-                configured_root_to_name, to_launch_namespace,
-            };
-        }
+        pub use taurhaus_lib::session_scanner::accounts::{
+            configured_default_dir, to_launch_namespace,
+        };
     }
 
     pub mod process {

@@ -10,11 +10,10 @@ use std::collections::HashMap;
 #[cfg(not(test))]
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 #[cfg(not(test))]
 use std::sync::OnceLock;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
-#[cfg(not(test))]
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
@@ -282,10 +281,10 @@ pub fn configured_default_dir(tool: CliTool) -> Option<PathBuf> {
     let process_default = provider.default_dir(&home);
     let configured = match tool_spec.capabilities.session_root {
         SessionRoot::AppManagedClaudeDir => {
-            crate::provider::platform_paths::PlatformPaths::claude_dir()
+            crate::provider::platform_paths::PlatformPaths::claude_dir_override()
         }
-        SessionRoot::ToolHome => process_default.clone(),
-    };
+        SessionRoot::ToolHome => None,
+    }?;
     (path_key(&configured) != path_key(&process_default)).then_some(configured)
 }
 
@@ -636,31 +635,56 @@ fn unix_now() -> u64 {
         .as_secs()
 }
 
-#[cfg(not(test))]
 struct LastUsedWrite {
     account_id: String,
-    written_at: Instant,
+    selector_key: String,
+    checked_at: Instant,
 }
 
 #[cfg(not(test))]
 static LAST_USED_WRITES: Mutex<Option<HashMap<(String, CliTool), LastUsedWrite>>> =
     Mutex::new(None);
 
+fn live_account_check_is_due(
+    checks: &HashMap<(String, CliTool), LastUsedWrite>,
+    key: &(String, CliTool),
+    selector_key: Option<&str>,
+    now: Instant,
+) -> bool {
+    checks.get(key).is_none_or(|write| {
+        selector_key.is_some_and(|selector| selector != write.selector_key)
+            || now.saturating_duration_since(write.checked_at) >= Duration::from_secs(60)
+    })
+}
+
 /// Persist a scanner or launch observation without disturbing a user pin.
-#[cfg(not(test))]
 pub fn remember_last_used(
     project_id: &str,
     tool: CliTool,
     account_id: &str,
 ) -> Result<bool, String> {
+    if cfg!(test) {
+        // Unit launches must not open the developer's app-data database. Their
+        // real persistence seam is exercised through `remember_last_used_in`.
+        return Ok(false);
+    }
     let db_path =
         crate::provider::platform_paths::PlatformPaths::app_data_root().join("taurhaus.db");
     if !db_path.exists() {
         return Ok(false);
     }
     let connection = rusqlite::Connection::open(db_path).map_err(|error| error.to_string())?;
+    remember_last_used_in(&connection, project_id, tool, account_id)
+}
+
+pub(crate) fn remember_last_used_in(
+    connection: &rusqlite::Connection,
+    project_id: &str,
+    tool: CliTool,
+    account_id: &str,
+) -> Result<bool, String> {
     crate::db::queries::remember_last_used_account(
-        &connection,
+        connection,
         project_id,
         &tool.to_string(),
         account_id,
@@ -668,14 +692,56 @@ pub fn remember_last_used(
     .map_err(|error| error.to_string())
 }
 
-/// Unit tests exercise the connection-scoped query and never open app data.
-#[cfg(test)]
-pub fn remember_last_used(
-    _project_id: &str,
-    _tool: CliTool,
-    _account_id: &str,
-) -> Result<bool, String> {
-    Ok(false)
+struct LiveAccountObservation {
+    throttle_key: (String, CliTool),
+    tool: CliTool,
+    account_id: String,
+    selector_key: String,
+}
+
+fn persist_live_account_observations(
+    connection: &rusqlite::Connection,
+    project_ids: &HashMap<String, String>,
+    checks: &mut HashMap<(String, CliTool), LastUsedWrite>,
+    observations: &[LiveAccountObservation],
+    now: Instant,
+) -> Result<usize, String> {
+    let mut persisted = 0;
+    for observation in observations {
+        if !live_account_check_is_due(
+            checks,
+            &observation.throttle_key,
+            Some(&observation.selector_key),
+            now,
+        ) {
+            continue;
+        }
+        let Some(project_id) = project_ids.get(&observation.throttle_key.0) else {
+            continue;
+        };
+        let changed = checks
+            .get(&observation.throttle_key)
+            .is_none_or(|write| write.account_id != observation.account_id);
+        if changed
+            && remember_last_used_in(
+                connection,
+                project_id,
+                observation.tool,
+                &observation.account_id,
+            )?
+        {
+            persisted += 1;
+        }
+        checks.insert(
+            observation.throttle_key.clone(),
+            LastUsedWrite {
+                account_id: observation.account_id.clone(),
+                selector_key: observation.selector_key.clone(),
+                checked_at: now,
+            },
+        );
+    }
+    Ok(persisted)
 }
 
 /// Bind live selector values back to project memory. This runs on the scanner
@@ -686,89 +752,169 @@ pub(crate) fn record_live_session_accounts(sessions: &[RuntimeSession]) {
         return;
     }
 
-    for session in sessions {
-        let tool = session.cli_tool;
-        let tool_spec = spec(tool);
-        let (Some(selector), Some(provider)) = (
-            tool_spec.capabilities.account_selector,
-            tool_spec.account_provider(),
-        ) else {
-            continue;
-        };
-        let selected_dir = super::process::process_selector_value(session.pid, selector)
-            .or_else(|| dirs::home_dir().map(|home| provider.default_dir(&home)));
-        let Some(selected_dir) = selected_dir else {
-            continue;
-        };
-        let selected_key = canonical_key(&selected_dir);
-        let Some(account) = detect(tool)
-            .into_iter()
-            .find(|account| canonical_key(&account.dir) == selected_key)
-        else {
-            continue;
-        };
-        let Some(project_id) = project_id_for_path(&session.project_path) else {
-            continue;
-        };
-        let throttle_key = (
-            crate::provider::path::normalize_project_path(&session.project_path),
-            tool,
-        );
-        let should_write = {
-            let mut writes = LAST_USED_WRITES
+    let now = Instant::now();
+    let mut seen = HashSet::new();
+    let candidates = sessions
+        .iter()
+        .filter_map(|session| {
+            let tool = session.cli_tool;
+            let tool_spec = spec(tool);
+            let (Some(selector), Some(provider)) = (
+                tool_spec.capabilities.account_selector,
+                tool_spec.account_provider(),
+            ) else {
+                return None;
+            };
+            let throttle_key = (
+                crate::provider::path::normalize_project_path(&session.project_path),
+                tool,
+            );
+            if !seen.insert(throttle_key.clone()) {
+                return None;
+            }
+            let selected_hint = session
+                .jsonl_path
+                .as_deref()
+                .and_then(|transcript| provider.session_dir(Path::new(transcript)));
+            let selector_key = selected_hint.as_ref().map(|dir| {
+                crate::provider::path::normalize_project_path(&dir.display().to_string())
+            });
+            let due = LAST_USED_WRITES
                 .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            let writes = writes.get_or_insert_with(HashMap::new);
-            match writes.get(&throttle_key) {
-                Some(write) if write.account_id == account.id => false,
-                Some(write) if write.written_at.elapsed() < Duration::from_secs(60) => false,
-                _ => true,
-            }
-        };
-        if !should_write {
-            continue;
-        }
-        match remember_last_used(&project_id, tool, &account.id) {
-            Ok(_) => {
-                LAST_USED_WRITES
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .get_or_insert_with(HashMap::new)
-                    .insert(
-                        throttle_key,
-                        LastUsedWrite {
-                            account_id: account.id,
-                            written_at: Instant::now(),
-                        },
-                    );
-            }
-            Err(error) => {
-                tracing::warn!(tool = %tool, error = %error, "failed to remember live session account")
-            }
-        }
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .is_none_or(|checks| {
+                    live_account_check_is_due(checks, &throttle_key, selector_key.as_deref(), now)
+                });
+            due.then_some((
+                session,
+                tool,
+                selector,
+                provider,
+                throttle_key,
+                selected_hint,
+            ))
+        })
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return;
     }
+
+    let mut account_dirs: HashMap<CliTool, Vec<(PathBuf, String)>> = HashMap::new();
+    for (_, tool, _, _, _, _) in &candidates {
+        account_dirs.entry(*tool).or_insert_with(|| {
+            detect(*tool)
+                .into_iter()
+                .map(|account| (canonical_key(&account.dir), account.id))
+                .collect()
+        });
+    }
+
+    let observations = candidates
+        .into_iter()
+        .filter_map(
+            |(session, tool, selector, provider, throttle_key, selected_hint)| {
+                let selected_dir = selected_hint
+                    .or_else(|| super::process::process_selector_value(session.pid, selector))
+                    .or_else(|| dirs::home_dir().map(|home| provider.default_dir(&home)))?;
+                let selected_key = canonical_key(&selected_dir);
+                let selector_key = crate::provider::path::normalize_project_path(
+                    &selected_dir.display().to_string(),
+                );
+                let account_id = account_dirs
+                    .get(&tool)?
+                    .iter()
+                    .find_map(|(dir, id)| (*dir == selected_key).then(|| id.clone()))?;
+                Some(LiveAccountObservation {
+                    throttle_key,
+                    tool,
+                    account_id,
+                    selector_key,
+                })
+            },
+        )
+        .collect::<Vec<_>>();
+    if observations.is_empty() {
+        return;
+    }
+
+    let db_path =
+        crate::provider::platform_paths::PlatformPaths::app_data_root().join("taurhaus.db");
+    let connection = if db_path.exists() {
+        rusqlite::Connection::open(db_path).ok()
+    } else {
+        None
+    };
+    let project_ids = connection
+        .as_ref()
+        .map(project_ids_by_path)
+        .unwrap_or_default();
+
+    let Some(connection) = connection.as_ref() else {
+        return;
+    };
+    let mut writes = LAST_USED_WRITES
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let writes = writes.get_or_insert_with(HashMap::new);
+    if let Err(error) =
+        persist_live_account_observations(connection, &project_ids, writes, &observations, now)
+    {
+        tracing::warn!(error = %error, "failed to remember live session account");
+    }
+}
+
+#[cfg(not(test))]
+fn project_ids_by_path(connection: &rusqlite::Connection) -> HashMap<String, String> {
+    let Ok(mut statement) = connection.prepare("SELECT id, path FROM projects") else {
+        return HashMap::new();
+    };
+    let Ok(rows) = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }) else {
+        return HashMap::new();
+    };
+    rows.filter_map(Result::ok)
+        .map(|(id, path)| (crate::provider::path::normalize_project_path(&path), id))
+        .collect()
+}
+
+/// Resolve the display label for the account that owns an archived transcript.
+pub fn account_label_for_session(
+    tool: CliTool,
+    project_path: &str,
+    session_id: &str,
+) -> Option<String> {
+    let tool_spec = spec(tool);
+    let provider = tool_spec.account_provider()?;
+    let scan = scan(tool);
+    let slug = crate::session_scanner::idle::path_to_slug(project_path);
+    let transcript_name = format!("{session_id}.{}", tool_spec.session_extension);
+    let owner = scan.config_dirs.iter().find_map(|config_dir| {
+        let transcript = config_dir
+            .join(tool_spec.projects_subdir)
+            .join(&slug)
+            .join(&transcript_name);
+        transcript
+            .is_file()
+            .then(|| provider.session_dir(&transcript))
+            .flatten()
+    })?;
+    let account = account_for_dir(&scan.accounts, &owner)?;
+    Some(
+        account
+            .identity
+            .display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(&account.identity.label)
+            .to_string(),
+    )
 }
 
 #[cfg(test)]
 pub(crate) fn record_live_session_accounts(_sessions: &[RuntimeSession]) {}
-
-#[cfg(not(test))]
-fn project_id_for_path(project_path: &str) -> Option<String> {
-    let db_path =
-        crate::provider::platform_paths::PlatformPaths::app_data_root().join("taurhaus.db");
-    let connection = rusqlite::Connection::open(db_path).ok()?;
-    let wanted = crate::provider::path::normalize_project_path(project_path);
-    let mut statement = connection.prepare("SELECT id, path FROM projects").ok()?;
-    let project_id = statement
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .ok()?
-        .filter_map(Result::ok)
-        .find(|(_, path)| crate::provider::path::normalize_project_path(path) == wanted)
-        .map(|(id, _)| id);
-    project_id
-}
 
 /// Newest transcript for a project across all candidate account dirs.
 pub fn newest_project_transcript(
@@ -876,6 +1022,9 @@ pub trait HttpClient: Sync {
 /// Production blocking client. Calls run only on the usage poller thread.
 pub struct ReqwestHttpClient;
 
+static REQWEST_HTTP_CLIENT: LazyLock<Option<reqwest::blocking::Client>> =
+    LazyLock::new(|| reqwest::blocking::Client::builder().build().ok());
+
 impl HttpClient for ReqwestHttpClient {
     fn get(
         &self,
@@ -883,13 +1032,10 @@ impl HttpClient for ReqwestHttpClient {
         headers: &[(&str, &str)],
         timeout: Duration,
     ) -> Result<HttpResponse, HttpError> {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|_| HttpError {
-                kind: HttpErrorKind::Network,
-            })?;
-        let mut request = client.get(url);
+        let client = REQWEST_HTTP_CLIENT.as_ref().ok_or(HttpError {
+            kind: HttpErrorKind::Network,
+        })?;
+        let mut request = client.get(url).timeout(timeout);
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
@@ -918,6 +1064,7 @@ pub trait AccountProvider: Sync {
 
 /// Per-tool subscription-usage fetch and normalisation.
 pub trait UsageProvider: Sync {
+    fn credential_path(&self, dir: &Path) -> Option<PathBuf>;
     fn fetch(&self, dir: &Path, http: &dyn HttpClient) -> UsageSnapshot;
 }
 
@@ -1105,5 +1252,151 @@ mod tests {
         assert_eq!(resolved.account.unwrap().id, "default");
         assert_eq!(resolved.origin, AccountOrigin::DefaultConfigDir);
         assert_eq!(resolved.fallback_from.as_deref(), Some("missing"));
+    }
+
+    #[test]
+    fn live_account_throttle_runs_before_scanner_io() {
+        // Regression: 967f956 performed process inspection, account
+        // canonicalization, and a full projects query on every scanner tick,
+        // consulting the one-minute throttle only after all of that work.
+        let now = Instant::now();
+        let key = ("/projects/taurhaus".to_string(), CliTool::Claude);
+        let checks = HashMap::from([(
+            key.clone(),
+            LastUsedWrite {
+                account_id: "account-1".to_string(),
+                selector_key: "/accounts/one".to_string(),
+                checked_at: now,
+            },
+        )]);
+
+        assert_eq!(checks[&key].account_id, "account-1");
+        assert!(!live_account_check_is_due(
+            &checks,
+            &key,
+            Some("/accounts/one"),
+            now
+        ));
+        assert!(live_account_check_is_due(
+            &checks,
+            &key,
+            Some("/accounts/two"),
+            now
+        ));
+        assert!(live_account_check_is_due(
+            &checks,
+            &key,
+            Some("/accounts/one"),
+            now + Duration::from_secs(60)
+        ));
+    }
+
+    #[test]
+    fn live_account_observations_persist_and_exercise_the_throttle() {
+        // Regression: 967f956 cfg-erased the scanner account-memory path under
+        // `cargo test`, leaving both the write and its one-minute throttle dark.
+        let database = tempfile::NamedTempFile::new().unwrap();
+        let connection = crate::db::init_db(database.path()).unwrap();
+        connection
+            .execute(
+                "INSERT INTO projects
+                 (id, name, path, description, last_activity_at, hero_preference, created_at, updated_at)
+                 VALUES ('project-1', 'Project', '/projects/one', NULL, NULL, NULL, 'now', 'now')",
+                [],
+            )
+            .unwrap();
+        let project_key = crate::provider::path::normalize_project_path("/projects/one");
+        let project_ids = HashMap::from([(project_key.clone(), "project-1".to_string())]);
+        let mut checks = HashMap::new();
+        let now = Instant::now();
+        let mut observations = vec![LiveAccountObservation {
+            throttle_key: (project_key, CliTool::Claude),
+            tool: CliTool::Claude,
+            account_id: "account-1".to_string(),
+            selector_key: "/accounts/one".to_string(),
+        }];
+
+        assert_eq!(
+            persist_live_account_observations(
+                &connection,
+                &project_ids,
+                &mut checks,
+                &observations,
+                now,
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            persist_live_account_observations(
+                &connection,
+                &project_ids,
+                &mut checks,
+                &observations,
+                now + Duration::from_secs(10),
+            )
+            .unwrap(),
+            0
+        );
+
+        observations[0].account_id = "account-2".to_string();
+        observations[0].selector_key = "/accounts/two".to_string();
+        assert_eq!(
+            persist_live_account_observations(
+                &connection,
+                &project_ids,
+                &mut checks,
+                &observations,
+                now + Duration::from_secs(10),
+            )
+            .unwrap(),
+            1
+        );
+        let memory = crate::db::queries::project_account_memory(&connection, "project-1").unwrap();
+        assert_eq!(memory["claude"].account_id, "account-2");
+    }
+
+    #[test]
+    fn session_account_label_comes_from_the_transcript_owner() {
+        // Regression: 179a767 rendered `session.account_label` but no backend
+        // model or mapper ever produced it, leaving the branch unreachable.
+        let root = tempfile::tempdir().unwrap();
+        let config_dir = root.path().join(".claude-account2");
+        let project = "/projects/taurhaus";
+        let session_id = "session-2";
+        let transcript = config_dir
+            .join("projects")
+            .join(crate::session_scanner::idle::path_to_slug(project))
+            .join(format!("{session_id}.jsonl"));
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, "{}\n").unwrap();
+        let _guard = install_detection_override(
+            CliTool::Claude,
+            AccountScan {
+                config_dirs: vec![config_dir.clone()],
+                accounts: vec![Account {
+                    tool: CliTool::Claude,
+                    id: "account-2".to_string(),
+                    dir: config_dir,
+                    identity: AccountIdentity {
+                        id: "account-2".to_string(),
+                        label: "second@example.com".to_string(),
+                        display_name: Some("Second".to_string()),
+                        organization: None,
+                        plan: None,
+                        logged_in: true,
+                        credential_expires_at: None,
+                    },
+                    is_default: false,
+                    is_process_default: false,
+                    usage: None,
+                }],
+            },
+        );
+
+        assert_eq!(
+            account_label_for_session(CliTool::Claude, project, session_id).as_deref(),
+            Some("Second")
+        );
     }
 }
