@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Testing
+
+- **Five load-sensitive tests made deterministic** — the runtime scan override is scoped to the test that installs it, mesh detail latency is spent on a fake frame clock, launch log assertions flush the sink and hold the log guard, the live `/proc` scan waits for the child's exec, and daemon-unavailable is injected instead of racing a freed port.
+
 ## [0.6.7] - 2026-08-26
 
 Follow-up to 0.6.6. One activity signal across the UI, honest wall-clock activity accounting, compaction reinjection for Codex via its native hooks (opt-in), and two post-0.6.6 noise regressions fixed. Daemon protocol is now **10** — app and daemon update together.
