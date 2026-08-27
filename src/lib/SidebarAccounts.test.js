@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('./ipc.js', () => ({
@@ -129,7 +129,10 @@ describe('Sidebar account submenus', () => {
     expect(screen.queryByTestId('menu-item-claude-account')).not.toBeInTheDocument()
   })
 
-  it('launches immediately on the account a child names and pins it', async () => {
+  // Regression: 74c7761 pinned the project to the account a launch row named.
+  // The launch rows are per-launch overrides; the `Claude account` submenu is
+  // where a project chooses the subscription it keeps.
+  it('launches immediately on the account a child names, and pins nothing', async () => {
     await openProjectMenu()
 
     await hoverOpenSubmenu('menu-item-new-claude-session')
@@ -138,8 +141,51 @@ describe('Sidebar account submenus', () => {
     await waitFor(() => {
       expect(launchClaudeSession).toHaveBeenCalledWith('project-0', 'fresh', 'claude', 'account-2')
     })
-    expect(setProjectClaudeAccount).toHaveBeenCalledWith('project-0', 'account-2')
+    expect(setProjectClaudeAccount).not.toHaveBeenCalled()
     expect(claudeAccounts.pending).toBe(null)
+  })
+
+  // Regression: 74c7761 built a row's label from the display name alone, and
+  // the flyout keyed its rows by that label. Two subscriptions of the same
+  // named user crashed the submenu instead of rendering it.
+  it('renders both rows when two accounts share a display name', async () => {
+    listClaudeAccounts.mockResolvedValue(
+      detected([PRIMARY, { ...SECOND, display_name: 'Who' }, LOGGED_OUT])
+    )
+
+    await openProjectMenu()
+    await hoverOpenSubmenu('menu-item-new-claude-session')
+
+    const rows = within(screen.getByTestId('context-submenu')).getAllByRole('menuitemradio')
+    expect(rows.map((row) => row.textContent.trim())).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Who (stierms@gmail.com)'),
+        expect.stringContaining('Who (m.stier@giesi.com)'),
+      ])
+    )
+    expect(new Set(rows.map((row) => row.dataset.testid)).size).toBe(rows.length)
+  })
+
+  // Regression: 74c7761 ticked the same account on every launch row. Continue
+  // and Resume follow the transcript's config dir, which the backend resolves,
+  // so a tick there claims an account the click may not use.
+  it('ticks the account a fresh launch uses, and none on the history rows', async () => {
+    await openProjectMenu()
+
+    await hoverOpenSubmenu('menu-item-new-claude-session')
+    expect(screen.getByTestId('submenu-check-who')).toHaveAttribute('data-checked', 'true')
+
+    await fireEvent.mouseEnter(screen.getByTestId('menu-item-resume-claude'))
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-item-resume-claude')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+    )
+    const checks = within(screen.getByTestId('context-submenu')).getAllByRole('menuitemradio')
+    for (const row of checks) {
+      expect(row).toHaveAttribute('aria-checked', 'false')
+    }
   })
 
   it('marks the account the launch would use today and meters each one', async () => {

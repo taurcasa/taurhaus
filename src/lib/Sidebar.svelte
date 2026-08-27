@@ -11,6 +11,7 @@
   import {
     activeClaudeAccountId,
     claudeAccounts,
+    launchFollowsHistory,
     refreshClaudeAccounts,
     resolveChooserAccounts,
     setProjectClaudeAccountChoice,
@@ -406,15 +407,21 @@
    * The capability comes from the registry, never from the tool's name: the
    * next tool to gain account selection grows the same submenu on the same day
    * its descriptor says so. `onPick` receives the account the user named.
+   *
+   * The tick says "this is the one you get if you just click the row", so a
+   * mode whose account the backend reads off the transcript gets none: the
+   * project's pin is not what a resume would use.
    */
-  function withAccountSubmenu(item, tool, onPick) {
+  function withAccountSubmenu(item, tool, onPick, mode = 'fresh') {
     const accounts = resolveChooserAccounts()
     if (!accountSubmenuApplies(tool, accounts)) return item
     return {
       ...item,
       children: buildAccountMenuChildren({
         accounts,
-        activeAccountId: activeClaudeAccountId(ctxMenu?.project),
+        activeAccountId: launchFollowsHistory(mode)
+          ? null
+          : activeClaudeAccountId(ctxMenu?.project),
         onSelect: onPick,
       }),
     }
@@ -484,6 +491,7 @@
       { label, action: () => ctxLaunchTool(mode, tool), icon },
       tool,
       (accountId) => ctxLaunchTool(mode, tool, accountId),
+      mode,
     )
 
     // Continue is only distinct for Claude.

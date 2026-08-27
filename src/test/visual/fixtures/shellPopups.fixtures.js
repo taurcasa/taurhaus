@@ -57,13 +57,23 @@ const ACCOUNTS = [
   LOGGED_OUT,
 ]
 
+/**
+ * One person, one display name, two subscriptions — the case that crashed the
+ * submenu when a row's identity was its label.
+ */
+const SAME_NAME = [
+  ACCOUNTS[0],
+  { ...ACCOUNTS[1], display_name: 'Who' },
+  LOGGED_OUT,
+]
+
 /** `surface` picks which of the app's two mount points the host reproduces. */
-function scenario(name, theme, surface) {
+function scenario(name, theme, surface, accounts = ACCOUNTS) {
   return {
     name,
     theme,
     surface,
-    accounts: ACCOUNTS,
+    accounts,
     projectName: 'taurhaus',
     selectedAccountId: null,
     defaultAccountId: null,
@@ -77,4 +87,5 @@ export const shellPopupsScenarios = [
   scenario('chip-menu-dark', 'dark', 'chip'),
   scenario('sidebar-account-submenu-light', 'light', 'sidebar'),
   scenario('sidebar-account-submenu-dark', 'dark', 'sidebar'),
+  scenario('sidebar-same-display-name-dark', 'dark', 'sidebar', SAME_NAME),
 ]

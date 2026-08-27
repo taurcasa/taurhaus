@@ -6,6 +6,10 @@
  * controls around it. Every part is optional and every unknown value falls back
  * to what the host would have shown on its own — a mistyped scenario should
  * still render something, not a blank page.
+ *
+ * `unknownRequest` reports that the fallback happened, because for the
+ * screenshot lane a fallback is a wrong answer: the PNG is filed as evidence
+ * about the fixture that was asked for.
  */
 
 const THEMES = new Set(['light', 'dark'])
@@ -34,9 +38,14 @@ export function readVisualHostQuery(search, { registry = [], viewports = [] } = 
   const requestedTheme = String(params.get('theme') ?? '').trim().toLowerCase()
   const themePinned = THEMES.has(requestedTheme)
 
+  const unknownRequest =
+    (requestedComponent !== '' && entry?.id !== requestedComponent) ||
+    (requestedScenario !== '' && scenario?.name !== requestedScenario)
+
   return {
     componentId: entry?.id ?? '',
     scenarioName: scenario?.name ?? '',
+    unknownRequest,
     viewportId: viewport?.id ?? 'desktop',
     theme: themePinned ? requestedTheme : (scenario?.theme ?? 'light'),
     themePinned,

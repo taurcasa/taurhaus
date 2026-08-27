@@ -11,8 +11,10 @@
    * action the row is nothing but its children, so a click opens them.
    *
    * Item shape: `{label, action, icon, disabled, separator, keepOpen, danger,
-   * children}`. A child adds `meta` (right-aligned muted text) and `check` (a
-   * leading tick, with the column reserved on every child so labels line up).
+   * children}`. A child adds `meta` (right-aligned muted text), `check` (a
+   * leading tick, with the column reserved on every child so labels line up)
+   * and `key` — a unique identity for the row, because a child's label is
+   * whatever the caller's data says and two accounts can carry the same one.
    */
   let {
     items = [],
@@ -55,8 +57,11 @@
   let submenuTop = $state(0)
   let hoverTimer = null
   let leaveTimer = null
-  /** Bumped by anything that can have moved the row an open flyout hangs off. */
-  let anchorMoved = $state(0)
+  /**
+   * Bumped by anything that can have moved a menu or the room around it: a
+   * window resize, or the root menu growing rows after it opened.
+   */
+  let layoutTick = $state(0)
 
   // Only actionable (non-separator) items for keyboard nav
   const actionableItems = $derived(items.filter(i => !i.separator))
@@ -80,6 +85,8 @@
     // Read x/y props reactively
     const px = x
     const py = y
+    // ...and re-measure whenever the menu or the viewport changed size under it.
+    void layoutTick
 
     if (!menuEl) {
       adjustedX = px
@@ -111,7 +118,7 @@
    * same way the root menu is.
    */
   $effect(() => {
-    void anchorMoved
+    void layoutTick
     if (openIndex < 0) return
     const anchor = parentEls[openIndex]
     if (!anchor) return
@@ -200,11 +207,22 @@
     }
   })
 
-  // A window that resizes under an open flyout leaves it beside nothing.
+  // A window that resizes under an open menu leaves it hanging off the edge,
+  // and an open flyout beside nothing.
   $effect(() => {
-    const reposition = () => { anchorMoved += 1 }
+    const reposition = () => { layoutTick += 1 }
     window.addEventListener('resize', reposition)
     return () => window.removeEventListener('resize', reposition)
+  })
+
+  // Rows can arrive after the menu opened: the sidebar starts account detection
+  // when it opens the menu and grows the launch rows when the answer lands. The
+  // element is only resized, so nothing else would ask for the clamp again.
+  $effect(() => {
+    if (!menuEl || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => { layoutTick += 1 })
+    observer.observe(menuEl)
+    return () => observer.disconnect()
   })
 
   function activate(item) {
@@ -434,7 +452,7 @@
     onmouseenter={clearLeaveTimer}
     onmouseleave={handleParentLeave}
   >
-    {#each openChildren as child, childIndex (child.label)}
+    {#each openChildren as child, childIndex (child.key ?? `${childIndex}:${child.label}`)}
       <button
         class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors
           {child.disabled ? textMuted + ' cursor-default opacity-50' : textPrimary + ' ' + hoverBg}

@@ -223,6 +223,65 @@ describe('ContextMenu', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  // Regression: 74c7761 clamped the menu once, against the size it had when it
+  // opened. The sidebar starts account detection when the menu opens and grows
+  // the rows when the answer lands, so a menu opened near the bottom edge kept
+  // its old top and pushed the new rows off the screen.
+  it('re-clamps when rows arrive after the menu opened', async () => {
+    const observers = []
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) {
+        this.callback = callback
+        observers.push(this)
+      }
+      observe() {}
+      disconnect() {}
+    })
+    const prevHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+
+    render(ContextMenu, { props: { items: createItems().items, x: 100, y: 300 } })
+
+    const menu = screen.getByTestId('context-menu')
+    let height = 40
+    vi.spyOn(menu, 'getBoundingClientRect').mockImplementation(() => ({
+      left: 0, top: 0, right: 160, bottom: height, width: 160, height, x: 0, y: 0, toJSON() {},
+    }))
+
+    await waitFor(() => expect(menu.style.top).toBe('300px'))
+
+    // The account rows landed: the same element, three times as tall.
+    height = 320
+    observers.at(-1).callback([])
+
+    await waitFor(() => expect(menu.style.top).toBe('272px'))
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight })
+    vi.unstubAllGlobals()
+  })
+
+  // Regression: 74c7761 repositioned only the flyout on a window resize, so the
+  // root menu kept coordinates the viewport no longer had room for.
+  it('re-clamps the root menu when the window resizes under it', async () => {
+    const prevHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 })
+
+    render(ContextMenu, { props: { items: createItems().items, x: 100, y: 600 } })
+
+    const menu = screen.getByTestId('context-menu')
+    vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 160, bottom: 200, width: 160, height: 200, x: 0, y: 0, toJSON() {},
+    })
+    await waitFor(() => expect(menu.style.top).toBe('600px'))
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 500 })
+    await fireEvent(window, new Event('resize'))
+
+    await waitFor(() => expect(menu.style.top).toBe('292px'))
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight })
+  })
+
   it('supports type-ahead navigation by item label', async () => {
     const onClose = vi.fn()
     const remove = vi.fn()
@@ -468,6 +527,27 @@ describe('ContextMenu submenus', () => {
     expect(Number.parseInt(flyout.style.left, 10)).toBe(202)
 
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth })
+  })
+
+  // Regression: 74c7761 keyed the flyout rows by `child.label`, which the
+  // account rows derive from a display name two subscriptions can share. Svelte
+  // threw `each_key_duplicate` and the whole submenu failed to render.
+  it('renders children that share a label', async () => {
+    const items = [{
+      label: 'New Claude Session',
+      action: vi.fn(),
+      children: [
+        { key: '0:account-1', label: 'Matthias', meta: '5h 3%', action: vi.fn() },
+        { key: '1:account-2', label: 'Matthias', meta: '5h 61%', action: vi.fn() },
+      ],
+    }]
+    render(ContextMenu, { props: { items, onClose: vi.fn() } })
+
+    await hoverOpen('menu-item-new-claude-session')
+
+    const rows = screen.getAllByRole('menuitemradio')
+    expect(rows).toHaveLength(2)
+    expect(rows[1]).toHaveTextContent('5h 61%')
   })
 
   it('searches the open level with typeahead', async () => {

@@ -68,6 +68,13 @@ just visual-shot-stop                                           # stop the serve
   drops its own controls so the shot is the fixture alone at window size.
 - Viewports are the host's presets: `desktop` (1920×1080), `laptop` (1366×768),
   `narrow` (1024×768).
+- A shot is evidence, so every way of producing an irrelevant one fails instead:
+  the listener on the port must identify itself as the visual host (`exit 6`),
+  the page must report the fixture that was asked for — the host writes it into
+  `data-visual-host-fixture` and the same Edge run dumps the DOM (`exit 7`, the
+  usual cause being a mistyped component or scenario), Edge's exit status counts
+  (`exit 8`), and the browser runs under a wall clock (`exit 9`,
+  `VISUAL_SHOT_TIMEOUT_S`, default 90 s).
 - PNGs land in `C:\taurhaus_build\shots` and are **not** committed — `*.png` is
   gitignored outside `docs/`. Paste them into the PR description as before/after
   evidence.

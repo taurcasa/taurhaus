@@ -94,4 +94,39 @@ describe('accountMenu', () => {
     children[1].action()
     expect(onSelect).toHaveBeenCalledWith('account-2')
   })
+
+  // Regression: 74c7761 labelled a row with the display name alone and dropped
+  // the account id, so two subscriptions of the same named user produced two
+  // identical rows — indistinguishable to the user, and duplicate keys to the
+  // menu that renders them.
+  it('keeps rows apart when two accounts share a display name', () => {
+    const children = buildAccountMenuChildren({
+      accounts: [
+        { ...PRIMARY, display_name: 'Matthias' },
+        { ...SECOND, display_name: 'Matthias' },
+      ],
+    })
+
+    expect(children.map((child) => child.label)).toEqual([
+      'Matthias (a@example.com)',
+      'Matthias (b@example.com)',
+    ])
+    expect(new Set(children.map((child) => child.key)).size).toBe(2)
+  })
+
+  // One subscription signed into two config dirs reports the same id and the
+  // same email twice: the dir is then the only thing that tells the rows apart,
+  // and the row's own position is the only unique key left.
+  it('keeps rows apart when the same account is signed into two dirs', () => {
+    const twice = { ...PRIMARY, display_name: 'Who', config_dir: '/home/user/.claude' }
+    const children = buildAccountMenuChildren({
+      accounts: [twice, { ...twice, config_dir: '/home/user/.claude-account2' }],
+    })
+
+    expect(children.map((child) => child.label)).toEqual([
+      'Who (.claude)',
+      'Who (.claude-account2)',
+    ])
+    expect(new Set(children.map((child) => child.key)).size).toBe(2)
+  })
 })

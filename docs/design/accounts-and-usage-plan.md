@@ -88,7 +88,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 | PR | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
-| 17a | Opus 5 | Codex ×2 | tbd | tbd | tbd (`feat/pr17a-accounts-menu`) |
+| 17a | Opus 5 | Codex ×2 | 1 | 5 (7 reported; both reviewers raised the pin and the duplicate-label crash) | tbd (`feat/pr17a-accounts-menu`) |
 | 17b | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17d | Opus 5 | Codex ×2 | tbd | tbd | tbd |
@@ -116,3 +116,41 @@ markup around the fixture):
   measures itself in an effect lost that measurement to the remount and
   rendered at 0,0 — which is why a viewport-anchored popup could not be shot at
   all. Mocks are now applied in a derived key, so a fixture mounts once.
+
+### Review round 1
+
+Five majors, all confirmed and fixed on the branch:
+
+- **A launch row pinned the project.** `requestClaudeLaunch` defaulted to
+  remembering an explicit account, so picking a subscription for one launch
+  moved every later launch with it. A pin is written where this plan says it is
+  — the chooser's remember, the chip, the `Claude account` submenu — and a
+  launch row is now one launch.
+- **Two accounts with the same display name crashed the submenu.** The flyout
+  keyed its rows by the label, which the account rows derive from a
+  non-unique display name; Svelte threw `each_key_duplicate` and no submenu
+  rendered at all (reproduced in Edge, see the PR's before shot). Rows now carry
+  their own key, and a repeated name is qualified by the email, or by the config
+  dir when one subscription is signed into two of them.
+- **The chooser fixture did not reproduce the mount point.** It kept a wrapper
+  around a component that owns its overlay: two overlays, and the overlay no
+  longer a direct child of `.shell-frame` — so the fixture could not have caught
+  the bug it was written for. It now mounts exactly as `Shell.svelte` does, and
+  a browser assertion holds the shape (one overlay, `fixed`, direct child).
+- **`visual-shot` could succeed on the wrong page.** Any listener on the port
+  was reused, an unknown fixture fell back to the first one, Edge's exit status
+  was discarded and the process was unbounded. The lane now checks the host's
+  identity, reads the rendered fixture back out of the same run's `--dump-dom`,
+  honours the exit status, and runs under a wall clock — with tests driving the
+  real script against a fake server and a fake browser.
+- **The menu did not re-clamp after late rows.** Account detection starts when
+  the menu opens and adds rows when it answers; the clamp ran once, against the
+  size the menu had at the start. A `ResizeObserver` and the window's own resize
+  now ask for it again.
+
+Two minors: the tick is gone from `Continue`/`Resume`, whose account the backend
+reads off the transcript rather than from the pin the frontend can see; and a
+degraded detection is logged on the way into the outage instead of once per
+right-click. Detection itself still retries on every opening — an existing
+guard (`c982822`) requires a daemon that reconnects to restore the list on the
+next right-click, and the call is one cheap daemon round trip.

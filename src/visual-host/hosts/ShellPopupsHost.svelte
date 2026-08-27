@@ -105,19 +105,18 @@
   </div>
 
   {#if surface === 'chooser'}
-    <div
-      class="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-24"
-      data-testid="claude-account-chooser-overlay"
-    >
-      <ClaudeAccountChooser
-        {accounts}
-        projectName={scenario?.projectName ?? ''}
-        defaultAccountId={scenario?.defaultAccountId ?? null}
-        {dark}
-        onConfirm={() => {}}
-        onCancel={() => {}}
-      />
-    </div>
+    <!-- Mounted exactly as `Shell.svelte` mounts it: a direct child of the
+         frame, with the chooser's own overlay and nothing wrapped around it.
+         A wrapper here would hide the very bug this fixture exists to catch —
+         `.shell-frame > *` is `position: relative` unless the child opts out. -->
+    <ClaudeAccountChooser
+      {accounts}
+      projectName={scenario?.projectName ?? ''}
+      defaultAccountId={scenario?.defaultAccountId ?? null}
+      {dark}
+      onConfirm={() => {}}
+      onCancel={() => {}}
+    />
   {/if}
 </div>
 

@@ -85,7 +85,13 @@
   <title>taurhaus Visual Host</title>
 </svelte:head>
 
-<main class={`min-h-screen w-full ${chromeTone}`} data-testid="visual-host-root">
+<!-- The screenshot lane reads this back out of the rendered DOM: a shot is
+     evidence about one fixture, so the page has to say which one it is. -->
+<main
+  class={`min-h-screen w-full ${chromeTone}`}
+  data-testid="visual-host-root"
+  data-visual-host-fixture={`${selectedEntry?.id ?? ''}/${selectedScenario?.name ?? ''}`}
+>
   <div class={showChrome ? 'mx-auto flex min-h-screen max-w-[1600px] flex-col gap-6 px-6 py-6' : 'h-screen w-full'}>
     {#if showChrome}
     <header class={`rounded-3xl border p-5 ${panelTone}`}>
@@ -192,6 +198,19 @@
             {@render fixture()}
           </div>
         </div>
+      </section>
+    {:else if query.unknownRequest}
+      <!-- Bare mode is the screenshot lane, where a fallback is a wrong answer:
+           the PNG would be filed as evidence about the fixture that was asked
+           for. Say so on the page rather than render somebody else's fixture. -->
+      <section
+        class="flex h-screen w-full items-center justify-center p-10 text-center"
+        data-testid="visual-host-unknown-fixture"
+      >
+        <p class="max-w-xl text-[15px] font-medium text-danger-500">
+          The URL asked for a fixture that is not in the registry.
+          Nearest match: {selectedEntry?.id ?? '—'} / {selectedScenario?.name ?? '—'}.
+        </p>
       </section>
     {:else}
       <!-- Bare: a `fixed` popup is positioned against the browser viewport, so

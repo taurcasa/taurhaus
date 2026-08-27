@@ -65,4 +65,21 @@ describe('readVisualHostQuery', () => {
       themePinned: false,
     })
   })
+
+  // Regression: 74c7761 let the screenshot lane address a fixture by URL, and a
+  // mistyped scenario fell back to the first one without a word. The shot
+  // succeeded on the wrong fixture and was filed as evidence of a bug fix.
+  it('says so when the URL asked for a fixture that is not there', () => {
+    const bare = { registry: REGISTRY, viewports: VIEWPORTS }
+
+    expect(readVisualHostQuery('?component=nope&scenario=idle', bare).unknownRequest).toBe(true)
+    expect(
+      readVisualHostQuery('?component=shell-popups&scenario=nope', bare).unknownRequest
+    ).toBe(true)
+    expect(
+      readVisualHostQuery('?component=shell-popups&scenario=chooser-light', bare).unknownRequest
+    ).toBe(false)
+    // An address that names nothing is not a mistyped one.
+    expect(readVisualHostQuery('', bare).unknownRequest).toBe(false)
+  })
 })

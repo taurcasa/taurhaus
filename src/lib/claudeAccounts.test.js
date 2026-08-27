@@ -445,6 +445,33 @@ describe('claudeAccounts store', () => {
     expect(claudeAccounts.accounts).toHaveLength(2)
   })
 
+  // Regression: 74c7761 asked for detection on every context-menu opening, and
+  // a degraded answer warned every time. Every warn crosses the logging bridge,
+  // so right-clicking during a daemon outage wrote an unbounded stream of the
+  // same line. The outage is one event; the recovery is the next one.
+  it('warns once while detection stays degraded, and again when it returns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    listClaudeAccounts.mockResolvedValue(degraded())
+
+    await refreshClaudeAccounts()
+    await refreshClaudeAccounts({ force: true })
+    await refreshClaudeAccounts({ force: true })
+
+    const degradedWarnings = () =>
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes('Claude account detection is unavailable')
+      ).length
+    expect(degradedWarnings()).toBe(1)
+
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+    await refreshClaudeAccounts({ force: true })
+    listClaudeAccounts.mockResolvedValue(degraded())
+    await refreshClaudeAccounts({ force: true })
+
+    expect(degradedWarnings()).toBe(2)
+    warn.mockRestore()
+  })
+
   it('a rejected detection keeps the last known accounts too', async () => {
     listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()
@@ -489,7 +516,11 @@ describe('claudeAccounts store', () => {
       expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
     })
 
-    it('pins the project that had no choice of its own', async () => {
+    // Regression: 74c7761 pinned the project to whatever a launch row named
+    // when the project had chosen nothing. A pin is written by the chooser's
+    // remember, the chip, and the Account submenu — a row picked for one launch
+    // is one launch, and it must not move every later launch with it.
+    it('pins nothing: the row is this launch, not the project default', async () => {
       listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
       await refreshClaudeAccounts()
 
@@ -500,8 +531,9 @@ describe('claudeAccounts store', () => {
         accountId: 'account-2',
       })
 
-      expect(setProjectClaudeAccount).toHaveBeenCalledWith('p1', 'account-2')
-      expect(effectiveClaudeAccountId({ id: 'p1' })).toBe('account-2')
+      expect(setProjectClaudeAccount).not.toHaveBeenCalled()
+      expect(effectiveClaudeAccountId({ id: 'p1' })).toBe(null)
+      expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
     })
 
     it('leaves a project that already chose alone — one launch is not a new pin', async () => {
@@ -519,19 +551,18 @@ describe('claudeAccounts store', () => {
       expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
     })
 
-    it('honours remember=false and pins nothing', async () => {
+    it('starts the launch without waiting for a database write', async () => {
       listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
       await refreshClaudeAccounts()
+      setProjectClaudeAccount.mockImplementation(() => new Promise(() => {}))
 
       await requestClaudeLaunch({
         project: { id: 'p1' },
         mode: 'fresh',
         tool: 'claude',
         accountId: 'account-2',
-        remember: false,
       })
 
-      expect(setProjectClaudeAccount).not.toHaveBeenCalled()
       expect(launchClaudeSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
     })
   })

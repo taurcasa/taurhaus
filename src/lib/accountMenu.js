@@ -40,6 +40,38 @@ function accountLabel(account) {
   return String(account?.display_name ?? '').trim() || account?.email || account?.id || ''
 }
 
+/** The config dir's own name — `.claude-account2` out of a whole path. */
+function dirName(configDir) {
+  return String(configDir ?? '').split(/[\\/]/).filter(Boolean).pop() ?? ''
+}
+
+/**
+ * Labels that tell the rows apart.
+ *
+ * Two rows can carry the same display name two ways, and both happen: two
+ * people's subscriptions named the same, and one subscription signed into two
+ * config dirs. The email settles the first, the dir settles the second, and a
+ * name nothing collides with is left as the name.
+ */
+function labelsFor(accounts) {
+  const counts = new Map()
+  for (const account of accounts) {
+    const label = accountLabel(account)
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  }
+
+  return accounts.map((account) => {
+    const label = accountLabel(account)
+    if ((counts.get(label) ?? 0) < 2) return label
+
+    const siblings = accounts.filter((other) => accountLabel(other) === label)
+    const emails = siblings.map((sibling) => sibling?.email)
+    const emailsDiffer = new Set(emails).size === emails.length
+    const detail = (emailsDiffer ? account?.email : dirName(account?.config_dir)) || account?.email
+    return detail ? `${label} (${detail})` : label
+  })
+}
+
 /**
  * The one place a menu row says how much of a subscription is left.
  *
@@ -78,10 +110,15 @@ export function buildAccountMenuChildren({
   activeAccountId = null,
   onSelect = () => {},
 } = {}) {
-  return accounts.map((account) => ({
-    label: accountLabel(account),
+  const labels = labelsFor(accounts)
+  return accounts.map((account, index) => ({
+    // One row per detected config dir. The id names the subscription, not the
+    // row: signed into two dirs it arrives twice, so the row's own position is
+    // what keeps the keys of a rendered list apart.
+    key: `${index}:${account.id ?? ''}`,
+    label: labels[index],
     meta: account.logged_in ? accountUsageMeta(account) : 'not logged in',
-    check: account.id === activeAccountId,
+    check: activeAccountId != null && account.id === activeAccountId,
     disabled: !account.logged_in,
     action: () => onSelect(account.id),
   }))
