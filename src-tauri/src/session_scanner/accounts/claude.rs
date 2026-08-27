@@ -441,12 +441,12 @@ pub struct ClaudeScan {
 /// `extra_dirs` carries the config dirs of live Claude processes: a session
 /// started with `CLAUDE_CONFIG_DIR=/somewhere/else` is a real account this
 /// scan would otherwise never see.
-pub fn detect_claude_accounts_in(
+pub fn detect_accounts_in(
     home: &Path,
     extra_dirs: &[PathBuf],
     default_dir: &Path,
 ) -> Vec<ClaudeAccount> {
-    detect_claude_accounts_rooted(
+    detect_accounts_rooted(
         home,
         extra_dirs,
         default_dir,
@@ -454,14 +454,14 @@ pub fn detect_claude_accounts_in(
     )
 }
 
-/// `detect_claude_accounts_in` with the dir Claude Code reads on its own named
+/// `detect_accounts_in` with the dir Claude Code reads on its own named
 /// outright.
 ///
 /// It is not derivable from the scan root. `TAURHAUS_CLAUDE_DIR` moves the
 /// scan, Claude Code has never heard of that variable, and an override that
 /// happens to be named `.claude` would otherwise pass for the process default
 /// and lose the `CLAUDE_CONFIG_DIR` assignment that makes it real.
-pub fn detect_claude_accounts_rooted(
+pub fn detect_accounts_rooted(
     home: &Path,
     extra_dirs: &[PathBuf],
     default_dir: &Path,
@@ -717,7 +717,7 @@ pub fn scan_claude_config_cached() -> ClaudeScan {
 }
 
 /// Detected accounts for this app run.
-pub fn detect_claude_accounts_cached() -> Vec<ClaudeAccount> {
+pub fn detect_accounts_cached() -> Vec<ClaudeAccount> {
     scan_claude_config_cached().accounts
 }
 
@@ -1113,7 +1113,7 @@ mod tests {
             true,
         );
         let default_dir = home.path().join(".claude");
-        let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
+        let accounts = detect_accounts_in(home.path(), &[], &default_dir);
         (home, accounts)
     }
 
@@ -1194,7 +1194,7 @@ mod tests {
         fs::write(unparsable.join(".claude.json"), "{not json").unwrap();
         fs::create_dir_all(home.path().join(".claude-bare")).unwrap();
 
-        let accounts = detect_claude_accounts_in(home.path(), &[], &home.path().join(".claude"));
+        let accounts = detect_accounts_in(home.path(), &[], &home.path().join(".claude"));
 
         assert!(accounts.is_empty(), "{accounts:?}");
     }
@@ -1204,7 +1204,7 @@ mod tests {
         let home = TempDir::new().unwrap();
         write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", false);
 
-        let accounts = detect_claude_accounts_in(home.path(), &[], &home.path().join(".claude"));
+        let accounts = detect_accounts_in(home.path(), &[], &home.path().join(".claude"));
 
         assert_eq!(accounts.len(), 1);
         assert!(!accounts[0].logged_in);
@@ -1220,7 +1220,7 @@ mod tests {
             home.path().join(".claude").join(".").join(""),
         ];
 
-        let accounts = detect_claude_accounts_in(home.path(), &extras, &default_dir);
+        let accounts = detect_accounts_in(home.path(), &extras, &default_dir);
 
         assert_eq!(accounts.len(), 2, "{accounts:?}");
     }
@@ -1232,7 +1232,7 @@ mod tests {
         let elsewhere = TempDir::new().unwrap();
         write_account(elsewhere.path(), "work", SECOND_ID, "b@example.com", true);
 
-        let accounts = detect_claude_accounts_in(
+        let accounts = detect_accounts_in(
             home.path(),
             &[elsewhere.path().join("work")],
             &home.path().join(".claude"),
@@ -1355,7 +1355,7 @@ mod tests {
             false,
         );
         let default_dir = home.path().join(".claude");
-        let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
+        let accounts = detect_accounts_in(home.path(), &[], &default_dir);
 
         let resolved = resolve_launch_account(
             &accounts,
@@ -1503,7 +1503,7 @@ mod tests {
         );
         let default_dir = home.path().join(".claude");
 
-        let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
+        let accounts = detect_accounts_in(home.path(), &[], &default_dir);
 
         assert!(accounts.iter().all(|account| account.logged_in));
     }
@@ -1515,7 +1515,7 @@ mod tests {
         write_account(home.path(), ".claude", PRIMARY_ID, "a@example.com", false);
         let default_dir = home.path().join(".claude");
 
-        let accounts = detect_claude_accounts_in(home.path(), &[], &default_dir);
+        let accounts = detect_accounts_in(home.path(), &[], &default_dir);
 
         assert!(accounts.iter().all(|account| !account.logged_in));
     }
@@ -1664,7 +1664,7 @@ mod tests {
     fn a_configured_root_that_is_not_the_process_default_is_named_in_the_launch() {
         let (home, _) = accounts_fixture();
         let configured = home.path().join(".claude-account2");
-        let accounts = detect_claude_accounts_in(home.path(), &[], &configured);
+        let accounts = detect_accounts_in(home.path(), &[], &configured);
 
         let resolved = resolve_launch_account(&accounts, request());
 
@@ -1714,7 +1714,7 @@ mod tests {
         );
         let configured = run.path().join(".claude");
 
-        let accounts = detect_claude_accounts_rooted(
+        let accounts = detect_accounts_rooted(
             run.path(),
             &[],
             &configured,

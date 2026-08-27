@@ -7,8 +7,12 @@ pub mod claude;
 pub mod legacy_statusline;
 
 use std::collections::HashMap;
+#[cfg(not(test))]
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+#[cfg(not(test))]
+use std::sync::OnceLock;
 use std::time::Duration;
 #[cfg(not(test))]
 use std::time::Instant;
@@ -363,6 +367,9 @@ const DETECTION_TTL: Duration = Duration::from_secs(60);
 #[cfg(not(test))]
 static DETECTION_CACHE: Mutex<Option<HashMap<CliTool, (Instant, AccountScan)>>> = Mutex::new(None);
 
+#[cfg(not(test))]
+static MISSING_PROVIDER_FLOORS: OnceLock<Mutex<HashSet<CliTool>>> = OnceLock::new();
+
 #[cfg(test)]
 static DETECTION_OVERRIDE: Mutex<Option<HashMap<CliTool, AccountScan>>> = Mutex::new(None);
 
@@ -449,6 +456,21 @@ fn scan(tool: CliTool) -> AccountScan {
 fn scan_uncached(tool: CliTool) -> AccountScan {
     let tool_spec = spec(tool);
     let Some(provider) = tool_spec.account_provider() else {
+        if let Some(selector) = tool_spec.capabilities.account_selector {
+            let first = MISSING_PROVIDER_FLOORS
+                .get_or_init(|| Mutex::new(HashSet::new()))
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(tool);
+            if first {
+                tracing::info!(
+                    event = "account.provider.floor",
+                    tool = %tool,
+                    selector,
+                    "account selector is declared but its provider has not landed"
+                );
+            }
+        }
         return AccountScan::default();
     };
 

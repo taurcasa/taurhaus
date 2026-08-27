@@ -222,6 +222,8 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/models/mod.rs",
         "src/session_scanner/cli_tool.rs",
         "src/session_scanner/compaction_extractor.rs",
+        "src/session_scanner/accounts/claude.rs",
+        "src/session_scanner/accounts/legacy_statusline.rs",
         "src/session_scanner/idle/claude.rs",
         "src/session_scanner/idle/codex.rs",
         "src/session_scanner/launch.rs",
@@ -230,7 +232,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/task_scanner/gemini.rs",
         "src/templates/adapters.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 59;
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 67;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
@@ -266,5 +268,73 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     assert_eq!(
         allowed_count, EXPECTED_RUNTIME_LITERAL_COUNT,
         "update consumers instead of growing the pinned CliTool literal count"
+    );
+}
+
+#[test]
+fn retired_claude_account_bridge_identifiers_do_not_return() {
+    // Regression: commits d6839a3 and a574720 made the account pipeline and
+    // status-line usage bridge Claude-named end to end, preventing another
+    // provider from sharing the core.
+    let mut files = Vec::new();
+    collect_rs_files(&crate_root().join("src"), &mut files);
+    let forbidden = ["claude_accounts", "claude_usage", "claude_statusline"];
+    let violations = files
+        .into_iter()
+        .filter_map(|path| {
+            let source = fs::read_to_string(&path).ok()?;
+            let found = forbidden
+                .iter()
+                .copied()
+                .filter(|identifier| source.contains(identifier))
+                .collect::<Vec<_>>();
+            (!found.is_empty()).then(|| {
+                format!(
+                    "{}: {found:?}",
+                    path.strip_prefix(crate_root()).unwrap_or(&path).display()
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "retired Claude-specific account identifiers returned: {violations:?}"
+    );
+}
+
+#[test]
+fn generic_account_core_contains_no_tool_identity_literals() {
+    // Regression: commits d6839a3 and a574720 put tool identity in generic
+    // account consumers; literals belong in the registry, provider slices,
+    // and fixtures only.
+    const GENERIC_ACCOUNT_FILES: &[&str] = &[
+        "src/session_scanner/accounts/mod.rs",
+        "src/daemon/usage_poller.rs",
+        "src/commands/accounts/mod.rs",
+    ];
+    let literals = [
+        "CliTool::Claude",
+        "CliTool::Codex",
+        "CliTool::Gemini",
+        "\"claude\"",
+        "\"codex\"",
+        "\"gemini\"",
+    ];
+    let violations = GENERIC_ACCOUNT_FILES
+        .iter()
+        .filter_map(|path| {
+            let source = read_source(path);
+            let runtime = source_without_test_only_items(&source);
+            let found = literals
+                .iter()
+                .copied()
+                .filter(|literal| runtime.contains(literal))
+                .collect::<Vec<_>>();
+            (!found.is_empty()).then(|| format!("{path}: {found:?}"))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        violations.is_empty(),
+        "tool literals escaped provider slices: {violations:?}"
     );
 }

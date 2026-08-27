@@ -14,6 +14,9 @@ use taurhaus_lib::coordination::runtime::{RecordingCoordinationRuntime, RuntimeC
 use taurhaus_lib::coordination::stores::MeshInboxStore;
 use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::{CliCommandSettings, ModelCatalog};
+use taurhaus_lib::session_scanner::accounts::{
+    HttpClient, HttpError, HttpErrorKind, HttpResponse, UsageStatus,
+};
 use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
 use taurhaus_lib::session_scanner::idle::{IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{
@@ -118,6 +121,16 @@ fn account_dir_launch_cases_use_each_registry_selector() {
             }
             .render()
             .command;
+            let selector = entry
+                .capabilities
+                .account_selector
+                .expect("account-dir conformance case has a selector");
+            assert_eq!(
+                command.matches(&format!("{selector}=")).count(),
+                1,
+                "{} selector must be rendered exactly once",
+                entry.name
+            );
             format!("{}={command}", entry.name)
         })
         .collect::<Vec<_>>()
@@ -253,6 +266,97 @@ fn claude_account_provider_is_registered_behind_the_capability_slice() {
     assert!(spec(CliTool::Claude).account_provider().is_some());
     assert!(spec(CliTool::Codex).account_provider().is_none());
     assert!(spec(CliTool::Gemini).account_provider().is_none());
+}
+
+struct ConformanceHttp {
+    status: Option<u16>,
+}
+
+impl HttpClient for ConformanceHttp {
+    fn get(
+        &self,
+        _url: &str,
+        _headers: &[(&str, &str)],
+        _timeout: std::time::Duration,
+    ) -> Result<HttpResponse, HttpError> {
+        match self.status {
+            Some(status) => Ok(HttpResponse {
+                status,
+                body: String::new(),
+            }),
+            None => Err(HttpError {
+                kind: HttpErrorKind::Network,
+            }),
+        }
+    }
+}
+
+#[test]
+fn account_and_usage_provider_slices_obey_the_registry_contract() {
+    // Regression: commits d6839a3 and a574720 wired account detection and
+    // usage directly to Claude, leaving new registry entries without a tested
+    // provider floor or injectable HTTP boundary.
+    for entry in all() {
+        let provider = entry.account_provider();
+        if entry.capabilities.account_selector.is_some() && provider.is_none() {
+            assert!(
+                !entry.capabilities.account_selection && !entry.capabilities.usage,
+                "{} must stay on the logged provider floor until its slice lands",
+                entry.name
+            );
+        }
+
+        if let Some(provider) = provider {
+            let home = tempfile::tempdir().expect("empty account-provider home");
+            let default_dir = provider.default_dir(home.path());
+            assert_eq!(
+                provider.candidate_dirs(home.path(), &[]),
+                vec![default_dir.clone()],
+                "{} empty-home candidates",
+                entry.name
+            );
+            fs::create_dir_all(&default_dir).expect("empty provider default dir");
+            assert_eq!(
+                provider.identify(&default_dir),
+                None,
+                "{} must not invent an identity for an empty directory",
+                entry.name
+            );
+        }
+
+        let usage = entry.usage_provider();
+        assert_eq!(
+            entry.capabilities.usage,
+            usage.is_some(),
+            "{} usage capability/provider mismatch",
+            entry.name
+        );
+        let Some(usage) = usage else {
+            continue;
+        };
+        let config_dir = tempfile::tempdir().expect("usage fixture account dir");
+        fs::write(
+            config_dir.path().join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"conformance-token","expiresAt":4102444800000}}"#,
+        )
+        .expect("usage fixture credentials");
+        assert_eq!(
+            usage
+                .fetch(config_dir.path(), &ConformanceHttp { status: None })
+                .status,
+            UsageStatus::Stale,
+            "{} network failure status",
+            entry.name
+        );
+        assert_eq!(
+            usage
+                .fetch(config_dir.path(), &ConformanceHttp { status: Some(401) },)
+                .status,
+            UsageStatus::Unauthorized,
+            "{} rejected credential status",
+            entry.name
+        );
+    }
 }
 
 #[test]
