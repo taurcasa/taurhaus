@@ -7,6 +7,7 @@
   import { normalizeTool } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
+  import { toolLabel as registeredToolLabel } from '../toolRegistry.js'
 
   let {
     node = {},
@@ -54,14 +55,10 @@
   const editTool = $derived.by(() => normalizeTool(editDraft?.tool ?? node?.tool ?? node?.cliTool ?? 'claude'))
   const toolLabel = $derived.by(() => {
     const currentTool = isEditing ? editTool : tool
-    if (currentTool === 'codex') return 'Codex'
-    if (currentTool === 'gemini') return 'Gemini'
-    if (currentTool === 'claude') return 'Claude'
-    if (isEditing) return String(editDraft?.tool ?? 'Unknown')
-    if (tool === 'codex') return 'Codex'
-    if (tool === 'gemini') return 'Gemini'
-    if (tool === 'claude') return 'Claude'
-    return String(node?.tool ?? 'Unknown')
+    const fallback = isEditing
+      ? String(editDraft?.tool ?? 'Unknown')
+      : String(node?.tool ?? 'Unknown')
+    return registeredToolLabel(currentTool, fallback)
   })
   const model = $derived.by(() =>
     isEditing

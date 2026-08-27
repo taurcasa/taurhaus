@@ -1,6 +1,7 @@
 <script>
   import { activityLevel } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
+  import { normalizeTool } from '../toolRegistry.js'
 
   let {
     nodeId = '',
@@ -35,9 +36,7 @@
   const showProjectChip = $derived(Boolean(isCrossProject) && safeProjectLabel.length > 0)
 
   const safeTool = $derived.by(() => {
-    const value = String(tool || '').trim().toLowerCase()
-    if (value === 'claude' || value === 'codex' || value === 'gemini') return value
-    return 'claude'
+    return normalizeTool(tool)
   })
 
   const icon = $derived.by(() => getToolIcon(safeTool))

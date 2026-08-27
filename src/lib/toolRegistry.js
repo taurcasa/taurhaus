@@ -4,9 +4,11 @@ const CAPABILITY_DEFAULTS = Object.freeze({
   displayNameFlag: null,
   teamFlags: false,
   nativeInboxPoller: false,
+  sessionSource: false,
   authoritativeIdle: false,
   compactionHook: false,
   transcriptParser: false,
+  transcriptCompactionSignals: false,
   catalog: false,
   configDirEnv: null,
   usageBridge: false,
@@ -26,9 +28,11 @@ export const FALLBACK_TOOLS = Object.freeze([
       displayNameFlag: '-n',
       teamFlags: true,
       nativeInboxPoller: true,
+      sessionSource: true,
       authoritativeIdle: true,
       compactionHook: true,
       transcriptParser: true,
+      transcriptCompactionSignals: false,
       catalog: true,
       configDirEnv: 'CLAUDE_CONFIG_DIR',
       usageBridge: true,
@@ -47,9 +51,11 @@ export const FALLBACK_TOOLS = Object.freeze([
       displayNameFlag: null,
       teamFlags: false,
       nativeInboxPoller: false,
+      sessionSource: true,
       authoritativeIdle: true,
       compactionHook: true,
       transcriptParser: true,
+      transcriptCompactionSignals: true,
       catalog: true,
       configDirEnv: null,
       usageBridge: false,
@@ -68,9 +74,11 @@ export const FALLBACK_TOOLS = Object.freeze([
       displayNameFlag: null,
       teamFlags: false,
       nativeInboxPoller: false,
+      sessionSource: false,
       authoritativeIdle: false,
       compactionHook: false,
       transcriptParser: false,
+      transcriptCompactionSignals: false,
       catalog: true,
       configDirEnv: null,
       usageBridge: false,
@@ -101,9 +109,13 @@ function normalizeCapabilities(raw) {
     displayNameFlag: stringOrNull(capability(source, 'displayNameFlag', 'display_name_flag', null)),
     teamFlags: Boolean(capability(source, 'teamFlags', 'team_flags')),
     nativeInboxPoller: Boolean(capability(source, 'nativeInboxPoller', 'native_inbox_poller')),
+    sessionSource: Boolean(capability(source, 'sessionSource', 'session_source')),
     authoritativeIdle: Boolean(capability(source, 'authoritativeIdle', 'authoritative_idle')),
     compactionHook: Boolean(capability(source, 'compactionHook', 'compaction_hook')),
     transcriptParser: Boolean(capability(source, 'transcriptParser', 'transcript_parser')),
+    transcriptCompactionSignals: Boolean(
+      capability(source, 'transcriptCompactionSignals', 'transcript_compaction_signals')
+    ),
     catalog: Boolean(capability(source, 'catalog', 'catalog')),
     configDirEnv: stringOrNull(capability(source, 'configDirEnv', 'config_dir_env', null)),
     usageBridge: Boolean(capability(source, 'usageBridge', 'usage_bridge')),
@@ -151,4 +163,37 @@ export function tools() {
 export function toolDescriptor(value) {
   const normalized = String(value ?? '').trim().toLowerCase()
   return currentTools.find((entry) => entry.aliases.includes(normalized)) ?? null
+}
+
+export const TOOL_OPTIONS = Object.freeze(FALLBACK_TOOLS.map((entry) => entry.id))
+
+function fallbackDescriptor(value = null) {
+  return (
+    toolDescriptor(value) ??
+    currentTools.find((entry) => entry.capabilities.nativeInboxPoller) ??
+    currentTools[0] ??
+    null
+  )
+}
+
+export function normalizeTool(value, fallback = null) {
+  return toolDescriptor(value)?.id ?? fallbackDescriptor(fallback)?.id ?? ''
+}
+
+export function toolLabel(value, fallback = 'Unknown') {
+  return toolDescriptor(value)?.label ?? fallback
+}
+
+export function toolAccent(value, fallback = 'brand') {
+  return toolDescriptor(value)?.accent ?? fallback
+}
+
+export function toolCounts(items, readTool) {
+  const values = Array.isArray(items) ? items : []
+  const counts = Object.fromEntries(currentTools.map((entry) => [entry.id, 0]))
+  for (const item of values) {
+    const id = toolDescriptor(readTool(item))?.id
+    if (id && Object.hasOwn(counts, id)) counts[id] += 1
+  }
+  return { all: values.length, ...counts }
 }

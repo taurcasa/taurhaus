@@ -1,4 +1,5 @@
 import { formatUserFacingError } from './format.js'
+import { toolLabel as registeredToolLabel } from './toolRegistry.js'
 
 export const WSL_INSTALL_URL = 'https://learn.microsoft.com/windows/wsl/install'
 
@@ -12,9 +13,8 @@ function includesAny(text, patterns) {
 
 function titleCaseTool(tool) {
   const value = String(tool || 'session').trim().toLowerCase()
-  if (value === 'claude') return 'Claude'
-  if (value === 'codex') return 'Codex'
-  if (value === 'gemini') return 'Gemini'
+  const registered = registeredToolLabel(value, '')
+  if (registered) return registered
   if (!value) return 'Session'
   return value[0].toUpperCase() + value.slice(1)
 }

@@ -22,7 +22,8 @@
   import { EMPTY_MODEL_CATALOG, resolveMemberModel, roleDeclaredEffort } from '../modelCatalog.js'
   import { collectDuplicateNames } from '../meshValidation.js'
   import { normalizeProjectOption } from '../projectOptions.js'
-  import { getToolIcon, getToolName } from '../toolLogos.js'
+  import { getToolIcon } from '../toolLogos.js'
+  import { toolAccent, toolCounts, toolLabel, tools } from '../toolRegistry.js'
   import { projectNameFromPath } from './meshTabUtils.js'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshNodeDetail from './MeshNodeDetail.svelte'
@@ -80,6 +81,7 @@
   })
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
+  const toolOptions = tools()
 
   // The effort a role-bound roster row actually launches with when it declares
   // none itself: the backend refills it from the role template.
@@ -279,12 +281,9 @@
   const catalogDensityMode = $derived(
     catalogDensityPreference ?? (visibleRoleCount > 8 ? 'compact' : 'expanded')
   )
-  const toolFilterCounts = $derived.by(() => ({
-    all: catalogRoles.length,
-    claude: catalogRoles.filter((role) => role.cliTool === 'claude').length,
-    codex: catalogRoles.filter((role) => role.cliTool === 'codex').length,
-    gemini: catalogRoles.filter((role) => role.cliTool === 'gemini').length,
-  }))
+  const toolFilterCounts = $derived.by(() =>
+    toolCounts(catalogRoles, (role) => role.cliTool)
+  )
   const kindFilterCounts = $derived.by(() => ({
     all: catalogRoles.length,
     lead: catalogRoles.filter((role) => role.kind === 'lead').length,
@@ -502,7 +501,7 @@
     ghost.style.display = 'flex'
     ghost.style.gap = '8px'
     ghost.style.alignItems = 'center'
-    ghost.textContent = `${getToolName(tool)} ${label}`
+    ghost.textContent = `${toolLabel(tool)} ${label}`
     document.body.appendChild(ghost)
     return ghost
   }
@@ -746,28 +745,28 @@
         : 'border-amber-300/90 bg-amber-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
     }
 
-    const normalizedTool = normalizeTool(tool)
-    if (normalizedTool === 'codex') {
-      return dark
-        ? 'border-sky-400/28 bg-sky-500/10'
-        : 'border-sky-300/85 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
+    switch (toolAccent(normalizeTool(tool))) {
+      case 'sky':
+        return dark
+          ? 'border-sky-400/28 bg-sky-500/10'
+          : 'border-sky-300/85 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
+      case 'violet':
+        return dark
+          ? 'border-violet-400/28 bg-violet-500/10'
+          : 'border-violet-300/85 bg-violet-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
+      default:
+        return dark
+          ? 'border-emerald-400/28 bg-emerald-500/10'
+          : 'border-emerald-300/85 bg-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
     }
-    if (normalizedTool === 'gemini') {
-      return dark
-        ? 'border-violet-400/28 bg-violet-500/10'
-        : 'border-violet-300/85 bg-violet-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
-    }
-    return dark
-      ? 'border-emerald-400/28 bg-emerald-500/10'
-      : 'border-emerald-300/85 bg-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
   }
 
   function memberAccentTone(tool, kind = 'agent') {
     if (kind === 'lead') return dark ? 'bg-amber-300' : 'bg-amber-500'
-    switch (normalizeTool(tool)) {
-      case 'codex':
+    switch (toolAccent(normalizeTool(tool))) {
+      case 'sky':
         return dark ? 'bg-sky-300' : 'bg-sky-500'
-      case 'gemini':
+      case 'violet':
         return dark ? 'bg-violet-300' : 'bg-violet-500'
       default:
         return dark ? 'bg-emerald-300' : 'bg-emerald-500'
@@ -780,12 +779,12 @@
         ? 'border-amber-400/30 bg-amber-500/14 text-amber-100'
         : 'border-amber-300/70 bg-amber-50 text-amber-900'
     }
-    switch (normalizeTool(tool)) {
-      case 'codex':
+    switch (toolAccent(normalizeTool(tool))) {
+      case 'sky':
         return dark
           ? 'border-sky-400/30 bg-sky-500/14 text-sky-100'
           : 'border-sky-300/70 bg-sky-50 text-sky-900'
-      case 'gemini':
+      case 'violet':
         return dark
           ? 'border-violet-400/30 bg-violet-500/14 text-violet-100'
           : 'border-violet-300/70 bg-violet-50 text-violet-900'
@@ -1187,16 +1186,16 @@
   }
 
   function roleMedallionTone(tool) {
-    switch (tool) {
-      case 'claude':
+    switch (toolAccent(tool)) {
+      case 'emerald':
         return dark
           ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
           : 'border-emerald-300/70 bg-emerald-50 text-emerald-800'
-      case 'codex':
+      case 'sky':
         return dark
           ? 'border-sky-400/35 bg-sky-500/12 text-sky-200'
           : 'border-sky-300/70 bg-sky-50 text-sky-800'
-      case 'gemini':
+      case 'violet':
         return dark
           ? 'border-violet-400/35 bg-violet-500/12 text-violet-200'
           : 'border-violet-300/70 bg-violet-50 text-violet-800'
@@ -1724,7 +1723,8 @@
                 <span>All</span>
                 <span class="text-[10px] {t.textMuted}">{toolFilterCounts.all}</span>
               </button>
-              {#each ['claude', 'codex', 'gemini'] as tool}
+              {#each toolOptions as descriptor (descriptor.id)}
+                {@const tool = descriptor.id}
                 <button
                   class="inline-flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {filterButtonTone(activeToolFilter === tool)}"
                   type="button"
@@ -1741,7 +1741,7 @@
                       <path d={getToolIcon(tool, 'sidebarSmall').path}></path>
                     </svg>
                   </span>
-                  <span>{getToolName(tool)}</span>
+                  <span>{descriptor.label}</span>
                 </button>
               {/each}
             </div>
@@ -1828,7 +1828,7 @@
                         {#each presetTools(preset) as tool}
                           <span
                             class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border {roleMedallionTone(tool)}"
-                            title={getToolName(tool)}
+                            title={toolLabel(tool)}
                             data-testid={`mesh-template-preset-tool-${preset.presetId ?? preset.name}-${tool}`}
                           >
                             <svg class="h-2.5 w-2.5" viewBox={getToolIcon(tool, 'sidebarSmall').viewBox} fill="currentColor" aria-hidden="true">
@@ -2253,7 +2253,7 @@
                           <span class="truncate">{normalizedTeam.lead.name || 'team-lead'}</span>
                           <span class="{t.textMuted}">•</span>
                           <span class="truncate">
-                            {getToolName(normalizeTool(normalizedTeam.lead.tool))} · {memberModelLabel(normalizedTeam.lead)}
+                            {toolLabel(normalizeTool(normalizedTeam.lead.tool))} · {memberModelLabel(normalizedTeam.lead)}
                           </span>
                         </span>
                       </span>
@@ -2390,7 +2390,7 @@
                             <span class="truncate">{agent.name}</span>
                             <span class="{t.textMuted}">•</span>
                             <span class="truncate">
-                              {getToolName(normalizeTool(agent.tool))} · {memberModelLabel(agent)}
+                              {toolLabel(normalizeTool(agent.tool))} · {memberModelLabel(agent)}
                             </span>
                           </span>
                         </span>

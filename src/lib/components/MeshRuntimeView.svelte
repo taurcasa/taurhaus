@@ -4,7 +4,8 @@
   import { EMPTY_MODEL_CATALOG, roleDeclaredEffort } from '../modelCatalog.js'
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
-  import { getToolIcon, getToolName } from '../toolLogos.js'
+  import { getToolIcon } from '../toolLogos.js'
+  import { toolAccent, toolCounts, toolLabel, tools } from '../toolRegistry.js'
   import MeshCanvas from './MeshCanvas.svelte'
 import MeshNodeDetail from './MeshNodeDetail.svelte'
   import MeshRuntimeBar from './MeshRuntimeBar.svelte'
@@ -53,6 +54,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
   const t = $derived(themeTokens(dark))
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
+  const toolOptions = tools()
   let nodeDetailAnchor = $state(null)
   let detailOpenPerf = $state(null)
   const detailNode = $derived.by(() => {
@@ -137,12 +139,9 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
   const visibleLeadRoleTemplates = $derived(filteredRoleTemplates.filter((role) => role.kind === 'lead'))
   const visibleAgentRoleTemplates = $derived(filteredRoleTemplates.filter((role) => role.kind === 'agent'))
   const visibleRoleCount = $derived(filteredRoleTemplates.length)
-  const roleToolCounts = $derived.by(() => ({
-    all: normalizedRoleTemplates.length,
-    claude: normalizedRoleTemplates.filter((role) => role.cliTool === 'claude').length,
-    codex: normalizedRoleTemplates.filter((role) => role.cliTool === 'codex').length,
-    gemini: normalizedRoleTemplates.filter((role) => role.cliTool === 'gemini').length,
-  }))
+  const roleToolCounts = $derived.by(() =>
+    toolCounts(normalizedRoleTemplates, (role) => role.cliTool)
+  )
   const roleKindCounts = $derived.by(() => ({
     all: normalizedRoleTemplates.length,
     lead: normalizedRoleTemplates.filter((role) => role.kind === 'lead').length,
@@ -166,12 +165,12 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
   }
 
   function roleMedallionTone(tool) {
-    switch (tool) {
-      case 'claude':
+    switch (toolAccent(tool)) {
+      case 'emerald':
         return dark
           ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
           : 'border-amber-300/70 bg-amber-50 text-amber-800'
-      case 'gemini':
+      case 'violet':
         return dark
           ? 'border-sky-400/35 bg-sky-500/12 text-sky-200'
           : 'border-sky-300/70 bg-sky-50 text-sky-800'
@@ -456,7 +455,8 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
               <span>All tools</span>
               <span class="text-[10px] {t.textMuted}">{roleToolCounts.all}</span>
             </button>
-            {#each ['claude', 'codex', 'gemini'] as tool}
+            {#each toolOptions as descriptor (descriptor.id)}
+              {@const tool = descriptor.id}
               <button
                 class="inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-[11px] font-semibold transition {filterButtonTone(activeRoleToolFilter === tool)}"
                 type="button"
@@ -468,7 +468,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
                     <path d={getToolIcon(tool, 'sidebarSmall').path}></path>
                   </svg>
                 </span>
-                <span>{getToolName(tool)}</span>
+                <span>{descriptor.label}</span>
                 <span class="text-[10px] {t.textMuted}">{roleToolCounts[tool]}</span>
               </button>
             {/each}
@@ -546,7 +546,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
                       <div class="min-w-0">
                         <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
                         <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
-                          {getToolName(role.cliTool)} · {role.model}
+                          {toolLabel(role.cliTool)} · {role.model}
                         </p>
                         <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
                           {role.summary || 'Direction-setting lead role.'}
@@ -590,7 +590,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
                       <div class="min-w-0">
                         <p class="truncate text-[12px] font-semibold {t.textPrimary}">{role.name}</p>
                         <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
-                          {getToolName(role.cliTool)} · {role.model}
+                          {toolLabel(role.cliTool)} · {role.model}
                         </p>
                         <p class="mt-2 text-[11px] leading-4 {t.textSecondary}">
                           {role.summary || 'Execution-focused specialist role.'}
@@ -611,7 +611,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
                 <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-500">Selected Role</p>
                 <p class="mt-1 truncate text-sm font-semibold {t.textPrimary}">{selectedRuntimeRole.name}</p>
                 <p class="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] {t.textMuted}">
-                  {getToolName(selectedRuntimeRole.cliTool)} · {selectedRuntimeRole.model}
+                  {toolLabel(selectedRuntimeRole.cliTool)} · {selectedRuntimeRole.model}
                 </p>
               </div>
               <span class="rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] {roleChipTone(selectedRuntimeRole)}">

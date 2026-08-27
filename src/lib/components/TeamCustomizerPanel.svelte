@@ -14,6 +14,7 @@
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
   import { upsertTeamPreset } from '../ipc.js'
+  import { toolAccent } from '../toolRegistry.js'
 
   let {
     open = false,
@@ -262,10 +263,14 @@
   }
 
   function fallbackAgentRoleId(tool) {
-    const normalized = String(tool || '').toLowerCase()
-    if (normalized === 'claude') return 'claude-reviewer'
-    if (normalized === 'gemini') return 'custom-doc-writer'
-    return 'codex-developer'
+    switch (toolAccent(tool)) {
+      case 'emerald':
+        return 'claude-reviewer'
+      case 'violet':
+        return 'custom-doc-writer'
+      default:
+        return 'codex-developer'
+    }
   }
 
   // Without overrides the saved preset only remembers the role, so reloading it

@@ -1,5 +1,6 @@
 <script>
   import { activitySignal } from '../activitySignal.js'
+  import { toolLabel as registeredToolLabel } from '../toolRegistry.js'
 
   let {
     node = {},
@@ -18,10 +19,7 @@
   const signal = $derived(activitySignal(node))
   const toolLabel = $derived.by(() => {
     const value = String(node?.tool ?? node?.cliTool ?? node?.cli_tool ?? '').trim().toLowerCase()
-    if (value === 'claude') return 'Claude'
-    if (value === 'codex') return 'Codex'
-    if (value === 'gemini') return 'Gemini'
-    return value || 'Unknown'
+    return registeredToolLabel(value, value || 'Unknown')
   })
   const model = $derived.by(() => String(node?.model ?? node?.modelName ?? node?.model_name ?? '').trim())
   const statusLabel = $derived(signal.label)
