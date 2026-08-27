@@ -162,6 +162,37 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     )
   })
 
+  it('still assigns the codex default role to an agent whose tool is empty or unknown', async () => {
+    // Regression: 91f4d3f (PR 15) looked the fallback role up in the tool
+    // registry only, so an agent row with an empty or unrecognized tool saved
+    // `roleId: ""` and the backend rejected the preset; main's default arm had
+    // always answered `codex-developer` for anything that was not claude/gemini.
+    const config = baseTeamConfig()
+    config.agents = [
+      { id: 'agent-1', name: 'dev-1', tool: '', model: 'gpt-5.4', projectId: '/projects/taurhaus' },
+      { id: 'agent-2', name: 'dev-2', tool: 'mystery-cli', projectId: '/projects/taurhaus' },
+    ]
+
+    render(TeamCustomizerPanel, {
+      props: { open: true, teamConfig: config, projectPath: '/projects/taurhaus' },
+    })
+
+    await fireEvent.click(await screen.findByTestId('team-customizer-save-preset-trigger'))
+    await fireEvent.input(screen.getByTestId('save-preset-name-input'), {
+      target: { value: 'Unknown Tools' },
+    })
+    await fireEvent.click(screen.getByTestId('save-preset-confirm'))
+
+    expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSlots: [
+          expect.objectContaining({ roleId: 'codex-developer' }),
+          expect.objectContaining({ roleId: 'codex-developer' }),
+        ],
+      })
+    )
+  })
+
   // Regression: b345de1 (PR 5c) taught this panel to edit the model and the
   // reasoning effort but still serialized every slot with `overrides: null`, so
   // reloading a saved preset restored the role defaults and threw the selection

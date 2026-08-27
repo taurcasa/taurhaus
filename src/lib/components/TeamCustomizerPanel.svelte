@@ -262,8 +262,15 @@
     return lead?.roleId ?? selectedLeadDefaults().roleId ?? null
   }
 
+  // A row whose tool is empty or unknown still needs a role to be saved — the
+  // preset schema requires a non-empty role id — so it falls back to the codex
+  // default exactly as the pre-registry `default:` arm did.
   function fallbackAgentRoleId(tool) {
-    return toolDescriptor(tool)?.defaultAgentRoleId ?? null
+    return (
+      toolDescriptor(tool)?.defaultAgentRoleId ??
+      toolDescriptor('codex')?.defaultAgentRoleId ??
+      null
+    )
   }
 
   // Without overrides the saved preset only remembers the role, so reloading it

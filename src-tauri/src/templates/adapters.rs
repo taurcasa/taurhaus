@@ -1028,12 +1028,15 @@ fn parse_constraints_section(body: &str) -> (Option<RoleConstraints>, Option<Cli
                 };
                 saw_field = true;
             }
+            // Canonical names only (`claude`/`codex`/`gemini`): the exporter
+            // writes those, and internal aliases such as `mesh` must not start
+            // parsing from hand-authored markdown.
             "required lead tool" => {
-                constraints.requires_lead_tool = CliTool::from_alias(value).ok();
+                constraints.requires_lead_tool = value.parse::<CliTool>().ok();
                 saw_field = true;
             }
             "default cli tool" => {
-                default_cli_tool = CliTool::from_alias(value).ok();
+                default_cli_tool = value.parse::<CliTool>().ok();
             }
             _ => {}
         }
@@ -1353,6 +1356,26 @@ mod tests {
     use crate::templates::types::{
         BehavioralContract, RoleConstraints, RoleDefaults, TemplateKind, TemplateSchema,
     };
+
+    // Regression: e17f3eb (PR 15) parsed the constraint tools through
+    // `CliTool::from_alias`, so hand-authored `mesh`/`Claude` values silently
+    // became real constraints where they had parsed to nothing before.
+    #[test]
+    fn constraint_tools_parse_canonical_names_only() {
+        let (constraints, default_cli_tool) =
+            parse_constraints_section("- required lead tool: mesh\n- default cli tool: codex\n");
+        assert_eq!(constraints.unwrap().requires_lead_tool, None);
+        assert_eq!(default_cli_tool, Some(CliTool::Codex));
+
+        let (constraints, default_cli_tool) = parse_constraints_section(
+            "- required lead tool: codex\n- default cli tool: claude_native\n",
+        );
+        assert_eq!(
+            constraints.unwrap().requires_lead_tool,
+            Some(CliTool::Codex)
+        );
+        assert_eq!(default_cli_tool, None);
+    }
 
     fn sample_role() -> RoleTemplate {
         RoleTemplate {
