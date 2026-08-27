@@ -542,6 +542,14 @@ fn render_team_launch_command(
         fields.insert("member".to_string(), Value::String(agent_name.to_string()));
         fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
         let message = match note {
+            LaunchNote::CapabilityMissing { capability, found } => {
+                fields.insert(
+                    "capability".to_string(),
+                    Value::String(capability.as_str().to_string()),
+                );
+                fields.insert("found".to_string(), Value::String(found));
+                "Requested launch value has no declared harness capability"
+            }
             LaunchNote::DeprecatedFlag { flag } => {
                 fields.insert("flag".to_string(), Value::String(flag));
                 "Configured launch base contains a deprecated flag"

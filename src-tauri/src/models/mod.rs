@@ -615,8 +615,18 @@ impl ModelCatalog {
         }
     }
 
-    pub fn default_for(tool: CliTool) -> &'static ModelCatalogEntry {
-        &Self::entries_for(tool)[0]
+    pub fn default_from_entries(
+        entries: &[ModelCatalogEntry],
+        catalog_declared: bool,
+    ) -> Option<&ModelCatalogEntry> {
+        catalog_declared.then(|| entries.first()).flatten()
+    }
+
+    pub fn default_for(tool: CliTool) -> Option<&'static ModelCatalogEntry> {
+        let catalog_declared = crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .catalog;
+        Self::default_from_entries(Self::entries_for(tool), catalog_declared)
     }
 
     pub fn entry_for(tool: CliTool, model_id: &str) -> Option<&'static ModelCatalogEntry> {
@@ -1486,10 +1496,22 @@ mod tests {
 
     #[test]
     fn model_catalog_defaults_are_explicit_per_tool() {
-        assert_eq!(ModelCatalog::default_for(CliTool::Claude).id, "opus");
-        assert_eq!(ModelCatalog::default_for(CliTool::Codex).id, "gpt-5.6-sol");
         assert_eq!(
-            ModelCatalog::default_for(CliTool::Gemini).id,
+            ModelCatalog::default_for(CliTool::Claude)
+                .expect("Claude catalog")
+                .id,
+            "opus"
+        );
+        assert_eq!(
+            ModelCatalog::default_for(CliTool::Codex)
+                .expect("Codex catalog")
+                .id,
+            "gpt-5.6-sol"
+        );
+        assert_eq!(
+            ModelCatalog::default_for(CliTool::Gemini)
+                .expect("Gemini catalog")
+                .id,
             "gemini-3.1-pro"
         );
     }

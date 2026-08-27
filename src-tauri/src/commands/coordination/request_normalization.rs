@@ -213,7 +213,7 @@ fn apply_resolved_member_defaults(
                     &agent.name,
                     "preset_request_normalization",
                 )
-                .or_else(|| Some(ModelCatalog::default_for(tool).id.clone()))
+                .or_else(|| ModelCatalog::default_for(tool).map(|entry| entry.id.clone()))
             })
             .unwrap_or_else(|| member.model.clone());
     }
@@ -337,7 +337,7 @@ fn apply_role_template_defaults(agent: &mut AgentSetupConfig, role: &RoleTemplat
                     &agent.name,
                     "request_normalization",
                 )
-                .or_else(|| Some(ModelCatalog::default_for(tool).id.clone()))
+                .or_else(|| ModelCatalog::default_for(tool).map(|entry| entry.id.clone()))
             })
             .unwrap_or_else(|| role.defaults.model.clone());
     }

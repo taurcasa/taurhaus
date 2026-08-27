@@ -483,7 +483,8 @@ fn build_imported_role(
     let default_cli_tool = parsed_body.default_cli_tool.unwrap_or(cli_tool);
     let default_model = imported_model
         .clone()
-        .unwrap_or_else(|| ModelCatalog::default_for(default_cli_tool).id.clone());
+        .or_else(|| ModelCatalog::default_for(default_cli_tool).map(|entry| entry.id.clone()))
+        .unwrap_or_default();
     let model = ModelSpec::parse_legacy(&default_model);
 
     Ok(ImportedRoleTemplate {

@@ -16,7 +16,9 @@ use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::{CliCommandSettings, ModelCatalog};
 use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
 use taurhaus_lib::session_scanner::idle::{IdleResult, SessionSource};
-use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
+use taurhaus_lib::session_scanner::launch::{
+    base_command, LaunchCapability, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+};
 use taurhaus_lib::session_scanner::process::detect_cli_tool;
 use taurhaus_lib::session_scanner::SessionState;
 
@@ -224,7 +226,7 @@ fn catalog_defaults_conform_for_every_registry_entry() {
         let catalog_entries = ModelCatalog::entries_for(entry.tool);
         if entry.capabilities.catalog {
             assert!(!catalog_entries.is_empty(), "{} catalog", entry.name);
-            let default = ModelCatalog::default_for(entry.tool);
+            let default = ModelCatalog::default_for(entry.tool).expect("declared catalog default");
             assert!(
                 ModelCatalog::entry_for(entry.tool, &default.id).is_some(),
                 "{} default model",
@@ -247,8 +249,49 @@ fn catalog_defaults_conform_for_every_registry_entry() {
     }
 }
 
+#[test]
+fn absent_catalog_and_launch_flags_use_the_declared_floor() {
+    // Regression: e86980b indexed an empty catalog, and e17f3eb expected every
+    // launch arm to declare flags although `catalog: none` is a valid entry.
+    assert!(ModelCatalog::default_from_entries(&[], false).is_none());
+
+    let mut capabilities = spec(CliTool::Gemini).capabilities;
+    capabilities.catalog = false;
+    capabilities.model_flag = None;
+    capabilities.effort_flag = None;
+    let rendered = LaunchSpec {
+        tool: CliTool::Gemini,
+        mode: LaunchMode::Fresh,
+        base: "gemini --yolo",
+        model: ModelSpec {
+            model: Some("future-model".to_string()),
+            reasoning_effort: Some("high".to_string()),
+        },
+        team: None,
+        codex_bypass_hook_trust: false,
+        codex_notify_executable: None,
+        claude_config_dir: None,
+    }
+    .render_with_capabilities(capabilities);
+
+    assert_eq!(rendered.command, "gemini --yolo");
+    assert_eq!(
+        rendered.notes,
+        vec![
+            LaunchNote::CapabilityMissing {
+                capability: LaunchCapability::Model,
+                found: "future-model".to_string(),
+            },
+            LaunchNote::CapabilityMissing {
+                capability: LaunchCapability::Effort,
+                found: "high".to_string(),
+            },
+        ]
+    );
+}
+
 fn setup_config(tool: CliTool) -> AgentSetupConfig {
-    let default = ModelCatalog::default_for(tool);
+    let default = ModelCatalog::default_for(tool).expect("conformance catalog default");
     AgentSetupConfig {
         name: "team-lead".to_string(),
         cli_tool: tool.to_string(),

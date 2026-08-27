@@ -128,7 +128,10 @@ impl MemberActivationContext {
                 cli_tool: member.cli_tool,
                 model: member
                     .model
-                    .unwrap_or_else(|| ModelCatalog::default_for(member.cli_tool).id.clone()),
+                    .or_else(|| {
+                        ModelCatalog::default_for(member.cli_tool).map(|entry| entry.id.clone())
+                    })
+                    .unwrap_or_default(),
                 reasoning_effort: member.reasoning_effort,
                 project_path: member.project_path.clone(),
             },
@@ -153,7 +156,8 @@ fn member_identity_from_agent_setup(
         cli_tool,
         model: declared
             .model
-            .unwrap_or_else(|| ModelCatalog::default_for(cli_tool).id.clone()),
+            .or_else(|| ModelCatalog::default_for(cli_tool).map(|entry| entry.id.clone()))
+            .unwrap_or_default(),
         reasoning_effort: declared.reasoning_effort,
         project_path: PathBuf::from(&member.project_id),
     })
@@ -178,7 +182,7 @@ pub(crate) fn hydrate_member_model_fields(member: &mut Member, role: Option<&Rol
     member.model = declared
         .model
         .or(role_model)
-        .or_else(|| Some(catalog_default.id.clone()));
+        .or_else(|| catalog_default.map(|entry| entry.id.clone()));
     member.reasoning_effort = declared.reasoning_effort.or_else(|| {
         role_defaults
             .as_ref()
@@ -212,13 +216,13 @@ pub(crate) fn validated_role_model(
         return Some(model.to_string());
     }
 
-    let replacement = ModelCatalog::default_for(tool).id.clone();
+    let replacement = ModelCatalog::default_for(tool).map(|entry| entry.id.clone());
     tracing::warn!(
         member = member_name,
         operation,
         tool = %tool,
         found = model,
-        replacement,
+        replacement = ?replacement,
         "role model is not valid for the member CLI; using the catalog default"
     );
     let mut fields = Map::new();
@@ -229,7 +233,10 @@ pub(crate) fn validated_role_model(
     );
     fields.insert("tool".to_string(), Value::String(tool.to_string()));
     fields.insert("found".to_string(), Value::String(model.to_string()));
-    fields.insert("replacement".to_string(), Value::String(replacement));
+    fields.insert(
+        "replacement".to_string(),
+        replacement.map(Value::String).unwrap_or(Value::Null),
+    );
     emit_global(
         "warn",
         "coordination",
