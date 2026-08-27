@@ -74,20 +74,19 @@ fn setup_log_file() -> (LogFileState, NamedTempFile) {
     (state, tmp)
 }
 
-fn read_log_events(path: &Path) -> Vec<serde_json::Value> {
-    for _ in 0..100 {
-        let content = std::fs::read_to_string(path).unwrap_or_default();
-        let events: Vec<serde_json::Value> = content
-            .lines()
-            .filter_map(|line| serde_json::from_str(line).ok())
-            .collect();
-        if !events.is_empty() {
-            return events;
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-    let content = std::fs::read_to_string(path).unwrap_or_default();
-    content
+/// The events a test's sink has taken so far.
+///
+/// Regression: c982822 read the file as soon as *any* line parsed, and the sink
+/// is asynchronous — a writer thread owns the file. Under load the reader saw a
+/// file that had merely started filling, and the event the test was about was
+/// not in it yet: `a_project_pinned_to_a_second_account_launches_with_its_config_dir`
+/// panicked on "rendered launch event" in 10 of 40 module runs with every core
+/// loaded. `flush_for_test` returns once every record enqueued so far is
+/// durable, so one read after it sees everything the call under test emitted.
+fn read_log_events(sink: &LogFileState, path: &Path) -> Vec<serde_json::Value> {
+    sink.flush_for_test().expect("flush log sink");
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect()
@@ -930,6 +929,9 @@ fn load_terminal_settings_returns_default_on_query_and_lock_errors() {
 
 #[test]
 fn launch_cli_session_uses_daemon_success_response() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let daemon = start_stub_daemon(serde_json::json!({
         "result": {
             "tmux_session": "taurhaus",
@@ -976,6 +978,9 @@ fn launch_cli_session_uses_daemon_success_response() {
 
 #[test]
 fn launch_cli_session_logs_daemon_request_context() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let daemon = start_stub_daemon(serde_json::json!({
         "result": {
             "tmux_session": "taurhaus",
@@ -1007,7 +1012,7 @@ fn launch_cli_session_logs_daemon_request_context() {
     )
     .expect("daemon launch should succeed");
 
-    let events = read_log_events(log_file_path.path());
+    let events = read_log_events(&log_file, log_file_path.path());
     let request = events
         .iter()
         .find(|event| event["event"] == "command_center.launch.daemon_request")
@@ -1187,7 +1192,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
         "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' claude --dangerously-skip-permissions"
     );
 
-    let events = read_log_events(log_file_path.path());
+    let events = read_log_events(&log_file, log_file_path.path());
     let rendered = events
         .iter()
         .find(|event| event["event"] == "launch.command.rendered")
@@ -1233,7 +1238,7 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
         "claude --dangerously-skip-permissions"
     );
 
-    let events = read_log_events(log_file_path.path());
+    let events = read_log_events(&log_file, log_file_path.path());
     let fallback = events
         .iter()
         .find(|event| event["event"] == "launch.account.fallback")
@@ -1278,7 +1283,7 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
     );
     log_account_resolution("p1", &launch);
 
-    let events = read_log_events(log_file_path.path());
+    let events = read_log_events(&log_file, log_file_path.path());
     let fallback = events
         .iter()
         .find(|event| event["event"] == "launch.account.fallback")
@@ -1431,7 +1436,7 @@ fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
         "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' claude --dangerously-skip-permissions --resume"
     );
 
-    let events = read_log_events(log_file_path.path());
+    let events = read_log_events(&log_file, log_file_path.path());
     assert!(
         events
             .iter()
@@ -1636,6 +1641,9 @@ fn the_preflight_needs_no_choice_once_the_project_stored_one() {
 
 #[test]
 fn launch_cli_session_surfaces_daemon_error_message() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let daemon = start_stub_daemon(serde_json::json!({
         "result": null,
         "error": {
@@ -1723,6 +1731,9 @@ fn record_session_activity_persists_lowercase_cli_tool_from_enum() {
 
 #[test]
 fn launch_codex_resume_returns_project_not_found_for_invalid_project_id() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
@@ -1748,6 +1759,9 @@ fn launch_codex_resume_returns_project_not_found_for_invalid_project_id() {
 
 #[test]
 fn launch_codex_resume_surfaces_fallback_error_when_daemon_is_unreachable() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let daemon = start_unreachable_stub_daemon();
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
@@ -1780,6 +1794,9 @@ fn launch_codex_resume_surfaces_fallback_error_when_daemon_is_unreachable() {
 
 #[test]
 fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     runtime.set_pane_exists("%9", false);
@@ -1873,6 +1890,9 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
 
 #[test]
 fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
@@ -1980,6 +2000,9 @@ fn generic_resume_falls_back_to_raw_launch_when_team_match_is_ambiguous() {
 
 #[test]
 fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
+    // A launch emits into the process-global sink; hold the log guard so it
+    // never lands in the file another test is reading.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let tmp = TempDir::new().expect("temp teams dir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
