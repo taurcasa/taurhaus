@@ -346,6 +346,64 @@ describe('claudeAccounts store', () => {
     }
   })
 
+  it('stops syncing when an account still has no usage', async () => {
+    // Regression: 701cd7c treated a missing usage entry as still pending, so
+    // one account with no snapshot kept list_accounts running at 4 Hz for the
+    // full 30-second deadline even after every observable snapshot advanced.
+    vi.useFakeTimers()
+    try {
+      const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
+      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      listAccounts.mockResolvedValue(previousReport)
+      await refreshAccounts('claude')
+      listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
+
+      await refreshUsage('claude')
+      await vi.advanceTimersByTimeAsync(250)
+      expect(claudeAccounts.accounts[1].usage).toEqual(refreshedUsage)
+
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(listAccounts).toHaveBeenCalledTimes(3)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  it('backs repeated usage reads off geometrically', async () => {
+    // Regression: 701cd7c retried list_accounts at a fixed 250 ms cadence for
+    // up to 30 seconds while the usage poller was still producing a snapshot.
+    vi.useFakeTimers()
+    try {
+      const usage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const report = detected([{ ...PRIMARY, usage }])
+      listAccounts.mockResolvedValue(report)
+      await refreshAccounts('claude')
+      await refreshUsage('claude')
+
+      await vi.advanceTimersByTimeAsync(250)
+      expect(listAccounts).toHaveBeenCalledTimes(3)
+
+      await vi.advanceTimersByTimeAsync(250)
+      expect(listAccounts).toHaveBeenCalledTimes(3)
+
+      await vi.advanceTimersByTimeAsync(250)
+      expect(listAccounts).toHaveBeenCalledTimes(4)
+
+      await vi.advanceTimersByTimeAsync(999)
+      expect(listAccounts).toHaveBeenCalledTimes(4)
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(listAccounts).toHaveBeenCalledTimes(5)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
   // Regression: a574720 copied every account's usage from the report, `null`
   // included. The sink cannot be read while a compacting writer holds it, and
   // the backend answers such a refresh with no numbers at all — so the meter on

@@ -694,26 +694,30 @@ static LAST_PERSISTED_OBSERVATIONS: Mutex<
     Option<HashMap<(String, CliTool), AccountPersistenceCheck>>,
 > = Mutex::new(None);
 
-#[cfg(not(test))]
-struct PendingLiveAccountObservation {
+struct ExaminedLiveAccount {
     throttle_key: (String, CliTool),
     selector_key: String,
-    observation: LiveAccountObservation,
+    observation: Option<LiveAccountObservation>,
 }
 
-#[cfg(not(test))]
-fn remember_live_account_check(
+fn finish_live_account_checks(
     checks: &mut HashMap<(String, CliTool), LastUsedWrite>,
-    observation: &PendingLiveAccountObservation,
+    examined: Vec<ExaminedLiveAccount>,
     now: Instant,
-) {
-    checks.insert(
-        observation.throttle_key.clone(),
-        LastUsedWrite {
-            selector_key: observation.selector_key.clone(),
-            checked_at: now,
-        },
-    );
+) -> Vec<LiveAccountObservation> {
+    examined
+        .into_iter()
+        .filter_map(|examined| {
+            checks.insert(
+                examined.throttle_key,
+                LastUsedWrite {
+                    selector_key: examined.selector_key,
+                    checked_at: now,
+                },
+            );
+            examined.observation
+        })
+        .collect()
 }
 
 /// Resolve live selector values on the scanner side and emit memory
@@ -784,48 +788,45 @@ pub(crate) fn observe_live_session_accounts(
         });
     }
 
-    let observations = candidates
+    let examined = candidates
         .into_iter()
-        .filter_map(
+        .map(
             |(session, tool, selector, provider, throttle_key, selected_hint)| {
                 let selected_dir = selected_hint
                     .or_else(|| super::process::process_selector_value(session.pid, selector))
-                    .or_else(|| dirs::home_dir().map(|home| provider.default_dir(&home)))?;
-                let selected_key = canonical_key(&selected_dir);
-                let selector_key = crate::provider::path::normalize_project_path(
-                    &selected_dir.display().to_string(),
-                );
-                let account_id = account_dirs
-                    .get(&tool)?
-                    .iter()
-                    .find_map(|(dir, id)| (*dir == selected_key).then(|| id.clone()))?;
-                Some(PendingLiveAccountObservation {
-                    throttle_key,
-                    selector_key,
-                    observation: LiveAccountObservation {
+                    .or_else(|| dirs::home_dir().map(|home| provider.default_dir(&home)));
+                let selector_key = selected_dir
+                    .as_ref()
+                    .map(|dir| {
+                        crate::provider::path::normalize_project_path(&dir.display().to_string())
+                    })
+                    .unwrap_or_default();
+                let observation = selected_dir.and_then(|selected_dir| {
+                    let selected_key = canonical_key(&selected_dir);
+                    let account_id = account_dirs
+                        .get(&tool)?
+                        .iter()
+                        .find_map(|(dir, id)| (*dir == selected_key).then(|| id.clone()))?;
+                    Some(LiveAccountObservation {
                         project_path: session.project_path.clone(),
                         tool,
                         account_id,
-                    },
-                })
+                    })
+                });
+                ExaminedLiveAccount {
+                    throttle_key,
+                    selector_key,
+                    observation,
+                }
             },
         )
         .collect::<Vec<_>>();
-    if observations.is_empty() {
-        return Vec::new();
-    }
 
     let mut writes = LAST_USED_WRITES
         .lock()
         .unwrap_or_else(|error| error.into_inner());
     let writes = writes.get_or_insert_with(HashMap::new);
-    for observation in &observations {
-        remember_live_account_check(writes, observation, now);
-    }
-    observations
-        .into_iter()
-        .map(|observation| observation.observation)
-        .collect()
+    finish_live_account_checks(writes, examined, now)
 }
 
 fn project_ids_by_path(connection: &rusqlite::Connection) -> HashMap<String, String> {
@@ -1316,6 +1317,29 @@ mod tests {
             &key,
             Some("/accounts/one"),
             now + Duration::from_secs(60)
+        ));
+    }
+
+    #[test]
+    fn unresolved_live_account_checks_are_throttled() {
+        // Regression: 2f8246c recorded the scanner throttle only after a
+        // selector dir resolved to a detected account, so an unresolvable
+        // session repeated process inspection on every scanner cycle.
+        let now = Instant::now();
+        let key = ("/projects/taurhaus".to_string(), CliTool::Claude);
+        let examined = vec![ExaminedLiveAccount {
+            throttle_key: key.clone(),
+            selector_key: "/accounts/not-detected".to_string(),
+            observation: None,
+        }];
+        let mut checks = HashMap::new();
+
+        assert!(finish_live_account_checks(&mut checks, examined, now).is_empty());
+        assert!(!live_account_check_is_due(
+            &checks,
+            &key,
+            Some("/accounts/not-detected"),
+            now + Duration::from_secs(1),
         ));
     }
 

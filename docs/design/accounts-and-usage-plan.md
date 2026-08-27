@@ -89,7 +89,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 | PR | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
 | 17a | Opus 5 | Codex ×2 | 4 (3 fix rounds; the last major — team-delegated Continue/Resume silently ignoring the pick — fixed by the orchestrator's pass) | 13 (round 1: 5 of 7 reported, both reviewers raising the pin-on-pick and the duplicate-label crash; round 2: 4; round 3: 3; round 4: 1) | #34 |
-| 17b | Codex gpt-5.6 | Opus ×2 | 2 (1 fix round) | 10 (round 1: 6; round 2: 4 — daemon DB ownership, refresh RPC timeout, unknown-project throttle, TLS stack) | tbd |
+| 17b | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 11 (round 1: 6; round 2: 4 — daemon DB ownership, refresh RPC timeout, unknown-project throttle, TLS stack; round 3: 1 — usage-sync retry flood) | tbd |
 | 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17d | Opus 5 | Codex ×2 | tbd | tbd | tbd |
 

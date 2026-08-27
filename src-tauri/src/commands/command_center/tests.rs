@@ -1,4 +1,4 @@
-use super::session_listing::CliSessionFreshness;
+use super::session_listing::{persist_local_account_observations, CliSessionFreshness};
 use super::*;
 use crate::commands::logging::{install_global_sink, LogFileState};
 use crate::commands::runtime_snapshot::{
@@ -582,6 +582,28 @@ fn cli_session_freshness_says_whether_the_list_was_observed() {
     let unavailable = CliSessionSnapshot::unavailable();
     assert!(unavailable.sessions.is_empty());
     assert_eq!(unavailable.freshness, CliSessionFreshness::Unavailable);
+}
+
+#[test]
+fn local_session_account_observations_reach_project_memory() {
+    // Regression: 701cd7c moved scanner-owned account observations onto the
+    // daemon snapshot wire but left the app's healthy local-scan fallback with
+    // no DbState producer, so daemonless Linux/macOS scans forgot last-used.
+    let (db, _db_file) = setup_db_with_project("project-1", "/projects/one");
+    let observations = vec![crate::session_scanner::accounts::LiveAccountObservation {
+        project_path: "/projects/one".to_string(),
+        tool: CliTool::Claude,
+        account_id: "account-1".to_string(),
+    }];
+
+    assert_eq!(
+        persist_local_account_observations(&db, &observations).unwrap(),
+        1
+    );
+    let connection = db.0.lock().unwrap();
+    let memory = crate::db::queries::project_account_memory(&connection, "project-1").unwrap();
+    assert_eq!(memory["claude"].account_id, "account-1");
+    assert_eq!(memory["claude"].origin.as_str(), "last_used");
 }
 
 #[test]

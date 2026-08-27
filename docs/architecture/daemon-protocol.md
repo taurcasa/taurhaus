@@ -166,8 +166,8 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | `scan_sessions` | `{ path }` | `{ paths[] }` | Scan for session handoff files |
 | `list_display_sessions` | — | `DisplaySession[]` | UI-safe session list for sidebar/session surfaces. |
 | `list_runtime_sessions` | — | `RuntimeSession[]` | Runtime-authoritative session list including transcript/session metadata for coordination and compaction logic. |
-| `get_runtime_session_snapshot` | — | `{ version, display_sessions[], runtime_sessions[], focus?, foreground_project_path, degraded, degraded_revision }` | One-shot seed of the hub snapshot. `foreground_project_path` is the legacy wire name for the hub's `focus_project_path`. |
-| `wait_session_updates` | `{ since_version, since_degraded_revision, timeout_ms }` | `{ version, changed, sessions[], focus?, focus_project_path?, degraded, degraded_revision }` | Long-poll for a newer session snapshot version. `timeout_ms` defaults to 15000 and is clamped server-side. |
+| `get_runtime_session_snapshot` | — | `{ version, display_sessions[], runtime_sessions[], account_observations[], focus?, foreground_project_path, degraded, degraded_revision }` | One-shot seed of the hub snapshot. `foreground_project_path` is the legacy wire name for the hub's `focus_project_path`. |
+| `wait_session_updates` | `{ since_version, since_degraded_revision, timeout_ms }` | `{ version, changed, sessions[], account_observations[], focus?, focus_project_path?, degraded, degraded_revision }` | Long-poll for a newer session snapshot version. `timeout_ms` defaults to 15000 and is clamped server-side. |
 | `launch_session` | `{ project_path, mode, cli_tool?, tmux_layout?, command_override?, account_dir? }` | `{ tmux_session?, tmux_window, tmux_pane }` | Launch a CLI tool in a tmux pane |
 | `stop_session` | `{ tmux_pane, cli_tool? }` | — | Stop a running CLI tool session |
 | `navigate_to_session` | `{ tmux_session, tmux_window, tmux_pane }` | — | Focus a tmux pane |
@@ -186,7 +186,7 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 |--------|--------|--------|-------------|
 | `list_accounts` | `{ tool }` | `AccountsResult` (`{ accounts[], degraded, error? }`) | Provider accounts visible to the daemon's host, with cached in-memory usage attached. |
 | `project_transcript` | `{ tool, project }` | `{ transcript }` | The newest provider transcript that owns the tool's project history. |
-| `refresh_usage` | `{ tool }` | `{ ok }` | Requests an on-demand, debounced provider usage refresh. |
+| `refresh_usage` | `{ tool }` | `{ started }` | Requests an on-demand, debounced provider usage refresh. |
 
 On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. Protocol 11 ships with app 0.6.9; older Claude-only account methods are intentionally incompatible.
 
@@ -274,9 +274,9 @@ Managed Codex launches render the `notify` flag only when all four hold (`comman
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v10) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v11) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
-The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 and v10 tightened the same gate: v9 added `set_codex_compaction_mode` (the app selects the daemon's Codex compaction mode instead of the daemon guessing the desktop settings database path), and v10 added the scanner-blackout cursor, whose mixed pairs are both wrong in a way neither side can detect at runtime.
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode`; v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods and added `account_observations` to both session snapshot results.
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 

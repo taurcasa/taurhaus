@@ -78,7 +78,8 @@ pub(super) fn list_cli_sessions_impl(
         return Ok(CliSessionSnapshot::unavailable());
     }
 
-    let (mut fallback, degraded) = crate::session_scanner::scan_sessions_for_display();
+    let (mut fallback, runtime_sessions, degraded) =
+        crate::session_scanner::scan_sessions_for_authoritative_snapshot();
     tracing::debug!(
         count = fallback.len(),
         degraded,
@@ -93,6 +94,17 @@ pub(super) fn list_cli_sessions_impl(
     // list does not blank out. It is not an observation, so it must not write
     // project activity — promotion only runs on a healthy scan.
     if !degraded {
+        let observations =
+            crate::session_scanner::accounts::observe_live_session_accounts(&runtime_sessions);
+        match persist_local_account_observations(db, &observations) {
+            Ok(changed) if changed > 0 => {
+                tracing::debug!(changed, "remembered local live session accounts");
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!(error = %error, "failed to remember local live session account");
+            }
+        }
         promote_activity_from_sessions(app, db, &fallback);
     }
     Ok(CliSessionSnapshot {
@@ -103,6 +115,20 @@ pub(super) fn list_cli_sessions_impl(
             CliSessionFreshness::Fresh
         },
     })
+}
+
+pub(super) fn persist_local_account_observations(
+    db: &DbState,
+    observations: &[crate::session_scanner::accounts::LiveAccountObservation],
+) -> Result<usize, String> {
+    if observations.is_empty() {
+        return Ok(0);
+    }
+    let connection = db.0.lock().map_err(|error| error.to_string())?;
+    crate::session_scanner::accounts::persist_live_account_observations_in(
+        &connection,
+        observations,
+    )
 }
 
 /// The daemon's display sessions and how fresh they are — `None` when there is

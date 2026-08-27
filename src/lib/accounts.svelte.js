@@ -145,7 +145,8 @@ export function rememberChoice(projectOrId, tool, accountId) {
 
 const detections = new Map()
 const DETECTION_TTL_MS = 60_000
-const USAGE_SYNC_RETRY_MS = 250
+const USAGE_SYNC_INITIAL_RETRY_MS = 250
+const USAGE_SYNC_MAX_RETRY_MS = 4_000
 const USAGE_SYNC_DEADLINE_MS = 30_000
 const usageSyncTimers = new Map()
 
@@ -177,25 +178,31 @@ function mergeUsageReport(state, report, pending) {
   return new Map(
     [...pending].filter(([accountId, observedAt]) => {
       const next = usageById.get(accountId)?.observed_at ?? null
-      return next == null || next === observedAt
+      return next != null && next === observedAt
     })
   )
 }
 
-function scheduleUsageSync(tool, pending, deadline) {
+function scheduleUsageSync(tool, pending, deadline, retryMs = USAGE_SYNC_INITIAL_RETRY_MS) {
   if (pending.size === 0 || Date.now() >= deadline) return
   const previous = usageSyncTimers.get(tool)
   if (previous) clearTimeout(previous)
   const timer = setTimeout(async () => {
     if (usageSyncTimers.get(tool) === timer) usageSyncTimers.delete(tool)
+    if (Date.now() >= deadline) return
     try {
       const report = await listAccounts(tool)
       const remaining = mergeUsageReport(mutableAccountState(tool), report, pending)
-      scheduleUsageSync(tool, remaining, deadline)
+      scheduleUsageSync(
+        tool,
+        remaining,
+        deadline,
+        Math.min(retryMs * 2, USAGE_SYNC_MAX_RETRY_MS)
+      )
     } catch (error) {
       console.warn('Failed to read refreshed account usage:', error)
     }
-  }, USAGE_SYNC_RETRY_MS)
+  }, Math.min(retryMs, deadline - Date.now()))
   timer?.unref?.()
   usageSyncTimers.set(tool, timer)
 }
@@ -205,7 +212,7 @@ export function refreshUsage(tool = providerTool()) {
   const state = mutableAccountState(id)
   const pending = new Map(
     state.accounts
-      .filter((account) => account.logged_in)
+      .filter((account) => account.logged_in && usageObservation(account) != null)
       .map((account) => [account.id, usageObservation(account)])
   )
   return Promise.resolve(refreshAccountsUsage(id))
