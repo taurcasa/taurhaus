@@ -18,8 +18,16 @@
 //! * a `statusLine` configured *while* an install is running is wrapped like
 //!   any other: the commit only lands while the value it was decided from is
 //!   still the one on disk, and rebuilds itself around a newer one;
+//! * every option beside `type` and `command` is read off the row as it stands
+//!   and written back untouched — the `padding` the user set before the wrap,
+//!   and equally the one they set on our row afterwards;
+//! * no sink call may outlive its deadline: each one is given a couple of
+//!   seconds and then killed and reaped, so a wedged daemon costs a record and
+//!   never the row;
 //! * removal puts the original `statusLine` value back exactly as it was,
-//!   extra keys and all.
+//!   extra keys and all — and a CLI that is *known* to be older than the build
+//!   that sends `rate_limits` gets that removal, rather than keeping a bridge
+//!   nothing can feed.
 //!
 //! Installation is idempotent and mirrors the compaction hook installer: a
 //! generated script under `<config dir>/hooks`, a record naming the executable
@@ -48,6 +56,10 @@ const STATUS_LINE_KEY: &str = "statusLine";
 pub const USAGE_SINK_SUBCOMMAND: &str = "claude-usage-sink";
 /// What the row says when the sink has nothing to put in it.
 const FALLBACK_LINE: &str = "taurhaus · no usage yet";
+/// How long the generated script gives one sink call before killing it. Claude
+/// Code refreshes the status line several times a second; a record is worth a
+/// couple of seconds of waiting at the very most, and the row is worth none.
+const SINK_DEADLINE_SECONDS: u32 = 2;
 /// How many times an install rebuilds itself around a `statusLine` that changed
 /// underneath it. The other writers here are a person and Claude Code; one
 /// retry is already more than this has ever needed.
@@ -216,11 +228,13 @@ fn install_statusline_at(
                 .as_slice(),
         )?;
 
-        // Only `type` and `command` are taurhaus's. Everything else the user set
-        // on their own `statusLine` — `padding`, and whatever a later Claude
-        // Code reads there — still applies while ours is the command being run.
-        let mut desired = match wrapped.as_ref() {
-            Some(Value::Object(original)) => original.clone(),
+        // Only `type` and `command` are taurhaus's. Everything else on the row
+        // as it stands right now stays exactly as it stands: the `padding` the
+        // user set on their own status line before it was wrapped, and equally
+        // the one they set on ours after it took the seat. Rebuilding this from
+        // the record instead would hand back options the user has since edited.
+        let mut desired = match existing.as_ref() {
+            Some(Value::Object(row)) => row.clone(),
             _ => Map::new(),
         };
         desired.insert("type".to_string(), Value::String("command".to_string()));
@@ -324,12 +338,22 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
 ///
 /// A build older than the one this was verified against gets nothing: its
 /// payload is not documented to carry `rate_limits`, and rewriting a user's
-/// `statusLine` for numbers that never arrive is a bad trade.
+/// `statusLine` for numbers that never arrive is a bad trade. If one is already
+/// installed — the user downgraded, or switched to another `claude` on their
+/// PATH — it is taken back out here, because that same trade is no better for
+/// having been made yesterday.
 pub fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
     let versions = CliVersions::current();
-    if !versions.claude_statusline_usage_supported {
-        emit_skipped_run(versions.claude.as_deref());
-        return;
+    match statusline_bridge_action(versions) {
+        BridgeAction::Install => {}
+        BridgeAction::Remove => {
+            remove_statusline_from_detected_accounts(versions.claude.as_deref());
+            return;
+        }
+        BridgeAction::Leave => {
+            emit_skipped_run(versions.claude.as_deref());
+            return;
+        }
     }
 
     // The path is resolved here, in the process that also reads the sink, and
@@ -392,6 +416,75 @@ pub fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
     }
 }
 
+/// Take the bridge out of every detected account, and say why.
+///
+/// The CLI in front of these config dirs cannot feed the sink any more, so the
+/// script would wrap the user's status line for numbers that never arrive.
+fn remove_statusline_from_detected_accounts(claude_version: Option<&str>) {
+    for account in detect_claude_accounts_cached() {
+        let mut fields = Map::new();
+        fields.insert(
+            "config_dir".to_string(),
+            Value::String(account.config_dir.display().to_string()),
+        );
+        fields.insert("account_id".to_string(), Value::String(account.id.clone()));
+        if let Some(version) = claude_version {
+            fields.insert("claude_version".to_string(), Value::String(version.into()));
+        }
+        match remove_statusline_at(&account.config_dir) {
+            Ok(false) => {}
+            Ok(true) => emit_global(
+                "info",
+                "claude_usage",
+                "claude.usage.statusline.removed",
+                Some(format!(
+                    "Claude usage status line removed for {}: this CLI does not report usage",
+                    account.email
+                )),
+                fields,
+            ),
+            Err(error) => {
+                fields.insert("error".to_string(), Value::String(error.clone()));
+                emit_global(
+                    "warn",
+                    "claude_usage",
+                    "claude.usage.statusline.failed",
+                    Some(error),
+                    fields,
+                );
+            }
+        }
+    }
+}
+
+/// What one run should do about the bridge, given what the CLI probe said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BridgeAction {
+    Install,
+    /// Take an installed bridge back out, restoring what it wrapped.
+    Remove,
+    /// Touch nothing at all.
+    Leave,
+}
+
+fn statusline_bridge_action(versions: &CliVersions) -> BridgeAction {
+    match (
+        versions.claude_statusline_usage_supported,
+        versions.claude.as_deref(),
+    ) {
+        (true, _) => BridgeAction::Install,
+        // A version we read, and it is older than the one that sends
+        // `rate_limits`. A bridge installed by a newer CLI is now wrapping a
+        // status line for nothing, so it goes back out.
+        (false, Some(_)) => BridgeAction::Remove,
+        // A probe that could not answer — no `claude` on this PATH, a timeout,
+        // a shell that failed to start — says nothing about the CLI the user
+        // runs. Tearing down a working bridge on that would be worse than
+        // leaving one that has nothing to feed it.
+        (false, None) => BridgeAction::Leave,
+    }
+}
+
 fn emit_skipped_run(claude_version: Option<&str>) {
     let mut fields = Map::new();
     fields.insert(
@@ -445,39 +538,76 @@ fn render_script(
     // No `set -e`: a sink that cannot run must cost the user a record, never a
     // status line.
     script.push_str("payload=\"$(cat)\"\n");
+    // And a sink that never *finishes* must cost no more than one either. Every
+    // call goes through here, where it is given a deadline and then killed and
+    // reaped: a wedged daemon, or a filesystem that stopped answering, can lose
+    // the user a record and never the row.
+    push_lines(
+        &mut script,
+        [
+            "taurhaus_sink() {".to_string(),
+            "  local out=$1".to_string(),
+            "  shift".to_string(),
+            format!("  printf '%s' \"$payload\" | {sink} \"$@\" >\"$out\" 2>/dev/null &"),
+            "  local sink_pid=$!".to_string(),
+            format!(
+                "  ( sleep {SINK_DEADLINE_SECONDS}; kill \"$sink_pid\"; \
+                 sleep 1; kill -9 \"$sink_pid\" ) >/dev/null 2>&1 &"
+            ),
+            "  local deadline=$!".to_string(),
+            "  wait \"$sink_pid\" 2>/dev/null".to_string(),
+            "  kill \"$deadline\" 2>/dev/null".to_string(),
+            "}".to_string(),
+        ],
+    );
     match wrapped {
         Some(command) => {
             script.push_str(
                 "# The status line below was configured before taurhaus wrapped it;\n\
                  # it receives the same payload and owns the rendered line. The\n\
                  # record is taken beside it, never in front of it: a sink that\n\
-                 # waits on the sink file must not delay the user's own line.\n",
+                 # waits on the sink file — or never returns at all — must not\n\
+                 # delay the user's own line.\n",
             );
-            script.push_str(&format!(
-                "printf '%s' \"$payload\" | {sink} >/dev/null 2>&1 &\n"
-            ));
+            script.push_str("taurhaus_sink /dev/null >/dev/null 2>&1 &\n");
             script.push_str(&format!("printf '%s' \"$payload\" | {command}\n"));
         }
         None => {
             script.push_str(
                 "# This account had no status line, so this row is taurhaus's to\n\
                  # fill — and a row taurhaus installed may never come back empty.\n\
-                 # A sink that cannot be executed, a payload it cannot read and a\n\
-                 # refresh with nothing to report all print nothing at all, and a\n\
-                 # blank row is the one outcome the install promised to avoid.\n",
+                 # A sink that cannot be executed, one that never answers, a\n\
+                 # payload it cannot read and a refresh with nothing to report all\n\
+                 # print nothing at all, and a blank row is the one outcome the\n\
+                 # install promised to avoid.\n",
             );
-            script.push_str(&format!(
-                "line=\"$(printf '%s' \"$payload\" | {sink} --render 2>/dev/null)\"\n"
-            ));
-            script.push_str(&format!(
-                "[ -n \"$line\" ] || line={}\n",
-                shell_quote(FALLBACK_LINE)
-            ));
-            script.push_str("printf '%s\\n' \"$line\"\n");
-            script.push_str("exit 0\n");
+            push_lines(
+                &mut script,
+                [
+                    // A pipe would mean waiting for the sink to close it, which
+                    // is the wait this deadline exists to bound.
+                    "rendered=\"$(mktemp 2>/dev/null)\" || rendered=''".to_string(),
+                    "line=''".to_string(),
+                    "if [ -n \"$rendered\" ]; then".to_string(),
+                    "  taurhaus_sink \"$rendered\" --render".to_string(),
+                    "  line=\"$(cat \"$rendered\" 2>/dev/null)\"".to_string(),
+                    "  rm -f \"$rendered\"".to_string(),
+                    "fi".to_string(),
+                    format!("[ -n \"$line\" ] || line={}", shell_quote(FALLBACK_LINE)),
+                    "printf '%s\\n' \"$line\"".to_string(),
+                    "exit 0".to_string(),
+                ],
+            );
         }
     }
     script
+}
+
+fn push_lines(script: &mut String, lines: impl IntoIterator<Item = String>) {
+    for line in lines {
+        script.push_str(&line);
+        script.push('\n');
+    }
 }
 
 fn is_taurhaus_status_line(value: Option<&Value>) -> bool {
@@ -698,11 +828,13 @@ mod tests {
 
         let script = script_of(&config_dir);
         assert!(script.contains(&format!(
-            "'{}' {USAGE_SINK_SUBCOMMAND} --config-dir '{}' --sink '{}' --render",
+            "| '{}' {USAGE_SINK_SUBCOMMAND} --config-dir '{}' --sink '{}' \"$@\"",
             exe.display(),
             config_dir.display(),
             sink_for(&temp).display()
         )));
+        // The row is ours to fill here, so the sink is asked for a line.
+        assert!(script.contains("--render"));
         assert!(statusline_is_installed_at(&config_dir));
     }
 
@@ -921,6 +1053,96 @@ mod tests {
     }
 
     #[test]
+    fn an_option_set_on_the_row_taurhaus_holds_survives_the_next_install() {
+        // Regression: 984218c rebuilt the active `statusLine` object from the
+        // *record's* remembered original on every install, so an option the
+        // user set on the row while taurhaus held it — `padding`, or whatever a
+        // later Claude Code reads there — was reverted at the next daemon
+        // start, silently, for as long as the bridge stayed installed.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let original = json!({
+            "type": "command",
+            "command": "/home/user/zq/statusline-zq.sh",
+            "padding": 0
+        });
+        write_settings_json(&config_dir, json!({ "statusLine": original.clone() }));
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        // The user tunes the row while taurhaus is holding it.
+        let mut active = settings_of(&config_dir)[STATUS_LINE_KEY]
+            .as_object()
+            .expect("an object")
+            .clone();
+        active.insert("padding".to_string(), json!(2));
+        active.insert("paddingTop".to_string(), json!(1));
+        write_settings_json(
+            &config_dir,
+            json!({ "statusLine": Value::Object(active.clone()) }),
+        );
+
+        let again = ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp))
+            .expect("second install");
+
+        let row = settings_of(&config_dir)[STATUS_LINE_KEY].clone();
+        assert_eq!(row["padding"], json!(2), "the edited option was reverted");
+        assert_eq!(
+            row["paddingTop"],
+            json!(1),
+            "an option we do not know was dropped"
+        );
+        assert!(row["command"]
+            .as_str()
+            .is_some_and(|command| command.contains(SCRIPT_BASENAME)));
+        assert!(!again.changed, "keeping the row as it is is not a change");
+        // Removal still hands back what was there before taurhaus took the seat.
+        assert!(remove_statusline_at(&config_dir).expect("remove"));
+        assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], original);
+    }
+
+    #[test]
+    fn a_claude_that_stopped_sending_rate_limits_gets_the_bridge_taken_back_out() {
+        // Regression: 79be608 returned from the install run the moment the
+        // version gate said no. A bridge installed under 2.1.246 therefore
+        // stayed in `settings.json` after the user went back to an older CLI —
+        // wrapping their status line, and running a sink for numbers that build
+        // never sends. The gate has to be able to say "take it out", and only a
+        // version we actually read may say it: a probe that could not answer is
+        // no reason to tear down a working bridge.
+        let supported = CliVersions {
+            claude: Some("2.1.246".to_string()),
+            claude_statusline_usage_supported: true,
+            ..CliVersions::default()
+        };
+        let older = CliVersions {
+            claude: Some("2.1.238".to_string()),
+            claude_statusline_usage_supported: false,
+            ..CliVersions::default()
+        };
+        let unknown = CliVersions::default();
+
+        assert_eq!(statusline_bridge_action(&supported), BridgeAction::Install);
+        assert_eq!(statusline_bridge_action(&older), BridgeAction::Remove);
+        assert_eq!(statusline_bridge_action(&unknown), BridgeAction::Leave);
+
+        // And the removal that decision asks for gives the row back whole.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let original = json!({ "type": "command", "command": "my-line.sh", "padding": 0 });
+        write_settings_json(&config_dir, json!({ "statusLine": original.clone() }));
+        ensure_statusline_installed_at(&config_dir, &temp.path().join("exe"), &sink_for(&temp))
+            .expect("install");
+        assert!(statusline_is_installed_at(&config_dir));
+
+        assert!(remove_statusline_at(&config_dir).expect("remove"));
+
+        assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], original);
+        assert!(!statusline_is_installed_at(&config_dir));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_wrapped_status_line_renders_even_when_the_sink_stalls() {
         // Regression: 79be608 piped the payload to the sink synchronously and
         // only then ran the command the user had configured. A sink waiting on
@@ -928,23 +1150,45 @@ mod tests {
         // the status line taurhaus promised never to disturb.
         let temp = tempfile::tempdir().expect("temp dir");
         let config_dir = temp.path().join(".claude");
+        let theirs = temp.path().join("statusline-zq.sh");
+        write_stub(&theirs, "cat >/dev/null\necho 'theirs'");
         write_settings_json(
             &config_dir,
-            json!({ "statusLine": { "type": "command", "command": "my-line.sh" } }),
+            json!({ "statusLine": { "type": "command", "command": theirs.display().to_string() } }),
         );
+        let exe = temp.path().join("bin").join("taurhaus-daemon");
+        // A sink that will never answer.
+        write_stub(&exe, "sleep 30");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
 
-        ensure_statusline_installed_at(&config_dir, &temp.path().join("exe"), &sink_for(&temp))
-            .expect("install");
+        let (ok, line) =
+            run_script_within(&config_dir, OBSERVED_PAYLOAD_FOR_SCRIPT, SINK_STALL_LIMIT)
+                .expect("a stalled sink must not hold the user's status line");
 
-        let script = script_of(&config_dir);
-        let sink_line = script
-            .lines()
-            .find(|line| line.contains(USAGE_SINK_SUBCOMMAND))
-            .expect("the script records the refresh");
-        assert!(
-            sink_line.trim_end().ends_with('&'),
-            "the sink must not stand between the payload and the user's command: {script}"
-        );
+        assert!(ok);
+        assert_eq!(line, "theirs\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_sink_that_never_answers_still_leaves_a_line() {
+        // Regression: 984218c rendered the row from `$(… | sink --render)`,
+        // which waits for the sink to exit. A sink that hangs — a wedged
+        // daemon, a filesystem that stopped answering — therefore printed
+        // neither its line nor the fallback, and the row taurhaus had taken
+        // over stayed blank for as long as the process lived.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let exe = temp.path().join("bin").join("taurhaus-daemon");
+        write_stub(&exe, "sleep 30\necho 'far too late'");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        let (ok, line) =
+            run_script_within(&config_dir, OBSERVED_PAYLOAD_FOR_SCRIPT, SINK_STALL_LIMIT)
+                .expect("a stalled sink must not hold the status line taurhaus renders");
+
+        assert!(ok, "a stalled sink must not fail the status line");
+        assert_eq!(line.trim(), FALLBACK_LINE);
     }
 
     #[test]
@@ -1077,17 +1321,41 @@ mod tests {
         fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod stub");
     }
 
+    /// How long a test waits for a status line that should be bounded by the
+    /// script itself. Comfortably above the script's own deadline and far below
+    /// the 30 seconds a stalling stub sink would take.
+    #[cfg(unix)]
+    const SINK_STALL_LIMIT: std::time::Duration = std::time::Duration::from_secs(12);
+
     /// The generated script, run the way Claude Code runs it.
     #[cfg(unix)]
     fn run_script(config_dir: &Path, payload: &str) -> (bool, String) {
+        run_script_within(config_dir, payload, std::time::Duration::from_secs(30))
+            .expect("status line finishes")
+    }
+
+    /// The same, but never hanging the test suite: `None` when the script was
+    /// still running at `limit`, which is itself the failure worth reporting.
+    #[cfg(unix)]
+    fn run_script_within(
+        config_dir: &Path,
+        payload: &str,
+        limit: std::time::Duration,
+    ) -> Option<(bool, String)> {
         use std::io::Write as _;
         use std::process::{Command, Stdio};
+        use std::time::Instant;
 
         let script = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        // Captured through a file rather than a pipe: reading a pipe means
+        // waiting for the child, which is the very thing under test.
+        let captured = config_dir.with_extension("status-line.out");
         let mut child = Command::new("bash")
             .arg(&script)
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
+            .stdout(Stdio::from(
+                fs::File::create(&captured).expect("capture file"),
+            ))
             .stderr(Stdio::null())
             .spawn()
             .expect("run the status line");
@@ -1097,11 +1365,24 @@ mod tests {
             .expect("stdin")
             .write_all(payload.as_bytes())
             .expect("feed the payload");
-        let output = child.wait_with_output().expect("status line finishes");
-        (
-            output.status.success(),
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        )
+
+        let started = Instant::now();
+        loop {
+            match child.try_wait().expect("status line") {
+                Some(status) => {
+                    return Some((
+                        status.success(),
+                        fs::read_to_string(&captured).unwrap_or_default(),
+                    ))
+                }
+                None if started.elapsed() >= limit => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                None => std::thread::sleep(std::time::Duration::from_millis(25)),
+            }
+        }
     }
 
     #[cfg(unix)]
