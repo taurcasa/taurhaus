@@ -1077,7 +1077,12 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
                 .lines()
                 .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
                 .find(|event| {
+                    // `component` is what separates this launch from the
+                    // coordination pipelines' identically-named event, which
+                    // carries the same tool/mode/command for a Claude member
+                    // and lands in this process-global sink unguarded.
                     event["event"] == "launch.command.rendered"
+                        && event["component"] == "command_center"
                         && event["tool"] == "claude"
                         && event["mode"] == "fresh"
                         && event["command"] == "claude --dangerously-skip-permissions"
@@ -1169,6 +1174,32 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     let (log_file, log_file_path) = setup_log_file();
     install_global_sink(&log_file);
 
+    // Regression: 0619d6b answered the same failure by making every launch test
+    // in *this* file take the log guard, but the sink `install_global_sink`
+    // swaps is process-global and `emit_global` takes no guard at all. The
+    // coordination pipelines emit the very same `launch.command.rendered` event
+    // (`coordination/pipelines/helpers.rs`) from tests that hold no log guard,
+    // so their record still lands in this file and a `find` on the event name
+    // alone can take it — it carries no `claude_account`, and the assertion
+    // below failed on a null. This decoy is that record, written where the race
+    // would put it, so the selection has to be provenance-based to pass.
+    crate::commands::logging::emit_global(
+        "info",
+        "coordination",
+        "launch.command.rendered",
+        Some("Rendered team member launch command".to_string()),
+        serde_json::json!({
+            "team": "architecture-final",
+            "member": "builder",
+            "tool": "claude",
+            "mode": "fresh",
+            "command": "claude --dangerously-skip-permissions",
+        })
+        .as_object()
+        .expect("decoy fields")
+        .clone(),
+    );
+
     launch_cli_session_impl(
         &db,
         &provider,
@@ -1195,7 +1226,9 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     let events = read_log_events(&log_file, log_file_path.path());
     let rendered = events
         .iter()
-        .find(|event| event["event"] == "launch.command.rendered")
+        .find(|event| {
+            event["event"] == "launch.command.rendered" && event["component"] == "command_center"
+        })
         .expect("rendered launch event");
     assert_eq!(rendered["claude_account"], "second@example.com");
 }
