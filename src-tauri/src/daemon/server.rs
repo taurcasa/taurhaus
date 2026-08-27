@@ -106,10 +106,10 @@ fn install_claude_usage_statusline() {
 
 /// Start the daemon, with the status-line install running beside the listener.
 ///
-/// Never in front of it: the install calls `CliVersions::current`, which probes
-/// `codex --version` and `claude --version` with a five second timeout each,
-/// and `daemon::launcher` gives the whole daemon five seconds to answer a TCP
-/// connect. One hung probe would cost a healthy daemon its startup.
+/// Never in front of it: the install probes `claude --version` with a five
+/// second timeout, and `daemon::launcher` gives the whole daemon five seconds
+/// to answer a TCP connect. One hung probe would cost a healthy daemon its
+/// startup.
 fn run_with_installer<F>(
     config: &DaemonConfig,
     shutdown: Arc<AtomicBool>,
@@ -635,12 +635,11 @@ mod tests {
     }
 
     // Regression: 79be608 installed the Claude status-line bridge from `run`,
-    // synchronously, before the listener existed. That install calls
-    // `CliVersions::current`, which probes `codex --version` and
-    // `claude --version` with a five second timeout each, while
-    // `daemon::launcher` gives the whole daemon five seconds to become
-    // reachable — so one hung CLI probe cost an otherwise healthy daemon its
-    // startup and pushed the app onto the local fallback.
+    // synchronously, before the listener existed. That install probes
+    // `claude --version` with a five second timeout, while `daemon::launcher`
+    // gives the whole daemon five seconds to become reachable — so one hung
+    // CLI probe cost an otherwise healthy daemon its startup and pushed the
+    // app onto the local fallback.
     #[test]
     fn a_slow_status_line_install_never_delays_the_listener() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();

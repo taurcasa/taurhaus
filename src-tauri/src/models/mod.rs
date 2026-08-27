@@ -327,6 +327,20 @@ impl CliVersions {
         versions
     }
 
+    /// A fresh read of `claude --version`, for a caller that has to decide
+    /// again rather than once.
+    ///
+    /// `current` is filled by the first probe this process ever runs and then
+    /// answers with it forever, which is right for a gate decided at startup
+    /// and wrong for one reconciled on a timer: a probe that timed out, or a
+    /// `claude` the user has upgraded or downgraded since, would never be read
+    /// again. Only the Claude fields of the returned value mean anything — the
+    /// Codex gates stay as they are decided at startup, and this deliberately
+    /// does not pay for a second probe to fill them.
+    pub fn probe_claude() -> Self {
+        Self::from_versions(None, probe_cli_version("claude"))
+    }
+
     pub fn codex_compaction_hooks_support(&self) -> Option<bool> {
         self.codex
             .as_ref()

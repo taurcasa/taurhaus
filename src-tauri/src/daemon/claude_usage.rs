@@ -591,10 +591,7 @@ pub fn attach_usage_from(accounts: &mut [ClaudeAccount], path: &Path) {
     if records.is_empty() {
         return;
     }
-    let by_account_id: HashMap<&str, &ClaudeUsageRecord> = records
-        .values()
-        .filter_map(|record| Some((record.account_id.as_deref()?, record)))
-        .collect();
+    let by_account_id = newest_by_account_id(records.values());
 
     for account in accounts.iter_mut() {
         let record = records
@@ -606,6 +603,33 @@ pub fn attach_usage_from(accounts: &mut [ClaudeAccount], path: &Path) {
             observed_at: record.ts,
         });
     }
+}
+
+/// The newest observation each account id has, whichever config dir reported it.
+///
+/// One account can hold records under several paths — `CLAUDE_CONFIG_DIR` moved,
+/// a dir renamed — and the records above are already the newest *per path*, so
+/// collecting them keeps whatever the iteration order happened to end on. That
+/// order is a hash order, which makes the observation a moved account is shown
+/// arbitrary rather than current. The timestamp decides instead.
+fn newest_by_account_id<'a>(
+    records: impl IntoIterator<Item = &'a ClaudeUsageRecord>,
+) -> HashMap<&'a str, &'a ClaudeUsageRecord> {
+    let mut newest: HashMap<&'a str, &'a ClaudeUsageRecord> = HashMap::new();
+    for record in records {
+        let Some(account_id) = record.account_id.as_deref() else {
+            continue;
+        };
+        newest
+            .entry(account_id)
+            .and_modify(|known| {
+                if known.ts < record.ts {
+                    *known = record;
+                }
+            })
+            .or_insert(record);
+    }
+    newest
 }
 
 /// Hang usage off accounts using this host's sink.
@@ -1059,6 +1083,60 @@ mod tests {
         // that as 0 % would send the user to the subscription with the least
         // headroom.
         assert_eq!(accounts[2].usage, None);
+    }
+
+    #[test]
+    fn a_moved_account_carries_the_newest_record_any_of_its_dirs_reported() {
+        // Regression: 4950d00 built the account-id fallback index by collecting
+        // every per-config-dir record into a `HashMap`, which keeps whichever
+        // one the (unordered) iteration inserted last rather than the newest.
+        // An account whose config dir has moved has records under each former
+        // path, so what the moved account was shown came down to hash order: an
+        // hours-old 26 % as readily as the observation from minutes ago. The
+        // index has to compare timestamps.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let former = temp.path().join(".claude");
+        let also_former = temp.path().join(".claude-old");
+        let moved_to = temp.path().join(".claude-moved");
+        for dir in [&former, &also_former, &moved_to] {
+            fs::create_dir_all(dir).expect("config dir");
+        }
+        let stale = record(&former, 0, 26.0);
+        let newest = record(&also_former, 600, 61.0);
+
+        // The order records arrive in is the whole bug, so both are asked for.
+        for order in [[&stale, &newest], [&newest, &stale]] {
+            assert_eq!(
+                newest_by_account_id(order)
+                    .get("account-1")
+                    .map(|record| record.ts),
+                Some(ts(600)),
+                "the index kept whichever record it happened to read last"
+            );
+        }
+
+        // And end to end, through a sink neither record's dir is the account's
+        // any more: the fallback is the only thing that can answer for it.
+        let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
+        append_usage_at(&sink, &stale).expect("append");
+        append_usage_at(&sink, &newest).expect("append");
+        let mut accounts = vec![account("account-1", &moved_to)];
+
+        attach_usage_from(&mut accounts, &sink);
+
+        assert_eq!(
+            accounts[0].usage.as_ref().map(|usage| usage.observed_at),
+            Some(ts(600)),
+            "a moved account was handed an observation older than the one it has"
+        );
+        assert_eq!(
+            accounts[0]
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.five_hour)
+                .map(|window| window.used_percentage),
+            Some(61.0)
+        );
     }
 
     #[test]

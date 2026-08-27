@@ -464,9 +464,10 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
 /// `list_claude_accounts`, and the app answering that same command on a native
 /// host, where the request never crosses the daemon.
 ///
-/// Behind the answer, never in front of it: a pass probes two CLIs before it
-/// decides anything. And the throttle is read here rather than in the thread,
-/// so a burst of requests costs one pass rather than one thread each.
+/// Behind the answer, never in front of it: a pass probes `claude --version`
+/// before it decides anything. And the throttle is read here rather than in
+/// the thread, so a burst of requests costs one pass rather than one thread
+/// each.
 pub fn ensure_statusline_bridge_soon(taurhaus_exe: PathBuf) {
     if !pass_is_due(&LAST_BRIDGE_PASS, Instant::now()) {
         return;
@@ -512,24 +513,39 @@ fn pass_is_due(last: &Mutex<Option<Instant>>, now: Instant) -> bool {
 /// PATH — it is taken back out here, because that same trade is no better for
 /// having been made yesterday.
 fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
-    let versions = CliVersions::current();
-    match statusline_bridge_action(versions) {
-        BridgeAction::Install => {}
-        BridgeAction::Remove => {
-            remove_statusline_from_detected_accounts(versions.claude.as_deref());
-            return;
-        }
-        BridgeAction::Leave => {
-            emit_skipped_run(versions.claude.as_deref());
-            return;
-        }
-    }
-
     // The path is resolved here, in the process that also reads the sink, and
     // baked into every script: the status line runs in the user's own shell,
     // which knows nothing of `TAURHAUS_DATA_DIR`.
     let sink_path = crate::provider::platform_paths::PlatformPaths::claude_usage_path();
-    install_for_detected_accounts(taurhaus_exe, &sink_path);
+    reconcile_detected_accounts(taurhaus_exe, &sink_path, &CliVersions::probe_claude);
+}
+
+/// One pass, deciding from the CLI `probe_claude` reports.
+///
+/// Every pass asks again, and asks for itself. `CliVersions::current` is filled
+/// by the first probe the process ran and never re-read: a `claude --version`
+/// that timed out at daemon start would keep this pass at `Leave` for the life
+/// of the daemon, and a version read once as supported would keep it at
+/// `Install` after the user went back to an older CLI. A pass that reconciles
+/// on a timer and re-reads one answer forever is not reconciling anything.
+///
+/// Claude only, and bounded: the probe carries the same five second timeout
+/// every other one does, and the Codex gates it leaves alone are decided at
+/// startup and cost nothing here. `probe_claude` is a parameter so that a test
+/// can be the CLI that changed.
+fn reconcile_detected_accounts(
+    taurhaus_exe: &Path,
+    sink_path: &Path,
+    probe_claude: &dyn Fn() -> CliVersions,
+) {
+    let versions = probe_claude();
+    match statusline_bridge_action(&versions) {
+        BridgeAction::Install => install_for_detected_accounts(taurhaus_exe, sink_path),
+        BridgeAction::Remove => {
+            remove_statusline_from_detected_accounts(versions.claude.as_deref())
+        }
+        BridgeAction::Leave => emit_skipped_run(versions.claude.as_deref()),
+    }
 }
 
 /// One pass over the accounts the scan reports *right now*.
@@ -2458,13 +2474,86 @@ mod tests {
         );
     }
 
+    /// What one fresh probe of `claude --version` reported.
+    fn probed(version: Option<&str>) -> CliVersions {
+        CliVersions {
+            claude: version.map(str::to_string),
+            claude_statusline_usage_supported: version.is_some_and(|version| version == "2.1.246"),
+            ..CliVersions::default()
+        }
+    }
+
+    #[test]
+    fn a_pass_decides_from_a_probe_of_its_own_rather_than_the_first_one_ever_run() {
+        // Regression: 4950d00 read `CliVersions::current()` on every pass, and
+        // that is a process-wide `LazyLock` filled by the first probe this
+        // process ever ran. A `claude --version` that timed out at daemon
+        // start — or a `claude` not yet on the daemon's PATH — therefore
+        // answered "unknown" for the life of the daemon, and the minute-based
+        // passes that exist to catch up re-read that same stale answer instead
+        // of asking again. No probe, no bridge, until a restart.
+        use crate::session_scanner::claude_accounts::install_detection_override;
+
+        let _log = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = sink_for(&temp);
+        let exe = temp.path().join("taurhaus-daemon");
+        let config_dir = temp.path().join(".claude");
+        let _detected = install_detection_override(vec![account_at(&config_dir)]);
+
+        // The first probe answered nothing at all. Nothing is installed on that.
+        reconcile_detected_accounts(&exe, &sink, &|| probed(None));
+        assert!(!statusline_is_installed_at(&config_dir));
+
+        // The next pass reaches the CLI, and it is one that sends `rate_limits`.
+        reconcile_detected_accounts(&exe, &sink, &|| probed(Some("2.1.246")));
+
+        assert!(
+            statusline_is_installed_at(&config_dir),
+            "a pass after a probe that could not answer never asked again"
+        );
+    }
+
+    #[test]
+    fn a_pass_after_a_downgrade_takes_the_bridge_back_out() {
+        // Regression: 4950d00, the same stale `LazyLock` read from the other
+        // side. A version read once as supported kept saying so after the user
+        // went back to an older `claude`, so the removal
+        // `statusline_bridge_action` asks for never ran and their status line
+        // stayed wrapped for a sink nothing feeds.
+        use crate::session_scanner::claude_accounts::install_detection_override;
+
+        let _log = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = sink_for(&temp);
+        let exe = temp.path().join("taurhaus-daemon");
+        let config_dir = temp.path().join(".claude");
+        let original = json!({ "type": "command", "command": "my-line.sh", "padding": 0 });
+        write_settings_json(&config_dir, json!({ "statusLine": original.clone() }));
+        let _detected = install_detection_override(vec![account_at(&config_dir)]);
+
+        reconcile_detected_accounts(&exe, &sink, &|| probed(Some("2.1.246")));
+        assert!(statusline_is_installed_at(&config_dir));
+
+        reconcile_detected_accounts(&exe, &sink, &|| probed(Some("2.1.238")));
+
+        assert!(
+            !statusline_is_installed_at(&config_dir),
+            "a CLI that stopped sending rate limits kept the bridge it can no longer feed"
+        );
+        assert_eq!(
+            settings_of(&config_dir)[STATUS_LINE_KEY],
+            original,
+            "the removal has to give the user's own status line back whole"
+        );
+    }
+
     #[test]
     fn a_pass_runs_again_once_the_minute_it_shares_with_the_scan_is_up() {
         // Regression: 6262c47 ran one pass per daemon start, and the fix — a
         // pass per accounts request — has to cost no more than one pass a
-        // minute: it probes `claude --version` and `codex --version` before it
-        // decides anything, and the scan it reads is cached for exactly that
-        // minute anyway.
+        // minute: it probes `claude --version` before it decides anything, and
+        // the scan it reads is cached for exactly that minute anyway.
         let last = Mutex::new(None);
         let start = Instant::now();
 
