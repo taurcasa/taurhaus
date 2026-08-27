@@ -119,6 +119,13 @@
    */
   $effect(() => {
     void layoutTick
+    // A root menu that re-clamped took its rows with it, and the flyout is
+    // anchored to a row.
+    void adjustedX
+    void adjustedY
+    // The rows the flyout shows can arrive after it opened, and each one
+    // changes the height this clamps.
+    void openChildren
     if (openIndex < 0) return
     const anchor = parentEls[openIndex]
     if (!anchor) return
@@ -215,13 +222,16 @@
     return () => window.removeEventListener('resize', reposition)
   })
 
-  // Rows can arrive after the menu opened: the sidebar starts account detection
-  // when it opens the menu and grows the launch rows when the answer lands. The
-  // element is only resized, so nothing else would ask for the clamp again.
+  // Rows can arrive after a menu opened: the sidebar starts account detection
+  // when it opens the menu and grows the rows when the answer lands. Both
+  // levels grow — the accounts are the flyout's rows — and either element is
+  // only resized, so nothing else would ask for the clamp again.
   $effect(() => {
-    if (!menuEl || typeof ResizeObserver === 'undefined') return
+    if (typeof ResizeObserver === 'undefined') return
+    const watched = [menuEl, submenuEl].filter(Boolean)
+    if (watched.length === 0) return
     const observer = new ResizeObserver(() => { layoutTick += 1 })
-    observer.observe(menuEl)
+    for (const element of watched) observer.observe(element)
     return () => observer.disconnect()
   })
 
@@ -284,7 +294,14 @@
           childFocusIndex = moveFocus(openChildren, childFocusIndex, e.key === 'ArrowDown' ? 1 : -1)
           return
         }
-        if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight') {
+        // ArrowRight opened this flyout, and depth stops here. The key repeat
+        // of the press that opened it must not also pick a row: on a restart
+        // parent that would stop a live session on an account nobody chose.
+        if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          return
+        }
+        if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           const index = childFocusIndex >= 0
             ? childFocusIndex

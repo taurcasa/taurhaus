@@ -18,8 +18,9 @@
 # A screenshot is evidence, so every way of producing an irrelevant one is a
 # failure here rather than a PNG: the listener on the port has to identify
 # itself as the visual host, the page has to report the fixture that was asked
-# for (`--dump-dom` comes back from the same run as the shot), Edge's exit
-# status counts, and the browser runs under a wall clock.
+# for (`--dump-dom` comes back from the same run as the shot), the PNG has to be
+# a PNG the size of the viewport preset, Edge's exit status counts, and the
+# browser runs under a wall clock.
 
 set -euo pipefail
 
@@ -152,6 +153,7 @@ timeout --kill-after="${VISUAL_SHOT_KILL_AFTER_S:-5}s" "$TIMEOUT_S" "$EDGE" \
   --no-first-run \
   --virtual-time-budget="${VISUAL_SHOT_BUDGET_MS:-6000}" \
   --window-size="${WIDTH},${HEIGHT}" \
+  --force-device-scale-factor=1 \
   --dump-dom \
   --screenshot="$WIN_PATH" \
   "$URL" >"$DOM_FILE" 2>/dev/null || status=$?
@@ -169,8 +171,12 @@ fi
 # The page names the state it rendered, all four parts of it: a shot is
 # evidence about one component, in one scenario, at one size, in one theme.
 # Anything else means the host fell back and the PNG shows something else.
+#
+# `-F` because a component or scenario is a caller's string: read as a regular
+# expression, a name carrying `.` or `*` matches the fixture the host fell back
+# to, and the fallback gets filed under the requested name.
 WANTED="${COMPONENT}/${SCENARIO}/${VIEWPORT}/${THEME}"
-if ! grep -q "data-visual-host-fixture=\"${WANTED}\"" "$DOM_FILE"; then
+if ! grep -Fq -- "data-visual-host-fixture=\"${WANTED}\"" "$DOM_FILE"; then
   RENDERED="$(grep -o 'data-visual-host-fixture="[^"]*"' "$DOM_FILE" | head -1 | cut -d'"' -f2)"
   echo "Asked for '${WANTED}' but the page rendered '${RENDERED:-nothing}'." >&2
   echo "Check the component id and scenario name in the visual registry." >&2
@@ -180,6 +186,29 @@ fi
 if [[ ! -s "$WSL_PATH" ]]; then
   echo "Edge produced no screenshot at $WSL_PATH" >&2
   exit 5
+fi
+
+# A PNG says its own size in the IHDR chunk, right after the signature: bytes
+# 0-7 are the signature, 12-15 spell IHDR, and 16-23 are width and height,
+# big-endian.
+png_size() {
+  local bytes
+  bytes="$(od -An -v -tx1 -N24 "$1" | tr -d ' \n')"
+  [[ "${bytes:0:16}" == "89504e470d0a1a0a" && "${bytes:24:8}" == "49484452" ]] || return 1
+  echo "$((16#${bytes:32:8}))x$((16#${bytes:40:8}))"
+}
+
+# The window size was asked for; the pixels are what the shot is. A browser
+# rendering at another device scale, or ignoring the window size, produces a
+# file that says a viewport it never showed.
+if ! SHOT_SIZE="$(png_size "$WSL_PATH")"; then
+  echo "The file at $WSL_PATH is not a PNG." >&2
+  exit 10
+fi
+if [[ "$SHOT_SIZE" != "${WIDTH}x${HEIGHT}" ]]; then
+  echo "Asked for a ${WIDTH}x${HEIGHT} shot but Edge wrote ${SHOT_SIZE} to $WSL_PATH." >&2
+  echo "Check the window size and the device scale factor." >&2
+  exit 10
 fi
 
 echo "$WSL_PATH"

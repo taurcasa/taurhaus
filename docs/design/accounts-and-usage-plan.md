@@ -88,7 +88,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 | PR | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
-| 17a | Opus 5 | Codex ×2 | 2 | 9 (round 1: 5 of 7 reported, both reviewers raising the pin and the duplicate-label crash; round 2: 4) | tbd (`feat/pr17a-accounts-menu`) |
+| 17a | Opus 5 | Codex ×2 | 3 | 12 (round 1: 5 of 7 reported, both reviewers raising the pin and the duplicate-label crash; round 2: 4; round 3: 3) | tbd (`feat/pr17a-accounts-menu`) |
 | 17b | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 17d | Opus 5 | Codex ×2 | tbd | tbd | tbd |
@@ -191,3 +191,30 @@ never set the `dark` class on the document that `Shell.svelte` and the
 browser-mode lane both set, so every dark shot framed a dark popup in a light
 panel. It sets it now — without which the new theme guard would have certified
 exactly that.
+
+### Review round 3
+
+Three majors, all confirmed and fixed on the branch:
+
+- **The late rows the earlier fix waited for were the flyout's.** Round 1 and 2
+  put a `ResizeObserver` on the root menu, but the rows account detection adds
+  are the submenu's: a flyout opened near the bottom edge grew past the edge and
+  kept the top its empty size earned, which is the cut-off popup this PR exists
+  to fix. The observer now watches both elements, and the flyout's placement
+  also reruns when its children change or the root menu re-clamps under it.
+- **A held ArrowRight launched on an account nobody chose.** ArrowRight opened
+  the flyout and, inside an open one, was treated like Enter — so the key repeat
+  of the press that opened it activated the first row. On a restart parent that
+  stops a live session before relaunching it. Depth stops at one, so ArrowRight
+  inside a flyout is now consumed and does nothing.
+- **The screenshot lane did not check the screenshot.** It asked Edge for a
+  window size and then only checked that a non-empty file existed, so a browser
+  rendering at another size or device scale filed a PNG as evidence about a
+  viewport it never showed — and the fake browser in the tests wrote three bytes
+  that passed. The lane forces a device scale of 1 and reads the PNG's own IHDR
+  back, and the fake browser writes real PNG headers so a wrong size is a red
+  test.
+
+One minor with it: the rendered-fixture check matched with a plain `grep`, so a
+component or scenario carrying regex metacharacters matched whatever the host
+had fallen back to. It matches as a fixed string now.

@@ -75,8 +75,12 @@ just visual-shot-stop                                           # stop the serve
   the page must report the state that was asked for — component, scenario,
   viewport and theme, written into `data-visual-host-fixture` and read back from
   the same Edge run's DOM dump (`exit 7`, the usual cause being a mistyped
-  component or scenario), Edge's exit status counts (`exit 8`), and the browser
-  runs under a wall clock that insists: TERM, then KILL (`exit 9`,
+  component or scenario; matched as a fixed string, so a name carrying `.` or
+  `*` cannot match the host's fallback), the file must be a PNG whose IHDR says
+  exactly the viewport preset's pixels (`exit 10` — the run forces
+  `--force-device-scale-factor=1`, so a shot that comes back another size was
+  rendered at another window size), Edge's exit status counts (`exit 8`), and
+  the browser runs under a wall clock that insists: TERM, then KILL (`exit 9`,
   `VISUAL_SHOT_TIMEOUT_S` default 90 s, `VISUAL_SHOT_KILL_AFTER_S` default 5 s).
 - PNGs land in `C:\taurhaus_build\shots` and are **not** committed — `*.png` is
   gitignored outside `docs/`. Paste them into the PR description as before/after

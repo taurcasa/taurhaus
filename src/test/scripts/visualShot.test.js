@@ -32,12 +32,38 @@ function startServer(body) {
 }
 
 /**
+ * A PNG whose header says what size it is — the part of the file the lane
+ * reads. Everything after IHDR is irrelevant to the check, so the pixels are
+ * not there.
+ */
+function pngFile(path, width, height) {
+  const png = Buffer.alloc(33)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0)
+  png.writeUInt32BE(13, 8)
+  png.write('IHDR', 12, 'ascii')
+  png.writeUInt32BE(width, 16)
+  png.writeUInt32BE(height, 20)
+  png[24] = 8 // bit depth
+  png[25] = 6 // truecolour with alpha
+  writeFileSync(path, png)
+  return path
+}
+
+/**
  * A stand-in for Windows Edge: it prints a DOM and writes a PNG, or fails, or
  * hangs — with or without listening to the signal that asks it to stop. All of
  * it is what the real one can do to this script.
  */
-function fakeEdge(dir, { mode = 'ok', fixture = 'shell-popups/chooser-light/laptop/light' } = {}) {
+function fakeEdge(dir, {
+  mode = 'ok',
+  fixture = 'shell-popups/chooser-light/laptop/light',
+  width = 1366,
+  height = 768,
+} = {}) {
   const path = join(dir, 'fake-edge.sh')
+  const shot = mode === 'notpng'
+    ? (writeFileSync(join(dir, 'fake-shot.png'), 'png'), join(dir, 'fake-shot.png'))
+    : pngFile(join(dir, 'fake-shot.png'), width, height)
   writeFileSync(path, `#!/usr/bin/env bash
 set -u
 # A hung renderer does not stop for TERM, and a lane that only asks waits.
@@ -47,7 +73,7 @@ if [[ "${mode}" == "fail" ]]; then echo "edge crashed" >&2; exit 3; fi
 for arg in "$@"; do
   if [[ "$arg" == --screenshot=* ]]; then
     win="\${arg#--screenshot=}"
-    printf 'png' > "${dir}/\${win##*\\\\}"
+    cp "${shot}" "${dir}/\${win##*\\\\}"
   fi
 done
 echo '<html><body><main data-visual-host-root data-visual-host-fixture="${fixture}" data-visual-host-request="ok"></main></body></html>'
@@ -149,6 +175,53 @@ describe('visual-shot.sh', () => {
     )
     expect(sized.code).toBe(7)
     expect(sized.stderr).toContain('shell-popups/chooser-light/narrow/light')
+  })
+
+  // Regression: 6ec843e matched the fixture the page reported with a plain
+  // `grep`, so the requested address was read as a regular expression. A
+  // component or scenario carrying metacharacters matched whatever the host had
+  // fallen back to, and the fallback was filed under the requested name.
+  it('refuses a fixture address that matches only as a regular expression', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
+    const port = await startServer(HOST_PAGE)
+
+    const result = await runShot(
+      dir,
+      port,
+      fakeEdge(dir, { fixture: 'mesh-canvas/idle/laptop/light' }),
+      {},
+      ['.*', '.*', 'laptop', 'light']
+    )
+
+    expect(result.code).toBe(7)
+    expect(result.stderr).toContain('mesh-canvas/idle/laptop/light')
+  })
+
+  // Regression: 6ec843e checked that a file arrived, not that it was the shot
+  // that was asked for. A browser rendering at another window size or device
+  // scale wrote a PNG of the wrong pixel size, and the lane filed it as
+  // evidence about a viewport it never showed.
+  it('refuses a screenshot whose pixels are not the viewport preset', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
+    const port = await startServer(HOST_PAGE)
+
+    const result = await runShot(dir, port, fakeEdge(dir, { width: 683, height: 384 }))
+
+    expect(result.code).toBe(10)
+    expect(result.stderr).toContain('683x384')
+    expect(result.stderr).toContain('1366x768')
+  })
+
+  // Regression: 6ec843e accepted any non-empty file, so a browser that wrote an
+  // error page, a truncated file, or three bytes passed as a screenshot.
+  it('refuses a screenshot that is not a PNG', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'visual-shot-'))
+    const port = await startServer(HOST_PAGE)
+
+    const result = await runShot(dir, port, fakeEdge(dir, { mode: 'notpng' }))
+
+    expect(result.code).toBe(10)
+    expect(result.stderr).toContain('not a PNG')
   })
 
   // Regression: 74c7761 put whatever `theme` said straight into the URL. The

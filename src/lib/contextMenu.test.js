@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte'
+import { tick } from 'svelte'
 import '@testing-library/jest-dom/vitest'
 
 import ContextMenu from './ContextMenu.svelte'
@@ -548,6 +549,76 @@ describe('ContextMenu submenus', () => {
     const rows = screen.getAllByRole('menuitemradio')
     expect(rows).toHaveLength(2)
     expect(rows[1]).toHaveTextContent('5h 61%')
+  })
+
+  // Regression: 6ec843e watched only the root menu for late growth. The rows
+  // the sidebar waits for are the flyout's — it asks for the accounts when the
+  // menu opens — so a flyout opened near the bottom edge grew past the edge and
+  // stayed there, which is the cut-off popup the user reported.
+  it('re-clamps the flyout when its rows arrive after it opened', async () => {
+    const observers = []
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) {
+        this.callback = callback
+        this.targets = []
+        observers.push(this)
+      }
+      observe(target) { this.targets.push(target) }
+      disconnect() {}
+    })
+    const previousHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 })
+
+    const parentItem = { label: 'New Claude Session', action: vi.fn(), children: [CHILDREN[0]] }
+    const props = { items: [parentItem], onClose: vi.fn(), openChildOf: 'New Claude Session' }
+    const { rerender } = render(ContextMenu, { props })
+
+    const parent = screen.getByTestId('menu-item-new-claude-session')
+    vi.spyOn(parent, 'getBoundingClientRect').mockReturnValue({
+      left: 100, top: 400, right: 260, bottom: 428, width: 160, height: 28, x: 100, y: 400,
+      toJSON() {},
+    })
+    const flyout = screen.getByTestId('context-submenu')
+    let height = 60
+    vi.spyOn(flyout, 'getBoundingClientRect').mockImplementation(() => ({
+      left: 0, top: 0, right: 200, bottom: height, width: 200, height, x: 0, y: 0, toJSON() {},
+    }))
+
+    await fireEvent(window, new Event('resize'))
+    expect(flyout.style.top).toBe('396px')
+
+    // The accounts landed: three rows in the same flyout, five times as tall.
+    // The root menu did not move, so nothing else asks for the clamp again.
+    await rerender({ ...props, items: [{ ...parentItem, children: CHILDREN }] })
+    height = 300
+    const watcher = observers.find((observer) => observer.targets.includes(flyout))
+    expect(watcher).toBeDefined()
+    watcher.callback([])
+    await tick()
+
+    expect(flyout.style.top).toBe('292px')
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
+    vi.unstubAllGlobals()
+  })
+
+  // Regression: 6ec843e treated ArrowRight inside an open flyout like Enter. The
+  // first ArrowRight opens the accounts and the key repeat of a held press then
+  // picked the first one — on a restart row that stops a live session.
+  it('does not activate a child on a repeated ArrowRight', async () => {
+    const { onClose } = renderWithSubmenu()
+
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    await fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await fireEvent.keyDown(window, { key: 'ArrowRight' })
+
+    expect(CHILDREN[0].action).not.toHaveBeenCalled()
+    expect(CHILDREN[1].action).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    // The flyout is still the level the user is on.
+    expect(screen.getByTestId('context-submenu')).toBeInTheDocument()
   })
 
   it('searches the open level with typeahead', async () => {
