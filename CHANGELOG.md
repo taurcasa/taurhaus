@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Testing
 
-- **Five load-sensitive tests made deterministic** — the runtime scan override is scoped to the test that installs it, mesh detail latency is spent on a fake frame clock, launch log assertions flush the sink and hold the log guard, the live `/proc` scan waits for the child's exec, and daemon-unavailable is injected instead of racing a freed port.
+- **Five load-sensitive tests made deterministic** — the runtime scan override is scoped to the test that installs it, the mesh detail test holds the component to its scheduling rather than a wall-clock budget it cannot measure, launch log assertions flush the sink and select records by their emitter, the live `/proc` scan waits for the child's exec, and daemon-unavailable is injected instead of racing a freed port.
 
 ## [0.6.7] - 2026-08-26
 
