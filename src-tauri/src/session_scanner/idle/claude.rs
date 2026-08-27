@@ -62,11 +62,8 @@ where
     F: Fn(u32, &str) -> Option<String>,
 {
     let config_dir = claude_config_dir_for_pid(pid, env_lookup);
-    let source = claude_registry::ClaudeRegistryActivitySource {
-        config_dir: &config_dir,
-    };
-
-    if let Some(result) = ActivitySource::activity(&source, project_path, pid, None) {
+    if let Some(result) = claude_registry::detect_idle_from_registry(project_path, pid, &config_dir)
+    {
         return result;
     }
 

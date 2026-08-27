@@ -136,20 +136,30 @@ where
             let tmux_pane = pane_map.get(&proc.tty);
 
             let idle_started = Instant::now();
-            let idle_result = match proc.cli_tool {
-                CliTool::Codex => detect_runtime_idle_for_process_with_pane(
+            let tool_spec = crate::session_scanner::cli_tool::spec(proc.cli_tool);
+            let idle_result = if tool_spec.pane_binding {
+                detect_runtime_idle_for_process_with_pane(
                     &proc,
                     tmux_pane.map(|pane| pane.pane_id.as_str()),
-                ),
-                _ => idle_detector(&proc),
+                )
+            } else {
+                idle_detector(&proc)
             };
             idle_ms += idle_started.elapsed();
 
             // The tool reported this state itself (Claude sessions registry or
             // Codex notify): it replaces the file signal rather than
             // supplementing it.
-            let authoritative = idle_result.authoritative;
-            let authoritative_active = authoritative && idle_result.state == SessionState::Active;
+            let authoritative_state = tool_spec.activity_source().authoritative_state(
+                &proc.project_path,
+                proc.pid,
+                &idle_result,
+            );
+            let authoritative = authoritative_state.is_some();
+            let observed_state = authoritative_state
+                .map(|reported| reported.state)
+                .unwrap_or(idle_result.state);
+            let authoritative_active = authoritative && observed_state == SessionState::Active;
             let file_active = !authoritative && idle_result.state == SessionState::Active;
             let sessions_for_tool_in_project = sessions_per_project_tool
                 .get(&(proc.project_path.clone(), proc.cli_tool))
@@ -163,15 +173,13 @@ where
             let (process_active, recent_io) = if authoritative {
                 (authoritative_active, authoritative_active)
             } else {
-                match proc.cli_tool {
-                    CliTool::Claude => {
+                match tool_spec.process_activity_signal {
+                    crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars => {
                         let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
                         (recent_io, recent_io)
                     }
-                    CliTool::Gemini => (proc_io::has_api_connections(proc.pid), false),
-                    CliTool::Codex => {
-                        let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
-                        (recent_io, recent_io)
+                    crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp => {
+                        (proc_io::has_api_connections(proc.pid), false)
                     }
                 }
             };
@@ -198,8 +206,8 @@ where
             // no noise to smooth, so it lands on the poll that observed it.
             let (state, previous_state) = if authoritative {
                 (
-                    idle_result.state,
-                    record_authoritative_state(proc.pid, idle_result.state),
+                    observed_state,
+                    record_authoritative_state(proc.pid, observed_state),
                 )
             } else {
                 apply_hysteresis(proc.pid, decision.raw_state)
@@ -221,7 +229,12 @@ where
                     proc.cli_tool,
                     previous_state,
                     state,
-                    activity_source(authoritative, process_active, file_active, proc.cli_tool),
+                    activity_source(
+                        authoritative_state.map(|reported| reported.source),
+                        process_active,
+                        file_active,
+                        tool_spec.process_activity_signal,
+                    ),
                 );
             }
             let (activity_confidence, activity_attribution, project_unattributed_active) =
@@ -272,22 +285,18 @@ where
 /// `authoritative` means the tool reported the state itself. Today the only
 /// such source is the Claude sessions registry; PR 13 adds Codex `-c notify`.
 fn activity_source(
-    authoritative: bool,
+    authoritative_source: Option<&'static str>,
     process_active: bool,
     file_active: bool,
-    cli_tool: CliTool,
+    process_signal: crate::session_scanner::cli_tool::ProcessActivitySignal,
 ) -> &'static str {
-    if authoritative {
-        return match cli_tool {
-            CliTool::Claude => "registry",
-            CliTool::Codex => "notify",
-            CliTool::Gemini => "native",
-        };
+    if let Some(source) = authoritative_source {
+        return source;
     }
     if process_active {
-        match cli_tool {
-            CliTool::Gemini => "tcp",
-            CliTool::Claude | CliTool::Codex => "process_io",
+        match process_signal {
+            crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars => "process_io",
+            crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp => "tcp",
         }
     } else if file_active {
         "transcript"
@@ -569,15 +578,30 @@ mod tests {
     #[test]
     fn activity_source_names_the_native_source_when_authoritative() {
         assert_eq!(
-            activity_source(true, false, false, CliTool::Claude),
+            activity_source(
+                Some("registry"),
+                false,
+                false,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
+            ),
             "registry"
         );
         assert_eq!(
-            activity_source(true, true, false, CliTool::Claude),
+            activity_source(
+                Some("registry"),
+                true,
+                false,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
+            ),
             "registry"
         );
         assert_eq!(
-            activity_source(true, false, false, CliTool::Codex),
+            activity_source(
+                Some("notify"),
+                false,
+                false,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
+            ),
             "notify"
         );
     }
@@ -585,20 +609,48 @@ mod tests {
     #[test]
     fn activity_source_names_the_driving_signal() {
         assert_eq!(
-            activity_source(false, true, true, CliTool::Claude),
+            activity_source(
+                None,
+                true,
+                true,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
+            ),
             "process_io"
         );
         assert_eq!(
-            activity_source(false, true, false, CliTool::Codex),
+            activity_source(
+                None,
+                true,
+                false,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
+            ),
             "process_io"
         );
-        assert_eq!(activity_source(false, true, false, CliTool::Gemini), "tcp");
         assert_eq!(
-            activity_source(false, false, true, CliTool::Claude),
+            activity_source(
+                None,
+                true,
+                false,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp,
+            ),
+            "tcp"
+        );
+        assert_eq!(
+            activity_source(
+                None,
+                false,
+                true,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
+            ),
             "transcript"
         );
         assert_eq!(
-            activity_source(false, false, false, CliTool::Gemini),
+            activity_source(
+                None,
+                false,
+                false,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp,
+            ),
             "none"
         );
     }

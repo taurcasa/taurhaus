@@ -28,7 +28,7 @@ use crate::session_scanner::SessionState;
 
 use super::{
     age_secs_since_mtime, classify_mtime, file_mtime, most_recent_mtime, newest_file_mtime,
-    path_to_slug, ActivitySource, IdleResult, ACTIVE_THRESHOLD,
+    path_to_slug, IdleResult, ACTIVE_THRESHOLD,
 };
 
 /// Per-process session identity and transcript binding supplied by a harness.
@@ -52,18 +52,47 @@ impl SessionSource for NoSessionSource {
     }
 }
 
-pub(super) struct ClaudeRegistryActivitySource<'a> {
-    pub config_dir: &'a Path,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthoritativeState {
+    pub state: SessionState,
+    pub source: &'static str,
 }
 
-impl ActivitySource for ClaudeRegistryActivitySource<'_> {
-    fn activity(
+pub trait ActivitySource: Send + Sync {
+    fn authoritative_state(
         &self,
         project_path: &str,
         pid: u32,
-        _resolved: Option<&IdleResult>,
-    ) -> Option<IdleResult> {
-        detect_idle_from_registry(project_path, pid, self.config_dir)
+        resolved: &IdleResult,
+    ) -> Option<AuthoritativeState>;
+}
+
+pub struct ClaudeRegistryActivitySource;
+
+impl ActivitySource for ClaudeRegistryActivitySource {
+    fn authoritative_state(
+        &self,
+        _project_path: &str,
+        _pid: u32,
+        resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        resolved.authoritative.then_some(AuthoritativeState {
+            state: resolved.state,
+            source: "registry",
+        })
+    }
+}
+
+pub struct NoActivitySource;
+
+impl ActivitySource for NoActivitySource {
+    fn authoritative_state(
+        &self,
+        _project_path: &str,
+        _pid: u32,
+        _resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        None
     }
 }
 

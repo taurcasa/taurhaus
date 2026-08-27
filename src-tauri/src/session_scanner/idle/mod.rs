@@ -26,10 +26,14 @@ mod codex;
 mod gemini;
 
 pub use claude::ClaudeResolver;
-pub use claude_registry::{config_dir_for_transcript, SessionSource};
-pub(crate) use claude_registry::{ClaudeRegistrySessionSource, NoSessionSource};
+pub use claude_registry::{
+    config_dir_for_transcript, ActivitySource, AuthoritativeState, SessionSource,
+};
+pub(crate) use claude_registry::{
+    ClaudeRegistryActivitySource, ClaudeRegistrySessionSource, NoActivitySource, NoSessionSource,
+};
 pub use codex::CodexResolver;
-pub(crate) use codex::CodexSessionSource;
+pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
 pub use gemini::GeminiResolver;
 
 /// Threshold: if any session file mtime is less than this, session is Active.
@@ -95,20 +99,6 @@ pub trait SessionResolver: Send + Sync {
     /// Checks tool-specific session files and returns activity state,
     /// session ID, and path to the active session file.
     fn detect_idle(&self, project_path: &str) -> IdleResult;
-}
-
-/// Optional harness-native activity source layered over transcript heuristics.
-///
-/// Claude's per-PID registry and Codex's turn-complete sink are the two native
-/// implementations. Returning `None` leaves the caller's fd/rchar and mtime
-/// fallback in charge.
-pub(super) trait ActivitySource {
-    fn activity(
-        &self,
-        project_path: &str,
-        pid: u32,
-        resolved: Option<&IdleResult>,
-    ) -> Option<IdleResult>;
 }
 
 /// Get the resolver for a CLI tool.

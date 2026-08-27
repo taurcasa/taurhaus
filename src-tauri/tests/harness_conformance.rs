@@ -3,8 +3,10 @@ use taurhaus_lib::coordination::domain::MemberRole;
 use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::CliCommandSettings;
 use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, StopStrategy};
+use taurhaus_lib::session_scanner::idle::IdleResult;
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
 use taurhaus_lib::session_scanner::process::detect_cli_tool;
+use taurhaus_lib::session_scanner::SessionState;
 
 struct LaunchGolden {
     tool: CliTool,
@@ -162,4 +164,22 @@ fn undeclared_session_source_uses_the_non_authoritative_floor() {
     assert_eq!(result.session_id, None);
     assert_eq!(result.jsonl_path, None);
     assert!(!result.authoritative);
+}
+
+#[test]
+fn undeclared_activity_source_never_claims_authority() {
+    // Regression: commit c0aa59a added Codex notify handling at the resolver;
+    // native state must only be consumed through a declared activity source.
+    let heuristic = IdleResult {
+        state: SessionState::Active,
+        session_id: None,
+        jsonl_path: None,
+        last_output_age_secs: None,
+        authoritative: false,
+    };
+
+    assert!(spec(CliTool::Gemini)
+        .activity_source()
+        .authoritative_state("/tmp/taurhaus-conformance-project", 42, &heuristic)
+        .is_none());
 }

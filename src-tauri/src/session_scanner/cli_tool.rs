@@ -108,6 +108,12 @@ pub enum StopStrategy {
     Interrupt,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessActivitySignal {
+    ReadChars,
+    Tcp,
+}
+
 /// One registry record for a supported CLI harness.
 pub struct CliToolSpec {
     pub tool: CliTool,
@@ -119,6 +125,8 @@ pub struct CliToolSpec {
     pub accent: &'static str,
     pub capabilities: CliCapabilities,
     pub stop_strategy: StopStrategy,
+    pub process_activity_signal: ProcessActivitySignal,
+    pub pane_binding: bool,
     pub display_name: &'static str,
     /// Base directory name under `$HOME` (e.g., ".claude", ".codex", ".gemini").
     pub base_dir_name: &'static str,
@@ -160,6 +168,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 hook_trust: false,
             },
             stop_strategy: StopStrategy::SlashExit,
+            process_activity_signal: ProcessActivitySignal::ReadChars,
+            pane_binding: false,
             display_name: "Claude Code",
             base_dir_name: ".claude",
             projects_subdir: "projects",
@@ -197,6 +207,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 hook_trust: true,
             },
             stop_strategy: StopStrategy::SlashExit,
+            process_activity_signal: ProcessActivitySignal::ReadChars,
+            pane_binding: true,
             display_name: "Codex CLI",
             base_dir_name: ".codex",
             projects_subdir: "sessions",
@@ -231,6 +243,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 hook_trust: false,
             },
             stop_strategy: StopStrategy::SlashExit,
+            process_activity_signal: ProcessActivitySignal::Tcp,
+            pane_binding: false,
             display_name: "Gemini CLI",
             base_dir_name: ".gemini",
             projects_subdir: "tmp",
@@ -362,6 +376,21 @@ impl CliToolSpec {
             crate::session_scanner::idle::CodexSessionSource;
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
+
+        match self.tool {
+            CliTool::Claude => &CLAUDE,
+            CliTool::Codex => &CODEX,
+            CliTool::Gemini => &NONE,
+        }
+    }
+
+    pub fn activity_source(&self) -> &'static dyn crate::session_scanner::idle::ActivitySource {
+        static CLAUDE: crate::session_scanner::idle::ClaudeRegistryActivitySource =
+            crate::session_scanner::idle::ClaudeRegistryActivitySource;
+        static CODEX: crate::session_scanner::idle::CodexNotifyActivitySource =
+            crate::session_scanner::idle::CodexNotifyActivitySource;
+        static NONE: crate::session_scanner::idle::NoActivitySource =
+            crate::session_scanner::idle::NoActivitySource;
 
         match self.tool {
             CliTool::Claude => &CLAUDE,
