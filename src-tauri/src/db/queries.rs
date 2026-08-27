@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
-use crate::models::Project;
+use crate::models::{AccountMemory, AccountMemoryOrigin, Project};
 
 /// Map a database row to a `Project`.
 ///
@@ -9,6 +9,10 @@ use crate::models::Project;
 ///   created_at, updated_at, cached_branch, cached_is_dirty, claude_account_id
 fn row_to_project(row: &Row) -> Result<Project, rusqlite::Error> {
     let dirty_int: Option<i32> = row.get(9)?;
+    // Keep consuming the legacy column at ordinal 10 so the hand-maintained
+    // select lists stay byte-for-byte compatible; account memory comes from
+    // the side table and this value is intentionally ignored.
+    let _legacy_claude_account_id: Option<String> = row.get(10)?;
     Ok(Project {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -20,7 +24,7 @@ fn row_to_project(row: &Row) -> Result<Project, rusqlite::Error> {
         updated_at: row.get(7)?,
         cached_branch: row.get(8)?,
         cached_is_dirty: dirty_int.map(|v| v != 0),
-        claude_account_id: row.get(10)?,
+        account_memory: Default::default(),
     })
 }
 
@@ -46,14 +50,19 @@ pub fn insert_project(conn: &Connection, project: &Project) -> Result<(), rusqli
 
 /// Retrieve a project by its UUID.  Returns `None` if not found.
 pub fn get_project(conn: &Connection, id: &str) -> Result<Option<Project>, rusqlite::Error> {
-    conn.query_row(
+    let mut project = conn
+        .query_row(
         "SELECT id, name, path, description, last_activity_at, hero_preference, created_at, updated_at,
                 cached_branch, cached_is_dirty, claude_account_id
          FROM projects WHERE id = ?1",
         [id],
         row_to_project,
     )
-    .optional()
+    .optional()?;
+    if let Some(project) = project.as_mut() {
+        project.account_memory = project_account_memory(conn, &project.id)?;
+    }
+    Ok(project)
 }
 
 /// Count total registered projects.
@@ -71,8 +80,12 @@ pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, rusqlite::Error>
     )?;
 
     let rows = stmt.query_map([], row_to_project)?;
-
-    rows.collect()
+    let mut projects = rows.collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+    for project in &mut projects {
+        project.account_memory = project_account_memory(conn, &project.id)?;
+    }
+    Ok(projects)
 }
 
 /// Update a project's mutable fields.  Only non-`None` fields are changed.
@@ -152,18 +165,92 @@ pub fn update_cached_git_status(
     Ok(changed > 0)
 }
 
-/// Select the Claude subscription a project launches on. `None` clears the
-/// choice, which puts the project back on the global default account.
-pub fn set_project_claude_account(
+/// Pin one tool account for a project. `None` returns the tool to its default.
+pub fn set_project_account(
     conn: &Connection,
-    id: &str,
+    project_id: &str,
+    tool: &str,
     account_id: Option<&str>,
 ) -> Result<bool, rusqlite::Error> {
+    if !conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+        [project_id],
+        |row| row.get::<_, bool>(0),
+    )? {
+        return Ok(false);
+    }
+
+    match account_id {
+        Some(account_id) => {
+            conn.execute(
+                "INSERT INTO project_tool_accounts (project_id, tool, account_id, origin, updated_at)
+                 VALUES (?1, ?2, ?3, 'pinned', datetime('now'))
+                 ON CONFLICT(project_id, tool) DO UPDATE SET
+                    account_id = excluded.account_id,
+                    origin = 'pinned',
+                    updated_at = excluded.updated_at",
+                params![project_id, tool, account_id],
+            )?;
+        }
+        None => {
+            conn.execute(
+                "DELETE FROM project_tool_accounts WHERE project_id = ?1 AND tool = ?2",
+                params![project_id, tool],
+            )?;
+        }
+    }
+    conn.execute(
+        "UPDATE projects SET updated_at = datetime('now') WHERE id = ?1",
+        [project_id],
+    )?;
+    Ok(true)
+}
+
+/// Record an observed account unless the user pinned a different choice.
+pub fn remember_last_used_account(
+    conn: &Connection,
+    project_id: &str,
+    tool: &str,
+    account_id: &str,
+) -> Result<bool, rusqlite::Error> {
     let changed = conn.execute(
-        "UPDATE projects SET claude_account_id = ?1, updated_at = datetime('now') WHERE id = ?2",
-        params![account_id, id],
+        "INSERT INTO project_tool_accounts (project_id, tool, account_id, origin, updated_at)
+         SELECT ?1, ?2, ?3, 'last_used', datetime('now')
+         WHERE EXISTS(SELECT 1 FROM projects WHERE id = ?1)
+         ON CONFLICT(project_id, tool) DO UPDATE SET
+            account_id = excluded.account_id,
+            origin = 'last_used',
+            updated_at = excluded.updated_at
+         WHERE project_tool_accounts.origin = 'last_used'
+           AND project_tool_accounts.account_id <> excluded.account_id",
+        params![project_id, tool, account_id],
     )?;
     Ok(changed > 0)
+}
+
+pub fn project_account_memory(
+    conn: &Connection,
+    project_id: &str,
+) -> Result<std::collections::HashMap<String, AccountMemory>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT tool, account_id, origin FROM project_tool_accounts WHERE project_id = ?1",
+    )?;
+    let rows = stmt.query_map([project_id], |row| {
+        let origin: String = row.get(2)?;
+        let origin = match origin.as_str() {
+            "pinned" => AccountMemoryOrigin::Pinned,
+            "last_used" => AccountMemoryOrigin::LastUsed,
+            _ => return Err(rusqlite::Error::InvalidQuery),
+        };
+        Ok((
+            row.get::<_, String>(0)?,
+            AccountMemory {
+                account_id: row.get(1)?,
+                origin,
+            },
+        ))
+    })?;
+    rows.collect()
 }
 
 /// Check if a project is registered at the given path.
@@ -201,7 +288,7 @@ mod tests {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         }
     }
 
@@ -236,7 +323,7 @@ mod tests {
             updated_at: "2025-03-15T08:00:00Z".into(),
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
 
         insert_project(&conn, &project).unwrap();
@@ -426,33 +513,68 @@ mod tests {
     }
 
     #[test]
-    fn claude_account_is_none_until_the_project_picks_one() {
+    fn project_account_memory_round_trips_by_tool() {
         let (conn, _tmp) = test_db();
         insert_project(&conn, &make_project("p1", "test", "/path")).unwrap();
 
         let fetched = get_project(&conn, "p1").unwrap().unwrap();
-        assert_eq!(fetched.claude_account_id, None);
+        assert!(fetched.account_memory.is_empty());
 
-        let ok = set_project_claude_account(&conn, "p1", Some("account-2")).unwrap();
+        let ok = set_project_account(&conn, "p1", "claude", Some("account-2")).unwrap();
         assert!(ok);
         let fetched = get_project(&conn, "p1").unwrap().unwrap();
-        assert_eq!(fetched.claude_account_id.as_deref(), Some("account-2"));
+        assert_eq!(
+            fetched
+                .account_memory
+                .get("claude")
+                .map(|memory| (memory.account_id.as_str(), memory.origin)),
+            Some(("account-2", AccountMemoryOrigin::Pinned))
+        );
         assert_eq!(
             list_projects(&conn).unwrap()[0]
-                .claude_account_id
-                .as_deref(),
+                .account_memory
+                .get("claude")
+                .map(|memory| memory.account_id.as_str()),
             Some("account-2")
         );
 
-        set_project_claude_account(&conn, "p1", None).unwrap();
+        set_project_account(&conn, "p1", "claude", None).unwrap();
         let fetched = get_project(&conn, "p1").unwrap().unwrap();
-        assert_eq!(fetched.claude_account_id, None);
+        assert!(fetched.account_memory.is_empty());
     }
 
     #[test]
-    fn setting_the_claude_account_of_an_unknown_project_reports_no_change() {
+    fn setting_an_account_of_an_unknown_project_reports_no_change() {
         let (conn, _tmp) = test_db();
-        assert!(!set_project_claude_account(&conn, "no-such", Some("a")).unwrap());
+        assert!(!set_project_account(&conn, "no-such", "claude", Some("a")).unwrap());
+    }
+
+    #[test]
+    fn last_used_never_overwrites_a_pinned_account() {
+        // Regression: commit d6839a3 had only one project account field; an
+        // observed session must not erase the user's explicit pin when the
+        // generic side table starts recording last-used accounts.
+        let (conn, _tmp) = test_db();
+        insert_project(&conn, &make_project("p1", "test", "/path")).unwrap();
+        set_project_account(&conn, "p1", "claude", Some("pinned")).unwrap();
+
+        assert!(!remember_last_used_account(&conn, "p1", "claude", "observed").unwrap());
+        let memory = project_account_memory(&conn, "p1").unwrap();
+        assert_eq!(memory["claude"].account_id, "pinned");
+        assert_eq!(memory["claude"].origin, AccountMemoryOrigin::Pinned);
+    }
+
+    #[test]
+    fn last_used_changes_only_when_the_observed_account_changes() {
+        let (conn, _tmp) = test_db();
+        insert_project(&conn, &make_project("p1", "test", "/path")).unwrap();
+
+        assert!(remember_last_used_account(&conn, "p1", "claude", "one").unwrap());
+        assert!(!remember_last_used_account(&conn, "p1", "claude", "one").unwrap());
+        assert!(remember_last_used_account(&conn, "p1", "claude", "two").unwrap());
+        let memory = project_account_memory(&conn, "p1").unwrap();
+        assert_eq!(memory["claude"].account_id, "two");
+        assert_eq!(memory["claude"].origin, AccountMemoryOrigin::LastUsed);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
+use crate::models::AccountMemoryOrigin;
+use crate::session_scanner::accounts;
 use crate::session_scanner::accounts::claude::{
     configured_root_to_name, remembered_claude_transcript, resolve_launch_account,
     to_launch_namespace, AccountRequest, AccountResolution,
@@ -132,12 +134,19 @@ pub(super) fn launch_cli_session_impl(
                 mode,
                 claude_account_id.as_deref(),
                 project_account_id.as_deref(),
-                terminal_settings.claude_default_account_id.as_deref(),
+                terminal_settings
+                    .default_account_ids
+                    .get("claude")
+                    .map(String::as_str),
             );
             log_account_resolution(&project_id, &launch);
             launch.resolution
         });
     let config_dir = account.as_ref().and_then(launch_config_dir);
+    let resolved_account_id = account
+        .as_ref()
+        .and_then(|resolution| resolution.account.as_ref())
+        .map(|account| account.id.clone());
     let rendered = LaunchSpec {
         tool,
         mode,
@@ -322,6 +331,7 @@ pub(super) fn launch_cli_session_impl(
                             custom_command: terminal_settings.custom_command,
                         },
                     );
+                    remember_resolved_account(&project_id, tool, resolved_account_id.as_deref());
                     return Ok(result);
                 }
                 Ok(response) => {
@@ -426,6 +436,7 @@ pub(super) fn launch_cli_session_impl(
         Some(&tool_cmd),
     )
     .map_err(|e| format!("Failed to launch session: {e}"))?;
+    remember_resolved_account(&project_id, tool, resolved_account_id.as_deref());
 
     #[cfg(target_os = "macos")]
     {
@@ -443,6 +454,15 @@ pub(super) fn launch_cli_session_impl(
         tmux_pane: pane,
         ..Default::default()
     })
+}
+
+fn remember_resolved_account(project_id: &str, tool: CliTool, account_id: Option<&str>) {
+    let Some(account_id) = account_id else {
+        return;
+    };
+    if let Err(error) = accounts::remember_last_used(project_id, tool, account_id) {
+        tracing::warn!(tool = %tool, error = %error, "failed to remember launched account");
+    }
 }
 
 /// Detection could not run at all — no daemon, or one that never answered.
@@ -692,45 +712,101 @@ fn launch_config_dir(resolution: &AccountResolution) -> Option<PathBuf> {
 /// every resume, and only the backend can see it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClaudeLaunchAccount {
+pub struct LaunchAccountPreview {
     pub account_id: Option<String>,
-    pub email: Option<String>,
-    pub source: String,
+    pub label: Option<String>,
+    pub origin: String,
     /// Nothing decided the account and more than one subscription could run the
     /// launch: ask the user.
     pub needs_choice: bool,
 }
 
-pub(super) fn resolve_claude_launch_account_impl(
+pub(super) fn resolve_launch_account_preview_impl(
     db: &DbState,
     provider: &ProviderState,
     project_id: String,
+    tool: CliTool,
     mode: LaunchMode,
-) -> Result<ClaudeLaunchAccount, String> {
-    let (project_path, project_account_id) = resolve_project_launch_target(db, &project_id)?;
-    let linux_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path);
+    session_id: Option<&str>,
+) -> Result<LaunchAccountPreview, String> {
+    let conn = db.0.lock().map_err(|error| error.to_string())?;
+    let project = crate::db::queries::get_project(&conn, &project_id)
+        .sanitize_err()?
+        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+    drop(conn);
+
+    let linux_path = crate::provider::path::to_linux(&project.path).unwrap_or(project.path);
     let terminal_settings = load_terminal_settings(db);
+    let tool_spec = crate::session_scanner::cli_tool::spec(tool);
+    let Some(account_provider) = tool_spec.account_provider() else {
+        return Ok(LaunchAccountPreview {
+            account_id: None,
+            label: None,
+            origin: AccountOrigin::DefaultConfigDir.as_str().to_string(),
+            needs_choice: false,
+        });
+    };
 
-    let resolution = resolve_claude_account(
-        provider,
-        &linux_path,
-        mode,
-        None,
-        project_account_id.as_deref(),
-        terminal_settings.claude_default_account_id.as_deref(),
-    )
-    .resolution;
+    let explicit_transcript = session_id.and_then(|wanted| {
+        crate::session_scanner::latest_compaction_runtime_sessions()
+            .into_iter()
+            .find(|session| {
+                session.cli_tool == tool && session.session_id.as_deref() == Some(wanted)
+            })
+            .and_then(|session| session.jsonl_path)
+            .map(PathBuf::from)
+    });
+    let transcript = if explicit_transcript.is_some() {
+        TranscriptLookup {
+            transcript: explicit_transcript,
+            unavailable: None,
+        }
+    } else if matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
+        let mut lookup = crate::commands::accounts::project_transcript(provider, tool, &linux_path);
+        if lookup.transcript.is_none() {
+            lookup.transcript = accounts::remembered_transcript(tool, &linux_path);
+        }
+        lookup
+    } else {
+        TranscriptLookup::default()
+    };
+    let memory = project.account_memory.get(&tool.to_string());
+    let pinned_account_id = memory
+        .filter(|memory| memory.origin == AccountMemoryOrigin::Pinned)
+        .map(|memory| memory.account_id.as_str());
+    let last_used_account_id = memory
+        .filter(|memory| memory.origin == AccountMemoryOrigin::LastUsed)
+        .map(|memory| memory.account_id.as_str());
+    let base = base_command(&terminal_settings.cli_commands, tool, mode);
+    let detected = crate::commands::accounts::accounts_report(provider, tool);
 
-    Ok(ClaudeLaunchAccount {
+    let resolution = accounts::resolve_launch_account(
+        &detected.accounts,
+        account_provider,
+        accounts::AccountRequest {
+            session_transcript: transcript.transcript.as_deref(),
+            pinned_account_id,
+            last_used_account_id,
+            default_account_id: terminal_settings
+                .default_account_ids
+                .get(&tool.to_string())
+                .map(String::as_str),
+            base_command: Some(base),
+            selector: tool_spec.capabilities.account_selector,
+            ..Default::default()
+        },
+    );
+
+    Ok(LaunchAccountPreview {
         account_id: resolution
             .account
             .as_ref()
             .map(|account| account.id.clone()),
-        email: resolution
+        label: resolution
             .account
             .as_ref()
-            .map(|account| account.email.clone()),
-        source: resolution.source.as_str().to_string(),
+            .map(|account| account.identity.label.clone()),
+        origin: resolution.origin.as_str().to_string(),
         needs_choice: resolution.needs_choice,
     })
 }

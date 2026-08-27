@@ -992,7 +992,7 @@ mod tests {
             updated_at: "2026-03-05T00:00:00Z".to_string(),
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
         crate::db::queries::insert_project(&conn, &project).expect("insert project");
         (conn, db_dir)

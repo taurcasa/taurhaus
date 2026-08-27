@@ -24,8 +24,7 @@ use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
 use crate::session_scanner::accounts::claude::{
-    detect_claude_accounts_cached, into_legacy_account, newest_project_transcript,
-    transcript_config_dirs, ClaudeAccount,
+    detect_claude_accounts_cached, into_legacy_account, ClaudeAccount,
 };
 use crate::session_scanner::accounts::{self, Account};
 use crate::session_scanner::cli_tool::CliTool;
@@ -131,26 +130,28 @@ pub(crate) fn accounts_report(provider: &ProviderState, tool: CliTool) -> Accoun
 }
 
 #[tauri::command]
-pub fn set_project_claude_account(
+pub fn set_project_account(
     db: State<'_, DbState>,
     project_id: String,
+    tool: CliTool,
     account_id: Option<String>,
 ) -> IpcResult<()> {
-    let span = IpcCommandSpan::start("set_project_claude_account");
-    let result = set_project_claude_account_impl(db.inner(), &project_id, account_id.as_deref())
-        .ipc_cmd("set_project_claude_account");
+    let span = IpcCommandSpan::start("set_project_account");
+    let result = set_project_account_impl(db.inner(), &project_id, tool, account_id.as_deref())
+        .ipc_cmd("set_project_account");
     span.finish_result(&result);
     result
 }
 
-pub(crate) fn set_project_claude_account_impl(
+pub(crate) fn set_project_account_impl(
     db: &DbState,
     project_id: &str,
+    tool: CliTool,
     account_id: Option<&str>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let changed =
-        queries::set_project_claude_account(&conn, project_id, account_id).sanitize_err()?;
+    let changed = queries::set_project_account(&conn, project_id, &tool.to_string(), account_id)
+        .sanitize_err()?;
     if !changed {
         return Err("Project not found".to_string());
     }
@@ -193,14 +194,24 @@ pub(crate) fn claude_project_transcript(
     provider: &ProviderState,
     project_path: &str,
 ) -> TranscriptLookup {
+    project_transcript(provider, CliTool::Claude, project_path)
+}
+
+/// The newest transcript for one tool and project, read where that tool runs.
+pub(crate) fn project_transcript(
+    provider: &ProviderState,
+    tool: CliTool,
+    project_path: &str,
+) -> TranscriptLookup {
     if cfg!(target_os = "windows") {
-        return daemon_transcript_lookup(provider, project_path);
+        return daemon_project_transcript_lookup(provider, tool, project_path);
     }
-    // The config dirs, not the accounts: a `.claude.json` caught mid-rewrite
-    // names no account, and the history it sits next to must not disappear
-    // with it.
     TranscriptLookup {
-        transcript: newest_project_transcript(&transcript_config_dirs(), project_path),
+        transcript: accounts::newest_project_transcript(
+            tool,
+            &accounts::transcript_dirs(tool),
+            project_path,
+        ),
         unavailable: None,
     }
 }
@@ -221,10 +232,6 @@ fn daemon_accounts_report_from(answer: DaemonAnswer<protocol::AccountsResult>) -
         degraded,
         error,
     }
-}
-
-fn daemon_transcript_lookup(provider: &ProviderState, project_path: &str) -> TranscriptLookup {
-    daemon_project_transcript_lookup(provider, CliTool::Claude, project_path)
 }
 
 fn daemon_project_transcript_lookup(

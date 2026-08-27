@@ -116,7 +116,7 @@ mod tests {
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         };
         let conn = db.0.lock().expect("db lock");
         crate::db::queries::insert_project(&conn, &project).expect("insert project");

@@ -60,7 +60,7 @@ fn setup_db_with_project(project_id: &str, project_path: &str) -> (DbState, Name
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         },
     )
     .expect("insert project");
@@ -1170,7 +1170,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("account-2"))
             .expect("store account");
     }
     let (log_file, log_file_path) = setup_log_file();
@@ -1244,7 +1244,7 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p1", Some("deleted-account"))
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("deleted-account"))
             .expect("store account");
     }
     let (log_file, log_file_path) = setup_log_file();
@@ -1370,7 +1370,7 @@ fn a_codex_launch_never_receives_a_claude_config_dir() {
     let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p1", Some("account-2"))
+        crate::db::queries::set_project_account(&conn, "p1", "claude", Some("account-2"))
             .expect("store account");
     }
     let (log_file, _log_file_path) = setup_log_file();
@@ -1620,16 +1620,18 @@ fn the_preflight_places_a_resume_from_the_transcript_that_owns_the_history() {
     );
     let (db, _db_file) = setup_db_with_project("p-preflight", project_path);
 
-    let placed = resolve_claude_launch_account_impl(
+    let placed = resolve_launch_account_preview_impl(
         &db,
         &preflight_provider(),
         "p-preflight".to_string(),
+        CliTool::Claude,
         LaunchMode::Resume,
+        None,
     )
     .expect("preflight");
 
-    assert_eq!(placed.source, "session");
-    assert_eq!(placed.email.as_deref(), Some("second@example.com"));
+    assert_eq!(placed.origin, "session");
+    assert_eq!(placed.label.as_deref(), Some("second@example.com"));
     assert!(!placed.needs_choice);
 }
 
@@ -1639,11 +1641,13 @@ fn the_preflight_asks_when_no_history_and_no_choice_place_the_launch() {
     let _accounts = with_fake_accounts_under(home.path());
     let (db, _db_file) = setup_db_with_project("p-unplaced", "/tmp/unplaced-project");
 
-    let placed = resolve_claude_launch_account_impl(
+    let placed = resolve_launch_account_preview_impl(
         &db,
         &preflight_provider(),
         "p-unplaced".to_string(),
+        CliTool::Claude,
         LaunchMode::Resume,
+        None,
     )
     .expect("preflight");
 
@@ -1657,19 +1661,21 @@ fn the_preflight_needs_no_choice_once_the_project_stored_one() {
     let (db, _db_file) = setup_db_with_project("p-stored", "/tmp/stored-project");
     {
         let conn = db.0.lock().expect("db lock");
-        crate::db::queries::set_project_claude_account(&conn, "p-stored", Some("account-2"))
+        crate::db::queries::set_project_account(&conn, "p-stored", "claude", Some("account-2"))
             .expect("store account");
     }
 
-    let placed = resolve_claude_launch_account_impl(
+    let placed = resolve_launch_account_preview_impl(
         &db,
         &preflight_provider(),
         "p-stored".to_string(),
+        CliTool::Claude,
         LaunchMode::Fresh,
+        None,
     )
     .expect("preflight");
 
-    assert_eq!(placed.source, "project");
+    assert_eq!(placed.origin, "project");
     assert_eq!(placed.account_id.as_deref(), Some("account-2"));
     assert!(!placed.needs_choice);
 }

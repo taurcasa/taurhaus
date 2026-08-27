@@ -29,8 +29,8 @@ use self::activity_tracking::{
 };
 #[cfg(test)]
 use self::launching::decode_daemon_launch_result;
-pub use self::launching::ClaudeLaunchAccount;
-use self::launching::{launch_cli_session_impl, resolve_claude_launch_account_impl};
+pub use self::launching::LaunchAccountPreview;
+use self::launching::{launch_cli_session_impl, resolve_launch_account_preview_impl};
 use self::navigation::{navigate_to_session_impl, stop_cli_session_impl};
 use self::session_listing::list_cli_sessions_impl;
 pub use self::session_listing::CliSessionSnapshot;
@@ -100,21 +100,30 @@ pub fn launch_cli_session(
     result
 }
 
-/// Which Claude subscription a launch would run on, before it runs.
+/// Which tool account a launch would run on, before it runs.
 ///
 /// The chooser asks the user exactly once, and only when it has to. Whether it
 /// has to is a backend question: the transcript of the project's last session
 /// decides every resume, and a stored choice that logged out decides nothing.
 #[tauri::command]
-pub fn resolve_claude_launch_account(
+pub fn resolve_launch_account(
     db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     project_id: String,
+    tool: CliTool,
     mode: LaunchMode,
-) -> IpcResult<ClaudeLaunchAccount> {
-    let span = IpcCommandSpan::start("resolve_claude_launch_account");
-    let result = resolve_claude_launch_account_impl(db.inner(), provider.inner(), project_id, mode)
-        .ipc_cmd("resolve_claude_launch_account");
+    session_id: Option<String>,
+) -> IpcResult<LaunchAccountPreview> {
+    let span = IpcCommandSpan::start("resolve_launch_account");
+    let result = resolve_launch_account_preview_impl(
+        db.inner(),
+        provider.inner(),
+        project_id,
+        tool,
+        mode,
+        session_id.as_deref(),
+    )
+    .ipc_cmd("resolve_launch_account");
     span.finish_result(&result);
     result
 }
@@ -278,7 +287,11 @@ fn resolve_project_launch_target(
     let project = crate::db::queries::get_project(&conn, project_id)
         .sanitize_err()?
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
-    Ok((project.path, project.claude_account_id))
+    let account_id = project
+        .account_memory
+        .get("claude")
+        .map(|memory| memory.account_id.clone());
+    Ok((project.path, account_id))
 }
 
 fn find_unique_team_member_match(

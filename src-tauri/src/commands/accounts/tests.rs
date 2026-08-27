@@ -22,7 +22,7 @@ fn db_with_project(project_id: &str) -> (DbState, NamedTempFile) {
             updated_at: now,
             cached_branch: None,
             cached_is_dirty: None,
-            claude_account_id: None,
+            account_memory: Default::default(),
         },
     )
     .expect("insert project");
@@ -34,17 +34,19 @@ fn stored_account(db: &DbState, project_id: &str) -> Option<String> {
     queries::get_project(&conn, project_id)
         .expect("get project")
         .expect("project exists")
-        .claude_account_id
+        .account_memory
+        .get("claude")
+        .map(|memory| memory.account_id.clone())
 }
 
 #[test]
 fn setting_and_clearing_a_project_account_round_trips() {
     let (db, _tmp) = db_with_project("p1");
 
-    set_project_claude_account_impl(&db, "p1", Some("account-2")).expect("set account");
+    set_project_account_impl(&db, "p1", CliTool::Claude, Some("account-2")).expect("set account");
     assert_eq!(stored_account(&db, "p1").as_deref(), Some("account-2"));
 
-    set_project_claude_account_impl(&db, "p1", None).expect("clear account");
+    set_project_account_impl(&db, "p1", CliTool::Claude, None).expect("clear account");
     assert_eq!(stored_account(&db, "p1"), None);
 }
 
@@ -52,7 +54,7 @@ fn setting_and_clearing_a_project_account_round_trips() {
 fn setting_the_account_of_an_unknown_project_is_an_error() {
     let (db, _tmp) = db_with_project("p1");
 
-    let error = set_project_claude_account_impl(&db, "missing", Some("account-2"))
+    let error = set_project_account_impl(&db, "missing", CliTool::Claude, Some("account-2"))
         .expect_err("unknown project");
 
     assert!(error.contains("Project not found"), "{error}");

@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::daemon::claude_usage::ClaudeAccountUsage;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::accounts::AccountOrigin;
+use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::types::RuntimeSession;
 
 use super::{
@@ -527,7 +528,12 @@ static DETECTION_OVERRIDE_LOCK: Mutex<()> = Mutex::new(());
 
 /// Holds the fixture in place, and the lock with it, until the test ends.
 #[cfg(test)]
-pub(crate) struct DetectionOverrideGuard(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+pub(crate) struct DetectionOverrideGuard {
+    #[allow(dead_code)]
+    legacy_lock: std::sync::MutexGuard<'static, ()>,
+    #[allow(dead_code)]
+    generic: super::DetectionOverrideGuard,
+}
 
 #[cfg(test)]
 impl Drop for DetectionOverrideGuard {
@@ -559,10 +565,20 @@ pub(crate) fn install_scan_override(scan: ClaudeScan) -> DetectionOverrideGuard 
     let lock = DETECTION_OVERRIDE_LOCK
         .lock()
         .unwrap_or_else(|error| error.into_inner());
+    let generic = super::install_detection_override(
+        CliTool::Claude,
+        super::AccountScan {
+            config_dirs: scan.config_dirs.clone(),
+            accounts: scan.accounts.iter().cloned().map(Account::from).collect(),
+        },
+    );
     *DETECTION_OVERRIDE
         .lock()
         .unwrap_or_else(|error| error.into_inner()) = Some(scan);
-    DetectionOverrideGuard(lock)
+    DetectionOverrideGuard {
+        legacy_lock: lock,
+        generic,
+    }
 }
 
 /// This app run's scan of the Claude config dirs, re-read at most once a
@@ -729,112 +745,15 @@ fn config_dirs_of_live_sessions() -> Vec<PathBuf> {
         .collect()
 }
 
-/// The Claude transcript a project's most recent session was seen writing.
-struct TranscriptSighting {
-    project_key: String,
-    transcript: PathBuf,
-    /// Unix seconds of that session's last observed output. Absolute on
-    /// purpose: the scanner reports an *age*, which shrinks the sighting's
-    /// meaning to the snapshot it came from and cannot be compared with the
-    /// next one.
-    last_output_at: Option<u64>,
-}
-
-/// Sightings outlive the processes that produced them.
-///
-/// `--resume` needs the subscription that owns the history, and it is normally
-/// reached for after Claude has exited — by which time the session is gone from
-/// every runtime snapshot. Remembering the transcript keeps the answer.
-static TRANSCRIPT_SIGHTINGS: Mutex<Vec<TranscriptSighting>> = Mutex::new(Vec::new());
-
 /// Note the transcript of each project's freshest Claude session in `sessions`.
 pub(crate) fn record_claude_transcripts(sessions: &[RuntimeSession]) {
-    let now = unix_now();
-    let mut freshest: Vec<(String, &str, Option<u64>)> = Vec::new();
-    for session in sessions.iter().filter(|session| {
-        crate::session_scanner::cli_tool::spec(session.cli_tool)
-            .capabilities
-            .account_selection
-    }) {
-        let Some(transcript) = session.jsonl_path.as_deref() else {
-            continue;
-        };
-        let key = crate::provider::path::normalize_project_path(&session.project_path);
-        let last_output_at = session
-            .last_output_age_secs
-            .map(|age| now.saturating_sub(age));
-        match freshest.iter_mut().find(|(seen, _, _)| *seen == key) {
-            Some(entry) if newer(last_output_at, entry.2) => {
-                entry.1 = transcript;
-                entry.2 = last_output_at;
-            }
-            Some(_) => {}
-            None => freshest.push((key, transcript, last_output_at)),
-        }
-    }
-
-    if freshest.is_empty() {
-        return;
-    }
-
-    let mut sightings = TRANSCRIPT_SIGHTINGS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    for (key, transcript, last_output_at) in freshest {
-        let transcript = PathBuf::from(transcript);
-        match sightings
-            .iter_mut()
-            .find(|sighting| sighting.project_key == key)
-        {
-            // A snapshot that no longer lists the freshest session says nothing
-            // about it: an older pane that simply outlived it must not claim
-            // the project.
-            Some(sighting) if newer(last_output_at, sighting.last_output_at) => {
-                sighting.transcript = transcript;
-                sighting.last_output_at = last_output_at;
-            }
-            Some(_) => {}
-            None => sightings.push(TranscriptSighting {
-                project_key: key,
-                transcript,
-                last_output_at,
-            }),
-        }
-    }
-}
-
-/// `left` produced output at least as recently as `right`.
-///
-/// The times come from the scanner's own `last_output_age_secs`, never the
-/// transcript's mtime: on Windows these paths are the WSL daemon's, and
-/// stat'ing them in the app process fails for every candidate alike. An unknown
-/// time ranks last against a known one.
-fn newer(left: Option<u64>, right: Option<u64>) -> bool {
-    match (left, right) {
-        (Some(left), Some(right)) => left >= right,
-        (Some(_), None) => true,
-        (None, Some(_)) => false,
-        (None, None) => true,
-    }
-}
-
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    super::record_session_transcripts(sessions);
 }
 
 /// The transcript last seen for a project, whether or not it still has a
 /// running session.
 pub(crate) fn remembered_claude_transcript(project_path: &str) -> Option<PathBuf> {
-    let key = crate::provider::path::normalize_project_path(project_path);
-    TRANSCRIPT_SIGHTINGS
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .iter()
-        .find(|sighting| sighting.project_key == key)
-        .map(|sighting| sighting.transcript.clone())
+    super::remembered_transcript(CliTool::Claude, project_path)
 }
 
 /// Pick the account one launch runs on.
