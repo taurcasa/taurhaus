@@ -122,6 +122,23 @@ describe('ClaudeUsageMeter', () => {
     expect(screen.getByTestId('claude-usage-meter')).toHaveTextContent('7d 17%')
   })
 
+  // Regression: a574720 read `resets_at` through `Number()`, which turns the
+  // `null` the IPC layer sends for a window with no reset into 0 — a reset that
+  // passed in 1970. The percentage beside it was dropped, so an account whose
+  // payload named no reset showed no usage at all.
+  it('keeps a window that names no reset, and says when it was seen', () => {
+    const withoutReset = usage()
+    withoutReset.five_hour.resets_at = null
+    withoutReset.seven_day = null
+
+    render(ClaudeUsageMeter, { props: { usage: withoutReset } })
+
+    const meter = screen.getByTestId('claude-usage-meter')
+    expect(meter).toHaveTextContent('5h 26%')
+    expect(screen.queryByTestId('claude-usage-reset')).not.toBeInTheDocument()
+    expect(screen.getByTestId('claude-usage-observed')).toHaveTextContent('seen 1m ago')
+  })
+
   it('never draws a bar past its track', () => {
     render(ClaudeUsageMeter, { props: { usage: usage({ fiveHour: 143 }) } })
 

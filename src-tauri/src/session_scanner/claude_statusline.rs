@@ -6,13 +6,18 @@
 //! means writing into a config dir the user also owns, so the rule here is that
 //! nothing the user configured may stop rendering:
 //!
-//! * a config dir with no `statusLine` gets ours, and ours prints a line
-//!   (`<model> · 5h n% · 7d n%`) — verified live on 2.1.246, a status-line
-//!   command that prints nothing leaves the row blank rather than falling back
-//!   to a built-in line;
+//! * a config dir with no `statusLine` gets ours, and ours *always* prints a
+//!   line (`<model> · 5h n% · 7d n%`, or a fallback when the sink cannot run or
+//!   the payload says nothing) — verified live on 2.1.246, a status-line command
+//!   that prints nothing leaves the row blank rather than falling back to a
+//!   built-in line, so an empty print is a row taurhaus emptied;
 //! * a config dir that already has one gets **wrapped**: our script tees the
 //!   payload to the sink and then pipes the very same JSON to the command that
-//!   was configured before, whose stdout and exit code are the status line;
+//!   was configured before, whose stdout and exit code are the status line —
+//!   and whose empty output stays empty, because that row is theirs;
+//! * a `statusLine` configured *while* an install is running is wrapped like
+//!   any other: the commit only lands while the value it was decided from is
+//!   still the one on disk, and rebuilds itself around a newer one;
 //! * removal puts the original `statusLine` value back exactly as it was,
 //!   extra keys and all.
 //!
@@ -41,6 +46,12 @@ const RECORD_FILENAME: &str = "taurhaus-statusline.json";
 const STATUS_LINE_KEY: &str = "statusLine";
 /// The subcommand the generated script calls.
 pub const USAGE_SINK_SUBCOMMAND: &str = "claude-usage-sink";
+/// What the row says when the sink has nothing to put in it.
+const FALLBACK_LINE: &str = "taurhaus · no usage yet";
+/// How many times an install rebuilds itself around a `statusLine` that changed
+/// underneath it. The other writers here are a person and Claude Code; one
+/// retry is already more than this has ever needed.
+const COMMIT_ATTEMPTS: usize = 3;
 
 /// What one install did.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -89,6 +100,20 @@ pub fn ensure_statusline_installed_at(
     config_dir: &Path,
     taurhaus_exe: &Path,
     sink_path: &Path,
+) -> Result<StatuslineInstall, String> {
+    install_statusline_at(config_dir, taurhaus_exe, sink_path, &|| {})
+}
+
+/// The install itself.
+///
+/// `before_commit` runs in the window between reading `statusLine` and writing
+/// it back — the window a concurrent editor lands in, and the only place a test
+/// can stand to be that editor. Production passes a no-op.
+fn install_statusline_at(
+    config_dir: &Path,
+    taurhaus_exe: &Path,
+    sink_path: &Path,
+    before_commit: &dyn Fn(),
 ) -> Result<StatuslineInstall, String> {
     if !is_posix_config_dir(config_dir) {
         // The sink is executed by the status line, from inside the shell that
@@ -139,71 +164,101 @@ pub fn ensure_statusline_installed_at(
     };
 
     let settings_path = config_dir.join(SETTINGS_FILENAME);
-    let existing = load_settings(&settings_path)?.remove(STATUS_LINE_KEY);
-    // Re-running against our own install must not wrap our own script: the
-    // command the user actually configured is the one the record remembers.
-    let wrapped = if is_taurhaus_status_line(existing.as_ref()) {
-        read_record(&hooks_dir).and_then(|record| record.wrapped)
-    } else {
-        existing.filter(|value| !value.is_null())
-    };
-
     fs::create_dir_all(&hooks_dir)
         .map_err(|error| format!("failed to create '{}': {error}", hooks_dir.display()))?;
 
-    let script = render_script(
-        &executable,
-        &config_dir_argument,
-        &sink_argument,
-        wrapped_command(wrapped.as_ref()),
-    );
-    let script_changed = write_if_changed(&script_path, script.as_bytes())?;
-    #[cfg(not(target_os = "windows"))]
-    if script_changed {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(&script_path)
-            .map_err(|error| format!("failed to stat '{}': {error}", script_path.display()))?
-            .permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script_path, permissions).map_err(|error| {
-            format!(
-                "failed to make '{}' executable: {error}",
-                script_path.display()
-            )
-        })?;
+    // Everything below is decided from one reading of `statusLine` and only
+    // committed while that reading still holds. Writing the script and the
+    // record takes long enough for a person — or Claude Code — to configure a
+    // status line in between, and that command has to be wrapped like any
+    // other, not overwritten by a decision that predates it.
+    for _ in 0..COMMIT_ATTEMPTS {
+        let existing = load_settings(&settings_path)?.remove(STATUS_LINE_KEY);
+        // Re-running against our own install must not wrap our own script: the
+        // command the user actually configured is the one the record remembers.
+        let wrapped = if is_taurhaus_status_line(existing.as_ref()) {
+            read_record(&hooks_dir).and_then(|record| record.wrapped)
+        } else {
+            existing.clone().filter(|value| !value.is_null())
+        };
+
+        let script = render_script(
+            &executable,
+            &config_dir_argument,
+            &sink_argument,
+            wrapped_command(wrapped.as_ref()),
+        );
+        let script_changed = write_if_changed(&script_path, script.as_bytes())?;
+        #[cfg(not(target_os = "windows"))]
+        if script_changed {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&script_path)
+                .map_err(|error| format!("failed to stat '{}': {error}", script_path.display()))?
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script_path, permissions).map_err(|error| {
+                format!(
+                    "failed to make '{}' executable: {error}",
+                    script_path.display()
+                )
+            })?;
+        }
+
+        let record = StatuslineRecord {
+            executable: executable.clone(),
+            sink: sink_argument.clone(),
+            wrapped: wrapped.clone(),
+        };
+        let record_changed = write_if_changed(
+            &hooks_dir.join(RECORD_FILENAME),
+            serde_json::to_vec_pretty(&record.to_value())
+                .map_err(|error| format!("failed to serialize the status line record: {error}"))?
+                .as_slice(),
+        )?;
+
+        // Only `type` and `command` are taurhaus's. Everything else the user set
+        // on their own `statusLine` — `padding`, and whatever a later Claude
+        // Code reads there — still applies while ours is the command being run.
+        let mut desired = match wrapped.as_ref() {
+            Some(Value::Object(original)) => original.clone(),
+            _ => Map::new(),
+        };
+        desired.insert("type".to_string(), Value::String("command".to_string()));
+        desired.insert(
+            "command".to_string(),
+            Value::String(format!("bash {}", shell_quote(&script_command))),
+        );
+
+        before_commit();
+        match commit_status_line(
+            &settings_path,
+            existing.as_ref(),
+            Some(Value::Object(desired)),
+        )? {
+            // Somebody configured a status line while this one was being
+            // written. Read it again and wrap what is actually there.
+            StatusLineCommit::Stale => continue,
+            StatusLineCommit::Written => {
+                return Ok(StatuslineInstall {
+                    changed: true,
+                    wrapped: wrapped.is_some(),
+                    skipped: None,
+                })
+            }
+            StatusLineCommit::Unchanged => {
+                return Ok(StatuslineInstall {
+                    changed: script_changed || record_changed,
+                    wrapped: wrapped.is_some(),
+                    skipped: None,
+                })
+            }
+        }
     }
 
-    let record = StatuslineRecord {
-        executable,
-        sink: sink_argument,
-        wrapped: wrapped.clone(),
-    };
-    let record_changed = write_if_changed(
-        &hooks_dir.join(RECORD_FILENAME),
-        serde_json::to_vec_pretty(&record.to_value())
-            .map_err(|error| format!("failed to serialize the status line record: {error}"))?
-            .as_slice(),
-    )?;
-
-    // Only `type` and `command` are taurhaus's. Everything else the user set on
-    // their own `statusLine` — `padding`, and whatever a later Claude Code
-    // reads there — still applies while ours is the command being run.
-    let mut desired = match wrapped.as_ref() {
-        Some(Value::Object(original)) => original.clone(),
-        _ => Map::new(),
-    };
-    desired.insert("type".to_string(), Value::String("command".to_string()));
-    desired.insert(
-        "command".to_string(),
-        Value::String(format!("bash {}", shell_quote(&script_command))),
-    );
-    let settings_changed = commit_status_line(&settings_path, Some(Value::Object(desired)))?;
-
-    Ok(StatuslineInstall {
-        changed: script_changed || record_changed || settings_changed,
-        wrapped: wrapped.is_some(),
-        skipped: None,
-    })
+    Err(format!(
+        "'{}' kept changing its status line while taurhaus installed one",
+        settings_path.display()
+    ))
 }
 
 /// Take the bridge back out, restoring whatever it wrapped.
@@ -213,9 +268,14 @@ pub fn remove_statusline_at(config_dir: &Path) -> Result<bool, String> {
     let settings = load_settings(&settings_path)?;
     let mut changed = false;
 
-    if is_taurhaus_status_line(settings.get(STATUS_LINE_KEY)) {
+    let current = settings.get(STATUS_LINE_KEY).cloned();
+    if is_taurhaus_status_line(current.as_ref()) {
         let original = read_record(&hooks_dir).and_then(|record| record.wrapped);
-        changed = commit_status_line(&settings_path, original)?;
+        // A `statusLine` that changed since the read above is somebody else's
+        // now, and giving them a command they replaced would be the same
+        // overwrite this bridge exists to avoid.
+        changed = commit_status_line(&settings_path, current.as_ref(), original)?
+            == StatusLineCommit::Written;
     }
 
     for path in [
@@ -399,9 +459,21 @@ fn render_script(
             script.push_str(&format!("printf '%s' \"$payload\" | {command}\n"));
         }
         None => {
+            script.push_str(
+                "# This account had no status line, so this row is taurhaus's to\n\
+                 # fill — and a row taurhaus installed may never come back empty.\n\
+                 # A sink that cannot be executed, a payload it cannot read and a\n\
+                 # refresh with nothing to report all print nothing at all, and a\n\
+                 # blank row is the one outcome the install promised to avoid.\n",
+            );
             script.push_str(&format!(
-                "printf '%s' \"$payload\" | {sink} --render 2>/dev/null\n"
+                "line=\"$(printf '%s' \"$payload\" | {sink} --render 2>/dev/null)\"\n"
             ));
+            script.push_str(&format!(
+                "[ -n \"$line\" ] || line={}\n",
+                shell_quote(FALLBACK_LINE)
+            ));
+            script.push_str("printf '%s\\n' \"$line\"\n");
             script.push_str("exit 0\n");
         }
     }
@@ -456,29 +528,49 @@ fn load_settings(settings_path: &Path) -> Result<Map<String, Value>, String> {
     }
 }
 
-/// Replace exactly `statusLine`, against the settings file as it is *now*.
+/// What one commit did to `statusLine`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StatusLineCommit {
+    /// The file already said what this commit wanted it to say.
+    Unchanged,
+    Written,
+    /// `statusLine` is no longer what the caller decided against. The caller
+    /// owns the retry, because the new value changes what it would write.
+    Stale,
+}
+
+/// Replace exactly `statusLine`, and only while it still says `expected`.
 ///
-/// The value is decided from a snapshot taken before the script and the record
-/// were written, and Claude Code owns this file too. Re-reading here keeps the
-/// window in which a concurrent write can be reverted down to one read and one
-/// rename, and keeps everything but `statusLine` out of taurhaus's hands.
-fn commit_status_line(settings_path: &Path, value: Option<Value>) -> Result<bool, String> {
+/// The value being written is decided from a reading taken before the script
+/// and the record were written, and this file has other writers: a person with
+/// an editor, and Claude Code itself. Committing against that reading is what
+/// makes a status line configured in between something to wrap rather than
+/// something to overwrite — and everything but `statusLine` stays out of
+/// taurhaus's hands either way.
+fn commit_status_line(
+    settings_path: &Path,
+    expected: Option<&Value>,
+    value: Option<Value>,
+) -> Result<StatusLineCommit, String> {
     let mut settings = load_settings(settings_path)?;
+    if settings.get(STATUS_LINE_KEY) != expected {
+        return Ok(StatusLineCommit::Stale);
+    }
     match value {
         Some(desired) => {
             if settings.get(STATUS_LINE_KEY) == Some(&desired) {
-                return Ok(false);
+                return Ok(StatusLineCommit::Unchanged);
             }
             settings.insert(STATUS_LINE_KEY.to_string(), desired);
         }
         None => {
             if settings.remove(STATUS_LINE_KEY).is_none() {
-                return Ok(false);
+                return Ok(StatusLineCommit::Unchanged);
             }
         }
     }
     write_settings(settings_path, &settings)?;
-    Ok(true)
+    Ok(StatusLineCommit::Written)
 }
 
 /// Write settings the way Claude Code's own writer does: never in place, so a
@@ -866,19 +958,80 @@ mod tests {
         let settings_path = config_dir.join(SETTINGS_FILENAME);
         write_settings_json(&config_dir, json!({ "model": "old" }));
 
-        // The value the installer decided on, from settings as they were then.
+        // The value the installer decided on, from settings as they were then —
+        // which had no status line at all.
         let desired = json!({ "type": "command", "command": "bash /tmp/taurhaus-statusline.sh" });
         // Claude Code writes the file while the script and record are written.
         write_settings_json(&config_dir, json!({ "model": "new", "theme": "dark" }));
 
-        assert!(commit_status_line(&settings_path, Some(desired.clone())).expect("commit"));
+        assert_eq!(
+            commit_status_line(&settings_path, None, Some(desired.clone())).expect("commit"),
+            StatusLineCommit::Written
+        );
 
         let settings = settings_of(&config_dir);
         assert_eq!(settings["model"].as_str(), Some("new"));
         assert_eq!(settings["theme"].as_str(), Some("dark"));
         assert_eq!(settings[STATUS_LINE_KEY], desired);
         // Committing the same value again is not a change.
-        assert!(!commit_status_line(&settings_path, Some(desired)).expect("second commit"));
+        assert_eq!(
+            commit_status_line(&settings_path, Some(&desired), Some(desired.clone()))
+                .expect("second commit"),
+            StatusLineCommit::Unchanged
+        );
+        // And a status line that moved on since the decision is not ours to
+        // replace: the caller has to look again.
+        write_settings_json(&config_dir, json!({ "statusLine": "their-line.sh" }));
+        assert_eq!(
+            commit_status_line(&settings_path, Some(&desired.clone()), Some(desired))
+                .expect("third"),
+            StatusLineCommit::Stale
+        );
+    }
+
+    #[test]
+    fn a_status_line_configured_while_installing_is_wrapped_rather_than_lost() {
+        // Regression: a574720 decided what to wrap from a snapshot taken at the
+        // top of the install and committed that decision after the script and
+        // the record were written. A `statusLine` configured inside that window
+        // was overwritten: it was neither wrapped — so it stopped rendering —
+        // nor remembered, so removal handed back a command the user had already
+        // replaced.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(&config_dir, json!({ "model": "claude-fable-5" }));
+        let exe = temp.path().join("taurhaus-daemon");
+        let configured = json!({ "type": "command", "command": "my-line.sh" });
+
+        let raced = std::sync::atomic::AtomicBool::new(false);
+        let install = install_statusline_at(&config_dir, &exe, &sink_for(&temp), &|| {
+            if raced.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            write_settings_json(
+                &config_dir,
+                json!({ "model": "claude-fable-5", "statusLine": configured.clone() }),
+            );
+        })
+        .expect("install");
+
+        assert!(install.changed && install.wrapped);
+        assert!(
+            script_of(&config_dir).contains("| my-line.sh\n"),
+            "the command configured mid-install must be wrapped, not dropped: {}",
+            script_of(&config_dir)
+        );
+        assert_eq!(
+            read_record(&config_dir.join(HOOKS_DIRNAME))
+                .expect("record")
+                .wrapped,
+            Some(configured.clone())
+        );
+        assert!(statusline_is_installed_at(&config_dir));
+
+        // And removal gives back the command that was actually configured.
+        assert!(remove_statusline_at(&config_dir).expect("remove"));
+        assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], configured);
     }
 
     #[test]
@@ -914,4 +1067,126 @@ mod tests {
             "{ not json"
         );
     }
+
+    /// A stand-in for the sink, or for the command a user had configured.
+    #[cfg(unix)]
+    fn write_stub(path: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        fs::create_dir_all(path.parent().expect("parent")).expect("stub dir");
+        fs::write(path, format!("#!/usr/bin/env bash\n{body}\n")).expect("write stub");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod stub");
+    }
+
+    /// The generated script, run the way Claude Code runs it.
+    #[cfg(unix)]
+    fn run_script(config_dir: &Path, payload: &str) -> (bool, String) {
+        use std::io::Write as _;
+        use std::process::{Command, Stdio};
+
+        let script = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        let mut child = Command::new("bash")
+            .arg(&script)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("run the status line");
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(payload.as_bytes())
+            .expect("feed the payload");
+        let output = child.wait_with_output().expect("status line finishes");
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stdout).to_string(),
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_status_line_taurhaus_installs_never_renders_a_blank_row() {
+        // Regression: a574720 printed whatever the sink printed and nothing
+        // else. The sink prints nothing for a payload with no model and no
+        // windows, and nothing for one it cannot parse — so the row taurhaus
+        // took over from an account that had no status line of its own went
+        // blank, which is exactly what installing a renderer was meant to
+        // prevent.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let exe = temp.path().join("bin").join("taurhaus-daemon");
+        // A sink that reads the payload and finds nothing worth a line.
+        write_stub(&exe, "cat >/dev/null\nexit 0");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        for payload in ["{}", "not json at all", "", r#"{"model":{}}"#] {
+            let (ok, line) = run_script(&config_dir, payload);
+            assert!(ok, "the status line must not fail on '{payload}'");
+            assert!(
+                !line.trim().is_empty(),
+                "'{payload}' left the user's status line blank"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_sink_that_cannot_run_still_leaves_a_line() {
+        // Regression: a574720 sent the sink's stderr to `/dev/null` and printed
+        // its (empty) stdout. A daemon that had been moved or removed since the
+        // install therefore cost the user the whole row, silently.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let missing = temp.path().join("bin").join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &missing, &sink_for(&temp)).expect("install");
+
+        let (ok, line) = run_script(&config_dir, OBSERVED_PAYLOAD_FOR_SCRIPT);
+        assert!(ok, "a missing sink must not fail the status line");
+        assert!(!line.trim().is_empty(), "a missing sink blanked the row");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_line_is_the_sink_s_whenever_the_sink_has_one() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let exe = temp.path().join("bin").join("taurhaus-daemon");
+        write_stub(&exe, "cat >/dev/null\necho 'Haiku 4.5 · 5h 26% · 7d 17%'");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        let (ok, line) = run_script(&config_dir, OBSERVED_PAYLOAD_FOR_SCRIPT);
+
+        assert!(ok);
+        assert_eq!(line, "Haiku 4.5 · 5h 26% · 7d 17%\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_wrapped_status_line_is_never_given_a_fallback_of_ours() {
+        // The fallback belongs to the row taurhaus took over. A user whose own
+        // command chooses to print nothing has chosen an empty row, and putting
+        // taurhaus's text there would be the disturbance wrapping exists to
+        // avoid.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let theirs = temp.path().join("statusline-zq.sh");
+        write_stub(&theirs, "cat >/dev/null");
+        write_settings_json(
+            &config_dir,
+            json!({ "statusLine": { "type": "command", "command": theirs.display().to_string() } }),
+        );
+        let exe = temp.path().join("bin").join("taurhaus-daemon");
+        write_stub(&exe, "cat >/dev/null");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        let (ok, line) = run_script(&config_dir, OBSERVED_PAYLOAD_FOR_SCRIPT);
+
+        assert!(ok);
+        assert_eq!(line, "", "their empty line is theirs to keep: {line:?}");
+    }
+
+    #[cfg(unix)]
+    const OBSERVED_PAYLOAD_FOR_SCRIPT: &str =
+        r#"{"session_id":"c530b681","model":{"display_name":"Haiku 4.5"}}"#;
 }

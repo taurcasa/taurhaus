@@ -270,6 +270,33 @@ describe('claudeAccounts store', () => {
     ])
   })
 
+  // Regression: a574720 copied every account's usage from the report, `null`
+  // included. The sink cannot be read while a compacting writer holds it, and
+  // the backend answers such a refresh with no numbers at all — so the meter on
+  // screen went blank for an account whose record was still on disk. The
+  // numbers carry the moment they were observed, so keeping the last ones is
+  // the honest answer: the meter labels its own age.
+  it('keeps the numbers it has when a refresh brings none', async () => {
+    const usage = {
+      five_hour: { used_percentage: 81, resets_at: 1787784600 },
+      seven_day: { used_percentage: 44, resets_at: 1788300000 },
+      observed_at: '2026-08-27T12:00:00Z',
+    }
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage }]))
+    await refreshClaudeAccounts()
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+
+    listClaudeAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, usage: null }]))
+    await refreshClaudeAccountUsage()
+
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+
+    // Detection answers with the same numbers from the same file, so it keeps
+    // them for the same reason.
+    await refreshClaudeAccounts({ force: true })
+    expect(claudeAccounts.accounts[1].usage).toEqual(usage)
+  })
+
   it('keeps the accounts it knows when a usage refresh cannot run', async () => {
     listClaudeAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
     await refreshClaudeAccounts()

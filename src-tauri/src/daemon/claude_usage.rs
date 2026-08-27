@@ -16,6 +16,12 @@
 //! lock that is never waited on — a refresh that queues is a terminal line that
 //! queues with it, and a dropped record costs one keystroke.
 //!
+//! The read side takes the opposite trade. It waits a bounded moment for that
+//! lock, and if it never comes it answers "unknown" rather than reading a file
+//! a writer is in the middle of truncating and rewriting: a half-read sink
+//! reports subscriptions as having no usage, and nothing on screen can tell
+//! that apart from a subscription that has never reported at all.
+//!
 //! Nothing here reads credentials: the payload is Claude Code's own documented
 //! status-line contract, and the account id comes from the config dir's
 //! `.claude.json`, the same file account detection already reads.
@@ -417,43 +423,52 @@ fn latest_per_account(records: Vec<ClaudeUsageRecord>) -> HashMap<PathBuf, Claud
     latest
 }
 
-/// The newest record per account in the sink.
+/// The newest record per account in the sink, when the sink can be vouched for.
 ///
 /// The whole file, not the tail the write path uses: one busy subscription
 /// produces records for hours, and the quiet account whose last observation
 /// they pushed out of view is exactly the one the user is deciding about. The
 /// file is capped at 5 MB, so "the whole file" is bounded, and this runs on the
 /// read side — once per `list_claude_accounts`, not once per keystroke.
-pub fn latest_usage_records(path: &Path) -> HashMap<PathBuf, ClaudeUsageRecord> {
+///
+/// `None` is "unknown", and it is not the same answer as an empty map. The
+/// writer that holds this file is compacting it: truncating it and writing it
+/// back. A read that goes ahead without the lock sees whatever has landed so
+/// far — half the accounts, or none of them — and reports the rest as having no
+/// usage, which is indistinguishable from a subscription that has never run.
+/// A missing sink, on the other hand, *is* an answer: nothing has reported yet.
+pub fn latest_usage_records(path: &Path) -> Option<HashMap<PathBuf, ClaudeUsageRecord>> {
     let Ok(mut file) = File::open(path) else {
-        return HashMap::new();
+        return Some(HashMap::new());
     };
-    // Compaction truncates and rewrites the sink in place under an exclusive
-    // lock. Reading through that window returns an empty file, which the UI
-    // cannot tell apart from "nothing has ever reported".
-    let locked = wait_for_shared_lock(&file);
+    if !wait_for_shared_lock(&file) {
+        tracing::debug!(
+            path = %path.display(),
+            "Claude usage sink stayed locked; leaving the numbers as they are"
+        );
+        return None;
+    }
     let records = (|| -> Result<Vec<ClaudeUsageRecord>, String> {
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .map_err(|error| format!("failed to read Claude usage sink: {error}"))?;
         Ok(parse_records(&contents))
     })();
-    if locked {
-        let _ = FileExt::unlock(&file);
-    }
+    let _ = FileExt::unlock(&file);
     match records {
-        Ok(records) => latest_per_account(records),
+        Ok(records) => Some(latest_per_account(records)),
         Err(error) => {
             tracing::debug!(path = %path.display(), error, "Claude usage sink unreadable");
-            HashMap::new()
+            None
         }
     }
 }
 
-/// Wait a bounded moment for a shared lock, and read anyway if it never comes.
+/// Wait a bounded moment for a shared lock. `false` means it never came.
 ///
-/// A wedged writer must not stall an IPC command; a compacting one takes
-/// milliseconds, and waiting for it is the whole point.
+/// A wedged writer must not stall an IPC command, and it does not get to be
+/// answered for either: the caller reports "unknown" instead of reading a file
+/// somebody else is in the middle of rewriting.
 fn wait_for_shared_lock(file: &File) -> bool {
     let deadline = std::time::Instant::now() + READ_LOCK_WAIT;
     loop {
@@ -471,12 +486,16 @@ fn wait_for_shared_lock(file: &File) -> bool {
 ///
 /// Accounts are matched on the config dir the record names, and on the account
 /// id when a dir has moved. An account with no record keeps `usage: None` —
-/// nothing has reported for it yet, which is not the same as zero usage.
+/// nothing has reported for it yet, which is not the same as zero usage. A sink
+/// that could not be read changes nothing at all: whatever the caller already
+/// knew about these accounts is better than a number a busy file half-told us.
 pub fn attach_usage_from(accounts: &mut [ClaudeAccount], path: &Path) {
     if accounts.is_empty() {
         return;
     }
-    let records = latest_usage_records(path);
+    let Some(records) = latest_usage_records(path) else {
+        return;
+    };
     if records.is_empty() {
         return;
     }
@@ -800,7 +819,7 @@ mod tests {
         assert!(outcome.truncated && outcome.written);
         assert!(fs::metadata(&sink).expect("stat").len() < MAX_CLAUDE_USAGE_BYTES);
 
-        let latest = latest_usage_records(&sink);
+        let latest = latest_usage_records(&sink).expect("the sink can be read");
         assert_eq!(latest.len(), 2);
         assert_eq!(
             latest
@@ -1040,7 +1059,7 @@ mod tests {
         // Still far below the cap, so nothing has compacted it away either.
         assert!(fs::metadata(&sink).expect("stat").len() < MAX_CLAUDE_USAGE_BYTES);
 
-        let latest = latest_usage_records(&sink);
+        let latest = latest_usage_records(&sink).expect("the sink can be read");
 
         assert_eq!(latest.len(), 2);
         assert_eq!(
@@ -1089,10 +1108,101 @@ mod tests {
         };
         std::thread::sleep(std::time::Duration::from_millis(50));
 
-        let latest = latest_usage_records(&sink);
+        let latest = latest_usage_records(&sink).expect("the sink can be read");
 
         compacting.join().expect("compaction thread");
         assert_eq!(latest.len(), 2);
+    }
+
+    #[test]
+    fn a_sink_held_past_the_wait_is_unknown_rather_than_half_read() {
+        // Regression: a574720 waited half a second for a shared lock and then
+        // read the file anyway. The writer it waits for is compacting — it
+        // truncates the sink and writes it back — so a read that gives up sees
+        // whatever has been rewritten so far: one account's record and not the
+        // other's. Every account missing from that half then came back with no
+        // usage at all, which is the answer the lock was added to stop.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = temp.path().join(CLAUDE_USAGE_FILENAME);
+        let first_dir = temp.path().join(".claude");
+        let second_dir = temp.path().join(".claude-account2");
+        for dir in [&first_dir, &second_dir] {
+            fs::create_dir_all(dir).expect("config dir");
+        }
+        append_usage_at(&sink, &record(&first_dir, 0, 26.0)).expect("append");
+        let mut second = record(&second_dir, 60, 4.0);
+        second.account_id = Some("account-2".to_string());
+        append_usage_at(&sink, &second).expect("append");
+        let whole = fs::read(&sink).expect("sink readable");
+        let half = whole
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map(|end| whole[..=end].to_vec())
+            .expect("two records");
+
+        let (rewritten, wait_for_reader) = std::sync::mpsc::channel();
+        let (reader_done, resume) = std::sync::mpsc::channel::<()>();
+        let compacting = {
+            let sink = sink.clone();
+            let whole = whole.clone();
+            std::thread::spawn(move || {
+                let mut file = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&sink)
+                    .expect("open");
+                file.lock_exclusive().expect("lock");
+                file.set_len(0).expect("truncate");
+                file.write_all(&half).expect("half a file");
+                file.flush().expect("flush");
+                rewritten.send(()).expect("announce");
+                let _ = resume.recv();
+                file.seek(SeekFrom::Start(0)).expect("rewind");
+                file.write_all(&whole).expect("restore");
+                file.flush().expect("flush");
+                FileExt::unlock(&file).expect("unlock");
+            })
+        };
+        wait_for_reader.recv().expect("the writer got there first");
+
+        assert_eq!(
+            latest_usage_records(&sink),
+            None,
+            "a sink that stayed locked is unknown, not empty"
+        );
+        let mut accounts = vec![
+            known(account("account-1", &first_dir), 55.0),
+            known(account("account-2", &second_dir), 9.0),
+        ];
+        attach_usage_from(&mut accounts, &sink);
+
+        reader_done.send(()).expect("release the writer");
+        compacting.join().expect("compaction thread");
+        assert_eq!(
+            accounts
+                .iter()
+                .map(|account| account
+                    .usage
+                    .as_ref()
+                    .and_then(|usage| usage.five_hour)
+                    .map(|window| window.used_percentage))
+                .collect::<Vec<_>>(),
+            vec![Some(55.0), Some(9.0)],
+            "a sink that could not be locked told us nothing, and nothing is what it may change"
+        );
+    }
+
+    /// An account whose usage was read at some earlier, luckier moment.
+    fn known(mut account: ClaudeAccount, five_hour: f64) -> ClaudeAccount {
+        account.usage = Some(ClaudeAccountUsage {
+            five_hour: Some(ClaudeUsageWindow {
+                used_percentage: five_hour,
+                resets_at: Some(1_787_784_600),
+            }),
+            seven_day: None,
+            observed_at: ts(-600),
+        });
+        account
     }
 
     #[test]

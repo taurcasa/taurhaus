@@ -10,6 +10,10 @@
    * window that no longer exists — and, for an account nothing has reported
    * for, nothing at all. An empty meter is the honest answer; a 0 % bar would
    * be a lie that sends the user to the subscription with the least headroom.
+   *
+   * `resets_at` is optional in that payload. A window that names no reset is
+   * still a percentage worth showing; it is dated by when it was observed
+   * instead, and it is never treated as a window that has already reset.
    */
   let {
     usage = null,
@@ -48,6 +52,10 @@
    */
   function live(window) {
     if (!Number.isFinite(Number(window?.used_percentage))) return null
+    // Only a reset the payload actually named can have passed. `resets_at` is
+    // optional — the IPC layer sends null for a window without one — and
+    // `Number(null)` is 0, a reset that passed in 1970.
+    if (window.resets_at == null) return window
     const resetsAt = Number(window.resets_at)
     if (Number.isFinite(resetsAt) && resetsAt * 1000 <= now) return null
     return window
@@ -141,6 +149,12 @@
     {:else if nextResetMs != null}
       <span class="text-[10px] leading-none {staleTone}" data-testid="claude-usage-reset">
         resets in {duration(nextResetMs)}
+      </span>
+    {:else if Number.isFinite(ageMs)}
+      <!-- `resets_at` is optional in the payload. Without it the only thing
+           these numbers can be dated by is when they were observed. -->
+      <span class="text-[10px] leading-none {staleTone}" data-testid="claude-usage-observed">
+        seen {duration(ageMs)} ago
       </span>
     {/if}
   </span>

@@ -127,13 +127,22 @@ export function refreshClaudeAccounts({ force = false } = {}) {
  * of detection caching is for. This asks for the current numbers and copies
  * only those onto the accounts already on screen, so opening the chip never
  * reshuffles it.
+ *
+ * A refresh that brings no numbers for an account leaves the ones it has. The
+ * backend reports nothing while the sink is being rewritten, and a record it
+ * has already written does not go away — so blanking the meter would say "this
+ * subscription has never reported" about one that reported a minute ago. The
+ * numbers carry the moment they were observed and the meter labels its own age,
+ * which is why keeping them is the honest answer.
  */
 export function refreshClaudeAccountUsage() {
   return Promise.resolve(listClaudeAccounts())
     .then((report) => {
       if (report?.degraded) return
       const usageById = new Map(
-        (report?.accounts ?? []).map((account) => [account.id, account.usage ?? null]),
+        (report?.accounts ?? [])
+          .filter((account) => account.usage)
+          .map((account) => [account.id, account.usage]),
       )
       claudeAccounts.accounts = claudeAccounts.accounts.map((account) =>
         usageById.has(account.id)
@@ -147,6 +156,26 @@ export function refreshClaudeAccountUsage() {
     })
 }
 
+/**
+ * Detected accounts, keeping the numbers this answer did not bring its own for.
+ *
+ * The same rule as a usage refresh, for the same reason: usage is unreadable
+ * for as long as the sink is being rewritten, and a record already written does
+ * not go away. Dropping the numbers on a detection pass would blank the meter
+ * for an account that reported a minute ago.
+ */
+function keepKnownUsage(accounts) {
+  const known = new Map(
+    claudeAccounts.accounts
+      .filter((account) => account.usage)
+      .map((account) => [account.id, account.usage]),
+  )
+  return accounts.map((account) => ({
+    ...account,
+    usage: account.usage ?? known.get(account.id) ?? null,
+  }))
+}
+
 function detectClaudeAccounts() {
   const accounts = Promise.resolve(listClaudeAccounts()).then((report) => {
     if (report?.degraded) {
@@ -158,7 +187,7 @@ function detectClaudeAccounts() {
       detection = null
       return
     }
-    claudeAccounts.accounts = report?.accounts ?? []
+    claudeAccounts.accounts = keepKnownUsage(report?.accounts ?? [])
     claudeAccounts.degraded = false
   })
   const settings = Promise.resolve(getSettings())
