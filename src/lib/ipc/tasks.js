@@ -45,6 +45,20 @@ function normalizeCommitsInRange(raw) {
   }
 }
 
+function normalizeArchivedSessions(raw) {
+  const result = raw && typeof raw === 'object' ? raw : {}
+  return {
+    ...result,
+    sessions: Array.isArray(result.sessions)
+      ? result.sessions.map((session) => ({
+          ...session,
+          account_label: session.account_label ?? session.accountLabel ?? null,
+        }))
+      : [],
+    errors: Array.isArray(result.errors) ? result.errors : [],
+  }
+}
+
 export function getProjectTasks(projectId) {
   return invokeOrMock('get_project_tasks', { projectId }, () => buildMockProjectTasks())
 }
@@ -56,7 +70,11 @@ export function getTaskDetail(projectId, taskId, source, sourceKey) {
 }
 
 export function getArchivedSessions(projectId) {
-  return invokeOrMock('get_archived_sessions', { projectId }, () => buildMockArchivedSessions())
+  return invokeOrMock(
+    'get_archived_sessions',
+    { projectId },
+    () => buildMockArchivedSessions()
+  ).then(normalizeArchivedSessions)
 }
 
 export function getCommitFiles(projectId, hash) {

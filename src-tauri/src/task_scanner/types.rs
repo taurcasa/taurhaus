@@ -147,6 +147,9 @@ pub struct SessionInfo {
 pub struct ArchivedSession {
     /// Session UUID when available; null for tasks without a session grouping key.
     pub session_id: Option<String>,
+    /// Account display label inferred from the transcript's owning config dir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_label: Option<String>,
     /// Session start time (ISO 8601).
     pub started_at: Option<String>,
     /// Session end time (ISO 8601).

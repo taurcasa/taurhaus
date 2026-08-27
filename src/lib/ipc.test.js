@@ -1131,6 +1131,21 @@ describe('ipc module', () => {
       delete window.__TAURI_INTERNALS__
     })
 
+    // Regression: 179a767 rendered `session.account_label`, but the archived
+    // session IPC boundary did not normalize a camelCase accountLabel field.
+    it('normalizes archived-session account labels from Tauri', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        sessions: [{ session_id: 'session-1', accountLabel: 'Work subscription' }],
+        errors: [],
+      })
+
+      const result = await ipc.getArchivedSessions('/tmp/project')
+
+      expect(result.sessions[0].account_label).toBe('Work subscription')
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('getProjectTasks mock includes source_outcomes', async () => {
       delete window.__TAURI_INTERNALS__
       const result = await ipc.getProjectTasks('/tmp/project')

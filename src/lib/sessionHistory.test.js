@@ -142,6 +142,21 @@ describe('SessionHistory component', () => {
     })
   })
 
+  // Regression: 179a767 added the account-label markup without a producer,
+  // leaving the branch unreachable for every archived session returned by IPC.
+  it('renders the account label carried by an archived session', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [makeSession({ account_label: 'Work subscription' })],
+      errors: [],
+    })
+
+    render(SessionHistory, { props: { projectPath: '/test', dark: false } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-account-label').textContent).toBe('Work subscription')
+    })
+  })
+
   // --- Expand/collapse ---
 
   it('sessions start collapsed (no task list visible)', async () => {
