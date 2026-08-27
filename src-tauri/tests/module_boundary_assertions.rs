@@ -229,7 +229,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/task_scanner/codex.rs",
         "src/task_scanner/gemini.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 61;
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 60;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
