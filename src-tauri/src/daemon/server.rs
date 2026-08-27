@@ -81,35 +81,16 @@ pub fn run(
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
 ) -> std::io::Result<()> {
-    // The daemon owns the Claude status-line bridge on every platform: on
-    // Windows the config dirs live in WSL, where only the daemon can reach
-    // them, and on native hosts a single owner is what keeps the app and the
-    // daemon from rewriting each other's script with their own executable.
-    // Passed as a closure rather than called here so `run_for_test` — which
-    // must never write into real config dirs — shares the same startup.
-    run_with_installer(
-        config,
-        shutdown,
-        provider,
-        None,
-        install_claude_usage_statusline,
-    )
+    // Passed as a closure rather than called here so `run_for_test` never
+    // writes into real config dirs.
+    run_with_installer(config, shutdown, provider, None, retire_legacy_bridge)
 }
 
-fn install_claude_usage_statusline() {
-    let Ok(exe) = std::env::current_exe() else {
-        tracing::debug!("Claude usage status line skipped: the daemon has no resolvable path");
-        return;
-    };
-    crate::session_scanner::claude_statusline::ensure_statusline_bridge(&exe);
+fn retire_legacy_bridge() {
+    crate::session_scanner::accounts::legacy_statusline::retire_once();
 }
 
-/// Start the daemon, with the status-line install running beside the listener.
-///
-/// Never in front of it: the install probes `claude --version` with a five
-/// second timeout, and `daemon::launcher` gives the whole daemon five seconds
-/// to answer a TCP connect. One hung probe would cost a healthy daemon its
-/// startup.
+/// Start the daemon, with legacy bridge cleanup running beside the listener.
 fn run_with_installer<F>(
     config: &DaemonConfig,
     shutdown: Arc<AtomicBool>,
@@ -121,10 +102,10 @@ where
     F: FnOnce() + Send + 'static,
 {
     if let Err(error) = std::thread::Builder::new()
-        .name("claude-usage-statusline".to_string())
+        .name("claude-statusline-retire".to_string())
         .spawn(installer)
     {
-        tracing::warn!(error = %error, "Claude usage status line install not spawned");
+        tracing::warn!(error = %error, "Legacy Claude status line cleanup not spawned");
     }
     run_with_compaction_teams_dir(config, shutdown, provider, compaction_teams_dir)
 }

@@ -4,6 +4,7 @@
 //! registry-provided traits and these normalised wire types.
 
 pub mod claude;
+pub mod legacy_statusline;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

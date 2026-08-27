@@ -22,7 +22,6 @@ mod scans;
 mod types;
 
 pub mod accounts;
-pub mod claude_statusline;
 pub mod cli_tool;
 pub mod compaction_extractor;
 pub mod compaction_watcher;

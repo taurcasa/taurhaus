@@ -20,7 +20,6 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::daemon::claude_usage::ClaudeAccountUsage;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::accounts::AccountOrigin;
 #[cfg(test)]
@@ -346,46 +345,13 @@ pub struct ClaudeAccount {
     /// moves taurhaus's root, and Claude Code knows nothing about that.
     #[serde(default)]
     pub is_process_default: bool,
-    /// What this subscription's status line last reported about its 5-hour and
-    /// 7-day limits. `None` while nothing has reported: usage only flows while
-    /// a session of that account is running, so a fresh install, an account
-    /// that has not been used, and an account at 0 % are three different
-    /// things and only the last of them is a number.
+    /// The latest in-memory OAuth usage snapshot, when one has been fetched.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub usage: Option<ClaudeAccountUsage>,
+    pub usage: Option<UsageSnapshot>,
 }
 
 impl From<ClaudeAccount> for Account {
     fn from(account: ClaudeAccount) -> Self {
-        let usage = account.usage.map(|usage| {
-            let mut windows = Vec::new();
-            if let Some(window) = usage.five_hour {
-                windows.push(UsageWindow {
-                    key: "session".to_string(),
-                    title: "Current session".to_string(),
-                    used_percentage: window.used_percentage,
-                    resets_at: window.resets_at,
-                    severity: Severity::Normal,
-                    is_active: true,
-                });
-            }
-            if let Some(window) = usage.seven_day {
-                windows.push(UsageWindow {
-                    key: "weekly_all".to_string(),
-                    title: "Current week (all models)".to_string(),
-                    used_percentage: window.used_percentage,
-                    resets_at: window.resets_at,
-                    severity: Severity::Normal,
-                    is_active: true,
-                });
-            }
-            UsageSnapshot {
-                observed_at: usage.observed_at,
-                status: UsageStatus::Ok,
-                windows,
-                note: None,
-            }
-        });
         Self {
             tool: crate::session_scanner::cli_tool::CliTool::Claude,
             id: account.id.clone(),
@@ -401,7 +367,7 @@ impl From<ClaudeAccount> for Account {
             },
             is_default: account.is_default,
             is_process_default: account.is_process_default,
-            usage,
+            usage: account.usage,
         }
     }
 }

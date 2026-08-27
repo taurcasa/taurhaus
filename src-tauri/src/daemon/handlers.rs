@@ -102,13 +102,6 @@ fn handle_list_accounts(id: &str, params: &serde_json::Value) -> DaemonResponse 
     };
     let mut accounts = crate::session_scanner::accounts::detect(params.tool);
     crate::daemon::usage_poller::attach_usage(params.tool, &mut accounts);
-    // And an account that signed in since the last pass — or one whose
-    // `.claude.json` was mid-rewrite when it ran — gets its status-line bridge
-    // here rather than waiting for the next daemon start. Behind the reply, and
-    // throttled to the same minute the account scan itself is cached for.
-    if let Ok(exe) = std::env::current_exe() {
-        crate::session_scanner::claude_statusline::ensure_statusline_bridge_soon(exe);
-    }
     DaemonResponse::ok(
         id,
         protocol::AccountsResult {

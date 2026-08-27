@@ -23,7 +23,7 @@ pub(crate) fn spawn_background_startup_tasks(app: AppHandle) {
 // the same generated script and overwrite each other on every start. On
 // Windows it would be worse than churn — account detection reaches the WSL
 // home through its UNC path, so the app would write a bash script pointing at
-// a Windows binary. See `daemon::server::run` and `claude_statusline`.
+// a Windows binary. See `daemon::server::run`.
 
 fn run_background_task<F>(task_group: &'static str, task: F)
 where

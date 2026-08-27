@@ -1,5 +1,4 @@
 pub mod auth;
-pub mod claude_usage;
 pub mod codex_notify;
 pub(crate) mod compaction;
 pub mod event_listener;
