@@ -17,7 +17,7 @@ use crate::session_scanner::SessionState;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 mod claude;
@@ -26,8 +26,10 @@ mod codex;
 mod gemini;
 
 pub use claude::ClaudeResolver;
-pub use claude_registry::config_dir_for_transcript;
+pub use claude_registry::{config_dir_for_transcript, SessionSource};
+pub(crate) use claude_registry::{ClaudeRegistrySessionSource, NoSessionSource};
 pub use codex::CodexResolver;
+pub(crate) use codex::CodexSessionSource;
 pub use gemini::GeminiResolver;
 
 /// Threshold: if any session file mtime is less than this, session is Active.
@@ -114,15 +116,7 @@ pub(super) trait ActivitySource {
 /// Returns a `&'static` reference — resolvers are created once and reused.
 /// Each resolver is initialized with its base directory derived from `$HOME`.
 pub fn resolver_for(tool: CliTool) -> &'static dyn SessionResolver {
-    static CLAUDE: OnceLock<ClaudeResolver> = OnceLock::new();
-    static CODEX: OnceLock<CodexResolver> = OnceLock::new();
-    static GEMINI: OnceLock<GeminiResolver> = OnceLock::new();
-
-    match tool {
-        CliTool::Claude => CLAUDE.get_or_init(ClaudeResolver::new),
-        CliTool::Codex => CODEX.get_or_init(CodexResolver::new),
-        CliTool::Gemini => GEMINI.get_or_init(GeminiResolver::new),
-    }
+    crate::session_scanner::cli_tool::spec(tool).session_resolver()
 }
 
 // ---------------------------------------------------------------------------
@@ -146,16 +140,9 @@ pub fn detect_runtime_idle(
     pane_id: Option<&str>,
     tool: CliTool,
 ) -> IdleResult {
-    match tool {
-        CliTool::Codex => {
-            static CODEX: OnceLock<CodexResolver> = OnceLock::new();
-            CODEX
-                .get_or_init(CodexResolver::new)
-                .detect_idle_for_pid(project_path, pid, pane_id)
-        }
-        CliTool::Claude => claude::claude_detect_runtime_idle(project_path, pid),
-        _ => detect_idle(project_path, tool),
-    }
+    crate::session_scanner::cli_tool::spec(tool)
+        .session_source()
+        .resolve(project_path, pid, pane_id)
 }
 
 #[cfg(test)]

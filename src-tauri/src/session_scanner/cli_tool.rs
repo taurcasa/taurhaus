@@ -354,6 +354,43 @@ impl From<&CliToolSpec> for CliToolDescriptor {
     }
 }
 
+impl CliToolSpec {
+    pub fn session_source(&self) -> &'static dyn crate::session_scanner::idle::SessionSource {
+        static CLAUDE: crate::session_scanner::idle::ClaudeRegistrySessionSource =
+            crate::session_scanner::idle::ClaudeRegistrySessionSource;
+        static CODEX: crate::session_scanner::idle::CodexSessionSource =
+            crate::session_scanner::idle::CodexSessionSource;
+        static NONE: crate::session_scanner::idle::NoSessionSource =
+            crate::session_scanner::idle::NoSessionSource;
+
+        match self.tool {
+            CliTool::Claude => &CLAUDE,
+            CliTool::Codex => &CODEX,
+            CliTool::Gemini => &NONE,
+        }
+    }
+
+    pub(crate) fn session_resolver(
+        &self,
+    ) -> &'static dyn crate::session_scanner::idle::SessionResolver {
+        use std::sync::OnceLock;
+
+        static CLAUDE: OnceLock<crate::session_scanner::idle::ClaudeResolver> = OnceLock::new();
+        static CODEX: OnceLock<crate::session_scanner::idle::CodexResolver> = OnceLock::new();
+        static GEMINI: OnceLock<crate::session_scanner::idle::GeminiResolver> = OnceLock::new();
+
+        match self.tool {
+            CliTool::Claude => {
+                CLAUDE.get_or_init(crate::session_scanner::idle::ClaudeResolver::new)
+            }
+            CliTool::Codex => CODEX.get_or_init(crate::session_scanner::idle::CodexResolver::new),
+            CliTool::Gemini => {
+                GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new)
+            }
+        }
+    }
+}
+
 pub fn descriptors() -> Vec<CliToolDescriptor> {
     all().iter().map(Into::into).collect()
 }

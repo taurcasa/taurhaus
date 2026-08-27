@@ -148,3 +148,18 @@ fn registry_declares_native_and_floor_capabilities() {
     assert!(!gemini.capabilities.catalog || gemini.capabilities.model_flag.is_some());
     assert_eq!(gemini.stop_strategy, StopStrategy::SlashExit);
 }
+
+#[test]
+fn undeclared_session_source_uses_the_non_authoritative_floor() {
+    // Regression: commit cb32d7a made Gemini identity depend on a bespoke
+    // project transcript lookup; an undeclared source must stay on the floor.
+    let result = spec(CliTool::Gemini).session_source().resolve(
+        "/tmp/taurhaus-conformance-project",
+        42,
+        Some("%42"),
+    );
+
+    assert_eq!(result.session_id, None);
+    assert_eq!(result.jsonl_path, None);
+    assert!(!result.authoritative);
+}

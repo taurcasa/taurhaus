@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
+use super::claude_registry::SessionSource;
+
 /// Resolves Codex CLI session files from `~/.codex/sessions/YYYY/MM/DD/`.
 ///
 /// Codex organizes sessions by date, not by project. To find the session
@@ -22,6 +24,17 @@ pub struct CodexResolver {
     /// `~/.codex/sessions/` (or None if $HOME is unavailable).
     base_dir: Option<PathBuf>,
     notify_path: PathBuf,
+}
+
+pub struct CodexSessionSource;
+
+impl SessionSource for CodexSessionSource {
+    fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult {
+        static RESOLVER: OnceLock<CodexResolver> = OnceLock::new();
+        RESOLVER
+            .get_or_init(CodexResolver::new)
+            .detect_idle_for_pid(project_path, pid, pane_id)
+    }
 }
 
 struct CodexNotifyActivitySource<'a> {

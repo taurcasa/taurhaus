@@ -31,6 +31,27 @@ use super::{
     path_to_slug, ActivitySource, IdleResult, ACTIVE_THRESHOLD,
 };
 
+/// Per-process session identity and transcript binding supplied by a harness.
+pub trait SessionSource: Send + Sync {
+    fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult;
+}
+
+pub struct ClaudeRegistrySessionSource;
+
+impl SessionSource for ClaudeRegistrySessionSource {
+    fn resolve(&self, project_path: &str, pid: u32, _pane_id: Option<&str>) -> IdleResult {
+        super::claude::claude_detect_runtime_idle(project_path, pid)
+    }
+}
+
+pub struct NoSessionSource;
+
+impl SessionSource for NoSessionSource {
+    fn resolve(&self, _project_path: &str, _pid: u32, _pane_id: Option<&str>) -> IdleResult {
+        IdleResult::idle()
+    }
+}
+
 pub(super) struct ClaudeRegistryActivitySource<'a> {
     pub config_dir: &'a Path,
 }
