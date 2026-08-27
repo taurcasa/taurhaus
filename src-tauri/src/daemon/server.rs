@@ -101,7 +101,7 @@ fn install_claude_usage_statusline() {
         tracing::debug!("Claude usage status line skipped: the daemon has no resolvable path");
         return;
     };
-    crate::session_scanner::claude_statusline::install_statusline_for_detected_accounts(&exe);
+    crate::session_scanner::claude_statusline::ensure_statusline_bridge(&exe);
 }
 
 /// Start the daemon, with the status-line install running beside the listener.

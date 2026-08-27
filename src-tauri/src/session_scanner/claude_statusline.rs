@@ -38,9 +38,23 @@
 //!   and a row that *is* ours whose record cannot be read stops the removal
 //!   where it stands, because the command it wraps is written down nowhere
 //!   else;
+//! * a row that is not ours but still *runs* our script — `/bin/bash <script>`,
+//!   an edit of the command an install wrote — is neither wrapped, rewritten
+//!   nor removed underneath: wrapping it would put an invocation of the script
+//!   inside the script, and deleting it would leave the row naming a file that
+//!   is gone. `<script>.backup` is a different word and stays unrelated;
+//! * a `settings.json` the user symlinked is written *through*, never over: the
+//!   rename that publishes a new file lands in the link's target directory, so
+//!   a dotfiles-managed or shared settings file keeps both the link and the
+//!   file it points at;
 //! * neither generated file is published wider than the settings the wrapped
 //!   command came out of: the script is 0700 and the record 0600, because both
-//!   carry that command verbatim.
+//!   carry that command verbatim — checked on every install, not only on the
+//!   one that writes them, so a mode widened since is narrowed again;
+//! * one install at startup is not the whole story: a pass also runs whenever
+//!   anything asks for the accounts, throttled to the minute the account scan
+//!   is cached for, so an account signed in since — or one whose `.claude.json`
+//!   was mid-rewrite and named nobody — is bridged without a restart.
 //!
 //! Installation is idempotent and mirrors the compaction hook installer: a
 //! generated script under `<config dir>/hooks`, a record naming the executable
@@ -54,7 +68,9 @@
 //! shell, which knows nothing of taurhaus's environment.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
 
@@ -80,6 +96,12 @@ const SINK_DEADLINE_SECONDS: u32 = 2;
 /// underneath it. The other writers here are a person and Claude Code; one
 /// retry is already more than this has ever needed.
 const COMMIT_ATTEMPTS: usize = 3;
+/// How often the bridge is reconciled. The account scan a pass reads is cached
+/// for exactly this long, so a second pass inside one would re-read the same
+/// answer — and a pass probes `claude --version` before it decides anything.
+const BRIDGE_PASS_INTERVAL: Duration = Duration::from_secs(60);
+/// When the last reconciliation pass in this process started.
+static LAST_BRIDGE_PASS: Mutex<Option<Instant>> = Mutex::new(None);
 
 /// What one install did.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -228,6 +250,16 @@ fn install_statusline_at(
                     });
                 };
                 record.wrapped
+            } else if references_our_script(existing.as_ref(), &script_command) {
+                // Not the command an install wrote, but one that still runs
+                // this script — `/bin/bash <script>`, an edit of ours. Wrapping
+                // it would put an invocation of this script inside the script
+                // itself, and rewriting it would take a row taurhaus cannot
+                // prove it owns. It renders usage as it stands; leave it.
+                return Ok(StatuslineInstall {
+                    skipped: Some("references_script"),
+                    ..StatuslineInstall::default()
+                });
             } else {
                 existing.clone().filter(|value| !value.is_null())
             };
@@ -324,13 +356,19 @@ fn remove_statusline_with(config_dir: &Path, before_commit: &dyn Fn()) -> Result
     // only record of what it wrapped removed beside it. So: read again, and
     // hand the command back to the row as it now stands.
     let mut released = false;
-    let ours = owned_command(
-        &hooks_dir,
-        &status_line_command(&script_reference(&hooks_dir)),
-    );
+    let script_command = script_reference(&hooks_dir);
+    let ours = owned_command(&hooks_dir, &status_line_command(&script_command));
     for _ in 0..COMMIT_ATTEMPTS {
         let current = load_settings(&settings_path)?.get(STATUS_LINE_KEY).cloned();
         if !is_taurhaus_status_line(current.as_ref(), &ours) {
+            if references_our_script(current.as_ref(), &script_command) {
+                // Not a row an install wrote, so there is nothing of the
+                // user's to hand back — but it still runs this script, and
+                // deleting the script under it would leave the row naming a
+                // file that is gone: a blank status line on every refresh.
+                // Restore nothing, remove nothing, and say nothing changed.
+                return Ok(false);
+            }
             // A `statusLine` that does not name our script is somebody else's,
             // and giving them a command they replaced would be the same
             // overwrite this bridge exists to avoid. Nothing points at the
@@ -413,11 +451,59 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
         .is_some_and(|settings| is_taurhaus_status_line(settings.get(STATUS_LINE_KEY), &ours))
 }
 
+/// Reconcile the bridge for every detected account, on a thread of its own and
+/// at most once a minute.
+///
+/// One pass at startup is not enough. An account signed in since is one the
+/// scan reports and nothing installs into; so is one whose `.claude.json` was
+/// being rewritten in place when the pass ran, because a dir caught mid-write
+/// names nobody and the scan caches that for a minute. Either would have gone
+/// unbridged — no usage bar, and a chooser saying "no usage yet" about an
+/// account in use — until the daemon happened to restart. So a pass also runs
+/// whenever anything asks for the accounts: the daemon serving
+/// `list_claude_accounts`, and the app answering that same command on a native
+/// host, where the request never crosses the daemon.
+///
+/// Behind the answer, never in front of it: a pass probes two CLIs before it
+/// decides anything. And the throttle is read here rather than in the thread,
+/// so a burst of requests costs one pass rather than one thread each.
+pub fn ensure_statusline_bridge_soon(taurhaus_exe: PathBuf) {
+    if !pass_is_due(&LAST_BRIDGE_PASS, Instant::now()) {
+        return;
+    }
+    if let Err(error) = std::thread::Builder::new()
+        .name("claude-usage-statusline".to_string())
+        .spawn(move || install_statusline_for_detected_accounts(&taurhaus_exe))
+    {
+        tracing::warn!(error = %error, "Claude usage status line pass not spawned");
+    }
+}
+
+/// The same pass, on this thread — for the caller that already gave it one:
+/// daemon startup, which runs the install beside the listener rather than in
+/// front of it.
+pub fn ensure_statusline_bridge(taurhaus_exe: &Path) {
+    if !pass_is_due(&LAST_BRIDGE_PASS, Instant::now()) {
+        return;
+    }
+    install_statusline_for_detected_accounts(taurhaus_exe);
+}
+
+/// Whether enough has passed since the last pass to run another — stamping
+/// `now` when it says yes, so two callers at once produce one pass, not two.
+fn pass_is_due(last: &Mutex<Option<Instant>>, now: Instant) -> bool {
+    let mut last = last.lock().unwrap_or_else(|error| error.into_inner());
+    if last.is_some_and(|previous| now.duration_since(previous) < BRIDGE_PASS_INTERVAL) {
+        return false;
+    }
+    *last = Some(now);
+    true
+}
+
 /// Install the bridge in every detected account, when the CLI can feed it.
 ///
-/// Called by the daemon and only by the daemon. It is the process that lives in
-/// the same namespace as the config dirs on every platform, and a second
-/// installer would only bake its own executable path into the same script.
+/// Reached only through the two `ensure_statusline_bridge…` entry points above,
+/// so that every caller shares one throttle.
 ///
 /// A build older than the one this was verified against gets nothing: its
 /// payload is not documented to carry `rate_limits`, and rewriting a user's
@@ -425,7 +511,7 @@ pub fn statusline_is_installed_at(config_dir: &Path) -> bool {
 /// installed — the user downgraded, or switched to another `claude` on their
 /// PATH — it is taken back out here, because that same trade is no better for
 /// having been made yesterday.
-pub fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
+fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
     let versions = CliVersions::current();
     match statusline_bridge_action(versions) {
         BridgeAction::Install => {}
@@ -443,6 +529,15 @@ pub fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
     // baked into every script: the status line runs in the user's own shell,
     // which knows nothing of `TAURHAUS_DATA_DIR`.
     let sink_path = crate::provider::platform_paths::PlatformPaths::claude_usage_path();
+    install_for_detected_accounts(taurhaus_exe, &sink_path);
+}
+
+/// One pass over the accounts the scan reports *right now*.
+///
+/// Read fresh on every pass rather than carried over from the last one: the
+/// point of running again is that the answer changes — an account signed in, or
+/// a `.claude.json` that has finished being rewritten.
+fn install_for_detected_accounts(taurhaus_exe: &Path, sink_path: &Path) {
     for account in detect_claude_accounts_cached() {
         let mut fields = Map::new();
         fields.insert(
@@ -450,7 +545,7 @@ pub fn install_statusline_for_detected_accounts(taurhaus_exe: &Path) {
             Value::String(account.config_dir.display().to_string()),
         );
         fields.insert("account_id".to_string(), Value::String(account.id.clone()));
-        match ensure_statusline_installed_at(&account.config_dir, taurhaus_exe, &sink_path) {
+        match ensure_statusline_installed_at(&account.config_dir, taurhaus_exe, sink_path) {
             Ok(install) => {
                 if let Some(reason) = install.skipped {
                     fields.insert("reason".to_string(), Value::String(reason.to_string()));
@@ -736,15 +831,97 @@ fn push_lines(script: &mut String, lines: impl IntoIterator<Item = String>) {
 /// again, which is the safe way round: it is wrapped rather than overwritten,
 /// and the script under it is left where it stands rather than deleted.
 fn is_taurhaus_status_line(value: Option<&Value>, ours: &str) -> bool {
-    let Some(value) = value else {
+    row_command(value).is_some_and(|command| command == ours)
+}
+
+/// Whether this `statusLine` runs this config dir's script without being the
+/// row an install wrote.
+///
+/// Exact equality is the right answer to "is this ours to rewrite", and the
+/// wrong answer to "is this ours to delete underneath". A row edited from
+/// `bash '<script>'` to the equivalent `/bin/bash <script>` is neither: it is
+/// not a command taurhaus can prove it wrote, so it is not one to replace, and
+/// it is not a status line that survives its script being removed either. It
+/// renders usage exactly as it stands, and so it is left exactly as it stands.
+///
+/// The question is asked of the command's *words*, as the shell would split
+/// them — so `<script>.backup`, one word that merely starts with the script's
+/// path, stays the unrelated command it is.
+fn references_our_script(value: Option<&Value>, script_path: &str) -> bool {
+    let Some(command) = row_command(value) else {
         return false;
     };
-    let command = match value {
-        Value::String(command) => command.as_str(),
-        Value::Object(_) => value.get("command").and_then(Value::as_str).unwrap_or(""),
-        _ => "",
-    };
-    command == ours
+    shell_words(command)
+        .iter()
+        .any(|word| word.as_str() == script_path)
+}
+
+/// The command a `statusLine` runs, however the row spells it.
+fn row_command(value: Option<&Value>) -> Option<&str> {
+    match value? {
+        Value::String(command) => Some(command.as_str()),
+        value @ Value::Object(_) => value.get("command").and_then(Value::as_str),
+        _ => None,
+    }
+}
+
+/// The words a shell would split this command into.
+///
+/// Enough of one to answer a single question — does this command name our
+/// script? — so it splits on whitespace and honours the three quotings a path
+/// can be written in: single quotes take everything to the next one, double
+/// quotes take everything but their own escapes, and a bare backslash escapes
+/// the character after it. A quote nothing closes ends its word where the
+/// command does, which is what the shell itself would have nothing to run.
+fn shell_words(command: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut started = false;
+    let mut characters = command.chars().peekable();
+    while let Some(character) = characters.next() {
+        match character {
+            character if character.is_whitespace() => {
+                if started {
+                    words.push(std::mem::take(&mut word));
+                    started = false;
+                }
+            }
+            '\'' => {
+                started = true;
+                for quoted in characters.by_ref() {
+                    if quoted == '\'' {
+                        break;
+                    }
+                    word.push(quoted);
+                }
+            }
+            '"' => {
+                started = true;
+                while let Some(quoted) = characters.next() {
+                    match quoted {
+                        '"' => break,
+                        // Inside double quotes a backslash escapes only these.
+                        '\\' if matches!(characters.peek(), Some('"' | '\\' | '$' | '`')) => {
+                            word.extend(characters.next());
+                        }
+                        quoted => word.push(quoted),
+                    }
+                }
+            }
+            '\\' => {
+                started = true;
+                word.extend(characters.next());
+            }
+            character => {
+                started = true;
+                word.push(character);
+            }
+        }
+    }
+    if started {
+        words.push(word);
+    }
+    words
 }
 
 /// The `statusLine` command a row of taurhaus's says, as this install wrote it.
@@ -853,6 +1030,7 @@ fn commit_status_line(
 /// Write settings the way Claude Code's own writer does: never in place, so a
 /// reader never sees half a file.
 fn write_settings(settings_path: &Path, settings: &Map<String, Value>) -> Result<(), String> {
+    let settings_path = &resolved_settings_path(settings_path);
     let payload = serde_json::to_vec_pretty(&Value::Object(settings.clone()))
         .map_err(|error| format!("failed to serialize Claude settings: {error}"))?;
     let parent = settings_path
@@ -892,6 +1070,38 @@ fn write_settings(settings_path: &Path, settings: &Map<String, Value>) -> Result
     Ok(())
 }
 
+/// Where a `settings.json` actually keeps its bytes.
+///
+/// Reading follows a symlink on its own; the rename that publishes a new file
+/// does the opposite — it replaces the link itself, and a `settings.json` the
+/// user symlinked into a dotfiles repo, or shared between two config dirs,
+/// silently stops being either. So the write follows the link to the file it
+/// points at and publishes there, leaving the link exactly as the user made it.
+///
+/// A relative link resolves against the link's own directory, which is what
+/// `canonicalize` does and what the hand-resolution below has to do too: that
+/// one is for a link whose target does not exist yet, where there is no
+/// canonical path to ask for and the write is what creates it.
+fn resolved_settings_path(settings_path: &Path) -> std::path::PathBuf {
+    let is_symlink = fs::symlink_metadata(settings_path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false);
+    if !is_symlink {
+        return settings_path.to_path_buf();
+    }
+    if let Ok(resolved) = fs::canonicalize(settings_path) {
+        return resolved;
+    }
+    match fs::read_link(settings_path) {
+        Ok(target) if target.is_absolute() => target,
+        Ok(target) => settings_path
+            .parent()
+            .map(|parent| parent.join(&target))
+            .unwrap_or(target),
+        Err(_) => settings_path.to_path_buf(),
+    }
+}
+
 /// Publish one generated file whole, or not at all.
 ///
 /// `settings.json` names the script for as long as the bridge is installed, and
@@ -907,9 +1117,15 @@ fn write_settings(settings_path: &Path, settings: &Map<String, Value>) -> Result
 /// the command that was configured before the wrap — copied out of a
 /// `settings.json` that may well be 0600, and may well hold a token. A rename
 /// makes a *new* file, so a mode left to the umask is one taurhaus chose.
+///
+/// The mode is part of what "already published" means, not a side effect of
+/// publishing: a file whose bytes are current but whose mode has been widened
+/// since — by an upgrade from the build that wrote 0755, or by anything else on
+/// the machine — is still carrying the user's command where others can read it,
+/// and would never be narrowed again if the content alone decided.
 fn publish_if_changed(path: &Path, payload: &[u8], mode: u32) -> Result<bool, String> {
     if fs::read(path).is_ok_and(|current| current == payload) {
-        return Ok(false);
+        return narrow_to_mode(path, mode);
     }
     let parent = path
         .parent()
@@ -941,6 +1157,29 @@ fn publish_if_changed(path: &Path, payload: &[u8], mode: u32) -> Result<bool, St
         return Err(format!("failed to replace '{}': {error}", path.display()));
     }
     Ok(true)
+}
+
+/// Put an already-current artifact back to the mode it was published with.
+/// `true` when that was a change.
+#[cfg(not(target_os = "windows"))]
+fn narrow_to_mode(path: &Path, mode: u32) -> Result<bool, String> {
+    use std::os::unix::fs::PermissionsExt;
+    let current = fs::metadata(path)
+        .map_err(|error| format!("failed to read the mode of '{}': {error}", path.display()))?
+        .permissions()
+        .mode()
+        & 0o777;
+    if current == mode {
+        return Ok(false);
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+        .map_err(|error| format!("failed to set the mode of '{}': {error}", path.display()))?;
+    Ok(true)
+}
+
+#[cfg(target_os = "windows")]
+fn narrow_to_mode(_path: &Path, _mode: u32) -> Result<bool, String> {
+    Ok(false)
 }
 
 fn is_posix_config_dir(config_dir: &Path) -> bool {
@@ -1882,6 +2121,206 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_row_that_invokes_our_script_another_way_is_neither_wrapped_nor_rewritten() {
+        // Regression: 6262c47 made ownership exact string equality — right for
+        // `<script>.backup`, wrong for the same script invoked another way. A
+        // row edited from `bash '<script>'` to `/bin/bash <script>` read as the
+        // user's own status line, so the next install wrapped that command
+        // inside the very script it names: a status line that runs itself,
+        // once more per install, forever.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+        let theirs = json!({
+            "type": "command",
+            "command": format!(
+                "/bin/bash {}",
+                config_dir.join(HOOKS_DIRNAME).join(script_filename()).display()
+            ),
+        });
+        write_settings_json(&config_dir, json!({ "statusLine": theirs.clone() }));
+        let script_before = script_of(&config_dir);
+
+        let install =
+            ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("reinstall");
+
+        assert_eq!(install.skipped, Some("references_script"));
+        assert!(!install.changed);
+        assert_eq!(
+            script_of(&config_dir),
+            script_before,
+            "the bridge wrapped an invocation of itself"
+        );
+        assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], theirs);
+    }
+
+    #[test]
+    fn removal_never_deletes_a_script_the_row_still_invokes() {
+        // Regression: 6262c47 read anything but its own exact command as a
+        // foreign row — nothing of taurhaus's to restore — and then deleted the
+        // script and the record anyway. A row the user had edited from
+        // `bash '<script>'` to `/bin/bash <script>` was left pointing at a file
+        // that no longer existed: a blank status line on every refresh, with
+        // the command it wrapped deleted beside it.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({ "statusLine": { "type": "command", "command": "my-line.sh" } }),
+        );
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+        let script_path = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        let record_path = config_dir.join(HOOKS_DIRNAME).join(RECORD_FILENAME);
+        let theirs = json!({
+            "type": "command",
+            "command": format!("/bin/bash {}", script_path.display()),
+        });
+        write_settings_json(&config_dir, json!({ "statusLine": theirs.clone() }));
+
+        assert!(
+            !remove_statusline_at(&config_dir).expect("remove"),
+            "a row taurhaus did not write is not a row it restores"
+        );
+
+        assert_eq!(settings_of(&config_dir)[STATUS_LINE_KEY], theirs);
+        assert!(
+            script_path.exists(),
+            "the script the row still invokes was deleted"
+        );
+        assert!(
+            record_path.exists(),
+            "the record of the command that script wraps was deleted"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_settings_file_the_user_symlinked_is_written_through_rather_than_replaced() {
+        // Regression: 79be608 replaced `settings.json` by renaming a fresh
+        // temporary file over it. A `settings.json` symlinked into a dotfiles
+        // repo — or shared between two config dirs — was therefore replaced by
+        // a regular file the first time taurhaus installed or removed a status
+        // line, severing a link the user made on purpose without saying so.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let exe = temp.path().join("taurhaus-daemon");
+        let original = json!({ "type": "command", "command": "my-line.sh" });
+
+        for (root, relative) in [("absolute", false), ("relative", true)] {
+            let config_dir = temp.path().join(root).join(".claude");
+            let target = temp
+                .path()
+                .join(root)
+                .join("dotfiles")
+                .join("settings.json");
+            fs::create_dir_all(&config_dir).expect("config dir");
+            fs::create_dir_all(target.parent().expect("parent")).expect("dotfiles dir");
+            fs::write(
+                &target,
+                serde_json::to_vec_pretty(&json!({ "statusLine": original.clone() }))
+                    .expect("serialize"),
+            )
+            .expect("write the link's target");
+            let link = config_dir.join(SETTINGS_FILENAME);
+            let link_value = if relative {
+                std::path::PathBuf::from("../dotfiles/settings.json")
+            } else {
+                target.clone()
+            };
+            std::os::unix::fs::symlink(&link_value, &link).expect("symlink");
+
+            ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+            assert!(
+                fs::symlink_metadata(&link)
+                    .expect("stat")
+                    .file_type()
+                    .is_symlink(),
+                "the install replaced the {root} symlink with a regular file"
+            );
+            assert_eq!(fs::read_link(&link).expect("read the link"), link_value);
+            let through: Value =
+                serde_json::from_str(&fs::read_to_string(&target).expect("the link's target"))
+                    .expect("json");
+            assert!(
+                through[STATUS_LINE_KEY]["command"]
+                    .as_str()
+                    .is_some_and(|command| command.contains(SCRIPT_BASENAME)),
+                "the {root} install never reached the link's target"
+            );
+
+            assert!(remove_statusline_at(&config_dir).expect("remove"));
+
+            assert!(
+                fs::symlink_metadata(&link)
+                    .expect("stat")
+                    .file_type()
+                    .is_symlink(),
+                "the removal replaced the {root} symlink with a regular file"
+            );
+            let restored: Value =
+                serde_json::from_str(&fs::read_to_string(&target).expect("the link's target"))
+                    .expect("json");
+            assert_eq!(restored[STATUS_LINE_KEY], original);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_reinstall_takes_back_the_permissions_a_widened_artifact_lost() {
+        // Regression: 6262c47 set 0700 and 0600 only while publishing new
+        // bytes, and returned before touching the mode at all when the content
+        // was already current. A script or record widened since — by an upgrade
+        // from the build that published 0755, or by anything else on the
+        // machine — therefore stayed readable by every other account for as
+        // long as nothing about it changed, which is forever.
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({
+                "statusLine": {
+                    "type": "command",
+                    "command": "render-line --token s3cr3t-not-for-everyone"
+                }
+            }),
+        );
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+        let script_path = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        let record_path = config_dir.join(HOOKS_DIRNAME).join(RECORD_FILENAME);
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755)).expect("widen");
+        fs::set_permissions(&record_path, fs::Permissions::from_mode(0o644)).expect("widen");
+
+        let again =
+            ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("reinstall");
+
+        assert!(
+            again.changed,
+            "narrowing a widened artifact is a change worth reporting"
+        );
+        assert_eq!(
+            fs::metadata(&script_path)
+                .expect("stat")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&record_path)
+                .expect("stat")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn the_settings_file_keeps_the_mode_the_user_gave_it() {
@@ -1924,6 +2363,123 @@ mod tests {
             0,
             "a settings file taurhaus created is readable by others"
         );
+    }
+
+    /// A detected account, as the scan would report one for this config dir.
+    fn account_at(config_dir: &Path) -> crate::session_scanner::claude_accounts::ClaudeAccount {
+        crate::session_scanner::claude_accounts::ClaudeAccount {
+            id: config_dir.display().to_string(),
+            config_dir: config_dir.to_path_buf(),
+            email: "user@example.com".to_string(),
+            display_name: None,
+            organization: None,
+            seat_tier: None,
+            logged_in: true,
+            is_default: false,
+            is_process_default: false,
+            usage: None,
+        }
+    }
+
+    #[test]
+    fn an_account_that_signs_in_after_startup_is_bridged_by_the_next_pass() {
+        // Regression: 6262c47 installed the bridge from the daemon's startup
+        // and from nowhere else. A subscription the user signed in to
+        // afterwards was never bridged at all, so its usage bar stayed empty —
+        // and the chooser said "no usage yet" about an account that was being
+        // used — until the daemon happened to be restarted. A pass reconciles
+        // whatever the scan reports at the time it runs, and one runs whenever
+        // anything asks for the accounts.
+        use crate::session_scanner::claude_accounts::install_detection_override;
+
+        // A pass reports what it did through the global sink, so it takes the
+        // same guard every other test that emits does — in the same order as
+        // the detection override, which is acquired below it everywhere.
+        let _log = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = sink_for(&temp);
+        let exe = temp.path().join("taurhaus-daemon");
+        let first = temp.path().join(".claude");
+        let second = temp.path().join(".claude-work");
+
+        {
+            let _detected = install_detection_override(vec![account_at(&first)]);
+            install_for_detected_accounts(&exe, &sink);
+        }
+
+        assert!(statusline_is_installed_at(&first));
+        assert!(!statusline_is_installed_at(&second));
+
+        let _detected = install_detection_override(vec![account_at(&first), account_at(&second)]);
+        install_for_detected_accounts(&exe, &sink);
+
+        assert!(
+            statusline_is_installed_at(&second),
+            "the account that appeared after startup never got a bridge"
+        );
+        assert!(statusline_is_installed_at(&first));
+    }
+
+    #[test]
+    fn a_config_dir_that_named_nobody_is_bridged_once_it_names_an_account_again() {
+        // Regression: 6262c47, same single pass. `.claude.json` is rewritten in
+        // place by Claude Code, so a config dir caught mid-rewrite names no
+        // account — and the scan then caches that omission for a minute. A dir
+        // that happened to be mid-rewrite during the one pass at startup was
+        // therefore left unbridged for the life of the daemon, on nothing worse
+        // than timing.
+        use crate::session_scanner::claude_accounts::{
+            install_detection_override, install_scan_override, ClaudeScan,
+        };
+
+        let _log = crate::test_support::acquire_global_log_test_guard();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let sink = sink_for(&temp);
+        let exe = temp.path().join("taurhaus-daemon");
+        let config_dir = temp.path().join(".claude");
+
+        {
+            // The dir is there; the file in it names nobody yet.
+            let _scanned = install_scan_override(ClaudeScan {
+                config_dirs: vec![config_dir.clone()],
+                accounts: Vec::new(),
+            });
+            install_for_detected_accounts(&exe, &sink);
+        }
+
+        assert!(!statusline_is_installed_at(&config_dir));
+
+        let _detected = install_detection_override(vec![account_at(&config_dir)]);
+        install_for_detected_accounts(&exe, &sink);
+
+        assert!(
+            statusline_is_installed_at(&config_dir),
+            "the config dir that was mid-rewrite never got a bridge"
+        );
+    }
+
+    #[test]
+    fn a_pass_runs_again_once_the_minute_it_shares_with_the_scan_is_up() {
+        // Regression: 6262c47 ran one pass per daemon start, and the fix — a
+        // pass per accounts request — has to cost no more than one pass a
+        // minute: it probes `claude --version` and `codex --version` before it
+        // decides anything, and the scan it reads is cached for exactly that
+        // minute anyway.
+        let last = Mutex::new(None);
+        let start = Instant::now();
+
+        assert!(pass_is_due(&last, start));
+        assert!(!pass_is_due(&last, start + Duration::from_secs(1)));
+        assert!(!pass_is_due(
+            &last,
+            start + BRIDGE_PASS_INTERVAL - Duration::from_millis(1)
+        ));
+        assert!(pass_is_due(&last, start + BRIDGE_PASS_INTERVAL));
+        // And the pass that just ran resets the minute for the next one.
+        assert!(!pass_is_due(
+            &last,
+            start + BRIDGE_PASS_INTERVAL + Duration::from_secs(1)
+        ));
     }
 
     /// A stand-in for the sink, or for the command a user had configured.

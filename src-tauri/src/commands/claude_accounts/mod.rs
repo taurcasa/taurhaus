@@ -74,7 +74,32 @@ pub fn list_claude_accounts(provider: State<'_, ProviderState>) -> IpcResult<Cla
     let result =
         Ok::<_, String>(claude_accounts_report(provider.inner())).ipc_cmd("list_claude_accounts");
     span.finish_result(&result);
+    ensure_claude_statusline_bridge();
     result
+}
+
+/// Reconcile the Claude status-line bridge behind this answer, on a native
+/// host.
+///
+/// The daemon does this whenever it serves `list_claude_accounts`, but on Linux
+/// and macOS that request never reaches it — detection runs in this process —
+/// so an account signed in since the daemon started would have no bridge, and
+/// no usage, until it restarted.
+///
+/// The *installed daemon* is what goes into the generated script, never this
+/// process: both reach the same file, and a script naming whichever one ran
+/// last would be rewritten by the other on its next pass. A host with no daemon
+/// installed gets nothing rather than a script pointing at a binary that is not
+/// there.
+fn ensure_claude_statusline_bridge() {
+    if cfg!(target_os = "windows") {
+        return;
+    }
+    let daemon_exe = crate::provider::platform_paths::PlatformPaths::daemon_binary_path();
+    if !daemon_exe.exists() {
+        return;
+    }
+    crate::session_scanner::claude_statusline::ensure_statusline_bridge_soon(daemon_exe);
 }
 
 #[tauri::command]

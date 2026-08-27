@@ -99,6 +99,13 @@ fn handle_list_claude_accounts(id: &str) -> DaemonResponse {
     // The usage sink is written on the daemon's side of the WSL boundary too:
     // the status line runs in the same Linux shell Claude Code does.
     crate::daemon::claude_usage::attach_usage(&mut accounts);
+    // And an account that signed in since the last pass — or one whose
+    // `.claude.json` was mid-rewrite when it ran — gets its status-line bridge
+    // here rather than waiting for the next daemon start. Behind the reply, and
+    // throttled to the same minute the account scan itself is cached for.
+    if let Ok(exe) = std::env::current_exe() {
+        crate::session_scanner::claude_statusline::ensure_statusline_bridge_soon(exe);
+    }
     DaemonResponse::ok(id, protocol::ClaudeAccountsResult { accounts })
 }
 
