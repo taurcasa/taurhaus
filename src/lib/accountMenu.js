@@ -15,6 +15,33 @@ import { toolDescriptor } from './toolRegistry.js'
 /** Menus only ask a question the host can answer more than one way. */
 const MIN_ACCOUNTS_FOR_SUBMENU = 2
 
+/** The marker the backend puts on a session it runs for a team. */
+const TEAM_GROUP_KIND = 'mesh_team'
+
+/** Modes the backend hands to the team runtime when the project is a member's. */
+const DELEGATED_MODES = new Set(['continue', 'resume'])
+
+/** Why an account row is offered but cannot be picked. */
+export const TEAM_ACCOUNT_NOTE = 'team runs on default account'
+
+/**
+ * Whether the team runtime would take this launch over.
+ *
+ * The backend delegates a generic continue/resume to coordination when the
+ * project is exactly one team member's, and a delegated launch runs in the
+ * team's own config dir — an account chosen here would go nowhere. The sidebar
+ * sees the same fact from the other side: the team marker on the project's live
+ * sessions. Two members of one tool are ambiguous to the backend too, and it
+ * falls back to a raw launch that does honour the account.
+ */
+export function launchDelegatesToTeam(mode, tool, sessions = []) {
+  if (!DELEGATED_MODES.has(mode)) return false
+  const members = (sessions ?? []).filter(
+    (session) => session?.group_kind === TEAM_GROUP_KIND && session?.cli_tool === tool
+  )
+  return members.length === 1
+}
+
 /** Whether a tool's launch items can carry an account submenu at all. */
 export function toolSelectsAccounts(tool) {
   return Boolean(toolDescriptor(tool)?.capabilities.accountSelection)
@@ -93,11 +120,17 @@ export function accountUsageMeta(account, now = Date.now()) {
  * Logged-out accounts stay visible and disabled: a subscription missing from
  * the list is a different fact from one that needs signing in again, and hiding
  * it makes the menu look like it forgot an account.
+ *
+ * `disabledNote` is the same answer for every row — something other than this
+ * menu decides the launch's account. The rows still show, for the same reason:
+ * a submenu that empties itself looks broken, one that says why does not. No
+ * row is ticked either, because none of them is what the launch would use.
  */
 export function buildAccountMenuChildren({
   accounts = [],
   activeAccountId = null,
   onSelect = () => {},
+  disabledNote = null,
 } = {}) {
   const labels = labelsFor(accounts)
   return accounts.map((account, index) => ({
@@ -105,9 +138,9 @@ export function buildAccountMenuChildren({
     // rendered list by, and the position is unique whatever the caller passes.
     key: `${index}:${account.id ?? ''}`,
     label: labels[index],
-    meta: account.logged_in ? accountUsageMeta(account) : 'not logged in',
-    check: activeAccountId != null && account.id === activeAccountId,
-    disabled: !account.logged_in,
+    meta: account.logged_in ? disabledNote ?? accountUsageMeta(account) : 'not logged in',
+    check: !disabledNote && activeAccountId != null && account.id === activeAccountId,
+    disabled: Boolean(disabledNote) || !account.logged_in,
     action: () => onSelect(account.id),
   }))
 }

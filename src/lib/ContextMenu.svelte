@@ -55,6 +55,11 @@
   let parentEls = $state({})
   let submenuLeft = $state(0)
   let submenuTop = $state(0)
+  /** The room a flyout has, or 0 before anything measured it. */
+  let submenuMaxHeight = $state(
+    typeof window === 'undefined' ? 0 : Math.max(0, window.innerHeight - VIEWPORT_MARGIN * 2)
+  )
+  let childEls = $state({})
   let hoverTimer = null
   let leaveTimer = null
   /**
@@ -115,7 +120,9 @@
   /**
    * The flyout sits beside its parent row, and flips to the row's left edge
    * when the viewport cannot hold it on the right. Vertically it is clamped the
-   * same way the root menu is.
+   * same way the root menu is, and capped at the viewport: more rows than the
+   * screen is tall cannot be reached by moving the flyout, only by scrolling
+   * inside it.
    */
   $effect(() => {
     void layoutTick
@@ -127,6 +134,11 @@
     // changes the height this clamps.
     void openChildren
     if (openIndex < 0) return
+
+    // The cap does not depend on the anchor: a flyout too tall for the screen
+    // is too tall wherever its row is.
+    submenuMaxHeight = Math.max(0, window.innerHeight - VIEWPORT_MARGIN * 2)
+
     const anchor = parentEls[openIndex]
     if (!anchor) return
 
@@ -145,10 +157,17 @@
     submenuLeft = Math.max(VIEWPORT_MARGIN, left)
 
     let top = row.top - 4
-    if (height && top + height > vh - VIEWPORT_MARGIN) {
-      top = vh - height - VIEWPORT_MARGIN
+    const shown = height ? Math.min(height, submenuMaxHeight) : 0
+    if (shown && top + shown > vh - VIEWPORT_MARGIN) {
+      top = vh - shown - VIEWPORT_MARGIN
     }
     submenuTop = Math.max(VIEWPORT_MARGIN, top)
+  })
+
+  // A row the keyboard moved to may be past the flyout's own bottom edge.
+  $effect(() => {
+    if (childFocusIndex < 0) return
+    childEls[childFocusIndex]?.scrollIntoView?.({ block: 'nearest' })
   })
 
   function clearHoverTimer() {
@@ -462,7 +481,7 @@
   <div
     bind:this={submenuEl}
     class="fixed z-[101] min-w-[200px] max-w-[18rem] py-1 rounded-lg border shadow-lg {menuBg} {menuBorder}"
-    style="left: {submenuLeft}px; top: {submenuTop}px;"
+    style="left: {submenuLeft}px; top: {submenuTop}px;{submenuMaxHeight ? ` max-height: ${submenuMaxHeight}px; overflow-y: auto;` : ''}"
     role="menu"
     tabindex="-1"
     data-testid="context-submenu"
@@ -471,6 +490,7 @@
   >
     {#each openChildren as child, childIndex (child.key ?? `${childIndex}:${child.label}`)}
       <button
+        bind:this={childEls[childIndex]}
         class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors
           {child.disabled ? textMuted + ' cursor-default opacity-50' : textPrimary + ' ' + hoverBg}
           {childIndex === childFocusIndex && !child.disabled ? focusBg : ''}"

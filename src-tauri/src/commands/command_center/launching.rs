@@ -9,7 +9,9 @@ use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
 };
 use serde_json::{Map, Value};
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 use super::*;
 
@@ -78,12 +80,22 @@ pub(super) fn launch_cli_session_impl(
                         Some("Delegating team-member resume to coordination pipeline".to_string()),
                         delegated_fields,
                     );
-                    return delegate_launch_to_coordination_resume(
+                    let mut result = delegate_launch_to_coordination_resume(
                         db,
                         coordination_state,
                         &target,
                         tool,
-                    );
+                    )?;
+                    // The team's own config dir is what a member resumes in, so
+                    // an account the user picked for this launch has nowhere to
+                    // go. Per-team accounts are a follow-up; until then the
+                    // launch says what it did instead of the pick.
+                    if let Some(wanted) = requested_account(tool, claude_account_id.as_deref()) {
+                        note_team_account_ignored(&project_id, wanted);
+                        result.account_applied = Some(false);
+                        result.account_note = Some(TEAM_DEFAULT_ACCOUNT.to_string());
+                    }
+                    return Ok(result);
                 }
                 TeamMemberMatchResult::Ambiguous => {
                     let mut ambiguous_fields = Map::new();
@@ -428,6 +440,7 @@ pub(super) fn launch_cli_session_impl(
         tmux_session: Some(session),
         tmux_window: window,
         tmux_pane: pane,
+        ..Default::default()
     })
 }
 
@@ -435,6 +448,63 @@ pub(super) fn launch_cli_session_impl(
 const DAEMON_UNAVAILABLE: &str = "daemon_unavailable";
 /// The selected account is gone or signed out.
 const ACCOUNT_UNAVAILABLE: &str = "account_unavailable";
+
+/// The launch ran on a team's config dir, which is not anyone's subscription to
+/// choose. A token, not a sentence: the frontend matches on it.
+pub(super) const TEAM_DEFAULT_ACCOUNT: &str = "team_default";
+
+/// The account this launch was explicitly asked to run on, if a tool that has
+/// accounts was asked at all.
+fn requested_account(tool: CliTool, claude_account_id: Option<&str>) -> Option<&str> {
+    if !crate::session_scanner::cli_tool::spec(tool)
+        .capabilities
+        .account_selection
+    {
+        return None;
+    }
+    claude_account_id.map(str::trim).filter(|id| !id.is_empty())
+}
+
+/// Projects already told, this run, that a team resume runs on the team's
+/// account.
+static TEAM_ACCOUNT_NOTICES: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+/// Whether this project's team-account warning is the first of the run.
+///
+/// The menu offers the choice on every right-click, and a warning per click
+/// says nothing the first one did not.
+pub(super) fn first_team_account_notice(project_id: &str) -> bool {
+    TEAM_ACCOUNT_NOTICES
+        .get_or_init(Mutex::default)
+        .lock()
+        .map(|mut seen| seen.insert(project_id.to_string()))
+        // A poisoned set has lost track of what was said; saying it again beats
+        // swallowing the warning.
+        .unwrap_or(true)
+}
+
+/// Say once that a team resume ignored the account the launch named.
+fn note_team_account_ignored(project_id: &str, wanted: &str) {
+    if !first_team_account_notice(project_id) {
+        return;
+    }
+    let mut fields = Map::new();
+    fields.insert(
+        "project_id".to_string(),
+        Value::String(project_id.to_string()),
+    );
+    fields.insert("wanted".to_string(), Value::String(wanted.to_string()));
+    crate::commands::logging::emit_global(
+        "warn",
+        "command_center",
+        "launch.account.ignored_for_team",
+        Some(
+            "Team resume runs on the team's config dir; the chosen Claude account was not applied"
+                .to_string(),
+        ),
+        fields,
+    );
+}
 
 /// A launch's account, and what deciding it could not find out.
 pub(super) struct LaunchAccount {

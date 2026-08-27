@@ -377,6 +377,7 @@ fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
         tmux_session: Some(tmux_session),
         tmux_window,
         tmux_pane: pane_id.to_string(),
+        ..Default::default()
     }
 }
 

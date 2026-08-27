@@ -4,6 +4,8 @@ import {
   accountSubmenuApplies,
   accountUsageMeta,
   buildAccountMenuChildren,
+  launchDelegatesToTeam,
+  TEAM_ACCOUNT_NOTE,
   toolSelectsAccounts,
 } from './accountMenu.js'
 import { configureToolRegistry, resetToolRegistry } from './toolRegistry.js'
@@ -123,5 +125,43 @@ describe('accountMenu', () => {
     const children = buildAccountMenuChildren({ accounts: [twice, { ...twice }] })
 
     expect(new Set(children.map((child) => child.key)).size).toBe(2)
+  })
+
+  // Regression: 74c7761 offered an account on every Claude launch row, but a
+  // Continue/Resume for a project that is exactly one team member's is handed
+  // to the team runtime, which runs on the team's config dir. The row named an
+  // account the launch could not use.
+  it('knows a continue or resume the team runtime would take over', () => {
+    const member = { group_kind: 'mesh_team', group_id: 'team-a', cli_tool: 'claude' }
+    const standalone = { cli_tool: 'claude' }
+
+    expect(launchDelegatesToTeam('continue', 'claude', [member])).toBe(true)
+    expect(launchDelegatesToTeam('resume', 'claude', [member])).toBe(true)
+    // A fresh session is never delegated: it starts its own history.
+    expect(launchDelegatesToTeam('fresh', 'claude', [member])).toBe(false)
+    // Another tool's member says nothing about this tool's resume.
+    expect(launchDelegatesToTeam('resume', 'codex', [member])).toBe(false)
+    expect(launchDelegatesToTeam('resume', 'claude', [standalone])).toBe(false)
+    expect(launchDelegatesToTeam('resume', 'claude', [])).toBe(false)
+    // Two members of the same tool are ambiguous, and the backend falls back to
+    // a raw launch that does honour the account.
+    expect(launchDelegatesToTeam('resume', 'claude', [member, { ...member }])).toBe(false)
+  })
+
+  it('disables every row with one note when the team decides the account', () => {
+    const onSelect = vi.fn()
+    const children = buildAccountMenuChildren({
+      accounts: [PRIMARY, SECOND, LOGGED_OUT],
+      activeAccountId: 'account-1',
+      onSelect,
+      disabledNote: TEAM_ACCOUNT_NOTE,
+    })
+
+    expect(children.every((child) => child.disabled)).toBe(true)
+    expect(children.every((child) => child.check === false)).toBe(true)
+    expect(children[0].meta).toBe('team runs on default account')
+    expect(children[1].meta).toBe('team runs on default account')
+    // A logged-out account still says the more specific thing about itself.
+    expect(children[2].meta).toBe('not logged in')
   })
 })

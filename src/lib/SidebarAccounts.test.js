@@ -284,6 +284,74 @@ describe('Sidebar account submenus', () => {
     })
   })
 
+  // Regression: 74c7761 put an account on every Claude launch row. A
+  // Continue/Resume for a project that is exactly one team member's is
+  // delegated to the team runtime before the account is read, so the row
+  // offered a choice that silently did nothing.
+  it('offers no usable account on a resume the team runtime would take over', async () => {
+    getSessionsForProject.mockImplementation(() => [
+      {
+        state: 'active',
+        cli_tool: 'claude',
+        group_kind: 'mesh_team',
+        group_id: 'team-a',
+        tmux_pane: '%9',
+        tmux_session: 'team',
+        tmux_window: '2',
+      },
+    ])
+
+    await openProjectMenu()
+
+    await hoverOpenSubmenu('menu-item-resume-claude')
+    const rows = within(screen.getByTestId('context-submenu')).getAllByRole('menuitemradio')
+    expect(rows.length).toBeGreaterThan(1)
+    for (const row of rows) {
+      expect(row).toBeDisabled()
+    }
+    expect(screen.getByTestId('submenu-item-matthias')).toHaveTextContent(
+      'team runs on default account'
+    )
+
+    await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
+    expect(launchClaudeSession).not.toHaveBeenCalled()
+
+    // A fresh session starts its own history, so it still picks its account.
+    await fireEvent.mouseEnter(screen.getByTestId('menu-item-new-claude-session'))
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-item-new-claude-session')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+    )
+    expect(screen.getByTestId('submenu-item-matthias')).toBeEnabled()
+  })
+
+  // Regression: 74c7761 forwarded the account and said nothing when the backend
+  // could not apply it. A team member's project has no live session until the
+  // team is running, so the menu cannot always see the delegation coming — the
+  // launch result is the backstop.
+  it('says so when the backend ran the launch on the team default', async () => {
+    launchClaudeSession.mockResolvedValue({
+      tmux_session: 'taurhaus',
+      tmux_window: '2',
+      tmux_pane: '%7',
+      account_applied: false,
+      account_note: 'team_default',
+    })
+
+    await openProjectMenu()
+
+    await hoverOpenSubmenu('menu-item-continue-claude')
+    await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sidebar-notice-message')).toHaveTextContent(
+        "taurhaus continued on the team's default account"
+      )
+    })
+  })
+
   it('is reachable from the keyboard: ArrowRight opens the submenu, Enter launches', async () => {
     await openProjectMenu()
 

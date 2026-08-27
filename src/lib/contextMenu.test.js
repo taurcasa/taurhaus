@@ -602,6 +602,54 @@ describe('ContextMenu submenus', () => {
     vi.unstubAllGlobals()
   })
 
+  // Regression: 74c7761 clamped only the flyout's top edge. A flyout with more
+  // rows than the viewport is tall — the accounts arriving late is exactly that
+  // case — kept its full height, so its bottom rows sat off-screen with no way
+  // to reach them.
+  it('never grows past the viewport, and scrolls the focused row into view', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    const previousHeight = window.innerHeight
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 300 })
+
+    const children = Array.from({ length: 12 }, (_, index) => ({
+      key: `${index}`,
+      label: `Account ${index}`,
+      meta: '5h 3%',
+      action: vi.fn(),
+    }))
+    render(ContextMenu, {
+      props: {
+        items: [{ label: 'New Claude Session', action: vi.fn(), children }],
+        onClose: vi.fn(),
+        openChildOf: 'New Claude Session',
+      },
+    })
+
+    const parent = screen.getByTestId('menu-item-new-claude-session')
+    const flyout = screen.getByTestId('context-submenu')
+    anchorRects(parent, flyout, {
+      parentRect: { top: 40, bottom: 68, y: 40 },
+      flyoutRect: { height: 800, bottom: 800 },
+    })
+    await fireEvent(window, new Event('resize'))
+
+    expect(Number.parseFloat(flyout.style.maxHeight)).toBeLessThanOrEqual(window.innerHeight - 16)
+    expect(flyout.style.overflowY).toBe('auto')
+
+    // The last row is below the fold, so reaching it has to scroll the flyout.
+    const lastRow = vi.spyOn(screen.getByTestId('submenu-item-account-11'), 'scrollIntoView')
+    for (let i = 0; i < children.length; i++) {
+      await fireEvent.keyDown(window, { key: 'ArrowDown' })
+    }
+    await tick()
+
+    expect(lastRow).toHaveBeenCalledWith({ block: 'nearest' })
+
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: previousHeight })
+    delete Element.prototype.scrollIntoView
+  })
+
   // Regression: 6ec843e treated ArrowRight inside an open flyout like Enter. The
   // first ArrowRight opens the accounts and the key repeat of a held press then
   // picked the first one — on a restart row that stops a live session.
