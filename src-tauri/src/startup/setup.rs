@@ -462,21 +462,28 @@ mod tests {
         );
     }
 
+    // Regression: 3dbe7e4 proved "daemon unavailable" by binding a port, freeing
+    // it, and connecting to it. Ports are a process-global resource: under load
+    // another test's `127.0.0.1:0` listener took the freed port before the
+    // connect and answered it, so the fallback never ran and
+    // `assert!(!connected_at_startup)` failed (reproduced in a full
+    // `cargo test --lib` run at `--test-threads=32` under CPU pressure). The
+    // unavailability is what this test is about, not how the socket reports it:
+    // inject it through the connect seam the function already takes.
     #[test]
     fn connect_daemon_provider_with_returns_disconnected_provider_when_daemon_is_unavailable() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind free port");
-        let addr = listener.local_addr().expect("local addr");
-        let addr_string = addr.to_string();
-        let port = addr.port();
-        drop(listener);
-
+        let addr_string = "127.0.0.1:65000".to_string();
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let (provider, connected_at_startup) = connect_daemon_provider_with(
             Some("native"),
             temp_dir.path(),
             &addr_string,
-            port,
-            provider::daemon_client::DaemonProvider::connect,
+            65000,
+            |addr| {
+                Err(crate::errors::AppError::DaemonTransport(format!(
+                    "Failed to connect to daemon at {addr}: Connection refused (os error 111)"
+                )))
+            },
             |_, _, _, _| Ok(StartupDaemonValidation::Healthy),
         );
 
