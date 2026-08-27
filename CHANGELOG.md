@@ -21,6 +21,7 @@ Harness realignment wrap-up. Several Claude subscriptions per host become a firs
 
 - **Documentation realigned with the code** — README, ARCHITECTURE, CLAUDE.md, CONTRIBUTING and `docs/**` swept for drift (152 verified fixes), plus a new `docs/architecture/harness-model.md` explaining the harness model: Claude Code hosts Claude, other CLIs host theirs, tmux + mesh is the floor, capability slices, app ↔ daemon pairing, stability rules. (#28, #29, #30)
 - **Mesh bundling and daemon install** — `resolve-mesh-binary.sh` rebuilds mesh when the lock's `git_commit` no longer matches the checked-out mesh; `just install-daemon` restarts the daemon with explicit `--data-dir`/`--port` and the previous process's environment; the taureval harness reads role `model`/`reasoning_effort` with the same fidelity as taurhaus. (#24, #26)
+- **Windows build runner fails honestly** — `scripts/build-windows.ps1` now throws when `bun install` or `tauri build` exits non-zero; previously a failed `tauri build` still ended in "Windows build complete". Tauri-generated `src-tauri/gen/schemas` are no longer tracked (they were gitignored but three files had stayed in the index, dirtying the tree on every tauri bump).
 
 ### Testing
 
