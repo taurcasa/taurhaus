@@ -176,6 +176,24 @@ describe('AccountChooser', () => {
     expect(screen.getByTestId('account-option-account-3')).not.toHaveTextContent('%')
   })
 
+  // Regression: c11770e made the requested refresh observable only before the
+  // chooser opened. Unlike AccountChip, an open chooser never asked again, so
+  // its comparison stayed frozen while the dialog remained on screen.
+  it('re-polls usage while the chooser remains open', async () => {
+    vi.useFakeTimers()
+    const onRequestUsage = vi.fn()
+    try {
+      renderChooser({ onRequestUsage })
+
+      expect(onRequestUsage).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(onRequestUsage).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   // Regression: c982822 mounted this chooser as a bare `fixed inset-0` div
   // directly inside `.shell-frame`, where `.shell-frame > :not([data-shell-
   // overlay])` sets `position: relative` on every child. The dialog stopped

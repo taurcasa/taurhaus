@@ -10,6 +10,7 @@
   import {
     accountState,
     refreshAccounts,
+    refreshUsage,
     setDefaultAccount,
   } from './accounts.svelte.js'
   import UsageMeter from './components/UsageMeter.svelte'
@@ -137,12 +138,14 @@
     loadSettings()
     loadIndexStatus()
     for (const tool of cliTools.filter((entry) => entry.capabilities.accountSelection)) {
-      void refreshAccounts(tool.id)
+      void refreshAccounts(tool.id).then(() => refreshUsage(tool.id))
     }
   })
 
   const accountTools = $derived(
-    cliTools.filter((tool) => tool.capabilities.accountSelection)
+    cliTools.filter(
+      (tool) => tool.capabilities.accountSelection && accountState(tool.id).accounts.length >= 2
+    )
   )
 
   function selectedAccountId(tool) {
@@ -159,8 +162,10 @@
     ensureCliCommands()
     settings.terminal.default_account_ids ??= {}
     const previous = settings.terminal.default_account_ids[tool] ?? null
-    settings.terminal.default_account_ids[tool] = accountId || null
+    if (accountId) settings.terminal.default_account_ids[tool] = accountId
+    else delete settings.terminal.default_account_ids[tool]
     if (await saveSettings()) setDefaultAccount(tool, accountId || null)
+    else if (previous == null) delete settings.terminal.default_account_ids[tool]
     else settings.terminal.default_account_ids[tool] = previous
   }
 

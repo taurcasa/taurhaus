@@ -74,6 +74,13 @@
     return dark ? 'bg-brand-400/80' : 'bg-brand-500'
   }
 
+  function barTestId(window, index) {
+    const duplicate = shown.some((candidate, otherIndex) =>
+      otherIndex !== index && candidate.key === window.key
+    )
+    return `usage-bar-${window.key}${duplicate ? `-${index}` : ''}`
+  }
+
   function duration(ms) {
     const minutes = Math.floor(ms / 60_000)
     if (minutes >= 1440) return `${Math.floor(minutes / 1440)}d`
@@ -109,7 +116,7 @@
   </span>
 {:else if shown.length}
   <span class="flex flex-col gap-1.5" data-tool={tool} data-testid="usage-meter">
-    {#each shown as window (window.key)}
+    {#each shown as window, index (`${window.key}:${index}`)}
       <span class="flex flex-col gap-0.5">
         <span class="flex items-center justify-between gap-2 text-[10px] leading-none">
           <span class="truncate {labelTone}">{window.title}</span>
@@ -119,7 +126,7 @@
           <span
             class="block h-full rounded-full {barTone(window)}"
             style="width: {barWidth(window)}"
-            data-testid="usage-bar-{window.key}"
+            data-testid={barTestId(window, index)}
           ></span>
         </span>
         {#if !legacy && resetLabel(window)}

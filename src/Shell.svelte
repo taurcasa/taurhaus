@@ -641,6 +641,7 @@
       {dark}
       onConfirm={(accountId, remember) => pendingAccount?.confirm(accountId, remember)}
       onCancel={() => pendingAccount?.cancel()}
+      onRequestUsage={() => void refreshUsage(pendingAccount.tool)}
     />
   {/if}
 

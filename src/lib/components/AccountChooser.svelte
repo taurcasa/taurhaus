@@ -27,9 +27,11 @@
     dark = false,
     onConfirm = () => {},
     onCancel = () => {},
+    onRequestUsage = () => {},
   } = $props()
 
   const toolLabel = $derived(toolDescriptor(tool)?.label ?? tool)
+  const USAGE_POLL_MS = 30 * 1000
 
   let rememberChoice = $state(true)
   let panel = $state(null)
@@ -91,6 +93,13 @@
 
   $effect(() => {
     panel?.focus()
+  })
+
+  // The first refresh settles before the chooser opens. Keep asking while the
+  // decision remains open so its side-by-side usage comparison does not age.
+  $effect(() => {
+    const timer = setInterval(() => onRequestUsage(), USAGE_POLL_MS)
+    return () => clearInterval(timer)
   })
 </script>
 

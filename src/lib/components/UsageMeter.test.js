@@ -181,4 +181,41 @@ describe('UsageMeter', () => {
     expect(screen.getByText('Current week (Fable)')).toBeInTheDocument()
     expect(screen.getByText('82% used')).toBeInTheDocument()
   })
+
+  it('renders two scoped weekly windows even when a provider repeats its raw kind', () => {
+    // Regression: c11770e passed `weekly_scoped` through as every scoped
+    // window's key, so Svelte raised each_key_duplicate and removed the meter.
+    render(UsageMeter, {
+      props: {
+        tool: 'claude',
+        usage: {
+          status: 'ok',
+          observed_at: new Date(NOW - 60_000).toISOString(),
+          windows: [
+            {
+              key: 'weekly_scoped',
+              title: 'Current week (Fable)',
+              used_percentage: 29,
+              resets_at: Math.floor((NOW + 3 * 86400_000) / 1000),
+              severity: 'normal',
+              is_active: true,
+            },
+            {
+              key: 'weekly_scoped',
+              title: 'Current week (Opus)',
+              used_percentage: 41,
+              resets_at: Math.floor((NOW + 3 * 86400_000) / 1000),
+              severity: 'warning',
+              is_active: true,
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByText('Current week (Fable)')).toBeInTheDocument()
+    expect(screen.getByText('Current week (Opus)')).toBeInTheDocument()
+    expect(screen.getByTestId('usage-bar-weekly_scoped-0')).toBeInTheDocument()
+    expect(screen.getByTestId('usage-bar-weekly_scoped-1')).toBeInTheDocument()
+  })
 })

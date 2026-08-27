@@ -27,6 +27,7 @@ vi.mock('./ipc.js', () => ({
 }))
 
 const {
+  refreshAccountsUsage,
   getSettings,
   updateSettings,
   getIndexStatus,
@@ -146,6 +147,25 @@ describe('Settings component', () => {
     { id: 'account-2', email: 'b@example.com', display_name: 'B', logged_in: true, is_default: false },
   ]
 
+  it('refreshes usage after account detection on mount', async () => {
+    // Regression: c11770e only listed accounts from Settings, so the compact
+    // meters never requested a current snapshot.
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(refreshAccountsUsage).toHaveBeenCalledWith('claude'))
+  })
+
+  it('hides the accounts card when no tool has multiple accounts', async () => {
+    // Regression: c11770e exposed account controls to single-account users,
+    // contradicting the chooser and overview visibility rule.
+    listAccounts.mockResolvedValue(detected([TWO_ACCOUNTS[0]]))
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(listAccounts).toHaveBeenCalled())
+    expect(screen.queryByTestId('settings-accounts')).toBeNull()
+  })
+
   // Regression: c982822 pushed the newly chosen default into the shared account
   // store before the write landed, and restored neither the store nor the form
   // when it failed. requestClaudeLaunch reads that store as an established
@@ -166,6 +186,20 @@ describe('Settings component', () => {
     await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
     expect(launchCliSession).not.toHaveBeenCalled()
     expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+  })
+
+  it('removes an absent default key when a settings save fails', async () => {
+    // Regression: c11770e rolled an absent string map entry back to null,
+    // making every later Rust settings deserialization fail.
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    updateSettings.mockRejectedValueOnce(new Error('disk full'))
+    render(Settings, { props: defaultProps() })
+    await waitFor(() => expect(screen.getByTestId('settings-accounts')).toBeTruthy())
+
+    await fireEvent.click(screen.getByTestId('account-default-claude-account-2'))
+    await waitFor(() => expect(screen.getByTestId('settings-save-error')).toBeTruthy())
+
+    expect(updateSettings.mock.calls[0][0].terminal.default_account_ids).toEqual({})
   })
 
   it('shares the chosen default once it is persisted', async () => {
