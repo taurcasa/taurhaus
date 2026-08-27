@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::models::{CliCommandSettings, ToolCommands};
 
 /// Which CLI tool a session belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CliTool {
+    #[default]
     Claude,
     Codex,
     Gemini,
@@ -62,12 +63,6 @@ impl CliTool {
             .find(|entry| entry.aliases.contains(&normalized.as_str()))
             .map(|entry| entry.tool)
             .ok_or_else(|| ParseCliToolError::new(raw))
-    }
-}
-
-impl Default for CliTool {
-    fn default() -> Self {
-        CliTool::Claude
     }
 }
 
