@@ -19,7 +19,7 @@ use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::daemon::protocol::LaunchMode;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::claude_accounts::{configured_root_to_name, to_launch_namespace};
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
@@ -318,7 +318,7 @@ pub(super) fn capture_member_pane_identity(
 }
 
 pub(super) fn should_use_mesh_sidecar_for_cli_tool(cli_tool: CliTool) -> bool {
-    cli_tool != CliTool::Claude
+    !spec(cli_tool).capabilities.native_inbox_poller
 }
 
 pub(super) fn should_use_mesh_sidecar(agent: &AgentSetupConfig) -> Result<bool, CoordinationError> {
@@ -336,7 +336,7 @@ pub(super) fn join_mesh_if_required(
     cli_tool: CliTool,
     model: &str,
 ) -> Result<bool, CoordinationError> {
-    if cli_tool == CliTool::Claude && role != MemberRole::Lead {
+    if spec(cli_tool).capabilities.native_inbox_poller && role != MemberRole::Lead {
         return Ok(false);
     }
 
@@ -480,7 +480,9 @@ fn render_team_launch_command(
     // subscription. That root is only implicit while it *is* the dir Claude
     // Code reads on its own — `TAURHAUS_CLAUDE_DIR` moves it, and a member
     // launched without the assignment writes its inbox where no team reads.
-    let team_config_dir = (cli_tool == CliTool::Claude)
+    let capabilities = spec(cli_tool).capabilities;
+    let team_config_dir = capabilities
+        .team_config_namespace
         .then(configured_root_to_name)
         .flatten()
         .map(|dir| to_launch_namespace(&dir));
@@ -489,14 +491,14 @@ fn render_team_launch_command(
         mode: LaunchMode::Fresh,
         base,
         model: model.clone(),
-        codex_bypass_hook_trust: cli_tool == CliTool::Codex && codex_bypass_hook_trust,
-        codex_notify_executable: if cli_tool == CliTool::Codex {
+        codex_bypass_hook_trust: capabilities.hook_trust && codex_bypass_hook_trust,
+        codex_notify_executable: if capabilities.notify_sink {
             cli_commands.codex_notify_executable.as_deref()
         } else {
             None
         },
         claude_config_dir: team_config_dir.as_deref(),
-        team: (cli_tool == CliTool::Claude).then_some(TeamContext {
+        team: capabilities.team_flags.then_some(TeamContext {
             team_name,
             agent_name,
             role,
@@ -540,6 +542,14 @@ fn render_team_launch_command(
         fields.insert("member".to_string(), Value::String(agent_name.to_string()));
         fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
         let message = match note {
+            LaunchNote::CapabilityMissing { capability, found } => {
+                fields.insert(
+                    "capability".to_string(),
+                    Value::String(capability.as_str().to_string()),
+                );
+                fields.insert("found".to_string(), Value::String(found));
+                "Requested launch value has no declared harness capability"
+            }
             LaunchNote::DeprecatedFlag { flag } => {
                 fields.insert("flag".to_string(), Value::String(flag));
                 "Configured launch base contains a deprecated flag"
@@ -586,7 +596,10 @@ fn detect_member_session_identity(
     context: &MemberActivationContext,
     pane_id: &str,
 ) -> Result<DetectedRuntimeSession, CoordinationError> {
-    if !matches!(context.member.cli_tool, CliTool::Claude | CliTool::Codex) {
+    if !spec(context.member.cli_tool)
+        .capabilities
+        .runtime_session_capture
+    {
         return Ok(DetectedRuntimeSession::default());
     }
 

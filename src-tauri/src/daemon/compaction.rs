@@ -393,10 +393,11 @@ fn team_has_managed_codex_member(
     team_name: &str,
 ) -> Result<bool, CoordinationError> {
     let config: TeamConfig = TeamConfigStore::load(teams_dir, team_name)?;
-    Ok(config
-        .members
-        .iter()
-        .any(|member| member.cli_tool == crate::session_scanner::cli_tool::CliTool::Codex))
+    Ok(config.members.iter().any(|member| {
+        crate::session_scanner::cli_tool::spec(member.cli_tool)
+            .capabilities
+            .transcript_compaction_signals
+    }))
 }
 
 #[cfg(test)]

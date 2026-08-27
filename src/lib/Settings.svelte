@@ -15,11 +15,13 @@
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
+  import { tools } from './toolRegistry.js'
 
   let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
 
   // Shared theme tokens
   const t = $derived(themeTokens(dark))
+  const cliTools = $derived(tools())
 
   // Component-specific tokens (different from shared)
   const textTertiary  = $derived(dark ? 'text-zinc-500' : 'text-zinc-400')
@@ -638,10 +640,11 @@
           <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">CLI Tools</h2>
           <p class="text-[13px] {textTertiary} mb-4">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
 
-          {#each [['claude', 'Claude Code'], ['codex', 'Codex'], ['gemini', 'Gemini CLI']] as [tool, label]}
+          {#each cliTools as descriptor, toolIndex (descriptor.id)}
+            {@const tool = descriptor.id}
             <div class="mb-4 last:mb-0">
               <div class="flex items-center justify-between mb-2">
-                <h3 class="text-[12px] font-medium {t.textBody}">{label}</h3>
+                <h3 class="text-[12px] font-medium {t.textBody}">{descriptor.displayName}</h3>
                 <button
                   class="text-[11px] {t.linkColor} transition-colors {buttonFocusRing}"
                   onclick={() => resetToolDefaults(tool)}
@@ -686,7 +689,7 @@
                   />
                 </div>
               </div>
-              {#if tool !== 'gemini'}
+              {#if toolIndex < cliTools.length - 1}
                 <div class="mt-3 border-b {t.keyline}"></div>
               {/if}
             </div>

@@ -1,6 +1,6 @@
 import { activityLevel } from '../activitySignal.js'
 import {
-  TOOL_OPTIONS,
+  toolOptions,
   applyNamePattern,
   normalizeTool,
   resolveRoleReasoningEffort,
@@ -30,7 +30,7 @@ function normalizeProjectPath(path) {
 
 function normalizeOptionalTool(tool) {
   const value = String(tool ?? '').trim().toLowerCase()
-  return TOOL_OPTIONS.includes(value) ? value : ''
+  return toolOptions().includes(value) ? value : ''
 }
 
 function normalizeRoleTemplateMetadata(role) {
@@ -185,7 +185,7 @@ function resolvePresetLeadTool(preset) {
 export function buildTeamConfigFromPreset(preset, compositionResult = null, projectPath = '') {
   const tools = Array.isArray(preset?.tools) && preset.tools.length > 0
     ? preset.tools.map((entry) => normalizeTool(entry))
-    : TOOL_OPTIONS
+    : toolOptions()
 
   const leadRoleId = preset?.leadRoleId ?? preset?.lead_role_id ?? ''
   const seenNames = new Map()

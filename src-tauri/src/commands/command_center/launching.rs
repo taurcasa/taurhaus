@@ -24,7 +24,7 @@ pub(super) fn launch_cli_session_impl(
     cli_tool: Option<CliTool>,
     claude_account_id: Option<String>,
 ) -> Result<protocol::LaunchSessionResult, String> {
-    let tool = cli_tool.unwrap_or(CliTool::Claude);
+    let tool = cli_tool.unwrap_or_default();
 
     let mut launch_fields = Map::new();
     launch_fields.insert("project_id".to_string(), Value::String(project_id.clone()));
@@ -109,18 +109,21 @@ pub(super) fn launch_cli_session_impl(
     }
 
     let terminal_settings = load_terminal_settings(db);
-    let account = (tool == CliTool::Claude).then(|| {
-        let launch = resolve_claude_account(
-            provider,
-            &linux_path,
-            mode,
-            claude_account_id.as_deref(),
-            project_account_id.as_deref(),
-            terminal_settings.claude_default_account_id.as_deref(),
-        );
-        log_account_resolution(&project_id, &launch);
-        launch.resolution
-    });
+    let account = crate::session_scanner::cli_tool::spec(tool)
+        .capabilities
+        .account_selection
+        .then(|| {
+            let launch = resolve_claude_account(
+                provider,
+                &linux_path,
+                mode,
+                claude_account_id.as_deref(),
+                project_account_id.as_deref(),
+                terminal_settings.claude_default_account_id.as_deref(),
+            );
+            log_account_resolution(&project_id, &launch);
+            launch.resolution
+        });
     let config_dir = account.as_ref().and_then(launch_config_dir);
     let rendered = LaunchSpec {
         tool,
@@ -163,6 +166,14 @@ pub(super) fn launch_cli_session_impl(
         fields.insert("tool".to_string(), Value::String(tool.to_string()));
         fields.insert("mode".to_string(), Value::String(mode_name.clone()));
         let message = match note {
+            LaunchNote::CapabilityMissing { capability, found } => {
+                fields.insert(
+                    "capability".to_string(),
+                    Value::String(capability.as_str().to_string()),
+                );
+                fields.insert("found".to_string(), Value::String(found));
+                "Requested launch value has no declared harness capability"
+            }
             LaunchNote::DeprecatedFlag { flag } => {
                 fields.insert("flag".to_string(), Value::String(flag));
                 "Configured launch base contains a deprecated flag"

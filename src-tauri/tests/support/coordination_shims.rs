@@ -45,7 +45,7 @@ pub mod session_scanner {
     };
 
     pub mod cli_tool {
-        pub use taurhaus_lib::session_scanner::cli_tool::CliTool;
+        pub use taurhaus_lib::session_scanner::cli_tool::*;
     }
 
     pub mod claude_accounts {

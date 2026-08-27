@@ -37,7 +37,7 @@ enum HookRuntime {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub(crate) struct CompactHookInput {
+pub struct CompactHookInput {
     #[serde(alias = "hookEventName")]
     hook_event_name: String,
     #[serde(alias = "sessionId")]
@@ -59,7 +59,7 @@ pub(crate) struct CompactHookInput {
 }
 
 impl CompactHookInput {
-    fn inferred_tool(&self) -> Option<CliTool> {
+    pub fn inferred_tool(&self) -> Option<CliTool> {
         infer_tool_from_transcript_path(self.transcript_path.as_deref())
     }
 }
@@ -130,56 +130,47 @@ impl CompactHookFailureStage {
 
 /// Harness-specific hook configuration. Claude and Codex are the two current
 /// installer implementations; their stable payload fields share one parser.
-pub(crate) trait CompactionSignalSource {
-    fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError>;
-    fn remove(&self) -> Result<bool, CoordinationError>;
+pub trait CompactionSignalSource: Send + Sync {
+    fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError>;
+    fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError>;
 }
 
 fn parse_compact_hook_input(raw: &str) -> Result<CompactHookInput, serde_json::Error> {
     serde_json::from_str(raw)
 }
 
-struct ClaudeCompactionSignalSource<'a> {
-    claude_dir: &'a Path,
-}
+pub struct ClaudeCompactionSignalSource;
 
-impl CompactionSignalSource for ClaudeCompactionSignalSource<'_> {
-    fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
-        ensure_source_installed(
-            self.claude_dir,
-            CLAUDE_SETTINGS_FILENAME,
-            taurhaus_exe,
-            None,
-        )
+impl CompactionSignalSource for ClaudeCompactionSignalSource {
+    fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        ensure_source_installed(config_dir, CLAUDE_SETTINGS_FILENAME, taurhaus_exe, None)
     }
 
-    fn remove(&self) -> Result<bool, CoordinationError> {
-        remove_source_hook(self.claude_dir, CLAUDE_SETTINGS_FILENAME)
+    fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError> {
+        remove_source_hook(config_dir, CLAUDE_SETTINGS_FILENAME)
     }
 }
 
-struct CodexCompactionSignalSource<'a> {
-    codex_home: &'a Path,
-}
+pub struct CodexCompactionSignalSource;
 
-impl CompactionSignalSource for CodexCompactionSignalSource<'_> {
-    fn install(&self, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
-        let runtime = detect_hook_runtime(self.codex_home);
+impl CompactionSignalSource for CodexCompactionSignalSource {
+    fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        let runtime = detect_hook_runtime(config_dir);
         let executable = runtime_path_string(taurhaus_exe, runtime)?;
-        if !hook_executable_exists(self.codex_home, &executable) {
-            emit_codex_hook_degraded(self.codex_home, &executable);
-            return self.remove();
+        if !hook_executable_exists(config_dir, &executable) {
+            emit_codex_hook_degraded(config_dir, &executable);
+            return self.remove(config_dir);
         }
         ensure_source_installed(
-            self.codex_home,
+            config_dir,
             CODEX_HOOKS_FILENAME,
             taurhaus_exe,
             Some(CODEX_ADDITIONAL_CONTEXT_LIMIT),
         )
     }
 
-    fn remove(&self) -> Result<bool, CoordinationError> {
-        remove_source_hook(self.codex_home, CODEX_HOOKS_FILENAME)
+    fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError> {
+        remove_source_hook(config_dir, CODEX_HOOKS_FILENAME)
     }
 }
 
@@ -407,7 +398,7 @@ pub fn ensure_compact_hook_installed(
         )));
     };
 
-    ClaudeCompactionSignalSource { claude_dir }.install(taurhaus_exe)
+    ClaudeCompactionSignalSource.install(claude_dir, taurhaus_exe)
 }
 
 pub fn ensure_codex_compact_hook_installed(taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
@@ -423,7 +414,7 @@ pub fn ensure_codex_compact_hook_installed_at(
     codex_home: &Path,
     taurhaus_exe: &Path,
 ) -> Result<bool, CoordinationError> {
-    CodexCompactionSignalSource { codex_home }.install(taurhaus_exe)
+    CodexCompactionSignalSource.install(codex_home, taurhaus_exe)
 }
 
 pub fn remove_codex_compact_hook() -> Result<bool, CoordinationError> {
@@ -431,7 +422,7 @@ pub fn remove_codex_compact_hook() -> Result<bool, CoordinationError> {
 }
 
 pub fn remove_codex_compact_hook_at(codex_home: &Path) -> Result<bool, CoordinationError> {
-    CodexCompactionSignalSource { codex_home }.remove()
+    CodexCompactionSignalSource.remove(codex_home)
 }
 
 pub fn codex_compact_hook_is_installed() -> bool {

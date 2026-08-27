@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
+use super::claude_registry::{ActivitySource, AuthoritativeState, SessionSource};
+
 /// Resolves Codex CLI session files from `~/.codex/sessions/YYYY/MM/DD/`.
 ///
 /// Codex organizes sessions by date, not by project. To find the session
@@ -24,20 +26,30 @@ pub struct CodexResolver {
     notify_path: PathBuf,
 }
 
-struct CodexNotifyActivitySource<'a> {
-    notify_path: &'a Path,
+pub struct CodexSessionSource;
+
+impl SessionSource for CodexSessionSource {
+    fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult {
+        static RESOLVER: OnceLock<CodexResolver> = OnceLock::new();
+        RESOLVER
+            .get_or_init(CodexResolver::new)
+            .detect_idle_for_pid(project_path, pid, pane_id)
+    }
 }
 
-impl ActivitySource for CodexNotifyActivitySource<'_> {
-    fn activity(
+pub struct CodexNotifyActivitySource;
+
+impl ActivitySource for CodexNotifyActivitySource {
+    fn authoritative_state(
         &self,
         _project_path: &str,
         _pid: u32,
-        resolved: Option<&IdleResult>,
-    ) -> Option<IdleResult> {
-        let result = resolved?.clone();
-        let result = apply_notify_edge(result, self.notify_path);
-        result.authoritative.then_some(result)
+        resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        resolved.authoritative.then_some(AuthoritativeState {
+            state: resolved.state,
+            source: "notify",
+        })
     }
 }
 
@@ -61,10 +73,7 @@ impl CodexResolver {
             return IdleResult::idle();
         };
         let result = codex_detect_idle_for_pid(project_path, pid, pane_id, base);
-        let source = CodexNotifyActivitySource {
-            notify_path: &self.notify_path,
-        };
-        ActivitySource::activity(&source, project_path, pid, Some(&result)).unwrap_or(result)
+        apply_notify_edge(result, &self.notify_path)
     }
 }
 

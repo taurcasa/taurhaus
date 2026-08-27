@@ -28,21 +28,79 @@ use crate::session_scanner::SessionState;
 
 use super::{
     age_secs_since_mtime, classify_mtime, file_mtime, most_recent_mtime, newest_file_mtime,
-    path_to_slug, ActivitySource, IdleResult, ACTIVE_THRESHOLD,
+    path_to_slug, IdleResult, ACTIVE_THRESHOLD,
 };
 
-pub(super) struct ClaudeRegistryActivitySource<'a> {
-    pub config_dir: &'a Path,
+/// Per-process session identity and transcript binding supplied by a harness.
+pub trait SessionSource: Send + Sync {
+    fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult;
+
+    fn is_floor(&self) -> bool {
+        false
+    }
 }
 
-impl ActivitySource for ClaudeRegistryActivitySource<'_> {
-    fn activity(
+pub struct ClaudeRegistrySessionSource;
+
+impl SessionSource for ClaudeRegistrySessionSource {
+    fn resolve(&self, project_path: &str, pid: u32, _pane_id: Option<&str>) -> IdleResult {
+        super::claude::claude_detect_runtime_idle(project_path, pid)
+    }
+}
+
+pub struct NoSessionSource;
+
+impl SessionSource for NoSessionSource {
+    fn resolve(&self, _project_path: &str, _pid: u32, _pane_id: Option<&str>) -> IdleResult {
+        IdleResult::idle()
+    }
+
+    fn is_floor(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuthoritativeState {
+    pub state: SessionState,
+    pub source: &'static str,
+}
+
+pub trait ActivitySource: Send + Sync {
+    fn authoritative_state(
         &self,
         project_path: &str,
         pid: u32,
-        _resolved: Option<&IdleResult>,
-    ) -> Option<IdleResult> {
-        detect_idle_from_registry(project_path, pid, self.config_dir)
+        resolved: &IdleResult,
+    ) -> Option<AuthoritativeState>;
+}
+
+pub struct ClaudeRegistryActivitySource;
+
+impl ActivitySource for ClaudeRegistryActivitySource {
+    fn authoritative_state(
+        &self,
+        _project_path: &str,
+        _pid: u32,
+        resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        resolved.authoritative.then_some(AuthoritativeState {
+            state: resolved.state,
+            source: "registry",
+        })
+    }
+}
+
+pub struct NoActivitySource;
+
+impl ActivitySource for NoActivitySource {
+    fn authoritative_state(
+        &self,
+        _project_path: &str,
+        _pid: u32,
+        _resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        None
     }
 }
 

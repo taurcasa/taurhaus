@@ -23,6 +23,7 @@ use crate::coordination::stores::compaction_signal::signal_log_path_for_team;
 #[cfg(test)]
 use crate::coordination::stores::CompactionSignalKind;
 use crate::coordination::stores::{CompactionSignalLog, CompactionSignalRecord};
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 
 const SIGNAL_WATCHER_STATE_VERSION: u32 = 2;
@@ -230,7 +231,7 @@ impl CompactionSignalWatcherCore {
             let context = recovered_context.expect("recovered_count guarantees context");
             self.note_missed_event_recovery(recovered_count as u64)?;
             emit_compaction_watcher_missed_event_recovered(CompactionWatcherMissedEventRecovered {
-                tool: CliTool::Codex,
+                tool: context.tool,
                 recovered_count,
                 team_name: None,
                 member_name: None,

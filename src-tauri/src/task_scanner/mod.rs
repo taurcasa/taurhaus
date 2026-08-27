@@ -15,12 +15,13 @@ pub mod codex;
 pub mod gemini;
 pub mod types;
 
+pub use claude::TranscriptParser;
 pub use types::{
     ArchivedSession, ArchivedSessionsResult, ScanOutcome, SessionInfo, SourceScanOutcome,
     TaskDetail, TaskResult, TaskStatus, UnifiedTask,
 };
 
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{all, CliToolSpec};
 use crate::session_scanner::RuntimeSession;
 use crate::task_scanner::claude_index::ClaudeSourceIndex;
 
@@ -42,53 +43,48 @@ pub fn get_tasks_for_project_with_index(
     get_tasks_for_project_with(
         project_path,
         sessions,
-        claude::get_tasks_with_index,
-        codex::get_tasks,
+        |entry, tool_sessions, index| {
+            entry
+                .transcript_parser()
+                .map(|parser| parser.get_tasks(project_path, tool_sessions, index))
+                .unwrap_or(ScanOutcome::DefinitivelyEmpty)
+        },
         gemini::get_tasks,
         claude_index,
     )
 }
 
-fn get_tasks_for_project_with<CF, XF, GF>(
+fn get_tasks_for_project_with<TF, GF>(
     project_path: &str,
     sessions: &[RuntimeSession],
-    get_claude_tasks: CF,
-    get_codex_tasks: XF,
+    mut get_transcript_tasks: TF,
     get_gemini_tasks: GF,
     claude_index: Option<&ClaudeSourceIndex>,
 ) -> TaskResult
 where
-    CF: Fn(&str, &[&RuntimeSession], Option<&ClaudeSourceIndex>) -> ScanOutcome,
-    XF: Fn(&str, &[&RuntimeSession]) -> ScanOutcome,
+    TF: FnMut(&CliToolSpec, &[&RuntimeSession], Option<&ClaudeSourceIndex>) -> ScanOutcome,
     GF: Fn(&str) -> ScanOutcome,
 {
     let mut result = TaskResult::empty();
 
-    // Claude: structured task JSON
-    let claude_sessions: Vec<&RuntimeSession> = sessions
-        .iter()
-        .filter(|s| s.cli_tool == CliTool::Claude)
-        .collect();
-    apply_source_outcome(
-        &mut result,
-        "claude",
-        get_claude_tasks(project_path, &claude_sessions, claude_index),
-    );
+    for entry in all() {
+        if entry.transcript_parser().is_none() {
+            continue;
+        }
+        let tool_sessions = sessions
+            .iter()
+            .filter(|session| session.cli_tool == entry.tool)
+            .collect::<Vec<_>>();
+        apply_source_outcome(
+            &mut result,
+            entry.name,
+            get_transcript_tasks(entry, &tool_sessions, claude_index),
+        );
+    }
 
-    // Codex: update_plan from JSONL
-    let codex_sessions: Vec<&RuntimeSession> = sessions
-        .iter()
-        .filter(|s| s.cli_tool == CliTool::Codex)
-        .collect();
-    apply_source_outcome(
-        &mut result,
-        "codex",
-        get_codex_tasks(project_path, &codex_sessions),
-    );
-
-    // Gemini: TODO.md checkboxes (no session data needed)
+    // Gemini's TODO.md integration is project-local, not a verified transcript
+    // format, so it remains a separate non-transcript source.
     apply_source_outcome(&mut result, "gemini", get_gemini_tasks(project_path));
-
     result
 }
 
@@ -108,15 +104,17 @@ fn apply_source_outcome(result: &mut TaskResult, source: &str, outcome: ScanOutc
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::cli_tool::CliTool;
 
     #[test]
     fn empty_sessions_returns_empty_result() {
+        // Regression: e17f3eb deleted the injected scanner seam, making this
+        // unit test read live ~/.claude* and walk ~/.codex/sessions.
         let sessions: Vec<RuntimeSession> = Vec::new();
         let result = get_tasks_for_project_with(
-            "/nonexistent/path",
+            "/nonexistent/task-scanner-test-project",
             &sessions,
-            |_project_path, _sessions, _index| ScanOutcome::DefinitivelyEmpty,
-            |_project_path, _sessions| ScanOutcome::DefinitivelyEmpty,
+            |_entry, _sessions, _index| ScanOutcome::DefinitivelyEmpty,
             |_project_path| ScanOutcome::DefinitivelyEmpty,
             None,
         );

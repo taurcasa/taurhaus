@@ -14,6 +14,7 @@
   import { normalizeProjectOption } from '../projectOptions.js'
   import { themeTokens } from '../themeTokens.js'
   import { upsertTeamPreset } from '../ipc.js'
+  import { toolDescriptor } from '../toolRegistry.js'
 
   let {
     open = false,
@@ -261,11 +262,15 @@
     return lead?.roleId ?? selectedLeadDefaults().roleId ?? null
   }
 
+  // A row whose tool is empty or unknown still needs a role to be saved — the
+  // preset schema requires a non-empty role id — so it falls back to the codex
+  // default exactly as the pre-registry `default:` arm did.
   function fallbackAgentRoleId(tool) {
-    const normalized = String(tool || '').toLowerCase()
-    if (normalized === 'claude') return 'claude-reviewer'
-    if (normalized === 'gemini') return 'custom-doc-writer'
-    return 'codex-developer'
+    return (
+      toolDescriptor(tool)?.defaultAgentRoleId ??
+      toolDescriptor('codex')?.defaultAgentRoleId ??
+      null
+    )
   }
 
   // Without overrides the saved preset only remembers the role, so reloading it

@@ -10,7 +10,7 @@ pub(super) fn stop_cli_session_impl(
     tmux_pane: String,
     cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
-    let tool = cli_tool.unwrap_or(CliTool::Claude);
+    let tool = cli_tool.unwrap_or_default();
 
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {

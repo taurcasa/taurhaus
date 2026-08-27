@@ -389,7 +389,9 @@ fn delegate_launch_to_coordination_resume(
     let mut terminal_settings = crate::commands::terminal_settings::load_terminal_settings(db);
     crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
         &mut terminal_settings.cli_commands,
-        tool == CliTool::Codex,
+        crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .hook_trust,
         false,
     );
     let request = ResumeMemberRequest {

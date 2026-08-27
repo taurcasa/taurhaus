@@ -415,6 +415,13 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
 
         let event = note.event_name();
         match note {
+            LaunchNote::CapabilityMissing { capability, found } => Self {
+                event,
+                flag: None,
+                found: Some(found),
+                replacement: None,
+                reason: Some(capability.as_str()),
+            },
             LaunchNote::DeprecatedFlag { flag } => Self {
                 event,
                 flag: Some(flag),
@@ -517,15 +524,15 @@ fn render_launch_command_cli<R: Read>(
         ) {
             model.model = Some(validated);
         } else {
-            let replacement = ModelCatalog::default_for(request.tool).id.clone();
+            let replacement = ModelCatalog::default_for(request.tool).map(|entry| entry.id.clone());
             notes.push(LaunchCommandCliNote {
                 event: "launch.model.invalid",
                 flag: None,
                 found: Some(requested_model),
-                replacement: Some(replacement.clone()),
+                replacement: replacement.clone(),
                 reason: None,
             });
-            model.model = Some(replacement);
+            model.model = replacement;
         }
     }
     let team = request.team.as_ref().map(|team| TeamContext {
@@ -628,13 +635,14 @@ fn run_render_onboarding_cli(json_arg: Option<&str>) -> i32 {
 #[cfg(feature = "mesh-bridged-backend")]
 fn render_onboarding_cli<R: Read>(json_arg: Option<&str>, mut stdin: R) -> Result<String, String> {
     use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
-    use crate::session_scanner::cli_tool::CliTool;
-
     let json = read_renderer_request(json_arg, &mut stdin)?;
     let request: RenderOnboardingCliRequest = serde_json::from_str(&json)
         .map_err(|error| format!("invalid onboarding request: {error}"))?;
     let role_context = RoleContext::from(&request.role);
-    let rendered = if request.tool == CliTool::Claude {
+    let rendered = if crate::session_scanner::cli_tool::spec(request.tool)
+        .capabilities
+        .native_inbox_poller
+    {
         DeliveryRenderer::render_claude_role_context(
             &request.team_name,
             &request.member_name,

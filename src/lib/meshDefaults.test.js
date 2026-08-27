@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  TOOL_OPTIONS,
+  toolOptions,
   applyNamePattern,
   normalizeTool,
   resolveDefaultNamePattern,
@@ -14,7 +14,7 @@ import {
 
 describe('meshDefaults', () => {
   it('exposes the canonical tool list', () => {
-    expect(TOOL_OPTIONS).toEqual(['claude', 'codex', 'gemini'])
+    expect(toolOptions()).toEqual(['claude', 'codex', 'gemini'])
   })
 
   it('normalizes tool values', () => {

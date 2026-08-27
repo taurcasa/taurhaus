@@ -1,7 +1,7 @@
 <script>
   import ModelSelect from './ModelSelect.svelte'
   import { getModelCatalogContext } from '../context/ModelCatalogContext.js'
-  import { TOOL_OPTIONS } from '../meshDefaults.js'
+  import { toolOptions } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { getToolIcon, getToolName } from '../toolLogos.js'
 
@@ -32,7 +32,7 @@
   const modelCatalogContext = getModelCatalogContext()
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
 
-  const toolOptions = TOOL_OPTIONS
+  const availableTools = $derived(toolOptions())
 
   function draftFromValues(values = {}) {
     return {
@@ -76,7 +76,7 @@
       : 'border-brand-200 text-brand-700 hover:bg-brand-50'
   )
   const labelTone = $derived(dark ? 'text-zinc-500' : 'text-brand-700')
-  const normalizedTool = $derived(toolOptions.includes(draft.tool) ? draft.tool : 'claude')
+  const normalizedTool = $derived(availableTools.includes(draft.tool) ? draft.tool : 'claude')
   const resolvedModel = $derived(
     resolveMemberModel(
       { tool: normalizedTool, model: draft.model, reasoningEffort: draft.reasoningEffort },
@@ -208,7 +208,7 @@
             }}
             data-testid={`${testId}-tool-select`}
           >
-            {#each toolOptions as option}
+            {#each availableTools as option}
               <option value={option}>{option}</option>
             {/each}
           </select>

@@ -1,7 +1,7 @@
 use crate::coordination::domain::MemberRole;
 use crate::daemon::protocol::LaunchMode;
 use crate::models::{CliCommandSettings, ModelCatalog};
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliCapabilities, CliTool, EffortFlag};
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
 /// ("gpt-5.4 high", "gpt-5.4-high", "gpt-5.4", "claude-opus-4-6", "") until PR 5a splits the schema.
@@ -54,9 +54,6 @@ impl ModelSpec {
     }
 }
 
-/// Environment variable that selects a Claude subscription for one launch.
-const CLAUDE_CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
-
 pub struct TeamContext<'a> {
     pub team_name: &'a str,
     pub agent_name: &'a str,
@@ -85,6 +82,11 @@ pub struct LaunchSpec<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaunchNote {
+    /// A requested value has no declared flag-shaped launch capability.
+    CapabilityMissing {
+        capability: LaunchCapability,
+        found: String,
+    },
     /// The base contains a flag removed by the current CLI.
     DeprecatedFlag { flag: String },
     /// The base already selected a model, so it wins over `ModelSpec`.
@@ -109,6 +111,25 @@ pub enum LaunchNote {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchCapability {
+    Model,
+    Effort,
+    DisplayName,
+    ConfigDir,
+}
+
+impl LaunchCapability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Model => "model",
+            Self::Effort => "effort",
+            Self::DisplayName => "displayName",
+            Self::ConfigDir => "configDir",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EffortIgnoreReason {
     BaseOverride,
     Invalid,
@@ -117,6 +138,7 @@ pub enum EffortIgnoreReason {
 impl LaunchNote {
     pub fn event_name(&self) -> &'static str {
         match self {
+            Self::CapabilityMissing { .. } => "launch.capability_missing",
             Self::DeprecatedFlag { .. } => "launch.flag.deprecated",
             Self::ModelIgnored { .. } => "launch.model.ignored",
             Self::NotifyIgnored { .. } => "launch.notify.ignored",
@@ -141,17 +163,43 @@ pub struct RenderedLaunch {
 
 impl LaunchSpec<'_> {
     pub fn render(&self) -> RenderedLaunch {
+        self.render_with_capabilities(spec(self.tool).capabilities)
+    }
+
+    /// Render against explicit capability data for registry conformance tests.
+    pub fn render_with_capabilities(&self, capabilities: CliCapabilities) -> RenderedLaunch {
         let mut command = self.base.trim_end().to_string();
         let mut notes = Vec::new();
+        let mut requested_model = self.model.model.as_deref();
+        let mut requested_effort = self.model.reasoning_effort.as_deref();
+
+        if !capabilities.catalog {
+            if let Some(model) = requested_model.take() {
+                notes.push(LaunchNote::CapabilityMissing {
+                    capability: LaunchCapability::Model,
+                    found: model.to_string(),
+                });
+            }
+            if let Some(effort) = requested_effort.take() {
+                notes.push(LaunchNote::CapabilityMissing {
+                    capability: LaunchCapability::Effort,
+                    found: effort.to_string(),
+                });
+            }
+        }
 
         match self.tool {
             CliTool::Codex => {
-                if self.codex_bypass_hook_trust
+                if capabilities.hook_trust
+                    && self.codex_bypass_hook_trust
                     && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
                 {
                     command.push_str(" --dangerously-bypass-hook-trust");
                 }
-                if let Some(executable) = self.codex_notify_executable {
+                if let Some(executable) = self
+                    .codex_notify_executable
+                    .filter(|_| capabilities.notify_sink)
+                {
                     if command_contains_codex_config(self.base, "notify") {
                         notes.push(LaunchNote::NotifyIgnored {
                             found: "notify".to_string(),
@@ -171,78 +219,102 @@ impl LaunchSpec<'_> {
                     });
                 }
 
-                let base_model = first_present_flag_value(self.base, &["-m", "--model"]);
-                if let Some(model) = self.model.model.as_deref() {
-                    if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
-                        notes.push(LaunchNote::ModelIgnored {
-                            found: found.to_string(),
-                        });
-                    } else {
-                        if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
-                            .filter(|entry| entry.deprecated)
+                let base_model = capabilities.model_flag.and_then(|model_flag| {
+                    first_present_flag_value(self.base, &[model_flag, "--model"])
+                });
+                if let Some(model) = requested_model {
+                    if let Some(model_flag) = capabilities.model_flag {
+                        if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
                         {
-                            notes.push(LaunchNote::ModelDeprecated {
-                                found: model.to_string(),
-                                replacement: entry.replacement.clone(),
+                            notes.push(LaunchNote::ModelIgnored {
+                                found: found.to_string(),
                             });
+                        } else {
+                            if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
+                                .filter(|entry| entry.deprecated)
+                            {
+                                notes.push(LaunchNote::ModelDeprecated {
+                                    found: model.to_string(),
+                                    replacement: entry.replacement.clone(),
+                                });
+                            }
+                            append_flag(&mut command, model_flag, model);
                         }
-                        append_flag(&mut command, "-m", model);
+                    } else {
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Model,
+                            found: model.to_string(),
+                        });
                     }
                 }
 
-                if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    let effective_model = base_model.as_deref().or(self.model.model.as_deref());
+                if let Some(effort) = requested_effort {
+                    let effective_model = base_model.as_deref().or(requested_model);
                     if !ModelCatalog::supports_effort(self.tool, effective_model, effort) {
                         notes.push(LaunchNote::EffortIgnored {
                             found: effort.to_string(),
                             reason: EffortIgnoreReason::Invalid,
                         });
-                    } else if command_contains_flag(self.base, "model_reasoning_effort") {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: "model_reasoning_effort".to_string(),
-                            reason: EffortIgnoreReason::BaseOverride,
-                        });
+                    } else if let Some(EffortFlag::Config { flag, key }) = capabilities.effort_flag
+                    {
+                        if command_contains_flag(self.base, key) {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: key.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, &format!("{key}=\"{effort}\""));
+                        }
                     } else {
-                        append_flag(
-                            &mut command,
-                            "-c",
-                            &format!("model_reasoning_effort=\"{effort}\""),
-                        );
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Effort,
+                            found: effort.to_string(),
+                        });
                     }
                 }
             }
             CliTool::Claude => {
-                if let Some(model) = self.model.model.as_deref() {
-                    if command_contains_flag(self.base, "--model") {
-                        notes.push(LaunchNote::ModelIgnored {
-                            found: "--model".to_string(),
-                        });
+                if let Some(model) = requested_model {
+                    if let Some(model_flag) = capabilities.model_flag {
+                        if command_contains_flag(self.base, model_flag) {
+                            notes.push(LaunchNote::ModelIgnored {
+                                found: model_flag.to_string(),
+                            });
+                        } else {
+                            append_flag(&mut command, model_flag, model);
+                        }
                     } else {
-                        append_flag(&mut command, "--model", model);
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Model,
+                            found: model.to_string(),
+                        });
                     }
                 }
 
-                if let Some(effort) = self.model.reasoning_effort.as_deref() {
-                    if !ModelCatalog::supports_effort(
-                        self.tool,
-                        self.model.model.as_deref(),
-                        effort,
-                    ) {
+                if let Some(effort) = requested_effort {
+                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
                         notes.push(LaunchNote::EffortIgnored {
                             found: effort.to_string(),
                             reason: EffortIgnoreReason::Invalid,
                         });
-                    } else if command_contains_flag(self.base, "--effort") {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: "--effort".to_string(),
-                            reason: EffortIgnoreReason::BaseOverride,
-                        });
+                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
+                        if command_contains_flag(self.base, flag) {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: flag.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, effort);
+                        }
                     } else {
-                        append_flag(&mut command, "--effort", effort);
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Effort,
+                            found: effort.to_string(),
+                        });
                     }
                 }
 
-                if let Some(team) = self.team.as_ref() {
+                if let Some(team) = self.team.as_ref().filter(|_| capabilities.team_flags) {
                     if !self.base.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
                         command = format!(
                             "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 {command}"
@@ -273,39 +345,61 @@ impl LaunchSpec<'_> {
                         "general-purpose"
                     };
                     append_flag_unless_present(&mut command, self.base, "--agent-type", agent_type);
-                    if first_present_flag(self.base, &["-n", "--name"]).is_none() {
-                        append_flag(&mut command, "-n", team.agent_name);
+                    if let Some(display_name_flag) = capabilities.display_name_flag {
+                        if first_present_flag(self.base, &[display_name_flag, "--name"]).is_none() {
+                            append_flag(&mut command, display_name_flag, team.agent_name);
+                        }
+                    } else {
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::DisplayName,
+                            found: team.agent_name.to_string(),
+                        });
                     }
                 }
 
                 // Last, so the assignment lands in front of the team
                 // environment the arm may have just prepended.
                 if let Some(config_dir) = self.claude_config_dir {
-                    if command_contains_flag(self.base, CLAUDE_CONFIG_DIR_ENV) {
-                        notes.push(LaunchNote::ConfigDirIgnored {
-                            found: CLAUDE_CONFIG_DIR_ENV.to_string(),
-                        });
+                    if let Some(config_dir_env) = capabilities.config_dir_env {
+                        if command_contains_flag(self.base, config_dir_env) {
+                            notes.push(LaunchNote::ConfigDirIgnored {
+                                found: config_dir_env.to_string(),
+                            });
+                        } else {
+                            let assignment = shell_escape(&config_dir.to_string_lossy());
+                            command = format!("{config_dir_env}={assignment} {command}");
+                        }
                     } else {
-                        let assignment = shell_escape(&config_dir.to_string_lossy());
-                        command = format!("{CLAUDE_CONFIG_DIR_ENV}={assignment} {command}");
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::ConfigDir,
+                            found: config_dir.to_string_lossy().into_owned(),
+                        });
                     }
                 }
             }
             CliTool::Gemini => {
-                if let Some(effort) = self.model.reasoning_effort.as_deref() {
+                if let Some(effort) = requested_effort {
                     notes.push(LaunchNote::EffortIgnored {
                         found: effort.to_string(),
                         reason: EffortIgnoreReason::Invalid,
                     });
                 }
                 // unverified (S12): Gemini is not installed on the audit host.
-                if let Some(model) = self.model.model.as_deref() {
-                    if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
-                        notes.push(LaunchNote::ModelIgnored {
-                            found: found.to_string(),
-                        });
+                if let Some(model) = requested_model {
+                    if let Some(model_flag) = capabilities.model_flag {
+                        if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
+                        {
+                            notes.push(LaunchNote::ModelIgnored {
+                                found: found.to_string(),
+                            });
+                        } else {
+                            append_flag(&mut command, model_flag, model);
+                        }
                     } else {
-                        append_flag(&mut command, "-m", model);
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Model,
+                            found: model.to_string(),
+                        });
                     }
                 }
             }
@@ -317,11 +411,7 @@ impl LaunchSpec<'_> {
 
 /// Return the configured base command without normalizing or rewriting it.
 pub fn base_command(commands: &CliCommandSettings, tool: CliTool, mode: LaunchMode) -> &str {
-    let tool_commands = match tool {
-        CliTool::Claude => &commands.claude,
-        CliTool::Codex => &commands.codex,
-        CliTool::Gemini => &commands.gemini,
-    };
+    let tool_commands = commands.get(tool);
 
     match mode {
         LaunchMode::Continue => &tool_commands.continue_cmd,

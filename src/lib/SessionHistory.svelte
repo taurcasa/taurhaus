@@ -1,7 +1,8 @@
 <script>
   import { getArchivedSessions, getCommitsInRange } from './ipc.js'
   import { formatDuration } from './format.js'
-  import { TOOL_ICONS, TOOL_NAMES } from './toolLogos.js'
+  import { TOOL_ICONS } from './toolLogos.js'
+  import { toolLabel } from './toolRegistry.js'
   import { themeTokens } from './themeTokens.js'
 
   /** @type {{ projectPath: string, projectId?: string|null, isActive?: boolean, dark: boolean, onSelectTask?: (task: any) => void, onNavigateToCommit?: (hash: string) => void, onNavigateToFile?: (path: string) => void, onNavigateToCommitRange?: (after: string, before: string) => void }} */
@@ -24,8 +25,6 @@
   const warningRowClass = $derived(dark ? 'bg-warning-300/10 text-warning-300' : 'bg-warning-50 text-warning-600')
   const taskHoverClass = $derived(dark ? 'hover:bg-zinc-800/50' : 'hover:bg-zinc-100/80')
   const archiveChipClass = $derived(dark ? 'bg-zinc-800/80 text-zinc-300' : 'bg-zinc-100 text-zinc-600')
-
-  const SOURCE_LABELS = TOOL_NAMES
 
   // Data state
   let sessions = $state([])
@@ -282,7 +281,7 @@
             {#each session.sources as source}
               {@const icon = TOOL_ICONS[source]}
               {#if icon}
-                <span class="w-3 h-3 shrink-0 {t.textTertiary}" aria-label={SOURCE_LABELS[source] || source}>
+                <span class="w-3 h-3 shrink-0 {t.textTertiary}" aria-label={toolLabel(source, source)}>
                   <svg class="w-3 h-3" viewBox={icon.viewBox} fill="currentColor" aria-hidden="true">
                     <path d={icon.path}/>
                   </svg>

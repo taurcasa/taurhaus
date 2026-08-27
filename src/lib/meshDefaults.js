@@ -1,9 +1,7 @@
-export const TOOL_OPTIONS = ['claude', 'codex', 'gemini']
+export { toolOptions } from './toolRegistry.js'
+export { normalizeTool } from './toolRegistry.js'
 
-export function normalizeTool(tool) {
-  const value = String(tool || '').trim().toLowerCase()
-  return TOOL_OPTIONS.includes(value) ? value : 'claude'
-}
+import { normalizeTool } from './toolRegistry.js'
 
 export function applyNamePattern(pattern, n, projectName) {
   return String(pattern || '')

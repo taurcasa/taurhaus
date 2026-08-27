@@ -296,7 +296,7 @@ pub(crate) fn persisted_to_unified(
             "completed" => crate::task_scanner::TaskStatus::Completed,
             _ => crate::task_scanner::TaskStatus::Pending,
         },
-        source: t.source.parse::<CliTool>().unwrap_or(CliTool::Claude),
+        source: t.source.parse::<CliTool>().unwrap_or_default(),
         blocks: t.blocks,
         blocked_by: t.blocked_by,
         owner: t.owner,

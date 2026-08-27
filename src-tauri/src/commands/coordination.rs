@@ -116,13 +116,17 @@ pub async fn coordination_initialize_team(
         let db = app_for_task.state::<DbState>();
         let state = app_for_task.state::<CoordinationState>();
         let request = normalize_initialize_request_paths(&db, request)?;
-        let has_codex = matches!(
-            CliTool::from_alias(&request.lead.cli_tool),
-            Ok(CliTool::Codex)
-        ) || request
-            .agents
-            .iter()
-            .any(|agent| matches!(CliTool::from_alias(&agent.cli_tool), Ok(CliTool::Codex)));
+        let has_codex = CliTool::from_alias(&request.lead.cli_tool).is_ok_and(|tool| {
+            crate::session_scanner::cli_tool::spec(tool)
+                .capabilities
+                .hook_trust
+        }) || request.agents.iter().any(|agent| {
+            CliTool::from_alias(&agent.cli_tool).is_ok_and(|tool| {
+                crate::session_scanner::cli_tool::spec(tool)
+                    .capabilities
+                    .hook_trust
+            })
+        });
         let codex_bypass_hook_trust =
             reconcile_codex_before_managed_launch(&app_for_task, &db, has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
@@ -183,10 +187,11 @@ pub fn coordination_add_agent(
     let requested_team_name = request.team_name.clone();
     let result = {
         let request = normalize_add_agent_request_path(&db, request)?;
-        let has_codex = matches!(
-            CliTool::from_alias(&request.agent.cli_tool),
-            Ok(CliTool::Codex)
-        );
+        let has_codex = CliTool::from_alias(&request.agent.cli_tool).is_ok_and(|tool| {
+            crate::session_scanner::cli_tool::spec(tool)
+                .capabilities
+                .hook_trust
+        });
         let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(

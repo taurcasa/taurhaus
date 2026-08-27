@@ -483,7 +483,8 @@ fn build_imported_role(
     let default_cli_tool = parsed_body.default_cli_tool.unwrap_or(cli_tool);
     let default_model = imported_model
         .clone()
-        .unwrap_or_else(|| ModelCatalog::default_for(default_cli_tool).id.clone());
+        .or_else(|| ModelCatalog::default_for(default_cli_tool).map(|entry| entry.id.clone()))
+        .unwrap_or_default();
     let model = ModelSpec::parse_legacy(&default_model);
 
     Ok(ImportedRoleTemplate {
@@ -1027,22 +1028,15 @@ fn parse_constraints_section(body: &str) -> (Option<RoleConstraints>, Option<Cli
                 };
                 saw_field = true;
             }
+            // Canonical names only (`claude`/`codex`/`gemini`): the exporter
+            // writes those, and internal aliases such as `mesh` must not start
+            // parsing from hand-authored markdown.
             "required lead tool" => {
-                constraints.requires_lead_tool = match value {
-                    "claude" => Some(CliTool::Claude),
-                    "codex" => Some(CliTool::Codex),
-                    "gemini" => Some(CliTool::Gemini),
-                    _ => None,
-                };
+                constraints.requires_lead_tool = value.parse::<CliTool>().ok();
                 saw_field = true;
             }
             "default cli tool" => {
-                default_cli_tool = match value {
-                    "claude" => Some(CliTool::Claude),
-                    "codex" => Some(CliTool::Codex),
-                    "gemini" => Some(CliTool::Gemini),
-                    _ => None,
-                };
+                default_cli_tool = value.parse::<CliTool>().ok();
             }
             _ => {}
         }
@@ -1362,6 +1356,26 @@ mod tests {
     use crate::templates::types::{
         BehavioralContract, RoleConstraints, RoleDefaults, TemplateKind, TemplateSchema,
     };
+
+    // Regression: e17f3eb (PR 15) parsed the constraint tools through
+    // `CliTool::from_alias`, so hand-authored `mesh`/`Claude` values silently
+    // became real constraints where they had parsed to nothing before.
+    #[test]
+    fn constraint_tools_parse_canonical_names_only() {
+        let (constraints, default_cli_tool) =
+            parse_constraints_section("- required lead tool: mesh\n- default cli tool: codex\n");
+        assert_eq!(constraints.unwrap().requires_lead_tool, None);
+        assert_eq!(default_cli_tool, Some(CliTool::Codex));
+
+        let (constraints, default_cli_tool) = parse_constraints_section(
+            "- required lead tool: codex\n- default cli tool: claude_native\n",
+        );
+        assert_eq!(
+            constraints.unwrap().requires_lead_tool,
+            Some(CliTool::Codex)
+        );
+        assert_eq!(default_cli_tool, None);
+    }
 
     fn sample_role() -> RoleTemplate {
         RoleTemplate {

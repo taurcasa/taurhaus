@@ -1016,7 +1016,7 @@ fn mesh_member_to_domain(member: MeshMemberWire) -> Result<Member, CoordinationE
     let cli_tool = member
         .cli_tool
         .or_else(|| model.as_deref().map(cli_tool_from_model))
-        .unwrap_or(CliTool::Codex);
+        .unwrap_or_else(crate::session_scanner::cli_tool::bridged_default);
     let project_path = member
         .project_path
         .or(member.project_path_camel)
@@ -1196,14 +1196,7 @@ fn parse_role(value: &str) -> MemberRole {
 }
 
 fn cli_tool_from_model(model: &str) -> CliTool {
-    let lower = model.to_ascii_lowercase();
-    if lower.contains("claude") {
-        CliTool::Claude
-    } else if lower.contains("gemini") {
-        CliTool::Gemini
-    } else {
-        CliTool::Codex
-    }
+    crate::session_scanner::cli_tool::infer_from_model(model)
 }
 
 fn team_dir(teams_dir: &Path, team_name: &str) -> PathBuf {

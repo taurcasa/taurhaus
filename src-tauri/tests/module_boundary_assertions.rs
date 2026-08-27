@@ -30,6 +30,49 @@ fn runtime_section(source: &str) -> &str {
         .expect("split always yields at least one section")
 }
 
+fn source_without_test_only_items(source: &str) -> String {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut runtime = String::new();
+    let mut index = 0;
+
+    while index < lines.len() {
+        if lines[index].trim() != "#[cfg(test)]" {
+            runtime.push_str(lines[index]);
+            runtime.push('\n');
+            index += 1;
+            continue;
+        }
+
+        index += 1;
+        while index < lines.len() && lines[index].trim_start().starts_with("#[") {
+            index += 1;
+        }
+
+        let mut brace_depth = 0_i32;
+        let mut saw_open_brace = false;
+        while index < lines.len() {
+            let line = lines[index];
+            brace_depth += line.matches('{').count() as i32;
+            brace_depth -= line.matches('}').count() as i32;
+            saw_open_brace |= line.contains('{');
+            index += 1;
+
+            if (saw_open_brace && brace_depth == 0) || (!saw_open_brace && line.contains(';')) {
+                break;
+            }
+        }
+    }
+
+    runtime
+}
+
+fn cli_tool_literal_count(source: &str) -> usize {
+    ["CliTool::Claude", "CliTool::Codex", "CliTool::Gemini"]
+        .into_iter()
+        .map(|literal| source.match_indices(literal).count())
+        .sum()
+}
+
 #[test]
 fn coordination_modules_do_not_import_commands_layer() {
     let mut files = Vec::new();
@@ -166,5 +209,62 @@ fn coordination_cli_log_sink_test_uses_shared_global_guard() {
     assert!(
         guard < install,
         "the shared global-log guard must be acquired before the sink is replaced"
+    );
+}
+
+#[test]
+fn cli_tool_identity_branches_stay_inside_capability_slices() {
+    // Regression: commit 9a66d1c distributed CliTool identity branches across
+    // runtime consumers; new harness behavior must live in the registry or a
+    // declared per-tool capability slice instead.
+    const ALLOWED_RUNTIME_FILES: &[&str] = &[
+        "src/coordination/compact_hook.rs",
+        "src/models/mod.rs",
+        "src/session_scanner/cli_tool.rs",
+        "src/session_scanner/compaction_extractor.rs",
+        "src/session_scanner/idle/claude.rs",
+        "src/session_scanner/idle/codex.rs",
+        "src/session_scanner/launch.rs",
+        "src/task_scanner/claude.rs",
+        "src/task_scanner/codex.rs",
+        "src/task_scanner/gemini.rs",
+        "src/templates/adapters.rs",
+    ];
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 59;
+
+    let mut files = Vec::new();
+    collect_rs_files(&crate_root().join("src"), &mut files);
+
+    let mut allowed_count = 0;
+    let mut violations = Vec::new();
+    for path in files {
+        if path.file_name().and_then(|name| name.to_str()) == Some("tests.rs") {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(crate_root())
+            .expect("source lives under crate root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        let source = fs::read_to_string(&path).expect("Rust source should be readable");
+        let runtime = source_without_test_only_items(&source);
+        let count = cli_tool_literal_count(&runtime);
+        if count == 0 {
+            continue;
+        }
+        if ALLOWED_RUNTIME_FILES.contains(&relative.as_str()) {
+            allowed_count += count;
+        } else {
+            violations.push(format!("{relative}: {count}"));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "CliTool identity literals escaped the registry/capability slices: {violations:?}"
+    );
+    assert_eq!(
+        allowed_count, EXPECTED_RUNTIME_LITERAL_COUNT,
+        "update consumers instead of growing the pinned CliTool literal count"
     );
 }

@@ -19,6 +19,7 @@ use crate::coordination::stores::{
 };
 use crate::provider::path::normalize_project_path;
 use crate::provider::platform_paths::PlatformPaths;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 
 const SKIP_REASON_ALREADY_HANDLED: &str = "already_handled";
@@ -107,6 +108,7 @@ impl CompactionSignalProcessor {
                 teams_dir,
                 &resolved.team_name,
                 &resolved.member_name,
+                signal.tool,
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Stale,
@@ -136,6 +138,7 @@ impl CompactionSignalProcessor {
                 teams_dir,
                 &resolved.team_name,
                 &resolved.member_name,
+                signal.tool,
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Skipped,
@@ -161,6 +164,7 @@ impl CompactionSignalProcessor {
                 teams_dir,
                 &resolved.team_name,
                 &resolved.member_name,
+                signal.tool,
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Skipped,
@@ -184,6 +188,7 @@ impl CompactionSignalProcessor {
                 teams_dir,
                 &resolved.team_name,
                 &resolved.member_name,
+                signal.tool,
                 &signal.session_id,
                 signal.transcript_timestamp,
                 CompactionDeliveryResult::Skipped,
@@ -215,6 +220,7 @@ impl CompactionSignalProcessor {
                     teams_dir,
                     &resolved.team_name,
                     &resolved.member_name,
+                    signal.tool,
                     &signal.session_id,
                     signal.transcript_timestamp,
                     CompactionDeliveryResult::Injected,
@@ -239,6 +245,7 @@ impl CompactionSignalProcessor {
                     teams_dir,
                     &resolved.team_name,
                     &resolved.member_name,
+                    signal.tool,
                     &signal.session_id,
                     signal.transcript_timestamp,
                     CompactionDeliveryResult::Failed,
@@ -300,7 +307,10 @@ fn resolve_managed_codex_signal(
         };
 
         for member in &roster {
-            if member.configured_cli_tool != CliTool::Codex {
+            if !crate::session_scanner::cli_tool::spec(member.configured_cli_tool)
+                .capabilities
+                .transcript_compaction_signals
+            {
                 continue;
             }
             if normalize_project_path(&member.configured_project_path.display().to_string())
@@ -452,7 +462,10 @@ fn member_is_still_attached(
         return false;
     };
 
-    if member.configured_cli_tool != CliTool::Codex {
+    if !crate::session_scanner::cli_tool::spec(member.configured_cli_tool)
+        .capabilities
+        .transcript_compaction_signals
+    {
         return false;
     }
 
@@ -488,6 +501,7 @@ fn record_delivery_at(
     teams_dir: &Path,
     team_name: &str,
     member_name: &str,
+    tool: crate::session_scanner::cli_tool::CliTool,
     session_id: &str,
     compaction_timestamp: DateTime<Utc>,
     result: CompactionDeliveryResult,
@@ -520,7 +534,7 @@ fn record_delivery_at(
     emit_compaction_delivery_event(
         team_name,
         member_name,
-        CliTool::Codex,
+        tool,
         session_id,
         compaction_timestamp,
         result,
@@ -541,10 +555,12 @@ fn should_persist_delivery_state(
         Err(error) => return Err(error),
     };
 
-    Ok(config
-        .members
-        .iter()
-        .any(|member| member.name == member_name && member.cli_tool == CliTool::Codex))
+    Ok(config.members.iter().any(|member| {
+        member.name == member_name
+            && crate::session_scanner::cli_tool::spec(member.cli_tool)
+                .capabilities
+                .transcript_compaction_signals
+    }))
 }
 
 #[cfg(test)]

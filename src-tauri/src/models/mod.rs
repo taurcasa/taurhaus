@@ -254,24 +254,24 @@ pub struct CliCommandSettings {
 impl Default for CliCommandSettings {
     fn default() -> Self {
         Self {
-            claude: ToolCommands {
-                continue_cmd: "claude --dangerously-skip-permissions --continue".into(),
-                fresh: "claude --dangerously-skip-permissions".into(),
-                resume: "claude --dangerously-skip-permissions --resume".into(),
-            },
-            codex: ToolCommands {
-                continue_cmd: "codex --yolo".into(),
-                fresh: "codex --yolo".into(),
-                resume: "codex resume --last --yolo".into(),
-            },
-            gemini: ToolCommands {
-                continue_cmd: "gemini --yolo --resume".into(),
-                fresh: "gemini --yolo".into(),
-                resume: "gemini --yolo --resume".into(),
-            },
+            claude: crate::session_scanner::cli_tool::spec(CliTool::Claude)
+                .default_commands
+                .clone(),
+            codex: crate::session_scanner::cli_tool::spec(CliTool::Codex)
+                .default_commands
+                .clone(),
+            gemini: crate::session_scanner::cli_tool::spec(CliTool::Gemini)
+                .default_commands
+                .clone(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
         }
+    }
+}
+
+impl CliCommandSettings {
+    pub fn get(&self, tool: CliTool) -> &ToolCommands {
+        crate::session_scanner::cli_tool::command_settings_for(self, tool)
     }
 }
 
@@ -601,24 +601,47 @@ impl Default for ModelCatalog {
 }
 
 impl ModelCatalog {
-    pub fn default_for(tool: CliTool) -> &'static ModelCatalogEntry {
-        match tool {
-            CliTool::Claude => &MODEL_CATALOG.claude[0],
-            CliTool::Codex => &MODEL_CATALOG.codex[0],
-            CliTool::Gemini => &MODEL_CATALOG.gemini[0],
+    pub fn entries_for(tool: CliTool) -> &'static [ModelCatalogEntry] {
+        if !crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .catalog
+        {
+            return &[];
         }
-    }
-
-    pub fn entry_for(tool: CliTool, model_id: &str) -> Option<&'static ModelCatalogEntry> {
-        let entries = match tool {
+        match tool {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
             CliTool::Gemini => &MODEL_CATALOG.gemini,
-        };
-        entries.iter().find(|entry| entry.id == model_id)
+        }
+    }
+
+    pub fn default_from_entries(
+        entries: &[ModelCatalogEntry],
+        catalog_declared: bool,
+    ) -> Option<&ModelCatalogEntry> {
+        catalog_declared.then(|| entries.first()).flatten()
+    }
+
+    pub fn default_for(tool: CliTool) -> Option<&'static ModelCatalogEntry> {
+        let catalog_declared = crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .catalog;
+        Self::default_from_entries(Self::entries_for(tool), catalog_declared)
+    }
+
+    pub fn entry_for(tool: CliTool, model_id: &str) -> Option<&'static ModelCatalogEntry> {
+        Self::entries_for(tool)
+            .iter()
+            .find(|entry| entry.id == model_id)
     }
 
     pub fn supports_effort(tool: CliTool, model_id: Option<&str>, effort: &str) -> bool {
+        if !crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .catalog
+        {
+            return false;
+        }
         match tool {
             CliTool::Claude => CLAUDE_EFFORTS.contains(&effort),
             // Known catalog entry: its own effort list. Unknown (user-added /
@@ -665,6 +688,8 @@ pub struct TerminalPlatformContract {
     pub model_catalog: ModelCatalog,
     #[serde(alias = "cli_versions")]
     pub cli_versions: CliVersions,
+    #[serde(default)]
+    pub tools: Vec<crate::session_scanner::cli_tool::CliToolDescriptor>,
 }
 
 impl Default for TerminalPlatformContract {
@@ -694,6 +719,7 @@ impl TerminalPlatformContract {
             cli_command_defaults: CliCommandSettings::default(),
             model_catalog: ModelCatalog::default(),
             cli_versions: CliVersions::default(),
+            tools: crate::session_scanner::cli_tool::descriptors(),
         }
     }
 
@@ -1470,10 +1496,22 @@ mod tests {
 
     #[test]
     fn model_catalog_defaults_are_explicit_per_tool() {
-        assert_eq!(ModelCatalog::default_for(CliTool::Claude).id, "opus");
-        assert_eq!(ModelCatalog::default_for(CliTool::Codex).id, "gpt-5.6-sol");
         assert_eq!(
-            ModelCatalog::default_for(CliTool::Gemini).id,
+            ModelCatalog::default_for(CliTool::Claude)
+                .expect("Claude catalog")
+                .id,
+            "opus"
+        );
+        assert_eq!(
+            ModelCatalog::default_for(CliTool::Codex)
+                .expect("Codex catalog")
+                .id,
+            "gpt-5.6-sol"
+        );
+        assert_eq!(
+            ModelCatalog::default_for(CliTool::Gemini)
+                .expect("Gemini catalog")
+                .id,
             "gemini-3.1-pro"
         );
     }

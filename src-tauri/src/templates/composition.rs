@@ -510,11 +510,7 @@ fn validate_model_compatibility(
 }
 
 fn model_is_compatible(cli_tool: CliTool, model: &str) -> bool {
-    match cli_tool {
-        CliTool::Claude => model.starts_with("claude-"),
-        CliTool::Codex => model.starts_with("gpt-"),
-        CliTool::Gemini => model.starts_with("gemini-"),
-    }
+    crate::session_scanner::cli_tool::model_is_compatible(cli_tool, model)
 }
 
 #[cfg(test)]

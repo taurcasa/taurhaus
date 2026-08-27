@@ -87,9 +87,14 @@ impl PlatformPaths {
 
     /// Per-tool session root.
     pub fn tool_session_root(tool: CliTool) -> PathBuf {
-        match tool {
-            CliTool::Claude => Self::claude_dir().join(config_for(tool).projects_subdir),
-            _ => default_tool_session_root(tool),
+        let tool_config = config_for(tool);
+        match tool_config.capabilities.session_root {
+            crate::session_scanner::cli_tool::SessionRoot::AppManagedClaudeDir => {
+                Self::claude_dir().join(tool_config.projects_subdir)
+            }
+            crate::session_scanner::cli_tool::SessionRoot::ToolHome => {
+                default_tool_session_root(tool)
+            }
         }
     }
 
