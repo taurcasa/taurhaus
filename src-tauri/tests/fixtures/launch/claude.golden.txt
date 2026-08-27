@@ -1,0 +1,1 @@
+CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude --dangerously-skip-permissions --model 'opus' --effort 'high' --team-name 'golden-team' --agent-name 'golden-agent' --agent-id 'golden-agent@golden-team' --agent-type 'general-purpose' -n 'golden-agent'
