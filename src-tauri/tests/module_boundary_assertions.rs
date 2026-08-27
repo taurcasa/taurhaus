@@ -223,6 +223,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/session_scanner/cli_tool.rs",
         "src/session_scanner/compaction_extractor.rs",
         "src/session_scanner/accounts/claude.rs",
+        "src/session_scanner/accounts/codex.rs",
         "src/session_scanner/accounts/legacy_statusline.rs",
         "src/session_scanner/idle/claude.rs",
         "src/session_scanner/idle/codex.rs",

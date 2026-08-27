@@ -24,6 +24,8 @@ Adding a CLI must touch only the slices where that tool differs; the rest of the
 | Message delivery + wake | inbox file, Claude's own poller | inbox file + `mesh daemon` tmux wake | inbox file + tmux wake |
 | Compaction signal | `SessionStart(source=compact)` hook | same hook shape via `hooks.json` (opt-in), transcript tailer fallback | none, logged once |
 | Transcript parser | JSONL | rollout JSONL (format not stable upstream) | none |
+| Account selection | config-dir identities + `CLAUDE_CONFIG_DIR` | `auth.json` identity + `CODEX_HOME` | implicit single account |
+| Usage | OAuth 5-hour + weekly windows | `wham/usage` 5-hour + weekly windows per model family | unavailable |
 | Stop / teardown | `/exit` | interrupt | tmux kill + mesh daemon stop |
 
 The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool identity may fan out; slices with two real implementations are traits (`SessionSource`, `ActivitySource`, `CompactionSignalSource`, `TranscriptParser`), everything else is data. A conformance suite runs every registry entry through every slice, so a new tool is proven by the same tests as the existing ones. The tracked metric is the number of `CliTool::…` branches outside the registry and slice files; it is meant to go down.
@@ -36,7 +38,7 @@ The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool
 
 Account selection is a capability slice, not a Claude-only path. A provider discovers tool-owned config directories and identities; the generic core remembers `pinned` and `last_used` choices per project and tool, resolves explicit → session → pin → last-used → global default → base-command selector → default-dir precedence, and renders the registry's selector in `LaunchSpec`. Resumes derive their account from the provider's transcript layout. Tools without a provider stay on the logged single-account floor.
 
-Usage is a second provider slice attached to each detected account as an in-memory snapshot. Providers read the CLI's credential file at request time and call its native usage endpoint through an injectable HTTP boundary; taurhaus never logs, persists, refreshes, or otherwise owns the token. Claude currently implements both slices through `CLAUDE_CONFIG_DIR` and the OAuth usage endpoint. Codex and Gemini declare their selectors in the registry, while their providers arrive independently. The retired Claude status-line bridge is uninstalled once without disturbing foreign status-line commands.
+Usage is a second provider slice attached to each detected account as an in-memory snapshot. Providers read the CLI's credential file at request time and call its native usage endpoint through an injectable HTTP boundary; taurhaus never logs, persists, refreshes, or otherwise owns the token. Claude implements both slices through `CLAUDE_CONFIG_DIR` and its OAuth usage endpoint. Codex implements them through `CODEX_HOME`, display-only decoding of the `id_token`, and the native `wham/usage` windows; API-key accounts remain selectable but explicitly report usage as unavailable. Gemini declares its selector in the registry while its provider arrives independently. The retired Claude status-line bridge is uninstalled once without disturbing foreign status-line commands.
 
 ## App and daemon move together
 

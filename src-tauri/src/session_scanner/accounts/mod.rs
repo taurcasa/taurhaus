@@ -4,6 +4,7 @@
 //! registry-provided traits and these normalised wire types.
 
 pub mod claude;
+pub mod codex;
 pub mod legacy_statusline;
 
 use std::collections::HashMap;
@@ -73,7 +74,13 @@ pub struct AccountIdentity {
     pub organization: Option<String>,
     pub plan: Option<String>,
     pub logged_in: bool,
+    #[serde(default = "default_true")]
+    pub usage_capable: bool,
     pub credential_expires_at: Option<i64>,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 /// One detected account for one CLI tool.
@@ -1134,6 +1141,7 @@ mod tests {
                 organization: None,
                 plan: None,
                 logged_in: true,
+                usage_capable: true,
                 credential_expires_at: None,
             },
             is_default,
@@ -1469,6 +1477,7 @@ mod tests {
                         organization: None,
                         plan: None,
                         logged_in: true,
+                        usage_capable: true,
                         credential_expires_at: None,
                     },
                     is_default: false,

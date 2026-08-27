@@ -137,6 +137,7 @@ fn read_identity(config_dir: &Path, store: CredentialStore) -> Option<AccountIde
         organization: non_empty(oauth.organization_name),
         plan: non_empty(oauth.seat_tier).or_else(|| non_empty(oauth.organization_type)),
         logged_in: signed_in(config_dir, store),
+        usage_capable: true,
         credential_expires_at: credential_expires_at(config_dir),
     })
 }

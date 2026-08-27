@@ -105,20 +105,21 @@ describe('Sidebar account submenus', () => {
     vi.useRealTimers()
   })
 
-  it('gives every Claude launch item a submenu, and no other tool one', async () => {
+  it('gives every account-capable launch item a submenu', async () => {
     await openProjectMenu()
 
     for (const testid of [
       'menu-item-new-claude-session',
       'menu-item-continue-claude',
       'menu-item-resume-claude',
+      'menu-item-new-codex-session',
+      'menu-item-resume-codex',
     ]) {
       await waitFor(() =>
         expect(screen.getByTestId(testid)).toHaveAttribute('aria-haspopup', 'menu')
       )
     }
 
-    expect(screen.getByTestId('menu-item-new-codex-session')).not.toHaveAttribute('aria-haspopup')
     expect(screen.getByTestId('menu-item-resume-gemini')).not.toHaveAttribute('aria-haspopup')
   })
 

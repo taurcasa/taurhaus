@@ -163,14 +163,20 @@ describe('claudeAccounts store', () => {
     expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
   })
 
-  it('never asks for a non-Claude tool', async () => {
+  it('asks for a Codex account through the same generic store', async () => {
+    // Regression: 08c3961 left Codex account selection disabled after the
+    // generic chooser state landed, so two CODEX_HOME accounts were ignored.
     listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
-    await refreshAccounts('claude')
+    await refreshAccounts('codex')
 
     await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'codex' })
 
-    expect(claudeAccounts.pending).toBe(null)
-    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'codex', null)
+    expect(accountState('codex').pending).toMatchObject({
+      projectId: 'p1',
+      mode: 'fresh',
+      tool: 'codex',
+    })
+    expect(launchCliSession).not.toHaveBeenCalled()
   })
 
   it('asks once when two accounts are logged in and the project stored no choice', async () => {
@@ -328,8 +334,9 @@ describe('claudeAccounts store', () => {
     try {
       const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
       const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
-      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
-      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      const unsupported = { ...PRIMARY, usage_capable: false }
+      const previousReport = detected([unsupported, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([unsupported, { ...SECOND, usage: refreshedUsage }])
       listAccounts.mockResolvedValue(previousReport)
       await refreshAccounts('claude')
       listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
@@ -346,6 +353,31 @@ describe('claudeAccounts store', () => {
     }
   })
 
+  it('publishes an account first usage snapshot after an asynchronous refresh', async () => {
+    // Regression: 701cd7c stopped the refresh retry chain for accounts without
+    // an existing observation, so their first successful background fetch was
+    // never read and a newly opened chooser stayed meterless.
+    vi.useFakeTimers()
+    try {
+      const emptyReport = detected([{ ...PRIMARY, usage: null }])
+      const firstUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const firstReport = detected([{ ...PRIMARY, usage: firstUsage }])
+      listAccounts.mockResolvedValue(emptyReport)
+      await refreshAccounts('claude')
+      listAccounts.mockResolvedValueOnce(emptyReport).mockResolvedValue(firstReport)
+
+      await refreshUsage('claude')
+      expect(claudeAccounts.accounts[0].usage).toBeNull()
+
+      await vi.advanceTimersByTimeAsync(250)
+
+      expect(claudeAccounts.accounts[0].usage).toEqual(firstUsage)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
   it('stops syncing when an account still has no usage', async () => {
     // Regression: 701cd7c treated a missing usage entry as still pending, so
     // one account with no snapshot kept list_accounts running at 4 Hz for the
@@ -354,8 +386,9 @@ describe('claudeAccounts store', () => {
     try {
       const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
       const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
-      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
-      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      const unsupported = { ...PRIMARY, usage_capable: false }
+      const previousReport = detected([unsupported, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([unsupported, { ...SECOND, usage: refreshedUsage }])
       listAccounts.mockResolvedValue(previousReport)
       await refreshAccounts('claude')
       listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)

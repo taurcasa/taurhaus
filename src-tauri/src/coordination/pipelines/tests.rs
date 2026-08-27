@@ -1424,6 +1424,27 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
     assert!(trusted.contains("--dangerously-bypass-hook-trust"));
 }
 
+#[test]
+fn managed_codex_team_launch_carries_the_account_selector() {
+    // Regression: 08c3961 registered CODEX_HOME for direct launches but left
+    // coordination sidecars on the process-implicit account directory.
+    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.account_selector_dirs.insert(
+        "CODEX_HOME".to_string(),
+        std::path::PathBuf::from("/accounts/codex-work"),
+    );
+
+    let command =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("managed command");
+
+    assert_eq!(
+        command,
+        "CODEX_HOME='/accounts/codex-work' codex --yolo -m 'gpt-5.4'"
+    );
+}
+
 // Regression: 791f6be centralized team launch rendering without a managed
 // Codex notify input, so the pipeline could not opt into native idle edges.
 #[test]

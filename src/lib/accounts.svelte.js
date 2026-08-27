@@ -178,7 +178,7 @@ function mergeUsageReport(state, report, pending) {
   return new Map(
     [...pending].filter(([accountId, observedAt]) => {
       const next = usageById.get(accountId)?.observed_at ?? null
-      return next != null && next === observedAt
+      return observedAt == null ? next == null : next === observedAt
     })
   )
 }
@@ -212,7 +212,7 @@ export function refreshUsage(tool = providerTool()) {
   const state = mutableAccountState(id)
   const pending = new Map(
     state.accounts
-      .filter((account) => account.logged_in && usageObservation(account) != null)
+      .filter((account) => account.logged_in && account.usage_capable !== false)
       .map((account) => [account.id, usageObservation(account)])
   )
   return Promise.resolve(refreshAccountsUsage(id))

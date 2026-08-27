@@ -1135,6 +1135,7 @@ fn fake_accounts() -> Vec<crate::session_scanner::accounts::Account> {
                 organization: None,
                 plan: None,
                 logged_in: true,
+                usage_capable: true,
                 credential_expires_at: None,
             },
             is_default: true,
@@ -1152,6 +1153,7 @@ fn fake_accounts() -> Vec<crate::session_scanner::accounts::Account> {
                 organization: None,
                 plan: None,
                 logged_in: true,
+                usage_capable: true,
                 credential_expires_at: None,
             },
             is_default: false,
@@ -1434,7 +1436,7 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
 }
 
 #[test]
-fn a_codex_launch_never_receives_a_account_dir() {
+fn a_claude_account_pin_is_not_applied_to_a_codex_launch() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let _accounts = with_fake_accounts();
     let daemon = launch_stub_daemon();
@@ -1466,6 +1468,66 @@ fn a_codex_launch_never_receives_a_account_dir() {
         .clone()
         .expect("captured request");
     assert_eq!(request.params["command_override"], "codex --yolo");
+}
+
+#[test]
+fn a_codex_account_choice_renders_codex_home() {
+    // Regression: 08c3961 declared CODEX_HOME in the registry but had no
+    // provider capable of resolving a selected Codex account directory.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let dir = PathBuf::from("/accounts/codex-work");
+    let account = crate::session_scanner::accounts::Account {
+        tool: CliTool::Codex,
+        id: "codex-work".to_string(),
+        dir: dir.clone(),
+        identity: crate::session_scanner::accounts::AccountIdentity {
+            id: "codex-work".to_string(),
+            label: "codex@example.com".to_string(),
+            display_name: None,
+            organization: None,
+            plan: Some("pro".to_string()),
+            logged_in: true,
+            usage_capable: true,
+            credential_expires_at: None,
+        },
+        is_default: false,
+        is_process_default: false,
+        usage: None,
+    };
+    let _accounts = install_detection_override(
+        CliTool::Codex,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: vec![dir],
+            accounts: vec![account],
+        },
+    );
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p1", "/tmp/project");
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p1".to_string(),
+        LaunchMode::Fresh,
+        Some(CliTool::Codex),
+        Some("codex-work".to_string()),
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        "CODEX_HOME='/accounts/codex-work' codex --yolo"
+    );
 }
 
 fn exited_claude_session(

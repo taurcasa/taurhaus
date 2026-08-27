@@ -901,6 +901,7 @@ mod tests {
                         organization: None,
                         plan: None,
                         logged_in: true,
+                        usage_capable: true,
                         credential_expires_at: None,
                     },
                     is_default: false,

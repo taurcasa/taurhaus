@@ -43,7 +43,7 @@ describe('accountMenu', () => {
 
   it('takes account support from the registry capability, not the tool name', () => {
     expect(toolSelectsAccounts('claude')).toBe(true)
-    expect(toolSelectsAccounts('codex')).toBe(false)
+    expect(toolSelectsAccounts('codex')).toBe(true)
 
     // The next tool to gain accounts needs no change here.
     configureToolRegistry([
@@ -59,7 +59,7 @@ describe('accountMenu', () => {
     expect(accountSubmenuApplies('claude', [PRIMARY])).toBe(false)
     expect(accountSubmenuApplies('claude', [PRIMARY, LOGGED_OUT])).toBe(false)
     expect(accountSubmenuApplies('claude', [PRIMARY, SECOND])).toBe(true)
-    expect(accountSubmenuApplies('codex', [PRIMARY, SECOND])).toBe(false)
+    expect(accountSubmenuApplies('codex', [PRIMARY, SECOND])).toBe(true)
   })
 
   it('renders compact usage and drops a window whose reset has passed', () => {

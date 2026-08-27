@@ -156,6 +156,42 @@ describe('Settings component', () => {
     await waitFor(() => expect(refreshAccountsUsage).toHaveBeenCalledWith('claude'))
   })
 
+  it('shows Codex accounts and usage through the generic settings surface', async () => {
+    // Regression: 08c3961 left Codex account selection and usage disabled in
+    // the registry, hiding two CODEX_HOME accounts from generic settings.
+    const resetsAt = Math.floor(Date.now() / 1000) + 90_000
+    const codexAccounts = TWO_ACCOUNTS.map((account, index) => ({
+      ...account,
+      id: `codex-${index + 1}`,
+      usage:
+        index === 0
+          ? {
+              observed_at: new Date().toISOString(),
+              status: 'ok',
+              windows: [
+                {
+                  key: 'codex.weekly',
+                  title: 'Weekly limit',
+                  used_percentage: 50,
+                  resets_at: resetsAt,
+                  severity: 'normal',
+                  is_active: false,
+                },
+              ],
+            }
+          : null,
+    }))
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(detected(tool === 'codex' ? codexAccounts : []))
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(screen.getByTestId('settings-accounts-codex')).toBeInTheDocument())
+    expect(screen.getByTestId('account-row-codex-codex-1')).toHaveTextContent('Weekly limit 50%')
+    expect(refreshAccountsUsage).toHaveBeenCalledWith('codex')
+  })
+
   it('hides the accounts card when no tool has multiple accounts', async () => {
     // Regression: c11770e exposed account controls to single-account users,
     // contradicting the chooser and overview visibility rule.

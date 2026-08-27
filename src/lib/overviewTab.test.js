@@ -29,6 +29,7 @@ vi.mock('./MarkdownRenderer.svelte', () => {
 
 import OverviewTab from './OverviewTab.svelte'
 import OverviewTabContextHarness from './OverviewTabContextHarness.svelte'
+import { accountState, resetAccountsForTest } from './accounts.svelte.js'
 
 /** Minimal project for rendering. */
 function makeProject(overrides = {}) {
@@ -115,6 +116,7 @@ function defaultProps(overrides = {}) {
 describe('OverviewTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetAccountsForTest()
   })
 
   // --- Project header ---
@@ -132,6 +134,48 @@ describe('OverviewTab', () => {
   it('shows activity state', () => {
     render(OverviewTab, { props: defaultProps() })
     expect(screen.getByText('active')).toBeTruthy()
+  })
+
+  it('shows a metered Codex account chip from the generic account store', () => {
+    // Regression: 08c3961 kept Codex off the generic account capability, so
+    // two CODEX_HOME accounts produced no chooser chip or usage meter.
+    const resetsAt = Math.floor(Date.now() / 1000) + 90_000
+    accountState('codex').accounts = [
+      {
+        id: 'codex-one',
+        label: 'one@example.com',
+        display_name: 'One',
+        logged_in: true,
+        is_default: true,
+        usage: {
+          observed_at: new Date().toISOString(),
+          status: 'ok',
+          windows: [
+            {
+              key: 'codex.weekly',
+              title: 'Weekly limit',
+              used_percentage: 50,
+              resets_at: resetsAt,
+              severity: 'normal',
+              is_active: false,
+            },
+          ],
+        },
+      },
+      {
+        id: 'codex-two',
+        label: 'two@example.com',
+        display_name: 'Two',
+        logged_in: true,
+        is_default: false,
+      },
+    ]
+
+    render(OverviewTab, { props: defaultProps() })
+
+    expect(screen.getByTestId('account-chip')).toHaveTextContent('One')
+    expect(screen.getByTestId('usage-meter')).toHaveAttribute('data-tool', 'codex')
+    expect(screen.getByTestId('usage-meter')).toHaveTextContent('Weekly limit 50%')
   })
 
   it('shows description when present', () => {

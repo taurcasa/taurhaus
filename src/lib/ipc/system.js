@@ -384,6 +384,7 @@ function normalizeAccount(raw) {
   const identity = account.identity && typeof account.identity === 'object' ? account.identity : {}
   const displayName = identity.display_name ?? identity.displayName ?? null
   const plan = identity.plan ?? null
+  const usageCapable = identity.usage_capable ?? identity.usageCapable ?? true
   return {
     tool: String(account.tool ?? ''),
     id,
@@ -396,6 +397,7 @@ function normalizeAccount(raw) {
         identity.organization == null ? null : String(identity.organization).trim() || null,
       plan: plan == null ? null : String(plan).trim() || null,
       logged_in: Boolean(identity.logged_in ?? identity.loggedIn),
+      usage_capable: Boolean(usageCapable),
       credential_expires_at:
         identity.credential_expires_at ?? identity.credentialExpiresAt ?? null,
     },
@@ -406,6 +408,7 @@ function normalizeAccount(raw) {
       identity.organization == null ? null : String(identity.organization).trim() || null,
     plan: plan == null ? null : String(plan).trim() || null,
     logged_in: Boolean(identity.logged_in ?? identity.loggedIn),
+    usage_capable: Boolean(usageCapable),
     is_default: Boolean(account.is_default ?? account.isDefault),
     is_process_default: Boolean(account.is_process_default ?? account.isProcessDefault),
     usage: normalizeAccountUsage(account.usage),

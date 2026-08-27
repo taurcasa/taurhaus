@@ -3,6 +3,7 @@
 use std::fs;
 use std::sync::Arc;
 
+use base64::Engine as _;
 use pretty_assertions::assert_eq;
 use taurhaus_lib::coordination::backend::MeshBridgedBackend;
 use taurhaus_lib::coordination::domain::MemberRole;
@@ -211,6 +212,8 @@ fn registry_declares_native_and_floor_capabilities() {
     let codex = spec(CliTool::Codex);
     assert!(codex.capabilities.compaction_hook);
     assert!(codex.capabilities.authoritative_idle);
+    assert!(codex.capabilities.account_selection);
+    assert!(codex.capabilities.usage);
     assert!(codex.capabilities.notify_sink);
     assert_eq!(codex.stop_strategy, StopStrategy::Interrupt);
 
@@ -254,18 +257,40 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
             .filter(|entry| entry.capabilities.usage)
             .map(|entry| entry.tool)
             .collect::<Vec<_>>(),
-        vec![CliTool::Claude]
+        vec![CliTool::Claude, CliTool::Codex]
     );
 }
 
 #[test]
-fn claude_account_provider_is_registered_behind_the_capability_slice() {
+fn account_providers_are_registered_behind_the_capability_slice() {
     // Regression: commits d6839a3 and a574720 put Claude account detection in
     // command call sites, so adding another provider required cloning the
     // whole pipeline instead of registering one account slice.
     assert!(spec(CliTool::Claude).account_provider().is_some());
-    assert!(spec(CliTool::Codex).account_provider().is_none());
+    assert!(spec(CliTool::Codex).account_provider().is_some());
     assert!(spec(CliTool::Gemini).account_provider().is_none());
+}
+
+fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
+    match tool {
+        CliTool::Claude => fs::write(
+            config_dir.join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"conformance-token","expiresAt":4102444800000}}"#,
+        )
+        .expect("Claude usage fixture credentials"),
+        CliTool::Codex => {
+            let payload =
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"exp":4102444800}"#);
+            fs::write(
+                config_dir.join("auth.json"),
+                format!(
+                    r#"{{"auth_mode":"chatgpt","tokens":{{"access_token":"fixture.{payload}.token","account_id":"conformance-account"}}}}"#
+                ),
+            )
+            .expect("Codex usage fixture credentials");
+        }
+        CliTool::Gemini => unreachable!("Gemini has no usage provider"),
+    }
 }
 
 struct ConformanceHttp {
@@ -335,11 +360,7 @@ fn account_and_usage_provider_slices_obey_the_registry_contract() {
             continue;
         };
         let config_dir = tempfile::tempdir().expect("usage fixture account dir");
-        fs::write(
-            config_dir.path().join(".credentials.json"),
-            r#"{"claudeAiOauth":{"accessToken":"conformance-token","expiresAt":4102444800000}}"#,
-        )
-        .expect("usage fixture credentials");
+        write_usage_credentials(entry.tool, config_dir.path());
         assert_eq!(
             usage
                 .fetch(config_dir.path(), &ConformanceHttp { status: None })
@@ -376,7 +397,7 @@ fn claude_only_capabilities_are_declared_independently() {
         .filter(|entry| entry.capabilities.account_selection)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(account_tools, vec![CliTool::Claude]);
+    assert_eq!(account_tools, vec![CliTool::Claude, CliTool::Codex]);
 
     let team_namespace_tools = all()
         .iter()
@@ -390,7 +411,7 @@ fn claude_only_capabilities_are_declared_independently() {
         .filter(|entry| entry.capabilities.usage)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(usage_tools, vec![CliTool::Claude]);
+    assert_eq!(usage_tools, vec![CliTool::Claude, CliTool::Codex]);
 }
 
 #[test]

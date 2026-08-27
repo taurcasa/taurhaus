@@ -52,6 +52,13 @@ pub(crate) fn apply_managed_codex_launch_inputs(
         user_notify_configured,
         &daemon_executable,
     );
+    if has_managed_codex {
+        cli_commands
+            .account_selector_dirs
+            .insert("CODEX_HOME".to_string(), PlatformPaths::codex_dir());
+    } else {
+        cli_commands.account_selector_dirs.remove("CODEX_HOME");
+    }
     if has_managed_codex && notify_supported && user_notify_configured {
         tracing::info!(
             path = %codex_config_path.display(),
