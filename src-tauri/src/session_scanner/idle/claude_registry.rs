@@ -34,6 +34,10 @@ use super::{
 /// Per-process session identity and transcript binding supplied by a harness.
 pub trait SessionSource: Send + Sync {
     fn resolve(&self, project_path: &str, pid: u32, pane_id: Option<&str>) -> IdleResult;
+
+    fn is_floor(&self) -> bool {
+        false
+    }
 }
 
 pub struct ClaudeRegistrySessionSource;
@@ -49,6 +53,10 @@ pub struct NoSessionSource;
 impl SessionSource for NoSessionSource {
     fn resolve(&self, _project_path: &str, _pid: u32, _pane_id: Option<&str>) -> IdleResult {
         IdleResult::idle()
+    }
+
+    fn is_floor(&self) -> bool {
+        true
     }
 }
 

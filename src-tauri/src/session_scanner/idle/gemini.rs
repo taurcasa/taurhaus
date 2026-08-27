@@ -1,6 +1,25 @@
 use super::*;
 use std::path::PathBuf;
 
+#[cfg(test)]
+static BASE_DIR_FOR_TEST: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+struct BaseDirOverride;
+
+#[cfg(test)]
+impl Drop for BaseDirOverride {
+    fn drop(&mut self) {
+        *BASE_DIR_FOR_TEST.lock().expect("Gemini test root lock") = None;
+    }
+}
+
+#[cfg(test)]
+fn set_base_dir_for_test(base_dir: PathBuf) -> BaseDirOverride {
+    *BASE_DIR_FOR_TEST.lock().expect("Gemini test root lock") = Some(base_dir);
+    BaseDirOverride
+}
+
 /// Resolves Gemini CLI session files from `~/.gemini/tmp/<sha256>/chats/`.
 ///
 /// Gemini CLI uses SHA-256 of the project path as the directory name.
@@ -16,11 +35,19 @@ impl GeminiResolver {
         Self { base_dir }
     }
 
-    #[cfg(test)]
-    fn with_base_dir(base_dir: PathBuf) -> Self {
-        Self {
-            base_dir: Some(base_dir),
+    fn resolved_base_dir(&self) -> Option<PathBuf> {
+        #[cfg(test)]
+        {
+            if let Some(base_dir) = BASE_DIR_FOR_TEST
+                .lock()
+                .expect("Gemini test root lock")
+                .clone()
+            {
+                return Some(base_dir);
+            }
         }
+
+        self.base_dir.clone()
     }
 }
 
@@ -32,11 +59,11 @@ impl Default for GeminiResolver {
 
 impl SessionResolver for GeminiResolver {
     fn detect_idle(&self, project_path: &str) -> IdleResult {
-        let base = match self.base_dir.as_ref() {
+        let base = match self.resolved_base_dir() {
             Some(dir) => dir,
             None => return IdleResult::idle(),
         };
-        gemini_detect_idle(project_path, base)
+        gemini_detect_idle(project_path, &base)
     }
 }
 
@@ -145,8 +172,8 @@ mod tests {
         let session = chats_dir.join("session-2026-08-27T10-00-feedface.json");
         File::create(&session).unwrap();
 
-        let source = GeminiResolver::with_base_dir(tmp.path().to_path_buf());
-        let result = detect_runtime_idle_with_source(project, 4242, Some("%42"), &source);
+        let _base_dir = set_base_dir_for_test(tmp.path().to_path_buf());
+        let result = detect_runtime_idle(project, 4242, Some("%42"), CliTool::Gemini);
 
         assert_eq!(result.state, SessionState::Active);
         assert_eq!(result.session_id.as_deref(), Some("feedface"));

@@ -381,6 +381,20 @@ fn undeclared_session_source_uses_the_non_authoritative_floor() {
 }
 
 #[test]
+fn session_source_wiring_matches_every_registry_declaration() {
+    // Regression: f90b362 mapped Gemini's declared session source to the floor,
+    // while tests instantiated GeminiResolver directly and missed the registry.
+    for entry in all() {
+        assert_eq!(
+            entry.session_source().is_floor(),
+            !entry.capabilities.session_source,
+            "{} session source declaration",
+            entry.name
+        );
+    }
+}
+
+#[test]
 fn undeclared_activity_source_never_claims_authority() {
     // Regression: commit c0aa59a added Codex notify handling at the resolver;
     // native state must only be consumed through a declared activity source.
