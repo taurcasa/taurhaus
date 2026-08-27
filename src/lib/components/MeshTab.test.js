@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from 'vitest'
+import { tick } from 'svelte'
 import { cleanup, render, screen, waitFor, fireEvent, within } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 import { readFileSync } from 'node:fs'
@@ -3540,36 +3541,66 @@ describe('MeshTab', () => {
     expect(screen.getByTestId('mesh-node-detail-subject')).toHaveTextContent('frontend-dev')
   })
 
+  // Regression: e857c8f spent this budget against the wall clock, so the
+  // assertion measured host load rather than the component and failed under a
+  // loaded full-suite run ("expected 53.7 to be less than or equal to 32",
+  // reproduced in 1 of 3 runs with every core busy). The budget is what the
+  // component costs, which is frames: the detail must render in the click's own
+  // flush, and become visible on the first animation frame after it. Both are
+  // now spent against a fake 60fps clock the test drives, so the same 32ms and
+  // 120ms budgets hold whatever the host is doing.
   it('keeps runtime node detail fully-visible latency under 120ms after click', async () => {
     await renderRuntime()
 
+    const FRAME_MS = 16
+    // Non-zero: the component treats a falsy start stamp as "not measuring".
+    let fakeNow = 1_000
+    const frameCallbacks = []
     const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => fakeNow)
+    const rafSpy = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((callback) => frameCallbacks.push(callback))
     globalThis.__TAURHAUS_MESH_DETAIL_PERF__ = true
+
+    const perfLog = (stage) =>
+      debugSpy.mock.calls
+        .map(([, payload]) => payload)
+        .find((payload) => payload?.stage === stage)
 
     try {
       await fireEvent.click(screen.getByTestId('mesh-node-agent'))
 
       expect(screen.getByTestId('mesh-node-detail')).toBeInTheDocument()
 
-      let renderedLog
-      await waitFor(() => {
-        renderedLog = debugSpy.mock.calls
-          .map(([, payload]) => payload)
-          .find((payload) => payload?.stage === 'rendered')
+      // The detail renders within the click's own microtask turns — no frame is
+      // spent getting there, and none is needed to log it.
+      let renderTurns = 0
+      while (!perfLog('rendered') && renderTurns < 4) {
+        await tick()
+        renderTurns += 1
+      }
+      const renderedLog = perfLog('rendered')
+      expect(renderedLog, 'the detail must render in the click\'s own turns').toBeDefined()
+      expect(renderTurns).toBeLessThanOrEqual(1)
+      expect(renderedLog.elapsedMs).toBeLessThanOrEqual(32)
+      expect(perfLog('visible')).toBeUndefined()
 
-        expect(renderedLog?.elapsedMs).toBeLessThanOrEqual(32)
-      }, { timeout: 1000 })
+      // One frame of the fake clock — and only one — carries the detail from
+      // rendered to fully visible.
+      fakeNow += FRAME_MS
+      const pending = frameCallbacks.splice(0, frameCallbacks.length)
+      expect(pending.length).toBeGreaterThan(0)
+      pending.forEach((callback) => callback(fakeNow))
+      await tick()
 
-      let visibleLog
-      await waitFor(() => {
-        visibleLog = debugSpy.mock.calls
-          .map(([, payload]) => payload)
-          .find((payload) => payload?.stage === 'visible')
-
-        expect(visibleLog?.elapsedMs).toBeLessThanOrEqual(120)
-      }, { timeout: 1000 })
+      const visibleLog = perfLog('visible')
+      expect(visibleLog, 'the detail must be visible on the first frame').toBeDefined()
+      expect(visibleLog.elapsedMs).toBeLessThanOrEqual(120)
     } finally {
       delete globalThis.__TAURHAUS_MESH_DETAIL_PERF__
+      rafSpy.mockRestore()
+      nowSpy.mockRestore()
       debugSpy.mockRestore()
     }
   })
