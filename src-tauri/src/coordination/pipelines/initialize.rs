@@ -605,8 +605,12 @@ fn launch_member_pane(
 }
 
 fn backend_kind_for_member_tool(tool: CliTool) -> BackendKind {
-    match tool {
-        CliTool::Claude => BackendKind::ClaudeNative,
-        CliTool::Codex | CliTool::Gemini => BackendKind::MeshBridged,
+    if crate::session_scanner::cli_tool::spec(tool)
+        .capabilities
+        .native_inbox_poller
+    {
+        BackendKind::ClaudeNative
+    } else {
+        BackendKind::MeshBridged
     }
 }

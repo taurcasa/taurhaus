@@ -686,19 +686,8 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
 pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
     let first = args.split_whitespace().next().unwrap_or("");
 
-    // Codex: native Rust binary "codex" or "/path/to/codex"
-    if token_is_codex(first) {
-        return Some(CliTool::Codex);
-    }
-
-    // Claude: bare "claude" or "/path/to/claude"
-    if token_is_claude(first) {
-        return Some(CliTool::Claude);
-    }
-
-    // Gemini: bare "gemini" or "/path/to/gemini"
-    if token_is_gemini(first) {
-        return Some(CliTool::Gemini);
+    if let Some(tool) = tool_for_argv_token(first) {
+        return Some(tool);
     }
 
     // Node-launched tools: `node /path/to/tool` or `/path/to/node /path/to/tool`.
@@ -710,26 +699,14 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
         // Prefer the first non-flag token as the script path, then fall back to
         // checking all tokens to tolerate unusual Node flag/value combinations.
         if let Some(script_token) = tokens.iter().copied().find(|token| !token.starts_with('-')) {
-            if token_is_codex(script_token) {
-                return Some(CliTool::Codex);
-            }
-            if token_is_claude(script_token) {
-                return Some(CliTool::Claude);
-            }
-            if token_is_gemini(script_token) {
-                return Some(CliTool::Gemini);
+            if let Some(tool) = tool_for_argv_token(script_token) {
+                return Some(tool);
             }
         }
 
         for token in tokens {
-            if token_is_codex(token) {
-                return Some(CliTool::Codex);
-            }
-            if token_is_claude(token) {
-                return Some(CliTool::Claude);
-            }
-            if token_is_gemini(token) {
-                return Some(CliTool::Gemini);
+            if let Some(tool) = tool_for_argv_token(token) {
+                return Some(tool);
             }
         }
     }
@@ -737,16 +714,11 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
     None
 }
 
-fn token_is_codex(token: &str) -> bool {
-    token == "codex" || token.ends_with("/codex") || token.contains("@openai/codex")
-}
-
-fn token_is_claude(token: &str) -> bool {
-    token == "claude" || token.ends_with("/claude") || token.contains("@anthropic-ai/claude-code")
-}
-
-fn token_is_gemini(token: &str) -> bool {
-    token == "gemini" || token.ends_with("/gemini") || token.contains("@google/gemini-cli")
+fn tool_for_argv_token(token: &str) -> Option<CliTool> {
+    crate::session_scanner::cli_tool::all()
+        .iter()
+        .find(|entry| entry.matches_argv_token(token))
+        .map(|entry| entry.tool)
 }
 
 /// Read process CWD and TTY via platform-specific APIs.

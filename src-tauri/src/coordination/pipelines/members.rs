@@ -253,7 +253,10 @@ impl CoordinationOrchestrator {
 }
 
 fn capture_session_identity_message(member: &Member, runtime_state: &PendingResumeState) -> String {
-    if !matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
+    if !crate::session_scanner::cli_tool::spec(member.cli_tool)
+        .capabilities
+        .session_source
+    {
         return "session identity not required".to_string();
     }
     if runtime_state.session_id.is_some() || runtime_state.jsonl_path.is_some() {
@@ -493,7 +496,10 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             }
             InitializeMemberActivationStage::JoinMesh => self.join_mesh(&prepared),
             InitializeMemberActivationStage::StartDaemons => {
-                let pane_id = if prepared.member.cli_tool == CliTool::Claude {
+                let pane_id = if crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
+                    .capabilities
+                    .native_inbox_poller
+                {
                     String::new()
                 } else {
                     self.load_initialize_pane_id(&prepared, "start_daemons")?
@@ -576,7 +582,10 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         self.launch_session(prepared, &pane_id)?;
         self.capture_session_identity(prepared, &pane_id)?;
         let deferred_claude_lead_join =
-            prepared.member.cli_tool == CliTool::Claude && prepared.member.role == MemberRole::Lead;
+            crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
+                .capabilities
+                .native_inbox_poller
+                && prepared.member.role == MemberRole::Lead;
         if !deferred_claude_lead_join {
             self.join_mesh(prepared)?;
         }
@@ -950,7 +959,9 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 Ok(())
             }
             Err(err) => {
-                if prepared.member.cli_tool == CliTool::Claude
+                if crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
+                    .capabilities
+                    .native_inbox_poller
                     && prepared.member.role == MemberRole::Lead
                 {
                     let message = format!(
@@ -992,7 +1003,10 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             StepStatus::Running,
             None,
         );
-        if prepared.member.cli_tool == CliTool::Claude {
+        if crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
+            .capabilities
+            .native_inbox_poller
+        {
             self.record_step_success("start_daemon", "not required for claude");
             self.emit_stage(
                 MemberActivationStage::StartMemberDaemon,
@@ -1259,7 +1273,10 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             return Ok(());
         }
 
-        if prepared.member.cli_tool != CliTool::Claude {
+        if !crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
+            .capabilities
+            .native_inbox_poller
+        {
             return Ok(());
         }
 

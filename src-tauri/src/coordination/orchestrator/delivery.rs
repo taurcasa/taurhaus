@@ -11,7 +11,7 @@ use crate::coordination::runtime::{
     pane_belongs_to_member, quarantine_foreign_member, PaneOwnership,
 };
 use crate::coordination::stores::MemberRuntimeStore;
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::spec;
 
 use super::audit_logging::emit_audit_event_to_structured_log;
 use super::helpers::{
@@ -70,7 +70,7 @@ impl CoordinationOrchestrator {
             .expect("validated member must exist");
         let effective_backend = match &self.claude_backend {
             Some(claude_be) => {
-                if member_cli_tool == CliTool::Claude {
+                if spec(member_cli_tool).capabilities.native_inbox_poller {
                     claude_be.clone()
                 } else {
                     self.backend.clone()
@@ -107,7 +107,7 @@ impl CoordinationOrchestrator {
                 }
 
                 let ensured_daemon_pid = if result.method == DeliveryMethod::InboxFile
-                    && member_cli_tool != CliTool::Claude
+                    && !spec(member_cli_tool).capabilities.native_inbox_poller
                 {
                     self.ensure_member_daemon_after_inbox_append_best_effort(
                         &team_name_owned,

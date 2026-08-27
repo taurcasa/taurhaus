@@ -393,7 +393,7 @@ fn import_claude_agent_at(
         frontmatter.model,
         None,
         frontmatter.tools.unwrap_or_default().into_vec(),
-        CliTool::Claude,
+        CliTool::from_alias("claude").expect("Claude adapter tool is registered"),
     )
 }
 
@@ -418,7 +418,7 @@ fn import_copilot_agent_at(
         frontmatter.model,
         frontmatter.description,
         Vec::new(),
-        CliTool::Codex,
+        CliTool::from_alias("codex").expect("Copilot adapter tool is registered"),
     )
 }
 
@@ -1028,21 +1028,11 @@ fn parse_constraints_section(body: &str) -> (Option<RoleConstraints>, Option<Cli
                 saw_field = true;
             }
             "required lead tool" => {
-                constraints.requires_lead_tool = match value {
-                    "claude" => Some(CliTool::Claude),
-                    "codex" => Some(CliTool::Codex),
-                    "gemini" => Some(CliTool::Gemini),
-                    _ => None,
-                };
+                constraints.requires_lead_tool = CliTool::from_alias(value).ok();
                 saw_field = true;
             }
             "default cli tool" => {
-                default_cli_tool = match value {
-                    "claude" => Some(CliTool::Claude),
-                    "codex" => Some(CliTool::Codex),
-                    "gemini" => Some(CliTool::Gemini),
-                    _ => None,
-                };
+                default_cli_tool = CliTool::from_alias(value).ok();
             }
             _ => {}
         }

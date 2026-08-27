@@ -9,7 +9,7 @@ use crate::coordination::runtime::{
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::coordination::validation::validate_team_name;
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::spec;
 
 use super::helpers::{team_is_self_heal_candidate, team_should_ensure_daemon};
 use super::{CoordinationOrchestrator, TeamSelfHealResult};
@@ -121,7 +121,7 @@ impl CoordinationOrchestrator {
                 runtime.pane_id = snapshot_pane_id;
             }
 
-            if member.cli_tool != CliTool::Claude {
+            if !spec(member.cli_tool).capabilities.native_inbox_poller {
                 if let Some(pid) = runtime.daemon_pid {
                     match self.runtime.is_process_running_by_pid(pid) {
                         Ok(true) => {
@@ -232,7 +232,7 @@ impl CoordinationOrchestrator {
                 runtime.session_id = None;
                 runtime.jsonl_path = None;
 
-                if member.cli_tool != CliTool::Claude {
+                if !spec(member.cli_tool).capabilities.native_inbox_poller {
                     if let Some(pid) = runtime.daemon_pid {
                         match self.runtime.is_process_running_by_pid(pid) {
                             Ok(true) => {
@@ -271,7 +271,7 @@ impl CoordinationOrchestrator {
             }
 
             let mut runtime_changed = metadata_backfilled;
-            if member.cli_tool != CliTool::Claude {
+            if !spec(member.cli_tool).capabilities.native_inbox_poller {
                 let pane_id = runtime.pane_id.as_deref();
                 let discovered_daemon_pids = if let Some(pane_id) = pane_id {
                     match self.runtime.find_existing_mesh_daemon_pids(
@@ -423,7 +423,7 @@ impl CoordinationOrchestrator {
                 }
             }
 
-            if matches!(member.cli_tool, CliTool::Claude | CliTool::Codex) {
+            if spec(member.cli_tool).capabilities.session_source {
                 if let Some(pane_id) = runtime.pane_id.as_deref() {
                     match self
                         .runtime

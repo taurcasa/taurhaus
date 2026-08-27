@@ -65,6 +65,12 @@ impl CliTool {
     }
 }
 
+impl Default for CliTool {
+    fn default() -> Self {
+        CliTool::Claude
+    }
+}
+
 impl std::fmt::Display for CliTool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(spec(*self).name)
@@ -91,9 +97,11 @@ pub struct CliCapabilities {
     pub display_name_flag: Option<&'static str>,
     pub team_flags: bool,
     pub native_inbox_poller: bool,
+    pub session_source: bool,
     pub authoritative_idle: bool,
     pub compaction_hook: bool,
     pub transcript_parser: bool,
+    pub transcript_compaction_signals: bool,
     pub catalog: bool,
     pub config_dir_env: Option<&'static str>,
     pub usage_bridge: bool,
@@ -120,6 +128,8 @@ pub struct CliToolSpec {
     pub name: &'static str,
     pub aliases: &'static [&'static str],
     pub argv_signatures: &'static [&'static str],
+    pub model_prefixes: &'static [&'static str],
+    pub model_markers: &'static [&'static str],
     pub default_commands: ToolCommands,
     pub label: &'static str,
     pub accent: &'static str,
@@ -145,6 +155,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             name: "claude",
             aliases: &["claude", "claude_native"],
             argv_signatures: &["claude", "@anthropic-ai/claude-code"],
+            model_prefixes: &["claude-"],
+            model_markers: &["claude"],
             default_commands: ToolCommands {
                 continue_cmd: "claude --dangerously-skip-permissions --continue".into(),
                 fresh: "claude --dangerously-skip-permissions".into(),
@@ -158,9 +170,11 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 display_name_flag: Some("-n"),
                 team_flags: true,
                 native_inbox_poller: true,
+                session_source: true,
                 authoritative_idle: true,
                 compaction_hook: true,
                 transcript_parser: true,
+                transcript_compaction_signals: false,
                 catalog: true,
                 config_dir_env: Some("CLAUDE_CONFIG_DIR"),
                 usage_bridge: true,
@@ -181,6 +195,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             name: "codex",
             aliases: &["codex", "mesh", "mesh_bridged"],
             argv_signatures: &["codex", "@openai/codex"],
+            model_prefixes: &["gpt-"],
+            model_markers: &[],
             default_commands: ToolCommands {
                 continue_cmd: "codex --yolo".into(),
                 fresh: "codex --yolo".into(),
@@ -197,16 +213,18 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 display_name_flag: None,
                 team_flags: false,
                 native_inbox_poller: false,
+                session_source: true,
                 authoritative_idle: true,
                 compaction_hook: true,
                 transcript_parser: true,
+                transcript_compaction_signals: true,
                 catalog: true,
                 config_dir_env: None,
                 usage_bridge: false,
                 notify_sink: true,
                 hook_trust: true,
             },
-            stop_strategy: StopStrategy::SlashExit,
+            stop_strategy: StopStrategy::Interrupt,
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: true,
             display_name: "Codex CLI",
@@ -220,6 +238,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             name: "gemini",
             aliases: &["gemini"],
             argv_signatures: &["gemini", "@google/gemini-cli"],
+            model_prefixes: &["gemini-"],
+            model_markers: &["gemini"],
             default_commands: ToolCommands {
                 continue_cmd: "gemini --yolo --resume".into(),
                 fresh: "gemini --yolo".into(),
@@ -233,9 +253,11 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 display_name_flag: None,
                 team_flags: false,
                 native_inbox_poller: false,
+                session_source: false,
                 authoritative_idle: false,
                 compaction_hook: false,
                 transcript_parser: false,
+                transcript_compaction_signals: false,
                 catalog: true,
                 config_dir_env: None,
                 usage_bridge: false,
@@ -285,6 +307,49 @@ pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &To
     }
 }
 
+pub fn bridged_default() -> CliTool {
+    all()
+        .iter()
+        .find(|entry| entry.pane_binding)
+        .map(|entry| entry.tool)
+        .unwrap_or_default()
+}
+
+pub fn model_is_compatible(tool: CliTool, model: &str) -> bool {
+    spec(tool)
+        .model_prefixes
+        .iter()
+        .any(|prefix| model.starts_with(prefix))
+}
+
+pub fn infer_from_model(model: &str) -> CliTool {
+    let normalized = model.to_ascii_lowercase();
+    all()
+        .iter()
+        .find(|entry| {
+            entry
+                .model_markers
+                .iter()
+                .any(|marker| normalized.contains(marker))
+        })
+        .map(|entry| entry.tool)
+        .unwrap_or_else(bridged_default)
+}
+
+pub fn transcript_compaction_tool() -> Option<CliTool> {
+    all()
+        .iter()
+        .find(|entry| entry.capabilities.transcript_compaction_signals)
+        .map(|entry| entry.tool)
+}
+
+pub fn native_inbox_tool() -> Option<CliTool> {
+    all()
+        .iter()
+        .find(|entry| entry.capabilities.native_inbox_poller)
+        .map(|entry| entry.tool)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum EffortFlagDescriptor {
@@ -312,9 +377,11 @@ pub struct CliCapabilityDescriptor {
     pub display_name_flag: Option<String>,
     pub team_flags: bool,
     pub native_inbox_poller: bool,
+    pub session_source: bool,
     pub authoritative_idle: bool,
     pub compaction_hook: bool,
     pub transcript_parser: bool,
+    pub transcript_compaction_signals: bool,
     pub catalog: bool,
     pub config_dir_env: Option<String>,
     pub usage_bridge: bool,
@@ -330,9 +397,11 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
             display_name_flag: value.display_name_flag.map(str::to_string),
             team_flags: value.team_flags,
             native_inbox_poller: value.native_inbox_poller,
+            session_source: value.session_source,
             authoritative_idle: value.authoritative_idle,
             compaction_hook: value.compaction_hook,
             transcript_parser: value.transcript_parser,
+            transcript_compaction_signals: value.transcript_compaction_signals,
             catalog: value.catalog,
             config_dir_env: value.config_dir_env.map(str::to_string),
             usage_bridge: value.usage_bridge,
@@ -369,6 +438,19 @@ impl From<&CliToolSpec> for CliToolDescriptor {
 }
 
 impl CliToolSpec {
+    pub fn matches_argv_token(&self, token: &str) -> bool {
+        self.argv_signatures.iter().any(|signature| {
+            if signature.starts_with('@') {
+                token.contains(signature)
+            } else {
+                token == *signature
+                    || token
+                        .rsplit_once('/')
+                        .is_some_and(|(_, file_name)| file_name == *signature)
+            }
+        })
+    }
+
     pub fn session_source(&self) -> &'static dyn crate::session_scanner::idle::SessionSource {
         static CLAUDE: crate::session_scanner::idle::ClaudeRegistrySessionSource =
             crate::session_scanner::idle::ClaudeRegistrySessionSource;

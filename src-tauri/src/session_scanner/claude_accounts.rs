@@ -600,7 +600,12 @@ pub fn newest_project_transcript(config_dirs: &[PathBuf], project_path: &str) ->
 fn config_dirs_of_live_sessions() -> Vec<PathBuf> {
     crate::session_scanner::latest_compaction_runtime_sessions()
         .into_iter()
-        .filter(|session| session.cli_tool == crate::session_scanner::cli_tool::CliTool::Claude)
+        .filter(|session| {
+            crate::session_scanner::cli_tool::spec(session.cli_tool)
+                .capabilities
+                .config_dir_env
+                .is_some()
+        })
         .filter_map(|session| session.jsonl_path)
         .filter_map(|transcript| {
             crate::session_scanner::idle::config_dir_for_transcript(Path::new(&transcript))
@@ -630,10 +635,12 @@ static TRANSCRIPT_SIGHTINGS: Mutex<Vec<TranscriptSighting>> = Mutex::new(Vec::ne
 pub(crate) fn record_claude_transcripts(sessions: &[RuntimeSession]) {
     let now = unix_now();
     let mut freshest: Vec<(String, &str, Option<u64>)> = Vec::new();
-    for session in sessions
-        .iter()
-        .filter(|session| session.cli_tool == crate::session_scanner::cli_tool::CliTool::Claude)
-    {
+    for session in sessions.iter().filter(|session| {
+        crate::session_scanner::cli_tool::spec(session.cli_tool)
+            .capabilities
+            .config_dir_env
+            .is_some()
+    }) {
         let Some(transcript) = session.jsonl_path.as_deref() else {
             continue;
         };

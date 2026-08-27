@@ -1,7 +1,7 @@
 use crate::coordination::domain::MemberRole;
 use crate::daemon::protocol::LaunchMode;
 use crate::models::{CliCommandSettings, ModelCatalog};
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool, EffortFlag};
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
 /// ("gpt-5.4 high", "gpt-5.4-high", "gpt-5.4", "claude-opus-4-6", "") until PR 5a splits the schema.
@@ -53,9 +53,6 @@ impl ModelSpec {
         self.model.is_none() && self.reasoning_effort.is_none()
     }
 }
-
-/// Environment variable that selects a Claude subscription for one launch.
-const CLAUDE_CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
 
 pub struct TeamContext<'a> {
     pub team_name: &'a str,
@@ -143,15 +140,20 @@ impl LaunchSpec<'_> {
     pub fn render(&self) -> RenderedLaunch {
         let mut command = self.base.trim_end().to_string();
         let mut notes = Vec::new();
+        let capabilities = spec(self.tool).capabilities;
 
         match self.tool {
             CliTool::Codex => {
-                if self.codex_bypass_hook_trust
+                if capabilities.hook_trust
+                    && self.codex_bypass_hook_trust
                     && !command_contains_flag(&command, "--dangerously-bypass-hook-trust")
                 {
                     command.push_str(" --dangerously-bypass-hook-trust");
                 }
-                if let Some(executable) = self.codex_notify_executable {
+                if let Some(executable) = self
+                    .codex_notify_executable
+                    .filter(|_| capabilities.notify_sink)
+                {
                     if command_contains_codex_config(self.base, "notify") {
                         notes.push(LaunchNote::NotifyIgnored {
                             found: "notify".to_string(),
@@ -171,9 +173,12 @@ impl LaunchSpec<'_> {
                     });
                 }
 
-                let base_model = first_present_flag_value(self.base, &["-m", "--model"]);
+                let model_flag = capabilities
+                    .model_flag
+                    .expect("Codex declares a model flag");
+                let base_model = first_present_flag_value(self.base, &[model_flag, "--model"]);
                 if let Some(model) = self.model.model.as_deref() {
-                    if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
+                    if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"]) {
                         notes.push(LaunchNote::ModelIgnored {
                             found: found.to_string(),
                         });
@@ -186,7 +191,7 @@ impl LaunchSpec<'_> {
                                 replacement: entry.replacement.clone(),
                             });
                         }
-                        append_flag(&mut command, "-m", model);
+                        append_flag(&mut command, model_flag, model);
                     }
                 }
 
@@ -197,28 +202,35 @@ impl LaunchSpec<'_> {
                             found: effort.to_string(),
                             reason: EffortIgnoreReason::Invalid,
                         });
-                    } else if command_contains_flag(self.base, "model_reasoning_effort") {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: "model_reasoning_effort".to_string(),
-                            reason: EffortIgnoreReason::BaseOverride,
-                        });
+                    } else if let Some(EffortFlag::Config { flag, key }) = capabilities.effort_flag
+                    {
+                        if command_contains_flag(self.base, key) {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: key.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, &format!("{key}=\"{effort}\""));
+                        }
                     } else {
-                        append_flag(
-                            &mut command,
-                            "-c",
-                            &format!("model_reasoning_effort=\"{effort}\""),
-                        );
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
                     }
                 }
             }
             CliTool::Claude => {
                 if let Some(model) = self.model.model.as_deref() {
-                    if command_contains_flag(self.base, "--model") {
+                    let model_flag = capabilities
+                        .model_flag
+                        .expect("Claude declares a model flag");
+                    if command_contains_flag(self.base, model_flag) {
                         notes.push(LaunchNote::ModelIgnored {
-                            found: "--model".to_string(),
+                            found: model_flag.to_string(),
                         });
                     } else {
-                        append_flag(&mut command, "--model", model);
+                        append_flag(&mut command, model_flag, model);
                     }
                 }
 
@@ -232,17 +244,19 @@ impl LaunchSpec<'_> {
                             found: effort.to_string(),
                             reason: EffortIgnoreReason::Invalid,
                         });
-                    } else if command_contains_flag(self.base, "--effort") {
-                        notes.push(LaunchNote::EffortIgnored {
-                            found: "--effort".to_string(),
-                            reason: EffortIgnoreReason::BaseOverride,
-                        });
-                    } else {
-                        append_flag(&mut command, "--effort", effort);
+                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
+                        if command_contains_flag(self.base, flag) {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: flag.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, effort);
+                        }
                     }
                 }
 
-                if let Some(team) = self.team.as_ref() {
+                if let Some(team) = self.team.as_ref().filter(|_| capabilities.team_flags) {
                     if !self.base.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=") {
                         command = format!(
                             "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 {command}"
@@ -273,21 +287,27 @@ impl LaunchSpec<'_> {
                         "general-purpose"
                     };
                     append_flag_unless_present(&mut command, self.base, "--agent-type", agent_type);
-                    if first_present_flag(self.base, &["-n", "--name"]).is_none() {
-                        append_flag(&mut command, "-n", team.agent_name);
+                    let display_name_flag = capabilities
+                        .display_name_flag
+                        .expect("Claude team launches declare a display-name flag");
+                    if first_present_flag(self.base, &[display_name_flag, "--name"]).is_none() {
+                        append_flag(&mut command, display_name_flag, team.agent_name);
                     }
                 }
 
                 // Last, so the assignment lands in front of the team
                 // environment the arm may have just prepended.
                 if let Some(config_dir) = self.claude_config_dir {
-                    if command_contains_flag(self.base, CLAUDE_CONFIG_DIR_ENV) {
+                    let config_dir_env = capabilities
+                        .config_dir_env
+                        .expect("Claude declares its config directory environment variable");
+                    if command_contains_flag(self.base, config_dir_env) {
                         notes.push(LaunchNote::ConfigDirIgnored {
-                            found: CLAUDE_CONFIG_DIR_ENV.to_string(),
+                            found: config_dir_env.to_string(),
                         });
                     } else {
                         let assignment = shell_escape(&config_dir.to_string_lossy());
-                        command = format!("{CLAUDE_CONFIG_DIR_ENV}={assignment} {command}");
+                        command = format!("{config_dir_env}={assignment} {command}");
                     }
                 }
             }
@@ -300,12 +320,15 @@ impl LaunchSpec<'_> {
                 }
                 // unverified (S12): Gemini is not installed on the audit host.
                 if let Some(model) = self.model.model.as_deref() {
-                    if let Some(found) = first_present_flag(self.base, &["-m", "--model"]) {
+                    let model_flag = capabilities
+                        .model_flag
+                        .expect("Gemini declares a model flag");
+                    if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"]) {
                         notes.push(LaunchNote::ModelIgnored {
                             found: found.to_string(),
                         });
                     } else {
-                        append_flag(&mut command, "-m", model);
+                        append_flag(&mut command, model_flag, model);
                     }
                 }
             }
@@ -317,11 +340,7 @@ impl LaunchSpec<'_> {
 
 /// Return the configured base command without normalizing or rewriting it.
 pub fn base_command(commands: &CliCommandSettings, tool: CliTool, mode: LaunchMode) -> &str {
-    let tool_commands = match tool {
-        CliTool::Claude => &commands.claude,
-        CliTool::Codex => &commands.codex,
-        CliTool::Gemini => &commands.gemini,
-    };
+    let tool_commands = commands.get(tool);
 
     match mode {
         LaunchMode::Continue => &tool_commands.continue_cmd,

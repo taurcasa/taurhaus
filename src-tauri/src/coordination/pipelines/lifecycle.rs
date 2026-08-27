@@ -375,7 +375,10 @@ fn render_onboarding_message(
     has_role_context: bool,
     role_context: RoleContext<'_>,
 ) -> Option<String> {
-    if cli_tool == CliTool::Claude {
+    if crate::session_scanner::cli_tool::spec(cli_tool)
+        .capabilities
+        .native_inbox_poller
+    {
         if !has_role_context {
             return None;
         }

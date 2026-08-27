@@ -331,7 +331,7 @@ fn default_tmux_layout() -> String {
 }
 
 fn default_cli_tool() -> crate::session_scanner::cli_tool::CliTool {
-    crate::session_scanner::cli_tool::CliTool::Claude
+    crate::session_scanner::cli_tool::CliTool::default()
 }
 
 /// `launch_session` result

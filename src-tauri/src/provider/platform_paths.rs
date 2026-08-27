@@ -87,9 +87,11 @@ impl PlatformPaths {
 
     /// Per-tool session root.
     pub fn tool_session_root(tool: CliTool) -> PathBuf {
-        match tool {
-            CliTool::Claude => Self::claude_dir().join(config_for(tool).projects_subdir),
-            _ => default_tool_session_root(tool),
+        let tool_config = config_for(tool);
+        if tool_config.capabilities.config_dir_env.is_some() {
+            Self::claude_dir().join(tool_config.projects_subdir)
+        } else {
+            default_tool_session_root(tool)
         }
     }
 

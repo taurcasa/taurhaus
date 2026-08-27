@@ -142,7 +142,7 @@ fn registry_declares_native_and_floor_capabilities() {
     assert!(codex.capabilities.compaction_hook);
     assert!(codex.capabilities.authoritative_idle);
     assert!(codex.capabilities.notify_sink);
-    assert_eq!(codex.stop_strategy, StopStrategy::SlashExit);
+    assert_eq!(codex.stop_strategy, StopStrategy::Interrupt);
 
     let gemini = spec(CliTool::Gemini);
     assert!(!gemini.capabilities.compaction_hook);

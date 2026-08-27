@@ -16,6 +16,7 @@ use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealRe
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::TeamConfigStore;
 use crate::provider::platform_paths::PlatformPaths;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 
 type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationBackend>, CoordinationError>
@@ -175,7 +176,7 @@ impl CoordinationState {
     }
 
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
-        let kind = self.backend_selector.select(CliTool::Codex);
+        let kind = self.backend_selector.select_floor();
         let backend = (self.backend_factory)(kind, &self.teams_dir)?;
         let runtime = (self.runtime_factory)();
         let mut orchestrator =
@@ -212,7 +213,7 @@ impl CoordinationState {
     }
 
     fn build_background_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
-        let kind = self.backend_selector.select(CliTool::Codex);
+        let kind = self.backend_selector.select_floor();
         let backend = (self.backend_factory)(kind, &self.teams_dir)?;
         let runtime = (self.runtime_factory)();
         let mut orchestrator =

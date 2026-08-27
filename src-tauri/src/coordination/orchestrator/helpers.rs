@@ -3,14 +3,15 @@ use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::requests::{DeliveryMethod, DeliveryRequest};
 use crate::coordination::roster::TeamMemberView;
 use crate::coordination::stores::{DiscoveredTeam, MemberRuntimeRecord};
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool};
 
 use super::DiscoveredTeamStatus;
 
 pub(super) fn infer_backend_kind(tool: CliTool) -> BackendKind {
-    match tool {
-        CliTool::Claude => BackendKind::ClaudeNative,
-        CliTool::Codex | CliTool::Gemini => BackendKind::MeshBridged,
+    if spec(tool).capabilities.native_inbox_poller {
+        BackendKind::ClaudeNative
+    } else {
+        BackendKind::MeshBridged
     }
 }
 
@@ -57,7 +58,10 @@ pub(super) fn should_teardown_member_on_team_cleanup(member: &TeamMemberView) ->
         return true;
     }
 
-    if member.configured_cli_tool != CliTool::Claude {
+    if !spec(member.configured_cli_tool)
+        .capabilities
+        .native_inbox_poller
+    {
         return true;
     }
 

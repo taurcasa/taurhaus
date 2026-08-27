@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::provider::platform_paths::PlatformPaths;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 use crate::session_scanner::RuntimeSession;
 
@@ -27,7 +28,10 @@ pub struct ClaudeSourceIndex {
 /// Build Claude source index using default user directories and live sessions.
 pub fn build_claude_source_index() -> ClaudeSourceIndex {
     let tasks_base = PlatformPaths::claude_dir().join("tasks");
-    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
+    let projects_base = PlatformPaths::tool_session_root(
+        crate::session_scanner::cli_tool::native_inbox_tool()
+            .expect("a native inbox tool is registered"),
+    );
     let teams_base = PlatformPaths::teams_dir();
     // Continuity read: live sessions only add session id -> project path
     // mappings (merged with offline discovery); a degraded scan keeps the last
@@ -42,7 +46,10 @@ pub fn build_claude_source_index_with_live_sessions(
     live_sessions: &[RuntimeSession],
 ) -> ClaudeSourceIndex {
     let tasks_base = PlatformPaths::claude_dir().join("tasks");
-    let projects_base = PlatformPaths::tool_session_root(CliTool::Claude);
+    let projects_base = PlatformPaths::tool_session_root(
+        crate::session_scanner::cli_tool::native_inbox_tool()
+            .expect("a native inbox tool is registered"),
+    );
     let teams_base = PlatformPaths::teams_dir();
 
     build_claude_source_index_in(live_sessions, &tasks_base, &projects_base, &teams_base)
@@ -68,10 +75,11 @@ fn merge_live_session_map(
     live_sessions: &[RuntimeSession],
     sessions: &mut HashMap<String, PathBuf>,
 ) {
-    for session in live_sessions
-        .iter()
-        .filter(|s| s.cli_tool == CliTool::Claude)
-    {
+    for session in live_sessions.iter().filter(|session| {
+        crate::session_scanner::cli_tool::spec(session.cli_tool)
+            .capabilities
+            .native_inbox_poller
+    }) {
         let Some(session_id) = session.session_id.as_ref() else {
             continue;
         };

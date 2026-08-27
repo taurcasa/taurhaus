@@ -204,8 +204,9 @@ pub(crate) fn validated_role_model(
         return Some(model.to_string());
     }
 
-    let belongs_to_another_tool = [CliTool::Claude, CliTool::Codex, CliTool::Gemini]
-        .into_iter()
+    let belongs_to_another_tool = crate::session_scanner::cli_tool::all()
+        .iter()
+        .map(|entry| entry.tool)
         .any(|candidate| candidate != tool && ModelCatalog::entry_for(candidate, model).is_some());
     if !belongs_to_another_tool {
         return Some(model.to_string());

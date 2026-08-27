@@ -30,10 +30,18 @@ impl BackendSelector {
         if self.force_mesh {
             return BackendKind::MeshBridged;
         }
-        match cli_tool {
-            CliTool::Claude => BackendKind::ClaudeNative,
-            CliTool::Codex | CliTool::Gemini => BackendKind::MeshBridged,
+        if crate::session_scanner::cli_tool::spec(cli_tool)
+            .capabilities
+            .native_inbox_poller
+        {
+            BackendKind::ClaudeNative
+        } else {
+            BackendKind::MeshBridged
         }
+    }
+
+    pub fn select_floor(&self) -> BackendKind {
+        self.override_kind.unwrap_or(BackendKind::MeshBridged)
     }
 }
 

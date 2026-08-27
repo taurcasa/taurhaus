@@ -301,12 +301,12 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
 /// - Claude & Gemini: `/exit` text command (typed + Enter)
 /// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
-    match tool {
-        CliTool::Codex => {
+    match cli_tool::spec(tool).stop_strategy {
+        cli_tool::StopStrategy::Interrupt => {
             // Codex exits on Ctrl+C, not a text command
             run_tmux_raw_key(tmux_pane, "C-c")?;
         }
-        _ => {
+        cli_tool::StopStrategy::SlashExit => {
             let config = cli_tool::config_for(tool);
             run_tmux_send_keys(tmux_pane, config.exit_command)?;
         }

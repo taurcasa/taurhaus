@@ -264,20 +264,14 @@ pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
 
 fn required_binary_for_cli_tool(cli_tool: &str) -> Option<&'static str> {
     let parsed = CliTool::from_alias(cli_tool).ok()?;
-    Some(match parsed {
-        CliTool::Claude => "claude",
-        CliTool::Codex => "codex",
-        CliTool::Gemini => "gemini",
-    })
+    Some(crate::session_scanner::cli_tool::spec(parsed).name)
 }
 
 fn cli_tool_label(binary_name: &str) -> &'static str {
-    match binary_name {
-        "claude" => "Claude",
-        "codex" => "Codex",
-        "gemini" => "Gemini",
-        _ => "CLI tool",
-    }
+    CliTool::from_alias(binary_name)
+        .ok()
+        .map(|tool| crate::session_scanner::cli_tool::spec(tool).label)
+        .unwrap_or("CLI tool")
 }
 
 /// Minimal command output abstraction used by the mesh runner.
