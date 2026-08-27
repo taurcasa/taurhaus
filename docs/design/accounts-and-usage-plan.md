@@ -72,7 +72,8 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 - **Claude**: `AccountProvider` = today's `claude_accounts.rs` moved behind the trait; `UsageProvider` = OAuth usage endpoint; windows from `limits[]` in Claude Code's order and titles (`Current session`, `Current week (all models)`, `Current week (Sonnet only)` on plans that report it, `Current week (<display_name>)` per `weekly_scoped`); severity from `severity`; `note` from a promo/notice field if the payload carries one.
 - **Codex**: candidates `~/.codex`, `~/.codex-*`, live `CODEX_HOME`s; identity from the `id_token` payload (base64url JSON, unverified — display only), `auth_mode == "chatgpt"` ⇒ usage-capable, API-key mode ⇒ account without usage; `session_dir` from the rollout path (`<home>/sessions/…`); usage from `wham/usage`: windows `codex` primary/secondary (titled like the TUI: `5h limit`, `Weekly limit`, kind from `limit_window_seconds`) then one pair per `additional_rate_limits[]` titled `<limit_name> · 5h/weekly`; `credits`/`spend_control` → `note`. Expiry from the access JWT `exp`.
-- **Gemini** (experimental, fixture-driven until a host with the CLI verifies it): candidates `~` (home) and `~/.gemini-homes/*`? — no: candidates are `GEMINI_CLI_HOME` values seen live plus the default home; identity from `google_accounts.json.active`; usage only when a project id is derivable (`GOOGLE_CLOUD_PROJECT`, else `Unsupported` with a note); windows per `buckets[]` (`<modelId>`, `used = 100 − remainingFraction·100`, `resetTime`).
+- **Gemini CLI** — superseded (2026-08-28): Gemini Code Assist for individuals rejects the client; the Google harness is now the Antigravity CLI (`agy`, PR 18a), whose account/usage provider is specified from that lane's research. The `GEMINI_CLI_HOME` registry data from 17b is removed with the Gemini entry in 18a.
+- **Grok CLI** (`grok`, PR 18b): provider specified from that lane's research (config under `~/.grok`, leader socket, auto-approve `--always-approve`).
 
 ## PRs (lanes as always: one family implements, the other reviews; Fable writes the spec and makes the merge call)
 
@@ -81,17 +82,23 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 | 17a | Popup placement bug (reproduced with the new `just visual-shot` Edge-headless lane), `ContextMenu` submenus, account submenus on every Claude launch item + `Claude account` submenu, `requestClaudeLaunch({accountId})`; built on the existing store but with tool-parameterised menu building | Opus / Codex ×2 |
 | 17b | Core generalisation: providers, generic detection/pins/last-used/resolution/launch/resume, Claude providers (OAuth usage), status-line bridge removal + one-shot uninstall, protocol 11, generic frontend store/components/settings, conformance + guards | Codex / Opus ×2, Fable boundary review |
 | 17c | Codex provider (accounts + usage) | Codex / Opus ×2 |
-| 17d | Gemini provider (fixture-driven, experimental flag) | Opus / Codex ×2 |
-| 17e | Docs (harness-model, CLAUDE.md rows, CHANGELOG) + release 0.6.9 (app + daemon, protocol 11) | Fable |
+| ~~17d~~ | **Cancelled 2026-08-28** — Gemini Code Assist for individuals now refuses the Gemini CLI client ("migrate to the Antigravity suite"); the Google harness becomes the Antigravity CLI (`agy`), see 18a | — |
+| 18a | **Antigravity CLI (`agy`) integration, Gemini CLI removed everywhere**: registry entry + every capability slice (process signature, launch flags incl. `--dangerously-skip-permissions` as the auto-approve, model/effort, continue/resume-by-conversation, identity, busy/idle, delivery + wake, compaction signal, transcript parser, stop), account/usage provider, frontend descriptor/logo/accent, goldens + conformance; Gemini CLI deleted from registry, launch arm + golden, idle heuristic, catalog, adapters, frontend, fixtures | Codex / Opus ×2 (research: Opus + Codex independently, 2026-08-28) |
+| 18b | **Grok CLI (`grok`) integration** (new tool): same slice set as 18a (`--always-approve` auto-approve, `--continue`/`--resume`/`--session-id`, leader socket, streaming-messages-json), account/usage provider, Grok icon + accent in the sidebar context menu, chips, mesh nodes, team builder and settings | Opus / Codex ×2 (research: Opus + Codex independently, 2026-08-28) |
+| 19 | **Docs sweep**: every Gemini CLI reference removed or rewritten for `agy`, Grok added, accounts/usage documented (README, ARCHITECTURE, CLAUDE.md, CONTRIBUTING, `docs/**`, testing/visual guides, CHANGELOG, taureval role notes); Opus drift sweep, Codex claim verification, Fable narrative (harness-model slice table Google/xAI columns) | Opus + Codex / Fable |
+| 17e | Release 0.6.9 (app + daemon, protocol 11) after 19 | Fable |
 
 ## Ledger
 
 | PR | Implementer | Reviewers | Rounds | Majors found | Merged |
 |---|---|---|---|---|---|
 | 17a | Opus 5 | Codex ×2 | 4 (3 fix rounds; the last major — team-delegated Continue/Resume silently ignoring the pick — fixed by the orchestrator's pass) | 13 (round 1: 5 of 7 reported, both reviewers raising the pin-on-pick and the duplicate-label crash; round 2: 4; round 3: 3; round 4: 1) | #34 |
-| 17b | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds) | 11 (round 1: 6; round 2: 4 — daemon DB ownership, refresh RPC timeout, unknown-project throttle, TLS stack; round 3: 1 — usage-sync retry flood) | tbd |
+| 17b | Codex gpt-5.6 | Opus ×2 | 5 (4 fix rounds; final approve with one minor carried into 17c) | 12 incl. 1 blocker (round 1: 7 — duplicate `weekly_scoped` keys crashing the meter, fire-and-forget usage, `retire_once` on the startup path, SQLite in the scanner hot path, dead session label, superseded code kept; round 2: 4 — daemon DB ownership across drvfs, refresh RPC past the daemon timeout, unknown-project throttle, second TLS stack; round 3: 1 — usage-sync retry flood) | #35 |
 | 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
-| 17d | Opus 5 | Codex ×2 | tbd | tbd | tbd |
+| ~~17d~~ | — | — | cancelled | — | — |
+| 18a | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
+| 18b | Opus 5 | Codex ×2 | tbd | tbd | tbd |
+| 19 | Opus 5 + Fable | Codex | tbd | tbd | tbd |
 
 ## 17a findings
 
