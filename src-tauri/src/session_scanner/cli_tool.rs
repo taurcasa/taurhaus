@@ -399,6 +399,22 @@ impl CliToolSpec {
         }
     }
 
+    #[cfg(feature = "mesh-bridged-backend")]
+    pub fn compaction_signal_source(
+        &self,
+    ) -> Option<&'static dyn crate::coordination::compact_hook::CompactionSignalSource> {
+        static CLAUDE: crate::coordination::compact_hook::ClaudeCompactionSignalSource =
+            crate::coordination::compact_hook::ClaudeCompactionSignalSource;
+        static CODEX: crate::coordination::compact_hook::CodexCompactionSignalSource =
+            crate::coordination::compact_hook::CodexCompactionSignalSource;
+
+        match self.tool {
+            CliTool::Claude => Some(&CLAUDE),
+            CliTool::Codex => Some(&CODEX),
+            CliTool::Gemini => None,
+        }
+    }
+
     pub(crate) fn session_resolver(
         &self,
     ) -> &'static dyn crate::session_scanner::idle::SessionResolver {

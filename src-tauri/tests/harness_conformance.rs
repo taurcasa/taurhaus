@@ -183,3 +183,59 @@ fn undeclared_activity_source_never_claims_authority() {
         .authoritative_state("/tmp/taurhaus-conformance-project", 42, &heuristic)
         .is_none());
 }
+
+#[test]
+fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
+    // Regression: commit 6fe0aa3 introduced a second hook settings format;
+    // installers and payload parsing must stay behind one capability slice.
+    let temp = tempfile::tempdir().expect("compaction conformance root");
+    let executable = temp.path().join("taurhaus");
+    std::fs::write(&executable, b"test executable").expect("fake executable");
+
+    for (tool, transcript) in [
+        (
+            CliTool::Claude,
+            temp.path().join("claude/projects/project/session.jsonl"),
+        ),
+        (
+            CliTool::Codex,
+            temp.path()
+                .join("codex/sessions/2026/08/27/rollout-session.jsonl"),
+        ),
+    ] {
+        let source = spec(tool)
+            .compaction_signal_source()
+            .expect("declared compaction source");
+        let config_dir = temp.path().join(tool.to_string());
+        assert!(source
+            .install(&config_dir, &executable)
+            .expect("first install changes files"));
+        assert!(!source
+            .install(&config_dir, &executable)
+            .expect("second install is idempotent"));
+
+        let payload = serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "session",
+            "source": "compact",
+            "transcript_path": transcript,
+        })
+        .to_string();
+        assert_eq!(
+            source
+                .parse_payload(&payload)
+                .expect("source parses payload")
+                .inferred_tool(),
+            Some(tool)
+        );
+
+        assert!(source
+            .remove(&config_dir)
+            .expect("first removal changes files"));
+        assert!(!source
+            .remove(&config_dir)
+            .expect("second removal is idempotent"));
+    }
+
+    assert!(spec(CliTool::Gemini).compaction_signal_source().is_none());
+}
