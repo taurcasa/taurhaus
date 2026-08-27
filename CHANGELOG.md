@@ -6,9 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-08-27
+
+Harness realignment wrap-up. Several Claude subscriptions per host become a first-class choice (per project, with live usage per subscription), Codex idle detection is authoritative via its own turn-complete notification, tool-specific code is confined to capability slices behind one registry, and the documentation set describes the code as it is. Daemon protocol stays **10** — the bundled daemon is still updated with the app (new additive daemon method: `LIST_CLAUDE_ACCOUNTS`).
+
+### Added
+
+- **Choose the Claude subscription per project** — taurhaus detects every Claude Code config dir (`~/.claude`, `~/.claude-*`, live `CLAUDE_CONFIG_DIR`s), labels them from their signed-in account, and asks once per project which one to use when more than one is logged in (remembered per project; global default in Settings → Claude accounts). Launches render `CLAUDE_CONFIG_DIR=…` (a base command that already sets it wins); resume/continue derive the account from the session's transcript location, so a session always resumes on the subscription that owns its history. Teams keep running on the default config dir (per-team accounts are a follow-up). (#27)
+- **Usage per subscription** — each account's 5-hour and 7-day usage (`used_percentage`, resets-in) is shown on the account chip and in the chooser, fed by Claude Code's documented status-line payload through a per-account bridge that wraps any status line you already have (it keeps rendering) or renders a minimal one. The bridge is daemon-owned, idempotent, removable, exact-command-aware, symlink-safe, private (0700/0600 artifacts), reconciled on every accounts request, and gated on Claude ≥ 2.1.246. Usage flows while an interactive session of that account is open. (#31)
+- **Codex idle is authoritative** — Codex launches carry `-c notify=[…]`, and the `agent-turn-complete` notification lands in a daemon sink that classification treats as the authoritative busy/idle edge (rchar-rate hysteresis stays as the fallback). Native CLI versions are probed once per run (`claude --version`, `codex --version`) and exposed on the terminal contract; capability gates (Claude `--effort`, Codex `-c notify`, Codex hooks) read them. (#25)
+- **Capability-sliced tool registry** — a single `CliToolSpec` registry describes each CLI (aliases, argv signatures, default commands, label/accent, capability flags); session identity, activity, compaction signal and transcript parsing are traits with per-tool implementations; the frontend reads tool descriptors from the terminal contract via `toolRegistry.js`. A conformance suite runs every registry entry through every slice against golden launch fixtures, and module-boundary guards fail the build when a tool literal appears outside the allowed files. Metric: `CliTool::…` branches outside registry/slice files 421 lines / 66 files → 340 / 52; frontend tool-name comparisons 33 → 1. No behaviour change; rendered commands are byte-identical. (#33)
+
+### Changed
+
+- **Documentation realigned with the code** — README, ARCHITECTURE, CLAUDE.md, CONTRIBUTING and `docs/**` swept for drift (152 verified fixes), plus a new `docs/architecture/harness-model.md` explaining the harness model: Claude Code hosts Claude, other CLIs host theirs, tmux + mesh is the floor, capability slices, app ↔ daemon pairing, stability rules. (#28, #29, #30)
+- **Mesh bundling and daemon install** — `resolve-mesh-binary.sh` rebuilds mesh when the lock's `git_commit` no longer matches the checked-out mesh; `just install-daemon` restarts the daemon with explicit `--data-dir`/`--port` and the previous process's environment; the taureval harness reads role `model`/`reasoning_effort` with the same fidelity as taurhaus. (#24, #26)
+
 ### Testing
 
-- **Five load-sensitive tests made deterministic** — the runtime scan override is scoped to the test that installs it, the mesh detail test holds the component to its scheduling rather than a wall-clock budget it cannot measure, launch log assertions flush the sink and select records by their emitter, the live `/proc` scan waits for the child's exec, and daemon-unavailable is injected instead of racing a freed port.
+- **Five load-sensitive tests made deterministic** — the runtime scan override is scoped to the test that installs it, the mesh detail test holds the component to its scheduling rather than a wall-clock budget it cannot measure, launch log assertions flush the sink and select records by their emitter, the live `/proc` scan waits for the child's exec, and daemon-unavailable is injected instead of racing a freed port. (#32)
+
+### Security
+
+- Dependency patches from Dependabot (moderate): `serde_with` 3.22.0, `tauri` 2.11.1.
 
 ## [0.6.7] - 2026-08-26
 
