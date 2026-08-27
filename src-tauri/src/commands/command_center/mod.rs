@@ -82,7 +82,7 @@ pub fn launch_cli_session(
     project_id: String,
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
-    claude_account_id: Option<String>,
+    account_id: Option<String>,
 ) -> IpcResult<protocol::LaunchSessionResult> {
     let span = IpcCommandSpan::start("launch_cli_session");
     let result = launch_cli_session_impl(
@@ -93,7 +93,7 @@ pub fn launch_cli_session(
         project_id,
         mode,
         cli_tool,
-        claude_account_id,
+        account_id,
     )
     .ipc_cmd("launch_cli_session");
     span.finish_result(&result);
@@ -275,23 +275,25 @@ enum TeamMemberMatchResult {
 }
 
 fn resolve_project_path(db: &DbState, project_id: &str) -> Result<String, String> {
-    resolve_project_launch_target(db, project_id).map(|(path, _)| path)
+    let conn = db.0.lock().map_err(|error| error.to_string())?;
+    crate::db::queries::get_project(&conn, project_id)
+        .sanitize_err()?
+        .map(|project| project.path)
+        .ok_or_else(|| format!("Project not found: {project_id}"))
 }
 
-/// A project's path and the Claude subscription it chose, in one read.
+/// A project's path and memory for one tool, in one read.
 fn resolve_project_launch_target(
     db: &DbState,
     project_id: &str,
-) -> Result<(String, Option<String>), String> {
+    tool: CliTool,
+) -> Result<(String, Option<crate::models::AccountMemory>), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let project = crate::db::queries::get_project(&conn, project_id)
         .sanitize_err()?
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
-    let account_id = project
-        .account_memory
-        .get("claude")
-        .map(|memory| memory.account_id.clone());
-    Ok((project.path, account_id))
+    let account_memory = project.account_memory.get(&tool.to_string()).cloned();
+    Ok((project.path, account_memory))
 }
 
 fn find_unique_team_member_match(

@@ -1,13 +1,9 @@
-use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
+use crate::commands::accounts::{AccountsResult, TranscriptLookup};
 use crate::commands::logging::LogFileState;
 use crate::commands::terminal_settings::load_terminal_settings;
 use crate::models::AccountMemoryOrigin;
 use crate::session_scanner::accounts;
-use crate::session_scanner::accounts::claude::{
-    configured_root_to_name, remembered_claude_transcript, resolve_launch_account,
-    to_launch_namespace, AccountRequest, AccountResolution,
-};
-use crate::session_scanner::accounts::AccountOrigin;
+use crate::session_scanner::accounts::{AccountOrigin, AccountRequest, AccountResolution};
 use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
 };
@@ -27,7 +23,7 @@ pub(super) fn launch_cli_session_impl(
     project_id: String,
     mode: LaunchMode,
     cli_tool: Option<CliTool>,
-    claude_account_id: Option<String>,
+    account_id: Option<String>,
 ) -> Result<protocol::LaunchSessionResult, String> {
     let tool = cli_tool.unwrap_or_default();
 
@@ -47,7 +43,8 @@ pub(super) fn launch_cli_session_impl(
         launch_fields,
     );
 
-    let (project_path, project_account_id) = resolve_project_launch_target(db, &project_id)?;
+    let (project_path, project_account_memory) =
+        resolve_project_launch_target(db, &project_id, tool)?;
 
     let linux_path = crate::provider::path::to_linux(&project_path).unwrap_or(project_path.clone());
 
@@ -93,7 +90,7 @@ pub(super) fn launch_cli_session_impl(
                     // an account the user picked for this launch has nowhere to
                     // go. Per-team accounts are a follow-up; until then the
                     // launch says what it did instead of the pick.
-                    if let Some(wanted) = requested_account(tool, claude_account_id.as_deref()) {
+                    if let Some(wanted) = requested_account(tool, account_id.as_deref()) {
                         note_team_account_ignored(&project_id, wanted);
                         result.account_applied = Some(false);
                         result.account_note = Some(TEAM_DEFAULT_ACCOUNT.to_string());
@@ -124,25 +121,29 @@ pub(super) fn launch_cli_session_impl(
     }
 
     let terminal_settings = load_terminal_settings(db);
+    let base = base_command(&terminal_settings.cli_commands, tool, mode);
     let account = crate::session_scanner::cli_tool::spec(tool)
-        .capabilities
-        .account_selection
-        .then(|| {
-            let launch = resolve_claude_account(
+        .account_provider()
+        .map(|_| {
+            let launch = resolve_account(
                 provider,
                 &linux_path,
+                tool,
                 mode,
-                claude_account_id.as_deref(),
-                project_account_id.as_deref(),
+                account_id.as_deref(),
+                project_account_memory.as_ref(),
                 terminal_settings
                     .default_account_ids
-                    .get("claude")
+                    .get(&tool.to_string())
                     .map(String::as_str),
+                base,
             );
-            log_account_resolution(&project_id, &launch);
+            log_account_resolution(&project_id, tool, &launch);
             launch.resolution
         });
-    let config_dir = account.as_ref().and_then(launch_config_dir);
+    let config_dir = account
+        .as_ref()
+        .and_then(|resolution| launch_account_dir(tool, resolution));
     let resolved_account_id = account
         .as_ref()
         .and_then(|resolution| resolution.account.as_ref())
@@ -150,11 +151,14 @@ pub(super) fn launch_cli_session_impl(
     let rendered = LaunchSpec {
         tool,
         mode,
-        base: base_command(&terminal_settings.cli_commands, tool, mode),
+        base,
         model: ModelSpec::default(),
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
-        claude_config_dir: config_dir.as_deref(),
+        account_dir: config_dir.as_deref(),
+        selector: crate::session_scanner::cli_tool::spec(tool)
+            .capabilities
+            .account_selector,
         team: None,
     }
     .render();
@@ -168,11 +172,11 @@ pub(super) fn launch_cli_session_impl(
         Value::String(redact_command_for_logging(&tool_cmd)),
     );
     rendered_fields.insert(
-        "claude_account".to_string(),
+        "account".to_string(),
         account
             .as_ref()
             .and_then(|resolution| resolution.account.as_ref())
-            .map(|account| Value::String(account.email.clone()))
+            .map(|account| Value::String(account.identity.label.clone()))
             .unwrap_or(Value::Null),
     );
     crate::commands::logging::emit_global(
@@ -220,9 +224,9 @@ pub(super) fn launch_cli_session_impl(
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides or cannot use the requested reasoning effort"
             }
-            LaunchNote::ConfigDirIgnored { found } => {
+            LaunchNote::SelectorIgnored { found } => {
                 fields.insert("found".to_string(), Value::String(found));
-                "Configured launch base selects its own Claude config dir"
+                "Configured launch base selects its own account directory"
             }
         };
         crate::commands::logging::emit_global(
@@ -476,14 +480,14 @@ pub(super) const TEAM_DEFAULT_ACCOUNT: &str = "team_default";
 
 /// The account this launch was explicitly asked to run on, if a tool that has
 /// accounts was asked at all.
-fn requested_account(tool: CliTool, claude_account_id: Option<&str>) -> Option<&str> {
-    if !crate::session_scanner::cli_tool::spec(tool)
-        .capabilities
-        .account_selection
+fn requested_account(tool: CliTool, account_id: Option<&str>) -> Option<&str> {
+    if crate::session_scanner::cli_tool::spec(tool)
+        .account_provider()
+        .is_none()
     {
         return None;
     }
-    claude_account_id.map(str::trim).filter(|id| !id.is_empty())
+    account_id.map(str::trim).filter(|id| !id.is_empty())
 }
 
 /// Projects already told, this run, that a team resume runs on the team's
@@ -541,39 +545,49 @@ pub(super) struct DegradedDetection {
     pub wanted: Option<String>,
 }
 
-/// Pick the Claude subscription this launch runs on.
-fn resolve_claude_account(
+/// Resolve one provider-backed tool account for a launch.
+fn resolve_account(
     provider: &ProviderState,
     linux_path: &str,
+    tool: CliTool,
     mode: LaunchMode,
     requested_account_id: Option<&str>,
-    project_account_id: Option<&str>,
+    project_memory: Option<&crate::models::AccountMemory>,
     default_account_id: Option<&str>,
+    base: &str,
 ) -> LaunchAccount {
-    // `--continue`/`--resume` only see the history of the config dir they run
-    // in, so the session this project used last decides the account. The
-    // transcripts on disk answer that even after a restart — and on Windows
-    // they are the only answer, because the app never scans the sessions the
-    // WSL daemon reports. A sighting from this process's own scans stands in
-    // when the transcripts cannot be read (an older daemon, say).
     let asked_for_an_account = requested_account_id.is_some_and(|id| !id.trim().is_empty());
     let mut transcript = TranscriptLookup::default();
     if !asked_for_an_account && matches!(mode, LaunchMode::Continue | LaunchMode::Resume) {
-        transcript = crate::commands::accounts::claude_project_transcript(provider, linux_path);
+        transcript = crate::commands::accounts::project_transcript(provider, tool, linux_path);
         if transcript.transcript.is_none() {
-            transcript.transcript = remembered_claude_transcript(linux_path);
+            transcript.transcript = accounts::remembered_transcript(tool, linux_path);
         }
     }
 
-    let accounts = crate::commands::accounts::claude_accounts_report(provider);
+    let tool_spec = crate::session_scanner::cli_tool::spec(tool);
+    let account_provider = tool_spec
+        .account_provider()
+        .expect("account resolver is called only for provider-backed tools");
+    let detected = crate::commands::accounts::accounts_report(provider, tool);
+    let pinned_account_id = project_memory
+        .filter(|memory| memory.origin == AccountMemoryOrigin::Pinned)
+        .map(|memory| memory.account_id.as_str());
+    let last_used_account_id = project_memory
+        .filter(|memory| memory.origin == AccountMemoryOrigin::LastUsed)
+        .map(|memory| memory.account_id.as_str());
     decide_launch_account(
-        &accounts,
+        &detected,
         &transcript,
+        account_provider,
         AccountRequest {
             requested_account_id,
             session_transcript: transcript.transcript.as_deref(),
-            project_account_id,
+            pinned_account_id,
+            last_used_account_id,
             default_account_id,
+            base_command: Some(base),
+            selector: tool_spec.capabilities.account_selector,
         },
     )
 }
@@ -585,22 +599,24 @@ fn resolve_claude_account(
 /// its own — someone else's history. The launch still goes ahead; what it must
 /// not do is go ahead quietly.
 pub(super) fn decide_launch_account(
-    accounts: &ClaudeAccountsResult,
+    detected: &AccountsResult,
     transcript: &TranscriptLookup,
+    provider: &dyn accounts::AccountProvider,
     request: AccountRequest<'_>,
 ) -> LaunchAccount {
     let wanted = request
-        .project_account_id
+        .pinned_account_id
+        .or(request.last_used_account_id)
         .or(request.default_account_id)
         .map(str::to_string);
-    let resolution = resolve_launch_account(&accounts.accounts, request);
+    let resolution = accounts::resolve_launch_account(&detected.accounts, provider, request);
     // An explicit pick and a transcript both answer for themselves; only a
     // launch that fell through to the fallback lost something.
     let derived = matches!(
-        resolution.source,
+        resolution.origin,
         AccountOrigin::Request | AccountOrigin::Session
     );
-    let unanswered = accounts.degraded || transcript.unavailable.is_some();
+    let unanswered = detected.degraded || transcript.unavailable.is_some();
     let degraded = (unanswered && !derived).then_some(DegradedDetection {
         reason: DAEMON_UNAVAILABLE,
         wanted,
@@ -612,19 +628,20 @@ pub(super) fn decide_launch_account(
 }
 
 /// Say in the log which subscription a launch ended up on, and why.
-pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
+pub(super) fn log_account_resolution(project_id: &str, tool: CliTool, launch: &LaunchAccount) {
     let resolution = &launch.resolution;
     let used = || {
         resolution
             .account
             .as_ref()
-            .map(|account| Value::String(account.email.clone()))
+            .map(|account| Value::String(account.identity.label.clone()))
             .unwrap_or(Value::Null)
     };
 
     if let Some(degraded) = launch.degraded.as_ref() {
         let mut fields = Map::new();
         fields.insert("project".to_string(), Value::String(project_id.to_string()));
+        fields.insert("tool".to_string(), Value::String(tool.to_string()));
         fields.insert(
             "reason".to_string(),
             Value::String(degraded.reason.to_string()),
@@ -642,7 +659,7 @@ pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
             "warn",
             "command_center",
             "launch.account.fallback",
-            Some("Claude account detection is unavailable; launching without it".to_string()),
+            Some("Account detection is unavailable; launching without it".to_string()),
             fields,
         );
     }
@@ -650,6 +667,7 @@ pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
     if let Some(wanted) = resolution.fallback_from.as_deref() {
         let mut fields = Map::new();
         fields.insert("project".to_string(), Value::String(project_id.to_string()));
+        fields.insert("tool".to_string(), Value::String(tool.to_string()));
         fields.insert(
             "reason".to_string(),
             Value::String(ACCOUNT_UNAVAILABLE.to_string()),
@@ -660,18 +678,19 @@ pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
             "warn",
             "command_center",
             "launch.account.fallback",
-            Some("Selected Claude account is unavailable; using the default".to_string()),
+            Some("Selected account is unavailable; using the default".to_string()),
             fields,
         );
     }
 
-    if resolution.source == AccountOrigin::Session {
+    if resolution.origin == AccountOrigin::Session {
         let mut fields = Map::new();
         fields.insert("project".to_string(), Value::String(project_id.to_string()));
+        fields.insert("tool".to_string(), Value::String(tool.to_string()));
         fields.insert(
-            "config_dir".to_string(),
+            "account_dir".to_string(),
             resolution
-                .config_dir
+                .account_dir
                 .as_ref()
                 .map(|dir| Value::String(dir.display().to_string()))
                 .unwrap_or(Value::Null),
@@ -686,22 +705,16 @@ pub(super) fn log_account_resolution(project_id: &str, launch: &LaunchAccount) {
     }
 }
 
-/// The `CLAUDE_CONFIG_DIR` this launch renders, in the form the shell that runs
-/// it will read.
-fn launch_config_dir(resolution: &AccountResolution) -> Option<PathBuf> {
-    let dir = resolution.config_dir.clone().or_else(|| {
-        // Detection found no account at all — an isolated run (E2E) with an
-        // empty Claude root, typically. The configured root is still where this
-        // process was told to keep Claude state, and Claude Code reads only
-        // `CLAUDE_CONFIG_DIR`: leaving it unset would send the launch into the
-        // real `~/.claude`.
+/// Account dir rendered in the namespace of the launch shell.
+fn launch_account_dir(tool: CliTool, resolution: &AccountResolution) -> Option<PathBuf> {
+    let dir = resolution.account_dir.clone().or_else(|| {
         resolution
             .account
             .is_none()
-            .then(configured_root_to_name)
+            .then(|| accounts::configured_default_dir(tool))
             .flatten()
     })?;
-    Some(to_launch_namespace(&dir))
+    Some(accounts::to_launch_namespace(&dir))
 }
 
 /// What a launch would run on, without launching it.

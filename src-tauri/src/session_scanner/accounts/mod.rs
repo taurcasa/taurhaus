@@ -15,7 +15,6 @@ use std::time::Instant;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-#[cfg(not(test))]
 use super::cli_tool::SessionRoot;
 use super::cli_tool::{spec, CliTool};
 use super::RuntimeSession;
@@ -268,6 +267,27 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 
 fn path_key(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// A configured tool root that differs from the selector-free process default.
+pub fn configured_default_dir(tool: CliTool) -> Option<PathBuf> {
+    let tool_spec = spec(tool);
+    let provider = tool_spec.account_provider()?;
+    let home = dirs::home_dir()?;
+    let process_default = provider.default_dir(&home);
+    let configured = match tool_spec.capabilities.session_root {
+        SessionRoot::AppManagedClaudeDir => {
+            crate::provider::platform_paths::PlatformPaths::claude_dir()
+        }
+        SessionRoot::ToolHome => process_default.clone(),
+    };
+    (path_key(&configured) != path_key(&process_default)).then_some(configured)
+}
+
+/// Convert an account dir into the namespace used by the launch shell.
+pub fn to_launch_namespace(dir: &Path) -> PathBuf {
+    let raw = dir.to_string_lossy().into_owned();
+    PathBuf::from(crate::provider::path::to_linux(&raw).unwrap_or(raw))
 }
 
 /// Whether a shell base contains an assignment for the account selector.
@@ -716,14 +736,15 @@ fn project_id_for_path(project_path: &str) -> Option<String> {
     let connection = rusqlite::Connection::open(db_path).ok()?;
     let wanted = crate::provider::path::normalize_project_path(project_path);
     let mut statement = connection.prepare("SELECT id, path FROM projects").ok()?;
-    statement
+    let project_id = statement
         .query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })
         .ok()?
         .filter_map(Result::ok)
         .find(|(_, path)| crate::provider::path::normalize_project_path(path) == wanted)
-        .map(|(id, _)| id)
+        .map(|(id, _)| id);
+    project_id
 }
 
 /// Newest transcript for a project across all candidate account dirs.

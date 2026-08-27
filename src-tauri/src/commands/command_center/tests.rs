@@ -1182,7 +1182,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
     // coordination pipelines emit the very same `launch.command.rendered` event
     // (`coordination/pipelines/helpers.rs`) from tests that hold no log guard,
     // so their record still lands in this file and a `find` on the event name
-    // alone can take it — it carries no `claude_account`, and the assertion
+    // alone can take it — it carries no `account`, and the assertion
     // below failed on a null. This decoy is that record, written where the race
     // would put it, so the selection has to be provenance-based to pass.
     crate::commands::logging::emit_global(
@@ -1232,7 +1232,7 @@ fn a_project_pinned_to_a_second_account_launches_with_its_config_dir() {
             event["event"] == "launch.command.rendered" && event["component"] == "command_center"
         })
         .expect("rendered launch event");
-    assert_eq!(rendered["claude_account"], "second@example.com");
+    assert_eq!(rendered["account"], "second@example.com");
 }
 
 #[test]
@@ -1291,15 +1291,15 @@ fn a_project_pinned_to_a_vanished_account_falls_back_and_says_so() {
 #[test]
 fn a_launch_whose_detection_failed_falls_back_and_says_why() {
     use super::launching::{decide_launch_account, log_account_resolution};
-    use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
-    use crate::session_scanner::accounts::claude::AccountRequest;
+    use crate::commands::accounts::{AccountsResult, TranscriptLookup};
+    use crate::session_scanner::accounts::AccountRequest;
 
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let (log_file, log_file_path) = setup_log_file();
     install_global_sink(&log_file);
 
     let launch = decide_launch_account(
-        &ClaudeAccountsResult {
+        &AccountsResult {
             accounts: Vec::new(),
             source: "daemon".to_string(),
             degraded: true,
@@ -1309,14 +1309,15 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
             transcript: None,
             unavailable: Some("timed out waiting for daemon".to_string()),
         },
+        crate::session_scanner::cli_tool::spec(CliTool::Claude)
+            .account_provider()
+            .expect("Claude account provider"),
         AccountRequest {
-            requested_account_id: None,
-            session_transcript: None,
-            project_account_id: Some("account-2"),
-            default_account_id: None,
+            pinned_account_id: Some("account-2"),
+            ..Default::default()
         },
     );
-    log_account_resolution("p1", &launch);
+    log_account_resolution("p1", CliTool::Claude, &launch);
 
     let events = read_log_events(&log_file, log_file_path.path());
     let fallback = events
@@ -1334,14 +1335,14 @@ fn a_launch_whose_detection_failed_falls_back_and_says_why() {
 #[test]
 fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
     use super::launching::decide_launch_account;
-    use crate::commands::accounts::{ClaudeAccountsResult, TranscriptLookup};
-    use crate::session_scanner::accounts::claude::AccountRequest;
+    use crate::commands::accounts::{AccountsResult, TranscriptLookup};
+    use crate::session_scanner::accounts::AccountRequest;
 
     let transcript =
         PathBuf::from("/home/user/.claude-account2/projects/-tmp-project/session.jsonl");
     let launch = decide_launch_account(
-        &ClaudeAccountsResult {
-            accounts: fake_accounts(),
+        &AccountsResult {
+            accounts: fake_accounts().into_iter().map(Into::into).collect(),
             source: "daemon".to_string(),
             degraded: false,
             error: None,
@@ -1350,11 +1351,13 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
             transcript: Some(transcript.clone()),
             unavailable: Some("timed out waiting for daemon".to_string()),
         },
+        crate::session_scanner::cli_tool::spec(CliTool::Claude)
+            .account_provider()
+            .expect("Claude account provider"),
         AccountRequest {
-            requested_account_id: None,
             session_transcript: Some(transcript.as_path()),
-            project_account_id: Some("account-1"),
-            default_account_id: None,
+            pinned_account_id: Some("account-1"),
+            ..Default::default()
         },
     );
 
@@ -1362,7 +1365,7 @@ fn a_resume_the_remembered_transcript_placed_is_not_a_fallback() {
 }
 
 #[test]
-fn a_codex_launch_never_receives_a_claude_config_dir() {
+fn a_codex_launch_never_receives_a_account_dir() {
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
     let _accounts = with_fake_accounts();
     let daemon = launch_stub_daemon();
@@ -1441,7 +1444,7 @@ fn resume_runs_on_the_account_of_the_last_session_after_it_exited() {
     install_global_sink(&log_file);
 
     // The last session for this project ran on the second subscription.
-    crate::session_scanner::accounts::claude::record_claude_transcripts(&[exited_claude_session(
+    crate::session_scanner::accounts::record_session_transcripts(&[exited_claude_session(
         "/tmp/resume-project",
         "/home/user/.claude-account2/projects/-tmp-resume-project/f3286b16.jsonl",
     )]);
@@ -2085,7 +2088,7 @@ fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
 // Regression: 74c7761 gave every Claude launch row an account submenu, and the
 // row forwards the account it names. A Continue/Resume for a project that is
 // exactly one team member's is delegated to coordination before
-// `claude_account_id` is ever read, so the picked subscription did nothing and
+// `account_id` is ever read, so the picked subscription did nothing and
 // said nothing. Teams run on the team's own config dir; the launch now reports
 // the account it could not apply.
 #[test]

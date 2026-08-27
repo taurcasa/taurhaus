@@ -75,9 +75,10 @@ pub struct LaunchSpec<'a> {
     /// executable that will persist turn-complete edges. Unmanaged or
     /// unsupported launches leave this unset.
     pub codex_notify_executable: Option<&'a std::path::Path>,
-    /// Claude config dir (subscription) this launch runs on. Unset means the
-    /// default one, which needs no assignment in the command.
-    pub claude_config_dir: Option<&'a std::path::Path>,
+    /// Account directory this launch runs on. Unset means the tool default.
+    pub account_dir: Option<&'a std::path::Path>,
+    /// Registry-declared environment selector for `account_dir`.
+    pub selector: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,9 +106,8 @@ pub enum LaunchNote {
         found: String,
         reason: EffortIgnoreReason,
     },
-    /// The base already selected a Claude config dir, so it wins over the
-    /// account chosen for the project.
-    ConfigDirIgnored { found: String },
+    /// The base already selected an account dir, so it wins over taurhaus.
+    SelectorIgnored { found: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,7 +115,7 @@ pub enum LaunchCapability {
     Model,
     Effort,
     DisplayName,
-    ConfigDir,
+    Selector,
 }
 
 impl LaunchCapability {
@@ -124,7 +124,7 @@ impl LaunchCapability {
             Self::Model => "model",
             Self::Effort => "effort",
             Self::DisplayName => "displayName",
-            Self::ConfigDir => "configDir",
+            Self::Selector => "selector",
         }
     }
 }
@@ -151,7 +151,7 @@ impl LaunchNote {
                 reason: EffortIgnoreReason::Invalid,
                 ..
             } => "launch.effort.invalid",
-            Self::ConfigDirIgnored { .. } => "launch.config_dir.ignored",
+            Self::SelectorIgnored { .. } => "launch.selector.ignored",
         }
     }
 }
@@ -356,26 +356,6 @@ impl LaunchSpec<'_> {
                         });
                     }
                 }
-
-                // Last, so the assignment lands in front of the team
-                // environment the arm may have just prepended.
-                if let Some(config_dir) = self.claude_config_dir {
-                    if let Some(config_dir_env) = capabilities.account_selector {
-                        if command_contains_flag(self.base, config_dir_env) {
-                            notes.push(LaunchNote::ConfigDirIgnored {
-                                found: config_dir_env.to_string(),
-                            });
-                        } else {
-                            let assignment = shell_escape(&config_dir.to_string_lossy());
-                            command = format!("{config_dir_env}={assignment} {command}");
-                        }
-                    } else {
-                        notes.push(LaunchNote::CapabilityMissing {
-                            capability: LaunchCapability::ConfigDir,
-                            found: config_dir.to_string_lossy().into_owned(),
-                        });
-                    }
-                }
             }
             CliTool::Gemini => {
                 if let Some(effort) = requested_effort {
@@ -402,6 +382,26 @@ impl LaunchSpec<'_> {
                         });
                     }
                 }
+            }
+        }
+
+        // Last, so the selector lands in front of any tool-specific team
+        // environment the match above may have prepended.
+        if let Some(account_dir) = self.account_dir {
+            if let Some(selector) = self.selector {
+                if crate::session_scanner::accounts::command_contains_env(self.base, selector) {
+                    notes.push(LaunchNote::SelectorIgnored {
+                        found: selector.to_string(),
+                    });
+                } else {
+                    let assignment = shell_escape(&account_dir.to_string_lossy());
+                    command = format!("{selector}={assignment} {command}");
+                }
+            } else {
+                notes.push(LaunchNote::CapabilityMissing {
+                    capability: LaunchCapability::Selector,
+                    found: account_dir.to_string_lossy().into_owned(),
+                });
             }
         }
 
@@ -622,7 +622,8 @@ mod tests {
             model: ModelSpec::parse_legacy("gpt-5.4 high"),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -645,7 +646,8 @@ mod tests {
             team: None,
             codex_bypass_hook_trust: true,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
         }
         .render();
         assert!(trusted.command.contains("--dangerously-bypass-hook-trust"));
@@ -658,7 +660,8 @@ mod tests {
             team: None,
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
         }
         .render();
         assert!(!unmanaged
@@ -681,7 +684,8 @@ mod tests {
             codex_notify_executable: Some(std::path::Path::new(
                 "/home/test/.local/bin/taurhaus-daemon",
             )),
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
         }
         .render();
 
@@ -712,7 +716,8 @@ mod tests {
                 codex_notify_executable: Some(std::path::Path::new(
                     "/home/test/.local/bin/taurhaus-daemon",
                 )),
-                claude_config_dir: None,
+                account_dir: None,
+                selector: None,
             }
             .render();
 
@@ -735,7 +740,8 @@ mod tests {
             model: ModelSpec::parse_legacy("gpt-5.3"),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -753,7 +759,8 @@ mod tests {
             model: model_spec("gpt-5.4", None),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -776,7 +783,8 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -800,7 +808,8 @@ mod tests {
             model: model_spec("gpt-5.4", None),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -823,7 +832,8 @@ mod tests {
             model: model_spec("gpt-5.4", Some("high")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -843,7 +853,8 @@ mod tests {
             model: model_spec("gpt-5.4", Some("ultra")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -865,7 +876,8 @@ mod tests {
             model: model_spec("gpt-5.6-sol", Some("ultra")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -902,7 +914,8 @@ mod tests {
             },
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -923,7 +936,8 @@ mod tests {
             },
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -946,7 +960,8 @@ mod tests {
             model: model_spec("opus", Some("ultra")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -1016,7 +1031,8 @@ mod tests {
             model: model_spec("claude-opus-4-6", Some("high")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -1055,7 +1071,8 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -1083,7 +1100,8 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -1105,7 +1123,8 @@ mod tests {
             model: model_spec("claude-opus-4-6", None),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -1122,7 +1141,8 @@ mod tests {
             model: model_spec("gemini-3.1-pro", Some("high")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -1148,7 +1168,8 @@ mod tests {
             model: model_spec("gemini-3.1-pro", None),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
             team: None,
         }
         .render();
@@ -1175,7 +1196,8 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: Some(config_dir),
+            account_dir: Some(config_dir),
+            selector: Some("CLAUDE_CONFIG_DIR"),
             team: None,
         }
         .render();
@@ -1200,7 +1222,8 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: Some(config_dir),
+            account_dir: Some(config_dir),
+            selector: Some("CLAUDE_CONFIG_DIR"),
             team: Some(TeamContext {
                 team_name: "ledger-team",
                 agent_name: "team-lead",
@@ -1229,7 +1252,8 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: Some(std::path::Path::new("/home/user/.claude")),
+            account_dir: Some(std::path::Path::new("/home/user/.claude")),
+            selector: Some("CLAUDE_CONFIG_DIR"),
             team: None,
         }
         .render();
@@ -1237,21 +1261,23 @@ mod tests {
         assert_eq!(rendered.command, base);
         assert_eq!(
             rendered.notes,
-            vec![LaunchNote::ConfigDirIgnored {
+            vec![LaunchNote::SelectorIgnored {
                 found: "CLAUDE_CONFIG_DIR".to_string()
             }]
         );
         assert_eq!(
-            LaunchNote::ConfigDirIgnored {
+            LaunchNote::SelectorIgnored {
                 found: "CLAUDE_CONFIG_DIR".to_string()
             }
             .event_name(),
-            "launch.config_dir.ignored"
+            "launch.selector.ignored"
         );
     }
 
+    // Regression: d6839a3 rendered account selection only inside the Claude
+    // arm, so a registry-declared selector on another tool was ignored.
     #[test]
-    fn a_config_dir_never_reaches_a_codex_launch() {
+    fn an_account_dir_uses_the_selected_tools_registry_selector() {
         let rendered = LaunchSpec {
             tool: CliTool::Codex,
             mode: LaunchMode::Fresh,
@@ -1259,12 +1285,16 @@ mod tests {
             model: ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: Some(std::path::Path::new("/home/user/.claude-account2")),
+            account_dir: Some(std::path::Path::new("/home/user/.codex-account2")),
+            selector: Some("CODEX_HOME"),
             team: None,
         }
         .render();
 
-        assert_eq!(rendered.command, "codex --yolo");
+        assert_eq!(
+            rendered.command,
+            "CODEX_HOME='/home/user/.codex-account2' codex --yolo"
+        );
         assert!(rendered.notes.is_empty());
     }
 

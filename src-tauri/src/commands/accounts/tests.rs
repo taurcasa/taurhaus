@@ -202,7 +202,7 @@ fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
         wsl_distro: None,
     };
 
-    let lookup = claude_project_transcript(&provider, project_path);
+    let lookup = project_transcript(&provider, CliTool::Claude, project_path);
     assert_eq!(lookup.transcript.as_deref(), Some(transcript.as_path()));
     assert_eq!(lookup.unavailable, None);
 }

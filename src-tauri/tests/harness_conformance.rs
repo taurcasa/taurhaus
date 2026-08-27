@@ -86,13 +86,47 @@ fn launch_rendering_stays_byte_identical_to_the_pre_refactor_goldens() {
             }),
             codex_bypass_hook_trust: golden.bypass_hook_trust,
             codex_notify_executable: None,
-            claude_config_dir: None,
+            account_dir: None,
+            selector: None,
         }
         .render();
 
         assert_eq!(format!("{}\n", rendered.command), golden.expected);
         assert!(rendered.notes.is_empty());
     }
+}
+
+#[test]
+fn account_dir_launch_cases_use_each_registry_selector() {
+    // Regression: d6839a3 rendered the account directory only inside the
+    // Claude launch arm; provider rollout must need data, not another branch.
+    let commands = CliCommandSettings::default();
+    let rendered = all()
+        .iter()
+        .map(|entry| {
+            let account_dir = std::path::PathBuf::from(format!("/accounts/{}", entry.name));
+            let command = LaunchSpec {
+                tool: entry.tool,
+                mode: LaunchMode::Fresh,
+                base: base_command(&commands, entry.tool, LaunchMode::Fresh),
+                model: ModelSpec::default(),
+                team: None,
+                codex_bypass_hook_trust: false,
+                codex_notify_executable: None,
+                account_dir: Some(&account_dir),
+                selector: entry.capabilities.account_selector,
+            }
+            .render()
+            .command;
+            format!("{}={command}", entry.name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert_eq!(
+        format!("{rendered}\n"),
+        include_str!("fixtures/launch/account-dirs.golden.txt")
+    );
 }
 
 #[test]
@@ -307,7 +341,8 @@ fn absent_catalog_and_launch_flags_use_the_declared_floor() {
         team: None,
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
-        claude_config_dir: None,
+        account_dir: None,
+        selector: None,
     }
     .render_with_capabilities(capabilities);
 

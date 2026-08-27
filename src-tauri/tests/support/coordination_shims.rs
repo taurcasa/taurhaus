@@ -91,7 +91,8 @@ pub mod session_scanner {
             pub team: Option<TeamContext<'a>>,
             pub codex_bypass_hook_trust: bool,
             pub codex_notify_executable: Option<&'a std::path::Path>,
-            pub claude_config_dir: Option<&'a std::path::Path>,
+            pub account_dir: Option<&'a std::path::Path>,
+            pub selector: Option<&'static str>,
         }
 
         impl LaunchSpec<'_> {
@@ -103,7 +104,8 @@ pub mod session_scanner {
                     model: self.model.clone(),
                     codex_bypass_hook_trust: self.codex_bypass_hook_trust,
                     codex_notify_executable: self.codex_notify_executable,
-                    claude_config_dir: self.claude_config_dir,
+                    account_dir: self.account_dir,
+                    selector: self.selector,
                     team: self.team.as_ref().map(|team| {
                         taurhaus_lib::session_scanner::launch::TeamContext {
                             team_name: team.team_name,

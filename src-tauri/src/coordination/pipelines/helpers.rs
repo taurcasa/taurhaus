@@ -497,7 +497,8 @@ fn render_team_launch_command(
         } else {
             None
         },
-        claude_config_dir: team_config_dir.as_deref(),
+        account_dir: team_config_dir.as_deref(),
+        selector: capabilities.account_selector,
         team: capabilities.team_flags.then_some(TeamContext {
             team_name,
             agent_name,
@@ -574,9 +575,9 @@ fn render_team_launch_command(
                 fields.insert("found".to_string(), Value::String(found));
                 "Configured launch base overrides or cannot use the role reasoning effort"
             }
-            LaunchNote::ConfigDirIgnored { found } => {
+            LaunchNote::SelectorIgnored { found } => {
                 fields.insert("found".to_string(), Value::String(found));
-                "Configured launch base selects its own Claude config dir"
+                "Configured launch base selects its own account directory"
             }
         };
         emit_global(

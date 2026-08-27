@@ -23,9 +23,6 @@ use crate::commands::projects::DbState;
 use crate::daemon::protocol;
 use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
-use crate::session_scanner::accounts::claude::{
-    detect_claude_accounts_cached, into_legacy_account, ClaudeAccount,
-};
 use crate::session_scanner::accounts::{self, Account};
 use crate::session_scanner::cli_tool::CliTool;
 use crate::ProviderState;
@@ -36,19 +33,6 @@ pub(crate) const SOURCE_NATIVE: &str = "native";
 pub(crate) const SOURCE_DAEMON: &str = "daemon";
 
 const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
-
-/// The detected accounts, and whether they are an answer at all.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClaudeAccountsResult {
-    pub accounts: Vec<ClaudeAccount>,
-    /// Where detection ran: `daemon` on Windows, `native` everywhere else.
-    pub source: String,
-    /// Detection could not run. `accounts` is empty because nothing answered,
-    /// not because nobody is signed in.
-    pub degraded: bool,
-    pub error: Option<String>,
-}
 
 /// Detected accounts for one registry tool.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -158,45 +142,11 @@ pub(crate) fn set_project_account_impl(
     Ok(())
 }
 
-/// The detected accounts, from whichever side of the WSL boundary can see them.
-pub(crate) fn claude_accounts_report(provider: &ProviderState) -> ClaudeAccountsResult {
-    if cfg!(target_os = "windows") {
-        let report = daemon_accounts_report(provider, CliTool::Claude);
-        return ClaudeAccountsResult {
-            accounts: report
-                .accounts
-                .into_iter()
-                .map(into_legacy_account)
-                .collect(),
-            source: report.source,
-            degraded: report.degraded,
-            error: report.error,
-        };
-    }
-    let mut accounts = detect_claude_accounts_cached();
-    // Detection is cached for a minute; usage is read fresh, because the whole
-    // point of it is to be current when the chooser opens.
-    crate::daemon::claude_usage::attach_usage(&mut accounts);
-    ClaudeAccountsResult {
-        accounts,
-        source: SOURCE_NATIVE.to_string(),
-        degraded: false,
-        error: None,
-    }
-}
-
 /// The newest Claude transcript for a project, read where the transcripts are.
 ///
 /// This is what makes `--resume` land on the subscription that owns a project's
 /// history after the session that wrote it is gone — including after a restart,
 /// and on Windows, where the app never sees the sessions the daemon scans.
-pub(crate) fn claude_project_transcript(
-    provider: &ProviderState,
-    project_path: &str,
-) -> TranscriptLookup {
-    project_transcript(provider, CliTool::Claude, project_path)
-}
-
 /// The newest transcript for one tool and project, read where that tool runs.
 pub(crate) fn project_transcript(
     provider: &ProviderState,

@@ -460,7 +460,7 @@ impl From<crate::session_scanner::launch::LaunchNote> for LaunchCommandCliNote {
                     EffortIgnoreReason::Invalid => "invalid",
                 }),
             },
-            LaunchNote::ConfigDirIgnored { found } => Self {
+            LaunchNote::SelectorIgnored { found } => Self {
                 event,
                 flag: None,
                 found: Some(found),
@@ -554,7 +554,8 @@ fn render_launch_command_cli<R: Read>(
         team,
         codex_bypass_hook_trust: request.codex_bypass_hook_trust,
         codex_notify_executable: None,
-        claude_config_dir: None,
+        account_dir: None,
+        selector: None,
     }
     .render();
     validate_command_override(&rendered.command)?;

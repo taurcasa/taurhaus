@@ -95,7 +95,8 @@ fn launch_command_cli_matches_launch_spec_bytes() {
         }),
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
-        claude_config_dir: None,
+        account_dir: None,
+        selector: None,
     }
     .render()
     .command;
@@ -162,7 +163,8 @@ fn launch_command_cli_uses_default_base_and_snake_case_claude_team() {
         }),
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
-        claude_config_dir: None,
+        account_dir: None,
+        selector: None,
     }
     .render()
     .command;

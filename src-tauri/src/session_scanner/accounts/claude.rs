@@ -23,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use crate::daemon::claude_usage::ClaudeAccountUsage;
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::accounts::AccountOrigin;
+#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
+#[cfg(test)]
 use crate::session_scanner::types::RuntimeSession;
 
 use super::{
@@ -216,40 +218,6 @@ impl From<ClaudeAccount> for Account {
             is_process_default: account.is_process_default,
             usage,
         }
-    }
-}
-
-pub(crate) fn into_legacy_account(account: Account) -> ClaudeAccount {
-    let usage = account.usage.map(|usage| ClaudeAccountUsage {
-        five_hour: usage
-            .windows
-            .iter()
-            .find(|window| window.key == "session")
-            .map(|window| crate::daemon::claude_usage::ClaudeUsageWindow {
-                used_percentage: window.used_percentage,
-                resets_at: window.resets_at,
-            }),
-        seven_day: usage
-            .windows
-            .iter()
-            .find(|window| window.key == "weekly_all")
-            .map(|window| crate::daemon::claude_usage::ClaudeUsageWindow {
-                used_percentage: window.used_percentage,
-                resets_at: window.resets_at,
-            }),
-        observed_at: usage.observed_at,
-    });
-    ClaudeAccount {
-        id: account.id,
-        config_dir: account.dir,
-        email: account.identity.label,
-        display_name: account.identity.display_name,
-        organization: account.identity.organization,
-        seat_tier: account.identity.plan,
-        logged_in: account.identity.logged_in,
-        is_default: account.is_default,
-        is_process_default: account.is_process_default,
-        usage,
     }
 }
 
@@ -743,17 +711,6 @@ fn config_dirs_of_live_sessions() -> Vec<PathBuf> {
             crate::session_scanner::idle::config_dir_for_transcript(Path::new(&transcript))
         })
         .collect()
-}
-
-/// Note the transcript of each project's freshest Claude session in `sessions`.
-pub(crate) fn record_claude_transcripts(sessions: &[RuntimeSession]) {
-    super::record_session_transcripts(sessions);
-}
-
-/// The transcript last seen for a project, whether or not it still has a
-/// running session.
-pub(crate) fn remembered_claude_transcript(project_path: &str) -> Option<PathBuf> {
-    super::remembered_transcript(CliTool::Claude, project_path)
 }
 
 /// Pick the account one launch runs on.
@@ -1572,7 +1529,8 @@ mod tests {
             model: crate::session_scanner::launch::ModelSpec::default(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
-            claude_config_dir: config_dir,
+            account_dir: config_dir,
+            selector: Some("CLAUDE_CONFIG_DIR"),
             team: None,
         }
         .render()
@@ -1728,14 +1686,14 @@ mod tests {
         let stale = "/home/user/.claude/projects/-home-user-projects-ranked/aaa.jsonl";
         let fresh = "/home/user/.claude-account2/projects/-home-user-projects-ranked/bbb.jsonl";
 
-        record_claude_transcripts(&[
+        super::super::record_session_transcripts(&[
             claude_session(project, stale, Some(400)),
             claude_session(project, fresh, Some(3)),
             claude_session(project, "/home/user/.claude/projects/x/ccc.jsonl", None),
         ]);
 
         assert_eq!(
-            remembered_claude_transcript(project).as_deref(),
+            super::super::remembered_transcript(CliTool::Claude, project).as_deref(),
             Some(Path::new(fresh))
         );
     }
@@ -1749,13 +1707,13 @@ mod tests {
         let project = "/home/user/projects/outlives";
         let transcript =
             "/home/user/.claude-account2/projects/-home-user-projects-outlives/a.jsonl";
-        record_claude_transcripts(&[claude_session(project, transcript, Some(2))]);
+        super::super::record_session_transcripts(&[claude_session(project, transcript, Some(2))]);
 
         // The next snapshot no longer lists the session: Claude exited.
-        record_claude_transcripts(&[]);
+        super::super::record_session_transcripts(&[]);
 
         assert_eq!(
-            remembered_claude_transcript(project).as_deref(),
+            super::super::remembered_transcript(CliTool::Claude, project).as_deref(),
             Some(Path::new(transcript))
         );
     }
@@ -1771,16 +1729,16 @@ mod tests {
         let fresh = "/home/user/.claude-account2/projects/-home-user-projects-sequential/b.jsonl";
         let stale = "/home/user/.claude/projects/-home-user-projects-sequential/a.jsonl";
 
-        record_claude_transcripts(&[
+        super::super::record_session_transcripts(&[
             claude_session(project, fresh, Some(2)),
             claude_session(project, stale, Some(400)),
         ]);
         // The fresh session exits; the older pane is still open and is all the
         // next snapshot reports.
-        record_claude_transcripts(&[claude_session(project, stale, Some(430))]);
+        super::super::record_session_transcripts(&[claude_session(project, stale, Some(430))]);
 
         assert_eq!(
-            remembered_claude_transcript(project).as_deref(),
+            super::super::remembered_transcript(CliTool::Claude, project).as_deref(),
             Some(Path::new(fresh))
         );
     }
