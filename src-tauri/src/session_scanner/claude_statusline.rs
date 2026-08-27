@@ -22,20 +22,25 @@
 //!   and written back untouched — the `padding` the user set before the wrap,
 //!   and equally the one they set on our row afterwards;
 //! * no sink call may outlive its deadline: each one is given a couple of
-//!   seconds and then killed and reaped, so a wedged daemon costs a record and
-//!   never the row;
+//!   seconds — by `timeout` where there is one, and by a watchdog in a process
+//!   group of its own where there is not — so a wedged daemon costs a record
+//!   and never the row, and a call that finished leaves nothing running;
 //! * removal puts the original `statusLine` value back exactly as it was,
-//!   extra keys and all — and a CLI that is *known* to be older than the build
-//!   that sends `rate_limits` gets that removal, rather than keeping a bridge
+//!   extra keys and all, and takes the script out only once the row has stopped
+//!   naming it — and a CLI that is *known* to be older than the build that
+//!   sends `rate_limits` gets that removal, rather than keeping a bridge
 //!   nothing can feed.
 //!
 //! Installation is idempotent and mirrors the compaction hook installer: a
 //! generated script under `<config dir>/hooks`, a record naming the executable
 //! and the sink it was generated for (so an app that moved, or a run under an
 //! isolated `TAURHAUS_DATA_DIR`, reinstalls itself) and one entry in
-//! `settings.json`, written atomically. Both paths are baked into the script
-//! rather than resolved when it runs: it runs in the user's own shell, which
-//! knows nothing of taurhaus's environment.
+//! `settings.json`. All three are published by renaming a finished file over
+//! the old one, because the row points Claude Code at that script the whole
+//! time and the record is the only copy of the command it wraps — one that
+//! cannot be read leaves the install exactly as it stands. Both paths are baked
+//! into the script rather than resolved when it runs: it runs in the user's own
+//! shell, which knows nothing of taurhaus's environment.
 
 use std::fs;
 use std::path::Path;
@@ -189,7 +194,18 @@ fn install_statusline_at(
         // Re-running against our own install must not wrap our own script: the
         // command the user actually configured is the one the record remembers.
         let wrapped = if is_taurhaus_status_line(existing.as_ref()) {
-            read_record(&hooks_dir).and_then(|record| record.wrapped)
+            let Some(record) = read_record(&hooks_dir) else {
+                // The row is already ours, so that record is the only place the
+                // command it wraps is written down. Rebuilding the bridge from
+                // a record we cannot read would publish a renderer over a
+                // command nobody can name any more; leaving the install exactly
+                // as it stands costs at most a refreshed script.
+                return Ok(StatuslineInstall {
+                    skipped: Some("unreadable_record"),
+                    ..StatuslineInstall::default()
+                });
+            };
+            record.wrapped
         } else {
             existing.clone().filter(|value| !value.is_null())
         };
@@ -200,32 +216,19 @@ fn install_statusline_at(
             &sink_argument,
             wrapped_command(wrapped.as_ref()),
         );
-        let script_changed = write_if_changed(&script_path, script.as_bytes())?;
-        #[cfg(not(target_os = "windows"))]
-        if script_changed {
-            use std::os::unix::fs::PermissionsExt;
-            let mut permissions = fs::metadata(&script_path)
-                .map_err(|error| format!("failed to stat '{}': {error}", script_path.display()))?
-                .permissions();
-            permissions.set_mode(0o755);
-            fs::set_permissions(&script_path, permissions).map_err(|error| {
-                format!(
-                    "failed to make '{}' executable: {error}",
-                    script_path.display()
-                )
-            })?;
-        }
+        let script_changed = publish_if_changed(&script_path, script.as_bytes(), true)?;
 
         let record = StatuslineRecord {
             executable: executable.clone(),
             sink: sink_argument.clone(),
             wrapped: wrapped.clone(),
         };
-        let record_changed = write_if_changed(
+        let record_changed = publish_if_changed(
             &hooks_dir.join(RECORD_FILENAME),
             serde_json::to_vec_pretty(&record.to_value())
                 .map_err(|error| format!("failed to serialize the status line record: {error}"))?
                 .as_slice(),
+            false,
         )?;
 
         // Only `type` and `command` are taurhaus's. Everything else on the row
@@ -277,19 +280,54 @@ fn install_statusline_at(
 
 /// Take the bridge back out, restoring whatever it wrapped.
 pub fn remove_statusline_at(config_dir: &Path) -> Result<bool, String> {
+    remove_statusline_with(config_dir, &|| {})
+}
+
+/// The removal itself.
+///
+/// `before_commit` runs in the window between reading `statusLine` and putting
+/// back what the bridge wrapped — the window a concurrent editor lands in, and
+/// the only place a test can stand to be that editor. Production passes a no-op.
+fn remove_statusline_with(config_dir: &Path, before_commit: &dyn Fn()) -> Result<bool, String> {
     let hooks_dir = config_dir.join(HOOKS_DIRNAME);
     let settings_path = config_dir.join(SETTINGS_FILENAME);
-    let settings = load_settings(&settings_path)?;
     let mut changed = false;
-
-    let current = settings.get(STATUS_LINE_KEY).cloned();
-    if is_taurhaus_status_line(current.as_ref()) {
+    // Nothing is deleted while the row still names it. An edit to a field
+    // taurhaus does not own — the `padding` on the row it holds — makes the
+    // guarded restore stale without making it wrong, and stopping there would
+    // leave the user pointed at a script that is about to be removed, with the
+    // only record of what it wrapped removed beside it. So: read again, and
+    // hand the command back to the row as it now stands.
+    let mut released = false;
+    for _ in 0..COMMIT_ATTEMPTS {
+        let current = load_settings(&settings_path)?.get(STATUS_LINE_KEY).cloned();
+        if !is_taurhaus_status_line(current.as_ref()) {
+            // A `statusLine` that is no longer ours is somebody else's now, and
+            // giving them a command they replaced would be the same overwrite
+            // this bridge exists to avoid. Nothing points at the script either.
+            released = true;
+            break;
+        }
         let original = read_record(&hooks_dir).and_then(|record| record.wrapped);
-        // A `statusLine` that changed since the read above is somebody else's
-        // now, and giving them a command they replaced would be the same
-        // overwrite this bridge exists to avoid.
-        changed = commit_status_line(&settings_path, current.as_ref(), original)?
-            == StatusLineCommit::Written;
+        before_commit();
+        match commit_status_line(&settings_path, current.as_ref(), original)? {
+            StatusLineCommit::Stale => continue,
+            StatusLineCommit::Written => {
+                changed = true;
+                released = true;
+                break;
+            }
+            StatusLineCommit::Unchanged => {
+                released = true;
+                break;
+            }
+        }
+    }
+    if !released {
+        return Err(format!(
+            "'{}' kept changing its status line while taurhaus removed one",
+            settings_path.display()
+        ));
     }
 
     for path in [
@@ -524,12 +562,6 @@ fn render_script(
     sink_path: &str,
     wrapped: Option<String>,
 ) -> String {
-    let sink = format!(
-        "{} {USAGE_SINK_SUBCOMMAND} --config-dir {} --sink {}",
-        shell_quote(executable),
-        shell_quote(config_dir),
-        shell_quote(sink_path)
-    );
     let mut script = String::from(
         "#!/usr/bin/env bash\n\
          # taurhaus status line bridge — generated file, rewritten on every install.\n\
@@ -542,22 +574,47 @@ fn render_script(
     // call goes through here, where it is given a deadline and then killed and
     // reaped: a wedged daemon, or a filesystem that stopped answering, can lose
     // the user a record and never the row.
+    //
+    // `timeout` does that with nothing left over. Where there is none — a Mac
+    // without coreutils — a watchdog does it instead, started under `set -m` so
+    // that it has a process group of its own: cancelling it has to take the
+    // `sleep` it is blocked on with it, and this runs on every keystroke.
     push_lines(
         &mut script,
         [
+            format!(
+                "taurhaus_sink_cmd=( {} {USAGE_SINK_SUBCOMMAND} --config-dir {} --sink {} )",
+                shell_quote(executable),
+                shell_quote(config_dir),
+                shell_quote(sink_path)
+            ),
+            "taurhaus_timeout=\"$(command -v timeout 2>/dev/null \
+             || command -v gtimeout 2>/dev/null)\""
+                .to_string(),
             "taurhaus_sink() {".to_string(),
             "  local out=$1".to_string(),
             "  shift".to_string(),
-            format!("  printf '%s' \"$payload\" | {sink} \"$@\" >\"$out\" 2>/dev/null &"),
+            "  if [ -n \"$taurhaus_timeout\" ]; then".to_string(),
+            format!(
+                "    printf '%s' \"$payload\" | \"$taurhaus_timeout\" -k 1 \
+                 {SINK_DEADLINE_SECONDS} \"${{taurhaus_sink_cmd[@]}}\" \"$@\" >\"$out\" 2>/dev/null"
+            ),
+            "    return 0".to_string(),
+            "  fi".to_string(),
+            "  set -m".to_string(),
+            "  printf '%s' \"$payload\" | \"${taurhaus_sink_cmd[@]}\" \"$@\" >\"$out\" 2>/dev/null &"
+                .to_string(),
             "  local sink_pid=$!".to_string(),
             format!(
                 "  ( sleep {SINK_DEADLINE_SECONDS}; kill \"$sink_pid\"; \
                  sleep 1; kill -9 \"$sink_pid\" ) >/dev/null 2>&1 &"
             ),
             "  local deadline=$!".to_string(),
+            "  set +m".to_string(),
             "  wait \"$sink_pid\" 2>/dev/null".to_string(),
-            "  kill \"$deadline\" 2>/dev/null".to_string(),
-            "}".to_string(),
+            "  kill -- -\"$deadline\" 2>/dev/null || kill \"$deadline\" 2>/dev/null".to_string(),
+            "  wait \"$deadline\" 2>/dev/null".to_string(),
+            "} 2>/dev/null".to_string(),
         ],
     );
     match wrapped {
@@ -726,12 +783,50 @@ fn write_settings(settings_path: &Path, settings: &Map<String, Value>) -> Result
     Ok(())
 }
 
-fn write_if_changed(path: &Path, payload: &[u8]) -> Result<bool, String> {
+/// Publish one generated file whole, or not at all.
+///
+/// `settings.json` names the script for as long as the bridge is installed, and
+/// Claude Code refreshes several times a second: a truncating write leaves a
+/// window where a refresh runs an empty file. The record has the same problem
+/// with worse consequences — it is the only copy of the command the script
+/// wraps, and a half-written one reads as "there was nothing to wrap". So both
+/// are filled beside their final name and renamed over it, which no reader can
+/// land inside of.
+fn publish_if_changed(path: &Path, payload: &[u8], executable: bool) -> Result<bool, String> {
     if fs::read(path).is_ok_and(|current| current == payload) {
         return Ok(false);
     }
-    fs::write(path, payload)
-        .map_err(|error| format!("failed to write '{}': {error}", path.display()))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("'{}' has no parent", path.display()))?;
+    let temp_path = parent.join(format!(
+        ".{}.tmp.{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(SCRIPT_BASENAME),
+        std::process::id()
+    ));
+    fs::write(&temp_path, payload)
+        .map_err(|error| format!("failed to write '{}': {error}", temp_path.display()))?;
+    #[cfg(not(target_os = "windows"))]
+    if executable {
+        // Before the rename, so that whatever appears under `path` is runnable
+        // the instant it appears there.
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(error) = fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o755)) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(format!(
+                "failed to make '{}' executable: {error}",
+                temp_path.display()
+            ));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    let _ = executable;
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!("failed to replace '{}': {error}", path.display()));
+    }
     Ok(true)
 }
 
@@ -828,7 +923,7 @@ mod tests {
 
         let script = script_of(&config_dir);
         assert!(script.contains(&format!(
-            "| '{}' {USAGE_SINK_SUBCOMMAND} --config-dir '{}' --sink '{}' \"$@\"",
+            "taurhaus_sink_cmd=( '{}' {USAGE_SINK_SUBCOMMAND} --config-dir '{}' --sink '{}' )",
             exe.display(),
             config_dir.display(),
             sink_for(&temp).display()
@@ -1312,6 +1407,146 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_record_taurhaus_cannot_read_never_costs_the_user_their_wrapped_command() {
+        // Regression: 79be608 recovered the command it had wrapped from the
+        // record, and read a record it could not parse as "there was nothing to
+        // wrap". A record left half-written — by an interrupted install, or by
+        // any writer that truncates before it fills — therefore turned the next
+        // install into a renderer over the user's own status line, and
+        // overwrote the only copy of their command with `null`.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        write_settings_json(
+            &config_dir,
+            json!({ "statusLine": { "type": "command", "command": "my-line.sh" } }),
+        );
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+        let record_path = config_dir.join(HOOKS_DIRNAME).join(RECORD_FILENAME);
+        let whole = fs::read_to_string(&record_path).expect("record");
+        let half = whole[..whole.len() / 2].to_string();
+        let script_before = script_of(&config_dir);
+        fs::write(&record_path, &half).expect("truncate the record");
+
+        let install =
+            ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        assert_eq!(
+            script_of(&config_dir),
+            script_before,
+            "the bridge was rebuilt without the command it wraps"
+        );
+        assert_eq!(
+            fs::read_to_string(&record_path).expect("record"),
+            half,
+            "the only record of the wrapped command was overwritten"
+        );
+        assert_eq!(install.skipped, Some("unreadable_record"));
+        assert!(!install.changed);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_script_a_status_line_is_running_is_never_rewritten_underneath_it() {
+        // Regression: 79be608 published the script and the record with a
+        // truncating `fs::write`. `settings.json` names that script for as long
+        // as the bridge is installed and Claude Code refreshes several times a
+        // second, so a refresh landing inside a reinstall could run an empty or
+        // half-written file — and a record read in that same window is the
+        // unreadable record above.
+        use std::io::Read as _;
+        use std::os::unix::fs::MetadataExt as _;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let old_exe = temp.path().join("old").join("taurhaus-daemon");
+        let new_exe = temp.path().join("new").join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &old_exe, &sink_for(&temp)).expect("install");
+        let script_path = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        let record_path = config_dir.join(HOOKS_DIRNAME).join(RECORD_FILENAME);
+
+        // The status line opens the script the instant before the reinstall.
+        let mut running = fs::File::open(&script_path).expect("open the script");
+        let was = script_of(&config_dir);
+        let script_inode = fs::metadata(&script_path).expect("stat").ino();
+        let record_inode = fs::metadata(&record_path).expect("stat").ino();
+
+        ensure_statusline_installed_at(&config_dir, &new_exe, &sink_for(&temp)).expect("reinstall");
+
+        let mut still_reading = String::new();
+        running
+            .read_to_string(&mut still_reading)
+            .expect("read the script that was already running");
+        assert_eq!(
+            still_reading, was,
+            "the script changed under a reader that had already opened it"
+        );
+        assert_ne!(
+            fs::metadata(&script_path).expect("stat").ino(),
+            script_inode,
+            "the script was rewritten in place"
+        );
+        assert_ne!(
+            fs::metadata(&record_path).expect("stat").ino(),
+            record_inode,
+            "the record was rewritten in place"
+        );
+        // And what appears under that name is runnable the moment it appears.
+        assert_eq!(
+            fs::metadata(&script_path)
+                .expect("stat")
+                .permissions()
+                .mode()
+                & 0o111,
+            0o111
+        );
+        assert!(script_of(&config_dir).contains(&new_exe.display().to_string()));
+    }
+
+    #[test]
+    fn a_row_edited_while_the_bridge_comes_out_never_points_at_a_deleted_script() {
+        // Regression: 984218c guarded the restore with a compare-and-set but
+        // left the deletion below it unconditional. Editing a field taurhaus
+        // does not own — the `padding` on the row it holds — made that restore
+        // stale without making it wrong, and removal then deleted both the
+        // script the row still named and the only record of what it wrapped.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let original = json!({ "type": "command", "command": "my-line.sh", "padding": 0 });
+        write_settings_json(&config_dir, json!({ "statusLine": original.clone() }));
+        let exe = temp.path().join("taurhaus-daemon");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        let raced = std::sync::atomic::AtomicBool::new(false);
+        let removed = remove_statusline_with(&config_dir, &|| {
+            if raced.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            // The user tunes the row taurhaus holds, mid-removal.
+            let mut row = settings_of(&config_dir)[STATUS_LINE_KEY]
+                .as_object()
+                .expect("an object")
+                .clone();
+            row.insert("padding".to_string(), json!(3));
+            write_settings_json(&config_dir, json!({ "statusLine": Value::Object(row) }));
+        })
+        .expect("remove");
+
+        assert!(removed);
+        assert_eq!(
+            settings_of(&config_dir)[STATUS_LINE_KEY],
+            original,
+            "the row still names a script removal deleted"
+        );
+        assert!(!config_dir
+            .join(HOOKS_DIRNAME)
+            .join(script_filename())
+            .exists());
+        assert!(!statusline_is_installed_at(&config_dir));
+    }
+
     /// A stand-in for the sink, or for the command a user had configured.
     #[cfg(unix)]
     fn write_stub(path: &Path, body: &str) {
@@ -1465,6 +1700,149 @@ mod tests {
 
         assert!(ok);
         assert_eq!(line, "", "their empty line is theirs to keep: {line:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_finished_sink_call_leaves_nothing_running_behind_it() {
+        // Regression: c91a158 bounded every sink call with a watchdog subshell
+        // whose first command is a child `sleep`. On the path taken several
+        // times a second — the sink answers, the watchdog is killed — killing
+        // that shell did not kill the `sleep` it was blocked on, which stayed
+        // behind, reparented, for the rest of the deadline. A status line may
+        // not litter the user's machine with processes.
+        let temp = tempfile::tempdir().expect("temp dir");
+        let config_dir = temp.path().join(".claude");
+        let exe = temp.path().join("bin").join("taurhaus-daemon");
+        write_stub(&exe, "cat >/dev/null\necho 'Haiku 4.5 · 5h 26% · 7d 17%'");
+        ensure_statusline_installed_at(&config_dir, &exe, &sink_for(&temp)).expect("install");
+
+        // Both ways the script can bound a call: with `timeout` on the PATH,
+        // and on a machine that has none.
+        for path_env in [
+            std::env::var("PATH").unwrap_or_default(),
+            coreutils_without_timeout(&temp),
+        ] {
+            let (line, running) =
+                run_script_in_its_own_session(&config_dir, OBSERVED_PAYLOAD_FOR_SCRIPT, &path_env);
+
+            assert_eq!(line, "Haiku 4.5 · 5h 26% · 7d 17%\n");
+            assert!(
+                running.is_empty(),
+                "the status line left {running:?} running (PATH={path_env})"
+            );
+        }
+    }
+
+    /// The generated script, run as the leader of its own session — so that
+    /// anything it leaves behind can still be found once it has exited.
+    ///
+    /// Returns the rendered line and whatever was still running afterwards.
+    #[cfg(target_os = "linux")]
+    fn run_script_in_its_own_session(
+        config_dir: &Path,
+        payload: &str,
+        path_env: &str,
+    ) -> (String, Vec<String>) {
+        use std::io::Write as _;
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+
+        let script = config_dir.join(HOOKS_DIRNAME).join(script_filename());
+        let session_file = config_dir.with_extension("session");
+        let captured = config_dir.with_extension("status-line.out");
+        let mut child = Command::new("setsid")
+            .arg("--wait")
+            .arg("bash")
+            .arg("-c")
+            .arg(format!(
+                "printf '%s' \"$$\" >{}; exec bash {}",
+                shell_quote(&session_file.display().to_string()),
+                shell_quote(&script.display().to_string())
+            ))
+            .env("PATH", path_env)
+            .stdin(Stdio::piped())
+            // Captured through a file: an orphaned process would inherit a
+            // pipe and hold it open, which is the very thing under test.
+            .stdout(Stdio::from(
+                fs::File::create(&captured).expect("capture file"),
+            ))
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("setsid, to prove what the status line left running");
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(payload.as_bytes())
+            .expect("feed the payload");
+        assert!(
+            child.wait().expect("status line").success(),
+            "the status line failed"
+        );
+
+        let session: u32 = fs::read_to_string(&session_file)
+            .expect("session id")
+            .trim()
+            .parse()
+            .expect("a pid");
+        // A process the script killed on its way out is reaped by init rather
+        // than by us, so give the session a moment to empty — far less than
+        // the deadline a leaked timer would sit out.
+        let started = Instant::now();
+        loop {
+            let running = processes_in_session(session);
+            if running.is_empty() || started.elapsed() >= Duration::from_secs(1) {
+                return (fs::read_to_string(&captured).unwrap_or_default(), running);
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    /// Every process still alive in one session, named for the failure message.
+    #[cfg(target_os = "linux")]
+    fn processes_in_session(session: u32) -> Vec<String> {
+        let mut running = Vec::new();
+        for entry in fs::read_dir("/proc").expect("read /proc").flatten() {
+            let name = entry.file_name();
+            let Some(pid) = name.to_str().and_then(|name| name.parse::<u32>().ok()) else {
+                continue;
+            };
+            let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else {
+                continue;
+            };
+            // `comm` can hold spaces and parentheses; the numeric fields start
+            // after its closing one — state, ppid, pgrp, session.
+            let Some(end) = stat.rfind(')') else { continue };
+            let fields: Vec<&str> = stat[end + 1..].split_whitespace().collect();
+            if fields.get(3).and_then(|field| field.parse::<u32>().ok()) != Some(session) {
+                continue;
+            }
+            let command = fs::read_to_string(entry.path().join("cmdline")).unwrap_or_default();
+            running.push(format!("{pid} {}", command.replace('\0', " ").trim()));
+        }
+        running
+    }
+
+    /// A PATH with everything the script needs on it except `timeout`.
+    #[cfg(target_os = "linux")]
+    fn coreutils_without_timeout(temp: &tempfile::TempDir) -> String {
+        let bin = temp.path().join("no-timeout-bin");
+        fs::create_dir_all(&bin).expect("bin dir");
+        for tool in ["setsid", "bash", "cat", "mktemp", "rm", "sleep"] {
+            let output = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(format!("command -v {tool}"))
+                .output()
+                .expect("command -v");
+            let resolved = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            assert!(!resolved.is_empty(), "this host has no '{tool}'");
+            let link = bin.join(tool);
+            if !link.exists() {
+                std::os::unix::fs::symlink(&resolved, &link).expect("link the tool");
+            }
+        }
+        bin.display().to_string()
     }
 
     #[cfg(unix)]
