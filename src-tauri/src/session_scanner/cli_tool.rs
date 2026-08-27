@@ -4,8 +4,11 @@
 //! own process signature, session directory layout, and launch commands.
 
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
+
+use crate::models::{CliCommandSettings, ToolCommands};
 
 /// Which CLI tool a session belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -41,12 +44,12 @@ impl FromStr for CliTool {
     type Err = ParseCliToolError;
 
     fn from_str(raw: &str) -> Result<Self, Self::Err> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "claude" => Ok(Self::Claude),
-            "codex" => Ok(Self::Codex),
-            "gemini" => Ok(Self::Gemini),
-            _ => Err(ParseCliToolError::new(raw)),
-        }
+        let normalized = raw.trim().to_ascii_lowercase();
+        all()
+            .iter()
+            .find(|entry| entry.name == normalized)
+            .map(|entry| entry.tool)
+            .ok_or_else(|| ParseCliToolError::new(raw))
     }
 }
 
@@ -54,29 +57,68 @@ impl CliTool {
     /// Parse a CLI tool string with coordination aliases.
     pub fn from_alias(raw: &str) -> Result<Self, ParseCliToolError> {
         let normalized = raw.trim().to_ascii_lowercase();
-        let canonical = match normalized.as_str() {
-            "claude_native" => "claude",
-            "mesh" | "mesh_bridged" => "codex",
-            _ => normalized.as_str(),
-        };
-
-        canonical.parse()
+        all()
+            .iter()
+            .find(|entry| entry.aliases.contains(&normalized.as_str()))
+            .map(|entry| entry.tool)
+            .ok_or_else(|| ParseCliToolError::new(raw))
     }
 }
 
 impl std::fmt::Display for CliTool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CliTool::Claude => write!(f, "claude"),
-            CliTool::Codex => write!(f, "codex"),
-            CliTool::Gemini => write!(f, "gemini"),
-        }
+        f.write_str(spec(*self).name)
     }
 }
 
-/// Static configuration for a CLI tool — directory layout, commands, etc.
-pub struct CliToolConfig {
+/// How a reasoning-effort value is expressed by a harness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortFlag {
+    Argument {
+        flag: &'static str,
+    },
+    Config {
+        flag: &'static str,
+        key: &'static str,
+    },
+}
+
+/// Capability declarations consumed by tool-agnostic call sites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CliCapabilities {
+    pub model_flag: Option<&'static str>,
+    pub effort_flag: Option<EffortFlag>,
+    pub display_name_flag: Option<&'static str>,
+    pub team_flags: bool,
+    pub native_inbox_poller: bool,
+    pub authoritative_idle: bool,
+    pub compaction_hook: bool,
+    pub transcript_parser: bool,
+    pub catalog: bool,
+    pub config_dir_env: Option<&'static str>,
+    pub usage_bridge: bool,
+    pub notify_sink: bool,
+    pub hook_trust: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StopStrategy {
+    SlashExit,
+    Interrupt,
+}
+
+/// One registry record for a supported CLI harness.
+pub struct CliToolSpec {
     pub tool: CliTool,
+    pub name: &'static str,
+    pub aliases: &'static [&'static str],
+    pub argv_signatures: &'static [&'static str],
+    pub default_commands: ToolCommands,
+    pub label: &'static str,
+    pub accent: &'static str,
+    pub capabilities: CliCapabilities,
+    pub stop_strategy: StopStrategy,
     pub display_name: &'static str,
     /// Base directory name under `$HOME` (e.g., ".claude", ".codex", ".gemini").
     pub base_dir_name: &'static str,
@@ -88,44 +130,232 @@ pub struct CliToolConfig {
     pub exit_command: &'static str,
 }
 
-static TOOL_CONFIGS: &[CliToolConfig] = &[
-    CliToolConfig {
-        tool: CliTool::Claude,
-        display_name: "Claude Code",
-        base_dir_name: ".claude",
-        projects_subdir: "projects",
-        session_extension: "jsonl",
-        exit_command: "/exit",
-    },
-    CliToolConfig {
-        tool: CliTool::Codex,
-        display_name: "Codex CLI",
-        base_dir_name: ".codex",
-        projects_subdir: "sessions",
-        session_extension: "jsonl",
-        exit_command: "/exit",
-    },
-    CliToolConfig {
-        tool: CliTool::Gemini,
-        display_name: "Gemini CLI",
-        base_dir_name: ".gemini",
-        projects_subdir: "tmp",
-        session_extension: "jsonl",
-        exit_command: "/exit",
-    },
-];
+static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
+    [
+        CliToolSpec {
+            tool: CliTool::Claude,
+            name: "claude",
+            aliases: &["claude", "claude_native"],
+            argv_signatures: &["claude", "@anthropic-ai/claude-code"],
+            default_commands: ToolCommands {
+                continue_cmd: "claude --dangerously-skip-permissions --continue".into(),
+                fresh: "claude --dangerously-skip-permissions".into(),
+                resume: "claude --dangerously-skip-permissions --resume".into(),
+            },
+            label: "Claude",
+            accent: "emerald",
+            capabilities: CliCapabilities {
+                model_flag: Some("--model"),
+                effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                display_name_flag: Some("-n"),
+                team_flags: true,
+                native_inbox_poller: true,
+                authoritative_idle: true,
+                compaction_hook: true,
+                transcript_parser: true,
+                catalog: true,
+                config_dir_env: Some("CLAUDE_CONFIG_DIR"),
+                usage_bridge: true,
+                notify_sink: false,
+                hook_trust: false,
+            },
+            stop_strategy: StopStrategy::SlashExit,
+            display_name: "Claude Code",
+            base_dir_name: ".claude",
+            projects_subdir: "projects",
+            session_extension: "jsonl",
+            exit_command: "/exit",
+        },
+        CliToolSpec {
+            tool: CliTool::Codex,
+            name: "codex",
+            aliases: &["codex", "mesh", "mesh_bridged"],
+            argv_signatures: &["codex", "@openai/codex"],
+            default_commands: ToolCommands {
+                continue_cmd: "codex --yolo".into(),
+                fresh: "codex --yolo".into(),
+                resume: "codex resume --last --yolo".into(),
+            },
+            label: "Codex",
+            accent: "sky",
+            capabilities: CliCapabilities {
+                model_flag: Some("-m"),
+                effort_flag: Some(EffortFlag::Config {
+                    flag: "-c",
+                    key: "model_reasoning_effort",
+                }),
+                display_name_flag: None,
+                team_flags: false,
+                native_inbox_poller: false,
+                authoritative_idle: true,
+                compaction_hook: true,
+                transcript_parser: true,
+                catalog: true,
+                config_dir_env: None,
+                usage_bridge: false,
+                notify_sink: true,
+                hook_trust: true,
+            },
+            stop_strategy: StopStrategy::SlashExit,
+            display_name: "Codex CLI",
+            base_dir_name: ".codex",
+            projects_subdir: "sessions",
+            session_extension: "jsonl",
+            exit_command: "/exit",
+        },
+        CliToolSpec {
+            tool: CliTool::Gemini,
+            name: "gemini",
+            aliases: &["gemini"],
+            argv_signatures: &["gemini", "@google/gemini-cli"],
+            default_commands: ToolCommands {
+                continue_cmd: "gemini --yolo --resume".into(),
+                fresh: "gemini --yolo".into(),
+                resume: "gemini --yolo --resume".into(),
+            },
+            label: "Gemini",
+            accent: "violet",
+            capabilities: CliCapabilities {
+                model_flag: Some("-m"),
+                effort_flag: None,
+                display_name_flag: None,
+                team_flags: false,
+                native_inbox_poller: false,
+                authoritative_idle: false,
+                compaction_hook: false,
+                transcript_parser: false,
+                catalog: true,
+                config_dir_env: None,
+                usage_bridge: false,
+                notify_sink: false,
+                hook_trust: false,
+            },
+            stop_strategy: StopStrategy::SlashExit,
+            display_name: "Gemini CLI",
+            base_dir_name: ".gemini",
+            projects_subdir: "tmp",
+            session_extension: "jsonl",
+            exit_command: "/exit",
+        },
+    ]
+});
+
+/// Get every registered CLI harness.
+pub fn all() -> &'static [CliToolSpec] {
+    TOOL_SPECS.as_slice()
+}
 
 /// Get all registered tool configurations.
-pub fn all_tools() -> &'static [CliToolConfig] {
-    TOOL_CONFIGS
+pub fn all_tools() -> &'static [CliToolSpec] {
+    all()
 }
 
 /// Get the configuration for a specific tool.
-pub fn config_for(tool: CliTool) -> &'static CliToolConfig {
-    TOOL_CONFIGS
+pub fn spec(tool: CliTool) -> &'static CliToolSpec {
+    all()
         .iter()
         .find(|c| c.tool == tool)
         .expect("every CliTool variant has a config entry")
+}
+
+/// Backwards-compatible name for callers that consume filesystem layout.
+pub fn config_for(tool: CliTool) -> &'static CliToolSpec {
+    spec(tool)
+}
+
+pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &ToolCommands {
+    match tool {
+        CliTool::Claude => &settings.claude,
+        CliTool::Codex => &settings.codex,
+        CliTool::Gemini => &settings.gemini,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum EffortFlagDescriptor {
+    Argument { flag: String },
+    Config { flag: String, key: String },
+}
+
+impl From<EffortFlag> for EffortFlagDescriptor {
+    fn from(value: EffortFlag) -> Self {
+        match value {
+            EffortFlag::Argument { flag } => Self::Argument { flag: flag.into() },
+            EffortFlag::Config { flag, key } => Self::Config {
+                flag: flag.into(),
+                key: key.into(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CliCapabilityDescriptor {
+    pub model_flag: Option<String>,
+    pub effort_flag: Option<EffortFlagDescriptor>,
+    pub display_name_flag: Option<String>,
+    pub team_flags: bool,
+    pub native_inbox_poller: bool,
+    pub authoritative_idle: bool,
+    pub compaction_hook: bool,
+    pub transcript_parser: bool,
+    pub catalog: bool,
+    pub config_dir_env: Option<String>,
+    pub usage_bridge: bool,
+    pub notify_sink: bool,
+    pub hook_trust: bool,
+}
+
+impl From<CliCapabilities> for CliCapabilityDescriptor {
+    fn from(value: CliCapabilities) -> Self {
+        Self {
+            model_flag: value.model_flag.map(str::to_string),
+            effort_flag: value.effort_flag.map(Into::into),
+            display_name_flag: value.display_name_flag.map(str::to_string),
+            team_flags: value.team_flags,
+            native_inbox_poller: value.native_inbox_poller,
+            authoritative_idle: value.authoritative_idle,
+            compaction_hook: value.compaction_hook,
+            transcript_parser: value.transcript_parser,
+            catalog: value.catalog,
+            config_dir_env: value.config_dir_env.map(str::to_string),
+            usage_bridge: value.usage_bridge,
+            notify_sink: value.notify_sink,
+            hook_trust: value.hook_trust,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CliToolDescriptor {
+    pub id: CliTool,
+    pub label: String,
+    pub accent: String,
+    pub aliases: Vec<String>,
+    pub capabilities: CliCapabilityDescriptor,
+}
+
+impl From<&CliToolSpec> for CliToolDescriptor {
+    fn from(value: &CliToolSpec) -> Self {
+        Self {
+            id: value.tool,
+            label: value.label.to_string(),
+            accent: value.accent.to_string(),
+            aliases: value
+                .aliases
+                .iter()
+                .map(|alias| (*alias).to_string())
+                .collect(),
+            capabilities: value.capabilities.into(),
+        }
+    }
+}
+
+pub fn descriptors() -> Vec<CliToolDescriptor> {
+    all().iter().map(Into::into).collect()
 }
 
 #[cfg(test)]

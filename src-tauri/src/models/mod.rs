@@ -254,24 +254,24 @@ pub struct CliCommandSettings {
 impl Default for CliCommandSettings {
     fn default() -> Self {
         Self {
-            claude: ToolCommands {
-                continue_cmd: "claude --dangerously-skip-permissions --continue".into(),
-                fresh: "claude --dangerously-skip-permissions".into(),
-                resume: "claude --dangerously-skip-permissions --resume".into(),
-            },
-            codex: ToolCommands {
-                continue_cmd: "codex --yolo".into(),
-                fresh: "codex --yolo".into(),
-                resume: "codex resume --last --yolo".into(),
-            },
-            gemini: ToolCommands {
-                continue_cmd: "gemini --yolo --resume".into(),
-                fresh: "gemini --yolo".into(),
-                resume: "gemini --yolo --resume".into(),
-            },
+            claude: crate::session_scanner::cli_tool::spec(CliTool::Claude)
+                .default_commands
+                .clone(),
+            codex: crate::session_scanner::cli_tool::spec(CliTool::Codex)
+                .default_commands
+                .clone(),
+            gemini: crate::session_scanner::cli_tool::spec(CliTool::Gemini)
+                .default_commands
+                .clone(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
         }
+    }
+}
+
+impl CliCommandSettings {
+    pub fn get(&self, tool: CliTool) -> &ToolCommands {
+        crate::session_scanner::cli_tool::command_settings_for(self, tool)
     }
 }
 
@@ -665,6 +665,8 @@ pub struct TerminalPlatformContract {
     pub model_catalog: ModelCatalog,
     #[serde(alias = "cli_versions")]
     pub cli_versions: CliVersions,
+    #[serde(default)]
+    pub tools: Vec<crate::session_scanner::cli_tool::CliToolDescriptor>,
 }
 
 impl Default for TerminalPlatformContract {
@@ -694,6 +696,7 @@ impl TerminalPlatformContract {
             cli_command_defaults: CliCommandSettings::default(),
             model_catalog: ModelCatalog::default(),
             cli_versions: CliVersions::default(),
+            tools: crate::session_scanner::cli_tool::descriptors(),
         }
     }
 

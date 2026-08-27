@@ -37,6 +37,7 @@
   import { setSessionContext } from './lib/context/SessionContext.js'
   import { setModelCatalogContext } from './lib/context/ModelCatalogContext.js'
   import { EMPTY_MODEL_CATALOG } from './lib/modelCatalog.js'
+  import { configureToolRegistry } from './lib/toolRegistry.js'
   import { DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './lib/shikiThemes.js'
 
   let { initialDaemonStatus = undefined } = $props()
@@ -267,6 +268,7 @@
       const settings = await getSettings()
       const catalog = settings?.terminal_contract?.model_catalog
       if (catalog) modelCatalogContextValue.catalog = catalog
+      configureToolRegistry(settings?.terminal_contract?.tools)
     } catch (error) {
       console.error('[settings] failed to load the model catalog:', error)
     }

@@ -2,7 +2,7 @@ use pretty_assertions::assert_eq;
 use taurhaus_lib::coordination::domain::MemberRole;
 use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::CliCommandSettings;
-use taurhaus_lib::session_scanner::cli_tool::CliTool;
+use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, StopStrategy};
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
 use taurhaus_lib::session_scanner::process::detect_cli_tool;
 
@@ -77,4 +77,74 @@ fn launch_rendering_stays_byte_identical_to_the_pre_refactor_goldens() {
         assert_eq!(format!("{}\n", rendered.command), golden.expected);
         assert!(rendered.notes.is_empty());
     }
+}
+
+#[test]
+fn registry_is_complete_and_drives_the_terminal_contract() {
+    // Regression: commit 9a66d1c spread harness identity and defaults across
+    // call sites, so adding a tool could silently omit its UI contract entry.
+    let registered = all();
+    assert_eq!(registered.len(), LAUNCH_GOLDENS.len());
+    assert_eq!(
+        registered
+            .iter()
+            .map(|entry| entry.tool)
+            .collect::<Vec<_>>(),
+        LAUNCH_GOLDENS
+            .iter()
+            .map(|golden| golden.tool)
+            .collect::<Vec<_>>()
+    );
+
+    let contract = taurhaus_lib::models::TerminalPlatformContract::for_platform(
+        taurhaus_lib::models::AppPlatform::Linux,
+    );
+    assert_eq!(
+        contract
+            .tools
+            .iter()
+            .map(|descriptor| descriptor.id)
+            .collect::<Vec<_>>(),
+        registered
+            .iter()
+            .map(|entry| entry.tool)
+            .collect::<Vec<_>>()
+    );
+
+    for entry in registered {
+        assert_eq!(entry.name.parse::<CliTool>(), Ok(entry.tool));
+        for alias in entry.aliases {
+            assert_eq!(CliTool::from_alias(alias), Ok(entry.tool));
+        }
+        assert_eq!(
+            detect_cli_tool(&entry.default_commands.fresh),
+            Some(entry.tool)
+        );
+    }
+}
+
+#[test]
+fn registry_declares_native_and_floor_capabilities() {
+    // Regression: commits d6839a3 and a574720 added Claude/Codex-only native
+    // features in their callers; capability ownership belongs in the registry.
+    let claude = spec(CliTool::Claude);
+    assert_eq!(
+        claude.capabilities.config_dir_env,
+        Some("CLAUDE_CONFIG_DIR")
+    );
+    assert!(claude.capabilities.usage_bridge);
+    assert!(claude.capabilities.native_inbox_poller);
+    assert_eq!(claude.stop_strategy, StopStrategy::SlashExit);
+
+    let codex = spec(CliTool::Codex);
+    assert!(codex.capabilities.compaction_hook);
+    assert!(codex.capabilities.authoritative_idle);
+    assert!(codex.capabilities.notify_sink);
+    assert_eq!(codex.stop_strategy, StopStrategy::SlashExit);
+
+    let gemini = spec(CliTool::Gemini);
+    assert!(!gemini.capabilities.compaction_hook);
+    assert!(!gemini.capabilities.transcript_parser);
+    assert!(!gemini.capabilities.catalog || gemini.capabilities.model_flag.is_some());
+    assert_eq!(gemini.stop_strategy, StopStrategy::SlashExit);
 }

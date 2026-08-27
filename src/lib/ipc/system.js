@@ -5,6 +5,7 @@ import {
   MOCK_SETTINGS,
 } from './mocks/index.js'
 import { invokeOrMock } from './client.js'
+import { FALLBACK_TOOLS, normalizeToolDescriptors } from '../toolRegistry.js'
 
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['https:', 'mailto:'])
 
@@ -49,6 +50,7 @@ const DEFAULT_TERMINAL_CONTRACTS = {
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
     model_catalog: EMPTY_MODEL_CATALOG,
     cli_versions: EMPTY_CLI_VERSIONS,
+    tools: FALLBACK_TOOLS,
   },
   macos: {
     platform: 'macos',
@@ -57,6 +59,7 @@ const DEFAULT_TERMINAL_CONTRACTS = {
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
     model_catalog: EMPTY_MODEL_CATALOG,
     cli_versions: EMPTY_CLI_VERSIONS,
+    tools: FALLBACK_TOOLS,
   },
   windows: {
     platform: 'windows',
@@ -65,6 +68,7 @@ const DEFAULT_TERMINAL_CONTRACTS = {
     cli_command_defaults: DEFAULT_CLI_COMMANDS,
     model_catalog: EMPTY_MODEL_CATALOG,
     cli_versions: EMPTY_CLI_VERSIONS,
+    tools: FALLBACK_TOOLS,
   },
 }
 
@@ -151,6 +155,7 @@ export function buildFrontendFallbackTerminalContract(platform = 'linux') {
     },
     model_catalog: normalizeModelCatalog(fallback.model_catalog),
     cli_versions: normalizeCliVersions(fallback.cli_versions),
+    tools: normalizeToolDescriptors(fallback.tools),
   }
 }
 
@@ -181,6 +186,7 @@ function normalizeTerminalContract(raw) {
       : contract.cliVersions && typeof contract.cliVersions === 'object'
         ? contract.cliVersions
         : defaults.cli_versions
+  const tools = Array.isArray(contract.tools) ? contract.tools : defaults.tools
 
   return {
     platform: defaults.platform,
@@ -193,6 +199,7 @@ function normalizeTerminalContract(raw) {
     },
     model_catalog: normalizeModelCatalog(modelCatalog, defaults.model_catalog),
     cli_versions: normalizeCliVersions(cliVersions, defaults.cli_versions),
+    tools: normalizeToolDescriptors(tools, defaults.tools),
   }
 }
 
