@@ -68,6 +68,9 @@ try {
     $start = Get-Date
     Write-Host "[windows_bun_install] starting..."
     & $bunPath install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) {
+        throw "bun install failed with exit code $LASTEXITCODE"
+    }
     $elapsed = (Get-Date) - $start
     $steps.Add([pscustomobject]@{ Name = "windows_bun_install"; Seconds = [Math]::Round($elapsed.TotalSeconds, 2) })
 
@@ -78,6 +81,11 @@ try {
         $env:PATH = $cargoBinDir + ";" + $env:PATH
     }
     & $bunPath run tauri build --bundles nsis
+    # `&` does not turn a native exit code into a terminating error, so without
+    # this a failed `tauri build` fell through to the "build complete" summary.
+    if ($LASTEXITCODE -ne 0) {
+        throw "tauri build failed with exit code $LASTEXITCODE"
+    }
     $elapsed = (Get-Date) - $start
     $steps.Add([pscustomobject]@{ Name = "windows_tauri_build"; Seconds = [Math]::Round($elapsed.TotalSeconds, 2) })
 }
