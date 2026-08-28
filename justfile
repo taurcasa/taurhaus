@@ -154,6 +154,13 @@ infographics *ARGS:
 infographics-dry-run:
     python3 scripts/generate-infographics.py --dry-run --stale
 
+# Write the Claude role templates into a project's .claude/agents directory,
+# where Claude Code and the Workflow API resolve a subagent by name.
+# Only generated files are replaced; a hand-written agent is reported as skipped.
+# Example: just export-agents ~/projects/taurhaus
+export-agents PROJECT: ensure-tauri-resources
+    cd src-tauri && cargo run --bin taurhaus -- --export-agent-definitions "{{PROJECT}}"
+
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).
 # This is the primary "does everything work?" test command.
 test: test-rust test-frontend

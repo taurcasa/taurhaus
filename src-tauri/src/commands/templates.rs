@@ -4,8 +4,11 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::commands::lifecycle::IpcCommandSpan;
-use crate::errors::{sanitize_error, CommandResultExt, IpcResult};
+use crate::commands::projects::DbState;
+use crate::db::queries;
+use crate::errors::{sanitize_error, CommandResultExt, IpcResult, SanitizeErr};
 use crate::templates::adapters::{export_role, RoleExportFormat, RoleExportResult};
+use crate::templates::agent_definitions::{self, AgentDefinitionExport};
 use crate::templates::composition::{compose_team, CompositionOverrides, CompositionResult};
 use crate::templates::storage::{
     PendingAction, RoleTemplateRecord, TeamPresetRecord, TemplateCommitPage, TemplateDiff,
@@ -438,6 +441,44 @@ pub fn export_role_to_file(
     let result = export_role_to_file_internal(&state.0, request).ipc_cmd("export_role_to_file");
     span.finish_result(&result);
     result
+}
+
+/// Write every Claude role in the catalog into the project's `.claude/agents`,
+/// where Claude Code and the Workflow API resolve a subagent by name.
+#[tauri::command]
+pub fn export_agent_definitions(
+    db: State<'_, DbState>,
+    state: State<'_, TemplateStoreState>,
+    project_id: String,
+) -> IpcResult<AgentDefinitionExport> {
+    let span = IpcCommandSpan::start("export_agent_definitions");
+    let result = (|| -> Result<AgentDefinitionExport, String> {
+        let project_path = {
+            let conn = db.0.lock().map_err(|err| err.to_string())?;
+            queries::get_project(&conn, &project_id)
+                .sanitize_err()?
+                .ok_or_else(|| format!("project {project_id} is not registered"))?
+                .path
+        };
+        export_agent_definitions_internal(&state.0, Path::new(&project_path))
+    })()
+    .ipc_cmd("export_agent_definitions");
+    span.finish_result(&result);
+    result
+}
+
+fn export_agent_definitions_internal(
+    store: &TemplateStore,
+    project_path: &Path,
+) -> Result<AgentDefinitionExport, String> {
+    let roles = store
+        .list_roles()
+        .map_err(map_template_error)?
+        .into_iter()
+        .map(|record| record.template)
+        .collect::<Vec<_>>();
+
+    agent_definitions::export_agent_definitions(&roles, project_path).map_err(map_template_error)
 }
 
 fn export_role_to_file_internal(

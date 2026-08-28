@@ -841,7 +841,9 @@ fn acquire_fallback_lock(
     )))
 }
 
-fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreError> {
+/// Write `bytes` to `target` through a unique temp file and a rename, so a
+/// reader never observes a half-written file.
+pub(crate) fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreError> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }

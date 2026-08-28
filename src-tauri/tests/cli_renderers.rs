@@ -10,6 +10,7 @@ use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::CliCommandSettings;
 use taurhaus_lib::session_scanner::cli_tool::CliTool;
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
+use taurhaus_lib::templates::agent_definitions::render_agent_definition;
 use taurhaus_lib::templates::types::RoleTemplate;
 
 fn run_renderer(flag: &str, request: &serde_json::Value) -> String {
@@ -305,4 +306,60 @@ fn render_onboarding_cli_uses_the_grok_variant() {
     assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
     assert!(actual.contains("enter /quit"));
     assert!(actual.contains("Ctrl+Enter interjects immediately"));
+}
+
+#[test]
+fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
+    // The CLI path taureval and `just export-agents` use: one process, one
+    // project directory, no dependency on a running app.
+    let data_dir = tempfile::tempdir().expect("renderer data dir");
+    let project = tempfile::tempdir().expect("project dir");
+    let agents = project.path().join(".claude").join("agents");
+    std::fs::create_dir_all(&agents).expect("agents directory");
+    let hand_written = "---\nname: mine\n---\n\nMy own reviewer.\n";
+    std::fs::write(agents.join("claude-reviewer.md"), hand_written).expect("user authored agent");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
+        .args([
+            "--export-agent-definitions",
+            project.path().to_str().expect("utf8 project path"),
+        ])
+        .env("TAURHAUS_DATA_DIR", data_dir.path())
+        .output()
+        .expect("run real taurhaus binary");
+    assert!(
+        output.status.success(),
+        "export failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let response: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("export response is JSON");
+    let written = response["written"]
+        .as_array()
+        .expect("written role ids")
+        .iter()
+        .map(|value| value.as_str().expect("role id").to_string())
+        .collect::<Vec<_>>();
+    assert!(written.contains(&"claude-orchestrator".to_string()));
+    assert!(!written.contains(&"quick-dev-codex".to_string()));
+    assert!(response["skipped"]
+        .as_array()
+        .expect("skipped roles")
+        .contains(&serde_json::json!({
+            "roleId": "claude-reviewer",
+            "reason": "user_authored",
+        })));
+
+    let role_yaml = include_str!("../resources/templates/roles/claude-orchestrator.yaml");
+    let role: RoleTemplate = serde_norway::from_str(role_yaml).expect("bundled role parses");
+    assert_eq!(
+        std::fs::read_to_string(agents.join("claude-orchestrator.md")).expect("generated agent"),
+        render_agent_definition(&role)
+    );
+    assert!(!agents.join("quick-dev-codex.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(agents.join("claude-reviewer.md")).expect("user authored agent"),
+        hand_written
+    );
 }

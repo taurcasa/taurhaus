@@ -6,8 +6,15 @@
 //! into a member's onboarding, so an agent definition and a mesh member read
 //! the same role.
 
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
+use crate::session_scanner::cli_tool::spec;
 use crate::templates::adapters::yaml_scalar;
+use crate::templates::storage::{write_atomic_file, TemplateStoreError};
 use crate::templates::types::RoleTemplate;
 
 /// Marks a file as taurhaus-generated. An agent definition without this line is
@@ -49,6 +56,104 @@ pub fn render_agent_definition(role: &RoleTemplate) -> String {
     rendered
 }
 
+/// What one export run wrote and what it deliberately left alone.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentDefinitionExport {
+    /// Role ids whose definition file was written.
+    pub written: Vec<String>,
+    pub skipped: Vec<SkippedAgentDefinition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedAgentDefinition {
+    pub role_id: String,
+    pub reason: AgentDefinitionSkipReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentDefinitionSkipReason {
+    /// A file already sits at that name and carries no generated marker, so a
+    /// person wrote it.
+    UserAuthored,
+    /// The role id would not be a plain file name inside the agents directory.
+    UnsafeRoleId,
+}
+
+/// Where Claude Code looks for a project's custom subagents.
+pub fn agents_dir(project_dir: &Path) -> PathBuf {
+    project_dir.join(".claude").join("agents")
+}
+
+/// Write one agent definition per role the harness registry says reads them.
+///
+/// Only a generated file is ever replaced: a definition a person wrote by hand
+/// is reported as skipped and left exactly as it is.
+pub fn export_agent_definitions(
+    roles: &[RoleTemplate],
+    project_dir: &Path,
+) -> Result<AgentDefinitionExport, TemplateStoreError> {
+    let dir = agents_dir(project_dir);
+    let mut export = AgentDefinitionExport::default();
+
+    for role in roles
+        .iter()
+        .filter(|role| spec(role.defaults.cli_tool).capabilities.agent_definitions)
+    {
+        let Some(file_name) = agent_file_name(&role.role_id) else {
+            export.skip(role, AgentDefinitionSkipReason::UnsafeRoleId);
+            continue;
+        };
+
+        let target = dir.join(file_name);
+        match std::fs::read_to_string(&target) {
+            Ok(existing) if !existing.contains(GENERATED_MARKER) => {
+                export.skip(role, AgentDefinitionSkipReason::UserAuthored);
+                continue;
+            }
+            Ok(_) => {}
+            // Ours is always UTF-8, so anything else at that name is someone's.
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::InvalidData | ErrorKind::IsADirectory
+                ) =>
+            {
+                export.skip(role, AgentDefinitionSkipReason::UserAuthored);
+                continue;
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(TemplateStoreError::Io(error)),
+        }
+
+        write_atomic_file(&target, render_agent_definition(role).as_bytes())?;
+        export.written.push(role.role_id.clone());
+    }
+
+    Ok(export)
+}
+
+impl AgentDefinitionExport {
+    fn skip(&mut self, role: &RoleTemplate, reason: AgentDefinitionSkipReason) {
+        self.skipped.push(SkippedAgentDefinition {
+            role_id: role.role_id.clone(),
+            reason,
+        });
+    }
+}
+
+/// The file name for a role id, or `None` when the id is anything other than a
+/// plain name — the one guard that keeps an export inside the agents directory.
+fn agent_file_name(role_id: &str) -> Option<String> {
+    let is_plain_name = !role_id.is_empty()
+        && role_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'));
+    is_plain_name.then(|| format!("{role_id}.md"))
+}
+
 fn trimmed(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
@@ -60,6 +165,33 @@ mod tests {
 
     fn role(yaml: &str) -> RoleTemplate {
         serde_norway::from_str(yaml).expect("bundled role parses")
+    }
+
+    fn claude_role() -> RoleTemplate {
+        role(include_str!(
+            "../../resources/templates/roles/claude-reviewer.yaml"
+        ))
+    }
+
+    fn codex_role() -> RoleTemplate {
+        role(include_str!(
+            "../../resources/templates/roles/quick-dev-codex.yaml"
+        ))
+    }
+
+    fn file_names(dir: &Path) -> Vec<String> {
+        let mut names = std::fs::read_dir(dir)
+            .expect("agents directory")
+            .map(|entry| {
+                entry
+                    .expect("directory entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+        names.sort();
+        names
     }
 
     #[test]
@@ -118,6 +250,98 @@ mod tests {
         assert_eq!(
             render_agent_definition(&template),
             include_str!("../../tests/agent-definition-antigravity-orchestrator.golden.md")
+        );
+    }
+
+    #[test]
+    fn exports_one_file_per_claude_role_and_skips_the_other_harnesses() {
+        let project = tempfile::tempdir().expect("project dir");
+        let roles = vec![claude_role(), codex_role()];
+
+        let result =
+            export_agent_definitions(&roles, project.path()).expect("export writes definitions");
+
+        assert_eq!(result.written, vec!["claude-reviewer".to_string()]);
+        assert!(result.skipped.is_empty());
+        let dir = agents_dir(project.path());
+        assert_eq!(file_names(&dir), vec!["claude-reviewer.md".to_string()]);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("claude-reviewer.md")).expect("written definition"),
+            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+        );
+    }
+
+    #[test]
+    fn a_generated_file_is_replaced_and_a_user_authored_agent_is_left_alone() {
+        let project = tempfile::tempdir().expect("project dir");
+        let dir = agents_dir(project.path());
+        std::fs::create_dir_all(&dir).expect("agents directory");
+        std::fs::write(
+            dir.join("claude-reviewer.md"),
+            format!("---\nname: stale\n---\n\n{GENERATED_MARKER}\n"),
+        )
+        .expect("stale generated definition");
+
+        let mut mine = claude_role();
+        mine.role_id = "hand-written".to_string();
+        std::fs::write(
+            dir.join("hand-written.md"),
+            "---\nname: mine\n---\n\nMy agent.\n",
+        )
+        .expect("user authored definition");
+
+        let roles = vec![claude_role(), mine];
+        let result = export_agent_definitions(&roles, project.path()).expect("export runs");
+
+        assert_eq!(result.written, vec!["claude-reviewer".to_string()]);
+        assert_eq!(
+            result.skipped,
+            vec![SkippedAgentDefinition {
+                role_id: "hand-written".to_string(),
+                reason: AgentDefinitionSkipReason::UserAuthored,
+            }]
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("claude-reviewer.md")).expect("regenerated"),
+            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("hand-written.md")).expect("untouched"),
+            "---\nname: mine\n---\n\nMy agent.\n"
+        );
+    }
+
+    #[test]
+    fn a_role_id_that_is_not_a_plain_file_name_never_escapes_the_agents_directory() {
+        let project = tempfile::tempdir().expect("project dir");
+        let mut traversal = claude_role();
+        traversal.role_id = "../../escaped".to_string();
+
+        let result = export_agent_definitions(&[traversal], project.path()).expect("export runs");
+
+        assert!(result.written.is_empty());
+        assert_eq!(
+            result.skipped,
+            vec![SkippedAgentDefinition {
+                role_id: "../../escaped".to_string(),
+                reason: AgentDefinitionSkipReason::UnsafeRoleId,
+            }]
+        );
+        assert!(!project.path().join("escaped.md").exists());
+        assert!(!agents_dir(project.path()).exists());
+    }
+
+    #[test]
+    fn export_leaves_no_temporary_file_behind() {
+        let project = tempfile::tempdir().expect("project dir");
+        let roles = vec![claude_role()];
+
+        export_agent_definitions(&roles, project.path()).expect("first export");
+        export_agent_definitions(&roles, project.path()).expect("second export");
+
+        assert_eq!(
+            file_names(&agents_dir(project.path())),
+            vec!["claude-reviewer.md".to_string()]
         );
     }
 }
