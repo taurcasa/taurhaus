@@ -121,12 +121,9 @@ fn reconcile_startup_grok_hooks(app: &tauri::AppHandle) -> Result<(), String> {
     let db = app.state::<crate::commands::projects::DbState>();
     let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    let has_managed_grok =
-        crate::coordination::compact_hook::any_managed_grok_member(state.teams_dir())
-            .map_err(|error| error.to_string())?;
-    crate::commands::terminal_settings::reconcile_grok_hooks(
+    crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
+        state.teams_dir(),
         terminal.harness.grok_hooks,
-        has_managed_grok,
     )
     .map(|_| ())
     .map_err(|error| error.to_string())

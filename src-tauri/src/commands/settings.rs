@@ -115,15 +115,12 @@ fn reconcile_agy_hooks_setting(settings: &Settings) {
 fn reconcile_grok_hooks_setting(app: &tauri::AppHandle, settings: &Settings) {
     use tauri::Manager;
 
-    let has_managed_grok = app
-        .try_state::<crate::coordination::state::CoordinationState>()
-        .and_then(|state| {
-            crate::coordination::compact_hook::any_managed_grok_member(state.teams_dir()).ok()
-        })
-        .unwrap_or(false);
-    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks(
+    let Some(state) = app.try_state::<crate::coordination::state::CoordinationState>() else {
+        return;
+    };
+    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
+        state.teams_dir(),
         settings.terminal.harness.grok_hooks,
-        has_managed_grok,
     ) {
         tracing::warn!(error = %error, "Grok compaction hook reconciliation failed");
         let mut fields = serde_json::Map::new();

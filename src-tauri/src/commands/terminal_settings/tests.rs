@@ -213,3 +213,65 @@ fn daemon_compaction_does_not_guess_mode_from_an_app_database_path() {
     let daemon_source = include_str!("../../daemon/compaction.rs");
     assert!(!daemon_source.contains("persisted_codex_compaction_mode"));
 }
+
+fn write_grok_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
+    let dir = teams_dir.join(team_name);
+    std::fs::create_dir_all(&dir).expect("team dir");
+    std::fs::write(
+        dir.join("config.json"),
+        format!(
+            r#"{{"name":"{team_name}","createdAt":1772399806546,"members":[{{"name":"builder","agentType":"general-purpose","cli_tool":"{cli_tool}","cwd":"/tmp/project"}}]}}"#
+        ),
+    )
+    .expect("write team config");
+}
+
+#[test]
+fn the_first_grok_team_installs_the_hook_and_the_last_removal_takes_it_away() {
+    // Regression: commit c1005ec reconciled the global grok hook only at startup
+    // and on a Settings save, so a team created afterwards ran without the hook
+    // until the next restart, and removing the last grok member left it behind.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = tmp.path().join("teams");
+    let grok_home = tmp.path().join("grok-home");
+    let exe = tmp.path().join("taurhaus");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"fixture").expect("executable fixture");
+
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("no grok member");
+    assert!(!crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
+
+    write_grok_team(&teams_dir, "grok-team", "grok");
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("first team");
+    assert!(crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
+
+    std::fs::remove_dir_all(teams_dir.join("grok-team")).expect("disband the team");
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("last removal");
+    assert!(!crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
+}
+
+#[test]
+fn a_roster_that_cannot_be_read_never_uninstalls_the_grok_hook() {
+    // Regression: commit c1005ec turned a failed managed-member discovery into
+    // "no grok members" (`.ok().unwrap_or(false)`), so an unreadable team
+    // directory silently uninstalled a hook a live grok member still needed.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = tmp.path().join("teams");
+    let grok_home = tmp.path().join("grok-home");
+    let exe = tmp.path().join("taurhaus");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"fixture").expect("executable fixture");
+    write_grok_team(&teams_dir, "grok-team", "grok");
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("install");
+
+    // A file where the team directory belongs makes discovery fail outright.
+    std::fs::remove_dir_all(&teams_dir).expect("clear teams dir");
+    std::fs::write(&teams_dir, b"not a directory").expect("block the teams dir");
+
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe)
+        .expect_err("discovery failure is reported, not answered with false");
+    assert!(
+        crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home),
+        "an unreadable roster is not proof the last grok member is gone"
+    );
+}
