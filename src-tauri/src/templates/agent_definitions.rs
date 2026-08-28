@@ -95,6 +95,66 @@ pub fn agents_dir(project_dir: &Path) -> PathBuf {
     project_dir.join(".claude").join("agents")
 }
 
+/// The agents directory an export may actually write through, resolved against
+/// the real project root.
+///
+/// `.claude` or `agents` can be a link — a dotfiles checkout, a Windows
+/// junction — and an export that followed one out of the project would create
+/// and delete files nobody selected. So each component is resolved and has to
+/// land beneath the canonical root; a link that stays inside the project is
+/// fine, one that leaves it (or dangles, which would have the missing tree
+/// built out there) refuses the whole export.
+fn resolved_agents_dir(project_dir: &Path) -> Result<PathBuf, TemplateStoreError> {
+    let root = project_dir.canonicalize()?;
+    let mut resolved = root.clone();
+
+    for component in [".claude", "agents"] {
+        let candidate = resolved.join(component);
+        resolved = match std::fs::symlink_metadata(&candidate) {
+            Ok(metadata) if is_link(&metadata) => {
+                let real = candidate.canonicalize().map_err(|error| {
+                    TemplateStoreError::Validation(format!(
+                        "{} links nowhere this export can follow: {error}",
+                        candidate.display()
+                    ))
+                })?;
+                if !real.starts_with(&root) {
+                    return Err(TemplateStoreError::Validation(format!(
+                        "{} leaves the project: {}",
+                        candidate.display(),
+                        real.display()
+                    )));
+                }
+                real
+            }
+            Ok(_) => candidate,
+            // Nothing there yet: the export creates a plain directory under a
+            // path every step of which we have already checked.
+            Err(error) if error.kind() == ErrorKind::NotFound => candidate,
+            Err(error) => return Err(TemplateStoreError::Io(error)),
+        };
+    }
+
+    Ok(resolved)
+}
+
+/// Whether this is something an export must not follow or replace: a symlink
+/// anywhere, and on Windows any reparse point — a junction, a mount point, an
+/// app-exec link — since those redirect just as well.
+fn is_link(metadata: &std::fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+    }
+    #[cfg(not(windows))]
+    false
+}
+
 /// Write one agent definition per role the harness registry says reads them,
 /// and reconcile the directory with the catalog.
 ///
@@ -105,7 +165,8 @@ pub fn agents_dir(project_dir: &Path) -> PathBuf {
 /// a workflow's `agentType` would otherwise keep resolving instructions nobody
 /// can edit any more. The project root has to exist already — an export never
 /// brings a directory tree into being, so a mistyped or wrongly-resolved path
-/// is refused instead of silently populated.
+/// is refused instead of silently populated. Nothing outside the project is
+/// ever written or deleted: see `resolved_agents_dir`.
 pub fn export_agent_definitions(
     roles: &[RoleTemplate],
     project_dir: &Path,
@@ -117,7 +178,7 @@ pub fn export_agent_definitions(
         )));
     }
 
-    let dir = agents_dir(project_dir);
+    let dir = resolved_agents_dir(project_dir)?;
     let mut export = AgentDefinitionExport::default();
     // Every name the catalog still claims, whether this run wrote it or left a
     // hand-written file at it. Anything else in the directory is either
@@ -138,6 +199,18 @@ pub fn export_agent_definitions(
 
         let target = dir.join(&file_name);
         claimed.insert(file_name);
+        match std::fs::symlink_metadata(&target) {
+            // A link at an agent's own name is someone's: writing through it
+            // would overwrite whatever it points at, replacing it would take
+            // their link away.
+            Ok(metadata) if is_link(&metadata) => {
+                export.skip(role, AgentDefinitionSkipReason::UserAuthored);
+                continue;
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return Err(TemplateStoreError::Io(error)),
+        }
         match std::fs::read_to_string(&target) {
             Ok(existing) if !is_generated_definition(&existing) => {
                 export.skip(role, AgentDefinitionSkipReason::UserAuthored);
@@ -191,7 +264,10 @@ fn remove_obsolete_definitions(
         let Some(role_id) = file_name.strip_suffix(".md") else {
             continue;
         };
-        if !entry.file_type()?.is_file() {
+        // `DirEntry::metadata` does not follow a link, so a link is seen for
+        // what it is and left where it is.
+        let metadata = entry.metadata()?;
+        if is_link(&metadata) || !metadata.is_file() {
             continue;
         }
         match std::fs::read_to_string(entry.path()) {
@@ -709,5 +785,165 @@ mod tests {
                 "claimed a file we did not write: {foreign:?}"
             );
         }
+    }
+
+    /// Link `link` to the directory `target`: a symlink on Unix, a directory
+    /// symlink (a reparse point, like a junction) on Windows. Windows only
+    /// allows one under developer mode or elevation, so a test that cannot
+    /// create one has nothing to assert and returns.
+    #[cfg(unix)]
+    fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+
+    #[cfg(windows)]
+    fn link_dir(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_dir(target, link)
+    }
+
+    #[cfg(unix)]
+    fn link_file(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+
+    #[cfg(windows)]
+    fn link_file(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_file(target, link)
+    }
+
+    fn generated(name: &str) -> String {
+        format!("---\nname: {name}\n---\n\n{GENERATED_MARKER}\n")
+    }
+
+    #[test]
+    fn an_agents_path_that_links_out_of_the_project_is_refused() {
+        // Regression: `.claude/agents` was joined onto the project root and
+        // written and pruned through blindly, so a linked component — a
+        // dotfiles checkout, a Windows junction — let an export create and
+        // delete files anywhere on disk.
+        for linked in [".claude", "agents"] {
+            let project = tempfile::tempdir().expect("project dir");
+            let outside = tempfile::tempdir().expect("directory outside the project");
+            let elsewhere = outside.path().join("agents");
+            std::fs::create_dir_all(&elsewhere).expect("foreign agents directory");
+            let victim = elsewhere.join("retired-reviewer.md");
+            std::fs::write(&victim, generated("retired-reviewer")).expect("foreign generated file");
+
+            let link = match linked {
+                ".claude" => project.path().join(".claude"),
+                _ => {
+                    let claude = project.path().join(".claude");
+                    std::fs::create_dir_all(&claude).expect("claude directory");
+                    claude.join("agents")
+                }
+            };
+            let target = if linked == ".claude" {
+                outside.path().to_path_buf()
+            } else {
+                elsewhere.clone()
+            };
+            if link_dir(&target, &link).is_err() {
+                return;
+            }
+
+            let error = export_agent_definitions(&[claude_role()], project.path())
+                .expect_err("an agents path outside the project is refused");
+            assert!(
+                matches!(error, TemplateStoreError::Validation(_)),
+                "unexpected error for a linked {linked}: {error:?}"
+            );
+            assert!(
+                !elsewhere.join("claude-reviewer.md").exists(),
+                "the export wrote outside the project through {linked}"
+            );
+            assert!(
+                victim.exists(),
+                "the export deleted a file outside the project through {linked}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_dangling_agents_link_is_refused_instead_of_followed() {
+        // A link to a directory that does not exist yet is the same escape:
+        // creating the missing parents would build the foreign tree.
+        let project = tempfile::tempdir().expect("project dir");
+        let outside = tempfile::tempdir().expect("directory outside the project");
+        let never_created = outside.path().join("agents");
+        if link_dir(&never_created, &project.path().join(".claude")).is_err() {
+            return;
+        }
+
+        let error = export_agent_definitions(&[claude_role()], project.path())
+            .expect_err("a dangling agents link is refused");
+        assert!(
+            matches!(error, TemplateStoreError::Validation(_)),
+            "unexpected error: {error:?}"
+        );
+        assert!(!never_created.exists(), "the export built a foreign tree");
+    }
+
+    #[test]
+    fn an_agents_path_that_links_within_the_project_still_exports() {
+        // A link is only a problem when it leaves the project; a project that
+        // keeps its agents in a shared directory of its own still exports.
+        let project = tempfile::tempdir().expect("project dir");
+        let shared = project.path().join("shared-agents");
+        std::fs::create_dir_all(&shared).expect("shared agents directory");
+        std::fs::create_dir_all(project.path().join(".claude")).expect("claude directory");
+        if link_dir(&shared, &project.path().join(".claude").join("agents")).is_err() {
+            return;
+        }
+
+        let result = export_agent_definitions(&[claude_role()], project.path()).expect("export");
+
+        assert_eq!(result.written, vec!["claude-reviewer".to_string()]);
+        assert_eq!(
+            std::fs::read_to_string(shared.join("claude-reviewer.md")).expect("written definition"),
+            include_str!("../../tests/agent-definition-claude-reviewer.golden.md")
+        );
+    }
+
+    #[test]
+    fn a_linked_definition_is_left_alone_instead_of_written_through() {
+        // A link at an agent's own name is someone's: following it would write
+        // over whatever it points at, and replacing it would take their link.
+        let project = tempfile::tempdir().expect("project dir");
+        let dir = agents_dir(project.path());
+        std::fs::create_dir_all(&dir).expect("agents directory");
+        let outside = tempfile::tempdir().expect("directory outside the project");
+        let pointee = outside.path().join("reviewer.md");
+        std::fs::write(&pointee, generated("elsewhere")).expect("foreign generated file");
+        if link_file(&pointee, &dir.join("claude-reviewer.md")).is_err() {
+            return;
+        }
+        let stray = outside.path().join("stray.md");
+        std::fs::write(&stray, generated("stray")).expect("foreign generated file");
+        if link_file(&stray, &dir.join("stray.md")).is_err() {
+            return;
+        }
+
+        let result = export_agent_definitions(&[claude_role()], project.path()).expect("export");
+
+        assert!(result.written.is_empty());
+        assert_eq!(
+            result.skipped,
+            vec![SkippedAgentDefinition {
+                role_id: "claude-reviewer".to_string(),
+                reason: AgentDefinitionSkipReason::UserAuthored,
+            }]
+        );
+        assert!(result.removed.is_empty(), "a linked file was pruned");
+        assert_eq!(
+            std::fs::read_to_string(&pointee).expect("untouched"),
+            generated("elsewhere")
+        );
+        assert!(stray.exists(), "pruning followed a link out of the project");
+        assert!(dir
+            .join("claude-reviewer.md")
+            .symlink_metadata()
+            .expect("the link survives")
+            .file_type()
+            .is_symlink());
     }
 }

@@ -330,6 +330,13 @@ Rules worth knowing:
   workflow's `agentType` would otherwise keep resolving instructions nobody can
   edit any more. Only `.md` files that carry the generated header directly in
   `.claude/agents` are ever removed; a hand-written agent is never one of them.
+- **An export never leaves the project.** `.claude` and `agents` are resolved
+  before anything is written: a linked component that stays inside the project
+  (a shared agents directory of its own) is followed, one that points outside it
+  — another checkout, a Windows junction, a link to nowhere — refuses the whole
+  export rather than writing and deleting files nobody selected. A link at an
+  agent's own file name is treated as hand-written: it is reported in `skipped`
+  and neither followed nor replaced.
 - **A role id has to be an agent name.** Claude Code resolves a subagent by a
   lowercase, hyphen-separated name, and that same id is what a workflow's
   `agentType` asks for. A role id such as `QA_reviewer` is reported in `skipped`
