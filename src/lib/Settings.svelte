@@ -17,7 +17,8 @@
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
-  import { tools } from './toolRegistry.js'
+  import { tools, toolAccent } from './toolRegistry.js'
+  import { getToolIcon } from './toolLogos.js'
 
   let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
 
@@ -36,6 +37,27 @@
       : 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white'
   )
   const fieldFocusRing = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500'
+
+  // Registry accent -> the literal families declared in `app.css`. Tailwind
+  // cannot see an interpolated class name, so each one is spelled out.
+  const ACCENT_TONES = {
+    emerald: { light: 'text-emerald-600', dark: 'text-emerald-300', control: 'accent-emerald-500' },
+    sky: { light: 'text-sky-600', dark: 'text-sky-300', control: 'accent-sky-500' },
+    'google-blue': { light: 'text-google-blue-600', dark: 'text-google-blue-300', control: 'accent-google-blue-500' },
+    graphite: { light: 'text-graphite-600', dark: 'text-graphite-300', control: 'accent-graphite-500' },
+  }
+
+  /** The tool's own mark colour, dark-mode aware. */
+  function toolMarkTone(toolId) {
+    const tone = ACCENT_TONES[toolAccent(toolId)]
+    if (!tone) return textTertiary
+    return dark ? tone.dark : tone.light
+  }
+
+  /** The accent a tool's own form control carries. */
+  function toolControlTone(toolId) {
+    return ACCENT_TONES[toolAccent(toolId)]?.control ?? 'accent-brand-500'
+  }
 
   // Settings state
   let settings = $state(null)
@@ -732,7 +754,18 @@
                 {@const effective = effectiveDefault(tool)}
                 <div data-testid="settings-accounts-{tool.id}">
                   <div class="mb-2 flex items-center justify-between">
-                    <h3 class="text-[13px] font-semibold {t.textBody}">{tool.label}</h3>
+                    <h3 class="flex items-center gap-2 text-[13px] font-semibold {t.textBody}">
+                      <svg
+                        class="h-[13px] w-[13px] shrink-0 {toolMarkTone(tool.id)}"
+                        viewBox={getToolIcon(tool.id).viewBox}
+                        fill="currentColor"
+                        aria-hidden="true"
+                        data-testid="tool-mark-{tool.id}"
+                      >
+                        <path d={getToolIcon(tool.id).path} />
+                      </svg>
+                      {tool.label}
+                    </h3>
                     <button
                       type="button"
                       class="text-[11px] text-brand-500 hover:underline {buttonFocusRing}"
@@ -813,7 +846,7 @@
             <input
               id="agy-hooks-toggle"
               type="checkbox"
-              class="mt-0.5 h-3.5 w-3.5 accent-google-blue-500 {fieldFocusRing}"
+              class="mt-0.5 h-3.5 w-3.5 {toolControlTone('agy')} {fieldFocusRing}"
               checked={settings.terminal?.harness?.agy_hooks ?? false}
               onchange={(e) => {
                 ensureCliCommands()
@@ -834,7 +867,7 @@
             <input
               id="grok-hooks-toggle"
               type="checkbox"
-              class="mt-0.5 h-3.5 w-3.5 accent-brand-500 {fieldFocusRing}"
+              class="mt-0.5 h-3.5 w-3.5 {toolControlTone('grok')} {fieldFocusRing}"
               checked={settings.terminal?.harness?.grok_hooks ?? true}
               onchange={(e) => {
                 ensureCliCommands()

@@ -40,6 +40,7 @@ const { accountState, requestLaunch, resetAccountsForTest } = await import('./ac
 const claudeAccounts = accountState('claude')
 
 import Settings from './Settings.svelte'
+import { TOOL_ICONS } from './toolLogos.js'
 
 function mockCliCommandDefaults() {
   return {
@@ -217,6 +218,41 @@ describe('Settings component', () => {
     expect(screen.getByTestId('usage-note-grok')).toHaveTextContent(
       'Grok shows credits in its own /usage'
     )
+  })
+
+  it('gives every account section its registry mark, Grok in graphite', async () => {
+    // Regression: commit c1005ec shipped the Grok mark and the graphite accent
+    // in the registry but consumed neither in Settings, so the account section
+    // the plan asks to carry Grok's identity was label text like any other.
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(
+        detected(TWO_ACCOUNTS.map((account, index) => ({ ...account, id: `${tool}-${index + 1}` })))
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const section = await screen.findByTestId('settings-accounts-grok')
+    const mark = section.querySelector('[data-testid="tool-mark-grok"]')
+    expect(mark).not.toBeNull()
+    expect(mark.querySelector('path').getAttribute('d')).toBe(TOOL_ICONS.grok.path)
+    expect(mark.getAttribute('class')).toContain('graphite')
+
+    const codex = await screen.findByTestId('settings-accounts-codex')
+    expect(codex.querySelector('[data-testid="tool-mark-codex"] path').getAttribute('d')).toBe(
+      TOOL_ICONS.codex.path
+    )
+  })
+
+  it('tints the Grok hook control with the graphite accent, not the app brand', async () => {
+    // Regression: commit c1005ec gave the Antigravity toggle its google-blue
+    // accent but left the Grok one on the generic brand colour, so the only
+    // Grok-specific control in Settings carried no harness identity.
+    render(Settings, { props: defaultProps() })
+
+    const toggle = await screen.findByTestId('grok-hooks-toggle')
+    expect(toggle.className).toContain('accent-graphite')
+    expect(toggle.className).not.toContain('accent-brand')
   })
 
   it('hides the accounts card when no tool has multiple accounts', async () => {
