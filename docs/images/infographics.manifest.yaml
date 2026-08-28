@@ -80,23 +80,11 @@ images:
   coordination-architecture:
     output_path: docs/images/coordination-architecture.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Labels ClaudeNativeBackend "Planned". The backend is implemented
-      (src-tauri/src/coordination/backend/claude.rs) *and routed*: the selector
-      only picks the orchestrator's floor backend (select_floor, selector.rs:43-45,
-      MeshBridged today), while state.rs:185-188 installs ClaudeNativeBackend as
-      orchestrator.claude_backend and delivery.rs:71-79 routes every member whose
-      tool has native_inbox_poller — Claude — to it.
-    generation_id: gen_db88afd20f33
+    generation_id: gen_b261fc90728e
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/coordination-architecture.jpg
       prompt: |
@@ -145,31 +133,20 @@ images:
         - "SQLite projection/history (Planned D3)" dashed box
 
         NO photographs or portraits - text, boxes, arrows, and geometric shapes only.
-    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
-    sha256: 2d336edebe9efbf82be15fbaed26b5b7bdb24d5813e101bfd01dabe6883743c2
-    updated_at: "2026-03-04"
+    sha256: b261fc90728e45d1f894a38c27c3a48236a596d12372c4cd216ad27bb8713cfb
+    updated_at: "2026-08-28"
     history:
       - gen_db88afd20f33  # v0.4.4 infographic regeneration
+      - gen_b261fc90728e  # regenerated 2026-08-28 via openai gpt-image-2
 
   daemon-protocol:
     output_path: docs/images/daemon-protocol.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Says 22 methods and uses superseded method names. The catalog is 27 callable
-      methods plus 3 push events at protocol version 13 — 28 method constants, of
-      which list_directory has no handler
-      (src-tauri/src/daemon/protocol.rs:34, :90-128, :131-135;
-      daemon/handlers.rs:34-90 dispatches 27).
-    generation_id: null
+    generation_id: gen_7317123f59ed
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/daemon-protocol.jpg
       prompt: |
@@ -210,9 +187,10 @@ images:
 
         Use exactly these method names and these counts. NO photographs or portraits - text,
         boxes, arrows and geometric shapes only.
-    sha256: null
-    updated_at: null
-    history: []
+    sha256: 7317123f59edd050930a44fa98f02232f576f69a660eeace432f4d1e7d61f3d0
+    updated_at: "2026-08-28"
+    history:
+      - gen_7317123f59ed  # regenerated 2026-08-28 via openai gpt-image-2
 
   data-flow:
     output_path: docs/images/data-flow.jpg
@@ -432,21 +410,11 @@ images:
   mesh-view-lifecycle:
     output_path: docs/images/mesh-view-lifecycle.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Setup block says the team lead is fixed to Claude. Lead roles ship for
-      Claude, Codex and Antigravity (src-tauri/resources/templates/roles/*.yaml,
-      kind: lead), and MeshTeamBuilder filters the catalog by role kind, not by tool
-      (MeshTeamBuilder.svelte:280).
-    generation_id: gen_e44f6310111c
+    generation_id: gen_19dd1e6dccbe
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/mesh-view-lifecycle.jpg
       prompt: |
@@ -516,11 +484,11 @@ images:
         Arrow from Runtime Roster "Live status" to Liveness Reconciliation labeled "write-on-drift"
 
         NO photographs or portraits - text, boxes, arrows, and geometric shapes only.
-    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
-    sha256: dbf6050f3301f8416afca2b3f2ae4d31c94a3de615e2970d01108c141306e6c4
-    updated_at: "2026-03-04"
+    sha256: 19dd1e6dccbe7c98aa6518bf7e74b52705d418d3ac7ab71fc7f62e8fc97f5532
+    updated_at: "2026-08-28"
     history:
       - gen_e44f6310111c  # v0.4.4 infographic regeneration
+      - gen_19dd1e6dccbe  # regenerated 2026-08-28 via openai gpt-image-2
 
   onboarding-flow:
     output_path: docs/images/onboarding-flow.jpg
@@ -539,22 +507,11 @@ images:
   per-tool-decision:
     output_path: docs/images/per-tool-decision.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Shows the retired Gemini TCP heuristic, omits agy and grok, and omits
-      Claude's authoritative sessions registry (idle/claude_registry.rs), whose
-      states skip rchar and hysteresis.
-      Current per-tool decision: docs/features/session-management.md:71-78 and
-      src-tauri/src/session_scanner/classification.rs:150-206.
-    generation_id: null
+    generation_id: gen_1d436f95c0af
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/per-tool-decision.jpg
       prompt: |
@@ -597,9 +554,10 @@ images:
 
         There is NO Gemini CLI column and NO TCP-port heuristic - do not draw either.
         NO photographs or portraits: text, boxes, arrows and geometric shapes only.
-    sha256: null
-    updated_at: null
-    history: []
+    sha256: 1d436f95c0af58736852a4042e36412c03d490b0014e3c5ce56b015413ef1417
+    updated_at: "2026-08-28"
+    history:
+      - gen_1d436f95c0af  # regenerated 2026-08-28 via openai gpt-image-2
 
   project-activity-lifecycle:
     output_path: docs/images/project-activity-lifecycle.jpg
@@ -618,20 +576,11 @@ images:
   scanner-pipeline:
     output_path: docs/images/scanner-pipeline.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Shows the retired Gemini TCP heuristic, omits agy and grok, and omits
-      Claude's authoritative sessions registry (idle/claude_registry.rs).
-      Current cadence and hysteresis: docs/features/session-management.md:71-90.
-    generation_id: null
+    generation_id: gen_da6790dbdd54
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/scanner-pipeline.jpg
       prompt: |
@@ -669,9 +618,10 @@ images:
 
         There is NO Gemini CLI lane and NO TCP-port heuristic - do not draw either.
         NO photographs or portraits: text, boxes, arrows and geometric shapes only.
-    sha256: null
-    updated_at: null
-    history: []
+    sha256: da6790dbdd5433f593a19ec4631e9e497154236c5c7dbaaa2ca8d536ef833d91
+    updated_at: "2026-08-28"
+    history:
+      - gen_da6790dbdd54  # regenerated 2026-08-28 via openai gpt-image-2
 
   search-index-pipeline:
     output_path: docs/images/search-index-pipeline.jpg
@@ -690,21 +640,11 @@ images:
   session-detection:
     output_path: docs/images/session-detection.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Shows the retired Gemini TCP-port heuristic, omits agy and grok, and omits
-      Claude's authoritative <CLAUDE_CONFIG_DIR>/sessions/<pid>.json registry
-      (idle/claude_registry.rs:1-20).
-      Current per-tool sources: docs/features/session-management.md:60-78.
-    generation_id: null
+    generation_id: gen_6087db973e09
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/session-detection.jpg
       prompt: |
@@ -747,9 +687,10 @@ images:
 
         There is NO Gemini CLI lane and NO TCP-port heuristic - do not draw either.
         NO photographs or portraits: text, boxes, arrows and geometric shapes only.
-    sha256: null
-    updated_at: null
-    history: []
+    sha256: 6087db973e0992814890c6c3f6ec240c124b82973a540d669957ffb08df60719
+    updated_at: "2026-08-28"
+    history:
+      - gen_6087db973e09  # regenerated 2026-08-28 via openai gpt-image-2
 
   shell-layout:
     output_path: docs/images/shell-layout.jpg
@@ -782,20 +723,11 @@ images:
   system-architecture:
     output_path: docs/images/system-architecture.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      The bottom tmux container names Claude Code, Codex and Gemini CLI. The
-      Gemini CLI was retired; the registry holds four harnesses
-      (src-tauri/src/session_scanner/cli_tool.rs:208).
-    generation_id: null  # generated with Codex built-in image_gen
+    generation_id: gen_8ce6273d4306
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/system-architecture.jpg
       prompt: |
@@ -827,30 +759,21 @@ images:
         Do not include volatile IPC command counts, cloud services, decorative icons, photos,
         people, code snippets, a watermark, or any suggestion that the daemon owns native
         macOS file watching.
-    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
-    sha256: 315abfca6f1dbcaf844c6348cf6a90712601ba0fef0648f1da078e8794e98229
-    updated_at: "2026-08-18"
+    sha256: 8ce6273d43061368c960ea5253cc171f45534290b7b05298645cedbf8f9aaf79
+    updated_at: "2026-08-28"
     history:
       - Codex built-in image_gen  # public-readiness architecture refresh
       - gen_76de2f01e73e  # v0.4.4 infographic regeneration
+      - gen_8ce6273d4306  # regenerated 2026-08-28 via openai gpt-image-2
 
   task-aggregation:
     output_path: docs/images/task-aggregation.jpg
     status: active
-    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
-    # shows the pre-0.8 world. The prompt below is current; regenerate the
-    # image from it and clear this marker.
-    stale: true
-    stale_since: "2026-08-28"
-    stale_reason: |
-      Claims Gemini TODO.md is a third task source. The scanner has exactly two
-      parsers - src-tauri/src/task_scanner/claude.rs and codex.rs - and agy and grok
-      declare transcript_parser: false (cli_tool.rs:389, and the grok spec).
-    generation_id: gen_0d677aa29570
+    generation_id: gen_bf19c5e4d3bd
     recipe:
-      model: gemini-3-pro-image-preview
+      model: gpt-image-2
       aspect_ratio: "16:9"
-      image_size: 2K
+      image_size: "2048x1152"
       reference_image_paths:
         - docs/images/task-aggregation.jpg
       prompt: |
@@ -894,8 +817,8 @@ images:
         Bottom summary text: "Background scan -> DB persist -> UI event -> re-fetch"
 
         NO photographs or portraits - text, boxes, arrows, and geometric shapes only.
-    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
-    sha256: 4b33a0694590faca191642b3ef03e601ea724c4c5e4eb494caeda19c1f596547
-    updated_at: "2026-03-04"
+    sha256: bf19c5e4d3bdec1b04c7594bf3f1cecb8737610c5ef1c43c9d715349186972c6
+    updated_at: "2026-08-28"
     history:
       - gen_0d677aa29570  # v0.4.4 infographic regeneration
+      - gen_bf19c5e4d3bd  # regenerated 2026-08-28 via openai gpt-image-2

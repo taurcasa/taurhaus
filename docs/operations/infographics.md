@@ -1,144 +1,17 @@
 # Infographic regeneration
 
-The documentation infographics under `docs/images/` are generated images, and
-[`docs/images/infographics.manifest.yaml`](../images/infographics.manifest.yaml)
-is their source of truth: one entry per image, carrying the prompt that made it,
-the recipe, the checksum, and the generation history. When an image falls behind
-the architecture it illustrates, the entry is flagged `stale: true` with a reason
-— the prompt is already current, only the pixels are not.
+The architecture diagrams under `docs/images/` are generated from the prompts in
+[`docs/images/infographics.manifest.yaml`](../images/infographics.manifest.yaml).
+`scripts/generate-infographics.py` regenerates them through the OpenAI Images API.
 
-`scripts/generate-infographics.py` (`just infographics`) sends those prompts to
-the OpenAI Images API, converts the result to the committed JPEG, and writes the
-manifest entry back with targeted text edits so the manifest's comments survive.
+1. Copy `.env.example` to `.env` (gitignored) and set `OPENAI_API_KEY`. Model, size
+   and quality default to `gpt-image-2`, `2048x1152`, `high`; the key is read only by
+   this script — never by the app or the daemon.
+2. `just infographics-dry-run` — lists the entries marked `stale: true` and the estimated cost.
+3. `just infographics` — regenerates them (`--id <name>` for one, `--all` for every entry,
+   `--no-reference` to ignore the current image as a style reference). Each result is
+   written as a 1600 px-wide JPEG and its manifest entry is updated in place
+   (`generation_id`, `sha256`, `updated_at`, `history`; the `stale` keys are removed).
+4. Look at every render, then commit the images and the manifest together.
 
-## One-time setup
-
-```bash
-just python-deps          # only if your python3 lacks PyYAML or Pillow
-cp .env.example .env      # repo root; .env is gitignored
-$EDITOR .env              # fill in OPENAI_API_KEY
-```
-
-Every Python recipe runs through `scripts/with-python.sh`, which prefers
-`scripts/.venv`, falls back to `python3`, and refuses to start with an
-actionable message rather than an import traceback when the dependencies are
-missing. `just python-deps` installs the pinned `scripts/requirements.txt` into
-that gitignored venv (needs `python3-venv` on Debian/Ubuntu, and leaves nothing
-behind if it fails); `TAURHAUS_PYTHON=/path/to/python` overrides the choice.
-
-`.env` is read by this script and nothing else — neither the taurhaus app nor
-the daemon knows the key exists. Real environment variables win over the file,
-so `OPENAI_IMAGE_QUALITY=low just infographics` works for a cheap trial run.
-
-| Key | Default | Notes |
-|-----|---------|-------|
-| `OPENAI_API_KEY` | — | Required. Never printed, never logged. |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image model. |
-| `OPENAI_IMAGE_SIZE` | `2048x1152` | `1024x1024`, `1536x1024`, `1024x1536`, `2048x1152`, `1152x2048`. |
-| `OPENAI_IMAGE_QUALITY` | `high` | `low`, `medium`, `high`. Cost scales with this. |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Point at a compatible gateway. |
-| `TAURHAUS_INFOGRAPHIC_MAX_WIDTH` | `1600` | Committed JPEGs are downscaled to this width. |
-| `TAURHAUS_INFOGRAPHIC_JPEG_QUALITY` | `85` | Progressive, optimized JPEG. |
-
-## Workflow
-
-```bash
-just infographics-dry-run                    # what would run, and what it costs
-just infographics                            # every `stale: true` entry
-just infographics --id scanner-pipeline      # one image (repeatable)
-just infographics --all                      # every entry that has a real prompt
-git diff --stat docs/images                  # review the bytes...
-```
-
-Then look at the JPEGs — the dry run cannot tell you whether the picture is
-right, only whether the plan is. When the images are good, commit the images and
-the manifest together; they are one change.
-
-Useful flags:
-
-| Flag | Effect |
-|------|--------|
-| `--dry-run` | Print the selection, model/size/quality, reference use, and a cost estimate. Writes nothing. |
-| `--id <image-id>` | Regenerate one entry; repeat for several. Overrides `--stale`. |
-| `--all` | Every entry. Entries whose prompt was never reconstructed are skipped and listed. |
-| `--no-reference` | Do not attach the current image; generate from the prompt alone. |
-| `--keep-png` | Keep the raw API PNG beside the JPEG as `<name>.generated.png` (gitignored). |
-| `--allow-aspect-change` | Reshape entries whose `aspect_ratio` the configured size contradicts. |
-| `--price-usd <amount>` | Price the estimate against the current rate card. |
-
-## What the estimate is
-
-The dry run prices the selection from the per-model image-output rates in the
-script, and says which they are: a published rate, a rate derived by scaling
-(the 16:9 sizes have none published), or your `--price-usd`. It covers the
-generated images only — an `/images/edits` call also bills the attached
-reference image and the prompt as input tokens. A model or size with no rate in
-the script is reported as unpriced and asks for `--price-usd`, rather than
-quoting some other model's number.
-
-## Geometry
-
-Every entry declares an `aspect_ratio`, and `2048x1152` — exact 16:9 — is the
-shape they all ask for. An entry whose declared ratio contradicts
-`OPENAI_IMAGE_SIZE` is skipped with the mismatch spelled out rather than
-silently reshaped; `--allow-aspect-change` regenerates it at the configured size
-and rewrites the entry's `aspect_ratio` and `image_size` to the geometry that
-actually made the image, so the recipe still describes the file next to it.
-
-The pixels have the last word: what the API returns is measured before anything
-is written, `image_size` and `aspect_ratio` are recorded from that measurement
-rather than from the request, and a response whose shape is not the requested one
-is refused — the old image and its `stale` markers stay exactly where they are.
-
-By default an entry with a readable `reference_image_paths` entry goes to
-`/images/edits` with the current JPEG attached as a style reference, so the new
-image keeps the established dark-teal look. Everything else goes to
-`/images/generations`. The prompt sent is the manifest prompt verbatim behind one
-line the script owns: *"Regenerate this documentation infographic; keep the
-established dark-teal style."*
-
-## What the script writes
-
-- The JPEG at the entry's `output_path`, written atomically (a temp file beside
-  the target, then a rename — a killed run never leaves half an image).
-- The entry's `generation_id`, `recipe.model`, `recipe.image_size` and
-  `recipe.aspect_ratio` (both measured off the returned image), `sha256`,
-  `updated_at`, and a new `history` line. The `stale` markers are removed once
-  the image matches the prompt again.
-- One JSON line per image in `docs/images/.generation-log.jsonl` (gitignored):
-  id, model, size, quality, checksum, duration, and any usage the API reports.
-
-Everything else in the manifest — the header comments, the prompts, the other
-entries — is preserved byte for byte. The manifest is never round-tripped
-through a YAML dumper, because a dump would delete every comment in it.
-
-## Editing a prompt
-
-Edit the `prompt:` block in the manifest entry, then regenerate that one image
-with `--id`. The prompt in the manifest is what will be sent; there is no second
-copy of it anywhere.
-
-## Failure behavior
-
-A failing image does not stop the others: each image gets one 180 s end-to-end
-budget — connect, upload, reading the response, the backoff, and the one retry
-on 5xx/429 all come out of it, so a peer that answers slowly cannot hold the
-batch open — and the run finishes the rest of the selection, prints a summary
-table, and exits non-zero if anything failed. The API key is redacted from every
-error path.
-
-The image and its manifest entry are one fact in two files, so they are prepared
-in full and then committed together. If the manifest edit does not apply — a
-missing field, an unwritable file — the old image stays exactly where it was and
-the entry keeps its `stale` markers; a half-applied pair (new pixels under the
-old checksum) is never left behind. Failing to append to the gitignored
-generation log is a warning, not a failure: the image and the manifest are
-already correct.
-
-## Notes
-
-- `scripts/optimize-doc-image.sh` (ImageMagick) is the older manual path for
-  hand-made images. This script does its own conversion with Pillow and does not
-  need ImageMagick installed.
-- Tests: `just test-scripts` (part of `just test` and `just check`). They mock
-  `urllib` — the real API is never called from a test.
+Needs `python3` with PyYAML and Pillow (`sudo apt install python3-yaml python3-pil`).

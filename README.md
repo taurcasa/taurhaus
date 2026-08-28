@@ -268,8 +268,6 @@ This keeps taurhaus plugged into your actual local dev environment instead of wr
 
 ![System architecture](docs/images/system-architecture.jpg)
 
-> Stale render: the diagram still shows the retired Gemini CLI instead of Antigravity and Grok. The supported CLIs are Claude Code, Codex, Antigravity (`agy`) and Grok (`grok`).
-
 For more detail:
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)

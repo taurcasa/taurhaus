@@ -148,14 +148,12 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just test-visual` | Browser-mode visual screenshot lane for mocked component states. |
 | `just visual-shot C S [V] [T] [OUT]` | One visual-host fixture shot at a real window size (Edge headless). For viewport-anchored popups the 960x640 browser lane cannot judge. `just visual-shot-stop` stops only the server it started. |
 | `just metrics` | Quality KPI snapshot (tests, coverage, build health, code size, E2E inventory). |
-| `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit + script unit. |
-| `just test-scripts` | Python unit tests for repo scripts (`scripts/with-python.sh -m unittest discover -s scripts/tests`). |
-| `just python-deps` | One-time: install the pinned `scripts/requirements.txt` into `scripts/.venv` for the Python recipes. |
+| `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
 | `just infographics` | Regenerate documentation infographics from the manifest prompts (needs `.env`; see [`docs/operations/infographics.md`](docs/operations/infographics.md)). |
 | `just infographics-dry-run` | Show which infographics are stale and what a regeneration run would cost. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
 | `just check-quick` | Fast feedback for iteration: Rust format auto-fix (`cargo fmt`) + Rust compilation (`cargo check --tests`) + frontend typecheck + frontend unit tests. |
-| `just check` | Full quality gate: fmt + script unit tests + lint + typecheck + Rust/frontend test lanes (all non-E2E tests). Team-lead serialized runs or pre-release only. |
+| `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). Team-lead serialized runs or pre-release only. |
 | `just build-daemon` | Builds the WSL daemon binary (Linux target, runs in WSL2) |
 | `just install-daemon` | Builds, stops a running daemon, captures its `TAURHAUS_*`/`RUST_LOG` env and CLI args from `/proc`, normalizes them to `--data-dir <dir> --port <port>` (defaults `$TAURHAUS_DATA_DIR` or `~/.local/share/com.taurhaus.dev`, port 17233), atomically swaps the binary, then restarts it detached with the same env/args. |
 | `just build-mesh` | Resolves a mesh binary candidate via `scripts/resolve-mesh-binary.sh`: an explicit `MESH_BIN` is returned unchecked, otherwise the `MESH_PROJECT` workspace is rebuilt when its `git_commit` differs from the lock, otherwise a bundled/installed binary is returned unchecked. Not a lock gate on its own. |

@@ -64,7 +64,7 @@ The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session i
 - **Gemini CLI** (0.8.0): Gemini Code Assist for individuals refuses the client ("migrate to the Antigravity suite"), so the registry entry, launch arm, TCP idle heuristic, task scanner, catalog entries and role templates are gone. Persisted `gemini` tool values load as an unknown tool instead of aborting the record that carries them — a role catalog or team config from 0.7.x still opens; re-pick Antigravity where a member needs it. There is deliberately no alias: `agy` is a different binary with different flags and directories.
 - **Claude status-line bridge** (0.7.0): the 0.6.8 wrapper around `settings.json`'s `statusLine` could never carry the per-model buckets and edited user config; the OAuth usage endpoint replaced it, and the bridge is uninstalled once, restoring the original status line byte-for-byte.
 - **Gemini CLI account/usage provider** (never shipped): the fixture-driven `retrieveUserQuota` provider planned as 17d was cancelled with the CLI.
-- The eight architecture infographics under `docs/images/` still show the three-tool era; their prompts in `infographics.manifest.yaml` are current and they are marked `stale` until regenerated.
+- The eight architecture infographics under `docs/images/` were regenerated on 2026-08-28 from their prompts in `infographics.manifest.yaml` (`just infographics`, see `docs/operations/infographics.md`).
 
 ## How changes are made
 

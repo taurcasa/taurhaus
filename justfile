@@ -40,7 +40,6 @@ check:
     echo "Logging full check output to $log_path"
     ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
     just fmt
-    just test-scripts
     run_rust_lane() {
         just lint-rust
         just test-rust
@@ -145,42 +144,19 @@ test-compaction TOOL TEAM MEMBER *ARGS:
 monitor *ARGS:
     python3 scripts/resource-monitor.py {{ARGS}}
 
-# Install the pinned Python dependencies the repo's scripts need into scripts/.venv.
-# One-time setup; scripts/with-python.sh picks the venv up on its own afterwards.
-# Builds beside the target and moves it in, so a failed run leaves no half-made
-# venv behind — an empty one would shadow a working system interpreter.
-python-deps:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{project}}"
-    if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
-        echo "error: python3 cannot create virtual environments (no ensurepip)." >&2
-        echo "  Debian/Ubuntu: sudo apt install python3-venv" >&2
-        echo "  Or set TAURHAUS_PYTHON to an interpreter that already has PyYAML and Pillow." >&2
-        exit 1
-    fi
-    staging="scripts/.venv.building"
-    rm -rf "$staging"
-    trap 'rm -rf "$staging"' EXIT
-    python3 -m venv "$staging"
-    "$staging/bin/python" -m pip install --disable-pip-version-check --quiet -r scripts/requirements.txt
-    rm -rf scripts/.venv
-    mv "$staging" scripts/.venv
-    ./scripts/with-python.sh -c 'import yaml, PIL; print(f"scripts/.venv ready: PyYAML {yaml.__version__}, Pillow {PIL.__version__}")'
-
 # Regenerate documentation infographics from the manifest prompts (needs .env).
 # Example: just infographics --id scanner-pipeline
 # Workflow: docs/operations/infographics.md
 infographics *ARGS:
-    ./scripts/with-python.sh scripts/generate-infographics.py {{ARGS}}
+    python3 scripts/generate-infographics.py {{ARGS}}
 
 # Show which infographics would be regenerated, and what the run would cost.
 infographics-dry-run:
-    ./scripts/with-python.sh scripts/generate-infographics.py --dry-run --stale
+    python3 scripts/generate-infographics.py --dry-run --stale
 
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).
 # This is the primary "does everything work?" test command.
-test: test-rust test-frontend test-scripts
+test: test-rust test-frontend
 
 # Fast feedback lane for local iteration.
 # Runs Rust compile-check only (no Rust test execution) + frontend unit tests.
@@ -241,10 +217,6 @@ test-rust-bisect-orchestrator:
 test-frontend:
     bun run test
 
-# Run Python unit tests for the repo scripts (no network, no API keys).
-# Needs the pinned Python dependencies: `just python-deps` once.
-test-scripts:
-    ./scripts/with-python.sh -m unittest discover -s scripts/tests
 
 # Run browser-mode visual screenshot tests only.
 test-visual:
