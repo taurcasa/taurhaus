@@ -126,8 +126,10 @@ else
   fail "T31 Antigravity CLI" "agy not on PATH"
 fi
 
-# T31b: Grok CLI. `-p` is grok's single-prompt (headless) source; its own
-# hook directory is always trusted, so no approval flag is needed to answer.
+# T31b: Grok CLI. `-p` is grok's single-prompt (headless) source. The prompt
+# asks for a literal string and invokes no tool, so grok's tool-approval flag
+# (`--always-approve`, the registry's `auto_approve_flag`) is not needed here;
+# taurhaus-managed launches do pass it.
 if command -v grok >/dev/null 2>&1; then
   GROK_OUT=$(grok -p "respond with exactly: SMOKE_OK" 2>&1 || true)
   if echo "$GROK_OUT" | grep -q "SMOKE_OK"; then pass "T31b Grok CLI works"
