@@ -648,28 +648,39 @@ fn coordination_reonboard_impl(
                         request.member_name, request.team_name
                     ))
                 })?;
-            let message = DeliveryRenderer::render_for_tool(
-                member.cli_tool,
-                &request.team_name,
-                &request.member_name,
-                &lead_name,
-                true,
-                RoleContext {
-                    role_id: member.role_id.as_deref(),
-                    communication_style: member.communication_style.as_deref(),
-                    instructions: member.instructions.as_deref(),
-                    behavioral_contract: member.behavioral_contract.as_ref(),
-                    quality_gates: member.quality_gates.as_deref(),
-                    handoff_expectations: member.handoff_expectations.as_deref(),
-                    definition_of_done: member.definition_of_done.as_deref(),
-                    capabilities: member.capabilities.as_deref(),
-                },
-            )
-            .ok_or_else(|| {
-                CoordinationError::Validation(
-                    "onboarding is not required for this harness".to_string(),
+            let role_context = RoleContext {
+                role_id: member.role_id.as_deref(),
+                communication_style: member.communication_style.as_deref(),
+                instructions: member.instructions.as_deref(),
+                behavioral_contract: member.behavioral_contract.as_ref(),
+                quality_gates: member.quality_gates.as_deref(),
+                handoff_expectations: member.handoff_expectations.as_deref(),
+                definition_of_done: member.definition_of_done.as_deref(),
+                capabilities: member.capabilities.as_deref(),
+            };
+            let tool_spec = crate::session_scanner::cli_tool::spec(member.cli_tool);
+            let message = if tool_spec.capabilities.native_inbox_poller {
+                DeliveryRenderer::render_onboarding(
+                    &request.team_name,
+                    &request.member_name,
+                    &lead_name,
+                    role_context,
                 )
-            })?;
+            } else {
+                DeliveryRenderer::render_for_tool(
+                    member.cli_tool,
+                    &request.team_name,
+                    &request.member_name,
+                    &lead_name,
+                    true,
+                    role_context,
+                )
+                .ok_or_else(|| {
+                    CoordinationError::Validation(
+                        "onboarding is not required for this harness".to_string(),
+                    )
+                })?
+            };
 
             orchestrator.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
                 member_name: request.member_name.clone(),

@@ -1335,6 +1335,8 @@ fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
 
 #[test]
 fn build_cli_launch_command_uses_configured_fresh_command() {
+    // Regression: commit efcd7d2 appended the permission-bypass flag after the
+    // free-form Settings command, preventing an operator from removing it.
     let mut cmds = crate::models::CliCommandSettings::default();
     cmds.agy.fresh = "agy --sandbox read-only".to_string();
     let agent = AgentSetupConfig {
@@ -1365,7 +1367,7 @@ fn build_cli_launch_command_uses_configured_fresh_command() {
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
             .expect("command"),
-        "agy --sandbox read-only --dangerously-skip-permissions --model 'gemini-3.7-flash-high'"
+        "agy --sandbox read-only --model 'gemini-3.7-flash-high'"
     );
 }
 

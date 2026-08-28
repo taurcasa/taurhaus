@@ -723,6 +723,7 @@ impl ModelCatalog {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
             CliTool::Agy => &MODEL_CATALOG.agy,
+            CliTool::Unknown => &[],
         }
     }
 
@@ -764,7 +765,17 @@ impl ModelCatalog {
                 None => CODEX_EFFORTS_WITH_ULTRA.contains(&effort),
             },
             CliTool::Agy => AGY_EFFORTS.contains(&effort),
+            CliTool::Unknown => false,
         }
+    }
+
+    pub fn contains_model_id(model_id: &str) -> bool {
+        MODEL_CATALOG
+            .claude
+            .iter()
+            .chain(&MODEL_CATALOG.codex)
+            .chain(&MODEL_CATALOG.agy)
+            .any(|entry| entry.id == model_id)
     }
 }
 

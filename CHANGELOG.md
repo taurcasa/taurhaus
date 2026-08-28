@@ -8,11 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Antigravity CLI (`agy`) is the Google harness** — registry, process detection, model/effort and auto-approval launch rendering, conversation identity, presence-aware stop, native `/usage` windows, an implicit account, opt-in activity hooks, Google-blue UI treatment, bundled roles, and conformance coverage now ship as one capability-sliced integration.
+- **Antigravity CLI (`agy`) is the Google harness** — registry, process detection, model/effort launch rendering, conversation identity, presence-aware stop, native `/usage` windows, an implicit account, opt-in activity hooks, Google-blue UI treatment, bundled roles, and conformance coverage now ship as one capability-sliced integration.
 
 ### Changed
 
 - **Gemini CLI removed** — Google now refuses that client for individual Code Assist accounts and directs users to Antigravity. Persisted `gemini` tool values deliberately load as an unknown tool; reselect Antigravity explicitly because it is a different binary with different flags, and no compatibility alias is provided.
+- **Daemon protocol 12** — the Antigravity tool wire value replaces the retired Gemini value. Reinstall the paired daemon with `just install-daemon`; protocol 11 daemons are deliberately rejected instead of failing individual launch and stop requests.
 - Mesh and taureval need separate follow-ups before their own external role/tool contracts can launch `agy`; this PR intentionally does not modify those repositories.
 
 ## [0.7.0] - 2026-08-28

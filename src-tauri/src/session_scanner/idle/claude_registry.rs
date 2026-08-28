@@ -60,6 +60,12 @@ impl SessionSource for NoSessionSource {
     }
 }
 
+impl super::SessionResolver for NoSessionSource {
+    fn detect_idle(&self, _project_path: &str) -> IdleResult {
+        IdleResult::idle()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AuthoritativeState {
     pub state: SessionState,
@@ -73,6 +79,19 @@ pub trait ActivitySource: Send + Sync {
         pid: u32,
         resolved: &IdleResult,
     ) -> Option<AuthoritativeState>;
+}
+
+pub struct NoActivitySource;
+
+impl ActivitySource for NoActivitySource {
+    fn authoritative_state(
+        &self,
+        _project_path: &str,
+        _pid: u32,
+        _resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        None
+    }
 }
 
 pub struct ClaudeRegistryActivitySource;

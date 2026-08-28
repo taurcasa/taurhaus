@@ -309,6 +309,9 @@ fn retired_gemini_tool_literal_does_not_return() {
         "src-tauri/src/db/migrations/009_task_source_key_identity.sql",
         "src-tauri/src/models/mod.rs",
         "src-tauri/src/session_scanner/cli_tool.rs",
+        "src-tauri/src/services/task_query.rs",
+        "src-tauri/src/templates/storage/tests/roles.rs",
+        "src-tauri/src/coordination/stores/config.rs",
     ];
     const CAPTURED_USAGE_FIXTURE: &str = "src-tauri/src/daemon/fixtures/agy-usage-1.1.22.json";
 

@@ -18,6 +18,9 @@ pub enum CliTool {
     Claude,
     Codex,
     Agy,
+    /// A persisted tool value that this build no longer supports.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +66,12 @@ impl CliTool {
             .find(|entry| entry.aliases.contains(&normalized.as_str()))
             .map(|entry| entry.tool)
             .ok_or_else(|| ParseCliToolError::new(raw))
+    }
+
+    /// Decode storage/database text without turning a retired provider into a
+    /// different supported harness.
+    pub fn from_persisted(raw: &str) -> Self {
+        raw.parse().unwrap_or(Self::Unknown)
     }
 }
 
@@ -366,6 +375,61 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
     ]
 });
 
+static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
+    tool: CliTool::Unknown,
+    name: "unknown",
+    aliases: &[],
+    argv_signatures: &[],
+    non_session_flags: &[],
+    non_session_subcommands: &[],
+    argv_value_flags: &[],
+    model_prefixes: &[],
+    model_markers: &[],
+    default_commands: ToolCommands {
+        continue_cmd: String::new(),
+        fresh: String::new(),
+        resume: String::new(),
+    },
+    label: "Unknown tool",
+    accent: "zinc",
+    medallion_accent: "zinc",
+    default_agent_role_id: "",
+    capabilities: CliCapabilities {
+        model_flag: None,
+        effort_flag: None,
+        auto_approve_flag: None,
+        display_name_flag: None,
+        team_flags: false,
+        native_inbox_poller: false,
+        session_source: false,
+        runtime_session_capture: false,
+        authoritative_idle: false,
+        compaction_hook: false,
+        transcript_parser: false,
+        transcript_compaction_signals: false,
+        catalog: false,
+        session_root: SessionRoot::ToolHome,
+        account_selector: None,
+        account_selection: false,
+        team_config_namespace: false,
+        usage: false,
+        notify_sink: false,
+        hook_trust: false,
+        managed_home: false,
+    },
+    stop_strategy: StopStrategy::Interrupt,
+    stop_presence_dir: None,
+    onboarding_exit_hint: false,
+    process_activity_signal: ProcessActivitySignal::ReadChars,
+    pane_binding: false,
+    display_name: "Unknown tool",
+    settings_label: "Unknown tool",
+    base_dir_name: "",
+    projects_subdir: "",
+    session_extension: "",
+    exit_command: "/exit",
+});
+
 /// Get every registered CLI harness.
 pub fn all() -> &'static [CliToolSpec] {
     TOOL_SPECS.as_slice()
@@ -378,6 +442,9 @@ pub fn all_tools() -> &'static [CliToolSpec] {
 
 /// Get the configuration for a specific tool.
 pub fn spec(tool: CliTool) -> &'static CliToolSpec {
+    if tool == CliTool::Unknown {
+        return &UNKNOWN_TOOL_SPEC;
+    }
     all()
         .iter()
         .find(|c| c.tool == tool)
@@ -390,10 +457,16 @@ pub fn config_for(tool: CliTool) -> &'static CliToolSpec {
 }
 
 pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &ToolCommands {
+    static EMPTY: LazyLock<ToolCommands> = LazyLock::new(|| ToolCommands {
+        continue_cmd: String::new(),
+        fresh: String::new(),
+        resume: String::new(),
+    });
     match tool {
         CliTool::Claude => &settings.claude,
         CliTool::Codex => &settings.codex,
         CliTool::Agy => &settings.agy,
+        CliTool::Unknown => &EMPTY,
     }
 }
 
@@ -555,6 +628,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => Some(&AGY),
+            CliTool::Unknown => None,
         }
     }
 
@@ -573,6 +647,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => Some(&AGY),
+            CliTool::Unknown => None,
         }
     }
 
@@ -641,6 +716,7 @@ impl CliToolSpec {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
             CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
+            CliTool::Unknown => &NONE,
         }
     }
 
@@ -651,11 +727,14 @@ impl CliToolSpec {
             crate::session_scanner::idle::CodexNotifyActivitySource;
         static AGY: crate::session_scanner::idle::AgyHooksActivitySource =
             crate::session_scanner::idle::AgyHooksActivitySource;
+        static NONE: crate::session_scanner::idle::NoActivitySource =
+            crate::session_scanner::idle::NoActivitySource;
 
         match self.tool {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
             CliTool::Agy => &AGY,
+            CliTool::Unknown => &NONE,
         }
     }
 
@@ -690,6 +769,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => None,
+            CliTool::Unknown => None,
         }
     }
 
@@ -703,6 +783,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => None,
+            CliTool::Unknown => None,
         }
     }
 
@@ -714,6 +795,8 @@ impl CliToolSpec {
         static CLAUDE: OnceLock<crate::session_scanner::idle::ClaudeResolver> = OnceLock::new();
         static CODEX: OnceLock<crate::session_scanner::idle::CodexResolver> = OnceLock::new();
         static AGY: OnceLock<crate::session_scanner::idle::AgyResolver> = OnceLock::new();
+        static NONE: crate::session_scanner::idle::NoSessionSource =
+            crate::session_scanner::idle::NoSessionSource;
 
         match self.tool {
             CliTool::Claude => {
@@ -721,6 +804,7 @@ impl CliToolSpec {
             }
             CliTool::Codex => CODEX.get_or_init(crate::session_scanner::idle::CodexResolver::new),
             CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
+            CliTool::Unknown => &NONE,
         }
     }
 }
@@ -750,7 +834,10 @@ mod tests {
             "agy --conversation {session_id}"
         );
         assert_eq!("agy".parse::<CliTool>(), Ok(CliTool::Agy));
-        assert!(serde_json::from_str::<CliTool>("\"gemini\"").is_err());
+        assert_eq!(
+            serde_json::from_str::<CliTool>("\"gemini\"").unwrap(),
+            CliTool::Unknown
+        );
 
         let descriptor = serde_json::to_value(CliToolDescriptor::from(agy)).unwrap();
         assert_eq!(
@@ -792,7 +879,10 @@ mod tests {
         assert_eq!(x, CliTool::Codex);
         let a: CliTool = serde_json::from_str("\"agy\"").unwrap();
         assert_eq!(a, CliTool::Agy);
-        assert!(serde_json::from_str::<CliTool>("\"gemini\"").is_err());
+        assert_eq!(
+            serde_json::from_str::<CliTool>("\"gemini\"").unwrap(),
+            CliTool::Unknown
+        );
     }
 
     #[test]

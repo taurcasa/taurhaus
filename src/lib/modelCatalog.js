@@ -76,9 +76,13 @@ export function parseLegacyModel(value) {
   const raw = trimmed(value)
   if (!raw) return { model: '', reasoningEffort: null }
 
-  // Antigravity model ids encode their tier in the id itself. Treating the
-  // trailing word as taurhaus' legacy separate-effort spelling corrupts them.
-  if (/^gemini-\d+\.\d+-(?:flash|pro)-(?:low|medium|high)$/.test(raw)) {
+  // Antigravity model ids can encode their tier in the id itself. Treating the
+  // trailing word as taurhaus' legacy separate-effort spelling corrupts both
+  // Google ids and cross-provider GPT-OSS ids.
+  if (
+    /^gemini-\d+\.\d+-(?:flash|pro)-(?:low|medium|high)$/.test(raw) ||
+    /^gpt-oss-[\w.-]+-(?:low|medium|high)$/.test(raw)
+  ) {
     return { model: raw, reasoningEffort: null }
   }
 

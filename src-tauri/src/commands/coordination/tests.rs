@@ -681,7 +681,16 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
 #[test]
 fn reonboard_succeeds_for_existing_member() {
     let tmp = TempDir::new().expect("tempdir");
-    let state = test_state(tmp.path().to_path_buf());
+    let fake = FakeBackend::default();
+    let state = CoordinationState::with_components_and_runtime(
+        tmp.path().to_path_buf(),
+        BackendSelector::m0(),
+        Arc::new({
+            let fake = fake.clone();
+            move |_kind, _teams_dir| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+        }),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+    );
     coordination_initialize_team_internal(
         &state,
         None,
@@ -697,12 +706,21 @@ fn reonboard_succeeds_for_existing_member() {
         &state,
         ReonboardRequest {
             team_name: "architecture-final".to_string(),
-            member_name: "frontend-dev".to_string(),
+            member_name: "team-lead".to_string(),
         },
     )
     .expect("reonboard should succeed");
 
     assert!(result.delivered);
+    let requests = fake.delivered_requests();
+    let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("reonboard delivery")
+    else {
+        panic!("expected operator notice")
+    };
+    // Regression: commit efcd7d2 silently replaced Claude re-onboarding with
+    // the lifecycle-only role-context block, dropping the explicit mesh loop.
+    assert!(delivery.message.starts_with("[taurhaus] onboarding"));
+    assert!(delivery.message.contains("mesh read --unread --mark-read"));
 }
 
 #[test]

@@ -26,11 +26,12 @@ mod claude_registry;
 mod codex;
 
 pub(crate) use agy::presence_lock_is_held;
-pub(crate) use agy::AgyHooksActivitySource;
+pub use agy::AgyHooksActivitySource;
 pub use agy::AgyResolver;
 pub use claude::ClaudeResolver;
 pub use claude_registry::{
-    config_dir_for_transcript, ActivitySource, AuthoritativeState, NoSessionSource, SessionSource,
+    config_dir_for_transcript, ActivitySource, AuthoritativeState, NoActivitySource,
+    NoSessionSource, SessionSource,
 };
 pub(crate) use claude_registry::{ClaudeRegistryActivitySource, ClaudeRegistrySessionSource};
 pub use codex::CodexResolver;

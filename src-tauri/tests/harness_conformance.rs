@@ -20,7 +20,7 @@ use taurhaus_lib::session_scanner::accounts::{
     UsageStatus,
 };
 use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
-use taurhaus_lib::session_scanner::idle::{IdleResult, SessionSource};
+use taurhaus_lib::session_scanner::idle::{AgyHooksActivitySource, IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{
     base_command, LaunchCapability, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
 };
@@ -305,6 +305,7 @@ fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
             )
             .expect("Antigravity credential fixture");
         }
+        CliTool::Unknown => panic!("unknown tools do not have usage credentials"),
     }
 }
 
@@ -702,18 +703,29 @@ fn session_source_wiring_matches_every_registry_declaration() {
 fn undeclared_activity_source_never_claims_authority() {
     // Regression: commit c0aa59a added Codex notify handling at the resolver;
     // native state must only be consumed through a declared activity source.
+    let temp = tempfile::tempdir().expect("agy activity conformance root");
+    let sink = temp.path().join("agy-hooks.jsonl");
+    let root = temp.path().join(".gemini");
+    let transcript = temp.path().join("conversation-1.db");
+    std::fs::write(&transcript, b"fixture").expect("agy transcript fixture");
+    taurhaus_lib::daemon::agy_hooks::append_event_at(
+        &sink,
+        taurhaus_lib::daemon::agy_hooks::AgyHookEvent::Busy,
+        r#"{"conversationId":"conversation-1"}"#,
+        chrono::Utc::now(),
+    )
+    .expect("agy hook fixture");
     let heuristic = IdleResult {
         state: SessionState::Active,
-        session_id: None,
-        jsonl_path: None,
+        session_id: Some("conversation-1".to_string()),
+        jsonl_path: Some(transcript.to_string_lossy().into_owned()),
         last_output_age_secs: None,
         authoritative: false,
     };
 
-    assert!(spec(CliTool::Agy)
-        .activity_source()
-        .authoritative_state("/tmp/taurhaus-conformance-project", 42, &heuristic)
-        .is_none());
+    // Regression: commit 4e9e2c5 used no session id here, so the test returned
+    // before exercising the opt-in hooks gate it claimed to protect.
+    assert!(AgyHooksActivitySource::authoritative_state_at(&heuristic, &sink, &root).is_none());
 }
 
 #[test]

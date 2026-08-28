@@ -7,15 +7,46 @@ use crate::coordination::errors::CoordinationError;
 const HOOKS_FILE: &str = "antigravity-cli/hooks.json";
 const TAURHAUS_HOOK: &str = "taurhaus";
 
+fn hook_executable_probe_path(agy_root: &Path, daemon_executable: &Path) -> PathBuf {
+    let executable = daemon_executable.to_string_lossy();
+    if executable.starts_with('/') {
+        crate::provider::path::wsl_distro_from_path(&agy_root.to_string_lossy())
+            .map(|distro| {
+                PathBuf::from(crate::provider::path::linux_to_wsl_unc(
+                    &executable,
+                    &distro,
+                ))
+            })
+            .unwrap_or_else(|| daemon_executable.to_path_buf())
+    } else {
+        daemon_executable.to_path_buf()
+    }
+}
+
 pub fn ensure_agy_hooks_installed_at(
     agy_root: &Path,
     daemon_executable: &Path,
 ) -> Result<bool, CoordinationError> {
-    if !daemon_executable.is_file() {
-        return Err(CoordinationError::StoreError(format!(
-            "Antigravity hook executable '{}' does not exist",
-            daemon_executable.display()
-        )));
+    let probe_path = hook_executable_probe_path(agy_root, daemon_executable);
+    if !probe_path.is_file() {
+        let changed = remove_agy_hooks_at(agy_root)?;
+        let mut fields = Map::new();
+        fields.insert(
+            "executable".to_string(),
+            Value::String(daemon_executable.to_string_lossy().into_owned()),
+        );
+        fields.insert(
+            "probe_path".to_string(),
+            Value::String(probe_path.to_string_lossy().into_owned()),
+        );
+        taurhaus_lib::logging::emit_global(
+            "warn",
+            "coordination",
+            "agy.hooks.degraded",
+            Some("Antigravity hook executable is unavailable; removed the hook".to_string()),
+            fields,
+        );
+        return Ok(changed);
     }
     let path = hooks_path(agy_root);
     let mut root = load_hooks(&path)?;
@@ -163,5 +194,33 @@ mod tests {
             serde_json::from_slice(&std::fs::read(app_dir.join("hooks.json")).unwrap()).unwrap();
         assert!(value.get("foreign").is_some());
         assert!(value.get("taurhaus").is_none());
+    }
+
+    #[test]
+    fn windows_agy_root_maps_linux_hook_executable_for_host_probe() {
+        // Regression: commit 4e9e2c5 probed a WSL Linux executable path directly
+        // from the native Windows process, so enabling agy hooks always failed.
+        let agy_root = Path::new(r"\\wsl.localhost\Ubuntu\home\user\.gemini");
+        let executable = Path::new("/home/user/.local/bin/taurhaus-daemon");
+
+        assert_eq!(
+            hook_executable_probe_path(agy_root, executable),
+            PathBuf::from(r"\\wsl.localhost\Ubuntu\home\user\.local\bin\taurhaus-daemon")
+        );
+    }
+
+    #[test]
+    fn missing_hook_executable_degrades_by_removing_the_entry() {
+        // Regression: commit 4e9e2c5 returned an error for a missing executable,
+        // leaving an already-installed hook pointing at a dead command.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".gemini");
+        let executable = temp.path().join("taurhaus-daemon");
+        std::fs::write(&executable, "fixture").unwrap();
+        ensure_agy_hooks_installed_at(&root, &executable).unwrap();
+        std::fs::remove_file(&executable).unwrap();
+
+        assert!(ensure_agy_hooks_installed_at(&root, &executable).unwrap());
+        assert!(!agy_hooks_installed_at(&root));
     }
 }

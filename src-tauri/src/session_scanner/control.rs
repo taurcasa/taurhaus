@@ -732,17 +732,14 @@ mod tests {
 
     #[test]
     fn build_agy_fresh_command() {
-        assert_eq!(
-            build_launch_command(CliTool::Agy, LaunchMode::Fresh),
-            "agy --dangerously-skip-permissions"
-        );
+        assert_eq!(build_launch_command(CliTool::Agy, LaunchMode::Fresh), "agy");
     }
 
     #[test]
     fn build_agy_resume_command() {
         assert_eq!(
             build_launch_command(CliTool::Agy, LaunchMode::Resume),
-            "agy --conversation {session_id} --dangerously-skip-permissions"
+            "agy --conversation {session_id}"
         );
     }
 

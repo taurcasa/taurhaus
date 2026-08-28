@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use fs2::FileExt;
 
@@ -15,6 +16,7 @@ const APP_DATA_SUBDIR: &str = "antigravity-cli";
 const LAST_CONVERSATIONS: &str = "cache/last_conversations.json";
 const CONVERSATIONS_DIR: &str = "conversations";
 const PRESENCE_DIR: &str = "presence";
+const MAX_HOOK_RECORD_AGE: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(test)]
 static BASE_DIR_FOR_TEST: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
@@ -89,6 +91,16 @@ impl SessionSource for AgyResolver {
 
 pub struct AgyHooksActivitySource;
 
+impl AgyHooksActivitySource {
+    pub fn authoritative_state_at(
+        resolved: &IdleResult,
+        sink_path: &Path,
+        agy_root: &Path,
+    ) -> Option<AuthoritativeState> {
+        agy_hook_state_at(resolved, sink_path, agy_root)
+    }
+}
+
 impl ActivitySource for AgyHooksActivitySource {
     fn authoritative_state(
         &self,
@@ -96,7 +108,7 @@ impl ActivitySource for AgyHooksActivitySource {
         _pid: u32,
         resolved: &IdleResult,
     ) -> Option<AuthoritativeState> {
-        agy_hook_state_at(
+        Self::authoritative_state_at(
             resolved,
             &crate::provider::platform_paths::PlatformPaths::agy_hooks_path(),
             &crate::provider::platform_paths::PlatformPaths::agy_dir(),
@@ -113,7 +125,20 @@ fn agy_hook_state_at(
     if !crate::coordination::agy_hooks_installer::agy_hooks_installed_at(agy_root) {
         return None;
     }
-    let record = crate::daemon::agy_hooks::latest_record_for_session(sink_path, session_id)?;
+    let freshness_floor = SystemTime::now()
+        .checked_sub(MAX_HOOK_RECORD_AGE)
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let transcript_mtime = resolved
+        .jsonl_path
+        .as_deref()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .and_then(|metadata| metadata.modified().ok())
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let record = crate::daemon::agy_hooks::latest_record_for_session_after(
+        sink_path,
+        session_id,
+        freshness_floor.max(transcript_mtime),
+    )?;
     Some(AuthoritativeState {
         state: match record.state {
             crate::daemon::agy_hooks::AgyHookState::Busy => SessionState::Active,
@@ -183,10 +208,10 @@ fn valid_conversation_id(value: &str) -> bool {
 
 /// A held flock proves the conversation is live. File presence alone does not.
 pub(crate) fn presence_lock_is_held(path: &Path) -> bool {
-    let Ok(file) = OpenOptions::new().read(true).write(true).open(path) else {
+    let Ok(file) = OpenOptions::new().read(true).open(path) else {
         return false;
     };
-    match file.try_lock_exclusive() {
+    match FileExt::try_lock_shared(&file) {
         Ok(()) => {
             let _ = FileExt::unlock(&file);
             false
@@ -254,7 +279,7 @@ mod tests {
         let _base_dir = set_base_dir_for_test(tmp.path().join(".gemini"));
         let result = crate::session_scanner::idle::detect_runtime_idle(
             project,
-            4242,
+            u32::MAX,
             Some("%42"),
             crate::session_scanner::cli_tool::CliTool::Agy,
         );
@@ -289,9 +314,23 @@ mod tests {
     }
 
     #[test]
+    fn shared_presence_probe_does_not_claim_another_reader_is_live() {
+        // Regression: commit efcd7d2 probed foreign presence state with an
+        // exclusive lock, briefly competing with agy's own lock acquisition.
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("conversation.lock");
+        let reader = File::create(&path).unwrap();
+        FileExt::lock_shared(&reader).unwrap();
+
+        assert!(!presence_lock_is_held(&path));
+        FileExt::unlock(&reader).unwrap();
+    }
+
+    #[test]
     fn enabled_agy_hooks_are_authoritative_but_disabled_hooks_use_the_floor() {
         // Regression: commit c0aa59a made native activity authoritative only
         // for always-on sources; agy's unverified hook loading must be opt-in.
+        let _guard = crate::daemon::agy_hooks::AGY_HOOK_TEST_LOCK.lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().join(".gemini");
         let sink = tmp.path().join("agy-hooks.jsonl");
@@ -321,5 +360,37 @@ mod tests {
                 .state,
             SessionState::Active
         );
+    }
+
+    #[test]
+    fn stale_busy_hook_record_falls_back_to_process_activity() {
+        // Regression: commit 4e9e2c5 treated the newest busy record as timeless,
+        // so a crashed invocation pinned a resumed conversation Active forever.
+        let _guard = crate::daemon::agy_hooks::AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join(".gemini");
+        let sink = tmp.path().join("agy-hooks.jsonl");
+        let executable = tmp.path().join("taurhaus-daemon");
+        fs::write(&executable, "fixture").unwrap();
+        crate::coordination::agy_hooks_installer::ensure_agy_hooks_installed_at(&root, &executable)
+            .unwrap();
+        let transcript = tmp.path().join("conversation-1.db");
+        fs::write(&transcript, "fixture").unwrap();
+        let resolved = IdleResult {
+            state: SessionState::Idle,
+            session_id: Some("conversation-1".to_string()),
+            jsonl_path: Some(transcript.to_string_lossy().into_owned()),
+            last_output_age_secs: None,
+            authoritative: false,
+        };
+        crate::daemon::agy_hooks::append_event_at(
+            &sink,
+            crate::daemon::agy_hooks::AgyHookEvent::Busy,
+            r#"{"conversationId":"conversation-1"}"#,
+            chrono::Utc::now() - chrono::Duration::hours(1),
+        )
+        .unwrap();
+
+        assert!(agy_hook_state_at(&resolved, &sink, &root).is_none());
     }
 }

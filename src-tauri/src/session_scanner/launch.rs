@@ -25,17 +25,10 @@ impl ModelSpec {
             return ModelSpec::default();
         }
 
-        // Antigravity publishes Google model IDs with an effort word baked
-        // into the canonical slug. Those are model IDs, not the legacy
-        // `model-effort` spelling this migration parser accepts.
-        if trimmed.starts_with("gemini-")
-            && ["-flash-", "-pro-"]
-                .iter()
-                .any(|marker| trimmed.contains(marker))
-            && ["-low", "-medium", "-high"]
-                .iter()
-                .any(|suffix| trimmed.ends_with(suffix))
-        {
+        // Canonical catalog ids win over the legacy `model-effort` migration
+        // spelling. Several Antigravity providers publish real ids ending in
+        // an effort word, so prefix heuristics are not sufficient here.
+        if ModelCatalog::contains_model_id(trimmed) {
             return ModelSpec {
                 model: Some(trimmed.to_string()),
                 reasoning_effort: None,
@@ -375,13 +368,6 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Agy => {
-                if let Some(auto_approve_flag) = capabilities.auto_approve_flag {
-                    if !command_contains_flag(self.base, auto_approve_flag) {
-                        command.push(' ');
-                        command.push_str(auto_approve_flag);
-                    }
-                }
-
                 if let Some(model) = requested_model {
                     if let Some(model_flag) = capabilities.model_flag {
                         if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
@@ -423,6 +409,7 @@ impl LaunchSpec<'_> {
                     }
                 }
             }
+            CliTool::Unknown => {}
         }
 
         // Last, so the selector lands in front of any tool-specific team
@@ -641,13 +628,14 @@ mod tests {
 
     #[test]
     fn parse_legacy_keeps_model_only() {
-        // Regression: 9a66d1c treated every trailing effort word as the old
-        // combined field and truncated Antigravity's canonical model IDs.
+        // Regression: commit 5576838 only protected Google-prefixed Antigravity
+        // ids, truncating the catalog's GPT-OSS id into a nonexistent model.
         for raw in [
             "claude-opus-4-6",
             "gpt-5.6-terra",
             "gemini-3.7-flash-high",
             "gemini-3.1-pro-low",
+            "gpt-oss-120b-medium",
         ] {
             assert_eq!(ModelSpec::parse_legacy(raw), model_spec(raw, None));
         }
@@ -1180,9 +1168,9 @@ mod tests {
     }
 
     #[test]
-    fn agy_render_adds_model_effort_and_auto_approve() {
+    fn agy_render_adds_model_and_effort() {
         // Regression: commit 4cd067a registered agy with its verified flags but
-        // left the retired Google harness renderer dropping effort and auto-approval.
+        // left the retired Google harness renderer dropping effort.
         let rendered = LaunchSpec {
             tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
@@ -1198,9 +1186,30 @@ mod tests {
 
         assert_eq!(
             rendered.command,
-            "agy --dangerously-skip-permissions --model 'gemini-3.1-pro' --effort 'high'"
+            "agy --model 'gemini-3.1-pro' --effort 'high'"
         );
         assert!(rendered.notes.is_empty());
+    }
+
+    #[test]
+    fn agy_free_form_base_can_remove_dangerous_permission_bypass() {
+        // Regression: commit efcd7d2 force-injected the high-risk flag after
+        // Settings, so an interactive agy user could not opt back into prompts.
+        let base = "agy --sandbox";
+        let rendered = LaunchSpec {
+            tool: CliTool::Agy,
+            mode: LaunchMode::Fresh,
+            base,
+            model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, base);
     }
 
     #[test]
@@ -1240,10 +1249,7 @@ mod tests {
         }
         .render();
 
-        assert_eq!(
-            rendered.command,
-            "agy --model gemini-3.1-pro-low --dangerously-skip-permissions"
-        );
+        assert_eq!(rendered.command, "agy --model gemini-3.1-pro-low");
         assert_eq!(
             rendered.notes,
             vec![LaunchNote::ModelIgnored {

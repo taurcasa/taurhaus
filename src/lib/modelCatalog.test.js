@@ -117,6 +117,12 @@ describe('parseLegacyModel', () => {
       model: 'claude-opus-4-6',
       reasoningEffort: null,
     })
+    // Regression: commit 8e68468 only protected Google-prefixed Antigravity
+    // ids, truncating the catalog's GPT-OSS id into a nonexistent model.
+    expect(parseLegacyModel('gpt-oss-120b-medium')).toEqual({
+      model: 'gpt-oss-120b-medium',
+      reasoningEffort: null,
+    })
   })
 
   it('returns empty values for blank input', () => {

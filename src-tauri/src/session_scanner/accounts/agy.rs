@@ -167,14 +167,14 @@ fn normalize_usage(groups: &[UsageGroup]) -> Option<Vec<UsageWindow>> {
                 .map(move |bucket| (bucket.id.as_str(), (group.name.as_str(), bucket)))
         })
         .collect::<HashMap<_, _>>();
-    [
+    let windows = [
         ("gemini-weekly", "Gemini Models · Weekly", false),
         ("gemini-5h", "Gemini Models · 5h", true),
         ("3p-weekly", "Claude and GPT models · Weekly", false),
         ("3p-5h", "Claude and GPT models · 5h", true),
     ]
     .into_iter()
-    .map(|(key, title, compact)| {
+    .filter_map(|(key, title, compact)| {
         let (_, bucket) = buckets.get(key)?;
         let used_percentage =
             (100.0 - bucket.remaining_fraction.clamp(0.0, 1.0) * 100.0).clamp(0.0, 100.0);
@@ -198,7 +198,8 @@ fn normalize_usage(groups: &[UsageGroup]) -> Option<Vec<UsageWindow>> {
             compact,
         })
     })
-    .collect()
+    .collect::<Vec<_>>();
+    (!windows.is_empty()).then_some(windows)
 }
 
 fn snapshot(
@@ -347,5 +348,24 @@ mod tests {
                 "true".to_string()
             )]
         );
+    }
+
+    #[test]
+    fn agy_usage_preserves_available_windows_when_a_group_is_absent() {
+        // Regression: commit 56b8bb8 collected four buckets into Option<Vec>,
+        // so one absent plan-specific group discarded every reported window.
+        let groups = vec![UsageGroup {
+            name: "Gemini Models".to_string(),
+            buckets: vec![UsageBucket {
+                id: "gemini-weekly".to_string(),
+                remaining_fraction: 0.75,
+                reset_time: None,
+            }],
+        }];
+
+        let windows = normalize_usage(&groups).expect("one known bucket");
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].key, "gemini-weekly");
+        assert_eq!(windows[0].used_percentage, 25.0);
     }
 }
