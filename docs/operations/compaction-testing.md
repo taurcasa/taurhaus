@@ -31,17 +31,29 @@ Supported:
 
 1. Operator-triggered `/compact` in a real managed Codex pane via tmux/operator input
 
-Not supported / not available:
+Not supported / not reliable:
 
-- first-party compaction hooks
 - natural-language delegation as a reliable test control path
 
 Why:
 
-- Codex compaction is transcript-detectable, not hook-driven in our current design
-- Taurhaus detects Codex compaction from session JSONL boundaries:
+- By default Codex compaction is transcript-detectable. Taurhaus reads the session JSONL boundaries:
   - `type="compacted"`
   - `event_msg.payload.type="context_compacted"`
+- Codex *does* have first-party hooks, and taurhaus can use them, but that path is **opt-in**: `terminal.harness.codex_compaction` defaults to `transcript`, and `hooks` additionally requires Codex ≥ 0.147 (`CliVersions.codex_compaction_hooks_supported`) plus an installed managed `hooks.json`. Managed launches in hooks mode carry `--dangerously-bypass-hook-trust`. Test whichever mode the setting is actually in.
+
+### Antigravity CLI (`agy`)
+
+Not covered. The registry declares `compaction_hook: false` and no transcript parser for `agy`, so an Antigravity compaction is not observed at all and there is nothing for a test lane to verify.
+
+### Grok CLI (`grok`)
+
+Detected, but with no `just` lane — trigger it by hand in a real managed grok pane.
+
+- The hook fires on grok's own `PostCompact` event; grok's session-start source never reports `compact`.
+- grok's personal hook directory (`<GROK_HOME>/hooks`) is always trusted, so there is no bypass flag to pass.
+- The card is **not** returned on the hook's stdout: grok documents passive-hook stdout as ignored, so the registry routes delivery to the member's mesh inbox (`compaction_delivery: MeshInbox`). Verify with `mesh read`, not with the hook's response.
+- grok also loads `~/.claude/settings.json` hooks, so one compaction can invoke the bridge twice. Exactly one reinjection is expected; a second is a bug, not a duplicate test signal.
 
 ## Preconditions
 
@@ -111,6 +123,8 @@ just test-compaction claude taurhaus-team team-lead
 just test-compaction codex taurhaus-team architect
 ```
 
+`just test-compaction` accepts `claude` and `codex` only; any other tool exits with `Unsupported tool` (`justfile`, recipe `test-compaction`). Grok has no scripted lane yet.
+
 ## Manual-run diagnostics
 
 Each harness writes metadata under:
@@ -132,8 +146,8 @@ The analyzer will then print targeted run diagnostics, including:
   - `SessionStart(compact)` seen
   - hook success seen
 - Codex:
-  - transcript boundary seen
-- Both:
+  - transcript boundary seen (or, in `hooks` mode, the hook events)
+- All:
   - transport delivery outcome
   - wake stage
   - whether the compaction card was surfaced by `mesh read`

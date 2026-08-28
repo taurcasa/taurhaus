@@ -57,10 +57,16 @@ If the test needs the real backend or real workflow wiring, it belongs in WDIO E
 
 Fixture examples already in the repo:
 
-- `runtime_fiveAgents_dark`
-- `active_claudeWorking_dirty_dark`
-- `active_claude_selected_dark`
-- `active_claude_light`
+- `runtime_fiveAgents_dark` (`meshCanvas.fixtures.js`)
+- `active_claudeWorking_dirty_dark` (`hoverCard.fixtures.js`)
+- `active_claude_selected_dark` (`sidebar.fixtures.js`)
+- `active_claude_light`, `idle_agy_dark`, `cross_project_agy_light` (`meshNodeDetail.fixtures.js`)
+- `account.fixtures.js` and `shellPopups.fixtures.js` cover the account chooser, chip menu and usage meters — the surfaces `just visual-shot` exists for
+
+The fixture roster is not a per-tool matrix: the mesh and sidebar builders cycle
+`['codex', 'agy', 'claude']` (`src/test/visual/fixtures/builders.js`), so a tool
+added after those fixtures — `grok` today — has no visual scenario yet. Add one
+in the relevant domain fixture when you change a surface that renders it.
 
 Rules:
 

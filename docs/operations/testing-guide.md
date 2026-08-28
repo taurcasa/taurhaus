@@ -210,8 +210,8 @@ Frontend tasks undergo visual review using 8 categories, each scored 1–10 with
 
 **Dual review process**:
 1. Self-review by the implementer
-2. Cross-review by Gemini Pro 3 (screenshot analysis)
-3. Lower score wins; Claude is final arbiter with justified override
+2. Cross-review by the other model family (screenshot analysis), the same Opus ↔ Codex pairing every PR review loop uses
+3. Lower score wins; the orchestrator is final arbiter with justified override
 
 This applies to frontend tasks only — backend tasks skip visual review.
 
