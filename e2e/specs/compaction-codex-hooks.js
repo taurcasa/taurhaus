@@ -38,7 +38,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
@@ -112,8 +112,9 @@ function tmuxQuietly(args) {
   }
 }
 
-/** The Codex composer's prompt marker, as the TUI draws it. */
+/** The Codex composer's prompt marker and its empty-state placeholder. */
 const COMPOSER_MARKER = '\u203a'
+const COMPOSER_PLACEHOLDER = 'Ask Codex to do anything'
 
 function composerHolds(paneContents, text) {
   return paneContents.includes(`${COMPOSER_MARKER} ${text}`) || paneContents.includes(`${COMPOSER_MARKER}${text}`)
@@ -128,15 +129,24 @@ function composerHolds(paneContents, text) {
  * all, which is how the first live attempt at the manual case timed out. Enter
  * is re-sent until the composer no longer holds the text.
  */
-async function sendPaneLine(paneId, text, attempts = 3) {
+async function sendPaneLine(paneId, text, attempts = 4) {
   tmux(['send-keys', '-t', paneId, '-l', text])
+  await browser.pause(600)
+  // Two Enters unconditionally: the first accepts the popup completion for a
+  // slash command, the second sends it. On an empty composer the extra Enter is
+  // a no-op, so a plain prompt is unaffected.
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await browser.pause(400)
     tmux(['send-keys', '-t', paneId, 'Enter'])
-    await browser.pause(800)
-    if (!composerHolds(await capturePane(paneId), text)) return true
+    await browser.pause(900)
+    const pane = await capturePane(paneId)
+    // An empty composer draws its placeholder; treat a capture that shows
+    // neither the text nor the placeholder as "still redrawing" and try again,
+    // because reading a half-drawn screen as success is how `/compact` was
+    // left sitting unsent.
+    if (composerHolds(pane, text)) continue
+    if (pane.includes(COMPOSER_PLACEHOLDER)) return true
   }
-  return false
+  return !composerHolds(await capturePane(paneId), text)
 }
 
 async function invokeTauri(command, args = undefined) {
@@ -593,9 +603,8 @@ async function waitForTurnAfter(previousTurns, timeoutMs = 90_000) {
   }
 }
 
-/** The member's newest Codex rollout transcript, or null. */
-function newestRolloutPath() {
-  const root = join(codexHome, 'sessions')
+/** Every Codex rollout transcript under the scratch home. */
+function rolloutPaths() {
   const found = []
   const walk = (dir) => {
     let entries
@@ -607,14 +616,11 @@ function newestRolloutPath() {
     for (const entry of entries) {
       const path = join(dir, entry.name)
       if (entry.isDirectory()) walk(path)
-      else if (entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
-        found.push({ path, mtime: statSync(path).mtimeMs })
-      }
+      else if (entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) found.push(path)
     }
   }
-  walk(root)
-  found.sort((left, right) => right.mtime - left.mtime)
-  return found[0]?.path ?? null
+  walk(join(codexHome, 'sessions'))
+  return found
 }
 
 /**
@@ -625,13 +631,15 @@ function newestRolloutPath() {
  * to tell "Codex did not compact" from "Codex compacted without calling us".
  */
 function rolloutCompactionCount() {
-  const path = newestRolloutPath()
-  if (!path) return 0
-  try {
-    return (readFileSync(path, 'utf8').match(/"type":"compacted"/g) ?? []).length
-  } catch {
-    return 0
-  }
+  // Across every rollout, not just the newest: a compaction that started a new
+  // session would otherwise read as the count going down.
+  return rolloutPaths().reduce((total, path) => {
+    try {
+      return total + (readFileSync(path, 'utf8').match(/"type":"compacted"/g) ?? []).length
+    } catch {
+      return total
+    }
+  }, 0)
 }
 
 /**
@@ -817,11 +825,17 @@ describe('Codex compaction via hooks', function () {
     expect(submitted).toBe(true)
 
     // Codex's own transcript is the proof that a compaction happened at all.
-    await browser.waitUntil(async () => rolloutCompactionCount() > boundariesBefore, {
-      timeout: HOOK_DELIVERY_TIMEOUT_MS,
-      interval: 2_000,
-      timeoutMsg: `Codex wrote no compaction boundary within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
-    })
+    try {
+      await browser.waitUntil(async () => rolloutCompactionCount() > boundariesBefore, {
+        timeout: HOOK_DELIVERY_TIMEOUT_MS,
+        interval: 2_000,
+        timeoutMsg: `Codex wrote no compaction boundary within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
+      })
+    } catch (error) {
+      console.error(`[e2e] pane when the manual compaction did not land:\n${(await capturePane(managed.paneId)).trimEnd()}`)
+      dumpCompactionEvents('manual /compact produced no boundary', readLog(offset).events)
+      throw error
+    }
 
     // Give the bridge every chance to be called before concluding it was not.
     await browser.pause(HOOK_SETTLE_MS)
