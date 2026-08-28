@@ -66,7 +66,8 @@ impl AccountProvider for CodexAccountProvider {
         let auth = read_auth(dir)?;
         let fallback_id = canonical_path(dir).display().to_string();
         let has_non_chatgpt_credential = auth.has_non_chatgpt_credential();
-        let Some(tokens) = auth.tokens.filter(|_| auth.auth_mode == "chatgpt") else {
+        let is_chatgpt = auth.is_chatgpt();
+        let Some(tokens) = auth.tokens.filter(|_| is_chatgpt) else {
             if !has_non_chatgpt_credential {
                 return None;
             }
@@ -137,8 +138,7 @@ fn canonical_path(path: &Path) -> PathBuf {
 
 #[derive(Deserialize)]
 struct AuthFile {
-    #[serde(default)]
-    auth_mode: String,
+    auth_mode: Option<String>,
     tokens: Option<AuthTokens>,
     #[serde(rename = "OPENAI_API_KEY")]
     openai_api_key: Option<String>,
@@ -148,6 +148,37 @@ struct AuthFile {
 }
 
 impl AuthFile {
+    /// Codex only started writing `auth_mode` in later versions, so a file that
+    /// omits it is read through the credential it actually carries: an access
+    /// token is a ChatGPT login, a key is API-key mode. Inference never
+    /// promotes an empty file — a stub stays no account at all.
+    fn auth_mode(&self) -> Option<&str> {
+        if let Some(mode) = self
+            .auth_mode
+            .as_deref()
+            .map(str::trim)
+            .filter(|mode| !mode.is_empty())
+        {
+            return Some(mode);
+        }
+        if self
+            .tokens
+            .as_ref()
+            .and_then(|tokens| tokens.access_token.as_deref())
+            .is_some_and(|token| !token.trim().is_empty())
+        {
+            return Some("chatgpt");
+        }
+        self.openai_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty())
+            .then_some("apikey")
+    }
+
+    fn is_chatgpt(&self) -> bool {
+        self.auth_mode() == Some("chatgpt")
+    }
+
     fn has_non_chatgpt_credential(&self) -> bool {
         [
             self.openai_api_key.as_deref(),
@@ -235,7 +266,7 @@ impl UsageProvider for CodexUsageProvider {
         let Some(auth) = read_auth(dir) else {
             return unauthorized();
         };
-        if auth.auth_mode != "chatgpt" {
+        if !auth.is_chatgpt() {
             return unauthorized();
         }
         let Some(tokens) = auth.tokens else {
@@ -591,6 +622,62 @@ mod tests {
         // material, so `{}` and Codex's null API-key field became phantom
         // logged-in accounts that forced the account chooser open.
         for auth in [json!({}), json!({"OPENAI_API_KEY": null})] {
+            let root = TempDir::new().unwrap();
+            write_auth(root.path(), auth);
+
+            assert_eq!(CodexAccountProvider.identify(root.path()), None);
+        }
+    }
+
+    #[test]
+    fn auth_without_a_mode_infers_the_credential_it_carries() {
+        // Regression: 2c49132 required an explicit `auth_mode`, so an auth.json
+        // written by an older Codex that carries only `tokens.access_token`
+        // resolved to no account and the chooser lost a signed-in login.
+        let root = TempDir::new().unwrap();
+        let mut auth = chatgpt_auth(4_102_444_800);
+        auth.as_object_mut().unwrap().remove("auth_mode");
+        write_auth(root.path(), auth);
+        let http = FakeHttp::response(
+            200,
+            include_str!("../../daemon/fixtures/codex-wham-usage-0.149.json"),
+        );
+
+        let identity = CodexAccountProvider.identify(root.path()).unwrap();
+
+        assert_eq!(identity.label, "codex@example.com");
+        assert!(identity.usage_capable);
+        assert_eq!(identity.credential_expires_at, Some(4_102_444_800));
+        assert_eq!(
+            CodexUsageProvider.fetch(root.path(), &http).status,
+            UsageStatus::Ok
+        );
+    }
+
+    #[test]
+    fn api_key_without_a_mode_is_an_account_without_usage() {
+        // Regression: 2c49132 read the API-key branch only through an explicit
+        // `auth_mode`, hiding a key-only auth.json written before that field.
+        let root = TempDir::new().unwrap();
+        write_auth(root.path(), json!({"OPENAI_API_KEY": "fixture-key"}));
+
+        let identity = CodexAccountProvider.identify(root.path()).unwrap();
+
+        assert_eq!(identity.label, "API key");
+        assert!(identity.logged_in);
+        assert!(!identity.usage_capable);
+    }
+
+    #[test]
+    fn inferring_a_mode_still_rejects_auth_files_without_a_usable_credential() {
+        // Regression: 2c49132's stub hardening must survive mode inference —
+        // an empty or token-less auth.json is not a logged-in account.
+        for auth in [
+            json!({}),
+            json!({"OPENAI_API_KEY": null}),
+            json!({"tokens": {"id_token": "header.payload.sig"}}),
+            json!({"tokens": {"access_token": "   "}}),
+        ] {
             let root = TempDir::new().unwrap();
             write_auth(root.path(), auth);
 

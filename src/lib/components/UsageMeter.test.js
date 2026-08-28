@@ -111,6 +111,104 @@ describe('UsageMeter', () => {
     expect(screen.getByTestId('usage-meter')).not.toHaveTextContent('5h limit')
   })
 
+  it('falls back to every non-session window when a provider flags none compact', () => {
+    // Regression: 2c49132 gated the compact meter on the `compact` flag as soon
+    // as any window carried one, so a Codex snapshot whose windows are all
+    // unflagged (a plan whose weekly bucket the provider never classified)
+    // filtered down to nothing and the chip and settings meters rendered empty.
+    const resets_at = Math.floor(NOW.getTime() / 1000) + 90_000
+    render(UsageMeter, {
+      props: {
+        tool: 'codex',
+        compact: true,
+        usage: {
+          observed_at: NOW.toISOString(),
+          windows: [
+            { key: 'codex.5h', title: '5h limit', used_percentage: 20, resets_at, compact: false },
+            {
+              key: 'codex.weekly',
+              title: 'Weekly limit',
+              used_percentage: 50,
+              resets_at,
+              compact: false,
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByTestId('usage-meter')).toHaveTextContent('5h limit 20% · Weekly limit 50%')
+  })
+
+  it('shows the session window only when it is the sole window left', () => {
+    // Regression: 2c49132 left a session-only snapshot with nothing to render in
+    // compact surfaces, so an account mid-session showed no headroom at all.
+    const resets_at = Math.floor(NOW.getTime() / 1000) + 3600
+    render(UsageMeter, {
+      props: {
+        tool: 'claude',
+        compact: true,
+        usage: {
+          observed_at: NOW.toISOString(),
+          windows: [
+            {
+              key: 'session',
+              title: 'Current session',
+              used_percentage: 12,
+              resets_at,
+              compact: false,
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByTestId('usage-meter')).toHaveTextContent('Current session 12%')
+  })
+
+  it('keeps a Claude snapshot compacted to its flagged weekly windows', () => {
+    // Regression guard for 2c49132's fallback: providers that do flag windows
+    // must still lose "Current session" from the chip.
+    const resets_at = Math.floor(NOW.getTime() / 1000) + 90_000
+    render(UsageMeter, {
+      props: {
+        tool: 'claude',
+        compact: true,
+        usage: {
+          observed_at: NOW.toISOString(),
+          windows: [
+            {
+              key: 'session',
+              title: 'Current session',
+              used_percentage: 12,
+              resets_at,
+              compact: false,
+            },
+            {
+              key: 'weekly_all',
+              title: 'Current week (all models)',
+              used_percentage: 42,
+              resets_at,
+              compact: true,
+            },
+            {
+              key: 'weekly_scoped:opus:1',
+              title: 'Current week (Opus)',
+              used_percentage: 61,
+              resets_at,
+              compact: true,
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByTestId('usage-meter')).toHaveTextContent(
+      'Current week (all models) 42% · Current week (Opus) 61%'
+    )
+    expect(screen.getByTestId('usage-meter')).not.toHaveTextContent('Current session')
+  })
+
   // Regression: 79be608 built every row from `used_percentage` alone and used
   // `resets_at` only to pick the footer text. A 91 % five-hour reading whose
   // window reset ten minutes ago still rendered as a fresh 91 % bar, steering
