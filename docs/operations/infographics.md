@@ -98,8 +98,16 @@ copy of it anywhere.
 
 A failing image does not stop the others: each request gets 180 s and one retry
 on 5xx/429, the run finishes the rest of the selection, prints a summary table,
-and exits non-zero if anything failed. A failed entry keeps its `stale` markers
-and its old image. The API key is redacted from every error path.
+and exits non-zero if anything failed. The API key is redacted from every error
+path.
+
+The image and its manifest entry are one fact in two files, so they are prepared
+in full and then committed together. If the manifest edit does not apply — a
+missing field, an unwritable file — the old image stays exactly where it was and
+the entry keeps its `stale` markers; a half-applied pair (new pixels under the
+old checksum) is never left behind. Failing to append to the gitignored
+generation log is a warning, not a failure: the image and the manifest are
+already correct.
 
 ## Notes
 

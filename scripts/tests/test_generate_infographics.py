@@ -602,6 +602,91 @@ class RunTests(unittest.TestCase):
             self.assertIn('      image_size: "1536x1024"\n', block)
             self.assertIn('      aspect_ratio: "3:2"\n', block)
 
+    def test_a_manifest_edit_failure_keeps_the_old_image_and_runs_the_next_entry(self):
+        # Regression: 8541bf2 replaced the JPEG before computing the manifest edit and
+        # left ManifestEditError out of the per-image catch, so a malformed entry shipped
+        # new pixels under the old checksum *and* aborted the rest of the batch.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            image_path = root / "docs" / "images" / "coordination-architecture.jpg"
+            before_image = image_path.read_bytes()
+            manifest = root / "docs" / "images" / "infographics.manifest.yaml"
+
+            real_update = gen.update_manifest_text
+
+            def update(text, image_id, **kwargs):
+                if image_id == "coordination-architecture":
+                    raise gen.ManifestEditError(f"{image_id}: no history list in the entry")
+                return real_update(text, image_id, **kwargs)
+
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(gen, "update_manifest_text", side_effect=update):
+                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                    with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
+                        code = gen.main(
+                            ["--id", "coordination-architecture", "--id", "data-model"], repo_root=root
+                        )
+
+            printed = out.getvalue() + err.getvalue()
+            self.assertNotEqual(code, 0)
+            self.assertIn("coordination-architecture", printed)
+            self.assertEqual(image_path.read_bytes(), before_image)
+            blocks = entry_blocks(manifest.read_text(encoding="utf-8"))
+            self.assertIn("stale: true", blocks["coordination-architecture"])
+            # The next entry still ran.
+            self.assertNotIn("stale: true", blocks["data-model"])
+            self.assertNotEqual(
+                (root / "docs" / "images" / "data-model.jpg").read_bytes(),
+                before_image,
+            )
+
+    def test_a_failed_manifest_write_rolls_the_image_back(self):
+        # Regression: 8541bf2 — the image was committed first, so a failed manifest
+        # write left new pixels described by the old checksum and stale markers.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            image_path = root / "docs" / "images" / "coordination-architecture.jpg"
+            before_image = image_path.read_bytes()
+            manifest = root / "docs" / "images" / "infographics.manifest.yaml"
+            before_manifest = manifest.read_text(encoding="utf-8")
+
+            real_write = gen.write_atomic
+
+            def write(path, data):
+                if Path(path).name == "infographics.manifest.yaml":
+                    raise OSError("read-only manifest")
+                return real_write(path, data)
+
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(gen, "write_atomic", side_effect=write):
+                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                    with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
+                        code = gen.main(["--id", "coordination-architecture"], repo_root=root)
+
+            self.assertNotEqual(code, 0)
+            self.assertEqual(image_path.read_bytes(), before_image)
+            self.assertEqual(manifest.read_text(encoding="utf-8"), before_manifest)
+
+    def test_a_generation_log_failure_does_not_stop_the_run(self):
+        # Regression: 8541bf2 appended to the log outside the per-image try, so a log
+        # I/O error aborted every image after it.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(gen, "_log_record", side_effect=OSError("no space left")):
+                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                    with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
+                        code = gen.main(
+                            ["--id", "coordination-architecture", "--id", "data-model"], repo_root=root
+                        )
+            self.assertEqual(code, 0)
+            blocks = entry_blocks(
+                (root / "docs" / "images" / "infographics.manifest.yaml").read_text(encoding="utf-8")
+            )
+            self.assertNotIn("stale: true", blocks["coordination-architecture"])
+            self.assertNotIn("stale: true", blocks["data-model"])
+            self.assertIn("no space left", out.getvalue() + err.getvalue())
+
     def test_a_missing_api_key_fails_before_any_request(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)

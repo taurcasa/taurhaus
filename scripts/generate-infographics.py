@@ -606,6 +606,26 @@ def _log_record(root, record):
         handle.write(json.dumps(record, sort_keys=True) + "\n")
 
 
+def _commit_pair(output_path, jpeg, manifest_file, manifest_text):
+    """Replace the image and the manifest together, or leave both as they were.
+
+    Two files describe one fact — the image and the entry that checksums it — so a
+    half-applied pair is worse than no change at all. The manifest edit is already
+    computed and validated when this runs; if writing it still fails, the image
+    goes back to what it was.
+    """
+    previous = output_path.read_bytes() if output_path.is_file() else None
+    write_atomic(output_path, jpeg)
+    try:
+        write_atomic(manifest_file, manifest_text.encode("utf-8"))
+    except BaseException:
+        if previous is None:
+            output_path.unlink(missing_ok=True)
+        else:
+            write_atomic(output_path, previous)
+        raise
+
+
 def _generate_one(root, config, image_id, entry, args):
     """Generate, convert, write, and return the log record for one image."""
     prompt = build_prompt((entry.get("recipe") or {}).get("prompt") or "")
@@ -626,28 +646,27 @@ def _generate_one(root, config, image_id, entry, args):
         write_atomic(output_path.with_name(f"{output_path.stem}.generated.png"), png_data)
 
     jpeg = png_to_jpeg(png_data, config.max_width, config.jpeg_quality)
-    write_atomic(output_path, jpeg)
     digest = sha256_hex(jpeg)
 
     with Image.open(io.BytesIO(jpeg)) as image:
         dimensions = f"{image.width}x{image.height}"
 
+    # Both outputs are prepared before either is committed: a manifest entry that
+    # cannot take the edit must not cost the old image.
     today = date.today().isoformat()
-    path = manifest_path(root)
-    write_atomic(
-        path,
-        update_manifest_text(
-            path.read_text(encoding="utf-8"),
-            image_id,
-            generation_id=f"gen_{digest[:12]}",
-            model=config.model,
-            image_size=config.size,
-            aspect_ratio=aspect_ratio_for(config.size),
-            sha256=digest,
-            updated_at=today,
-            history_comment=f"regenerated {today} via openai {config.model}",
-        ).encode("utf-8"),
+    manifest_file = manifest_path(root)
+    manifest_text = update_manifest_text(
+        manifest_file.read_text(encoding="utf-8"),
+        image_id,
+        generation_id=f"gen_{digest[:12]}",
+        model=config.model,
+        image_size=config.size,
+        aspect_ratio=aspect_ratio_for(config.size),
+        sha256=digest,
+        updated_at=today,
+        history_comment=f"regenerated {today} via openai {config.model}",
     )
+    _commit_pair(output_path, jpeg, manifest_file, manifest_text)
 
     record = {
         "id": image_id,
@@ -720,12 +739,17 @@ def main(argv=None, repo_root=None):
     for image_id, entry in selected:
         try:
             record = _generate_one(root, config, image_id, entry, args)
-        except (RuntimeError, OSError, ValueError) as error:
+        except (RuntimeError, OSError, ValueError, ManifestEditError) as error:
             message = redact(str(error), config.api_key)
             print(f"error: {image_id}: {message}", file=sys.stderr)
             results.append((image_id, "FAILED", message))
             continue
-        _log_record(root, record)
+        try:
+            _log_record(root, record)
+        except OSError as error:
+            # The log is a gitignored convenience; the image and the manifest are
+            # the real output and they are already committed.
+            print(f"warning: {image_id}: generation log not written: {error}", file=sys.stderr)
         results.append(
             (image_id, "ok", f"{record['dimensions']} · {record['bytes'] / 1024:.0f} KB · {record['duration_s']}s")
         )
