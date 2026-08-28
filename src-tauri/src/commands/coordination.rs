@@ -366,6 +366,7 @@ pub fn coordination_disband_team(
 
 #[tauri::command]
 pub fn coordination_add_member(
+    app: AppHandle,
     state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
@@ -381,6 +382,11 @@ pub fn coordination_add_member(
         project_path,
     )
     .ipc();
+    // The member this persists can be the first grok one on the host, and
+    // grok's hook lives in its home rather than in the team.
+    if result.is_ok() {
+        reconcile_global_harness_hooks(&app);
+    }
     span.finish_result(&result);
     result
 }
