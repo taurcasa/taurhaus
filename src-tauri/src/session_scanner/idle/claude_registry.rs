@@ -91,19 +91,6 @@ impl ActivitySource for ClaudeRegistryActivitySource {
     }
 }
 
-pub struct NoActivitySource;
-
-impl ActivitySource for NoActivitySource {
-    fn authoritative_state(
-        &self,
-        _project_path: &str,
-        _pid: u32,
-        _resolved: &IdleResult,
-    ) -> Option<AuthoritativeState> {
-        None
-    }
-}
-
 /// Directory holding the per-PID registry records.
 const SESSIONS_SUBDIR: &str = "sessions";
 

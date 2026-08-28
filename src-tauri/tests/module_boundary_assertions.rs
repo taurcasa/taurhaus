@@ -219,6 +219,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // declared per-tool capability slice instead.
     const ALLOWED_RUNTIME_FILES: &[&str] = &[
         "src/coordination/compact_hook.rs",
+        "src/daemon/agy_hooks.rs",
         "src/models/mod.rs",
         "src/session_scanner/cli_tool.rs",
         "src/session_scanner/compaction_extractor.rs",
@@ -228,6 +229,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/session_scanner/accounts/legacy_statusline.rs",
         "src/session_scanner/idle/claude.rs",
         "src/session_scanner/idle/codex.rs",
+        "src/session_scanner/idle/agy.rs",
         "src/session_scanner/launch.rs",
         "src/task_scanner/claude.rs",
         "src/task_scanner/codex.rs",

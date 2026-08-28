@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
 
-use super::{IdleResult, SessionResolver, SessionSource};
+use super::{ActivitySource, AuthoritativeState, IdleResult, SessionResolver, SessionSource};
 use crate::session_scanner::SessionState;
 
 const APP_DATA_SUBDIR: &str = "antigravity-cli";
@@ -85,6 +85,42 @@ impl SessionSource for AgyResolver {
         };
         agy_session_for_cwd(&cwd, &base_dir)
     }
+}
+
+pub struct AgyHooksActivitySource;
+
+impl ActivitySource for AgyHooksActivitySource {
+    fn authoritative_state(
+        &self,
+        _project_path: &str,
+        _pid: u32,
+        resolved: &IdleResult,
+    ) -> Option<AuthoritativeState> {
+        agy_hook_state_at(
+            resolved,
+            &crate::provider::platform_paths::PlatformPaths::agy_hooks_path(),
+            &crate::provider::platform_paths::PlatformPaths::agy_dir(),
+        )
+    }
+}
+
+fn agy_hook_state_at(
+    resolved: &IdleResult,
+    sink_path: &Path,
+    agy_root: &Path,
+) -> Option<AuthoritativeState> {
+    let session_id = resolved.session_id.as_deref()?;
+    if !crate::coordination::agy_hooks_installer::agy_hooks_installed_at(agy_root) {
+        return None;
+    }
+    let record = crate::daemon::agy_hooks::latest_record_for_session(sink_path, session_id)?;
+    Some(AuthoritativeState {
+        state: match record.state {
+            crate::daemon::agy_hooks::AgyHookState::Busy => SessionState::Active,
+            crate::daemon::agy_hooks::AgyHookState::Idle => SessionState::Idle,
+        },
+        source: "agy_hooks",
+    })
 }
 
 fn agy_session_for_cwd(cwd: &Path, base_dir: &Path) -> IdleResult {
@@ -249,6 +285,41 @@ mod tests {
                     .join(".gemini/antigravity-cli/presence")
                     .join(format!("{session_id}.lock"))
             )
+        );
+    }
+
+    #[test]
+    fn enabled_agy_hooks_are_authoritative_but_disabled_hooks_use_the_floor() {
+        // Regression: commit c0aa59a made native activity authoritative only
+        // for always-on sources; agy's unverified hook loading must be opt-in.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join(".gemini");
+        let sink = tmp.path().join("agy-hooks.jsonl");
+        let executable = tmp.path().join("taurhaus-daemon");
+        fs::write(&executable, "fixture").unwrap();
+        let resolved = IdleResult {
+            state: SessionState::Idle,
+            session_id: Some("conversation-1".to_string()),
+            jsonl_path: Some("conversation-1.db".to_string()),
+            last_output_age_secs: None,
+            authoritative: false,
+        };
+        crate::daemon::agy_hooks::append_event_at(
+            &sink,
+            crate::daemon::agy_hooks::AgyHookEvent::Busy,
+            r#"{"conversationId":"conversation-1"}"#,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+
+        assert!(agy_hook_state_at(&resolved, &sink, &root).is_none());
+        crate::coordination::agy_hooks_installer::ensure_agy_hooks_installed_at(&root, &executable)
+            .unwrap();
+        assert_eq!(
+            agy_hook_state_at(&resolved, &sink, &root)
+                .expect("enabled hook state")
+                .state,
+            SessionState::Active
         );
     }
 }

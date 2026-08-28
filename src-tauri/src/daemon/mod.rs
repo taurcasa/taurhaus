@@ -1,3 +1,4 @@
+pub mod agy_hooks;
 pub mod auth;
 pub mod codex_notify;
 pub(crate) mod compaction;

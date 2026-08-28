@@ -853,12 +853,16 @@ pub struct HarnessSettings {
     #[serde(default)]
     #[serde(alias = "codex_compaction")]
     pub codex_compaction: CodexCompactionMode,
+    /// Antigravity hook loading is trust-gated upstream and remains opt-in.
+    #[serde(default)]
+    pub agy_hooks: bool,
 }
 
 impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
             codex_compaction: CodexCompactionMode::Transcript,
+            agy_hooks: false,
         }
     }
 }
@@ -1219,6 +1223,13 @@ mod tests {
             legacy.harness.codex_compaction,
             CodexCompactionMode::Transcript
         );
+    }
+
+    #[test]
+    fn terminal_settings_default_agy_hooks_off() {
+        // Regression: commit 6fe0aa3 enabled verified Codex hooks by policy;
+        // agy's workspace-trust loading is unverified and must stay opt-in.
+        assert!(!TerminalSettings::default().harness.agy_hooks);
     }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;

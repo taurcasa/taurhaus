@@ -650,13 +650,13 @@ impl CliToolSpec {
             crate::session_scanner::idle::ClaudeRegistryActivitySource;
         static CODEX: crate::session_scanner::idle::CodexNotifyActivitySource =
             crate::session_scanner::idle::CodexNotifyActivitySource;
-        static NONE: crate::session_scanner::idle::NoActivitySource =
-            crate::session_scanner::idle::NoActivitySource;
+        static AGY: crate::session_scanner::idle::AgyHooksActivitySource =
+            crate::session_scanner::idle::AgyHooksActivitySource;
 
         match self.tool {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
-            CliTool::Agy => &NONE,
+            CliTool::Agy => &AGY,
         }
     }
 

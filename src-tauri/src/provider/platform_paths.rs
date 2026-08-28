@@ -38,6 +38,11 @@ impl PlatformPaths {
         Self::app_data_root().join(crate::daemon::codex_notify::CODEX_NOTIFY_FILENAME)
     }
 
+    /// Native Antigravity hook activity sink.
+    pub fn agy_hooks_path() -> PathBuf {
+        Self::app_data_root().join(crate::daemon::agy_hooks::AGY_HOOKS_FILENAME)
+    }
+
     /// Claude home directory (`~/.claude`).
     pub fn claude_dir() -> PathBuf {
         env_path_override(CLAUDE_DIR_OVERRIDE_ENV).unwrap_or_else(default_claude_dir)
@@ -61,6 +66,14 @@ impl PlatformPaths {
     /// Codex home directory (`$CODEX_HOME` or `~/.codex`).
     pub fn codex_dir() -> PathBuf {
         env_path_override(CODEX_HOME_ENV).unwrap_or_else(default_codex_dir)
+    }
+
+    /// Antigravity's shared Google tooling root (`~/.gemini`).
+    pub fn agy_dir() -> PathBuf {
+        if let Some(path) = windows_unc_home_subdir(".gemini") {
+            return path;
+        }
+        home_dir_or_temp().join(".gemini")
     }
 
     /// App-data root used by coordination template hydration.
