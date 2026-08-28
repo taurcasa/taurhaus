@@ -516,6 +516,15 @@ fn read_tail_state(path: &Path, length: u64) -> Option<SessionState> {
     let mut tail = Vec::new();
     file.take(EVENTS_TAIL_BYTES).read_to_end(&mut tail).ok()?;
     let tail = String::from_utf8_lossy(&tail);
+    // grok terminates every record with a newline, so a tail that does not end
+    // in one is a record still being appended. Its own type is unreadable, and
+    // the record behind it is already obsolete, so the file cannot answer yet:
+    // return `None` and let the process-IO floor carry the poll rather than
+    // asserting an older turn boundary. `events_state` caches nothing for a
+    // `None`, so the next poll re-reads the completed record.
+    if !tail.ends_with('\n') {
+        return None;
+    }
 
     tail.lines()
         .rev()
@@ -846,6 +855,52 @@ mod tests {
                 .expect("settled turn")
                 .state,
             SessionState::Idle
+        );
+    }
+
+    #[test]
+    fn a_half_written_event_never_reasserts_the_previous_turn_boundary() {
+        // Regression: commit 358a7c9 parsed the tail in reverse and silently
+        // skipped every line that failed to parse, so a `turn_started` record
+        // caught mid-append let the completed `turn_ended` behind it answer as
+        // authoritative Idle. `classification.rs` applies an authoritative state
+        // with no hysteresis, so an active turn flipped to idle for that poll.
+        let tmp = TempDir::new().unwrap();
+        let home = grok_home(&tmp);
+        let events = write_session(
+            &home,
+            "%2Fhome%2Fuser",
+            SESSION_ID,
+            &[
+                r#"{"ts":"1","type":"turn_started","turn_number":0}"#,
+                r#"{"ts":"2","type":"turn_ended","outcome":"completed"}"#,
+            ],
+        );
+        let resolved = IdleResult {
+            state: SessionState::Idle,
+            session_id: Some(SESSION_ID.to_string()),
+            jsonl_path: Some(events.to_string_lossy().into_owned()),
+            last_output_age_secs: None,
+            authoritative: false,
+        };
+
+        assert_eq!(
+            GrokEventsActivitySource::authoritative_state_at(&resolved)
+                .expect("settled turn")
+                .state,
+            SessionState::Idle
+        );
+
+        // The next turn's record is still being appended. grok terminates every
+        // record with a newline, so an unterminated tail is a record in flight.
+        let mut appended = fs::read_to_string(&events).unwrap();
+        appended.push_str(r#"{"ts":"3","type":"turn_st"#);
+        fs::write(&events, appended).unwrap();
+
+        assert_eq!(
+            GrokEventsActivitySource::authoritative_state_at(&resolved),
+            None,
+            "a record still being written cannot leave the one behind it authoritative"
         );
     }
 
