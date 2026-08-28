@@ -66,7 +66,7 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 | `usage.fetched` | debug | `{tool, account_id, status, windows}` — never tokens, never a URL with a query string. |
 | `usage.failed` | warn | Once per state change, per (tool, account). |
 | `claude.usage.legacy_bridge.removed` | info | One-shot uninstall of the retired 0.6.8 Claude status-line bridge. |
-| `agy.hooks.degraded` | warn | Antigravity's opt-in activity hooks could not be installed or reconciled. |
+| `agy.hooks.degraded` | warn | Antigravity's activity hooks could not be installed, or the CLI version gate (agy 1.1.10) left them off. Logged once per run for the version gate. |
 | `codex.notify.appended` / `.executable_missing` | info (daemon) / warn | Codex turn-complete sink. |
 | `daemon.data_root.mismatch` | warn | App and daemon resolved different app-data roots. |
 | `compaction.owner.selected` / `.failed` | info / warn | `{owner: hooks \| daemon \| app, status, reason}`. |

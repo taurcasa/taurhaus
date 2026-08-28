@@ -93,7 +93,8 @@ There is exactly one teams-dir authority: `PlatformPaths::teams_dir()` = `claude
 | Codex | session transcripts | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex | observe/parse |
 | Antigravity CLI | conversations | `~/.gemini/antigravity-cli/conversations/*.db` + `cache/last_conversations.json` | Antigravity CLI | observe (identity only; the SQLite transcript is never parsed) |
 | Antigravity CLI | presence locks | `~/.gemini/antigravity-cli/presence/*.lock` | Antigravity CLI | observe (advisory flock) |
-| Antigravity CLI | activity hooks | `<app data>/agy-hooks.jsonl` | taurhaus (opt-in hook sink) | own/append |
+| Antigravity CLI | activity hooks | `<app data>/agy-hooks.jsonl` | taurhaus (hook sink) | own/append |
+| Antigravity CLI | hook registrations | `~/.gemini/config/hooks.json` | shared with the user and the TUI | merge one `taurhaus` entry by name; write through a symlinked target |
 | Grok CLI | live session registry | `<GROK_HOME>/active_sessions.json` | Grok CLI | observe/parse |
 | Grok CLI | turn lifecycle | `<GROK_HOME>/sessions/<encoded-cwd>/<session-id>/events.jsonl` | Grok CLI | observe/tail |
 | Grok CLI | compaction hooks | `<GROK_HOME>/hooks/*.json` | taurhaus (managed installer) | own/write |

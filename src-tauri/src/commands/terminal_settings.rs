@@ -305,15 +305,81 @@ pub(crate) fn reconcile_codex_compaction(
 }
 
 pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationError> {
-    let root = PlatformPaths::agy_dir();
-    if enabled {
-        crate::coordination::agy_hooks_installer::ensure_agy_hooks_installed_at(
-            &root,
-            &PlatformPaths::daemon_binary_path(),
-        )
-    } else {
-        crate::coordination::agy_hooks_installer::remove_agy_hooks_at(&root)
+    reconcile_agy_hooks_at(
+        &PlatformPaths::agy_dir(),
+        enabled,
+        CliVersions::current().agy_hooks_support(),
+        &PlatformPaths::daemon_binary_path(),
+    )
+}
+
+/// Reconcile the Antigravity activity hooks against the setting and the CLI
+/// version gate. An unresolved version is not proof of an unsupported CLI, so
+/// it leaves whatever is installed alone instead of disabling a live session's
+/// idle edge.
+pub(crate) fn reconcile_agy_hooks_at(
+    agy_root: &std::path::Path,
+    enabled: bool,
+    hooks_support: Option<bool>,
+    daemon_executable: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    if enabled && hooks_support != Some(true) {
+        log_agy_hooks_gate_once(hooks_support);
     }
+    match (enabled, hooks_support) {
+        (true, Some(true)) => {
+            crate::coordination::agy_hooks_installer::ensure_agy_hooks_installed_at(
+                agy_root,
+                daemon_executable,
+            )
+        }
+        (true, None) => Ok(false),
+        _ => crate::coordination::agy_hooks_installer::remove_agy_hooks_at(agy_root),
+    }
+}
+
+/// One line per run: the gate is re-evaluated on every startup and every
+/// settings save, and none of those repeats carry new information.
+fn log_agy_hooks_gate_once(hooks_support: Option<bool>) {
+    static LOGGED: std::sync::Once = std::sync::Once::new();
+    LOGGED.call_once(|| {
+        let (reason, message) = match hooks_support {
+            Some(false) => (
+                "unsupported_version",
+                "Antigravity activity hooks require agy 1.1.10 or newer",
+            ),
+            _ => (
+                "version_unknown",
+                "Left the Antigravity activity hooks unchanged because the agy version was unavailable",
+            ),
+        };
+        tracing::warn!(
+            reason,
+            agy_version = ?CliVersions::current().agy,
+            minimum_version = "1.1.10",
+            "Antigravity activity hooks are gated on the CLI version"
+        );
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "tool".to_string(),
+            serde_json::Value::String("agy".to_string()),
+        );
+        fields.insert(
+            "reason".to_string(),
+            serde_json::Value::String(reason.to_string()),
+        );
+        fields.insert(
+            "minimum_version".to_string(),
+            serde_json::Value::String("1.1.10".to_string()),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            "agy.hooks.degraded",
+            Some(message.to_string()),
+            fields,
+        );
+    });
 }
 
 /// Reconcile the one global grok hook against the current roster.

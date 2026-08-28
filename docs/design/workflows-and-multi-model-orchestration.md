@@ -103,6 +103,8 @@ All Claude runs on haiku, all Codex runs on gpt-5.4-mini with `--ephemeral` wher
 
 ## Open questions
 
+Answered 2026-08-28 (spikes 1a/1b/2, see [`workflows-integration-plan.md`](workflows-integration-plan.md)): user-scope resolution works (`<CLAUDE_CONFIG_DIR>/workflows/`) alongside project scope; a taurhaus-launched member invokes `Workflow` on a mesh-style notice with no opt-in; the run tree is reconstructible live from the journal, agent transcripts and the persisted script, while `<runId>.json` is written only at the end and the sessions registry never marks a headless parent busy.
+
 - Does a running workflow survive parent exit and get "adopted" on `claude --resume`? Binary strings mention a `scriptSha256` checkpoint; untested.
 - Is `wf_<id>.json` ever rewritten mid-run (cheap polling) or only at the end (tailing required)? Three in-flight runs say end-only; Experiment 2 checks.
 - Can a Claude team member invoke `Workflow` at all, and with which opt-in (Experiment 1b)? Do workflow subagents inherit the parent's MCP servers and team context (TeammateMailbox)?

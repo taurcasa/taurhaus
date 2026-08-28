@@ -105,7 +105,7 @@ function mockSettings(overrides = {}) {
     custom_command: '',
     tmux_layout: 'new_window',
     cli_commands: mockCliCommandDefaults(),
-    harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
+    harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true },
     ...(overrides.terminal ?? {}),
   }
 
@@ -425,18 +425,19 @@ describe('Settings component', () => {
     })
   })
 
-  it('keeps Antigravity native activity hooks opt-in and persists the toggle', async () => {
-    // Regression: 4e9e2c5 added the backend hook sink without an opt-in UI.
+  it('has Antigravity native activity hooks on by default and persists opting out', async () => {
+    // Regression: 4e9e2c5 defaulted the hooks off while their trust-gated
+    // loading was unverified; agy 1.1.22 was then observed firing them.
     render(Settings, { props: defaultProps() })
 
     const toggle = await screen.findByTestId('agy-hooks-toggle')
-    expect(toggle).not.toBeChecked()
+    expect(toggle).toBeChecked()
     await fireEvent.click(toggle)
 
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
         terminal: expect.objectContaining({
-          harness: expect.objectContaining({ agy_hooks: true }),
+          harness: expect.objectContaining({ agy_hooks: false }),
         }),
       }))
     })

@@ -4,7 +4,11 @@ use std::path::{Path, PathBuf};
 
 use crate::coordination::errors::CoordinationError;
 
-const HOOKS_FILE: &str = "antigravity-cli/hooks.json";
+/// The shared user-level hooks file agy 1.0.8 moved to and the TUI edits.
+const HOOKS_FILE: &str = "config/hooks.json";
+/// The pre-1.0.8 app-data file. agy still loads it as a second source, and its
+/// one-shot migration replaces it with a symlink onto the shared file.
+const LEGACY_HOOKS_FILE: &str = "antigravity-cli/hooks.json";
 const TAURHAUS_HOOK: &str = "taurhaus";
 
 fn hook_executable_probe_path(agy_root: &Path, daemon_executable: &Path) -> PathBuf {
@@ -54,27 +58,52 @@ pub fn ensure_agy_hooks_installed_at(
     root.as_object_mut()
         .expect("hook root was validated")
         .insert(TAURHAUS_HOOK.to_string(), taurhaus_entry(daemon_executable));
-    if root == original {
-        return Ok(false);
+    let changed = root != original;
+    if changed {
+        write_hooks(&path, &root)?;
     }
-    write_hooks(&path, &root)?;
-    Ok(true)
+    Ok(prune_legacy_hooks(agy_root)? || changed)
 }
 
 pub fn remove_agy_hooks_at(agy_root: &Path) -> Result<bool, CoordinationError> {
-    let path = hooks_path(agy_root);
-    let mut root = load_hooks(&path)?;
+    let changed = remove_taurhaus_entry(&hooks_path(agy_root))?;
+    Ok(prune_legacy_hooks(agy_root)? || changed)
+}
+
+/// Drop any taurhaus entry left in the pre-1.0.8 file. agy reads both paths as
+/// distinct sources, so an entry left behind would install our hook twice —
+/// unless its own migration already symlinked the legacy path onto the shared
+/// file, in which case pruning would delete the entry we just wrote.
+fn prune_legacy_hooks(agy_root: &Path) -> Result<bool, CoordinationError> {
+    let legacy = legacy_hooks_path(agy_root);
+    if !legacy.exists() || is_same_file(&legacy, &hooks_path(agy_root)) {
+        return Ok(false);
+    }
+    remove_taurhaus_entry(&legacy)
+}
+
+fn remove_taurhaus_entry(path: &Path) -> Result<bool, CoordinationError> {
+    let mut root = load_hooks(path)?;
     let changed = root
         .as_object_mut()
         .expect("hook root was validated")
         .remove(TAURHAUS_HOOK)
         .is_some();
     if changed {
-        write_hooks(&path, &root)?;
+        write_hooks(path, &root)?;
     }
     Ok(changed)
 }
 
+fn is_same_file(left: &Path, right: &Path) -> bool {
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+/// Read the installed hooks back from disk. `agy -p /hooks` is not a health
+/// check: print mode loads no customizations at all, trusted or not.
 pub fn agy_hooks_installed_at(agy_root: &Path) -> bool {
     load_hooks(&hooks_path(agy_root))
         .ok()
@@ -88,6 +117,32 @@ pub fn agy_hooks_installed_at(agy_root: &Path) -> bool {
 
 fn hooks_path(agy_root: &Path) -> PathBuf {
     agy_root.join(HOOKS_FILE)
+}
+
+fn legacy_hooks_path(agy_root: &Path) -> PathBuf {
+    agy_root.join(LEGACY_HOOKS_FILE)
+}
+
+/// Follow a symlinked hooks file to the file agy actually reads. Renaming a
+/// tempfile onto the link itself would replace it with a private regular file.
+fn resolve_symlink_target(path: &Path) -> PathBuf {
+    let mut current = path.to_path_buf();
+    for _ in 0..8 {
+        let Ok(metadata) = fs::symlink_metadata(&current) else {
+            break;
+        };
+        if !metadata.file_type().is_symlink() {
+            break;
+        }
+        let Ok(target) = fs::read_link(&current) else {
+            break;
+        };
+        current = match current.parent() {
+            Some(parent) if target.is_relative() => parent.join(target),
+            _ => target,
+        };
+    }
+    current
 }
 
 fn taurhaus_entry(daemon_executable: &Path) -> Value {
@@ -149,6 +204,7 @@ fn load_hooks(path: &Path) -> Result<Value, CoordinationError> {
 }
 
 fn write_hooks(path: &Path, value: &Value) -> Result<(), CoordinationError> {
+    let path = &resolve_symlink_target(path);
     let parent = path.parent().ok_or_else(|| {
         CoordinationError::StoreError(format!("hook path '{}' has no parent", path.display()))
     })?;
@@ -175,10 +231,10 @@ mod tests {
         // unverified trust-gated hooks must be explicit and preserve neighbors.
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join(".gemini");
-        let app_dir = root.join("antigravity-cli");
-        std::fs::create_dir_all(&app_dir).unwrap();
+        let shared_dir = root.join("config");
+        std::fs::create_dir_all(&shared_dir).unwrap();
         std::fs::write(
-            app_dir.join("hooks.json"),
+            shared_dir.join("hooks.json"),
             r#"{"foreign":{"Stop":[{"type":"command","command":"foreign"}]}}"#,
         )
         .unwrap();
@@ -191,9 +247,103 @@ mod tests {
         assert!(remove_agy_hooks_at(&root).unwrap());
         assert!(!remove_agy_hooks_at(&root).unwrap());
         let value: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(app_dir.join("hooks.json")).unwrap()).unwrap();
+            serde_json::from_slice(&std::fs::read(shared_dir.join("hooks.json")).unwrap()).unwrap();
         assert!(value.get("foreign").is_some());
         assert!(value.get("taurhaus").is_none());
+    }
+
+    #[test]
+    fn installer_writes_the_shared_hooks_file_and_keeps_foreign_entries() {
+        // Regression: commit 4e9e2c5 wrote the legacy `antigravity-cli` file
+        // that agy 1.0.8 replaced with the shared `config/hooks.json`.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".gemini");
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::write(
+            root.join(HOOKS_FILE),
+            r#"{"foreign":{"Stop":[{"type":"command","command":"foreign"}]}}"#,
+        )
+        .unwrap();
+        let executable = temp.path().join("taurhaus-daemon");
+        std::fs::write(&executable, "fixture").unwrap();
+
+        assert!(ensure_agy_hooks_installed_at(&root, &executable).unwrap());
+        assert!(agy_hooks_installed_at(&root));
+        let value: Value =
+            serde_json::from_slice(&std::fs::read(root.join(HOOKS_FILE)).unwrap()).unwrap();
+        assert!(value.get("foreign").is_some());
+        assert!(value.get(TAURHAUS_HOOK).is_some());
+        assert!(!root.join(LEGACY_HOOKS_FILE).exists());
+    }
+
+    #[test]
+    fn installer_clears_taurhaus_entries_from_the_legacy_hooks_file() {
+        // Regression: commit 4e9e2c5 owned the legacy path, so moving to the
+        // shared file would leave a second taurhaus entry loading behind it.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".gemini");
+        std::fs::create_dir_all(root.join("antigravity-cli")).unwrap();
+        std::fs::write(
+            root.join(LEGACY_HOOKS_FILE),
+            serde_json::to_vec_pretty(&json!({
+                "foreign": {"Stop": [{"type": "command", "command": "foreign"}]},
+                TAURHAUS_HOOK: taurhaus_entry(Path::new("/stale/taurhaus-daemon")),
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let executable = temp.path().join("taurhaus-daemon");
+        std::fs::write(&executable, "fixture").unwrap();
+
+        assert!(ensure_agy_hooks_installed_at(&root, &executable).unwrap());
+
+        let legacy: Value =
+            serde_json::from_slice(&std::fs::read(root.join(LEGACY_HOOKS_FILE)).unwrap()).unwrap();
+        assert!(legacy.get("foreign").is_some());
+        assert!(legacy.get(TAURHAUS_HOOK).is_none());
+        assert!(agy_hooks_installed_at(&root));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installer_writes_through_a_symlinked_shared_hooks_file() {
+        // Regression: commit 4e9e2c5 renamed a tempfile onto the target, which
+        // replaces agy's migration symlink with a private regular file.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".gemini");
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        let target = temp.path().join("shared-hooks.json");
+        std::fs::write(&target, "{}").unwrap();
+        std::os::unix::fs::symlink(&target, root.join(HOOKS_FILE)).unwrap();
+        let executable = temp.path().join("taurhaus-daemon");
+        std::fs::write(&executable, "fixture").unwrap();
+
+        assert!(ensure_agy_hooks_installed_at(&root, &executable).unwrap());
+
+        assert!(std::fs::symlink_metadata(root.join(HOOKS_FILE))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        let value: Value = serde_json::from_slice(&std::fs::read(&target).unwrap()).unwrap();
+        assert!(value.get(TAURHAUS_HOOK).is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn migrated_legacy_symlink_is_never_pruned_into_the_shared_file() {
+        // Regression: agy's own migration symlinks the legacy path onto the
+        // shared file, so pruning it would delete the entry just installed.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".gemini");
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::create_dir_all(root.join("antigravity-cli")).unwrap();
+        std::fs::write(root.join(HOOKS_FILE), "{}").unwrap();
+        std::os::unix::fs::symlink(root.join(HOOKS_FILE), root.join(LEGACY_HOOKS_FILE)).unwrap();
+        let executable = temp.path().join("taurhaus-daemon");
+        std::fs::write(&executable, "fixture").unwrap();
+
+        assert!(ensure_agy_hooks_installed_at(&root, &executable).unwrap());
+        assert!(agy_hooks_installed_at(&root));
     }
 
     #[test]

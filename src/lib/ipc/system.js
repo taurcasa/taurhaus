@@ -42,9 +42,11 @@ const EMPTY_MODEL_CATALOG = {
 const EMPTY_CLI_VERSIONS = {
   codex: null,
   claude: null,
+  agy: null,
   codex_compaction_hooks_supported: false,
   codex_notify_supported: false,
   codex_queue_wake_supported: false,
+  agy_hooks_supported: false,
 }
 
 const DEFAULT_TERMINAL_CONTRACTS = {
@@ -125,6 +127,7 @@ function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
   return {
     codex: versions.codex == null ? null : String(versions.codex),
     claude: versions.claude == null ? null : String(versions.claude),
+    agy: versions.agy == null ? null : String(versions.agy),
     codex_compaction_hooks_supported: Boolean(
       versions.codex_compaction_hooks_supported ??
         versions.codexCompactionHooksSupported ??
@@ -139,6 +142,9 @@ function normalizeCliVersions(raw, defaults = EMPTY_CLI_VERSIONS) {
       versions.codex_queue_wake_supported ??
         versions.codexQueueWakeSupported ??
         defaults.codex_queue_wake_supported,
+    ),
+    agy_hooks_supported: Boolean(
+      versions.agy_hooks_supported ?? versions.agyHooksSupported ?? defaults.agy_hooks_supported,
     ),
   }
 }
@@ -271,7 +277,7 @@ function normalizeSettings(raw) {
       },
       harness: {
         codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
-        agy_hooks: Boolean(agyHooks),
+        agy_hooks: agyHooks == null ? true : Boolean(agyHooks),
         grok_hooks: grokHooks == null ? true : Boolean(grokHooks),
       },
       claude_default_account_id:
