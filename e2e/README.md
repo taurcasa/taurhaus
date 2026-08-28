@@ -48,6 +48,15 @@ just build-e2e
 Important: do **not** replace this with plain `cargo build`.
 E2E requires the Tauri debug/no-bundle build so the app serves embedded assets correctly.
 
+For the same reason, do not run `cargo build`, `cargo check --all-targets` or
+`cargo clippy --all-targets` against `src-tauri/` between building and running E2E:
+they overwrite `src-tauri/target/debug/taurhaus` with a binary that was not produced by
+the Tauri build, and the app then starts, logs a healthy backend, and renders a blank
+page — which surfaces as `App did not render within 45s`. Re-run `just build-e2e` (or
+drop `E2E_SKIP_BUILD=1`) after any such cargo invocation. Running cargo *during* a live
+E2E run replaces the binary underneath the app and ends the session with
+`invalid session id`.
+
 ## 3) Run tests
 
 Single spec (safe default, includes build):
