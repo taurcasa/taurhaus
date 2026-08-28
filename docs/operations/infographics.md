@@ -96,10 +96,12 @@ copy of it anywhere.
 
 ## Failure behavior
 
-A failing image does not stop the others: each request gets 180 s and one retry
-on 5xx/429, the run finishes the rest of the selection, prints a summary table,
-and exits non-zero if anything failed. The API key is redacted from every error
-path.
+A failing image does not stop the others: each image gets one 180 s end-to-end
+budget — connect, upload, reading the response, the backoff, and the one retry
+on 5xx/429 all come out of it, so a peer that answers slowly cannot hold the
+batch open — and the run finishes the rest of the selection, prints a summary
+table, and exits non-zero if anything failed. The API key is redacted from every
+error path.
 
 The image and its manifest entry are one fact in two files, so they are prepared
 in full and then committed together. If the manifest edit does not apply — a

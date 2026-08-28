@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 import unittest
 import urllib.error
 from contextlib import redirect_stdout
@@ -82,17 +83,32 @@ def entry_blocks(text):
     return {key: "".join(value) for key, value in blocks.items()}
 
 
+class FakeResponse(io.BytesIO):
+    """A response that reads once, like a socket — not a mock that repeats itself."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
 def fake_response(png=None, payload=None):
     body = (
         payload
         if payload is not None
         else {"data": [{"b64_json": base64.b64encode(png or png_bytes()).decode("ascii")}]}
     )
-    response = mock.MagicMock()
-    response.read.return_value = json.dumps(body).encode("utf-8")
-    response.__enter__.return_value = response
-    response.__exit__.return_value = False
-    return response
+    return FakeResponse(json.dumps(body).encode("utf-8"))
+
+
+def fake_urlopen(png=None, payload=None):
+    """A urlopen stand-in that hands every call its own unread response."""
+
+    def urlopen(request, timeout=None):
+        return fake_response(png, payload)
+
+    return urlopen
 
 
 class EnvParsingTests(unittest.TestCase):
@@ -258,6 +274,75 @@ class RequestBuildingTests(unittest.TestCase):
         described = gen.describe_request(request)
         self.assertNotIn(FAKE_KEY, described)
         self.assertIn("Bearer ***redacted***", described)
+
+
+class DripResponse:
+    """A peer that answers, slowly: one byte per chunk read, forever."""
+
+    def __init__(self, body, chunk_delay=0.05, full_read_delay=2.0):
+        self.body = body
+        self.chunk_delay = chunk_delay
+        self.full_read_delay = full_read_delay
+        self.offset = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self, size=-1):
+        if size is None or size < 0:
+            # A blocking full read: the whole body eventually arrives, long after
+            # any per-socket inactivity timeout would have been satisfied.
+            time.sleep(self.full_read_delay)
+            self.offset = len(self.body)
+            return self.body
+        time.sleep(self.chunk_delay)
+        chunk = self.body[self.offset : self.offset + 1]
+        self.offset += len(chunk)
+        return chunk
+
+
+class DeadlineTests(unittest.TestCase):
+    """The request budget is an end-to-end deadline, not a per-socket timeout."""
+
+    def setUp(self):
+        self.config = gen.resolve_config({"OPENAI_API_KEY": FAKE_KEY}, {})
+        self.request = gen.build_generation_request(self.config, "PROMPT TEXT")
+
+    def test_a_slow_drip_response_cannot_outlive_the_deadline(self):
+        # Regression: 8541bf2 passed the timeout to urlopen only, where it is an
+        # inactivity timeout, and then called response.read() with no deadline at
+        # all — a peer trickling bytes held the sequential batch open indefinitely.
+        body = json.dumps({"data": [{"b64_json": "AAAA"}]}).encode("utf-8")
+        started = time.monotonic()
+        with mock.patch.object(gen.urllib.request, "urlopen", return_value=DripResponse(body)):
+            with self.assertRaises(RuntimeError) as caught:
+                gen.post_with_retry(self.request, secret=FAKE_KEY, timeout=0.2)
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.5)
+        self.assertIn("timed out", str(caught.exception).lower())
+        self.assertNotIn(FAKE_KEY, str(caught.exception))
+
+    def test_the_retry_backoff_counts_against_the_deadline(self):
+        # Regression: 8541bf2 slept the full backoff even when the budget for this
+        # image was already spent.
+        failure = urllib.error.HTTPError(
+            f"{self.config.base_url}/images/generations", 500, "Server Error", {}, io.BytesIO(b"boom")
+        )
+        started = time.monotonic()
+        with mock.patch.object(gen.urllib.request, "urlopen", side_effect=failure):
+            with self.assertRaises(RuntimeError):
+                gen.post_with_retry(self.request, secret=FAKE_KEY, timeout=0.05)
+        self.assertLess(time.monotonic() - started, gen.RETRY_BACKOFF_S)
+
+    def test_a_prompt_response_is_read_in_full(self):
+        payload = {"data": [{"b64_json": "AAAA"}], "usage": {"total_tokens": 7}}
+        body = json.dumps(payload).encode("utf-8")
+        response = DripResponse(body, chunk_delay=0.0, full_read_delay=0.0)
+        with mock.patch.object(gen.urllib.request, "urlopen", return_value=response):
+            self.assertEqual(gen.post_with_retry(self.request, secret=FAKE_KEY, timeout=30), payload)
 
 
 class ConversionTests(unittest.TestCase):
@@ -477,7 +562,7 @@ class RunTests(unittest.TestCase):
     def test_a_successful_run_writes_the_jpeg_manifest_and_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
-            with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()) as urlopen:
+            with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()) as urlopen:
                 buffer = io.StringIO()
                 with redirect_stdout(buffer):
                     code = gen.main(["--id", "coordination-architecture"], repo_root=root)
@@ -511,7 +596,7 @@ class RunTests(unittest.TestCase):
     def test_no_reference_forces_a_plain_generation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
-            with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()) as urlopen:
+            with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()) as urlopen:
                 with redirect_stdout(io.StringIO()):
                     code = gen.main(["--id", "coordination-architecture", "--no-reference"], repo_root=root)
             self.assertEqual(code, 0)
@@ -521,7 +606,7 @@ class RunTests(unittest.TestCase):
     def test_keep_png_writes_the_raw_generation_next_to_the_jpeg(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
-            with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+            with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()):
                 with redirect_stdout(io.StringIO()):
                     code = gen.main(["--id", "data-model", "--keep-png"], repo_root=root)
             self.assertEqual(code, 0)
@@ -588,7 +673,7 @@ class RunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             with mock.patch.dict(os.environ, {"OPENAI_IMAGE_SIZE": "1536x1024"}):
-                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()):
                     with redirect_stdout(io.StringIO()):
                         code = gen.main(
                             ["--id", "coordination-architecture", "--allow-aspect-change"],
@@ -621,7 +706,7 @@ class RunTests(unittest.TestCase):
 
             out, err = io.StringIO(), io.StringIO()
             with mock.patch.object(gen, "update_manifest_text", side_effect=update):
-                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()):
                     with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
                         code = gen.main(
                             ["--id", "coordination-architecture", "--id", "data-model"], repo_root=root
@@ -659,7 +744,7 @@ class RunTests(unittest.TestCase):
 
             out, err = io.StringIO(), io.StringIO()
             with mock.patch.object(gen, "write_atomic", side_effect=write):
-                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()):
                     with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
                         code = gen.main(["--id", "coordination-architecture"], repo_root=root)
 
@@ -674,7 +759,7 @@ class RunTests(unittest.TestCase):
             root = make_repo(tmp)
             out, err = io.StringIO(), io.StringIO()
             with mock.patch.object(gen, "_log_record", side_effect=OSError("no space left")):
-                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()):
                     with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
                         code = gen.main(
                             ["--id", "coordination-architecture", "--id", "data-model"], repo_root=root

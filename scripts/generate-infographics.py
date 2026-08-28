@@ -70,8 +70,10 @@ DEFAULT_JPEG_QUALITY = 85
 ALLOWED_SIZES = ("1024x1024", "1536x1024", "1024x1536", "2048x1152", "1152x2048")
 ALLOWED_QUALITIES = ("low", "medium", "high")
 
+# One end-to-end budget per image: connect, upload, response read, backoff, retry.
 REQUEST_TIMEOUT_S = 180
 RETRY_BACKOFF_S = 5
+RESPONSE_CHUNK_BYTES = 64 * 1024
 RETRYABLE_STATUS = (408, 409, 429)
 
 # Assumed per-image price in USD, keyed by (quality, size). See "Cost estimate".
@@ -360,18 +362,57 @@ def redact(text, secret):
     return text
 
 
+def _read_within(response, deadline):
+    """Read a response body in chunks, giving up the moment the deadline passes.
+
+    `urlopen(timeout=...)` only bounds inactivity, so a peer that keeps trickling
+    bytes satisfies it forever. Checking the clock between chunks bounds the read
+    itself; the overshoot is at most one socket timeout, which is the remaining
+    budget handed to `urlopen`.
+    """
+    chunks = []
+    while True:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("the response body was still arriving")
+        chunk = response.read(RESPONSE_CHUNK_BYTES)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
 def post_with_retry(request, secret="", timeout=REQUEST_TIMEOUT_S):
-    """POST once, retry once on 5xx/429 or a transport error, and raise redacted."""
+    """POST once, retry once on 5xx/429 or a transport error, and raise redacted.
+
+    `timeout` is one end-to-end deadline for this image — connect, upload, reading
+    the response, the backoff, and the retry all come out of the same budget — so
+    a slow peer cannot hold the sequential batch open past it.
+    """
+    deadline = time.monotonic() + timeout
     attempts = 0
+
+    def timed_out(detail):
+        return RuntimeError(
+            redact(f"Timed out after {timeout}s ({detail}) for {describe_request(request)}", secret)
+        )
+
     while True:
         attempts += 1
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return_reason = "before the request could be retried" if attempts > 1 else "before it started"
+            raise timed_out(return_reason)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+            with urllib.request.urlopen(request, timeout=remaining) as response:
+                return json.loads(_read_within(response, deadline).decode("utf-8"))
+        except TimeoutError as error:
+            if attempts > 1:
+                raise timed_out(str(error) or "no response") from None
+            time.sleep(max(0.0, min(RETRY_BACKOFF_S, deadline - time.monotonic())))
+            continue
         except urllib.error.HTTPError as error:
             retryable = error.code >= 500 or error.code in RETRYABLE_STATUS
             if retryable and attempts == 1:
-                time.sleep(RETRY_BACKOFF_S)
+                time.sleep(max(0.0, min(RETRY_BACKOFF_S, deadline - time.monotonic())))
                 continue
             detail = ""
             try:
@@ -383,7 +424,7 @@ def post_with_retry(request, secret="", timeout=REQUEST_TIMEOUT_S):
             ) from None
         except urllib.error.URLError as error:
             if attempts == 1:
-                time.sleep(RETRY_BACKOFF_S)
+                time.sleep(max(0.0, min(RETRY_BACKOFF_S, deadline - time.monotonic())))
                 continue
             raise RuntimeError(
                 redact(f"Request failed for {describe_request(request)}: {error.reason}", secret)
