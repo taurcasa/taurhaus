@@ -255,15 +255,16 @@ build-e2e:
 # a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 # Builds the app automatically unless E2E_SKIP_BUILD=1 is set.
 test-e2e: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js' --exclude 'e2e/specs/compaction-codex-hooks.js'
+    bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/daemon-integration.js'
 
 # Run E2E tests — Tier 1 + Tier 2 (daemon must be running)
 # By default this does NOT run install-daemon (to avoid killing/restarting
 # a live daemon during local E2E). Opt in with E2E_INSTALL_DAEMON=1.
 # compaction-codex-hooks spends real Codex and Claude subscription turns, so it
-# is never part of a suite run — start it by name with test-e2e-spec.
+# is never part of a suite run: `e2e/specList.js` keeps every paid lane out of
+# the config's spec list. Start it by name with test-e2e-spec.
 test-e2e-full: e2e-prepare-daemon
-    bunx wdio run e2e/wdio.conf.js --exclude 'e2e/specs/compaction-codex-hooks.js'
+    bunx wdio run e2e/wdio.conf.js
 
 # Run a single E2E spec file.
 # By default this does NOT run install-daemon (to avoid killing/restarting

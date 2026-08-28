@@ -14,6 +14,8 @@
  *   5. Guards   — regressions & visual capture
  *
  * Groups are SEALED — new specs form new groups, never expand existing ones.
+ * The groups themselves live in `specList.js`, together with the paid lanes a
+ * suite run must never pick up on its own.
  *
  * Uses tauri-driver as the WebDriver bridge, which delegates to the
  * platform's native WebDriver (WebKitWebDriver on Linux, msedgedriver on Windows).
@@ -26,14 +28,20 @@
  *   just test-e2e                        (builds + runs full suite)
  *   just test-e2e-spec search-workflow   (single spec in its own session)
  *   E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js  (skip build)
+ *
+ * None of those run a paid lane. `compaction-codex-hooks` spends real Codex and
+ * Claude subscription turns and is only ever started by name:
+ *
+ *   E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
  */
 
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
+import { CODEX_SCRATCH_SPEC, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -54,43 +62,7 @@ const traceTiming = process.env.E2E_TRACE_TIMING === '1'
 const traceTimingThresholdMs = Number(process.env.E2E_TRACE_THRESHOLD_MS || 1_500)
 const driverPidRegistry = resolve(tmpdir(), `taurhaus-e2e-driver-pids-${wdioPort}.txt`)
 
-// Spec groups by app layer. Each sub-array = one worker session = one app instance.
-// Groups are SEALED: new specs form new groups, never expand existing ones.
-// See header comment for the layer model.
-const specGroups = [
-  // Group 1: Content — individual tab workflows (read-only)
-  ['overview-interactions.js', 'git-workflow.js', 'files-workflow.js'],
-  // Group 2: Features — cross-cutting features (read-only)
-  ['tasks-workflow.js', 'cross-tab-navigation.js', 'search-workflow.js'],
-  // Group 3: Shell — app chrome & platform integration
-  ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js'],
-  // Group 4: Config — state mutation & validation
-  ['settings-persistence.js', 'project-lifecycle.js', 'error-handling.js'],
-  // Group 5: Guards — regressions & visual capture
-  ['regressions.js', 'screenshots.js', 'readme-screenshots.js'],
-]
-
-// Build the spec list. Each group becomes a sub-array (one worker session each).
-// Specs not in any group are collected into an "ungrouped" session at the end.
-function buildSpecList() {
-  const allFiles = readdirSync(specsDir).filter(f => f.endsWith('.js')).sort()
-
-  // Resolve each group, dropping missing files
-  const groups = specGroups
-    .map(group => group.filter(name => allFiles.includes(name)).map(name => resolve(specsDir, name)))
-    .filter(group => group.length > 0)
-
-  // Any new specs not in a defined group run as a catch-all session
-  const knownSpecs = new Set(specGroups.flat())
-  const ungrouped = allFiles
-    .filter(name => !knownSpecs.has(name))
-    .map(name => resolve(specsDir, name))
-  if (ungrouped.length > 0) groups.push(ungrouped)
-
-  return groups
-}
-
-const specList = buildSpecList()
+const specList = buildSpecList(specsDir)
 const specGroupIndexByPath = new Map()
 for (const [groupIndex, group] of specList.entries()) {
   for (const specPath of group) {
@@ -226,7 +198,6 @@ The runtime mode keeps agents connected.
 // CODEX_HOME rather than the operator's own, so the app process — which installs
 // the managed hook and renders the member's `CODEX_HOME='…'` launch prefix — has
 // to be started with that root already in its environment.
-const CODEX_SCRATCH_SPEC = 'compaction-codex-hooks.js'
 let previousCodexHome = null
 let codexHomeOverridden = false
 

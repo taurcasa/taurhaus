@@ -81,8 +81,10 @@ just test-e2e-full
 
 `e2e/specs/compaction-codex-hooks.js` drives a real Codex (and Claude) subscription:
 it builds a managed team and pays for the turns that take its Codex member to
-compaction, manually and automatically. It is therefore excluded from both
-`just test-e2e` and `just test-e2e-full` and only runs when asked for by name:
+compaction, manually and automatically. `e2e/specList.js` therefore keeps it out
+of the config's spec list — a suite run, including a bare
+`bunx wdio run e2e/wdio.conf.js`, never picks it up — and it only runs when asked
+for by name:
 
 ```bash
 E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks

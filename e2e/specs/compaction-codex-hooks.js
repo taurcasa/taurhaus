@@ -31,8 +31,9 @@
  *     path only while it is still true. If Codex starts sending `SessionStart`
  *     for a manual compaction, that case fails and both are updated.
  *
- * It costs real Codex (and Claude, for the team lead) subscription turns, so it
- * is excluded from `just test-e2e` and `just test-e2e-full` and runs only as
+ * It costs real Codex (and Claude, for the team lead) subscription turns, so
+ * `e2e/specList.js` keeps it out of the config's spec list — no suite run picks
+ * it up — and it runs only as
  *
  *     E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
  *
