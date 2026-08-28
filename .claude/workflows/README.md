@@ -56,7 +56,7 @@ Per script:
 
 - `feature-pr`: `maxRounds` (default 3).
 - `fix-round`: `findings` (required — the open findings from the run that stopped short; every
-  severity but a nit is fixed, because a minor only reaches `remaining` when a reviewer demanded it),
+  severity but a nit is fixed, because a finding another run could not close is already an open one),
   `startRound` (default 2), `maxRounds` (default 2), `fixNotes`.
 - `research-sweep`: `question` (required), `researchers` (required — `[{family, prompt, label?, report?}]`),
   `outputs` (report directory, default `scratch`).
@@ -75,8 +75,9 @@ ledger row can be filled from the run instead of by hand:
 }
 ```
 
-`remaining` is what the loop could not close — feed it to `fix-round` as `findings` with
-`startRound` set to `rounds + 1`. `research-sweep` returns `{question, outputs, researchers}` with one
+`remaining` is what the loop could not close — the blockers and majors it ran out of rounds for, plus
+the minors and nits nobody picked up. Feed it to `fix-round` as `findings` with `startRound` set to
+`rounds + 1`. `research-sweep` returns `{question, outputs, researchers}` with one
 structured summary and report path per researcher; the lead synthesizes them.
 
 ## Failing closed
@@ -88,10 +89,13 @@ a completed ledger with no findings reads as an approval:
   returns `status: 'unavailable'` with the error. An unavailable, empty or malformed review — no
   findings array, a verdict outside `approve`/`fix_required` — fails the run, and a reviewer is
   recorded in the ledger only after its result validates.
-- **A `fix_required` verdict counts** even when the reviewer filed no blocker or major: its findings
-  become the fix round. And a `fix_required` with nothing the fix loop would act on — no findings at
-  all, or nits only — is malformed and fails the run: the loop would have nothing to fix, so the
-  withheld approval would otherwise complete as an approval.
+- **A `fix_required` means at least one blocker or major.** That is the verdict contract, stated to
+  every reviewer and enforced on every result. A `fix_required` carrying nothing above a minor — no
+  findings at all, nits only, minors only — is malformed, not a verdict: the fix loop has nothing to
+  act on, so the withheld approval would otherwise complete as an approval. The lane is re-requested
+  **once** with the contract restated (its own label and scratch tag, `…-recontract`), and a second
+  malformed review fails the run — no gate, no ledger. Minors and nits are welcome under `approve`:
+  they ride along to the fixer as trivia and come back in `remaining`.
 - **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any command
   that did not pass, a `status` other than `pass`, or a gate that ran nothing aborts. So does a gate
   that contradicts itself — `status: 'pass'` arriving with a non-empty `failures` or `error`.
@@ -159,7 +163,8 @@ reviewer will. It carries:
   kill what you start, never what you did not; never print secrets);
 - the read-only rule for research;
 - the scope rule for reviewers (judge against the spec's minimum; missing scaffolding is at most a
-  minor; majors are defects a user would hit);
+  minor; majors are defects a user would hit) and the verdict contract (`fix_required` carries at
+  least one blocker or major), with the one re-request that enforces it;
 - the Codex wrapper builder.
 
 ## The lint

@@ -552,17 +552,67 @@ describe('workflow procedures — the ledger', () => {
   })
 })
 
-describe('workflow procedures — the review verdict', () => {
-  it('runs a fix round when the reviewer demands one without filing a major', async () => {
-    const { result, state } = await run('feature-pr.js', BASE_ARGS, {
-      review: (call, s) =>
-        s.counts.review <= 2
-          ? { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [{ title: 'weak test', severity: 'minor', file: 'a.js:1', evidence: 'e', fix: 'f' }] }
-          : OK_REVIEW,
+describe('workflow procedures — the verdict contract', () => {
+  const minor = { title: 'weak test', severity: 'minor', file: 'a.js:1', evidence: 'e', fix: 'f' }
+  const nit = { title: 'spelling', severity: 'nit', file: 'a.js:1', evidence: 'e', fix: 'f' }
+  const major = { title: 'drops the second event', severity: 'major', file: 'a.js:2', evidence: 'e', fix: 'f' }
+
+  for (const script of MUTATING) {
+    // Regression: a `fix_required` carrying only minors validated, and actionableFrom widened the
+    // actionable set whenever a fix_required verdict was present — so a minor-only withheld approval
+    // ran a fix round over trivia in one script and, where the loop filtered to blocker/major, let a
+    // green gate complete the run over a review that never approved. The contract is now: fix_required
+    // requires at least one blocker or major, and anything else is malformed.
+    it(`${script} fails when a fix_required files no blocker or major`, async () => {
+      await expect(
+        run(script, argsFor(script), { review: { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [minor, nit] } })
+      ).rejects.toThrow(/fix_required/i)
     })
-    expect(state.counts.work).toBeGreaterThan(1)
-    expect(result.ledger.rounds).toBeGreaterThan(1)
-  })
+
+    it(`${script} fails when a fix_required files only a minor`, async () => {
+      await expect(run(script, argsFor(script), { review: { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [minor] } })).rejects.toThrow(
+        /fix_required/i
+      )
+    })
+
+    it(`${script} re-requests a malformed review exactly once, with the contract restated`, async () => {
+      const seen = []
+      await expect(
+        run(script, argsFor(script), {
+          review: (call) => {
+            seen.push(call)
+            return { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [minor] }
+          },
+        })
+      ).rejects.toThrow(/fix_required/i)
+      const retries = seen.filter((c) => c.label.includes('recontract'))
+      expect(retries.length, 'every malformed lane is re-requested').toBeGreaterThan(0)
+      expect(retries.length, 'and re-requested only once each').toBe(seen.length - retries.length)
+      expect(retries[0].prompt, 'the re-request says the previous review was rejected').toMatch(/RE-REQUEST/)
+      expect(retries[0].prompt, 'and restates the contract it broke').toMatch(/blocker or major/i)
+    })
+
+    it(`${script} runs the fix loop for a fix_required that files a major`, async () => {
+      const { state, result } = await run(script, argsFor(script), {
+        review: (call, s) => (s.counts.review === 1 ? { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [major] } : OK_REVIEW),
+      })
+      expect(state.counts.review, 'the re-review must run').toBeGreaterThan(1)
+      expect(result.ledger.majors).toBeGreaterThan(0)
+    })
+
+    it(`${script} keeps a minor filed under approve and hands it back in remaining`, async () => {
+      const { result } = await run(script, argsFor(script), { review: { status: 'ok', reviewer: 'codex', verdict: 'approve', findings: [minor, nit] } })
+      expect(result.gate.status).toBe('pass')
+      expect(result.ledger.remaining.map((f) => f.title)).toContain('weak test')
+    })
+
+    it(`${script} states the verdict contract to the reviewer`, async () => {
+      const { calls } = await run(script, argsFor(script))
+      const review = calls.find((c) => c.label.startsWith('review:') || c.label.startsWith('verify:'))
+      expect(review.prompt).toMatch(/fix_required/)
+      expect(review.prompt).toMatch(/at least one blocker or major/i)
+    })
+  }
 })
 
 describe('workflow procedures — attribution', () => {
@@ -606,11 +656,13 @@ describe('fix-round — the handover', () => {
     expect(state.counts.review, 'the re-review must run').toBe(1)
   })
 
+  // A re-review that approves while filing a minor is well-formed: the minor is not what another fix
+  // round is for, so it rides back in `remaining` instead of looping (or vanishing).
   it('carries an unclosed minor back in remaining', async () => {
     const { result } = await run(
       'fix-round.js',
       { ...BASE_ARGS, findings: [minor], maxRounds: 1 },
-      { review: { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [minor] } }
+      { review: { status: 'ok', reviewer: 'codex', verdict: 'approve', findings: [minor] } }
     )
     expect(result.ledger.remaining.map((f) => f.title)).toContain('weak test')
   })

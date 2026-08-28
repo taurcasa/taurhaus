@@ -87,18 +87,51 @@ function laneProblem(result, label) {
   return ''
 }
 
+// The reviewer's verdict contract, stated to every reviewer and enforced on every result: a
+// `fix_required` means at least one blocker or major. A fix_required carrying nothing above a minor is
+// a withheld approval the fix loop cannot act on — it either runs a fix round over trivia or runs none
+// at all and lets a green gate complete the run over a review that never approved. So it is malformed,
+// not a verdict: re-requested once, and then it fails the run.
+const REVIEW_CONTRACT =
+  'VERDICT CONTRACT: return `fix_required` only when you filed at least one blocker or major — a fix_required carrying nothing above a minor is malformed and is rejected, not read as an approval. Minors and nits are welcome under `approve`: they ride along to the fixer as trivia and come back in the ledger. If a minor is worth blocking the change on, raise it to a major and say why.'
+
+function contractBreach(review) {
+  if (!review || review.verdict !== 'fix_required' || !Array.isArray(review.findings)) return false
+  return review.findings.filter((f) => f && (f.severity === 'blocker' || f.severity === 'major')).length === 0
+}
+
 function reviewProblem(review, label) {
   const lane = laneProblem(review, label)
   if (lane) return lane
   if (!Array.isArray(review.findings)) return label + ' returned no findings array'
   if (review.verdict !== 'approve' && review.verdict !== 'fix_required') return label + ' returned an invalid verdict: ' + JSON.stringify(review.verdict)
-  // A reviewer that withholds approval and files nothing the fix loop would act on has contradicted
-  // itself: the loop has nothing to fix, so the run would complete green over a withheld approval.
-  // That is the failure fail-closed exists to prevent, so the review is rejected as malformed.
-  if (review.verdict === 'fix_required' && review.findings.filter((f) => f && f.severity !== 'nit').length === 0) {
-    return label + ' returned fix_required with nothing to fix (' + review.findings.length + ' findings, none above a nit) — a withheld approval is not an approval'
+  if (contractBreach(review)) {
+    return (
+      label +
+      ' returned fix_required with no blocker or major (' +
+      review.findings.length +
+      ' findings) — the contract is that fix_required carries at least one, so this is a withheld approval the fix loop cannot act on'
+    )
   }
   return ''
+}
+
+// One re-request, then the run fails. A reviewer that withheld approval over a minor usually meant to
+// approve, and a real blocker it forgot to file is worth one more call — but only one. `request(note)`
+// re-runs the same lane with the note appended; nothing here throws, because a review lane can run
+// inside parallel(), where a throw is indistinguishable from a dead agent. The caller validates.
+async function reviewOnce(request, label) {
+  const first = await request('')
+  if (!contractBreach(first)) return first
+  const breach = reviewProblem(first, label)
+  log('Re-requesting ' + label + ' with the verdict contract restated — ' + breach)
+  return await request(
+    'RE-REQUEST — your previous review of this same diff was rejected: ' +
+      breach +
+      '. ' +
+      REVIEW_CONTRACT +
+      ' Review the same diff again and return a well-formed result: approve, keeping those minors and nits as findings, or file the blocker or major that justifies fix_required. This is the only re-request — a second malformed review fails the run.'
+  )
 }
 
 // A gate is green only when it says pass AND every command it listed passed AND it ran something AND
@@ -132,11 +165,16 @@ function gateProblem(gate) {
   return ''
 }
 
-// A reviewer that demands a fix but files no blocker or major still blocks: take it at its word.
-function actionableFrom(findings, verdicts) {
-  const hard = findings.filter((f) => f.severity === 'blocker' || f.severity === 'major')
-  if (hard.length > 0) return hard
-  return verdicts.indexOf('fix_required') === -1 ? [] : findings.filter((f) => f.severity !== 'nit')
+// What another fix round is for: the hard findings. The verdict no longer widens this set — the
+// contract makes every fix_required carry a blocker or major, and one filed under `approve` is taken
+// at its word anyway. Everything below rides along to the fixer as trivia and comes back in the
+// ledger's `remaining` rather than looping.
+function actionableFrom(findings) {
+  return findings.filter((f) => f && (f.severity === 'blocker' || f.severity === 'major'))
+}
+
+function trivialFrom(findings) {
+  return findings.filter((f) => f && f.severity !== 'blocker' && f.severity !== 'major')
 }
 
 function trailers(family) {
@@ -178,7 +216,7 @@ const RULES = {
   scope:
     'SCOPE RULE: judge against the spec\'s minimum deliverable and its "not building" list — missing scaffolding (tests or docs for tooling, dry-run niceties, extra configurability) is at most a minor, and majors are reserved for defects a user would hit.',
   evidence:
-    'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit; verdict fix_required only for blocker/major. A fix_required must carry at least one finding above a nit — a withheld approval with nothing to fix is rejected as malformed and fails the run, so approve or file the finding.',
+    'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit. ' + REVIEW_CONTRACT,
   honest:
     "HONESTY: set status='ok' only for work you actually did and saw succeed. If your lane could not run, return status='unavailable' with the error — never an invented result, an approval you did not reach, or a gate you did not watch pass. The caller fails the run closed on an unavailable lane, and that is the correct outcome.",
 }
@@ -399,7 +437,7 @@ const FINDINGS_SCHEMA = {
         },
       },
     },
-    verdict: { type: 'string', enum: ['approve', 'fix_required'], description: 'fix_required requires at least one finding above a nit; a fix_required with nothing to fix is rejected as malformed' },
+    verdict: { type: 'string', enum: ['approve', 'fix_required'], description: 'fix_required requires at least one blocker or major; one carrying nothing above a minor is rejected as malformed' },
     reviewer: { type: 'string' },
   },
 }
@@ -472,19 +510,23 @@ function reviewPrompt(lens, round, prior) {
     .join('\n')
 }
 
-function reviewAgent(lens, round, prior) {
-  const label = 'review:' + REVIEW_FAMILY + '-' + lens.key + '-r' + round
+// `note` is the one contract re-request: a lane that came back malformed is re-run with the contract
+// restated, under its own label and its own scratch tag so the run tree shows both attempts.
+function reviewAgent(lens, round, prior, note) {
+  const again = note ? '-recontract' : ''
+  const label = 'review:' + REVIEW_FAMILY + '-' + lens.key + '-r' + round + again
   const groupPhase = round === 1 ? 'Review' : 'Fix'
+  const task = reviewPrompt(lens, round, prior) + (note ? '\n' + note : '')
   if (REVIEW_FAMILY === 'opus') {
     return agent(
-      reviewPrompt(lens, round, prior) + "\nSet reviewer='opus " + lens.key + "', status='ok' and model_used='" + MODELS.opus + "'. " + RULES.honest,
+      task + "\nSet reviewer='opus " + lens.key + "', status='ok' and model_used='" + MODELS.opus + "'. " + RULES.honest,
       call({ label: label, phase: groupPhase, schema: FINDINGS_SCHEMA })
     )
   }
   return agent(
     codexWrapper({
-      tag: TAG + '-' + lens.key + '-r' + round,
-      task: reviewPrompt(lens, round, prior) + '\nRespond with JSON matching the provided schema only.',
+      tag: TAG + '-' + lens.key + '-r' + round + again,
+      task: task + '\nRespond with JSON matching the provided schema only.',
       schema: FINDINGS_SCHEMA,
       timeout: 1700,
       reviewer: CODEX_ID + ' ' + lens.key,
@@ -493,18 +535,23 @@ function reviewAgent(lens, round, prior) {
   )
 }
 
+function reviewLane(lens, round, prior, label) {
+  return reviewOnce((note) => reviewAgent(lens, round, prior, note), label)
+}
+
+function laneLabel(lens, round) {
+  return 'the ' + REVIEW_FAMILY + ' ' + lens.key + (round === 1 ? ' review' : ' re-review') + ' (round ' + round + ')'
+}
+
 const reviewers = new Set()
-let verdicts = []
 // A reviewer is recorded only once its result validates. An unavailable or malformed lane means the
 // required cross-family review never happened, so the run fails instead of reading as approved.
 function flatten(reviews, round, labels) {
-  verdicts = []
   const out = []
   reviews.forEach((review, index) => {
     const problem = reviewProblem(review, labels[index])
     if (problem) fail(problem)
     reviewers.add((review.reviewer || REVIEW_FAMILY) + (review.model_used ? ' [' + review.model_used + ']' : ''))
-    verdicts.push(review.verdict)
     review.findings.forEach((f) => out.push({ ...f, reviewer: review.reviewer, round: round }))
   })
   return out
@@ -549,13 +596,11 @@ if (implProblem) fail(implProblem)
 phase('Review')
 // Cross-family rule: whoever implements never reviews.
 let round = 1
-let reviews = await parallel(LENSES.map((lens) => () => reviewAgent(lens, round, null)))
-let findings = flatten(
-  reviews,
-  round,
-  LENSES.map((lens) => 'the ' + REVIEW_FAMILY + ' ' + lens.key + ' review (round ' + round + ')')
-)
-let actionable = actionableFrom(findings, verdicts)
+let labels = LENSES.map((lens) => laneLabel(lens, round))
+let reviews = await parallel(LENSES.map((lens, index) => () => reviewLane(lens, round, null, labels[index])))
+let findings = flatten(reviews, round, labels)
+let actionable = actionableFrom(findings)
+let trivial = trivialFrom(findings)
 const allFindings = findings.slice()
 log('Review r1 (' + REVIEW_FAMILY + ', ' + LENSES.length + ' lenses): ' + findings.length + ' findings, ' + actionable.length + ' actionable')
 
@@ -571,7 +616,7 @@ while (actionable.length > 0 && fixes.length < MAX_ROUNDS) {
       (fixes.length + 1) +
       '. Apply these findings from the independent reviewers — verify each against the code first and skip a wrong one with a stated reason. Every blocker and major gets a red-first regression test:',
     JSON.stringify(actionable, null, 1),
-    'Take the minors too where they are trivial: ' + JSON.stringify(findings.filter((f) => f.severity === 'minor'), null, 1),
+    'Take the minors and nits too where they are trivial: ' + JSON.stringify(trivial, null, 1),
     'Keep the change local to the files named — no new features, no architecture reshaping. Re-run the gates.',
     trailers(IMPLEMENTER),
   ].join('\n')
@@ -597,10 +642,12 @@ while (actionable.length > 0 && fixes.length < MAX_ROUNDS) {
   const prior = JSON.stringify(actionable)
   round += 1
   // Re-review runs the conformance lens only: it verifies the prior findings and looks for regressions.
-  reviews = [await reviewAgent(LENSES[0], round, prior)]
-  findings = flatten(reviews, round, ['the ' + REVIEW_FAMILY + ' ' + LENSES[0].key + ' re-review (round ' + round + ')'])
+  labels = [laneLabel(LENSES[0], round)]
+  reviews = [await reviewLane(LENSES[0], round, prior, labels[0])]
+  findings = flatten(reviews, round, labels)
   allFindings.push(...findings)
-  actionable = actionableFrom(findings, verdicts)
+  actionable = actionableFrom(findings)
+  trivial = trivialFrom(findings)
   log('Re-review r' + round + ': ' + findings.length + ' findings, ' + actionable.length + ' actionable')
 }
 if (actionable.length > 0) {
@@ -637,7 +684,9 @@ return {
     rounds: round,
     majors: allFindings.filter((f) => f.severity === 'blocker' || f.severity === 'major').length,
     findings: allFindings,
-    remaining: actionable,
+    // What the loop could not close: the hard findings it ran out of rounds for, plus the trivia
+    // nobody picked up. Both are what `fix-round` takes as `findings`.
+    remaining: actionable.concat(trivial),
   },
   commits: [impl, ...fixes].filter(Boolean).flatMap((r) => r.commits || []),
   gate: gate,
