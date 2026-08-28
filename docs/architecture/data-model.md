@@ -28,7 +28,7 @@ Registered projects. The `path` column is the canonical identifier for filesyste
 | `hero_preference` | TEXT | | User-selected hero image preference |
 | `cached_branch` | TEXT | | Git branch name (cached, may be NULL if not yet scanned) |
 | `cached_is_dirty` | INTEGER | | Git dirty flag (0/1, cached) |
-| `claude_account_id` | TEXT | | **Superseded by `project_tool_accounts` in migration 013.** Left in place for schema compatibility; no longer read or written |
+| `claude_account_id` | TEXT | | **Superseded by `project_tool_accounts` in migration 013.** No longer used or written. The column stays in the schema and the project `SELECT`s still list it (`db/queries.rs:56`, `:77`); the row decoder binds it to `_legacy_claude_account_id` (`db/queries.rs:15`) and discards it, so the value is read off the row for positional compatibility and then ignored |
 | `created_at` | TEXT | NOT NULL | Registration timestamp |
 | `updated_at` | TEXT | NOT NULL | Last metadata update |
 

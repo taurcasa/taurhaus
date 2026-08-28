@@ -32,7 +32,7 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 | P0 item | Status | Notes |
 |---|---|---|
 | JSONL sink and schema | Implemented | `LogFileState` + global emitter (`emit_global`) write structured records to `taurhaus.log.jsonl`. |
-| Startup lifecycle events | Implemented | One event family per phase from `startup/telemetry.rs` (`startup.app.started`, `startup.paths.resolved`, `startup.database.*`, `startup.daemon_phase.*`, `startup.daemon_connect.*`, `startup.orchestration.*`, `startup.watchers.*`, `startup.search.*`, `startup.background_tasks.*`, `startup.self_heal.*`) with `duration_ms` and startup context fields. There is no generic `startup.phase.*` family — a test asserts those legacy names are never emitted (`startup/telemetry.rs:544-547`). |
+| Startup lifecycle events | Implemented | One event family per phase from `startup/telemetry.rs` (`startup.app.started`, `startup.paths.resolved`, `startup.logging.initialized`, `startup.database.*`, `startup.daemon_phase.*`, `startup.daemon_connect.*`, `startup.orchestration.*`, `startup.watchers.*`, `startup.search.*`, `startup.background_tasks.*`, `startup.self_heal.*`), all carrying the startup context fields. `duration_ms` is on the completion and failure events where a phase is measured, not on every startup event — `startup.app.started`, `startup.paths.resolved`, `startup.logging.initialized`, `startup.database.started`, `startup.daemon_phase.started` and `startup.orchestration.started` carry none. There is no generic `startup.phase.*` family — a test asserts those legacy names are never emitted (`startup/telemetry.rs:544-547`). |
 | IPC lifecycle events | Implemented | `ipc.command.received/completed/failed` and `ipc.lock.wait` via `IpcCommandSpan`. |
 | Daemon RPC lifecycle events | Implemented | `daemon.rpc.sent/response/timeout` with `daemon_request_id`, `method`, `status`, `duration_ms`, `retry_count`. |
 | Frontend bridge migration to structured payloads | Implemented | `logger.js` forwards structured payloads (`component`, `subsystem`, `event`, `message`, optional context/correlation). |
@@ -62,7 +62,7 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 | `launch.account.fallback` | warn | Requested account unusable for that tool; fell back down the resolution order. |
 | `launch.account.derived_from_session` | info | Account inferred from an existing session's transcript. |
 | `launch.account.ignored_for_team` | warn | A per-launch account pick was dropped because a team launch runs on the default account home. |
-| `account.provider.floor` | info | A harness with no account provider fell back to the implicit single-account floor. |
+| `account.provider.floor` | info (`tracing` only) | A harness declares an account selector but its `AccountProvider` has not landed, so detection returns an empty scan. Emitted once per run per tool through `tracing::info!` (`accounts/mod.rs:463-481`), **not** through `emit_global` — it reaches stderr and the `tracing` layer, not the canonical JSONL sink. |
 | `usage.fetched` | debug | `{tool, account_id, status, windows}` — never tokens, never a URL with a query string. |
 | `usage.failed` | warn | Once per state change, per (tool, account). |
 | `claude.usage.legacy_bridge.removed` | info | One-shot uninstall of the retired 0.6.8 Claude status-line bridge. |
@@ -77,7 +77,7 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 | `compaction.detected` / `.injected` / `.skipped` / `.stale` | info | Delivery bookkeeping. |
 | `compaction.failed` | warn | |
 | `compaction.<tool>_hook.received` / `.resolved` / `.delivered` / `.skipped` | info | `<tool>` is `claude`, `codex`, `grok`, or `compact` when the tool cannot be inferred. |
-| `compaction.hook.compat_import` | info | Once per run: grok reached the bridge through the `~/.claude/settings.json` registration it imports; duplicate invocations are deduplicated. |
+| `compaction.hook.compat_import` | info | Once per run, on the first resolved invocation of a tool whose registry entry sets `compaction_hook_compat_import` (grok): that tool imports the `~/.claude/settings.json` hook registration as well as its own, so one compaction can reach the bridge twice and duplicates are dropped. The payload does **not** say which registration produced the current invocation — it is emitted before the duplicate check (`compact_hook.rs:468-473`) and announces the capability, not the provenance. |
 | `compaction.<tool>_hook.failed`, `compaction.compact_hook.failed` | warn | Plus `compaction.compact_hook.parse_payload_debug`. |
 | `compaction.codex_hook.degraded` / `.unsupported` / `.version_unknown` | warn | Hooks mode gating. |
 | `compaction.codex_hook.reconciled` | info | Hook install/removal applied. |
