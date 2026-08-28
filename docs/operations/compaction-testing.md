@@ -127,7 +127,12 @@ just test-compaction codex taurhaus-team architect
 
 ## Manual-run diagnostics
 
-Each harness writes metadata under:
+Only the two scripted lanes write run metadata — `scripts/test-compaction-claude.py`
+and `scripts/test-compaction-codex.py` both call `write_manual_run`
+(`scripts/compaction_test_lib.py:199`). A grok run has no script and therefore no
+metadata file; check it against the log and the inbox instead (see below).
+
+The scripted lanes write metadata under:
 
 ```text
 ~/.claude/teams/<team>/state/compaction/manual-runs/<run_id>.json
@@ -147,10 +152,24 @@ The analyzer will then print targeted run diagnostics, including:
   - hook success seen
 - Codex:
   - transcript boundary seen (or, in `hooks` mode, the hook events)
-- All:
-  - transport delivery outcome
-  - wake stage
-  - whether the compaction card was surfaced by `mesh read`
+
+Those two arms are the only tool-specific report logic the analyzer has
+(`scripts/analyze-compaction.py:1130-1142`). For either scripted lane it also prints:
+
+- transport delivery outcome
+- wake stage
+- whether the compaction card was surfaced by `mesh read`
+
+### Grok, without a script
+
+Grok has no `--manual-run-id` to pass, so verify it by hand:
+
+- `taurhaus.log.jsonl`: `compaction.grok_hook.received` → `resolved` → `delivered`.
+  A `skipped` with `post_compact_signal_only` means the delivery was routed as
+  stdout, and one with `duplicate_compat_import` is the expected suppression of
+  the second invocation grok makes through `~/.claude/settings.json`.
+- The member's mesh inbox: the card is queued, never returned on stdout, so
+  confirm it with `mesh read` — exactly one card per compaction.
 
 ## What success means
 

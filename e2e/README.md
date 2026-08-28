@@ -101,5 +101,11 @@ cd src-tauri && rg 'PROTOCOL_VERSION: u32' src/daemon/protocol.rs
 
 Then reinstall the daemon so the binary matches the checkout (`just install-daemon`).
 The app's gate is exact-match, not a floor — a *newer* daemon is rejected the same way
-an older one is, and `startup.daemon_protocol.checked` in `taurhaus.log.jsonl` records
-what it saw.
+an older one is. On a mismatch `ensure_expected_daemon_runtime` disconnects the daemon
+(`startup/daemon.rs:380-395`), so look for `daemon.connection.lost` with
+`reason: startup_runtime_mismatch` in `taurhaus.log.jsonl`, plus the
+`daemon protocol mismatch: running=…, expected=…` error text.
+`startup.daemon_protocol.checked` is a *separate*, conditional line: it is only emitted
+while the daemon is still connected at that point in bootstrap
+(`startup/daemon.rs:223-282`), and it labels only a lower version `outdated`. Do not
+expect it on a rejected daemon.
