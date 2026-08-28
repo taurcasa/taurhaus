@@ -6,20 +6,30 @@
  * back through `coordination/compact_hook.rs` — not through the JSONL
  * transcript tailer.
  *
- * It covers exactly one trigger, because only one can reach the bridge.
- * Measured on this host with a probe that registered all three compaction hooks
- * against a scratch Codex home, on 0.149.0 and again on 0.150.1:
+ * Acceptance is what Codex does with the card, not what taurhaus logged about
+ * itself: `compaction.codex_hook.delivered` is emitted before the response is
+ * serialized and written to stdout, so the terminal assertion is that the
+ * card's unique marker — a token that exists nowhere but this run's operational
+ * snapshot — turns up in Codex's own rollout transcript.
+ *
+ * Two cases, because the two triggers do not behave the same. Measured on this
+ * host with a probe that registered all three compaction hooks against a
+ * scratch Codex home, on 0.149.0 and again on 0.150.1:
  *
  *   - automatic (`trigger: auto`): `PreCompact` → `PostCompact` →
  *     `SessionStart(source=compact)`. taurhaus registers the last of those, so
- *     the bridge runs and the card comes back.
+ *     the bridge runs, the card comes back on the hook's stdout, and Codex
+ *     writes it into the rollout as a `developer` message. This is the case
+ *     that matters in real use and the one that proves the path, so it runs
+ *     first: Mocha bails on the first failure, and a manual case that fails
+ *     must not take the delivery proof down with it.
  *   - manual (`/compact`, `trigger: manual`): `PreCompact` → `PostCompact` and
- *     *no* `SessionStart`. The bridge is never invoked.
- *
- * So the runbook's "operator-triggered `/compact`" is not a usable trigger for
- * the hook path, and driving one here would only spend turns to assert an
- * absence. The contract itself is recorded in
- * `docs/operations/compaction-testing.md`; this lane proves the delivery.
+ *     *no* `SessionStart`. The bridge is never invoked. The second case pins
+ *     that measured contract — Codex compacts (its own transcript boundary
+ *     proves it) and nothing reaches the bridge — so the runbook's
+ *     "operator-triggered `/compact`" stays documented as unusable for the hook
+ *     path only while it is still true. If Codex starts sending `SessionStart`
+ *     for a manual compaction, that case fails and both are updated.
  *
  * It costs real Codex (and Claude, for the team lead) subscription turns, so it
  * is excluded from `just test-e2e` and `just test-e2e-full` and runs only as
@@ -34,17 +44,21 @@
  * The hook runs as its own process spawned by Codex, so it resolves the teams
  * dir and the log sink from *its* environment — which it inherits from the
  * pane. tmux panes inherit the session environment, so the isolated roots are
- * set on the shared `taurhaus` tmux session for the length of team
- * initialization and removed again straight after.
+ * set on the shared `taurhaus` tmux session for the length of the one call that
+ * creates panes, and removed again the moment it returns: the session belongs
+ * to the operator, and anything they launch in it while the override is up
+ * would be pointed at roots this run later deletes. A process-exit handler
+ * restores them too, because a killed run never reaches the Mocha teardown.
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
+import { countCompactionBoundaries, pathsContainingMarker, rolloutPaths } from '../helpers/codexRollout.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
 import { TAURHAUS_PROJECT_PATH, TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
 
@@ -70,6 +84,13 @@ const AUTO_COMPACTION_FILLER_LINES = 900
 const HOOK_DELIVERY_TIMEOUT_MS = 150_000
 /** Headroom for the hook process to run and flush after a compaction lands. */
 const HOOK_SETTLE_MS = 15_000
+/**
+ * How long Codex gets to write the card into its rollout after the bridge
+ * returned it. Measured on this host: the `developer` message carrying the
+ * `additionalContext` was in the transcript within a second of the hook
+ * running, so this is headroom, not a guess.
+ */
+const CARD_CONSUMED_TIMEOUT_MS = 60_000
 const AUTO_TURN_TIMEOUT_MS = 90_000
 const TEAM_READY_TIMEOUT_MS = 180_000
 /**
@@ -79,6 +100,16 @@ const TEAM_READY_TIMEOUT_MS = 180_000
  * the id never arrives and the bridge matches on cwd instead.
  */
 const SESSION_CAPTURE_GRACE_MS = 20_000
+
+/**
+ * The token that proves the card reached Codex.
+ *
+ * It goes into the operational snapshot's task id, so the bridge renders it into
+ * the card (`Current task: #<id> — <subject>`) and nothing else in the run can
+ * put it anywhere. Finding it in Codex's own rollout is the difference between
+ * "taurhaus says it delivered" and "the member got its context back".
+ */
+const CONTEXT_MARKER = `taurhaus-e2e-restored-context-${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -283,7 +314,7 @@ function writeOperationalSnapshot(teamName, memberName, projectPath) {
       member_name: memberName,
       updated_at: new Date().toISOString(),
       task: {
-        id: `e2e-compaction-${uniqueSuffix}`,
+        id: CONTEXT_MARKER,
         subject: 'Verify Codex compaction reinjection through the hook bridge',
         status: 'in_progress',
       },
@@ -340,8 +371,10 @@ function applyPaneEnvironment() {
  * Run `work` with the isolated roots visible to panes created inside it.
  *
  * The `taurhaus` tmux session is shared with whatever the operator is running,
- * so the override lives for exactly as long as the pane-creating call and is
- * restored on every path out — including a failed initialization.
+ * so `work` must be the pane-creating call and nothing else: every second the
+ * override is up is a second in which a pane the operator opens themselves
+ * inherits this run's temp roots, which are deleted when the run ends. Readiness
+ * polling, live status and session-id capture all happen after the restore.
  */
 async function withPaneEnvironment(work) {
   const restore = applyPaneEnvironment()
@@ -353,6 +386,24 @@ async function withPaneEnvironment(work) {
     restorePaneEnvironmentOnTeardown = null
   }
 }
+
+/**
+ * Restore the shared session's environment even when nothing else runs.
+ *
+ * The Mocha teardown is not a cleanup path a killed run reaches, and this
+ * override outlives the process that set it: tmux keeps it until someone unsets
+ * it. `wdio.conf.js` turns SIGINT/SIGTERM into `process.exit`, so an `exit`
+ * handler covers the signals too; the tmux calls are synchronous, which is what
+ * an `exit` handler requires.
+ */
+function restorePaneEnvironmentNow() {
+  const restore = restorePaneEnvironmentOnTeardown
+  restorePaneEnvironmentOnTeardown = null
+  restore?.()
+}
+process.on('exit', restorePaneEnvironmentNow)
+process.on('SIGINT', restorePaneEnvironmentNow)
+process.on('SIGTERM', restorePaneEnvironmentNow)
 
 /**
  * Kill the panes this lane put in the shared `taurhaus` tmux session.
@@ -483,9 +534,13 @@ async function initializeManagedCodexTeam() {
 
   let paneId = null
   let sessionId = null
-  await withPaneEnvironment(async () => {
-    createdTeamNames.add(teamName)
-    const report = await invokeTauriOrThrow('coordination_initialize_team', {
+  createdTeamNames.add(teamName)
+
+  // Only this call creates panes (`pipelines/initialize.rs` launches each member
+  // inline and records its pane id before returning), so it is the only thing
+  // the shared session's environment is redirected for.
+  const report = await withPaneEnvironment(async () =>
+    await invokeTauriOrThrow('coordination_initialize_team', {
       request: {
         teamName,
         teamDescription: 'E2E lane for Codex compaction through the hook bridge',
@@ -509,42 +564,42 @@ async function initializeManagedCodexTeam() {
         ],
       },
     })
+  )
 
-    if (report?.failedStep) {
-      throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
+  if (report?.failedStep) {
+    throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
+  }
+
+  // The member's runtime record is the pane authority — it is what taurhaus
+  // itself sends keys to. The live roster is only a fallback: it reports a
+  // pane id from reconciliation, which stayed null for this member for three
+  // minutes on the first live run while the pane was up the whole time.
+  await browser.waitUntil(
+    async () => {
+      paneId = readRuntimeRecord(teamName, memberName)?.pane_id ?? null
+      if (paneId) return true
+      const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
+      const member = (status?.members ?? []).find((entry) => entry?.name === memberName)
+      paneId = member?.paneId ?? member?.pane_id ?? null
+      return Boolean(paneId)
+    },
+    {
+      timeout: TEAM_READY_TIMEOUT_MS,
+      interval: 2_000,
+      timeoutMsg: `Managed Codex member ${memberName} never reported a pane`,
     }
+  )
 
-    // The member's runtime record is the pane authority — it is what taurhaus
-    // itself sends keys to. The live roster is only a fallback: it reports a
-    // pane id from reconciliation, which stayed null for this member for three
-    // minutes on the first live run while the pane was up the whole time.
-    await browser.waitUntil(
-      async () => {
-        paneId = readRuntimeRecord(teamName, memberName)?.pane_id ?? null
-        if (paneId) return true
-        const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
-        const member = (status?.members ?? []).find((entry) => entry?.name === memberName)
-        paneId = member?.paneId ?? member?.pane_id ?? null
-        return Boolean(paneId)
-      },
-      {
-        timeout: TEAM_READY_TIMEOUT_MS,
-        interval: 2_000,
-        timeoutMsg: `Managed Codex member ${memberName} never reported a pane`,
-      }
-    )
-
-    // The rollout id is a nicety, not a requirement: the bridge falls back to
-    // matching the payload's cwd against the member's project path.
-    await browser.waitUntil(
-      async () => {
-        sessionId = readRuntimeRecord(teamName, memberName)?.session_id ?? null
-        return Boolean(sessionId)
-      },
-      { timeout: SESSION_CAPTURE_GRACE_MS, interval: 2_000, timeoutMsg: 'no rollout id' }
-    ).catch(() => {
-      console.log(`[e2e] ${memberName} has no captured rollout id; the bridge will match on cwd`)
-    })
+  // The rollout id is a nicety, not a requirement: the bridge falls back to
+  // matching the payload's cwd against the member's project path.
+  await browser.waitUntil(
+    async () => {
+      sessionId = readRuntimeRecord(teamName, memberName)?.session_id ?? null
+      return Boolean(sessionId)
+    },
+    { timeout: SESSION_CAPTURE_GRACE_MS, interval: 2_000, timeoutMsg: 'no rollout id' }
+  ).catch(() => {
+    console.log(`[e2e] ${memberName} has no captured rollout id; the bridge will match on cwd`)
   })
 
   const paneContents = await capturePane(paneId)
@@ -604,43 +659,20 @@ async function waitForTurnAfter(previousTurns, timeoutMs = 90_000) {
   }
 }
 
-/** Every Codex rollout transcript under the scratch home. */
-function rolloutPaths() {
-  const found = []
-  const walk = (dir) => {
-    let entries
-    try {
-      entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) walk(path)
-      else if (entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) found.push(path)
-    }
-  }
-  walk(join(codexHome, 'sessions'))
-  return found
-}
-
 /**
- * Compaction boundaries Codex has written to its own transcript.
+ * Compaction boundaries Codex has written to its own transcripts.
  *
  * This is the harness's own record that a compaction happened, independent of
  * whether any hook ran — which is exactly what the manual case needs in order
  * to tell "Codex did not compact" from "Codex compacted without calling us".
  */
 function rolloutCompactionCount() {
-  // Across every rollout, not just the newest: a compaction that started a new
-  // session would otherwise read as the count going down.
-  return rolloutPaths().reduce((total, path) => {
-    try {
-      return total + (readFileSync(path, 'utf8').match(/"type":"compacted"/g) ?? []).length
-    } catch {
-      return total
-    }
-  }, 0)
+  return countCompactionBoundaries(rolloutPaths(codexHome))
+}
+
+/** Transcripts in which Codex recorded the card the bridge handed back. */
+function rolloutsWithCard() {
+  return pathsContainingMarker(rolloutPaths(codexHome), CONTEXT_MARKER)
 }
 
 /**
@@ -717,7 +749,50 @@ function assertHookBridgeDelivered(events, { teamName, memberName }, { exactlyOn
   expect(selectEvents(events, { event: 'compaction.detected', match: { member_name: memberName } })).toEqual([])
   expect(selectEvents(events, { eventPrefix: 'compaction.extractor.' })).toEqual([])
 
+  // Nothing failed on the way out either. `delivered` is emitted before the
+  // response is serialized and written, and a failure at that last step is
+  // reported separately (`emit_compact_hook_cli_failed`, stage
+  // `serialize_response`), so it has to be asserted separately too.
+  const failures = [
+    ...selectEvents(events, { event: 'compaction.codex_hook.failed' }),
+    ...selectEvents(events, { event: 'compaction.compact_hook.failed' }),
+  ]
+  expect(failures.map((record) => record.failure_stage ?? record['error.message'] ?? 'unknown')).toEqual([])
+
   return last
+}
+
+/**
+ * The acceptance signal: Codex took the card into its own conversation.
+ *
+ * Everything above is taurhaus reporting on taurhaus. The bridge emits
+ * `delivered` before `run_compact_hook_cli` serializes the response and writes
+ * it to stdout (`coordination/compact_hook.rs`), and nothing in this process
+ * can see whether Codex read it — so the card carries a marker that exists
+ * nowhere else, and this waits for that marker to appear in Codex's rollout.
+ * Measured on this host: it lands as a `developer` message a second after the
+ * hook returns.
+ */
+async function waitForCardInCodexTranscript() {
+  try {
+    await browser.waitUntil(async () => rolloutsWithCard().length > 0, {
+      timeout: CARD_CONSUMED_TIMEOUT_MS,
+      interval: 1_000,
+      timeoutMsg: 'no rollout carried the card',
+    })
+  } catch {
+    const transcripts = rolloutPaths(codexHome)
+    throw new Error(
+      `The bridge delivered the card but Codex never recorded it: marker ${CONTEXT_MARKER} ` +
+        `is in none of the ${transcripts.length} rollout transcript(s) under ${codexHome} ` +
+        `within ${CARD_CONSUMED_TIMEOUT_MS}ms. The member was told nothing, whatever the ` +
+        'delivery events say.'
+    )
+  }
+
+  const carrying = rolloutsWithCard()
+  console.log(`[e2e] Codex recorded the restored-context card in ${carrying.join(', ')}`)
+  return carrying
 }
 
 /** What Codex actually put on the wire, printed so a run can be read back. */
@@ -866,6 +941,62 @@ describe('Codex compaction via hooks', function () {
       `[e2e] automatic compaction reached after ${turns} turn(s); card was ` +
         `${delivered.additional_context_bytes} bytes of additionalContext`
     )
+
+    // The delivery events are diagnostics. This is the acceptance signal.
+    await waitForCardInCodexTranscript()
+  })
+
+  it('compacts on a manual /compact without reaching the hook bridge', async function () {
+    if (!laneEnabled) return this.skip()
+    this.timeout(300_000)
+
+    // A dead pane would spend the whole timeout looking like a slow compaction.
+    const alive = tmuxQuietly(['display-message', '-p', '-t', managed.paneId, '#{pane_id}'])
+    if (!alive.ok || alive.output !== managed.paneId) {
+      throw new Error(`Managed member pane ${managed.paneId} is gone; nothing to compact (${alive.error ?? alive.output})`)
+    }
+
+    // Type into a settled composer: sent mid-turn, `/compact` is appended to
+    // whatever is already there and goes out as prose. The previous case leaves
+    // the turn that compacted still running, so this waits for it to finish and
+    // shrugs if there was nothing in flight.
+    await waitForTurnAfter(completedTurns(), 60_000)
+
+    const boundariesBefore = rolloutCompactionCount()
+    const offset = currentLogOffset()
+    const submitted = await sendPaneLine(managed.paneId, '/compact')
+    expect(submitted).toBe(true)
+
+    // Codex's own transcript is the proof that a compaction happened at all.
+    try {
+      await browser.waitUntil(async () => rolloutCompactionCount() > boundariesBefore, {
+        timeout: HOOK_DELIVERY_TIMEOUT_MS,
+        interval: 2_000,
+        timeoutMsg: `Codex wrote no compaction boundary within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
+      })
+    } catch (error) {
+      console.error(`[e2e] pane when the manual compaction did not land:\n${(await capturePane(managed.paneId)).trimEnd()}`)
+      dumpCompactionEvents('manual /compact produced no boundary', readLog(offset).events)
+      throw error
+    }
+
+    // Give the bridge every chance to be called before concluding it was not.
+    await browser.pause(HOOK_SETTLE_MS)
+    const seen = readLog(offset).events
+    const hookEvents = selectEvents(seen, { eventPrefix: 'compaction.codex_hook.' })
+    console.log(
+      `[e2e] manual /compact: Codex wrote ${rolloutCompactionCount() - boundariesBefore} compaction ` +
+        `boundary/boundaries and the bridge saw ${hookEvents.length} hook event(s)`
+    )
+    dumpCompactionEvents('manual /compact', seen)
+
+    // Pinned harness contract, measured on Codex 0.149.0 and 0.150.1: a manual
+    // compaction fires PreCompact and PostCompact only. taurhaus registers
+    // `SessionStart` with matcher `compact`, so the bridge is never invoked and
+    // no card is produced. If this starts failing, Codex has changed and the
+    // runbook's manual trigger became usable for the hook path — update both.
+    expect(hookEvents).toEqual([])
+    expect(selectEvents(seen, { eventPrefix: 'compaction.compact_hook.' })).toEqual([])
   })
 
   it('records why the live Codex compaction lane was unavailable', async function () {
