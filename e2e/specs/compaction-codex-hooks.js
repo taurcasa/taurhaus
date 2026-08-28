@@ -344,6 +344,28 @@ async function withPaneEnvironment(work) {
 }
 
 /**
+ * Boot the app, tolerating the splash-to-shell navigation racing the query.
+ *
+ * `waitForAppReady` opens with a bare element lookup, and this lane is a
+ * single-spec session, so the query lands exactly as the splash unloads: WebKit
+ * answers "no such frame: Callback was not called before the unload event" and
+ * the before hook dies before any of the lane's own work starts.
+ */
+async function bootApp(attempts = 3) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await waitForAppReady()
+      return
+    } catch (error) {
+      const message = String(error?.message ?? error)
+      if (attempt >= attempts || !/no such frame|unload event|stale element/i.test(message)) throw error
+      console.log(`[e2e] app boot query raced the splash transition; retrying (${message.split('\n')[0]})`)
+      await browser.pause(2_000)
+    }
+  }
+}
+
+/**
  * Visible contents of a pane, for logging and for blocking-prompt detection.
  *
  * A TUI mid-redraw captures as an empty screen, which would read as "no prompt
@@ -695,7 +717,7 @@ describe('Codex compaction via hooks', function () {
     this.timeout(600_000)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
-    await waitForAppReady()
+    await bootApp()
     mainApp = await ensureMainApp()
     if (!mainApp) {
       laneSkipReason = 'Main app unavailable'
