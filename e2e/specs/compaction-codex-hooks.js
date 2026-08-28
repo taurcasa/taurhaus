@@ -6,19 +6,20 @@
  * back through `coordination/compact_hook.rs` — not through the JSONL
  * transcript tailer.
  *
- * The two triggers do not behave the same on Codex 0.149.0, which is the point
- * of covering both. Measured on this host with a probe that registered all
- * three compaction hooks:
+ * It covers exactly one trigger, because only one can reach the bridge.
+ * Measured on this host with a probe that registered all three compaction hooks
+ * against a scratch Codex home, on 0.149.0 and again on 0.150.1:
  *
  *   - automatic (`trigger: auto`): `PreCompact` → `PostCompact` →
  *     `SessionStart(source=compact)`. taurhaus registers the last of those, so
- *     the bridge runs and the card comes back. This is the case that matters
- *     in real use, and the case that proves the path.
+ *     the bridge runs and the card comes back.
  *   - manual (`/compact`, `trigger: manual`): `PreCompact` → `PostCompact` and
- *     *no* `SessionStart`. The bridge is never invoked. The runbook's
- *     "operator-triggered `/compact`" is therefore not a usable trigger for the
- *     hook path on this version, and the manual case here pins that rather than
- *     asserting a delivery that cannot happen.
+ *     *no* `SessionStart`. The bridge is never invoked.
+ *
+ * So the runbook's "operator-triggered `/compact`" is not a usable trigger for
+ * the hook path, and driving one here would only spend turns to assert an
+ * absence. The contract itself is recorded in
+ * `docs/operations/compaction-testing.md`; this lane proves the delivery.
  *
  * It costs real Codex (and Claude, for the team lead) subscription turns, so it
  * is excluded from `just test-e2e` and `just test-e2e-full` and runs only as
@@ -781,6 +782,9 @@ describe('Codex compaction via hooks', function () {
     // take a turn, and `--yolo` does not answer that. The fixture project is
     // new every run, so the scratch config has to carry it.
     trustProject(join(codexHome, 'config.toml'), TAURHAUS_PROJECT_PATH)
+    // Bound the case before the member ever launches, so it reads the lowered
+    // threshold from its first turn and no restart is needed to apply it.
+    setAutoCompactTokenLimit(join(codexHome, 'config.toml'), AUTO_COMPACT_TOKEN_LIMIT)
 
     originalSettings = await invokeTauriOrThrow('get_settings')
     await setCodexCompactionMode('hooks')
@@ -815,72 +819,9 @@ describe('Codex compaction via hooks', function () {
     killLanePanes()
   })
 
-  it('compacts on a manual /compact without reaching the hook bridge', async function () {
-    if (!laneEnabled) return this.skip()
-    this.timeout(300_000)
-
-    const boundariesBefore = rolloutCompactionCount()
-    const offset = currentLogOffset()
-    const submitted = await sendPaneLine(managed.paneId, '/compact')
-    expect(submitted).toBe(true)
-
-    // Codex's own transcript is the proof that a compaction happened at all.
-    try {
-      await browser.waitUntil(async () => rolloutCompactionCount() > boundariesBefore, {
-        timeout: HOOK_DELIVERY_TIMEOUT_MS,
-        interval: 2_000,
-        timeoutMsg: `Codex wrote no compaction boundary within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
-      })
-    } catch (error) {
-      console.error(`[e2e] pane when the manual compaction did not land:\n${(await capturePane(managed.paneId)).trimEnd()}`)
-      dumpCompactionEvents('manual /compact produced no boundary', readLog(offset).events)
-      throw error
-    }
-
-    // Give the bridge every chance to be called before concluding it was not.
-    await browser.pause(HOOK_SETTLE_MS)
-    const seen = readLog(offset).events
-    dumpCompactionEvents('manual /compact', seen)
-
-    // Pinned harness contract, measured on Codex 0.149.0: a manual compaction
-    // fires PreCompact and PostCompact only. taurhaus registers `SessionStart`
-    // with matcher `compact`, so the bridge is never invoked and no card is
-    // produced. If this starts failing, Codex has changed and the runbook's
-    // manual trigger became usable for the hook path — update both.
-    expect(selectEvents(seen, { eventPrefix: 'compaction.codex_hook.' })).toEqual([])
-    expect(selectEvents(seen, { eventPrefix: 'compaction.compact_hook.' })).toEqual([])
-  })
-
   it('delivers the restored-context card after Codex compacts on its own', async function () {
     if (!laneEnabled) return this.skip()
     this.timeout(600_000)
-
-    // Bound the case: lower Codex's own auto-compaction threshold in the
-    // scratch home, then restart the member so it reads the new config.
-    setAutoCompactTokenLimit(join(codexHome, 'config.toml'), AUTO_COMPACT_TOKEN_LIMIT)
-
-    const resumed = await withPaneEnvironment(async () => {
-      tmuxQuietly(['kill-pane', '-t', managed.paneId])
-      return await invokeTauriOrThrow('coordination_resume_member', {
-        request: { teamName: managed.teamName, memberName: managed.memberName },
-      })
-    })
-    expect(resumed?.resumed).toBe(true)
-    const paneId = resumed?.paneId ?? resumed?.pane_id
-    expect(paneId).toBeTruthy()
-    managed.paneId = paneId
-
-    // Same as after the first launch: the resume delivery can be left unsent in
-    // the composer, and anything typed next would be appended to it.
-    const paneContents = await capturePane(paneId)
-    if (blockingPrompt(paneContents)) {
-      throw new Error(`Codex is parked on an interactive prompt after resume:\n${paneContents.trimEnd()}`)
-    }
-    const turnsBeforeResumeDelivery = completedTurns()
-    tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
-    await waitForTurnAfter(turnsBeforeResumeDelivery)
-
-    writeOperationalSnapshot(managed.teamName, managed.memberName, TAURHAUS_PROJECT_PATH)
 
     const offset = currentLogOffset()
     let collected = []
@@ -908,11 +849,14 @@ describe('Codex compaction via hooks', function () {
 
     if (!hookDelivery(collected, managed.memberName)) {
       dumpCompactionEvents('automatic compaction cap reached', collected)
+      console.error(`[e2e] pane at the cap:\n${(await capturePane(managed.paneId)).trimEnd()}`)
+      // Which of the two failures this is decides where to look next: Codex not
+      // compacting at all is a driving problem, Codex compacting without the
+      // bridge hearing about it is a harness-contract problem.
       throw new Error(
-        `Codex did not auto-compact within the ${AUTO_COMPACTION_MAX_TURNS}-turn cap ` +
-          `(model_auto_compact_token_limit = ${AUTO_COMPACT_TOKEN_LIMIT}). ` +
-          'Automatic compaction is the only trigger that reaches the bridge on Codex 0.149, ' +
-          'so nothing else in this lane proves the hook path.'
+        `Codex did not deliver a compaction card within the ${AUTO_COMPACTION_MAX_TURNS}-turn cap ` +
+          `(model_auto_compact_token_limit = ${AUTO_COMPACT_TOKEN_LIMIT}); ` +
+          `Codex wrote ${rolloutCompactionCount()} compaction boundary/boundaries in that window.`
       )
     }
 
