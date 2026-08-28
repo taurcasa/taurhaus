@@ -428,6 +428,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 "doctor",
                 "du",
                 "export",
+                "help",
                 "inspect",
                 "leader",
                 "login",
@@ -444,12 +445,21 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 "worktree",
                 "wrap",
             ],
+            // Every value-taking global flag `grok --help` lists, aliases
+            // included: an omission makes the parser read the flag's value as
+            // the subcommand, so `grok --rules policy agent leader` would look
+            // like an interactive session.
             argv_value_flags: &[
                 "--agent",
                 "--agent-profile",
                 "--agents",
+                "--allow",
+                "--allowedTools",
                 "--cwd",
                 "--debug-file",
+                "--deny",
+                "--disallowed-tools",
+                "--disallowedTools",
                 "--effort",
                 "--json-schema",
                 "--leader-socket",
@@ -463,8 +473,12 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 "--ref",
                 "--reasoning-effort",
                 "--resume",
+                "--rules",
                 "-s",
+                "--sandbox",
                 "--session-id",
+                "--system-prompt",
+                "--system-prompt-override",
                 "--tools",
                 "-w",
                 "--worktree",
@@ -779,6 +793,24 @@ impl From<&CliToolSpec> for CliToolDescriptor {
     }
 }
 
+/// Whether one argv token carries `flag`, in each form a clap-style CLI accepts:
+/// the bare flag, `--flag=value`, and — for a short flag — the value attached to
+/// it, as in grok's `-p<PROMPT>`.
+fn flag_matches(token: &str, flag: &str) -> bool {
+    if token == flag {
+        return true;
+    }
+    let Some(rest) = token.strip_prefix(flag) else {
+        return false;
+    };
+    rest.starts_with('=') || (is_short_flag(flag) && !rest.is_empty())
+}
+
+/// A single-dash, single-letter flag, the only form that takes an attached value.
+fn is_short_flag(flag: &str) -> bool {
+    flag.len() == 2 && flag.starts_with('-') && !flag.starts_with("--")
+}
+
 impl CliToolSpec {
     /// Account provider for this tool. Provider rollout follows selector
     /// declaration, so a declared selector may temporarily use the floor.
@@ -855,12 +887,9 @@ impl CliToolSpec {
     pub fn argv_is_session(&self, args: &str) -> bool {
         let tokens = args.split_whitespace().collect::<Vec<_>>();
         if tokens.iter().any(|token| {
-            self.non_session_flags.iter().any(|flag| {
-                token == flag
-                    || token
-                        .strip_prefix(flag)
-                        .is_some_and(|rest| rest.starts_with('='))
-            })
+            self.non_session_flags
+                .iter()
+                .any(|flag| flag_matches(token, flag))
         }) {
             return false;
         }
@@ -1159,6 +1188,23 @@ mod tests {
             "grok sessions list",
             "grok update",
             "grok --model grok-4.6 inspect",
+            // Regression: commit bfecae9 matched a non-session flag only as a
+            // whole token or `--flag=value`, so grok's attached short form
+            // (`-p<PROMPT>`, verified in `grok --help`) read as the TUI.
+            "grok -psummarise",
+            // Regression: commit bfecae9 omitted grok's value-taking policy and
+            // prompt flags, so the parser advanced one token and read their
+            // value as the subcommand — `grok --rules policy agent leader`
+            // classified a leader service as an interactive session.
+            "grok --rules policy agent leader",
+            "grok --allow Bash(ls:*) agent stdio",
+            "grok --allowedTools Bash(ls:*) models",
+            "grok --deny Bash(rm:*) inspect",
+            "grok --disallowed-tools shell sessions list",
+            "grok --sandbox strict doctor",
+            "grok --system-prompt-override terse update",
+            "grok --system-prompt terse version",
+            "grok help",
         ] {
             assert!(!grok.argv_is_session(non_session), "{non_session}");
         }
