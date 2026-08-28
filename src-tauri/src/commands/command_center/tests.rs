@@ -1124,6 +1124,77 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
     assert_eq!(rendered["command"], "claude --dangerously-skip-permissions");
 }
 
+#[test]
+fn agy_resume_expands_the_last_conversation_id_before_launch() {
+    // Regression: commit 4cd067a stored `{session_id}` in agy's resume base but
+    // no launch path expanded it, so the shell passed the placeholder literally
+    // and Antigravity could not reopen the project's conversation.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _resolver_guard = crate::session_scanner::idle::AGY_RESOLVER_TEST_LOCK
+        .lock()
+        .unwrap();
+    let temp = TempDir::new().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let agy_root = temp.path().join(".gemini");
+    let app_data = agy_root.join("antigravity-cli");
+    let conversation_id = "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869";
+    std::fs::create_dir_all(app_data.join("cache")).expect("agy cache dir");
+    std::fs::create_dir_all(app_data.join("conversations")).expect("agy conversations dir");
+    std::fs::write(
+        app_data.join("cache/last_conversations.json"),
+        serde_json::json!({ project_path.to_string_lossy(): conversation_id }).to_string(),
+    )
+    .expect("agy conversation index");
+    std::fs::write(
+        app_data
+            .join("conversations")
+            .join(format!("{conversation_id}.db")),
+        [],
+    )
+    .expect("agy conversation database");
+
+    let _agy_root = crate::session_scanner::idle::set_agy_base_dir_for_test(agy_root.clone());
+    let _accounts = install_detection_override(
+        CliTool::Agy,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: vec![agy_root],
+            accounts: Vec::new(),
+        },
+    );
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) =
+        setup_db_with_project("p-agy-resume", project_path.to_string_lossy().as_ref());
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-agy-resume".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Agy),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        format!("agy --dangerously-skip-permissions --conversation '{conversation_id}'")
+    );
+    assert!(!request.params["command_override"]
+        .as_str()
+        .expect("command string")
+        .contains("{session_id}"));
+}
+
 /// Detection is faked here on purpose: no test may read the developer's real
 /// `~/.claude*`, and this exercises the launch path, not detection.
 fn fake_accounts() -> Vec<crate::session_scanner::accounts::Account> {

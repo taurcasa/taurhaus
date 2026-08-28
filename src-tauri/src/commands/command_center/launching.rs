@@ -8,6 +8,7 @@ use crate::session_scanner::launch::{
     base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec,
 };
 use serde_json::{Map, Value};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -121,7 +122,7 @@ pub(super) fn launch_cli_session_impl(
     }
 
     let terminal_settings = load_terminal_settings(db);
-    let base = base_command(&terminal_settings.cli_commands, tool, mode);
+    let base = resolved_launch_base(&terminal_settings.cli_commands, tool, mode, &linux_path)?;
     let account = crate::session_scanner::cli_tool::spec(tool)
         .account_provider()
         .map(|_| {
@@ -137,7 +138,7 @@ pub(super) fn launch_cli_session_impl(
                         .default_account_ids
                         .get(&tool.to_string())
                         .map(String::as_str),
-                    base,
+                    base: base.as_ref(),
                 },
             );
             log_account_resolution(&project_id, tool, &launch);
@@ -153,7 +154,7 @@ pub(super) fn launch_cli_session_impl(
     let rendered = LaunchSpec {
         tool,
         mode,
-        base,
+        base: base.as_ref(),
         model: ModelSpec::default(),
         codex_bypass_hook_trust: false,
         codex_notify_executable: None,
@@ -465,6 +466,36 @@ pub(super) fn launch_cli_session_impl(
         tmux_pane: pane,
         ..Default::default()
     })
+}
+
+const SESSION_ID_PLACEHOLDER: &str = "{session_id}";
+
+/// Resolve the Settings session token before the command crosses the daemon
+/// boundary. The daemon deliberately executes command overrides verbatim.
+fn resolved_launch_base<'a>(
+    commands: &'a crate::models::CliCommandSettings,
+    tool: CliTool,
+    mode: LaunchMode,
+    project_path: &str,
+) -> Result<Cow<'a, str>, String> {
+    let base = base_command(commands, tool, mode);
+    if !base.contains(SESSION_ID_PLACEHOLDER) {
+        return Ok(Cow::Borrowed(base));
+    }
+
+    let session_id = crate::session_scanner::cli_tool::spec(tool)
+        .session_resolver()
+        .resume_session_id(project_path)
+        .ok_or_else(|| {
+            format!(
+                "No resumable {} conversation was found for this project",
+                crate::session_scanner::cli_tool::spec(tool).label
+            )
+        })?;
+    Ok(Cow::Owned(base.replace(
+        SESSION_ID_PLACEHOLDER,
+        &crate::session_scanner::launch::shell_escape(&session_id),
+    )))
 }
 
 fn remember_resolved_account(

@@ -20,9 +20,11 @@ const MAX_HOOK_RECORD_AGE: Duration = Duration::from_secs(5 * 60);
 
 #[cfg(test)]
 static BASE_DIR_FOR_TEST: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+pub(crate) static AGY_RESOLVER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
-struct BaseDirOverride;
+pub(crate) struct BaseDirOverride;
 
 #[cfg(test)]
 impl Drop for BaseDirOverride {
@@ -32,7 +34,7 @@ impl Drop for BaseDirOverride {
 }
 
 #[cfg(test)]
-fn set_base_dir_for_test(base_dir: PathBuf) -> BaseDirOverride {
+pub(crate) fn set_base_dir_for_test(base_dir: PathBuf) -> BaseDirOverride {
     *BASE_DIR_FOR_TEST.lock().expect("agy test root lock") = Some(base_dir);
     BaseDirOverride
 }
@@ -46,7 +48,7 @@ pub struct AgyResolver {
 impl AgyResolver {
     pub fn new() -> Self {
         Self {
-            base_dir: dirs::home_dir().map(|home| home.join(".gemini")),
+            base_dir: Some(crate::provider::platform_paths::PlatformPaths::agy_dir()),
         }
     }
 
@@ -76,6 +78,12 @@ impl SessionResolver for AgyResolver {
             return IdleResult::idle();
         };
         agy_session_for_cwd(Path::new(project_path), &base_dir)
+    }
+
+    fn resume_session_id(&self, project_path: &str) -> Option<String> {
+        let base_dir = self.resolved_base_dir()?;
+        indexed_conversation_for_cwd(Path::new(project_path), &base_dir)
+            .map(|(conversation_id, _)| conversation_id)
     }
 }
 
@@ -149,39 +157,42 @@ fn agy_hook_state_at(
 }
 
 fn agy_session_for_cwd(cwd: &Path, base_dir: &Path) -> IdleResult {
-    let app_data = base_dir.join(APP_DATA_SUBDIR);
-    let raw = match std::fs::read_to_string(app_data.join(LAST_CONVERSATIONS)) {
-        Ok(raw) => raw,
-        Err(_) => return IdleResult::idle(),
-    };
-    let conversations: HashMap<String, String> = match serde_json::from_str(&raw) {
-        Ok(conversations) => conversations,
-        Err(_) => return IdleResult::idle(),
-    };
-    let Some(conversation_id) = conversation_for_cwd(&conversations, cwd) else {
+    let Some((conversation_id, transcript)) = indexed_conversation_for_cwd(cwd, base_dir) else {
         return IdleResult::idle();
     };
-    if !valid_conversation_id(conversation_id) {
-        return IdleResult::idle();
-    }
-
-    let transcript = app_data
-        .join(CONVERSATIONS_DIR)
-        .join(format!("{conversation_id}.db"));
-    let presence = app_data
+    let presence = base_dir
+        .join(APP_DATA_SUBDIR)
         .join(PRESENCE_DIR)
         .join(format!("{conversation_id}.lock"));
-    if !transcript.is_file() || !presence_lock_is_held(&presence) {
+    if !presence_lock_is_held(&presence) {
         return IdleResult::idle();
     }
 
     IdleResult {
         state: SessionState::Idle,
-        session_id: Some(conversation_id.to_string()),
+        session_id: Some(conversation_id),
         jsonl_path: Some(transcript.to_string_lossy().into_owned()),
         last_output_age_secs: None,
         authoritative: false,
     }
+}
+
+fn indexed_conversation_for_cwd(cwd: &Path, base_dir: &Path) -> Option<(String, PathBuf)> {
+    let app_data = base_dir.join(APP_DATA_SUBDIR);
+    let raw = std::fs::read_to_string(app_data.join(LAST_CONVERSATIONS)).ok()?;
+    let conversations: HashMap<String, String> = serde_json::from_str(&raw).ok()?;
+    let conversation_id = conversation_for_cwd(&conversations, cwd)?;
+    if !valid_conversation_id(conversation_id) {
+        return None;
+    }
+
+    let transcript = app_data
+        .join(CONVERSATIONS_DIR)
+        .join(format!("{conversation_id}.db"));
+    if !transcript.is_file() {
+        return None;
+    }
+    Some((conversation_id.to_string(), transcript))
 }
 
 fn conversation_for_cwd<'a>(
@@ -271,6 +282,7 @@ mod tests {
         // Regression: f90b362 replaced the third harness's project-scoped
         // source with NoSessionSource; agy identity must survive through the
         // registry using its cwd map and flock-held presence record.
+        let _guard = AGY_RESOLVER_TEST_LOCK.lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let project = "/home/user/projects/runtime-agy";
         let session_id = "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869";

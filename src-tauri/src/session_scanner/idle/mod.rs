@@ -26,8 +26,12 @@ mod claude_registry;
 mod codex;
 
 pub(crate) use agy::presence_lock_is_held;
+#[cfg(test)]
+pub(crate) use agy::set_base_dir_for_test as set_agy_base_dir_for_test;
 pub use agy::AgyHooksActivitySource;
 pub use agy::AgyResolver;
+#[cfg(test)]
+pub(crate) use agy::AGY_RESOLVER_TEST_LOCK;
 pub use claude::ClaudeResolver;
 pub use claude_registry::{
     config_dir_for_transcript, ActivitySource, AuthoritativeState, NoActivitySource,
@@ -100,6 +104,15 @@ pub trait SessionResolver: Send + Sync {
     /// Checks tool-specific session files and returns activity state,
     /// session ID, and path to the active session file.
     fn detect_idle(&self, project_path: &str) -> IdleResult;
+
+    /// Resolve the persisted session identity used by a resume command.
+    ///
+    /// Most harnesses expose the same identity through their project resolver.
+    /// A harness whose liveness proof disappears on clean exit can override
+    /// this without weakening live-session detection.
+    fn resume_session_id(&self, project_path: &str) -> Option<String> {
+        self.detect_idle(project_path).session_id
+    }
 }
 
 /// Get the resolver for a CLI tool.

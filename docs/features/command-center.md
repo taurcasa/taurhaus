@@ -34,10 +34,11 @@ Default commands (configurable in Settings):
 |------|----------|-------|--------|
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
-| Antigravity | `agy --continue` | `agy` | `agy --conversation {session_id}` |
+| Antigravity | `agy --dangerously-skip-permissions --continue` | `agy --dangerously-skip-permissions` | `agy --dangerously-skip-permissions --conversation {session_id}` |
 
 Notes:
 - Commands are editable per tool/mode in `Settings -> Terminal & Sessions / CLI Tools`.
+- `{session_id}` is a Settings token that taurhaus replaces with the project's last Antigravity conversation UUID before launch.
 - Override commands are validated for safety before execution.
 
 ## Stop behavior
