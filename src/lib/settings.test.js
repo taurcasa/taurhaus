@@ -400,11 +400,11 @@ describe('Settings component', () => {
 
   // --- Section structure (P14) ---
 
-  it('renders the Mesh section with the Codex compaction source', async () => {
+  it('renders the Mesh section with Codex hooks selected by default', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => {
-      // Regression: 0b87699 had no UI control to select the Codex hook bridge
-      // or restore the transcript fallback.
+      // Regression: commit 8cdfcf6 kept transcript compaction selected after
+      // Codex 0.147 proved the native compact hook path reliable.
       expect(screen.getByTestId('settings-mesh')).toBeTruthy()
       expect(screen.getByTestId('codex-compaction-source')).toHaveValue('hooks')
     })

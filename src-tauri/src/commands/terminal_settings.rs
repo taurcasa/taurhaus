@@ -224,34 +224,7 @@ pub(crate) fn reconcile_codex_compaction(
         &executable,
     )?;
     if mode == CodexCompactionMode::Hooks && has_managed_codex && hooks_support == Some(false) {
-        tracing::warn!(
-            codex_version = ?CliVersions::current().codex,
-            "Codex compact hook skipped because the installed CLI predates 0.147"
-        );
-        let mut fields = serde_json::Map::new();
-        fields.insert(
-            "tool".to_string(),
-            serde_json::Value::String("codex".to_string()),
-        );
-        fields.insert(
-            "version".to_string(),
-            CliVersions::current()
-                .codex
-                .clone()
-                .map(serde_json::Value::String)
-                .unwrap_or(serde_json::Value::Null),
-        );
-        fields.insert(
-            "minimum_version".to_string(),
-            serde_json::Value::String("0.147.0".to_string()),
-        );
-        crate::commands::logging::emit_global(
-            "warn",
-            "coordination",
-            "compaction.codex_hook.unsupported",
-            Some("Codex compact hook requires CLI version 0.147.0 or newer".to_string()),
-            fields,
-        );
+        log_codex_hook_unsupported_once();
     } else if mode == CodexCompactionMode::Hooks && has_managed_codex && hooks_support.is_none() {
         tracing::warn!(
             "Codex compact hook reconciliation skipped because the CLI version could not be resolved"
@@ -302,6 +275,42 @@ pub(crate) fn reconcile_codex_compaction(
         );
     }
     Ok(changed)
+}
+
+/// One line per run: startup and every managed launch reconcile the same
+/// unsupported installation, and repeats do not add operational information.
+fn log_codex_hook_unsupported_once() {
+    static LOGGED: std::sync::Once = std::sync::Once::new();
+    LOGGED.call_once(|| {
+        tracing::warn!(
+            codex_version = ?CliVersions::current().codex,
+            "Codex compact hook skipped because the installed CLI predates 0.147"
+        );
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "tool".to_string(),
+            serde_json::Value::String("codex".to_string()),
+        );
+        fields.insert(
+            "version".to_string(),
+            CliVersions::current()
+                .codex
+                .clone()
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        fields.insert(
+            "minimum_version".to_string(),
+            serde_json::Value::String("0.147.0".to_string()),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            "compaction.codex_hook.unsupported",
+            Some("Codex compact hook requires CLI version 0.147.0 or newer".to_string()),
+            fields,
+        );
+    });
 }
 
 pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationError> {

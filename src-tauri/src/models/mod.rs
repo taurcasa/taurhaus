@@ -948,7 +948,7 @@ const fn default_true() -> bool {
 impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
-            codex_compaction: CodexCompactionMode::Transcript,
+            codex_compaction: CodexCompactionMode::Hooks,
             agy_hooks: true,
             grok_hooks: true,
         }
@@ -958,8 +958,8 @@ impl Default for HarnessSettings {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum CodexCompactionMode {
-    Hooks,
     #[default]
+    Hooks,
     Transcript,
 }
 
@@ -1291,14 +1291,14 @@ pub struct DiffHunk {
 mod tests {
     use super::*;
 
-    // Regression: 0b87699 offered no Codex compaction source setting, leaving
-    // the unstable transcript tailer as the only path.
+    // Regression: commit 8cdfcf6 kept the transcript tailer as the default
+    // after Codex 0.147 proved SessionStart(source=compact) hooks reliable.
     #[test]
-    fn terminal_settings_default_codex_compaction_to_transcript() {
+    fn terminal_settings_default_codex_compaction_to_hooks() {
         let settings = TerminalSettings::default();
         assert_eq!(
             settings.harness.codex_compaction,
-            CodexCompactionMode::Transcript
+            CodexCompactionMode::Hooks
         );
 
         let legacy: TerminalSettings = serde_json::from_value(serde_json::json!({
@@ -1309,7 +1309,7 @@ mod tests {
         .expect("legacy settings");
         assert_eq!(
             legacy.harness.codex_compaction,
-            CodexCompactionMode::Transcript
+            CodexCompactionMode::Hooks
         );
     }
 

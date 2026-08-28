@@ -276,7 +276,7 @@ function normalizeSettings(raw) {
         grok: normalizeToolCommands(cliCommands.grok, terminalContract.cli_command_defaults.grok),
       },
       harness: {
-        codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
+        codex_compaction: codexCompaction === 'transcript' ? 'transcript' : 'hooks',
         agy_hooks: agyHooks == null ? true : Boolean(agyHooks),
         grok_hooks: grokHooks == null ? true : Boolean(grokHooks),
       },
