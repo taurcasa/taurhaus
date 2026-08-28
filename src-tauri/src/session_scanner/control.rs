@@ -963,6 +963,32 @@ mod tests {
     }
 
     #[test]
+    fn a_prompted_grok_session_still_offers_its_registry_pid() {
+        // Regression: commit 54c9103 classified the joined command line, so a
+        // TUI started as `grok "help me"` never entered the process inventory
+        // at all: no tool process shared the pane's tty, the registry row that
+        // proves a clean `/quit` was never probed, and the stop fell back to
+        // the tmux floor.
+        let argv = ["grok".to_string(), "help me".to_string()];
+        let tool = crate::session_scanner::process::detect_cli_tool_argv(&argv)
+            .expect("a prompted grok TUI is a session");
+        let pane_tty = "/dev/pts/9";
+        let processes = vec![ProcessInfo {
+            pid: 4242,
+            project_path: "/home/user/projects/grok".to_string(),
+            tty: pane_tty.to_string(),
+            args: argv.join(" "),
+            cli_tool: tool,
+        }];
+
+        assert_eq!(
+            registry_pid_candidates(CliTool::Grok, 1111, Some(pane_tty), &processes),
+            vec![4242, 1111],
+            "the prompted grok child is probed before the pane shell"
+        );
+    }
+
+    #[test]
     fn the_registry_release_binds_the_home_of_the_pid_that_holds_a_row() {
         // Regression: commit 358a7c9 read the registry of the default grok home
         // for the pane's shell pid, so a session started under a second

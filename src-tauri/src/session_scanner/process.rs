@@ -367,8 +367,12 @@ fn read_inventory_entries() -> Option<Vec<InventoryEntry>> {
             Some(
                 processes
                     .into_iter()
-                    .filter_map(|(pid, args)| {
-                        let cli_tool = detect_cli_tool(&args)?;
+                    .filter_map(|(pid, argv)| {
+                        // Classify the argv elements, then keep the joined form
+                        // for fingerprints and logging: only the elements can
+                        // tell `grok "help me"` from `grok help`.
+                        let cli_tool = detect_cli_tool_argv(&argv)?;
+                        let args = argv.join(" ");
                         // Unknown reading (the process is already gone, or the
                         // stat line will not parse): keep it. Enrichment drops
                         // dead PIDs anyway, and dropping a session we cannot
@@ -678,9 +682,9 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
     !matches!(column.trim(), "" | "?" | "??" | "-")
 }
 
-/// Detect which CLI tool a process belongs to from its command line args.
+/// Detect which CLI tool a process belongs to from its argv.
 ///
-/// Returns `Some(CliTool)` if the args match a known CLI tool, `None` otherwise.
+/// Returns `Some(CliTool)` if the argv matches a known CLI tool, `None` otherwise.
 ///
 /// Matches:
 /// - **Codex**: `codex`, `/path/to/codex`
@@ -690,18 +694,34 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
 ///
 /// Excludes:
 /// - `grep claude`, `ps -eo ...`, `claude-something-else`, `vim claude.md`, etc.
+///
+/// Classifies argv *elements*, the form `/proc/<pid>/cmdline` delivers: a
+/// quoted prompt stays one element, so `grok "help me"` is a session and
+/// `grok help` is not.
+pub fn detect_cli_tool_argv(argv: &[String]) -> Option<CliTool> {
+    detect_cli_tool_elements(argv)
+}
+
+/// Classify a command line that reached us already joined — the macOS `ps`
+/// inventory and stored pane command strings have no other form. The join is
+/// lossy (see `CliToolSpec::argv_is_session`): a prompt whose first word is a
+/// management subcommand cannot be told from that subcommand.
 pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
-    let first = args.split_whitespace().next().unwrap_or("");
+    detect_cli_tool_elements(&args.split_whitespace().collect::<Vec<_>>())
+}
+
+fn detect_cli_tool_elements<S: AsRef<str>>(argv: &[S]) -> Option<CliTool> {
+    let first = argv.first().map(AsRef::as_ref).unwrap_or("");
 
     if let Some(entry) = spec_for_argv_token(first) {
-        return entry.argv_is_session(args).then_some(entry.tool);
+        return entry.argv_elements_are_session(argv).then_some(entry.tool);
     }
 
     // Node-launched tools: `node /path/to/tool` or `/path/to/node /path/to/tool`.
     // Newer Node invocations can include runtime flags before the script path
     // (e.g. `node --no-warnings=DEP0040 /run/.../codex --yolo`).
     if first == "node" || first.ends_with("/node") {
-        let tokens: Vec<&str> = args.split_whitespace().skip(1).collect();
+        let tokens: Vec<&str> = argv.iter().skip(1).map(AsRef::as_ref).collect();
 
         // Prefer the first non-flag token as the script path, then fall back to
         // checking all tokens to tolerate unusual Node flag/value combinations.
@@ -1542,6 +1562,80 @@ mod tests {
         for non_session in ["grok --help explain the flag", "grok -p explain the flag"] {
             assert_eq!(detect_cli_tool(non_session), None, "{non_session}");
         }
+    }
+
+    #[test]
+    fn detect_grok_reads_the_argv_elements_a_prompt_arrives_as() {
+        // Regression: commit 54c9103 classified the joined command line, so a
+        // live TUI started as `grok "help me"` reached the classifier as the
+        // tokens `grok help me` and was dropped as the `help` management
+        // subcommand; `grok -- "--help explain this"` was dropped as
+        // `grok --help` because `--` never ended option parsing.
+        let argv = |elements: &[&str]| {
+            elements
+                .iter()
+                .map(|element| (*element).to_string())
+                .collect::<Vec<_>>()
+        };
+
+        for interactive in [
+            vec!["grok", "help me"],
+            vec!["grok", "--", "--help explain this"],
+            vec!["grok", "explain the --help flag"],
+        ] {
+            assert_eq!(
+                detect_cli_tool_argv(&argv(&interactive)),
+                Some(CliTool::Grok),
+                "{interactive:?}"
+            );
+        }
+
+        for non_session in [
+            vec!["grok", "help"],
+            vec!["grok", "--help"],
+            vec!["grok", "-p", "summarise"],
+            vec!["grok", "agent", "stdio"],
+        ] {
+            assert_eq!(
+                detect_cli_tool_argv(&argv(&non_session)),
+                None,
+                "{non_session:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn detect_from_a_joined_command_line_keeps_its_documented_ambiguity() {
+        // Regression: commit 54c9103. The `ps` backend and stored pane command
+        // strings carry only the joined form, where a prompt word cannot be
+        // told from an argv element. The fallback keeps every ordinary prompt
+        // and loses exactly the prompts whose first word is a subcommand — the
+        // reason the `/proc` backend now classifies argv elements instead.
+        assert_eq!(
+            detect_cli_tool("grok explain this repo"),
+            Some(CliTool::Grok)
+        );
+        // `--` survives the join, so end-of-options is still readable here.
+        assert_eq!(
+            detect_cli_tool("grok -- --help explain this"),
+            Some(CliTool::Grok)
+        );
+        assert_eq!(detect_cli_tool("grok help me"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_grok_prompt_survives_proc_cmdline_collection() {
+        // Regression: commit 54c9103. `/proc/<pid>/cmdline` is NUL-delimited,
+        // and joining it before classification is what destroyed the argv
+        // boundaries the classifier needs.
+        let argv = crate::platform::cmdline_to_argv(b"grok\0help me\0");
+        assert_eq!(argv, ["grok", "help me"]);
+        assert_eq!(detect_cli_tool_argv(&argv), Some(CliTool::Grok));
+        assert_eq!(
+            detect_cli_tool_argv(&crate::platform::cmdline_to_argv(b"grok\0help\0")),
+            None
+        );
     }
 
     #[test]

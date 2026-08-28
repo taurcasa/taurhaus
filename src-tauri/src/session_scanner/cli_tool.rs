@@ -895,39 +895,55 @@ impl CliToolSpec {
 
     /// Whether a matching executable invocation represents an interactive
     /// terminal session rather than a one-shot driver or utility subcommand.
-    /// Options are read only up to the first positional argument. Process
-    /// collection joins argv with single spaces, so the words of a positional
-    /// prompt arrive as bare tokens: scanning the whole line for a terminating
-    /// flag would read `grok "explain the --help flag"` as `grok --help` and
-    /// hide a live session.
-    pub fn argv_is_session(&self, args: &str) -> bool {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
-        let Some(executable_index) = tokens
+    ///
+    /// Reads argv *elements*, the form `/proc/<pid>/cmdline` delivers: options
+    /// only up to the first positional, `--` ends option parsing, and a
+    /// management subcommand counts only as the whole first positional
+    /// element. So `grok "help me"` is one element, not the `help`
+    /// subcommand, and `grok -- "--help explain this"` is a prompt, not
+    /// `--help`.
+    pub fn argv_elements_are_session<S: AsRef<str>>(&self, argv: &[S]) -> bool {
+        let Some(executable_index) = argv
             .iter()
-            .position(|token| self.matches_argv_token(token))
+            .position(|element| self.matches_argv_token(element.as_ref()))
         else {
             return false;
         };
         let mut index = executable_index + 1;
-        while let Some(token) = tokens.get(index) {
-            if token.starts_with('-') {
+        while let Some(element) = argv.get(index).map(AsRef::as_ref) {
+            // End of options: everything after it is prompt text, never a
+            // subcommand and never a terminating flag.
+            if element == "--" {
+                return true;
+            }
+            if element.starts_with('-') {
                 if self
                     .non_session_flags
                     .iter()
-                    .any(|flag| flag_matches(token, flag))
+                    .any(|flag| flag_matches(element, flag))
                 {
                     return false;
                 }
                 let takes_separate_value =
-                    !token.contains('=') && self.argv_value_flags.iter().any(|flag| token == flag);
+                    !element.contains('=') && self.argv_value_flags.contains(&element);
                 index += if takes_separate_value { 2 } else { 1 };
                 continue;
             }
             // The first positional decides: a utility subcommand is not a
             // session, and anything else is the prompt the TUI opens with.
-            return !self.non_session_subcommands.contains(token);
+            return !self.non_session_subcommands.contains(&element);
         }
         true
+    }
+
+    /// Classify a command line that reached us already joined — the macOS `ps`
+    /// inventory and stored pane command strings have no other form.
+    ///
+    /// The join is lossy: a prompt word is indistinguishable from a separate
+    /// argv element, so `grok "help me"` reads as the `help` subcommand here.
+    /// Prefer `argv_elements_are_session` wherever the elements survive.
+    pub fn argv_is_session(&self, args: &str) -> bool {
+        self.argv_elements_are_session(&args.split_whitespace().collect::<Vec<_>>())
     }
 
     pub fn session_source(&self) -> &'static dyn crate::session_scanner::idle::SessionSource {
@@ -1264,6 +1280,45 @@ mod tests {
             "grok --always-approve --version",
         ] {
             assert!(!grok.argv_is_session(non_session), "{non_session}");
+        }
+    }
+
+    #[test]
+    fn grok_classifies_the_argv_elements_a_prompt_arrives_as() {
+        // Regression: commit 54c9103 classified a whitespace-split command
+        // line, so an argv element was indistinguishable from the words inside
+        // it. A live TUI started as `grok "help me"` arrived as the tokens
+        // `grok help me` and was rejected as the `help` management subcommand,
+        // and `grok -- "--help explain this"` was rejected as `grok --help`
+        // because `--` never ended option parsing.
+        let grok = spec(CliTool::Grok);
+        for interactive in [
+            vec!["grok", "help me"],
+            vec!["grok", "-- explain this"],
+            vec!["grok", "--", "--help explain this"],
+            vec!["grok", "--", "help"],
+            vec!["grok", "explain the --help flag"],
+            vec!["grok", "--model", "grok-4.6", "version the changelog"],
+        ] {
+            assert!(
+                grok.argv_elements_are_session(&interactive),
+                "{interactive:?}"
+            );
+        }
+
+        // The real management and terminating-flag invocations, whose argv
+        // elements are exactly those tokens, stay out of the inventory.
+        for non_session in [
+            vec!["grok", "help"],
+            vec!["grok", "--help"],
+            vec!["grok", "version"],
+            vec!["grok", "-p", "summarise"],
+            vec!["grok", "--model", "grok-4.6", "inspect"],
+        ] {
+            assert!(
+                !grok.argv_elements_are_session(&non_session),
+                "{non_session:?}"
+            );
         }
     }
 

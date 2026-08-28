@@ -9,49 +9,65 @@ use super::{InotifyProcessStats, InotifyUserStats};
 /// Upper bound for a single `/proc/{pid}/cmdline` read; `ps` applies the same cap.
 const MAX_CMDLINE_BYTES: u64 = 128 * 1024;
 
-/// List live processes as `(pid, args)` from `/proc/*/cmdline`, sorted by pid.
+/// List live processes as `(pid, argv)` from `/proc/*/cmdline`, sorted by pid.
 ///
-/// `args` joins argv with single spaces, matching `ps -o args`. Processes that
-/// disappear mid-read or have no command line (kernel threads, zombies) are
-/// skipped. Returns `None` only when `/proc` itself cannot be listed.
-pub fn list_processes() -> Option<Vec<(u32, String)>> {
+/// argv keeps its element boundaries, which is what tells a quoted prompt from
+/// a separate argument; callers that need the `ps -o args` shape join it
+/// themselves. Processes that disappear mid-read or have no command line
+/// (kernel threads, zombies) are skipped. Returns `None` only when `/proc`
+/// itself cannot be listed.
+pub fn list_processes() -> Option<Vec<(u32, Vec<String>)>> {
     let entries = fs::read_dir("/proc").ok()?;
-    let mut processes: Vec<(u32, String)> = entries
+    let mut processes: Vec<(u32, Vec<String>)> = entries
         .flatten()
         .filter_map(|entry| {
             let pid = entry.file_name().to_string_lossy().parse::<u32>().ok()?;
-            let args = process_args(pid)?;
-            Some((pid, args))
+            let argv = process_argv(pid)?;
+            Some((pid, argv))
         })
         .collect();
     processes.sort_unstable_by_key(|(pid, _)| *pid);
     Some(processes)
 }
 
-/// Read a process's command line from `/proc/{pid}/cmdline`, argv joined by spaces.
+/// Read a process's argv elements from `/proc/{pid}/cmdline`.
 ///
 /// Returns `None` when the process is gone or has no command line.
-pub fn process_args(pid: u32) -> Option<String> {
+pub fn process_argv(pid: u32) -> Option<Vec<String>> {
     let mut raw = Vec::new();
     fs::File::open(format!("/proc/{pid}/cmdline"))
         .ok()?
         .take(MAX_CMDLINE_BYTES)
         .read_to_end(&mut raw)
         .ok()?;
-    let args = cmdline_to_args(&raw);
-    if args.is_empty() {
+    let argv = cmdline_to_argv(&raw);
+    if argv.is_empty() {
         None
     } else {
-        Some(args)
+        Some(argv)
     }
 }
 
-fn cmdline_to_args(raw: &[u8]) -> String {
-    String::from_utf8_lossy(raw)
-        .trim_end_matches('\0')
-        .split('\0')
-        .collect::<Vec<_>>()
-        .join(" ")
+/// Read a process's command line from `/proc/{pid}/cmdline`, argv joined by
+/// spaces — the `ps -o args` shape, for fingerprints and logging.
+///
+/// Returns `None` when the process is gone or has no command line.
+pub fn process_args(pid: u32) -> Option<String> {
+    Some(process_argv(pid)?.join(" "))
+}
+
+/// Split `/proc/{pid}/cmdline` bytes into argv elements.
+///
+/// The kernel keeps the NUL delimiters, so a quoted prompt stays one element:
+/// `grok "help me"` is `["grok", "help me"]`, not three tokens. Classification
+/// needs those boundaries — see `session_scanner::process::detect_cli_tool_argv`.
+pub fn cmdline_to_argv(raw: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(raw);
+    let trimmed = text.trim_end_matches('\0');
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    trimmed.split('\0').map(str::to_string).collect()
 }
 
 /// Read one variable from a process's initial environment (`/proc/{pid}/environ`).
@@ -368,14 +384,15 @@ mod tests {
     fn list_processes_includes_current_process_with_its_args() {
         let processes = list_processes().expect("/proc listable");
         let own = std::process::id();
-        let (_, args) = processes
+        let (_, argv) = processes
             .iter()
             .find(|(pid, _)| *pid == own)
             .expect("own pid listed");
         let own_argv0 = std::env::args().next().expect("argv[0]");
-        assert!(
-            args.starts_with(&own_argv0),
-            "args {args:?} should start with argv[0] {own_argv0:?}"
+        assert_eq!(
+            argv.first().map(String::as_str),
+            Some(own_argv0.as_str()),
+            "argv {argv:?} should start with argv[0] {own_argv0:?}"
         );
         assert!(processes.windows(2).all(|pair| pair[0].0 < pair[1].0));
     }
@@ -385,14 +402,29 @@ mod tests {
         assert!(process_args(999_999_999).is_none());
     }
 
+    // Regression: commit 54c9103 let the joined command line be the only form
+    // the session scanner ever saw, so a prompt element (`grok "help me"`) was
+    // indistinguishable from separate argv entries. The NUL boundaries are
+    // what the classifier needs; the join stays for fingerprints and logging.
     #[test]
-    fn cmdline_to_args_joins_argv_with_spaces() {
+    fn cmdline_to_argv_keeps_every_argv_element_whole() {
+        assert_eq!(cmdline_to_argv(b"grok\0help me\0"), ["grok", "help me"]);
         assert_eq!(
-            cmdline_to_args(b"node\0/usr/bin/claude\0--resume\0"),
+            cmdline_to_argv(b"grok\0--\0--help explain this\0"),
+            ["grok", "--", "--help explain this"]
+        );
+        assert_eq!(cmdline_to_argv(b"codex"), ["codex"]);
+        assert!(cmdline_to_argv(b"").is_empty());
+    }
+
+    #[test]
+    fn cmdline_to_argv_joins_back_into_the_ps_args_shape() {
+        assert_eq!(
+            cmdline_to_argv(b"node\0/usr/bin/claude\0--resume\0").join(" "),
             "node /usr/bin/claude --resume"
         );
-        assert_eq!(cmdline_to_args(b""), "");
-        assert_eq!(cmdline_to_args(b"codex"), "codex");
+        assert_eq!(cmdline_to_argv(b"").join(" "), "");
+        assert_eq!(cmdline_to_argv(b"codex").join(" "), "codex");
     }
 
     #[test]
