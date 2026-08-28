@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Template writes stay atomic where a rename cannot replace a file** — Windows answers `ERROR_INVALID_FUNCTION` for a replacing rename on some WSL-backed and network paths, and the fallback used to truncate the live file and rewrite it in place, so a reader could see half a file and an interrupted write could leave one. The old file is now moved aside and the new one renamed into the name it vacated: every observable state is a whole file, and a failure restores the old one and reports itself instead of claiming a write that did not happen.
 - **Antigravity hooks are written to the shared `~/.gemini/config/hooks.json`** — agy 1.0.8 moved user-level hooks there and its migration symlinks the old `antigravity-cli/hooks.json` onto it. taurhaus now merges its single entry into the shared file by hook name (anything else in the file is preserved), follows a symlinked target instead of replacing it with a private regular file, and clears any entry left behind in the legacy path. The `Stop` payload's `terminationReason` is kept as an open string — only `NO_TOOL_CALL` has ever been observed, and an unseen value must never drop an idle edge. `harness.agy_hooks` also gained the snake_case alias its siblings have; without it the setting the frontend sends was silently discarded.
 
 ## [0.8.1] - 2026-08-28

@@ -842,7 +842,9 @@ fn acquire_fallback_lock(
 }
 
 /// Write `bytes` to `target` through a unique temp file and a rename, so a
-/// reader never observes a half-written file.
+/// reader never observes a half-written file. Where the rename itself cannot
+/// replace an existing file, `replace_without_atomic_rename` keeps that
+/// promise the long way round.
 pub(crate) fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), TemplateStoreError> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
@@ -898,11 +900,11 @@ pub(crate) fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), Templ
         if is_windows_unsupported_rename_error(&err) {
             tracing::warn!(
                 target = %target.display(),
-                "atomic rename unsupported on this path; falling back to direct write"
+                "atomic rename cannot replace this path; moving the old file aside instead"
             );
-            fs::write(target, bytes)?;
+            let replaced = replace_without_atomic_rename(&tmp, target);
             let _ = fs::remove_file(&tmp);
-            return Ok(());
+            return replaced.map_err(TemplateStoreError::Io);
         }
 
         let _ = fs::remove_file(&tmp);
@@ -910,6 +912,41 @@ pub(crate) fn write_atomic_file(target: &Path, bytes: &[u8]) -> Result<(), Templ
     }
 
     Ok(())
+}
+
+/// Put `tmp` at `target` on a filesystem whose rename refuses to replace a file
+/// that is already there — Windows answers `ERROR_INVALID_FUNCTION` on some
+/// WSL-backed and network paths.
+///
+/// Rewriting `target` in place is not the answer: a reader would see a
+/// half-written file and an interruption would leave one on disk, which is the
+/// very thing an atomic write exists to prevent. So the old file is moved aside
+/// first and the new one renamed into the name it vacated — every state a
+/// reader can observe is a whole file, the old one or the new one — and a
+/// failure puts the old file back and reports itself rather than claiming a
+/// write that did not happen.
+fn replace_without_atomic_rename(tmp: &Path, target: &Path) -> std::io::Result<()> {
+    let displaced = temp_path_for(target);
+    let had_target = match fs::rename(target, &displaced) {
+        Ok(()) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+        Err(err) => return Err(err),
+    };
+
+    match fs::rename(tmp, target) {
+        Ok(()) => {
+            if had_target {
+                let _ = fs::remove_file(&displaced);
+            }
+            Ok(())
+        }
+        Err(err) => {
+            if had_target {
+                let _ = fs::rename(&displaced, target);
+            }
+            Err(err)
+        }
+    }
 }
 
 fn is_deleted_status(status: Status) -> bool {
