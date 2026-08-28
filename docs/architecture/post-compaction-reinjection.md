@@ -2,6 +2,17 @@
 
 Date: March 8, 2026
 
+> **Status (2026-08).** The domain model below — Taurhaus owns detection, composition and the
+> operational snapshot; the harness owns only the final injection step — is what shipped and is
+> still current. The **Codex transport did not ship as designed**: the transcript watcher, the
+> signal log/watcher/processor, the daemon/app owner election and the `harness.codex_compaction`
+> mode setting are all deleted (daemon protocol 14). Codex now uses the same
+> `SessionStart(source=compact)` hook bridge as Claude, by default, whenever
+> `CliVersions.codex_compaction_hooks_supported` (Codex >= 0.147). Sections marked *Superseded*
+> below are kept as the original phase-1 proposal; for live behavior see
+> [`harness-model.md`](./harness-model.md) and
+> [`docs/operations/compaction-testing.md`](../operations/compaction-testing.md).
+
 ## Goal
 
 Restore the small but high-value operational context that fades after compaction:
@@ -38,21 +49,21 @@ Use a hybrid architecture with Taurhaus as the owner of:
 
 Tool-specific adapters own only the final injection step:
 
-- Claude Code: native hook adapter
-- Codex: signal-log detection plus mesh inbox append
+- Claude Code and Codex: native hook adapter
+- Grok: native hook adapter for detection, mesh inbox append for delivery
 
 Mesh is not the primary detection or delivery owner for this feature.
 
 ## 2. Detection strategy
 
 - Claude Code: detect via `SessionStart(source=compact)` hook
-- Codex (default, `harness.codex_compaction=transcript`): detect via appended `type:"compacted"` / `payload.type:"context_compacted"` in the active session JSONL
-- Codex (opt-in, `harness.codex_compaction=hooks`): detect via the same `SessionStart(source=compact)` hook bridge, gated on Codex ≥ 0.147
+- Codex: detect via the same `SessionStart(source=compact)` hook bridge, gated on Codex ≥ 0.147. There is no mode setting and no transcript fallback; an older Codex logs `compaction.codex_hook.unsupported` once and gets no reinjection
+- Grok: the same hook bridge, accepting `PostCompact` because grok's start source never reports `compact`
 
 ## 3. Delivery strategy
 
-- Claude Code: inject via hook `additionalContext`
-- Codex: inject via bounded mesh inbox delivery for the managed member
+- Claude Code and Codex: inject via hook `additionalContext` (registry `compaction_delivery: HookStdout`)
+- Grok: append the card to the managed member's bounded mesh inbox (registry `compaction_delivery: MeshInbox`), because grok documents passive-hook stdout as ignored
 
 Do not use raw tmux text injection as the primary reinjection path.
 
@@ -305,9 +316,12 @@ Important local reality:
 
 ## Codex
 
-Use Taurhaus session scanning plus a codex-specific compaction watcher.
+**Superseded.** The original proposal below was Taurhaus session scanning plus a codex-specific
+transcript watcher. Codex 0.147 shipped a reliable `SessionStart(source=compact)` hook, so Codex
+now uses the same hook bridge as Claude and the watcher is deleted. Detection ownership is
+unchanged in substance — Taurhaus still defines the hook, the snapshot and the renderer.
 
-Mechanism:
+Original proposal (historical):
 
 1. Session scanner already resolves the active Codex JSONL per project.
 2. A compaction watcher tails the active session file for:
@@ -345,8 +359,8 @@ Why this is best:
 
 Primary mechanism:
 
-- **transcript mode (default):** append a bounded `post_compaction_context` message to `teams/<team>/inboxes/<member>.json` via `MeshInboxStore::append`. The wake is the member's mesh daemon, which watches the inbox directory. Taurhaus never runs `send-keys` for compaction.
-- **hooks mode (opt-in):** the card is returned as `additionalContext` from Codex's own `SessionStart(compact)` hook — no inbox append and no wake prompt.
+- the card is returned as `additionalContext` from Codex's own `SessionStart(compact)` hook — no inbox append and no wake prompt. This is the only Codex path; the mode setting that used to select it is gone.
+- the bounded `post_compaction_context` inbox append to `teams/<team>/inboxes/<member>.json` via `MeshInboxStore::append`, woken by the member's mesh daemon, survives as the delivery for harnesses whose registry declares `compaction_delivery: MeshInbox` (grok). Taurhaus never runs `send-keys` for compaction on any path.
 
 The "direct tmux submission" phrasing below is the original phase-1 proposal, superseded by [Why bounded inbox delivery is now the right Codex transport](#why-bounded-inbox-delivery-is-now-the-right-codex-transport). The card *format* is still accurate.
 
@@ -450,6 +464,9 @@ Practical rule:
 7. Claude resumes with operational context restored.
 
 ## Codex flow
+
+**Superseded** — Codex follows the Claude flow above, through the same hook bridge. The original
+transcript-watcher sequence is kept here as the historical proposal:
 
 1. Codex appends `compacted` to session JSONL.
 2. Taurhaus compaction watcher sees the append.
@@ -607,6 +624,8 @@ Dependency:
 
 ## 5. Implement Codex compaction watcher in Taurhaus session scanner
 
+**Superseded** — built, then deleted when Codex 0.147 made the hook bridge (task 7) serve Codex too.
+
 Scope:
 
 - Large
@@ -707,6 +726,6 @@ The clean design is:
 - static role context comes from coordination config
 - dynamic operational context comes from a new canonical snapshot
 - Claude uses the native hook lifecycle
-- Codex uses Taurhaus session-file detection plus a bounded mesh inbox append, woken by the member's mesh daemon (or, in opt-in hooks mode, the same hook lifecycle as Claude)
+- Codex uses the same native hook lifecycle as Claude (this is what shipped; the session-file detection plus bounded mesh inbox append originally proposed here is retired, and the bounded inbox append survives only for `MeshInbox`-delivery harnesses such as grok)
 
 That keeps tool-specific parser logic where it already belongs, avoids a fragile mesh-read roundtrip, and solves the actual high-value problem: restoring the compact operational contract that agents lose after compaction.

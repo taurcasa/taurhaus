@@ -246,7 +246,7 @@ Claude Code also writes two surfaces taurhaus reads but never modifies:
 
 `app_data_dir()` resolves to the platform-appropriate location via Tauri's path API.
 
-Terminal settings stored in the `settings` KV table include `harness.codex_compaction` (`hooks` | `transcript`, default `transcript`).
+Harness-native feature selection is stored in the `settings` KV table under `terminal.harness`: `agy_hooks` and `grok_hooks` (both default `true`). There is no Codex compaction mode key — managed Codex uses the native `SessionStart(source=compact)` hook whenever `CliVersions.codex_compaction_hooks_supported` (Codex >= 0.147). A 0.8.x blob that still carries the retired `codex_compaction` key loads fine (unknown fields are ignored) and the key is dropped on the next save.
 
 ## Key files
 
