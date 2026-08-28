@@ -1345,6 +1345,9 @@ mod tests {
     fn terminal_settings_grok_hooks_opt_out_reaches_the_backend() {
         assert!(TerminalSettings::default().harness.grok_hooks);
         let opted_out: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window",
             "harness": {"grok_hooks": false}
         }))
         .expect("settings with a snake_case grok_hooks key parse");
