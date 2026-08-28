@@ -1360,6 +1360,33 @@ describe('TemplateBrowserPanel', () => {
     })
   })
 
+  it('reports the obsolete agent definitions the export retired', async () => {
+    // Regression: an export left the definition of a role that was renamed,
+    // deleted, or moved to another harness on disk, so the notice had nothing
+    // to say about the agents Claude Code stopped resolving.
+    exportAgentDefinitions.mockResolvedValue({
+      written: ['claude-reviewer'],
+      removed: ['retired-orchestrator', 'moved-to-codex'],
+      skipped: [{ roleId: 'my-agent', reason: 'user_authored' }],
+    })
+
+    render(TemplateBrowserPanel, {
+      props: { open: true, projectId: 'project-1', modelCatalog: TEST_MODEL_CATALOG },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent(
+        'Exported 1 agent definition to .claude/agents \u00b7 removed 2 obsolete \u00b7 1 hand-written agent left untouched'
+      )
+    })
+  })
+
   it('separates a hand-written agent from a role id Claude cannot register', async () => {
     exportAgentDefinitions.mockResolvedValue({
       written: ['claude-reviewer'],

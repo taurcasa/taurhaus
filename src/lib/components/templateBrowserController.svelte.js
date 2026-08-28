@@ -412,6 +412,9 @@ export function createTemplateBrowserController({ getOpen, getProjectId = () => 
     try {
       const result = await exportAgentDefinitions(projectId)
       const written = result?.written?.length ?? 0
+      // Definitions of roles that left the catalog, deleted so Claude Code
+      // stops resolving them.
+      const removed = result?.removed?.length ?? 0
       const skipped = result?.skipped ?? []
       // Two different reasons to skip: a file someone wrote by hand, and a role
       // id Claude Code would never register as an agent name.
@@ -420,6 +423,9 @@ export function createTemplateBrowserController({ getOpen, getProjectId = () => 
       const parts = [
         `Exported ${written} agent ${written === 1 ? 'definition' : 'definitions'} to .claude/agents`,
       ]
+      if (removed > 0) {
+        parts.push(`removed ${removed} obsolete`)
+      }
       if (handWritten > 0) {
         parts.push(
           `${handWritten} hand-written ${handWritten === 1 ? 'agent' : 'agents'} left untouched`

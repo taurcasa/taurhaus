@@ -124,11 +124,14 @@ export async function exportAgentDefinitions(projectId) {
   const result = await invokeOrMock('export_agent_definitions', { projectId }, () => ({
     // Browser mode has no project on disk, so nothing is written there.
     written: [],
+    removed: [],
     skipped: [],
   }))
 
   return {
     written: Array.isArray(result?.written) ? result.written : [],
+    // Generated definitions of roles the catalog no longer exports.
+    removed: Array.isArray(result?.removed) ? result.removed : [],
     skipped: Array.isArray(result?.skipped) ? result.skipped : [],
   }
 }
