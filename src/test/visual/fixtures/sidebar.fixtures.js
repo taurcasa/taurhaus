@@ -253,6 +253,15 @@ const active_multiTool_dark = createScenario({
   },
 })
 
+// The light twin: the Grok and Antigravity brand marks are thin, and a dark
+// mark on a light row is where a thin one disappears first.
+const active_multiTool_light = createScenario({
+  ...active_multiTool_dark,
+  name: 'active_multiTool_light',
+  theme: 'light',
+  compareAgainst: 'active_multiTool_dark',
+})
+
 const launch_context_menu_dark = createScenario({
   ...active_multiTool_dark,
   name: 'launch_context_menu_dark',
@@ -856,6 +865,7 @@ export const sidebarScenarios = [
   launch_context_menu_light,
   active_claude_selected_dark,
   active_multiTool_dark,
+  active_multiTool_light,
   activity_levels_dark,
   idle_codex_dark,
   dirty_noSession_dark,

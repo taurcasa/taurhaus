@@ -149,6 +149,8 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just visual-shot C S [V] [T] [OUT]` | One visual-host fixture shot at a real window size (Edge headless). For viewport-anchored popups the 960x640 browser lane cannot judge. `just visual-shot-stop` stops only the server it started. |
 | `just metrics` | Quality KPI snapshot (tests, coverage, build health, code size, E2E inventory). |
 | `just test` | All non-E2E tests: Rust compile check + Rust unit + Rust integration/system + frontend unit. |
+| `just infographics` | Regenerate documentation infographics from the manifest prompts (needs `.env`; see [`docs/operations/infographics.md`](docs/operations/infographics.md)). |
+| `just infographics-dry-run` | Show which infographics are stale and what a regeneration run would cost. |
 | `just test-fast` | Fast iteration lane: Rust compile check (`cargo check --tests`) + frontend unit tests. |
 | `just check-quick` | Fast feedback for iteration: Rust format auto-fix (`cargo fmt`) + Rust compilation (`cargo check --tests`) + frontend typecheck + frontend unit tests. |
 | `just check` | Full quality gate: fmt + lint + typecheck + `just test` (all non-E2E tests). Team-lead serialized runs or pre-release only. |

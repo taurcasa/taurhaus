@@ -230,6 +230,7 @@ just build-windows    # native Windows installer build
 just build-macos      # native macOS DMG build
 just build-macos-universal # universal macOS DMG build
 just capture-readme-screenshots # refresh README screenshot assets
+just infographics     # regenerate documentation infographics (needs .env)
 just release          # create GitHub release from current version
 ```
 
@@ -239,6 +240,7 @@ Contributor notes:
 - treat `just check` as the full gate for releases
 - run Vitest from the project root, not `src-tauri/`
 - use `just` recipes for daemon and mesh installs instead of ad hoc copy steps
+- the app needs no API key; only the infographic generator does — copy `.env.example` to `.env` and see [Infographic regeneration](docs/operations/infographics.md)
 - high-traffic E2E coverage now includes first-run wizard, command center real actions, session management, and mesh recovery
 
 Further reading:
@@ -249,6 +251,7 @@ Further reading:
 - [Build and release](docs/operations/build-and-release.md)
 - [Testing guide](docs/operations/testing-guide.md)
 - [Visual testing guide](docs/operations/visual-testing-guide.md)
+- [Infographic regeneration](docs/operations/infographics.md)
 
 ## Architecture at a glance
 
@@ -264,8 +267,6 @@ Native/local project file watching is app-owned. The daemon only takes the watch
 This keeps taurhaus plugged into your actual local dev environment instead of wrapping everything in a cloud layer.
 
 ![System architecture](docs/images/system-architecture.jpg)
-
-> Stale render: the diagram still shows the retired Gemini CLI instead of Antigravity and Grok. The supported CLIs are Claude Code, Codex, Antigravity (`agy`) and Grok (`grok`).
 
 For more detail:
 

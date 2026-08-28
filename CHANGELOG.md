@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Infographics regenerated** — the eight architecture diagrams are rendered again from their manifest prompts (`gpt-image-2`, via `just infographics` reading `OPENAI_API_KEY` from `.env`); the stale-render callouts are gone. Grok and Antigravity use their real brand marks (thesvg.org, MIT; trademarks of xAI and Google).
+
 ## [0.8.0] - 2026-08-28
 
 Two harness changes and a documentation reset. Google's coding CLI is now the **Antigravity CLI (`agy`)** — Gemini Code Assist for individuals refuses the old Gemini CLI client, so Gemini CLI support is removed — and the **Grok CLI (`grok`)** joins as a fourth harness. Both were added slice by slice behind the tool registry (nothing outside the registry and the per-tool slice files learned a new tool name), and the documentation set was swept against the code. Daemon protocol is **13** — the app and the bundled daemon update together (`just install-daemon` after `just install-windows`).

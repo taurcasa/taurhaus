@@ -13,6 +13,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 | Bun | Latest stable | [bun.sh](https://bun.sh/) |
 | just | Latest | `cargo install just` |
 | tmux | 3.0+ | `sudo apt install tmux` |
+| Python | 3.10+ with PyYAML and Pillow | `sudo apt install python3 python3-yaml python3-pil` (`just infographics` only) |
 
 ### Setup
 
@@ -30,6 +31,12 @@ just dev-frontend
 ```
 
 Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `just` recipes instead of raw `cargo tauri build`, `bunx tauri build`, or ad hoc cross-compilation commands.
+
+Nothing in the app needs an API key. One developer tool does: regenerating the
+documentation infographics. Copy `.env.example` to `.env` in the repo root and
+fill in `OPENAI_API_KEY` when you need it — `.env` is gitignored, and the key is
+read only by `scripts/generate-infographics.py` (`just infographics`), never by
+the app or the daemon. See [Infographic regeneration](docs/operations/infographics.md).
 
 ## Code Standards
 
