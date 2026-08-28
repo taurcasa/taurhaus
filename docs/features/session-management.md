@@ -19,6 +19,7 @@ Supported CLI tools:
 - Claude Code (`claude`)
 - Codex CLI (`codex`)
 - Antigravity CLI (`agy`)
+- Grok CLI (`grok`)
 
 Each tool has:
 - its own process signature matcher
@@ -34,6 +35,8 @@ Task history groups archived work by session. Each tool's sessions are tracked u
 taurhaus scans for running tool processes and matches them to your registered projects. Detection is automatic — you don't need to configure anything.
 
 ![Session Detection Pipeline](../images/session-detection.jpg)
+
+> Stale render: this diagram and the two below still show the retired Gemini TCP-port heuristic and omit Antigravity and Grok. The tables in this page are authoritative; the corrected prompts are in [`docs/images/infographics.manifest.yaml`](../images/infographics.manifest.yaml).
 
 ## Diagrams
 

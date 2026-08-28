@@ -5,6 +5,8 @@
 
 ![Coordination Architecture](images/coordination-architecture.jpg)
 
+> Stale render: the diagram labels `ClaudeNativeBackend` "Planned". The backend is implemented in `backend/claude.rs`; `BackendSelector::m0` routes every tool to `MeshBridgedBackend` today, which is a routing decision, not a missing module.
+
 ## Overview
 
 Taurhaus gains the ability to create, monitor, and manage multi-agent teams that collaborate via the filesystem. The integration leverages mesh (a Rust CLI for non-Claude agents) and Claude Code's native team system, with the filesystem (`~/.claude/`) as the shared API surface.

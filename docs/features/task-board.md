@@ -25,6 +25,8 @@ This corresponds to the DB uniqueness model (`project_path`, `source`, `source_k
 
 ![Task Aggregation Pipeline](../images/task-aggregation.jpg)
 
+> Stale render: the diagram shows a third source (Gemini `TODO.md`). There are exactly two task sources — Claude Code and Codex — as the sections below describe.
+
 Each CLI tool uses a different source format, and the scanner unifies them.
 
 ### Claude Code

@@ -4,6 +4,8 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 28 methods plus 3 push events at protocol 13; the tables below are authoritative.
+
 ## Why a daemon
 
 The app and the daemon exist as separate processes because of platform boundaries:

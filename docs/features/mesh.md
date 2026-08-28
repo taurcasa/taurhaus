@@ -4,6 +4,8 @@ The Mesh tab lets you set up, monitor, and manage multi-agent teams for a projec
 
 ![Mesh View Lifecycle](../images/mesh-view-lifecycle.jpg)
 
+> Stale render: the setup block says the team lead is fixed to Claude. Lead roles ship for Claude, Codex and Antigravity, and the team builder filters the catalog by role kind, not by tool.
+
 ## Overview
 
 Mesh view responsibilities:

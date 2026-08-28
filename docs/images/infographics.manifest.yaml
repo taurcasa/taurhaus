@@ -8,6 +8,12 @@
 #   3. Regenerate with the available image tool (pass the current image as a style reference)
 #   4. Optimize: ./scripts/optimize-doc-image.sh <output> docs/images/<name>.jpg
 #   5. Update this entry's recipe, checksum, date, and history
+#   6. If the entry carries `stale: true`, delete that key with `stale_since` and
+#      `stale_reason` once the regenerated image matches the prompt
+#
+# `stale: true` means the prompt below is current but the .jpg on disk is not:
+# the image still shows a superseded architecture and the pages that embed it say
+# so. `sha256` always describes the file on disk, stale or not.
 
 schema_version: 1
 
@@ -46,7 +52,7 @@ images:
         Note: "just agent-quality" is the new addition between "just check" and "just release" — agent code quality gate.
 
         NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style matching dark teal software documentation aesthetics.
-    sha256: 0ef3940e98daae9d4cf537beaf4d72de1515945ff489bba3ba4d8f148e16945a
+    sha256: e17b3f1b1fb4a123aaa8dae2051969eafda8207e6d5bda72949251dc1ce895e4
     updated_at: "2026-03-04"
     history:
       - gen_6ddd99f9cd2c  # v0.4.4 infographic regeneration
@@ -68,6 +74,16 @@ images:
   coordination-architecture:
     output_path: docs/images/coordination-architecture.jpg
     status: active
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Labels ClaudeNativeBackend "Planned". The backend is implemented
+      (src-tauri/src/coordination/backend/claude.rs); BackendSelector::m0 forces
+      MeshBridged for every tool today (selector.rs:16-40), which is a routing
+      decision, not a missing module.
     generation_id: gen_db88afd20f33
     recipe:
       model: gemini-3-pro-image-preview
@@ -76,9 +92,11 @@ images:
       reference_image_paths:
         - docs/images/coordination-architecture.jpg
       prompt: |
-        Technical architecture infographic titled "taurhaus — Coordination Architecture" with subtitle "Backend module map".
+        Technical architecture infographic titled "taurhaus - Coordination Architecture" with
+        subtitle "Backend module map".
 
-        Dark teal gradient background. All boxes are teal/cyan with rounded corners and white text. Clean arrows connecting elements. Professional software architecture diagram style.
+        Dark teal gradient background. All boxes are teal/cyan with rounded corners and white
+        text. Clean arrows connecting elements. Professional software architecture diagram style.
 
         TOP ROW (left to right, connected by arrows):
         - "UI Layer (MeshTab)" box
@@ -87,31 +105,37 @@ images:
         - Arrow right to "CoordinationOrchestrator" box (large, prominent)
 
         SECOND ROW (below, left to right):
-        - "pipelines/ (initialize / add_agent / resume_member)" box — note the addition of resume_member
-        - Arrow right to "BackendSelector" box
+        - "pipelines/ (initialize / members / lifecycle / helpers)" box
+        - Arrow right to "BackendSelector" box, annotated "M0: force_mesh routes every tool to
+          MeshBridged"
         - Arrow right to "CoordinationBackend trait" box
-        - Below CoordinationBackend: "MeshBridgedBackend" solid box and "ClaudeNativeBackend (Planned)" dashed box side by side
+        - Below CoordinationBackend: two SOLID boxes side by side - "MeshBridgedBackend
+          (active route)" and "ClaudeNativeBackend (implemented, not routed)". Neither box is
+          dashed and neither says "Planned".
 
         RIGHT COLUMN (connected to CoordinationOrchestrator):
         - "TeamConfigStore (config.json)" box
-        - "MemberRuntimeStore (runtime/*.json)" box with sub-text: "pane_id, session_id, daemon_pid, health, attached_at, last_seen_at"
+        - "MemberRuntimeStore (runtime/*.json)" box with sub-text: "pane_id, session_id,
+          daemon_pid, health, attached_at, last_seen_at"
 
         THIRD ROW (left to right):
         - "DeliveryRenderer" box
         - "health/ (state, transition, policy)" box
         - "audit.rs" box
 
-        NEW ROW (between second and third rows, or as branch):
+        BRANCH ROW:
         - "coordination_get_live_team_status" box with arrow to "reconcile_team_liveness" box
         - Arrow labeled "write-on-drift" to MemberRuntimeStore
-        - Sub-items: "pane_exists check", "pane_is_dead check", "pane_is_shell check", "daemon_pid cleanup (non-Claude)"
+        - Sub-items: "pane_exists check", "pane_is_dead check", "pane_is_shell check",
+          "daemon_pid cleanup for tools without a native inbox poller"
 
         BOTTOM ROW with divider line:
         - "Filesystem JSON (~/.claude/teams/)" box labeled "Source of truth"
         - "SQLite projection/history (Planned D3)" dashed box
 
-        NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style matching dark teal software documentation aesthetics.
-    sha256: e88f8646a32e514201b659a562849277a7004f619c4d62f67666d356e2ceaeb6
+        NO photographs or portraits - text, boxes, arrows, and geometric shapes only.
+    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
+    sha256: 2d336edebe9efbf82be15fbaed26b5b7bdb24d5813e101bfd01dabe6883743c2
     updated_at: "2026-03-04"
     history:
       - gen_db88afd20f33  # v0.4.4 infographic regeneration
@@ -119,13 +143,57 @@ images:
   daemon-protocol:
     output_path: docs/images/daemon-protocol.jpg
     status: active
-    generation_id: null  # predates taursult MCP
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Says 22 methods and uses superseded method names. The catalog is 28 methods
+      plus 3 push events at protocol version 13
+      (src-tauri/src/daemon/protocol.rs:34, :90-128, :131-135).
+    generation_id: null
     recipe:
-      model: unknown
+      model: gemini-3-pro-image-preview
       aspect_ratio: "16:9"
       image_size: 2K
-      prompt: |  # TODO: reconstruct prompt for this image
-        (prompt not available — image predates taursult MCP)
+      reference_image_paths:
+        - docs/images/daemon-protocol.jpg
+      prompt: |
+        Technical protocol infographic titled "taurhaus - Daemon Protocol" with subtitle
+        "NDJSON over TCP, protocol 13".
+
+        Dark teal gradient background. Teal/cyan rounded boxes, white text, clean arrows.
+
+        TOP BAND - connection facts, as a small table:
+        "Transport: TCP" | "Default address: 127.0.0.1:17233" |
+        "Format: NDJSON, one JSON object per line" | "Protocol version: 13" |
+        "Auth: shared 32-byte hex token, 0600 file, checked on every request"
+
+        MIDDLE - two facing panels with a request arrow (app -> daemon) and a response arrow
+        (daemon -> app), plus a third one-way arrow for push events.
+
+        LEFT PANEL "Methods (28)", in labelled groups:
+          Core: ping, shutdown, watch, unwatch
+          Files: file_tree, read_file, read_readme, read_asset, list_directory
+          Git: git_status, git_log, git_latest_commit_time, git_commits_in_range,
+               git_commit_files, git_commit_diff
+          Sessions: scan_sessions, list_runtime_sessions, list_display_sessions,
+                    get_runtime_session_snapshot, wait_session_updates
+          Command center: launch_session, stop_session, navigate_to_session
+          Accounts and usage: list_accounts, project_transcript, refresh_usage
+          Tasks: get_project_tasks
+          Compaction: set_codex_compaction_mode
+
+        RIGHT PANEL "Push events (3)":
+          file_changed, git_changed, session_file_created
+
+        BOTTOM BAND - version pairing: "The app and the bundled daemon ship together. A
+        mismatched pair is rejected outright: 11 added the generic account methods, 12 replaced
+        the retired Google tool value with agy, 13 added grok."
+
+        Use exactly these method names and these counts. NO photographs or portraits - text,
+        boxes, arrows and geometric shapes only.
     sha256: null
     updated_at: null
     history: []
@@ -225,7 +293,7 @@ images:
         - Note: "live-status query performs write-on-drift to SessionDead"
 
         NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style.
-    sha256: 9ce5fc0acde995302b80349b77a49e517f5a3789144dd759a037d38a0feaa553
+    sha256: 5758b0777b052f3b382fe19939790716dfc38ea1bcb10b0238961d90914978a1
     updated_at: "2026-03-04"
     history:
       - gen_b83de5b83ac9  # v0.4.4 infographic regeneration
@@ -269,7 +337,7 @@ images:
         - "project-files-changed → invalidate cache (active project)"
 
         NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style.
-    sha256: c7b2791741b85fc3270b98dd31aec3152921edc59e50bdd5718812efd9204a6a
+    sha256: 9979ac2d44caaf3ce0a1f5920b4932920653f3c6e5872d5995a4570e37bc12fe
     updated_at: "2026-03-04"
     history:
       - gen_42e8a122830a  # v0.4.4 infographic regeneration
@@ -340,7 +408,7 @@ images:
         Bottom note: "Write-on-drift: health mutations happen during READ queries, not on a timer"
 
         NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style matching dark teal software documentation aesthetics.
-    sha256: bb91453cc48874e1262fd3b94e5871650d0c6ba4b4a45c019eeb0dc31bf25587
+    sha256: 973ccb1f0d428d84b1ba931eaa53dec5a2abb530b651fd447ac748c8cebc0ac0
     updated_at: "2026-03-04"
     history:
       - gen_482a7ff491ee  # v0.4.4 infographic regeneration
@@ -348,6 +416,16 @@ images:
   mesh-view-lifecycle:
     output_path: docs/images/mesh-view-lifecycle.jpg
     status: active
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Setup block says the team lead is fixed to Claude. Lead roles ship for
+      Claude, Codex and Antigravity (src-tauri/resources/templates/roles/*.yaml,
+      kind: lead), and MeshTeamBuilder filters the catalog by role kind, not by tool
+      (MeshTeamBuilder.svelte:280).
     generation_id: gen_e44f6310111c
     recipe:
       model: gemini-3-pro-image-preview
@@ -356,9 +434,11 @@ images:
       reference_image_paths:
         - docs/images/mesh-view-lifecycle.jpg
       prompt: |
-        Technical architecture infographic titled "taurhaus — Mesh View Lifecycle" with subtitle "Per-project tab — switches context with sidebar project selection".
+        Technical architecture infographic titled "taurhaus - Mesh View Lifecycle" with subtitle
+        "Per-project tab - switches context with sidebar project selection".
 
-        Dark teal gradient background. All boxes are teal/cyan with rounded corners and white text. Clean arrows connecting elements. Professional software architecture diagram style.
+        Dark teal gradient background. All boxes are teal/cyan with rounded corners and white
+        text. Clean arrows connecting elements. Professional software architecture diagram style.
 
         Layout flows left to right with these connected blocks:
 
@@ -367,15 +447,16 @@ images:
         - "Preflight check"
         - "Install Bundled Mesh"
 
-        Arrow right to BLOCK 2: "Setup Form" box containing:
-        - "Team lead (Claude, fixed)"
+        Arrow right to BLOCK 2: "Team Builder" box containing:
+        - "Team lead (any lead role: Claude, Codex or Antigravity)"
         - "Agent cards (tool/model/project)"
+        - "Quick presets and role filters"
         - "Customize (name/description)"
         - Green "Start Team" button at bottom
 
-        Arrow down from Setup Form to "Team Cleanup" box: "Discover & disband other teams"
+        Arrow down from Team Builder to "Team Cleanup" box: "Discover & disband other teams"
 
-        Arrow right from Setup Form to BLOCK 3: "Initialization" box containing numbered steps:
+        Arrow right from Team Builder to BLOCK 3: "Initialization" box containing numbered steps:
         - "1. Validate configuration"
         - "2. Create team"
         - "3. Open terminal panes"
@@ -384,7 +465,8 @@ images:
         - "6. Start daemons"
         - "7. Send onboarding"
 
-        Side branch from Initialization labeled "Conflict" going right to: "Open Existing Team" and "Disband Existing Team" stacked boxes
+        Side branch from Initialization labeled "Conflict" going right to: "Open Existing Team"
+        and "Disband Existing Team" stacked boxes
 
         Below Initialization: "Retry" and "Back" buttons
 
@@ -397,7 +479,7 @@ images:
         - "Remove member"
         - "Disband team" in green accent
 
-        NEW BLOCK 5 (below Runtime Roster): "Resume Pipeline" box containing:
+        BLOCK 5 (below Runtime Roster): "Resume Pipeline" box containing:
         - "Validate offline state"
         - "Resolve/create pane"
         - "Launch mode-aware CLI"
@@ -407,18 +489,19 @@ images:
 
         Arrow from "Resume" in Runtime Roster down to Resume Pipeline
 
-        NEW BLOCK 6 (bottom right): "Liveness Reconciliation" box containing:
+        BLOCK 6 (bottom right): "Liveness Reconciliation" box containing:
         - "On live-status query:"
-        - "missing pane_id → SessionDead"
-        - "pane missing → SessionDead"
-        - "pane dead → SessionDead"
-        - "pane_is_shell → SessionDead"
-        - "Non-Claude: cleanup daemon_pid"
+        - "missing pane_id -> SessionDead"
+        - "pane missing -> SessionDead"
+        - "pane dead -> SessionDead"
+        - "pane_is_shell -> SessionDead"
+        - "Tools without a native inbox poller: cleanup daemon_pid"
 
         Arrow from Runtime Roster "Live status" to Liveness Reconciliation labeled "write-on-drift"
 
-        NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style matching dark teal software documentation aesthetics.
-    sha256: 41c82fba8a357fd9185f3f0f32a055578088a8091cf0b7454fc30092a10aa786
+        NO photographs or portraits - text, boxes, arrows, and geometric shapes only.
+    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
+    sha256: dbf6050f3301f8416afca2b3f2ae4d31c94a3de615e2970d01108c141306e6c4
     updated_at: "2026-03-04"
     history:
       - gen_e44f6310111c  # v0.4.4 infographic regeneration
@@ -440,13 +523,59 @@ images:
   per-tool-decision:
     output_path: docs/images/per-tool-decision.jpg
     status: active
-    generation_id: null  # predates taursult MCP
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Shows the retired Gemini TCP heuristic and omits agy and grok.
+      Current per-tool decision: docs/features/session-management.md:71-78 and
+      src-tauri/src/session_scanner/classification.rs:158-207.
+    generation_id: null
     recipe:
-      model: unknown
+      model: gemini-3-pro-image-preview
       aspect_ratio: "16:9"
       image_size: 2K
-      prompt: |  # TODO: reconstruct prompt for this image
-        (prompt not available — image predates taursult MCP)
+      reference_image_paths:
+        - docs/images/per-tool-decision.jpg
+      prompt: |
+        Decision-flow infographic titled "taurhaus - Per-Tool Active/Idle Decision".
+
+        Dark teal gradient background. Teal/cyan rounded boxes, white text, diamonds for
+        decisions, clean arrows.
+
+        FOUR COLUMNS, one per registered harness.
+
+        Column "Claude Code":
+          "Transcript mtime < 5s?" diamond -> "file active"
+          "/proc rchar delta" -> "IO hysteresis (2 consecutive polls)"
+          merge -> "Active / Idle"
+
+        Column "Codex":
+          "Rollout jsonl mtime < 10s?" diamond -> "file active"
+          "/proc rchar delta" -> "IO hysteresis"
+          note: "mtime is a fallback only when the project has a single Codex session"
+          merge -> "Active / Idle"
+
+        Column "Antigravity (agy)":
+          "Opt-in hooks sink has a state?" diamond
+            yes -> "authoritative, lands this poll"
+            no  -> "presence lock, else /proc rchar delta with hysteresis"
+          merge -> "Active / Idle"
+
+        Column "Grok (grok)":
+          "events.jsonl yields a lifecycle state?" diamond
+            yes -> "authoritative: busy unless the newest line is turn_ended;
+                    rchar and hysteresis skipped"
+            no  -> "missing / empty / unrecognised: fall back to /proc rchar with hysteresis"
+          merge -> "Active / Idle"
+
+        BOTTOM band across all columns: "Session-state hysteresis - a reported state changes
+        only after two consecutive raw polls agree (skipped for an authoritative state)".
+
+        There is NO Gemini CLI column and NO TCP-port heuristic - do not draw either.
+        NO photographs or portraits: text, boxes, arrows and geometric shapes only.
     sha256: null
     updated_at: null
     history: []
@@ -468,13 +597,53 @@ images:
   scanner-pipeline:
     output_path: docs/images/scanner-pipeline.jpg
     status: active
-    generation_id: null  # predates taursult MCP
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Shows the retired Gemini TCP heuristic and omits agy and grok.
+      Current cadence and hysteresis: docs/features/session-management.md:71-90.
+    generation_id: null
     recipe:
-      model: unknown
+      model: gemini-3-pro-image-preview
       aspect_ratio: "16:9"
       image_size: 2K
-      prompt: |  # TODO: reconstruct prompt for this image
-        (prompt not available — image predates taursult MCP)
+      reference_image_paths:
+        - docs/images/scanner-pipeline.jpg
+      prompt: |
+        Technical pipeline infographic titled "taurhaus - Scanner Pipeline" with subtitle
+        "Poll to snapshot fanout".
+
+        Dark teal gradient background. Teal/cyan rounded boxes, white text, clean arrows.
+
+        LEFT TO RIGHT chain:
+
+        1. "Poll" box: "500ms while activity changes or any session is active",
+           "1500ms after 30 stable all-idle cycles".
+
+        2. "Enumerate processes" box: "/proc (Linux/WSL2)", "libproc + lsof (macOS)",
+           "argv signatures from the tool registry".
+
+        3. "Resolve session" box: four small stacked labels, one per harness -
+           "Claude: project jsonl + subagents", "Codex: dated rollout jsonl",
+           "Antigravity: conversations cache + presence lock",
+           "Grok: active_sessions.json + events.jsonl".
+
+        4. "Supplemental process signal" box:
+           "Claude / Codex: /proc rchar delta with consecutive-poll hysteresis",
+           "Antigravity: rchar unless the opt-in hooks sink is authoritative",
+           "Grok: skipped while events.jsonl yields a lifecycle state, otherwise rchar".
+
+        5. "Hysteresis" box: "IO hysteresis - two consecutive above-threshold polls",
+           "Session-state hysteresis - two consecutive raw polls agree",
+           "An authoritative state lands on the poll that observed it".
+
+        6. "Diff-based snapshot fanout" box -> "sessions-updated event to the app".
+
+        There is NO Gemini CLI lane and NO TCP-port heuristic - do not draw either.
+        NO photographs or portraits: text, boxes, arrows and geometric shapes only.
     sha256: null
     updated_at: null
     history: []
@@ -496,13 +665,59 @@ images:
   session-detection:
     output_path: docs/images/session-detection.jpg
     status: active
-    generation_id: null  # predates taursult MCP
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Shows the retired Gemini TCP-port heuristic and omits agy and grok.
+      Current per-tool sources: docs/features/session-management.md:60-78.
+    generation_id: null
     recipe:
-      model: unknown
+      model: gemini-3-pro-image-preview
       aspect_ratio: "16:9"
       image_size: 2K
-      prompt: |  # TODO: reconstruct prompt for this image
-        (prompt not available — image predates taursult MCP)
+      reference_image_paths:
+        - docs/images/session-detection.jpg
+      prompt: |
+        Technical pipeline infographic titled "taurhaus - Session Detection" with subtitle
+        "Process scan to per-tool identity".
+
+        Dark teal gradient background. Teal/cyan rounded boxes, white text, clean arrows.
+        Professional software architecture diagram style.
+
+        LEFT: "Process scan" box - "/proc on Linux/WSL2, libproc + lsof on macOS", below it
+        "argv signature match against the tool registry".
+
+        MIDDLE, four parallel lanes, one per registered harness:
+
+        Lane "Claude Code":
+          "~/.claude/projects/<slug>/*.jsonl" and "<session>/subagents/*.jsonl"
+          "5s mtime threshold"
+
+        Lane "Codex":
+          "~/.codex/sessions/YYYY/MM/DD/*.jsonl"
+          "matched by transcript/project metadata, 7-day lookback"
+          "10s mtime threshold"
+
+        Lane "Antigravity (agy)":
+          "~/.gemini/antigravity-cli/cache/last_conversations.json"
+          "~/.gemini/antigravity-cli/presence/*.lock"
+          "presence lock, stale locks fall back to process IO"
+
+        Lane "Grok (grok)":
+          "<GROK_HOME>/active_sessions.json  (identity, bound by pid + cwd)"
+          "<GROK_HOME>/sessions/<encoded-cwd>/<id>/events.jsonl  (activity)"
+          "turn lifecycle, not mtime"
+
+        RIGHT: "Session identity + state" box, then "daemon snapshot -> sessions-updated".
+
+        Small footnote band: "Path roots resolve through PlatformPaths so Windows, WSL and
+        native lookups use one authority."
+
+        There is NO Gemini CLI lane and NO TCP-port heuristic - do not draw either.
+        NO photographs or portraits: text, boxes, arrows and geometric shapes only.
     sha256: null
     updated_at: null
     history: []
@@ -538,9 +753,18 @@ images:
   system-architecture:
     output_path: docs/images/system-architecture.jpg
     status: active
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      The bottom tmux container names Claude Code, Codex and Gemini CLI. The
+      Gemini CLI was retired; the registry holds four harnesses
+      (src-tauri/src/session_scanner/cli_tool.rs:208).
     generation_id: null  # generated with Codex built-in image_gen
     recipe:
-      model: Codex built-in image_gen
+      model: gemini-3-pro-image-preview
       aspect_ratio: "16:9"
       image_size: 2K
       reference_image_paths:
@@ -555,8 +779,8 @@ images:
 
         Top container: "Tauri 2 desktop application". Inside it, show "Svelte 5 frontend"
         above a "Tauri IPC" boundary and "Rust backend" below. The Rust backend contains:
-        "SQLite — metadata", "Tantivy — search", "Filesystem — content + native watches",
-        "libgit2 — repository state", and "Mesh — coordination + recovery".
+        "SQLite - metadata", "Tantivy - search", "Filesystem - content + native watches",
+        "libgit2 - repository state", and "Mesh - coordination + recovery".
 
         Connect the Rust backend to "taurhaus-daemon" / "Companion process" with:
         "Token-authenticated JSONL/TCP" and "127.0.0.1:17233 default". The daemon contains:
@@ -567,10 +791,14 @@ images:
         WSL2 using /proc and the Linux filesystem) and "macOS" (app plus native daemon using
         libproc and lsof; native watches remain app-owned).
 
-        Bottom container: "tmux sessions" with "Claude Code", "Codex", and "Gemini CLI".
+        Bottom container: "tmux sessions" with exactly four harnesses side by side:
+        "Claude Code", "Codex", "Antigravity CLI (agy)", and "Grok CLI (grok)".
+        There is no Gemini CLI - do not draw one.
+
         Do not include volatile IPC command counts, cloud services, decorative icons, photos,
         people, code snippets, a watermark, or any suggestion that the daemon owns native
         macOS file watching.
+    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
     sha256: 315abfca6f1dbcaf844c6348cf6a90712601ba0fef0648f1da078e8794e98229
     updated_at: "2026-08-18"
     history:
@@ -580,6 +808,15 @@ images:
   task-aggregation:
     output_path: docs/images/task-aggregation.jpg
     status: active
+    # STALE PIXELS (2026-08-28, PR 19 docs sweep): the rendered .jpg still
+    # shows the pre-0.8 world. The prompt below is current; regenerate the
+    # image from it and clear this marker.
+    stale: true
+    stale_since: "2026-08-28"
+    stale_reason: |
+      Claims Gemini TODO.md is a third task source. The scanner has exactly two
+      parsers - src-tauri/src/task_scanner/claude.rs and codex.rs - and agy and grok
+      declare transcript_parser: false (cli_tool.rs:389, and the grok spec).
     generation_id: gen_0d677aa29570
     recipe:
       model: gemini-3-pro-image-preview
@@ -588,20 +825,26 @@ images:
       reference_image_paths:
         - docs/images/task-aggregation.jpg
       prompt: |
-        Technical pipeline infographic titled "taurhaus — Task Aggregation Pipeline" with subtitle "Three sources → unified board".
+        Technical pipeline infographic titled "taurhaus - Task Aggregation Pipeline" with
+        subtitle "Two sources to one board".
 
-        Dark teal gradient background. All boxes are teal/cyan with rounded corners and white text. Professional software architecture diagram style.
+        Dark teal gradient background. All boxes are teal/cyan with rounded corners and white
+        text. Professional software architecture diagram style.
 
         THREE COLUMNS layout: SOURCES | PROCESSING CHAIN | OUTPUT UI CHAIN
 
-        SOURCES column (left):
-        Box 1: "Claude Code" with sub-text "~/.claude/tasks/{session-id}/*.json" AND "~/.claude/tasks/{team-name}/*.json" (both paths). Below: "Structured JSON with IDs, deps, owners". Note: "source_key identity for scoped reconciliation"
+        SOURCES column (left) - exactly two boxes:
+        Box 1: "Claude Code" with sub-text "~/.claude/tasks/{session-id}/*.json" AND
+        "~/.claude/tasks/{team-name}/*.json" (both paths). Below: "Structured JSON with IDs,
+        deps, owners". Note: "source_key identity for scoped reconciliation"
 
-        Box 2: "Codex CLI" with sub-text "update_plan in session JSONL". Below: "Last plan from tail of JSONL (256KB)"
+        Box 2: "Codex CLI" with sub-text "update_plan in session JSONL". Below: "Last plan from
+        tail of JSONL (256KB)"
 
-        Box 3: "Gemini CLI" with sub-text "TODO.md in project root". Below: "Markdown checkboxes (-[ ] / -[x])"
+        Small caption under the two boxes: "Antigravity and Grok declare no transcript parser
+        and contribute no tasks." Do NOT draw a third source box.
 
-        Arrow from all three sources right through "scan_tasks_from_files(project_path)" vertical connector
+        Arrow from both sources right through "scan_tasks_from_files(project_path)" connector
 
         PROCESSING CHAIN column (middle):
         Decision diamond: "Daemon connected?"
@@ -609,8 +852,9 @@ images:
         - No path down to "local scan_sessions + task_scanner" box
 
         Both paths merge right to vertical label "task_scanner: Normalize to UnifiedTask"
-        Arrow right through "persist task_scan + prune_stale_tasks" with note "source_key scoped reconciliation"
-        Side note box: "Partial failure: one source failing doesn't block others"
+        Arrow right through "persist task_scan + prune_stale_tasks" with note "source_key scoped
+        reconciliation"
+        Side note box: "Partial failure: one source failing doesn't block the other"
 
         OUTPUT UI CHAIN column (right):
         "SQLite tasks table" box (large)
@@ -618,10 +862,11 @@ images:
         - "Emit project-tasks-changed" (event)
         - "TaskBoard.svelte re-fetch (get_project_tasks DB read)"
 
-        Bottom summary text: "Background scan → DB persist → UI event → re-fetch"
+        Bottom summary text: "Background scan -> DB persist -> UI event -> re-fetch"
 
-        NO photographs or portraits — text, boxes, arrows, and geometric shapes only. Clean infographic style.
-    sha256: e15bafee273467de9e167519c38dad39f04c565915d60e1cf7f9c3b70f2d960f
+        NO photographs or portraits - text, boxes, arrows, and geometric shapes only.
+    # sha256 describes the STALE .jpg still on disk; refresh it with the image.
+    sha256: 4b33a0694590faca191642b3ef03e601ea724c4c5e4eb494caeda19c1f596547
     updated_at: "2026-03-04"
     history:
       - gen_0d677aa29570  # v0.4.4 infographic regeneration

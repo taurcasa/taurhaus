@@ -18,6 +18,8 @@ The daemon can run on all supported platforms, but it is only responsible for wa
 
 ![System Architecture](docs/images/system-architecture.jpg)
 
+> Stale render: the diagram's tmux row still names the retired Gemini CLI and omits Antigravity and Grok. The Harness Model section below is authoritative until the image is regenerated from its prompt in [`docs/images/infographics.manifest.yaml`](docs/images/infographics.manifest.yaml).
+
 ## Harness Model
 
 taurhaus does not host models itself: Claude Code is the Claude harness (subscription models are only reachable through it), Codex CLI, Antigravity CLI (`agy`) and Grok CLI (`grok`) are theirs, and taurhaus coordinates all four from outside through tmux panes and the mesh bridge. Harness-native capabilities (a sessions registry, hooks, turn-complete notifications) are used where they exist; tmux + mesh is the floor that reaches any CLI. Per-tool behaviour is confined to capability slices behind one registry (`src-tauri/src/session_scanner/cli_tool.rs`), so adding a CLI touches only the slices where it differs. Model and reasoning effort are separate fields end to end, an account is chosen per project and tool wherever the harness has a selector, and the app and daemon refuse to run on mismatched protocol versions. See [Harness Model](docs/architecture/harness-model.md).
