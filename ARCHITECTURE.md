@@ -112,7 +112,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `session/` | Session import, parsing, archival |
 | `session_scanner/` | CLI tool detection (process scanning, idle detection), plus `cli_tool.rs` (the harness registry), `launch.rs` (ModelSpec/LaunchSpec command renderer), `accounts/` (per-tool account + usage providers), `idle/` (`claude_registry.rs`, `codex.rs`, `agy.rs`, `grok.rs`), `tmux.rs` (`list_clients`/`focus_from_clients`), `classification.rs`/`scans.rs` (authoritative vs heuristic state, degraded-scan last-good snapshot) |
 | `task_scanner/` | Task aggregation from Claude Code and Codex — the two harnesses with a verified task source (`claude_index.rs` maps source_key -> project for robust scans) |
-| `daemon/` | TCP protocol/server/event-listener/launcher code for the companion daemon, plus the session-activity hub (`session_activity.rs`: versioned snapshot, tmux focus, degradation cursor), `handlers.rs`, `compaction.rs` (daemon-side compaction owner), `codex_notify.rs` (`codex-notify` subcommand), `agy_hooks.rs` (Antigravity activity-hook sink), `usage_poller.rs` (per-account usage polling), `auth.rs`, `watch.rs`, `session_listener.rs` |
+| `daemon/` | TCP protocol/server/event-listener/launcher code for the companion daemon, plus the session-activity hub (`session_activity.rs`: versioned snapshot, tmux focus, degradation cursor), `handlers.rs`, `codex_notify.rs` (`codex-notify` subcommand), `agy_hooks.rs` (Antigravity activity-hook sink), `usage_poller.rs` (per-account usage polling), `auth.rs`, `watch.rs`, `session_listener.rs` |
 | `daemon_api.rs` | App-facing daemon request wrapper used by commands and startup flows |
 | `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
@@ -128,7 +128,6 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's activity hooks — merged into the shared `~/.gemini/config/hooks.json` (`agy.hooks.degraded`) |
 | `startup/` | Startup sequence orchestration (DB init, daemon connect, watcher/index bootstrap, task/session hydration) |
 | `startup/setup.rs`, `startup/telemetry.rs`, `startup/orchestration.rs` | Split startup path resolution, startup logging, and orchestration phases |
-| `startup/compaction.rs`, `startup/harness.rs` | Compaction owner selection (daemon vs app) and startup harness sequencing |
 | `templates/adapters.rs` | Role import/export adapters, provenance, and field-mapping rules for external agent formats |
 | `sentinels.rs` | Shared sentinel/fallback utilities used by startup and command flows |
 | `event_processor.rs` | File/git event batching (300ms quiet window, 2s ceiling) |
@@ -197,7 +196,7 @@ Logging is structured and machine-first:
   - session activity transitions: `activity.state.changed` (`pid`, `tool`, `from`, `to`, `source`)
   - process inventory health: `session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit
   - launch rendering: `launch.command.rendered`, `launch.account.*`, `launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`
-  - compaction: `compaction.owner.selected/failed`, `compaction.signal_*`, `compaction.extractor.*`, `compaction.<tool>_hook.*` (`claude`/`codex`/`grok`, built from the inferred tool in `compact_hook.rs`), `compaction.hook.compat_import`, `compaction.compact_hook.failed`
+  - compaction: `compaction.injected/skipped/failed`, `compaction.<tool>_hook.received/resolved/delivered/skipped/failed` (`claude`/`codex`/`grok`, built from the inferred tool in `compact_hook.rs`), `compaction.codex_hook.unsupported/version_unknown/reconciled/degraded`, `compaction.hook.compat_import`, `compaction.compact_hook.failed`
   - accounts and usage: `usage.fetched`, `usage.failed` (`daemon/usage_poller.rs`), `account.provider.floor` (`session_scanner/accounts/mod.rs`), `claude.usage.legacy_bridge.removed` (the one-shot status-line-bridge uninstall)
   - Antigravity activity hooks: `agy.hooks.degraded` (`coordination/agy_hooks_installer.rs`)
   - Codex native idle notify: `codex.notify.appended`
@@ -227,11 +226,9 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Mesh daemon hot-swap**: mesh installs are version-aware. Member daemon reconciliation checks executable identity and automatically replaces drifted daemons; bounded background self-heal does the same for drifted team-daemons, so normal upgrades do not require a manual `team-daemon stop/start/restart-all` cycle.
 - **Runtime responsiveness**: Mesh steady-state polling stays on the fast snapshot path, and the frontend suspends hidden-tab refresh work, which avoids switch-away stalls and reduces Windows popup latency during runtime navigation.
 - **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude — the validation is capability-driven (`should_use_mesh_sidecar`, i.e. any harness without the native inbox poller), so Codex, Antigravity and Grok leads validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
-- **Compaction reinjection**: When a managed agent loses context (compaction), taurhaus resolves which team member was affected and re-delivers their working context. Two delivery paths exist, and they do not share a pipeline.
-  - **Transcript path** (default): `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox — only when the operational snapshot still has resumable task context.
-  - **Hook path**: `coordination/compact_hook.rs` serves Claude, Codex and Grok; the tool is inferred from the reserved `GROK_*` env names grok injects into every hook process, and otherwise from the transcript path. It accepts `SessionStart` with `source=compact`, plus `PostCompact` for a harness whose registry delivery is the mesh inbox — grok, whose session-start source never reports `compact`. A `PostCompact` payload for a stdout-answered harness is skipped as `post_compact_signal_only`. Where the registry declares `HookStdout` delivery (Claude, Codex) the card goes straight back to the CLI as `hookSpecificOutput.additionalContext`, bypassing the signal log and the mesh inbox entirely; where it declares `MeshInbox` (grok, whose passive-hook stdout is documented as ignored) the card is queued in the member's inbox. It installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, logs standalone hook execution into the canonical JSONL sink, and manages idempotent, removable, exe-path self-repairing Codex `hooks.json` and Grok `~/.grok/hooks` installers. Because grok also loads `~/.claude/settings.json` hooks, the registry declares `compaction_hook_compat_import` and the bridge deduplicates, so one compaction is one reinjection.
+- **Compaction reinjection**: `coordination/compact_hook.rs` is the only compaction owner for Claude, Codex and Grok. It resolves the affected managed member and restores working context only when the operational snapshot still has a resumable task. The tool is inferred from the reserved `GROK_*` env names grok injects into every hook process, and otherwise from the transcript path. It accepts `SessionStart` with `source=compact`, plus `PostCompact` for a harness whose registry delivery is the mesh inbox — grok, whose session-start source never reports `compact`. A `PostCompact` payload for a stdout-answered harness is skipped as `post_compact_signal_only`. Where the registry declares `HookStdout` delivery (Claude, Codex) the card goes straight back to the CLI as `hookSpecificOutput.additionalContext`; where it declares `MeshInbox` (grok, whose passive-hook stdout is documented as ignored) the card is queued in the member's inbox. It installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, logs standalone hook execution into the canonical JSONL sink, and manages idempotent, removable, exe-path self-repairing Codex `hooks.json` and Grok `~/.grok/hooks` installers. Because grok also loads `~/.claude/settings.json` hooks, the registry declares `compaction_hook_compat_import` and the bridge deduplicates, so one compaction is one reinjection.
 
-  The Codex hook path is **opt-in**: `harness.codex_compaction` defaults to `transcript` (the hardened extractor) until validated on a live team, and hook installation is gated on `CliVersions.codex_compaction_hooks_supported`. Exactly one owner runs per host (`startup/compaction.rs`): `Hooks` when the hook path is active, otherwise daemon when configured and reachable, otherwise app — with the app fallback revoked on daemon recovery.
+  Managed Codex uses this hook path by default when `CliVersions.codex_compaction_hooks_supported`; Codex 0.147 is the floor. Older Codex versions log `compaction.codex_hook.unsupported` once and receive no reinjection. There is no compaction mode setting, transcript tailer, or daemon/app owner election.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
 - **Runtime interactions**: node detail actions (`MeshNodeDetail`) and runtime controls (`MeshRuntimeBar`) operate on the same live-status pipeline (`coordination_get_live_team_status`, add/remove/resume/disband IPCs), so canvas state and control-bar state stay consistent without a separate client-side data model. `MeshRuntimeBar` is also the shipped cold-restart/degraded recovery surface for team resume.
 - **Recovery status at the final active-development snapshot**: shipped resume/recovery flows are covered by dedicated E2E specs. Known degraded-path edge cases remain recorded in the task and commit history rather than presented as an active roadmap.
@@ -274,11 +271,11 @@ Authoritative states skip the rchar heuristic and 2-poll bidirectional hysteresi
 
 The process inventory is fail-soft. A scan whose inventory cannot be read is reported `degraded`: it short-circuits classification, returns the last fully classified display/runtime snapshot (shared between both entry points), prunes no trackers, and leaves the daemon hub's snapshot version and export untouched. The degraded flag crosses the daemon boundary in `get_runtime_session_snapshot`, and the frontend treats it as no observation rather than as an empty result.
 
-Managed Codex compaction is no longer a legacy poll-and-inject loop. It flows through:
+Managed compaction is hook-driven. The surviving implementation surface is:
 
-- `session_scanner/compaction_extractor.rs`
-- `session_scanner/compaction_watcher.rs`
-- `coordination/compaction_processor.rs`
+- `coordination/compact_hook.rs` — native hook parsing, member resolution, delivery and managed installers
+- `coordination/compaction_events.rs` — terminal delivery-result events
+- `session_scanner/transcript_boundary.rs` — bounded transcript-tail parsing used to timestamp Codex hook delivery
 
 **Platform details:**
 - **Linux**: reads `/proc/PID/io` for IO bytes, `/proc/PID/fd` + `/proc/PID/net/tcp` for socket state
@@ -329,19 +326,18 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 - `git_changed` — .git directory modified (triggers commit list refresh)
 - `session_file_created` — new session handoff file detected
 
-**Pairing rule:** `PROTOCOL_VERSION = 13`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
+**Pairing rule:** `PROTOCOL_VERSION = 14`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
 
-**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon; a change to the `CliTool` wire vocabulary counts, because either side decodes the other's tool value as `Unknown`. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons. The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one: 7 for hub-owned focus, 9 for the degradation cursor, 10 for the Claude-only account methods, 11 for the retired Google tool value, 12 for the missing `grok` value. After changing the contract, run `just install-daemon`.
+**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon; a change to the `CliTool` wire vocabulary counts, because either side decodes the other's tool value as `Unknown`. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons. The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one: 7 for hub-owned focus, 9 for the degradation cursor, 10 for the Claude-only account methods, 11 for the retired Google tool value, 12 for the missing `grok` value, 13 for the retired Codex compaction mode. After changing the contract, run `just install-daemon`.
 
-**Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`.
+**Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`; v14 retired the Codex compaction mode method.
 
-**Commands (app → daemon, 27 callable methods — 28 constants, one of them unhandled):**
+**Commands (app → daemon, 26 callable methods — 27 constants, one of them unhandled):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
 - `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory` (a method constant with no handler — not callable)
 - `list_display_sessions`, `list_runtime_sessions`, `get_runtime_session_snapshot` (carries tmux focus + the degraded flag), `wait_session_updates`, `launch_session`, `stop_session`, `navigate_to_session`
 - `get_project_tasks` (supports optional `scan_cycle_id` in protocol v6)
-- `set_codex_compaction_mode`
 - `list_accounts`, `project_transcript`, `refresh_usage` (generic across tools since v11)
 
 ## Startup Sequence
@@ -354,7 +350,7 @@ The bootstrap chain runs on app launch (progress shown in `SplashScreen.svelte`)
 2. **Database** — open/create SQLite, run migrations
 3. **Daemon fast path** — attempt a connect to an already-running daemon and validate its ping (`startup/setup.rs`); a failure here defers rather than blocks
 4. **Watch bootstrap** — create the local watcher/event processor, reconcile activity-based local watches, and reconcile WSL daemon watches when applicable
-5. **Compaction owner** — select and start the owner (`startup/compaction.rs`)
+5. **Harness hooks** — reconcile the managed Codex and Grok hook registrations; compaction itself runs through the native hook bridge, not a startup-owned worker
 6. **Search open** — open the tantivy index
 
 **Concurrent daemon bootstrap** (spawned first, runs on its own thread): ensure the bundled daemon is installed/updated (`ensure_bundled_daemon_installed`), auto-launch it when the fast path did not connect, and log `startup.daemon_protocol.checked`. Daemon readiness is **not** a prerequisite for the UI — the app comes up on the local provider and picks the daemon up when it lands.
