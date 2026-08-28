@@ -44,7 +44,7 @@ Dominated or excluded, no role: `gpt-5.5`, `gpt-5.6-terra` (team decision: sits 
 
 ## Judges (taureval)
 
-The two Anthropic judges are on `claude-opus-4-6` and `claude-sonnet-4-5` (active but stale; Sonnet 4.5 retires ~2026-09-29); the OpenAI judges are current (`gpt-5.6-sol`, `gpt-5.6-terra`). Before Phase B: the Anthropic judges become `opus` (and `fable` when its bucket allows) — no Sonnet; the OpenAI judges stay `gpt-5.6-sol` (terra replaced by `luna` at `high` if a second OpenAI judge is wanted); keep the same-family exclusion; judge effort `medium` (review accuracy holds at lower effort per Anthropic).
+Updated 2026-08-28 (taureval master `1dbd0b1`): the Anthropic judges are `opus` and `fable` at `medium`, the OpenAI judges `gpt-5.6-sol` at `medium` and `gpt-5.6-luna` at `high` — Sonnet 4.5 and terra are gone, per the team decision above. The same-family exclusion stays; `claude --model fable -p` was verified to answer before the switch.
 
 ## Effort is a per-task variable, not a default
 
@@ -76,4 +76,4 @@ v3 roles **as written**, on the current model per family, dev split, one run per
 
 ## Phase C — v4 and the comparison
 
-For each B cell, author the v4 variant by the rules above (Fable writes; Codex reviews the spec for contradictions and permission-matrix completeness — the reviewer lens the vendors themselves recommend), re-run the same cases, report v3→v4 deltas per cell and per criterion. Then lead/architect cells on Fable 5 / gpt-5.6-sol @ xhigh, and one cheaper-tier probe per task class where the table names one. Winners feed the role defaults, presets and `docs/architecture/harness-model.md`; the `fable` alias is added to the model catalog first so judgment roles can declare it.
+For each B cell, author the v4 variant by the rules above (Fable writes; Codex reviews the spec for contradictions and permission-matrix completeness — the reviewer lens the vendors themselves recommend), re-run the same cases, report v3→v4 deltas per cell and per criterion. Then lead/architect cells on Fable 5 / gpt-5.6-sol @ xhigh, and one cheaper-tier probe per task class where the table names one. Winners feed the role defaults, presets and `docs/architecture/harness-model.md`; the `fable` alias is in the model catalog (PR #49) so judgment roles can declare it; `opus` stays the catalog default a member falls back to.

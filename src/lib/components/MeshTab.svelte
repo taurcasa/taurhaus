@@ -6,11 +6,13 @@
   import ConfirmDialog from './ConfirmDialog.svelte'
   import MeshRuntimeView from './MeshRuntimeView.svelte'
   import MeshSetupView from './MeshSetupView.svelte'
+  import TemplateBrowserPanel from './TemplateBrowserPanel.svelte'
   import { createMeshTabController } from './meshTabController.svelte.js'
 
   let {
     dark = false,
     projectPath = '',
+    projectId = '',
     availableProjects = [],
     modelCatalog = null,
     onAddAgent: onAddAgentProp = () => {},
@@ -215,6 +217,7 @@
       onGateReady={controller.ensureGateReady}
       onApplyPreset={controller.handlePresetSelect}
       onBrowseCatalog={controller.openTemplates}
+      onOpenTemplateBrowser={controller.openTemplateBrowser}
       onTeamNameChange={controller.handleTeamNameChange}
       onDescriptionChange={controller.handleTeamDescriptionChange}
       onAssignLeadRole={controller.handleAssignLeadRole}
@@ -233,6 +236,16 @@
       onInitializeSuccess={controller.handleInitializeSuccess}
     />
   {/if}
+
+  <TemplateBrowserPanel
+    open={controller.slideOver === 'templates'}
+    {dark}
+    {projectId}
+    modelCatalog={catalog}
+    onClose={controller.closeSlideOver}
+    onSelectPreset={controller.handlePresetSelect}
+    onSelectRole={(role) => controller.handleAppendAgentRole(role?.roleId ?? role)}
+  />
 
   {#if controller.confirmContext}
     <ConfirmDialog

@@ -8,6 +8,16 @@ import { resolve } from 'node:path'
 vi.mock('../ipc.js', () => ({
   checkMeshInstallStatus: vi.fn(),
   composeTeam: vi.fn(),
+  deleteRoleTemplate: vi.fn(),
+  deleteTeamPreset: vi.fn(),
+  exportAgentDefinitions: vi.fn(),
+  exportRoleToFile: vi.fn(),
+  getTemplateDiff: vi.fn(),
+  getTemplateHistory: vi.fn(),
+  getTemplateStorageStatus: vi.fn(),
+  importRoleFromFile: vi.fn(),
+  isTauri: vi.fn(),
+  revertTemplateVersion: vi.fn(),
   coordinationAddAgent: vi.fn(),
   coordinationDisbandTeam: vi.fn(),
   coordinationGetProjectMeshSnapshot: vi.fn(),
@@ -31,6 +41,7 @@ vi.mock('../ipc.js', () => ({
 const {
   checkMeshInstallStatus,
   composeTeam,
+  exportAgentDefinitions,
   coordinationAddAgent,
   coordinationDisbandTeam,
   coordinationGetProjectMeshSnapshot,
@@ -2217,6 +2228,41 @@ describe('MeshTab', () => {
       expect(screen.getByTestId('mesh-runtime-title')).toHaveTextContent('taurhaus-team')
     })
     expect(coordinationGetProjectMeshSnapshot).toHaveBeenCalledTimes(2)
+  })
+
+  it('opens the template browser from the builder and hands it the selected project', async () => {
+    // Regression: the panel that carries "Export as Claude Code agents" was
+    // rendered by no production caller, so the action could not be reached.
+    exportAgentDefinitions.mockResolvedValue({ written: ['lead-default'], skipped: [] })
+
+    render(MeshTab, {
+      props: {
+        dark: false,
+        modelCatalog: TEST_MODEL_CATALOG,
+        projectPath: '/projects/taurhaus',
+        projectId: 'project-1',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-mode-empty')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('template-browser-panel')).not.toBeInTheDocument()
+
+    await fireEvent.click(screen.getByTestId('mesh-template-open-browser'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-panel')).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(exportAgentDefinitions).toHaveBeenCalledWith('project-1')
+    })
   })
 
   it('keeps setup composition inline while runtime slideovers still open and close', async () => {

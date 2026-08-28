@@ -149,6 +149,9 @@ pub struct CliCapabilities {
     pub hook_trust: bool,
     /// The app supplies a managed account home for team launches.
     pub managed_home: bool,
+    /// The harness resolves generated agent definitions from the project's
+    /// own `.claude/agents` directory.
+    pub agent_definitions: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -250,6 +253,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 notify_sink: false,
                 hook_trust: false,
                 managed_home: false,
+                agent_definitions: true,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
@@ -311,6 +315,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 notify_sink: true,
                 hook_trust: true,
                 managed_home: true,
+                agent_definitions: false,
             },
             stop_strategy: StopStrategy::Interrupt,
             stop_presence_dir: None,
@@ -395,6 +400,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 notify_sink: false,
                 hook_trust: false,
                 managed_home: false,
+                agent_definitions: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: Some("presence"),
@@ -536,6 +542,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 notify_sink: false,
                 hook_trust: false,
                 managed_home: false,
+                agent_definitions: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
@@ -599,6 +606,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         notify_sink: false,
         hook_trust: false,
         managed_home: false,
+        agent_definitions: false,
     },
     stop_strategy: StopStrategy::Interrupt,
     stop_presence_dir: None,

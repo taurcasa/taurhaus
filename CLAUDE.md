@@ -161,6 +161,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just update-mesh-lock VERSION [PROTOCOL] [SCHEMA] [COMMIT]` | Intentional entry point for bumping the mesh lock manifest. |
 | `just bundle-mesh` | Copies mesh into `src-tauri/resources/mesh` and writes `mesh.version` / `mesh.manifest.json`. Lock-verified. |
 | `just install-mesh` | Lock-verified mesh install to `~/.local/bin`. |
+| `just export-agents PROJECT` | Writes the Claude role templates into `<PROJECT>/.claude/agents` via `--export-agent-definitions` on the app binary (a relative `PROJECT` resolves against the invocation directory). Only files carrying the generated marker are replaced, and one whose role left the catalog is removed; hand-written agents are reported as skipped. |
 | `just analyze-compaction` | Native compaction-hook activity from current + rotated JSONL logs. |
 | `just test-compaction TOOL TEAM MEMBER` | Triggers a real managed compaction and verifies native hook delivery (manual for Claude, automatic for Codex; also `test-compaction-claude` / `test-compaction-codex`). |
 | `just monitor` | Unified resource monitor (live table by default). |
@@ -231,7 +232,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Accounts and usage**: per-tool providers (`src-tauri/src/session_scanner/accounts/`), project memory `pinned`/`last_used` (`project_tool_accounts`), resolution explicit → session → pin → last used → global default → base-command selector → default dir; usage windows come from the daemon poller (`src-tauri/src/daemon/usage_poller.rs`) via the tool's own endpoint or command, credentials read at request time only — never logged, persisted or refreshed.
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
-- **IPC**: Fine-grained commands (currently 90 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
+- **IPC**: Fine-grained commands (currently 91 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
 - **Daemon protocol**: `PROTOCOL_VERSION = 14` in `src-tauri/src/daemon/protocol.rs`. App and daemon must match **exactly** — the exact-version gate lives in `startup/setup.rs` and `ensure_expected_daemon_runtime` (`startup/daemon.rs`), and every reconnect path drops a mismatched daemon. `startup.daemon_protocol.checked` is a separate log line that labels only a *lower* daemon version `outdated`; anything else is `ok`, and the exact gate may already have rejected the daemon before it fires. The background bootstrap runs `ensure_bundled_daemon_installed`, so the bundled daemon auto-updates. Bump the constant when a wire change requires the app to be rebuilt against the new daemon — a change to the `CliTool` wire vocabulary counts, because either side decodes the other's tool value as `Unknown`; purely additive methods ship without a bump and degrade to `UNKNOWN_METHOD`. History: **11** replaced the Claude-only account methods with `list_accounts`/`project_transcript` and added `refresh_usage`, **12** swapped the retired Google tool value for `agy`, **13** added `grok`, **14** retired the Codex compaction mode.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
@@ -309,6 +310,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's activity hooks in the shared `~/.gemini/config/hooks.json` (`agy.hooks.degraded`). |
 | `src-tauri/src/coordination/compaction_events.rs` | Structured delivery-result events shared by the native hook path. Hook lifecycle events are built in `compact_hook.rs`. |
 | `src-tauri/src/session_scanner/transcript_boundary.rs` | Bounded transcript-tail parsing used to timestamp a Codex native-hook delivery. |
+| `src-tauri/src/templates/agent_definitions.rs` | Renders a role as a Claude Code agent definition (body from `DeliveryRenderer::render_role_sections`) and exports the Claude roles into `<project>/.claude/agents`. |
 | `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `scripts/build-windows.sh` | WSL-side Windows build orchestrator with measured step output. |
@@ -320,7 +322,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `ARCHITECTURE.md` | System architecture overview and module map |
 | `docs/architecture/data-architecture.md` | Authoritative map of live coordination stores, ownership boundaries, and derived state. |
 | `docs/architecture/path-handling-guide.md` | Rules for root authority, normalization, and Windows/WSL/Linux path boundaries. |
-| `docs/team-templates.md` | User guide for template authoring/composition/history workflows |
+| `docs/team-templates.md` | User guide for template authoring/composition/history workflows, incl. "Agent Definitions For Workflows" |
 | `docs/design/harness-realignment-plan.md` | Harness realignment plan and implementation ledger (current PR-by-PR record) |
 | `docs/archive/design/role-context-steering-review.md` | Archived: review notes for the role-system shift from capability labels to context steering |
 | `docs/archive/design/agent-role-visibility.md` | Archived: mesh runtime role-visibility guidance built around focus area, context summary, and behavior boundaries |
@@ -353,6 +355,10 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 ## Development Workflow (Phase 5)
 
 Workflow reference: [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup and contribution flow) and the sections below.
+
+### How Changes Are Made
+
+Multi-agent work runs from the versioned procedures in [`.claude/workflows/`](.claude/workflows/README.md) rather than from prompts retyped each session: `feature-pr` (implement → two-lens cross-family review → fix loop → gate), `small-change` (one lens, one fix round), `fix-round` (extra rounds when a run stops short), `research-sweep` (N independent researchers), `docs-sweep` (drift sweep + claim verification). A lead starts one with `Workflow({name: "small-change", args: {worktree, branch, spec}})`, or hands a member the same call in an `ACTION REQUIRED:` notice. Sizing: a one-off edit stays inline, a contained change takes `small-change`, a PR across modules or the wire contract takes `feature-pr`. Whoever implements never reviews. `just lint` syntax-checks the scripts via `scripts/check-workflow-scripts.mjs`.
 
 ### Autonomous Execution Loop
 - **Project loop**: Work through ALL phases (5A→5B→...→5G) autonomously. No pause between phases.

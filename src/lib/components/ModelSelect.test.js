@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import ModelSelect from './ModelSelect.svelte'
+import { MOCK_MODEL_CATALOG } from '../ipc/mocks/base.js'
 
 const CATALOG = {
   claude: [
@@ -171,6 +172,40 @@ describe('ModelSelect', () => {
     })
 
     expect(onchange).toHaveBeenCalledWith({ model: 'gpt-5.6-terra', reasoningEffort: 'low' })
+  })
+
+  // The browser-mode stand-in is the catalog every mocked and visual flow sees,
+  // so it has to carry the same Claude entries the backend keeps (models/mod.rs):
+  // opus and fable lead, and every retired id stays behind them so a persisted
+  // role still resolves instead of reading as a custom model.
+  it('offers the whole Claude list the shared mock catalog declares', () => {
+    render(ModelSelect, {
+      props: { tool: 'claude', model: 'fable', catalog: MOCK_MODEL_CATALOG },
+    })
+
+    expect(optionValues(screen.getByTestId('model-select'))).toEqual([
+      'opus',
+      'fable',
+      'sonnet',
+      'haiku',
+      'claude-opus-4-6',
+      'claude-sonnet-4-5',
+    ])
+  })
+
+  it.each([
+    ['sonnet', 'Sonnet'],
+    ['haiku', 'Haiku'],
+    ['claude-opus-4-6', 'Claude Opus 4.6'],
+    ['claude-sonnet-4-5', 'Claude Sonnet 4.5'],
+  ])('keeps a role pinned to %s and points the hint at opus', (model, label) => {
+    render(ModelSelect, {
+      props: { tool: 'claude', model, catalog: MOCK_MODEL_CATALOG },
+    })
+
+    expect(screen.getByTestId('model-select')).toHaveValue(model)
+    expect(screen.getByRole('option', { name: `${label} → opus` })).toBeInTheDocument()
+    expect(screen.getByTestId('model-select-deprecated')).toHaveTextContent('Deprecated → opus')
   })
 
   it('renders the deprecation hint with its replacement', () => {

@@ -58,6 +58,7 @@
     availableProjects = [],
     modelCatalog = null,
     onBrowseCatalog = () => {},
+    onOpenTemplateBrowser = () => {},
     onTeamNameChange = () => {},
     onDescriptionChange = () => {},
     onApplyPreset = () => {},
@@ -1680,6 +1681,14 @@
               data-testid="mesh-template-browse-catalog"
             >
               Focus search
+            </button>
+            <button
+              class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-medium transition {ghostTone}"
+              type="button"
+              onclick={onOpenTemplateBrowser}
+              data-testid="mesh-template-open-browser"
+            >
+              Browse templates
             </button>
           </div>
         </div>

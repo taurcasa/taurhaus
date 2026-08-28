@@ -26,8 +26,8 @@ Order: W1 + W3 (parallel, small) → W2 → W5 (with the v4 lead roles) → W4.
 
 | Item | Implementer | Reviewers | Rounds | Majors | Merged |
 |---|---|---|---|---|---|
-| W1 | tbd | tbd | tbd | tbd | tbd |
-| W3 | tbd | tbd | tbd | tbd | tbd |
+| W1 | Opus | Codex gpt-5.6 (one lens) | 5 | 4 → 5 → 3 → 2 → 2 (the round-2 spike was an installer a fix round added outside the spec; removed. Last two: gate opt-out fixed by the orchestrator, same-basename worktree collisions accepted and documented) | #51 |
+| W3 | Opus | Codex gpt-5.6 (one lens) | 4 | 1 → 1 → 3 → 2 (last two: recipe quoting fixed by the orchestrator; the Windows two-rename fallback accepted as the best replacement where rename cannot replace) | #50 |
 | W2 | tbd | tbd | tbd | tbd | tbd |
 | W5 | tbd | tbd | tbd | tbd | tbd |
 | W4 | tbd | tbd | tbd | tbd | tbd |
