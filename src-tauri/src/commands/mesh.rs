@@ -1188,37 +1188,19 @@ exit 0
 
         let temp_home = tempfile::TempDir::new().expect("tempdir");
         let source_mesh = temp_home.path().join("mesh-new");
-        write_executable(
-            &source_mesh,
-            r#"#!/bin/sh
-if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
-  echo '{"version":"9.9.9","protocol_version":1,"schema_version":1,"git_commit":"new"}'
-  exit 0
-fi
-exit 0
-"#,
-        );
+        write_executable(&source_mesh, &mesh_version_script("9.9.9"));
 
-        let bundled_contract = MeshCompatibilityContract {
-            version: "9.9.9".to_string(),
-            protocol_version: 1,
-            schema_version: 1,
-            git_commit: Some("new".to_string()),
-        };
+        let target_dir = temp_home.path().join(".local").join("bin");
         let self_heal_called = Cell::new(false);
-        let result = install_mesh_native_at(
-            &temp_home.path().join(".local").join("bin"),
-            &source_mesh,
-            &bundled_contract,
-            || {
+        let result =
+            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
                 self_heal_called.set(true);
                 Ok(Some(MeshInstallSelfHealSummary {
                     teams_reconciled: 2,
                     team_daemons_ensured: 1,
                 }))
-            },
-        )
-        .expect("install should succeed");
+            })
+            .expect("install should succeed");
 
         assert!(
             self_heal_called.get(),
@@ -1228,15 +1210,15 @@ exit 0
             result.message,
             "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
         );
-        assert!(
-            temp_home
-                .path()
-                .join(".local")
-                .join("bin")
-                .join("mesh")
-                .exists(),
-            "native install should replace the target mesh binary"
+        // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The
+        // guarded installer must still install the bundle it verified, and must not
+        // leave its temp copy behind.
+        assert_eq!(
+            std::fs::read(target_dir.join("mesh")).expect("read installed mesh"),
+            std::fs::read(&source_mesh).expect("read bundled mesh"),
+            "native install should replace the target with the verified bundle"
         );
+        assert_eq!(leftover_temp_copies(&target_dir), 0);
     }
 
     #[test]
