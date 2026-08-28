@@ -921,12 +921,13 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
 
     assert!(spec(CliTool::Agy).compaction_signal_source().is_none());
 
-    // grok speaks camelCase and names its workspace root rather than a cwd.
+    // grok speaks camelCase keys with snake_case event values, and names its
+    // workspace root rather than a cwd.
     let grok: taurhaus_lib::coordination::compact_hook::CompactHookInput = serde_json::from_str(
         &serde_json::json!({
-            "hookEventName": "SessionStart",
+            "hookEventName": "post_compact",
             "sessionId": "01a04585-2d53-7123",
-            "source": "compact",
+            "trigger": "auto",
             "workspaceRoot": "/home/user/projects/taurhaus",
             "transcriptPath": "/home/user/.grok/sessions/%2Fp/01a04585/updates.jsonl",
         })

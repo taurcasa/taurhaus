@@ -177,6 +177,16 @@ fn parse_compact_hook_input(raw: &str) -> Result<CompactHookInput, serde_json::E
     serde_json::from_str(raw)
 }
 
+/// Hooks are *registered* under PascalCase event names everywhere, but the value
+/// a harness puts on the wire differs: Claude and Codex echo the PascalCase
+/// name, while grok spells it in snake_case (`~/.grok/docs/user-guide/10-hooks.md`
+/// documents the stdin envelope as `"hookEventName": "pre_tool_use"`, and injects
+/// the same spelling as `GROK_HOOK_EVENT`). One event, either spelling.
+fn hook_event_is(raw: &str, canonical: &str) -> bool {
+    debug_assert!(!canonical.contains('_'), "canonical names are PascalCase");
+    raw.replace('_', "").eq_ignore_ascii_case(canonical)
+}
+
 pub struct ClaudeCompactionSignalSource;
 
 impl CompactionSignalSource for ClaudeCompactionSignalSource {
@@ -412,9 +422,9 @@ pub fn handle_compact_hook(
 
     emit_compact_hook_received(&payload, raw.len());
 
-    let is_post_compact = payload.hook_event_name == POST_COMPACT_HOOK_EVENT;
+    let is_post_compact = hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT);
     if !is_post_compact
-        && (payload.hook_event_name != SESSION_START_HOOK_EVENT
+        && (!hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
             || payload.source.as_deref() != Some(COMPACT_SOURCE))
     {
         emit_compact_hook_skipped(
@@ -1722,29 +1732,38 @@ mod tests {
         member
     }
 
-    /// grok's own envelope: camelCase, a workspace root instead of a cwd, and a
-    /// transcript path under its home rather than Claude's.
+    /// grok's own envelope: camelCase keys whose `hookEventName` *value* is
+    /// snake_case, a workspace root instead of a cwd, and a transcript path
+    /// under its home rather than Claude's. Spelling per
+    /// `~/.grok/docs/user-guide/10-hooks.md` ("Input": `"hookEventName":
+    /// "pre_tool_use"`), which is also what the imported Claude registration
+    /// receives — grok sends its own envelope to every hook it runs.
     fn grok_payload(project: &Path, session_id: &str) -> String {
         json!({
-            "hookEventName": "SessionStart",
+            "hookEventName": "session_start",
             "sessionId": session_id,
             "source": "compact",
             "workspaceRoot": project,
             "transcriptPath": project.join(".grok/sessions/%2Fp/session/updates.jsonl"),
             "permissionMode": "bypassPermissions",
+            "timestamp": "2026-08-28T12:00:00Z",
         })
         .to_string()
     }
 
-    /// grok's own compaction event: `PostCompact`, with a compaction trigger
-    /// where `SessionStart` would carry a start source.
+    /// grok's own compaction event on the wire: `post_compact`, with a
+    /// compaction trigger where `session_start` would carry a start source, and
+    /// the common fields every grok event carries.
     fn grok_post_compact_payload(project: &Path, session_id: &str) -> String {
         json!({
-            "hookEventName": "PostCompact",
+            "hookEventName": "post_compact",
             "sessionId": session_id,
             "trigger": "auto",
+            "cwd": project,
             "workspaceRoot": project,
             "transcriptPath": project.join(".grok/sessions/%2Fp/session/updates.jsonl"),
+            "permissionMode": "default",
+            "timestamp": "2026-08-28T12:00:00Z",
         })
         .to_string()
     }
@@ -1954,6 +1973,34 @@ mod tests {
             state.last_delivery_result,
             CompactionDeliveryResult::Injected
         );
+    }
+
+    #[test]
+    fn a_hook_event_is_recognised_in_either_harness_spelling() {
+        // Regression: commit c1005ec compared `hookEventName` byte-for-byte
+        // against the PascalCase names hooks are *registered* under, but grok
+        // puts a snake_case value on the wire
+        // (`~/.grok/docs/user-guide/10-hooks.md` documents `"hookEventName":
+        // "pre_tool_use"`). Every native `post_compact` therefore took the
+        // non-compaction early return before any member was resolved, so a grok
+        // member got no restored context at all.
+        for (raw, canonical, expected) in [
+            ("PostCompact", POST_COMPACT_HOOK_EVENT, true),
+            ("post_compact", POST_COMPACT_HOOK_EVENT, true),
+            ("SessionStart", SESSION_START_HOOK_EVENT, true),
+            ("session_start", SESSION_START_HOOK_EVENT, true),
+            // A neighbouring event must never be read as the compaction one.
+            ("PreCompact", POST_COMPACT_HOOK_EVENT, false),
+            ("pre_compact", POST_COMPACT_HOOK_EVENT, false),
+            ("SessionEnd", SESSION_START_HOOK_EVENT, false),
+            ("session_end", SESSION_START_HOOK_EVENT, false),
+        ] {
+            assert_eq!(
+                hook_event_is(raw, canonical),
+                expected,
+                "'{raw}' against '{canonical}'"
+            );
+        }
     }
 
     #[test]
