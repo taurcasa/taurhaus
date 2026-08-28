@@ -101,7 +101,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 | ~~17d~~ | — | — | cancelled | — | — |
 | 18a | Codex gpt-5.6 (3 turns) | Opus ×2 | 4 (3 fix rounds) | 10 incl. 1 blocker (persisted `gemini` values aborting whole records on upgrade; protocol vocabulary without a bump; no recency bound on hook-fed activity; forced then missing `--dangerously-skip-permissions`; `{session_id}` never substituted; Windows hooks path; catalog id truncation; hook sink re-parsed per poll) | #39 |
 | 18b | Opus 5 | Codex ×2 | 7 (3 fix rounds + 2 fix-only rounds + orchestrator fix) | 12 (compaction event value mismatch across two rounds; hook reconciliation on roster changes; resume under alternate `GROK_HOME`/after exit; runtime identity disabled; stop proof precedence; argv boundaries lost by the Linux inventory; trailing COMMAND after the prompt) | #40 |
-| 19 | Opus 5 (Lane A drift sweep) + Fable (Lane C narrative) | Codex (Lane B claim verification) | tbd | tbd | tbd |
+| 19 | Opus 5 (drift sweep, 35 files) + Fable 5 (narrative) | Codex ×4 (claim verification) | 4 verification rounds; the orchestrator settled the last seven findings | 60+ raised over four rounds (wrong counts: 89→90 IPC commands, protocol 10/11→13, 27→28 daemon methods; release-status wording; PostCompact routing; Codex hooks; analyzer claims; per-CLI account/usage qualifications); 8 infographics remain `stale` pending regeneration | #41 |
 
 ## Release debt carried into 0.8.0
 
