@@ -16,6 +16,14 @@ const WSL_MESH_BINARY_PATH: &str = "$HOME/.local/bin/mesh";
 const WSL_INSTALL_VERSION_JSON_MARKER: &str = "__TAURHAUS_MESH_VERSION_JSON__=";
 const WSL_INSTALL_MEMBER_DAEMON_MARKER: &str = "__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=";
 const WSL_INSTALL_TEAM_DAEMON_MARKER: &str = "__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=";
+/// `pgrep -f` patterns for the mesh daemons an install has to cycle. They are
+/// passed to the install script as arguments so the destructive `pgrep`/`kill`
+/// block is never driven by a pattern the script itself invented — a test can
+/// scope them to its own processes instead of every mesh daemon on the host.
+const MESH_MEMBER_DAEMON_PATTERN: &str =
+    "[m]esh([[:space:]]|$).*[[:space:]]daemon([[:space:]]|$).*--pane([[:space:]]|$)";
+const MESH_TEAM_DAEMON_PATTERN: &str =
+    "[m]esh([[:space:]]|$).*team-daemon([[:space:]]|$).*start([[:space:]]|$)";
 const INSTALL_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
 const INSTALL_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 
@@ -692,20 +700,71 @@ fn install_mesh_wsl(
     let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
         .unwrap_or_else(|| bundled_binary_str.to_string());
 
+    let plan = WslMeshInstallPlan {
+        source_path: &wsl_source_path,
+        member_pattern: MESH_MEMBER_DAEMON_PATTERN,
+        team_pattern: MESH_TEAM_DAEMON_PATTERN,
+    };
+
+    install_mesh_wsl_orchestrated(
+        &plan,
+        bundled_contract,
+        |script, args| run_wsl_install_phase(&distro, script, args),
+        |any_daemons_were_running| {
+            if any_daemons_were_running {
+                run_mesh_install_self_heal(app).map(Some)
+            } else {
+                Ok(None)
+            }
+        },
+    )
+}
+
+/// Everything the WSL install script needs from the app side.
+struct WslMeshInstallPlan<'a> {
+    source_path: &'a str,
+    member_pattern: &'a str,
+    team_pattern: &'a str,
+}
+
+fn run_wsl_install_phase(
+    distro: &str,
+    script: &str,
+    args: &[&str],
+) -> Result<std::process::Output, String> {
     let mut command = wsl_command();
     command
         .args(crate::daemon::launcher::wsl_shell_args(
-            &distro,
-            "-lc",
-            install_mesh_wsl_script(),
+            distro, "-lc", script,
         ))
-        .arg("taurhaus-install")
-        .arg(&wsl_source_path)
-        .stdin(std::process::Stdio::null());
-    let output = crate::process_utils::run_command_with_timeout(
+        .arg("taurhaus-install");
+    for arg in args {
+        command.arg(arg);
+    }
+    command.stdin(std::process::Stdio::null());
+    crate::process_utils::run_command_with_timeout(
         &mut command,
         INSTALL_ACTION_TIMEOUT,
         "wsl mesh install script",
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// The WSL install, with the shell out of the decisions: the phase runner only
+/// executes a script, and every judgement about the copied binary is made here.
+fn install_mesh_wsl_orchestrated<R, F>(
+    plan: &WslMeshInstallPlan<'_>,
+    bundled_contract: &MeshCompatibilityContract,
+    mut run_phase: R,
+    run_self_heal: F,
+) -> Result<OperationResult, String>
+where
+    R: FnMut(&str, &[&str]) -> Result<std::process::Output, String>,
+    F: FnOnce(bool) -> Result<Option<MeshInstallSelfHealSummary>, String>,
+{
+    let output = run_phase(
+        install_mesh_wsl_script(),
+        &[plan.source_path, plan.member_pattern, plan.team_pattern],
     )
     .map_err(|e| format!("Failed to install mesh in WSL: {e}"))?;
 
@@ -729,15 +788,11 @@ fn install_mesh_wsl(
 
     let any_daemons_were_running =
         result.member_daemons_were_running || result.team_daemons_were_running;
-    let self_heal_summary = if any_daemons_were_running {
-        Some(run_mesh_install_self_heal(app)?)
-    } else {
-        None
-    };
+    let self_heal_summary = run_self_heal(any_daemons_were_running)?;
 
-    let message = format_mesh_install_success_message(&result.contract.version, self_heal_summary);
-
-    Ok(OperationResult::success(message))
+    Ok(OperationResult::success(
+        format_mesh_install_success_message(&result.contract.version, self_heal_summary),
+    ))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -808,11 +863,11 @@ struct WslMeshInstallResult {
 fn install_mesh_wsl_script() -> &'static str {
     r#"set -eu
 source_path="$1"
+member_pattern="$2"
+team_pattern="$3"
 target_dir="$HOME/.local/bin"
 target_path="$target_dir/mesh"
 temp_path="$target_dir/.mesh.new.$$"
-member_pattern='[m]esh([[:space:]]|$).*[[:space:]]daemon([[:space:]]|$).*--pane([[:space:]]|$)'
-team_pattern='[m]esh([[:space:]]|$).*team-daemon([[:space:]]|$).*start([[:space:]]|$)'
 member_daemons_were_running=0
 team_daemons_were_running=0
 
@@ -955,6 +1010,85 @@ exit 0
     }
 
     #[cfg(not(target_os = "windows"))]
+    fn bash_is_available() -> bool {
+        Command::new("bash")
+            .args(["-c", "exit 0"])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .is_ok()
+    }
+
+    /// Runs an install phase the way the WSL runner does, but locally under `bash`.
+    #[cfg(not(target_os = "windows"))]
+    fn run_local_install_phase(
+        home: &Path,
+        script: &str,
+        args: &[&str],
+    ) -> Result<std::process::Output, String> {
+        let mut command = Command::new("bash");
+        command.arg("-c").arg(script).arg("taurhaus-install");
+        for arg in args {
+            command.arg(arg);
+        }
+        command
+            .env("HOME", home)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| e.to_string())
+    }
+
+    /// A token no other process on this machine carries, so a test that drives the
+    /// installer's `pgrep`/`kill` block can only ever reach its own fake daemons —
+    /// never the operator's live mesh daemons.
+    #[cfg(not(target_os = "windows"))]
+    fn unique_daemon_token() -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        format!("taurhaus-test-{}-{nanos}", std::process::id())
+    }
+
+    /// Patterns of the same shape as the shipped ones, narrowed to one token so a
+    /// test can drive the installer's `pgrep`/`kill` block without any chance of
+    /// reaching a mesh daemon that belongs to the operator.
+    #[cfg(not(target_os = "windows"))]
+    fn scoped_daemon_patterns(token: &str) -> (String, String) {
+        (
+            format!("[m]esh([[:space:]]|$).*daemon([[:space:]]|$).*--pane([[:space:]]|$).*{token}"),
+            format!(
+                "[m]esh([[:space:]]|$).*team-daemon([[:space:]]|$).*start([[:space:]]|$).*{token}"
+            ),
+        )
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn spawn_fake_daemon(argv0: &str) -> std::process::Child {
+        Command::new("bash")
+            .args(["-lc", &format!("exec -a '{argv0}' sleep 100")])
+            .stdin(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn fake daemon")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn has_exited(child: &mut std::process::Child) -> bool {
+        for _ in 0..50 {
+            if child.try_wait().expect("try_wait").is_some() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn stop_fake_daemon(mut child: std::process::Child) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[cfg(not(target_os = "windows"))]
     fn leftover_temp_copies(dir: &Path) -> usize {
         std::fs::read_dir(dir)
             .expect("read target dir")
@@ -1049,7 +1183,10 @@ exit 0
         assert!(script.contains("mv -f \"$temp_path\" \"$target_path\""));
         assert!(script.contains("pgrep -f \"$member_pattern\""));
         assert!(script.contains("pgrep -f \"$team_pattern\""));
-        assert!(script.contains("[[:space:]]daemon([[:space:]]|$).*--pane"));
+        assert!(script.contains("member_pattern=\"$2\""));
+        assert!(script.contains("team_pattern=\"$3\""));
+        assert!(MESH_MEMBER_DAEMON_PATTERN.contains("[[:space:]]daemon([[:space:]]|$).*--pane"));
+        assert!(MESH_TEAM_DAEMON_PATTERN.contains("team-daemon([[:space:]]|$).*start"));
         assert!(script.contains("kill -TERM $member_pids || true"));
         assert!(script.contains("kill -TERM $team_pids || true"));
         assert!(script.contains(WSL_INSTALL_VERSION_JSON_MARKER));
@@ -1131,79 +1268,103 @@ exit 0
         assert_eq!(contract.version, "0.2.17");
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
-    fn install_mesh_wsl_script_executes_atomic_swap_with_live_daemon_like_processes() {
+    fn install_mesh_wsl_replaces_the_installed_binary_and_cycles_matching_daemons() {
+        if !bash_is_available() {
+            eprintln!("skipping WSL install orchestration test: bash is unavailable");
+            return;
+        }
+
         let temp_home = tempfile::TempDir::new().expect("tempdir");
         let bin_dir = temp_home.path().join(".local").join("bin");
         std::fs::create_dir_all(&bin_dir).expect("bin dir");
         let installed_mesh = bin_dir.join("mesh");
+        write_executable(&installed_mesh, &mesh_version_script("0.1.0"));
         let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, &mesh_version_script("9.9.9"));
 
-        write_executable(
-            &installed_mesh,
-            r#"#!/bin/sh
-if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
-  echo '{"version":"0.1.0","protocol_version":1,"schema_version":1,"git_commit":"old"}'
-  exit 0
-fi
-exit 0
-"#,
-        );
-        write_executable(
-            &source_mesh,
-            r#"#!/bin/sh
-if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
-  echo '{"version":"9.9.9","protocol_version":1,"schema_version":1,"git_commit":"new"}'
-  exit 0
-fi
-exit 0
-"#,
-        );
-
-        let mut member = Command::new("bash")
-            .args([
-                "-lc",
-                "exec -a 'mesh daemon --pane %9 --team alpha --name dev' sleep 100",
-            ])
-            .spawn()
-            .expect("spawn member daemon");
-        let mut team = Command::new("bash")
-            .args([
-                "-lc",
-                "exec -a 'mesh team-daemon start --team alpha --name lead' sleep 100",
-            ])
-            .spawn()
-            .expect("spawn team daemon");
-
+        let token = unique_daemon_token();
+        let (member_pattern, team_pattern) = scoped_daemon_patterns(&token);
+        let mut member = spawn_fake_daemon(&format!(
+            "mesh daemon --pane %9 --team alpha --name dev --marker {token}"
+        ));
+        let mut team = spawn_fake_daemon(&format!(
+            "mesh team-daemon start --team alpha --name lead --marker {token}"
+        ));
         std::thread::sleep(Duration::from_millis(150));
 
-        let output = Command::new("sh")
-            .arg("-lc")
-            .arg(install_mesh_wsl_script())
-            .arg("taurhaus-install")
-            .arg(&source_mesh)
-            .env("HOME", temp_home.path())
+        let plan = WslMeshInstallPlan {
+            source_path: source_mesh.to_str().expect("source path"),
+            member_pattern: &member_pattern,
+            team_pattern: &team_pattern,
+        };
+        let mut daemons_were_running = None;
+        let result = install_mesh_wsl_orchestrated(
+            &plan,
+            &bundled_test_contract(),
+            |script, args| run_local_install_phase(temp_home.path(), script, args),
+            |any_daemons_were_running| {
+                daemons_were_running = Some(any_daemons_were_running);
+                Ok(Some(MeshInstallSelfHealSummary {
+                    teams_reconciled: 2,
+                    team_daemons_ensured: 1,
+                }))
+            },
+        )
+        .expect("install should succeed");
+
+        assert_eq!(
+            result.message,
+            "Mesh installed successfully: mesh 9.9.9 (cycled 1 team daemon, repaired 2 teams)"
+        );
+        assert_eq!(daemons_were_running, Some(true));
+        assert_eq!(
+            std::fs::read(&installed_mesh).expect("installed mesh"),
+            std::fs::read(&source_mesh).expect("source mesh"),
+            "installed binary should be atomically replaced by the verified source"
+        );
+        assert_eq!(leftover_temp_copies(&bin_dir), 0);
+        assert!(
+            has_exited(&mut member),
+            "the member daemon should be cycled"
+        );
+        assert!(has_exited(&mut team), "the team daemon should be cycled");
+
+        stop_fake_daemon(member);
+        stop_fake_daemon(team);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // The shipped team-daemon pattern matches live `mesh team-daemon start` command
+    // lines on the host running the tests, which is exactly why the guard tests below
+    // drive the installer with token-scoped patterns instead of the shipped ones.
+    #[test]
+    fn shipped_team_daemon_pattern_matches_a_real_team_daemon_command_line() {
+        let token = unique_daemon_token();
+        let team = spawn_fake_daemon(&format!(
+            "/home/someone/.local/bin/mesh team-daemon start --team alpha --name lead --marker {token}"
+        ));
+        std::thread::sleep(Duration::from_millis(150));
+
+        // `pgrep` only, never `kill`: this test observes the host, it does not touch it.
+        let output = Command::new("pgrep")
+            .arg("-f")
+            .arg(MESH_TEAM_DAEMON_PATTERN)
+            .stdin(std::process::Stdio::null())
             .output()
-            .expect("run install script");
+            .expect("run pgrep");
+        let matched = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|line| line.trim().to_string())
+            .collect::<Vec<_>>();
 
         assert!(
-            output.status.success(),
-            "install script failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            matched.contains(&team.id().to_string()),
+            "the team daemon pattern must match a `mesh team-daemon start` command line"
         );
 
-        let parsed = parse_mesh_wsl_install_output(&output.stdout).expect("parse install output");
-        assert_eq!(parsed.contract.version, "9.9.9");
-        assert_eq!(
-            std::fs::read_to_string(&installed_mesh).expect("installed mesh"),
-            std::fs::read_to_string(&source_mesh).expect("source mesh"),
-            "installed binary should be atomically replaced by the new source"
-        );
-
-        let _ = member.kill();
-        let _ = member.wait();
-        let _ = team.kill();
-        let _ = team.wait();
+        stop_fake_daemon(team);
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1479,14 +1640,9 @@ exit 0
     // install script did `cp`, `chmod`, `mv -f` and only THEN `version --json`, so a
     // broken copy replaced a working mesh before anything proved it runs.
     #[test]
-    fn install_mesh_wsl_script_keeps_installed_binary_when_copy_reports_no_version() {
-        if Command::new("bash")
-            .args(["-c", "exit 0"])
-            .stdin(std::process::Stdio::null())
-            .status()
-            .is_err()
-        {
-            eprintln!("skipping install_mesh_wsl_script guard test: bash is unavailable");
+    fn install_mesh_wsl_keeps_installed_binary_when_copy_reports_no_version() {
+        if !bash_is_available() {
+            eprintln!("skipping install_mesh_wsl guard test: bash is unavailable");
             return;
         }
 
@@ -1500,25 +1656,24 @@ exit 0
         let source_mesh = temp_home.path().join("mesh-new");
         write_executable(&source_mesh, "#!/bin/sh\nexit 0\n");
 
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(install_mesh_wsl_script())
-            .arg("taurhaus-install")
-            .arg(&source_mesh)
-            .env("HOME", temp_home.path())
-            .stdin(std::process::Stdio::null())
-            .output()
-            .expect("run install script");
+        let token = unique_daemon_token();
+        let (member_pattern, team_pattern) = scoped_daemon_patterns(&token);
+        let plan = WslMeshInstallPlan {
+            source_path: source_mesh.to_str().expect("source path"),
+            member_pattern: &member_pattern,
+            team_pattern: &team_pattern,
+        };
+        let err = install_mesh_wsl_orchestrated(
+            &plan,
+            &bundled_test_contract(),
+            |script, args| run_local_install_phase(temp_home.path(), script, args),
+            |_| panic!("self-heal must not run when the install is rejected"),
+        )
+        .expect_err("a mesh copy that reports no version must be rejected");
 
         assert!(
-            !output.status.success(),
-            "install script must fail closed, stdout: {}",
-            String::from_utf8_lossy(&output.stdout)
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("copied mesh did not report a version"),
-            "unexpected stderr: {stderr}"
+            err.contains("copied mesh did not report a version"),
+            "unexpected error: {err}"
         );
         assert_eq!(
             std::fs::read(&installed_mesh).expect("read installed mesh"),
@@ -1527,6 +1682,7 @@ exit 0
         );
         assert_eq!(leftover_temp_copies(&bin_dir), 0);
     }
+
     #[cfg(not(target_os = "windows"))]
     // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident, review
     // follow-up. Only `prepare_and_verify_mesh_copy` failures removed the staged
