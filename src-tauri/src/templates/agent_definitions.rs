@@ -80,6 +80,9 @@ pub enum AgentDefinitionSkipReason {
     UserAuthored,
     /// The role id would not be a plain file name inside the agents directory.
     UnsafeRoleId,
+    /// The role id is a safe file name but not an agent name Claude Code
+    /// registers, so the file would never resolve as an `agentType`.
+    UnsupportedAgentName,
 }
 
 /// Where Claude Code looks for a project's custom subagents.
@@ -111,9 +114,12 @@ pub fn export_agent_definitions(
         .iter()
         .filter(|role| spec(role.defaults.cli_tool).capabilities.agent_definitions)
     {
-        let Some(file_name) = agent_file_name(&role.role_id) else {
-            export.skip(role, AgentDefinitionSkipReason::UnsafeRoleId);
-            continue;
+        let file_name = match agent_file_name(&role.role_id) {
+            Ok(file_name) => file_name,
+            Err(reason) => {
+                export.skip(role, reason);
+                continue;
+            }
         };
 
         let target = dir.join(file_name);
@@ -153,14 +159,34 @@ impl AgentDefinitionExport {
     }
 }
 
-/// The file name for a role id, or `None` when the id is anything other than a
-/// plain name — the one guard that keeps an export inside the agents directory.
-fn agent_file_name(role_id: &str) -> Option<String> {
+/// The file name for a role id, or the reason it cannot become one. A role id
+/// has to be a plain name — the one guard that keeps an export inside the
+/// agents directory — and it has to spell an agent name Claude Code will
+/// register, because the id is what the frontmatter and a workflow's
+/// `agentType` both name.
+fn agent_file_name(role_id: &str) -> Result<String, AgentDefinitionSkipReason> {
     let is_plain_name = !role_id.is_empty()
         && role_id
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'));
-    is_plain_name.then(|| format!("{role_id}.md"))
+    if !is_plain_name {
+        return Err(AgentDefinitionSkipReason::UnsafeRoleId);
+    }
+    if !is_agent_name(role_id) {
+        return Err(AgentDefinitionSkipReason::UnsupportedAgentName);
+    }
+    Ok(format!("{role_id}.md"))
+}
+
+/// Claude Code resolves a subagent by a lowercase, hyphen-separated name;
+/// anything else lands on disk without ever being registered.
+fn is_agent_name(role_id: &str) -> bool {
+    role_id.split('-').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
+    })
 }
 
 fn trimmed(value: Option<&str>) -> Option<&str> {
@@ -385,6 +411,49 @@ mod tests {
             std::fs::read_to_string(&file).expect("untouched file"),
             "regular file"
         );
+    }
+
+    #[test]
+    fn a_role_id_claude_would_not_register_is_reported_instead_of_written() {
+        // Claude Code resolves a subagent by a lowercase, hyphen-separated
+        // name, so an id like `QA_reviewer` produces a file that is never
+        // usable as a Workflow `agentType`.
+        let project = tempfile::tempdir().expect("project dir");
+        let mut shouty = claude_role();
+        shouty.role_id = "QA_reviewer".to_string();
+
+        let result = export_agent_definitions(&[shouty], project.path()).expect("export runs");
+
+        assert!(result.written.is_empty());
+        assert_eq!(
+            result.skipped,
+            vec![SkippedAgentDefinition {
+                role_id: "QA_reviewer".to_string(),
+                reason: AgentDefinitionSkipReason::UnsupportedAgentName,
+            }]
+        );
+        assert!(!agents_dir(project.path()).join("QA_reviewer.md").exists());
+    }
+
+    #[test]
+    fn every_bundled_role_id_still_spells_an_agent_name_claude_registers() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("templates")
+            .join("roles");
+
+        for entry in std::fs::read_dir(&dir).expect("bundled roles directory") {
+            let path = entry.expect("directory entry").path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("yaml") {
+                continue;
+            }
+            let template = role(&std::fs::read_to_string(&path).expect("bundled role"));
+            assert!(
+                agent_file_name(&template.role_id).is_ok(),
+                "{} is not an agent name Claude Code registers",
+                template.role_id
+            );
+        }
     }
 
     #[test]

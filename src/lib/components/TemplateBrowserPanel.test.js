@@ -1360,6 +1360,32 @@ describe('TemplateBrowserPanel', () => {
     })
   })
 
+  it('separates a hand-written agent from a role id Claude cannot register', async () => {
+    exportAgentDefinitions.mockResolvedValue({
+      written: ['claude-reviewer'],
+      skipped: [
+        { roleId: 'my-agent', reason: 'user_authored' },
+        { roleId: 'QA_reviewer', reason: 'unsupported_agent_name' },
+      ],
+    })
+
+    render(TemplateBrowserPanel, {
+      props: { open: true, projectId: 'project-1', modelCatalog: TEST_MODEL_CATALOG },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent(
+        'Exported 1 agent definition to .claude/agents \u00b7 1 hand-written agent left untouched \u00b7 1 role skipped for an id Claude cannot register'
+      )
+    })
+  })
+
   it('cannot export agent definitions without a project', async () => {
     render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
 

@@ -317,6 +317,11 @@ Rules worth knowing:
   file that carries it is rewritten on every export, and anything else at that
   name is left exactly as it is and reported in `skipped` as `user_authored`.
   To change a generated agent, edit the role template and export again.
+- **A role id has to be an agent name.** Claude Code resolves a subagent by a
+  lowercase, hyphen-separated name, and that same id is what a workflow's
+  `agentType` asks for. A role id such as `QA_reviewer` is reported in `skipped`
+  as `unsupported_agent_name` instead of being written as a file that would
+  never register; rename the role to export it.
 - **Export is a deliberate act.** Saving a role does not re-export; run the
   action again after the role changes.
 - **Project scope only.** User-scope agents (`~/.claude/agents`) are never

@@ -412,13 +412,22 @@ export function createTemplateBrowserController({ getOpen, getProjectId = () => 
     try {
       const result = await exportAgentDefinitions(projectId)
       const written = result?.written?.length ?? 0
-      const skipped = result?.skipped?.length ?? 0
+      const skipped = result?.skipped ?? []
+      // Two different reasons to skip: a file someone wrote by hand, and a role
+      // id Claude Code would never register as an agent name.
+      const handWritten = skipped.filter((entry) => entry?.reason === 'user_authored').length
+      const unusableId = skipped.length - handWritten
       const parts = [
         `Exported ${written} agent ${written === 1 ? 'definition' : 'definitions'} to .claude/agents`,
       ]
-      if (skipped > 0) {
+      if (handWritten > 0) {
         parts.push(
-          `${skipped} hand-written ${skipped === 1 ? 'agent' : 'agents'} left untouched`
+          `${handWritten} hand-written ${handWritten === 1 ? 'agent' : 'agents'} left untouched`
+        )
+      }
+      if (unusableId > 0) {
+        parts.push(
+          `${unusableId} ${unusableId === 1 ? 'role' : 'roles'} skipped for an id Claude cannot register`
         )
       }
       showExportNotice(parts.join(' \u00b7 '))
