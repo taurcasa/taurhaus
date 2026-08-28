@@ -127,7 +127,8 @@ pub async fn coordination_initialize_team(
                     .hook_trust
             })
         });
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -191,7 +192,8 @@ pub fn coordination_add_agent(
                 .capabilities
                 .hook_trust
         });
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -235,7 +237,8 @@ pub fn coordination_resume_member(
     let result = {
         let has_codex = team_has_managed_codex_member(state.teams_dir(), &requested_team_name)
             .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -273,7 +276,8 @@ pub fn coordination_resume_team(
     let result = {
         let has_codex = team_has_managed_codex_member(state.teams_dir(), &requested_team_name)
             .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -711,8 +715,14 @@ fn coordination_reonboard_impl(
     Ok(result)
 }
 
-fn reconcile_codex_before_managed_launch(has_managed_codex: bool) -> bool {
-    match crate::commands::terminal_settings::reconcile_codex_hook(has_managed_codex) {
+fn reconcile_codex_before_managed_launch(
+    teams_dir: &std::path::Path,
+    has_managed_codex: bool,
+) -> bool {
+    match crate::commands::terminal_settings::reconcile_codex_hook_for_managed_launch(
+        teams_dir,
+        has_managed_codex,
+    ) {
         Ok(_) => {
             has_managed_codex
                 && crate::coordination::compact_hook::codex_compact_hook_is_installed()

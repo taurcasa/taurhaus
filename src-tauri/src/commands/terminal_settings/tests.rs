@@ -41,6 +41,47 @@ fn unknown_codex_version_leaves_existing_hook_untouched() {
 }
 
 #[test]
+fn unknown_codex_version_without_a_visible_member_leaves_the_hook_untouched() {
+    // Regression: d673af1 made the no-managed-member arm remove the hook even
+    // when the Codex version probe was unavailable, treating missing evidence
+    // as proof that an installed host-global hook was obsolete.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let codex_home = tmp.path().join("codex-home");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install supported hook");
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, false, None, &exe)
+        .expect("leave hook untouched when the version is unknown");
+
+    assert!(!changed);
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+}
+
+#[test]
+fn a_claude_only_launch_keeps_the_hook_needed_by_another_codex_team() {
+    // Regression: d673af1 reconciled the host-global Codex hook from only the
+    // team or agent being launched, so a Claude-only operation uninstalled the
+    // hook while another managed Codex team was still live.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = tmp.path().join("teams");
+    let codex_home = tmp.path().join("codex-home");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team(&teams_dir, "codex-team", "codex");
+    write_team(&teams_dir, "claude-team", "claude");
+
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install hook for the managed Codex team");
+    reconcile_codex_hook_for_managed_launch_at(&teams_dir, &codex_home, false, Some(true), &exe)
+        .expect("reconcile before the Claude-only launch");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+}
+
+#[test]
 fn the_last_codex_member_removes_the_managed_hook() {
     // Regression: 1615cea collapsed Codex hook reconciliation but left the
     // no-managed-member arm as a no-op, so disbanding the last Codex team left
@@ -170,7 +211,7 @@ fn codex_notify_input_preserves_user_config_toml_notify() {
     assert!(commands.codex_notify_executable.is_none());
 }
 
-fn write_grok_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
+fn write_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
     let dir = teams_dir.join(team_name);
     std::fs::create_dir_all(&dir).expect("team dir");
     std::fs::write(
@@ -197,7 +238,7 @@ fn the_first_grok_team_installs_the_hook_and_the_last_removal_takes_it_away() {
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("no grok member");
     assert!(!crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
 
-    write_grok_team(&teams_dir, "grok-team", "grok");
+    write_team(&teams_dir, "grok-team", "grok");
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("first team");
     assert!(crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
 
@@ -218,7 +259,7 @@ fn a_grok_team_whose_config_cannot_be_parsed_never_uninstalls_the_hook() {
     let exe = tmp.path().join("taurhaus");
     std::fs::create_dir_all(&teams_dir).expect("teams dir");
     std::fs::write(&exe, b"fixture").expect("executable fixture");
-    write_grok_team(&teams_dir, "grok-team", "grok");
+    write_team(&teams_dir, "grok-team", "grok");
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("install");
 
     // The team is still listed; only its config is unreadable.
@@ -247,7 +288,7 @@ fn a_roster_that_cannot_be_read_never_uninstalls_the_grok_hook() {
     let exe = tmp.path().join("taurhaus");
     std::fs::create_dir_all(&teams_dir).expect("teams dir");
     std::fs::write(&exe, b"fixture").expect("executable fixture");
-    write_grok_team(&teams_dir, "grok-team", "grok");
+    write_team(&teams_dir, "grok-team", "grok");
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("install");
 
     // A file where the team directory belongs makes discovery fail outright.

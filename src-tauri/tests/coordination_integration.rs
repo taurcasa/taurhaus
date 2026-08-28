@@ -197,6 +197,13 @@ mod commands {
             Ok(false)
         }
 
+        pub fn reconcile_codex_hook_for_managed_launch(
+            _teams_dir: &std::path::Path,
+            _launch_has_managed_codex: bool,
+        ) -> Result<bool, CoordinationError> {
+            Ok(false)
+        }
+
         pub fn reconcile_grok_hooks_for_roster(
             _teams_dir: &std::path::Path,
             _enabled: bool,

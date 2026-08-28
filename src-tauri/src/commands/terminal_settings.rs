@@ -198,9 +198,8 @@ pub(crate) fn reconcile_codex_hook_at_with_support(
 ) -> Result<bool, CoordinationError> {
     match (has_managed_codex, hooks_supported) {
         (true, Some(true)) => ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe),
-        (true, Some(false)) => remove_codex_compact_hook_at(codex_home),
-        (false, _) => remove_codex_compact_hook_at(codex_home),
-        (true, None) => Ok(false),
+        (_, Some(_)) => remove_codex_compact_hook_at(codex_home),
+        (_, None) => Ok(false),
     }
 }
 
@@ -257,6 +256,44 @@ pub(crate) fn reconcile_codex_hook(has_managed_codex: bool) -> Result<bool, Coor
         );
     }
     Ok(changed)
+}
+
+pub(crate) fn reconcile_codex_hook_for_managed_launch(
+    teams_dir: &std::path::Path,
+    launch_has_managed_codex: bool,
+) -> Result<bool, CoordinationError> {
+    let host_has_managed_codex =
+        managed_codex_hook_needed_for_launch(teams_dir, launch_has_managed_codex)?;
+    reconcile_codex_hook(host_has_managed_codex)
+}
+
+#[cfg(test)]
+fn reconcile_codex_hook_for_managed_launch_at(
+    teams_dir: &std::path::Path,
+    codex_home: &std::path::Path,
+    launch_has_managed_codex: bool,
+    hooks_supported: Option<bool>,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let host_has_managed_codex =
+        managed_codex_hook_needed_for_launch(teams_dir, launch_has_managed_codex)?;
+    reconcile_codex_hook_at_with_support(
+        codex_home,
+        host_has_managed_codex,
+        hooks_supported,
+        taurhaus_exe,
+    )
+}
+
+/// A managed launch is allowed to add the host's first Codex member before its
+/// team config exists. Every other launch reconciles against the full roster
+/// because the Codex hook lives in one host-global `hooks.json` file.
+fn managed_codex_hook_needed_for_launch(
+    teams_dir: &std::path::Path,
+    launch_has_managed_codex: bool,
+) -> Result<bool, CoordinationError> {
+    Ok(launch_has_managed_codex
+        || crate::coordination::compact_hook::any_managed_codex_member(teams_dir)?)
 }
 
 /// One line per run: startup and every managed launch reconcile the same
