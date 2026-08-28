@@ -134,11 +134,6 @@ pub enum StopStrategy {
     Interrupt,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessActivitySignal {
-    ReadChars,
-}
-
 /// One registry record for a supported CLI harness.
 pub struct CliToolSpec {
     pub tool: CliTool,
@@ -165,7 +160,6 @@ pub struct CliToolSpec {
     pub stop_presence_dir: Option<&'static str>,
     /// Add the harness-specific exit and mesh inbox hints to onboarding text.
     pub onboarding_exit_hint: bool,
-    pub process_activity_signal: ProcessActivitySignal,
     pub pane_binding: bool,
     pub display_name: &'static str,
     pub settings_label: &'static str,
@@ -226,7 +220,6 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
             onboarding_exit_hint: false,
-            process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Claude Code",
             settings_label: "Claude Code",
@@ -283,7 +276,6 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             stop_strategy: StopStrategy::Interrupt,
             stop_presence_dir: None,
             onboarding_exit_hint: false,
-            process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: true,
             display_name: "Codex CLI",
             settings_label: "Codex",
@@ -363,7 +355,6 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: Some("presence"),
             onboarding_exit_hint: true,
-            process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Antigravity CLI",
             settings_label: "Antigravity CLI",
@@ -420,7 +411,6 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     stop_strategy: StopStrategy::Interrupt,
     stop_presence_dir: None,
     onboarding_exit_hint: false,
-    process_activity_signal: ProcessActivitySignal::ReadChars,
     pane_binding: false,
     display_name: "Unknown tool",
     settings_label: "Unknown tool",

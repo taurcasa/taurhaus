@@ -669,7 +669,8 @@
         <!-- ═══ CLI TOOLS ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-cli-tools">
           <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">CLI Tools</h2>
-          <p class="text-[13px] {textTertiary} mb-4">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
+          <p class="text-[13px] {textTertiary} mb-2">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
+          <p class="text-[12px] {textTertiary} mb-4">A resume command may carry <code class="font-mono">{'{session_id}'}</code>. taurhaus substitutes the resolved id already quoted, so leave the token bare — quoting it yourself produces a doubly quoted id the CLI cannot resume.</p>
 
           {#each cliTools as descriptor, toolIndex (descriptor.id)}
             {@const tool = descriptor.id}

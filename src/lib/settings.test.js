@@ -559,6 +559,17 @@ describe('Settings component', () => {
     expect(section).toHaveTextContent('Antigravity CLI')
   })
 
+  it('explains that the resume session token is substituted already quoted', async () => {
+    // Regression: 987e0ac shell-escaped the `{session_id}` expansion without
+    // saying so anywhere, so a user who quoted the token themselves got a
+    // double-quoted id and an unresumable command with no explanation.
+    render(Settings, { props: defaultProps() })
+
+    const section = await screen.findByTestId('settings-cli-tools')
+    expect(section).toHaveTextContent('{session_id}')
+    expect(section).toHaveTextContent(/already quoted/i)
+  })
+
   it('terminal emulator dropdown has Windows Terminal and Custom options', async () => {
     render(Settings, { props: defaultProps() })
     await waitFor(() => {
