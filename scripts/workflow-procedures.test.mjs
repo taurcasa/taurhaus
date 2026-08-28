@@ -229,6 +229,23 @@ describe('workflow procedures — fail closed', () => {
       await expect(run(script, argsFor(script), { review: { status: 'ok', findings: [], verdict: 'looks fine' } })).rejects.toThrow(/verdict/i)
     })
 
+    // Regression: `fix_required` with an empty findings array validated, and actionableFrom then had
+    // nothing to hand the fixer — so the fix loop was skipped and a green gate completed the run over
+    // a reviewer that had explicitly withheld approval.
+    it(`${script} fails when the reviewer demands a fix but files nothing`, async () => {
+      await expect(run(script, argsFor(script), { review: { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [] } })).rejects.toThrow(
+        /fix_required/i
+      )
+    })
+
+    it(`${script} fails when the reviewer demands a fix and files only nits`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          review: { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [{ title: 'spelling', severity: 'nit', file: 'a.js:1', evidence: 'e', fix: 'f' }] },
+        })
+      ).rejects.toThrow(/fix_required/i)
+    })
+
     it(`${script} fails when a gate command fails`, async () => {
       await expect(
         run(script, argsFor(script), {

@@ -89,7 +89,9 @@ a completed ledger with no findings reads as an approval:
   findings array, a verdict outside `approve`/`fix_required` — fails the run, and a reviewer is
   recorded in the ledger only after its result validates.
 - **A `fix_required` verdict counts** even when the reviewer filed no blocker or major: its findings
-  become the fix round.
+  become the fix round. And a `fix_required` with nothing the fix loop would act on — no findings at
+  all, or nits only — is malformed and fails the run: the loop would have nothing to fix, so the
+  withheld approval would otherwise complete as an approval.
 - **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any command
   that did not pass, a `status` other than `pass`, or a gate that ran nothing aborts. So does a gate
   that contradicts itself — `status: 'pass'` arriving with a non-empty `failures` or `error`.

@@ -91,6 +91,12 @@ function reviewProblem(review, label) {
   if (lane) return lane
   if (!Array.isArray(review.findings)) return label + ' returned no findings array'
   if (review.verdict !== 'approve' && review.verdict !== 'fix_required') return label + ' returned an invalid verdict: ' + JSON.stringify(review.verdict)
+  // A reviewer that withholds approval and files nothing the fix loop would act on has contradicted
+  // itself: the loop has nothing to fix, so the run would complete green over a withheld approval.
+  // That is the failure fail-closed exists to prevent, so the review is rejected as malformed.
+  if (review.verdict === 'fix_required' && review.findings.filter((f) => f && f.severity !== 'nit').length === 0) {
+    return label + ' returned fix_required with nothing to fix (' + review.findings.length + ' findings, none above a nit) — a withheld approval is not an approval'
+  }
   return ''
 }
 
@@ -171,7 +177,7 @@ const RULES = {
   scope:
     'SCOPE RULE: judge against the spec\'s minimum deliverable and its "not building" list — missing scaffolding (tests or docs for tooling, dry-run niceties, extra configurability) is at most a minor, and majors are reserved for defects a user would hit.',
   evidence:
-    'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit; verdict fix_required only for blocker/major.',
+    'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit; verdict fix_required only for blocker/major. A fix_required must carry at least one finding above a nit — a withheld approval with nothing to fix is rejected as malformed and fails the run, so approve or file the finding.',
   honest:
     "HONESTY: set status='ok' only for work you actually did and saw succeed. If your lane could not run, return status='unavailable' with the error — never an invented result, an approval you did not reach, or a gate you did not watch pass. The caller fails the run closed on an unavailable lane, and that is the correct outcome.",
 }
@@ -351,7 +357,7 @@ const FINDINGS_SCHEMA = {
         },
       },
     },
-    verdict: { type: 'string', enum: ['approve', 'fix_required'] },
+    verdict: { type: 'string', enum: ['approve', 'fix_required'], description: 'fix_required requires at least one finding above a nit; a fix_required with nothing to fix is rejected as malformed' },
     reviewer: { type: 'string' },
   },
 }
