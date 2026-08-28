@@ -57,6 +57,13 @@ const LAUNCH_GOLDENS: &[LaunchGolden] = &[
         bypass_hook_trust: false,
         expected: include_str!("fixtures/launch/agy.golden.txt"),
     },
+    LaunchGolden {
+        tool: CliTool::Grok,
+        model: "grok-4.6",
+        effort: Some("xhigh"),
+        bypass_hook_trust: false,
+        expected: include_str!("fixtures/launch/grok.golden.txt"),
+    },
 ];
 
 #[test]
@@ -219,6 +226,17 @@ fn registry_declares_native_and_floor_capabilities() {
     assert!(codex.capabilities.notify_sink);
     assert_eq!(codex.stop_strategy, StopStrategy::Interrupt);
 
+    let grok = spec(CliTool::Grok);
+    assert_eq!(
+        grok.capabilities.auto_approve_flag,
+        Some("--always-approve")
+    );
+    assert!(grok.capabilities.compaction_hook_compat_import);
+    assert!(!grok.capabilities.usage);
+    assert!(grok.capabilities.usage_note.is_some());
+    assert_eq!(grok.stop_strategy, StopStrategy::SlashExit);
+    assert_eq!(grok.exit_command, "/quit");
+
     let agy = spec(CliTool::Agy);
     assert!(agy.capabilities.session_source);
     assert!(!agy.capabilities.runtime_session_capture);
@@ -250,6 +268,7 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
             (CliTool::Claude, Some("CLAUDE_CONFIG_DIR")),
             (CliTool::Codex, Some("CODEX_HOME")),
             (CliTool::Agy, None),
+            (CliTool::Grok, None),
         ]
     );
 
@@ -271,6 +290,18 @@ fn account_providers_are_registered_behind_the_capability_slice() {
     assert!(spec(CliTool::Claude).account_provider().is_some());
     assert!(spec(CliTool::Codex).account_provider().is_some());
     assert!(spec(CliTool::Agy).account_provider().is_some());
+}
+
+#[test]
+fn grok_stays_on_the_declared_floor_until_its_slices_land() {
+    // Regression: commit bfecae9 fixed the harness set at three CLIs, so a
+    // fourth could only arrive by branching outside the capability slices. Its
+    // registry entry must be honest about which slices it has not landed yet.
+    let grok = spec(CliTool::Grok);
+    assert!(grok.session_source().is_floor());
+    assert!(grok.transcript_parser().is_none());
+    assert!(grok.account_provider().is_none());
+    assert!(grok.usage_provider().is_none());
 }
 
 fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
@@ -305,6 +336,7 @@ fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
             )
             .expect("Antigravity credential fixture");
         }
+        CliTool::Grok => unreachable!("Grok declares no usage provider"),
         CliTool::Unknown => panic!("unknown tools do not have usage credentials"),
     }
 }
@@ -778,6 +810,7 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
     }
 
     assert!(spec(CliTool::Agy).compaction_signal_source().is_none());
+    assert!(spec(CliTool::Grok).compaction_signal_source().is_none());
 }
 
 #[test]

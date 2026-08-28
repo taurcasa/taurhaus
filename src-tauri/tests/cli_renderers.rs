@@ -281,3 +281,24 @@ fn render_onboarding_cli_uses_the_agy_variant() {
     assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
     assert!(actual.contains("enter /exit"));
 }
+
+#[test]
+fn render_onboarding_cli_uses_the_grok_variant() {
+    // Regression: commit bfecae9 had no grok registry entry, so the shared
+    // renderer CLI could not select its `/quit`, inbox and queueing-Enter text.
+    let role_yaml = include_str!("../resources/templates/roles/quick-dev-codex.yaml");
+    let role_wire: serde_norway::Value =
+        serde_norway::from_str(role_yaml).expect("bundled role parses as wire value");
+    let request = serde_json::json!({
+        "tool": "grok",
+        "team_name": "taureval-golden",
+        "member_name": "agent-under-test",
+        "lead_name": "evaluator",
+        "role": role_wire
+    });
+    let actual = run_renderer("--render-onboarding", &request);
+
+    assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
+    assert!(actual.contains("enter /quit"));
+    assert!(actual.contains("Ctrl+Enter interjects immediately"));
+}

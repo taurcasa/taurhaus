@@ -14,7 +14,7 @@ import {
 
 describe('meshDefaults', () => {
   it('exposes the canonical tool list', () => {
-    expect(toolOptions()).toEqual(['claude', 'codex', 'agy'])
+    expect(toolOptions()).toEqual(['claude', 'codex', 'agy', 'grok'])
   })
 
   it('normalizes tool values', () => {

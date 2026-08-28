@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const SOURCE_ROOT = resolve(process.cwd(), 'src/lib')
 const ALLOWED_FILES = new Set(['toolRegistry.js', 'ipc/mocks/tasks.js'])
-const TOOL_COMPARISON = /(?:[!=]==\s*['"](?:claude|codex|agy)['"]|case\s+['"](?:claude|codex|agy)['"]|includes\(\s*['"](?:claude|codex|agy)['"]|['"](?:claude|codex|agy)['"]\s*:)/g
+const TOOL_COMPARISON = /(?:[!=]==\s*['"](?:claude|codex|agy|grok)['"]|case\s+['"](?:claude|codex|agy|grok)['"]|includes\(\s*['"](?:claude|codex|agy|grok)['"]|['"](?:claude|codex|agy|grok)['"]\s*:)/g
 
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

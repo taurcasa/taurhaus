@@ -686,6 +686,7 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
 /// - **Codex**: `codex`, `/path/to/codex`
 /// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, `node .../@anthropic-ai/claude-code/...`
 /// - **Antigravity**: `agy`, `/path/to/agy` (interactive argv only)
+/// - **Grok**: `grok`, `/path/to/grok` (interactive argv only)
 ///
 /// Excludes:
 /// - `grep claude`, `ps -eo ...`, `claude-something-else`, `vim claude.md`, etc.
@@ -1476,6 +1477,41 @@ mod tests {
             "agy plugin list",
             "agy --model gemini-3.7-flash-high agents",
             "agy update",
+        ] {
+            assert_eq!(detect_cli_tool(non_session), None, "{non_session}");
+        }
+    }
+
+    #[test]
+    fn detect_grok_interactive_processes_only() {
+        // Regression: commit bfecae9 registered no grok signature, so the TUI
+        // was invisible while its headless drivers, agent services and
+        // management subcommands would be mistaken for sessions once added.
+        for interactive in [
+            "grok",
+            "/home/user/.local/bin/grok --no-alt-screen --model grok-4.6 --reasoning-effort low",
+            "grok --continue",
+            "grok --always-approve --resume 01a04585-2d53-7123-8000-000000000000",
+            "grok reply-with-ok",
+        ] {
+            assert_eq!(
+                detect_cli_tool(interactive),
+                Some(CliTool::Grok),
+                "{interactive}"
+            );
+        }
+
+        for non_session in [
+            "grok -p 'summarise the repo'",
+            "grok --single 'summarise the repo'",
+            "grok --prompt-file /tmp/prompt.txt",
+            "grok --prompt-json '[]'",
+            "grok agent stdio",
+            "grok agent leader --relay-on-demand",
+            "grok models",
+            "grok sessions list",
+            "grok --model grok-4.6 inspect",
+            "grok update",
         ] {
             assert_eq!(detect_cli_tool(non_session), None, "{non_session}");
         }

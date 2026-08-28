@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 /// app and daemon ship together in 0.6.9 and must use the same wire names.
 /// v12: the third harness wire vocabulary changed from the retired Google CLI
 /// value to Antigravity CLI. Mixed v11 pairs cannot decode each other's tool.
-pub const PROTOCOL_VERSION: u32 = 12;
+pub const PROTOCOL_VERSION: u32 = 13;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1034,6 +1034,24 @@ mod tests {
         assert!(
             PROTOCOL_VERSION > last_protocol_with_retired_google_tool,
             "the CliTool vocabulary changed: bump PROTOCOL_VERSION so the exact-version gate refuses pre-18a daemons"
+        );
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_without_the_grok_tool_value() {
+        // Regression: commit bfecae9 shipped protocol 12 with a three-value
+        // CliTool vocabulary. Adding `grok` is a wire vocabulary change in both
+        // directions — a v12 daemon decodes `"grok"` as the retired-value
+        // `Unknown`, and a v12 app does the same to a v13 daemon's sessions —
+        // so the exact-version gate has to refuse the mixed pair.
+        let last_protocol_without_grok = 12;
+        assert!(
+            PROTOCOL_VERSION > last_protocol_without_grok,
+            "the CliTool vocabulary changed: bump PROTOCOL_VERSION so the exact-version gate refuses pre-18b daemons"
+        );
+        assert_eq!(
+            serde_json::to_string(&crate::session_scanner::cli_tool::CliTool::Grok).unwrap(),
+            "\"grok\""
         );
     }
 

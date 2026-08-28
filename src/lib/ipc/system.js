@@ -25,12 +25,18 @@ const DEFAULT_CLI_COMMANDS = {
     fresh: 'agy --dangerously-skip-permissions',
     resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
   },
+  grok: {
+    continue_cmd: 'grok --always-approve --continue',
+    fresh: 'grok --always-approve',
+    resume: 'grok --always-approve --resume {session_id}',
+  },
 }
 
 const EMPTY_MODEL_CATALOG = {
   claude: [],
   codex: [],
   agy: [],
+  grok: [],
 }
 
 const EMPTY_CLI_VERSIONS = {
@@ -110,6 +116,7 @@ function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
     claude: normalizeModelCatalogEntries(catalog.claude, defaults.claude),
     codex: normalizeModelCatalogEntries(catalog.codex, defaults.codex),
     agy: normalizeModelCatalogEntries(catalog.agy, defaults.agy),
+    grok: normalizeModelCatalogEntries(catalog.grok, defaults.grok),
   }
 }
 
@@ -146,6 +153,7 @@ export function buildFrontendFallbackTerminalContract(platform = 'linux') {
       claude: { ...fallback.cli_command_defaults.claude },
       codex: { ...fallback.cli_command_defaults.codex },
       agy: { ...fallback.cli_command_defaults.agy },
+      grok: { ...fallback.cli_command_defaults.grok },
     },
     model_catalog: normalizeModelCatalog(fallback.model_catalog),
     cli_versions: normalizeCliVersions(fallback.cli_versions),
@@ -190,6 +198,7 @@ function normalizeTerminalContract(raw) {
       claude: normalizeToolCommands(cliCommandDefaults.claude, defaults.cli_command_defaults.claude),
       codex: normalizeToolCommands(cliCommandDefaults.codex, defaults.cli_command_defaults.codex),
       agy: normalizeToolCommands(cliCommandDefaults.agy, defaults.cli_command_defaults.agy),
+      grok: normalizeToolCommands(cliCommandDefaults.grok, defaults.cli_command_defaults.grok),
     },
     model_catalog: normalizeModelCatalog(modelCatalog, defaults.model_catalog),
     cli_versions: normalizeCliVersions(cliVersions, defaults.cli_versions),
@@ -257,6 +266,7 @@ function normalizeSettings(raw) {
         claude: normalizeToolCommands(cliCommands.claude, terminalContract.cli_command_defaults.claude),
         codex: normalizeToolCommands(cliCommands.codex, terminalContract.cli_command_defaults.codex),
         agy: normalizeToolCommands(cliCommands.agy, terminalContract.cli_command_defaults.agy),
+        grok: normalizeToolCommands(cliCommands.grok, terminalContract.cli_command_defaults.grok),
       },
       harness: {
         codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',

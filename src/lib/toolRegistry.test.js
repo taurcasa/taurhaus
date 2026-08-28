@@ -44,6 +44,18 @@ describe('toolRegistry', () => {
     expect(toolMedallionAccent('agy')).toBe('google-blue')
   })
 
+  it('exposes Grok with its own accent and usage note', () => {
+    // Regression: commit bfecae9 fixed the frontend registry at three
+    // harnesses, so a fourth tool had no label, accent or usage explanation.
+    expect(toolDisplayName('grok')).toBe('Grok CLI')
+    expect(toolMedallionAccent('grok')).toBe('grok')
+    expect(toolDescriptor('grok').capabilities.autoApproveFlag).toBe('--always-approve')
+    expect(toolDescriptor('grok').capabilities.usage).toBe(false)
+    expect(toolDescriptor('grok').capabilities.usageNote).toBe(
+      'Grok shows credits in its own /usage'
+    )
+  })
+
   it('exposes Antigravity without retaining Gemini as a tool alias', () => {
     // Regression: 9a66d1c hard-coded Gemini as the third frontend harness.
     expect(toolDisplayName('antigravity')).toBe('Antigravity CLI')

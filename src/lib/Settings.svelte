@@ -55,24 +55,18 @@
   let scanDirsText = $state('')
   let ignoreText = $state('')
 
+  /** One command triple per registered harness, so adding a tool is data. */
   function cloneCliCommands(source) {
-    return {
-      claude: {
-        continue_cmd: source?.claude?.continue_cmd ?? '',
-        fresh: source?.claude?.fresh ?? '',
-        resume: source?.claude?.resume ?? '',
-      },
-      codex: {
-        continue_cmd: source?.codex?.continue_cmd ?? '',
-        fresh: source?.codex?.fresh ?? '',
-        resume: source?.codex?.resume ?? '',
-      },
-      agy: {
-        continue_cmd: source?.agy?.continue_cmd ?? '',
-        fresh: source?.agy?.fresh ?? '',
-        resume: source?.agy?.resume ?? '',
-      },
-    }
+    return Object.fromEntries(
+      cliTools.map((descriptor) => [
+        descriptor.id,
+        {
+          continue_cmd: source?.[descriptor.id]?.continue_cmd ?? '',
+          fresh: source?.[descriptor.id]?.fresh ?? '',
+          resume: source?.[descriptor.id]?.resume ?? '',
+        },
+      ])
+    )
   }
 
   function createFallbackSettings(platform = 'linux') {

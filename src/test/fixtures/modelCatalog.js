@@ -62,4 +62,22 @@ export const TEST_MODEL_CATALOG = {
       replacement: null,
     },
   ],
+  grok: [
+    {
+      id: 'grok-4.6',
+      label: 'Grok 4.6',
+      efforts: ['low', 'medium', 'high', 'xhigh'],
+      defaultEffort: 'high',
+      deprecated: false,
+      replacement: null,
+    },
+    {
+      id: 'grok-4.5',
+      label: 'Grok 4.5',
+      efforts: ['low', 'medium', 'high'],
+      defaultEffort: 'high',
+      deprecated: false,
+      replacement: null,
+    },
+  ],
 }
