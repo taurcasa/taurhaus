@@ -9,12 +9,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 
 - **Bundled mesh 0.2.21** — mesh recognises `agy` and `grok` member CLIs (Gemini CLI removed, no alias), carries per-CLI submission behaviour (grok: `ACTION REQUIRED:` notices interject with `C-i`, everything else queues on Enter; claude/codex/agy sequences unchanged), and its USAGE guide covers launch flags and `/exit` / `/quit` stops for the four harnesses.
-- **`v3-developer-agy` role** — the Antigravity counterpart of the V3 vertical-slice developer, same contract and gates, running `gemini-3.7-flash-high` at high effort.
 - **Antigravity activity hooks are on by default** — agy 1.1.22 was observed firing `PreInvocation` and `Stop` for interactive sessions once the workspace is trusted, so the busy/idle sink no longer has to be opted into. It stays inert until the member answers the folder-trust prompt on first launch, which Antigravity onboarding now spells out, and it is gated on agy 1.1.10 or newer because `Stop` never fires below that. An agy version that cannot be resolved leaves an installed hook alone rather than uninstalling it, and the gated outcome is logged once per run as `agy.hooks.degraded`.
-- **Antigravity hooks are written to the shared `~/.gemini/config/hooks.json`** — agy 1.0.8 moved user-level hooks there and its migration symlinks the old `antigravity-cli/hooks.json` onto it. taurhaus now merges its single entry into the shared file by hook name (anything else in the file is preserved), follows a symlinked target instead of replacing it with a private regular file, and clears any entry left behind in the legacy path. The `Stop` payload's `terminationReason` is kept as an open string — only `NO_TOOL_CALL` has ever been observed, and an unseen value must never drop an idle edge. `harness.agy_hooks` also gained the snake_case alias its siblings have; without it the setting the frontend sends was silently discarded.
 
 ### Added
 
+- **Live Codex compaction lane** — `e2e/specs/compaction-codex-hooks.js` builds a Claude-led team with one managed Codex member under `terminal.harness.codex_compaction = hooks` and drives it to compaction twice. The automatic case (bounded by lowering `model_auto_compact_token_limit` in a scratch config and capped at six turns) proves the delivery: the bridge's acceptance trail, no transcript-tailer event for the member, and — the signal that actually matters — the card's unique marker turning up in Codex's own rollout transcript, because `compaction.codex_hook.delivered` is emitted before the hook response is written to stdout and proves nothing on its own. The manual case pins what a manual `/compact` does on Codex 0.149 and 0.150: it compacts, but fires only `PreCompact` and `PostCompact`, never the `SessionStart(source=compact)` taurhaus registers, so the bridge is not invoked at all. It spends real Codex and Claude subscription turns, so it is excluded from `just test-e2e` and `just test-e2e-full` and runs only as `E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks`, against a scratch `CODEX_HOME` holding only `auth.json` copied from `~/.codex` plus a generated minimal config — never the operator's own config, sessions or history, and never written back. See [`docs/operations/compaction-testing.md`](docs/operations/compaction-testing.md).
 - **`v3-developer-agy` role** — the Antigravity counterpart of the V3 vertical-slice developer, same contract and gates, running `gemini-3.7-flash-high` at high effort.
 
 ### Fixed
@@ -114,14 +113,11 @@ Follow-up to 0.6.6. One activity signal across the UI, honest wall-clock activit
 
 - **Post-0.6.6 event noise** — first sight of an idle process no longer logs a state change, and background CLI processes without a controlling terminal (e.g. detached `codex exec` automation) are no longer treated as sessions at all: no phantom sidebar rows, no tracker churn (measured: 64.5 → ~5 events/min on a busy host, inventory perfectly stable).
 
-
 ## [0.6.6] - 2026-08-26
 
 Harness realignment release. Fixes the three long-standing live bugs (session-indicator blackouts, permanently-uncertain activity icons, the dead tmux focus indicator), makes model and reasoning effort first-class end to end, and hardens the coordination stores against the mesh bridge. Daemon protocol is now **8** — the app auto-updates its bundled daemon on startup; running app and daemon must be updated together.
 
 ### Fixed
-
-
 
 - **Activity icons no longer stay "uncertain" forever** — Claude session identity and busy/idle now come from Claude Code's own sessions registry (`<CLAUDE_CONFIG_DIR>/sessions/<pid>.json`), resolved per process under that process's `CLAUDE_CONFIG_DIR`, so sessions on alternate config dirs finally bind to their transcripts. Registry states (`busy`/`idle`/`waiting`/`shell`) are authoritative and skip the I/O heuristics; rchar activity is a rate, not bytes-per-poll; Codex transcript bindings need fd proof before they persist.
 - **The tmux focus indicator works again and no longer depends on tmux hooks** — focus is probed by the daemon hub (`tmux list-clients`, per-pane resolution) and travels inside the versioned session snapshot; the entire hook → focus-file → inotify chain is gone, so an env-less daemon restart or a rebooted tmux server can no longer kill the indicator. Every daemon connect path validates the protocol.
@@ -133,7 +129,6 @@ Harness realignment release. Fixes the three long-standing live bugs (session-in
 - **Model and reasoning effort are separate fields end to end** — roles/presets (`model:` + `reasoning_effort:`, legacy `"gpt-5.4 high"` spellings still load), persisted per member, hydrated on resume (member → role → catalog), and rendered per CLI (`codex -m … -c 'model_reasoning_effort="…"'`, `claude --model/--effort/-n <agent>`). Roles that declared `"gpt-5.4 high"` previously ran at the user's global Codex effort; `gpt-5.3` is no longer rewritten to an alias that fails on ChatGPT auth. Every launch logs the rendered command.
 - **Model catalog in the UI** — one effort-aware `ModelSelect` everywhere a model is chosen (unknown values preserved as custom entries, deprecation hints), fed by a backend catalog on the terminal contract; preset overrides now capture user intent only, and preset lead pins persist.
 - The never-instantiated stall-detector module (~3.2k LOC) was removed.
-
 
 ### Fixed
 

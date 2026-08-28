@@ -48,6 +48,15 @@ just build-e2e
 Important: do **not** replace this with plain `cargo build`.
 E2E requires the Tauri debug/no-bundle build so the app serves embedded assets correctly.
 
+For the same reason, do not run `cargo build`, `cargo check --all-targets` or
+`cargo clippy --all-targets` against `src-tauri/` between building and running E2E:
+they overwrite `src-tauri/target/debug/taurhaus` with a binary that was not produced by
+the Tauri build, and the app then starts, logs a healthy backend, and renders a blank
+page — which surfaces as `App did not render within 45s`. Re-run `just build-e2e` (or
+drop `E2E_SKIP_BUILD=1`) after any such cargo invocation. Running cargo *during* a live
+E2E run replaces the binary underneath the app and ends the session with
+`invalid session id`.
+
 ## 3) Run tests
 
 Single spec (safe default, includes build):
@@ -67,6 +76,29 @@ Full suite:
 ```bash
 just test-e2e-full
 ```
+
+## Paid lane: `compaction-codex-hooks`
+
+`e2e/specs/compaction-codex-hooks.js` drives a real Codex (and Claude) subscription:
+it builds a managed team and pays for the turns that take its Codex member to
+compaction, manually and automatically. `e2e/specList.js` therefore keeps it out
+of the config's spec list — a suite run, including a bare
+`bunx wdio run e2e/wdio.conf.js`, never picks it up — and it only runs when asked
+for by name:
+
+```bash
+E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+```
+
+It reads `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
+the session temp root, and never writes back to it. The scratch `config.toml` is
+generated, not copied: the operator's own config can register things Codex executes
+(`notify`, MCP servers), and a configured `notify` in particular would displace the
+notifier taurhaus installs, which is the lane's only turn signal. Point
+`E2E_CODEX_SOURCE_HOME` somewhere else to copy from another Codex home. On a host
+without `codex` ≥ 0.147, without Codex credentials, or without mesh/tmux, the lane
+skips itself and prints why. See
+[`docs/operations/compaction-testing.md`](../docs/operations/compaction-testing.md).
 
 ## Quick diagnosis for "Could not connect to localhost"
 
