@@ -9,6 +9,7 @@
   import { normalizeTool } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, resolveMemberModel } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
+  import { tools } from '../toolRegistry.js'
 
   let {
     open = false,
@@ -43,6 +44,7 @@
   const catalog = $derived(modelCatalog ?? modelCatalogContext?.catalog ?? EMPTY_MODEL_CATALOG)
   const resolvedModel = $derived(resolveMemberModel({ tool, model, reasoningEffort }, null, catalog))
   const isExisting = $derived(Boolean(role?.roleId))
+  const toolOptions = $derived(tools())
   const dialogTitle = $derived(isExisting ? 'Edit Role' : 'Create Role')
   const overlayTone = $derived(
     dark
@@ -351,10 +353,9 @@
                   onchange={handleToolChange}
                   data-testid="mesh-role-editor-tool-input"
                 >
-                  <option value="claude">Claude</option>
-                  <option value="codex">Codex</option>
-                  <option value="agy">Antigravity</option>
-                  <option value="grok">Grok</option>
+                  {#each toolOptions as descriptor (descriptor.id)}
+                    <option value={descriptor.id}>{descriptor.label}</option>
+                  {/each}
                 </select>
               </label>
             </div>
