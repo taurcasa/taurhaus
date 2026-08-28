@@ -4,7 +4,7 @@
 
 # taurhaus
 
-A desktop app for developers who run Claude Code, Codex, Antigravity CLI, and multi-agent Mesh teams across several projects at once.
+A desktop app for developers who run Claude Code, Codex, Antigravity CLI, Grok CLI, and multi-agent Mesh teams across several projects at once.
 
 Instead of flipping between terminal tabs to check what's running, what changed, and what broke, taurhaus puts it all in one window — live sessions, project history, task boards, and team coordination.
 
@@ -22,7 +22,7 @@ taurhaus is built for exactly that situation:
 - **Get back up to speed** — README previews, recent commits, task history, session handoffs, and full-text search across everything.
 - **Run Mesh teams** — set up multi-agent teams, watch them work, add or remove members on the fly, and recover when things go sideways.
 - **Tune discovery and launch behavior** — configure which directories to scan, what to ignore, and how terminals launch — your settings actually control how the app behaves, not just what it displays.
-- **Pick the model and the account** — choose a model and reasoning effort per role or member from a catalog-driven picker, and pin a Claude subscription per project when a host has more than one signed in.
+- **Pick the model and the account** — choose a model and reasoning effort per role or member from a catalog-driven picker, and pick which account a tool runs on per project, with each CLI's own usage windows shown next to it.
 
 ## Core workflows
 
@@ -54,7 +54,7 @@ You can go from a session handoff or commit list straight into syntax-highlighte
 
 Most multi-agent setups today are fire-and-forget. You give a subagent a prompt, it does its work, and when it's done, it's done. You can't talk to it while it's running. Each agent is an isolated job.
 
-Mesh works differently. It uses tmux sessions to keep full CLI tool instances — Claude Code, Codex, Antigravity — alive as persistent team members that can send and receive messages while they work. A Claude lead can assign a task to a Codex agent, check on an Antigravity reviewer, and coordinate across all of them in real time. The agents aren't disposable workers; they're a team with ongoing context.
+Mesh works differently. It uses tmux sessions to keep full CLI tool instances — Claude Code, Codex, Antigravity, Grok — alive as persistent team members that can send and receive messages while they work. A Claude lead can assign a task to a Codex agent, check on an Antigravity reviewer, and coordinate across all of them in real time. The agents aren't disposable workers; they're a team with ongoing context.
 
 Under the hood, Mesh builds on the same file structure that Claude Code already uses for its own task and team management (`~/.claude/tasks/`, `~/.claude/teams/`). That means Claude Code agents on a Mesh team don't need special adapters — they read and write to the same files they'd normally use. The team infrastructure is mostly invisible to each agent's native tooling, which is what makes cross-tool coordination possible without forcing every tool into a new protocol.
 
@@ -111,6 +111,7 @@ Before installing taurhaus, you need:
    - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
    - [Codex CLI](https://github.com/openai/codex)
    - [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli)
+   - [Grok CLI (`grok`)](https://docs.x.ai/build/overview)
 3. **Mesh CLI** if you want multi-agent team orchestration
    - taurhaus can install or update the bundled Mesh binary when supported
 
@@ -183,7 +184,7 @@ The first-run wizard walks through:
 
 Your scan and ignore settings from the Settings panel apply to the wizard too — the same directories and exclusions are used everywhere.
 
-If more than one Claude subscription is signed in on the host, taurhaus asks which account to use when it starts a Claude session it cannot place on its own — that is, when the project has no pinned account, you have set no global default, and the session being resumed gives no answer either. Tick "remember" and the choice is pinned to that project, shown as a chip on the project overview. The global default lives in Settings; once it is set, the chooser stops asking.
+Account selection works the same way for every CLI that can run on more than one account — Claude Code (`CLAUDE_CONFIG_DIR`), Codex (`CODEX_HOME`) and Grok (`GROK_HOME`). If two or more accounts of that tool are signed in on the host, taurhaus asks which one to use when it starts a session it cannot place on its own — that is, when the project has no pinned account, it has not launched that tool before, you have set no global default, the session being resumed gives no answer either, and your own launch command does not already set the selector. Tick "remember" and the choice is pinned to that project, shown as a chip on the project overview. The global default lives in Settings → Accounts; once it is set, the chooser stops asking. Antigravity has one implicit account and never asks.
 
 ### Quick start
 
@@ -218,6 +219,7 @@ just check-quick      # fast implementation gate
 just test-fast        # quick Rust compile + frontend unit lane
 just test             # full non-E2E test lane
 just test-visual      # browser-mode visual screenshot lane
+just visual-shot C S  # one visual-host fixture shot at a real window size
 just test-e2e         # Linux Tier 1 E2E lane
 just test-e2e-full    # Linux Tier 1 + Tier 2 E2E lane
 just build-daemon     # build the daemon binary only

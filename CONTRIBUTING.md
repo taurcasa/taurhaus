@@ -76,6 +76,7 @@ Core release-lane recipes (from `justfile`):
 | `just check` | Full quality gate (`fmt`, `lint`, `typecheck`, `test`) for team-lead serialized runs or pre-release/PR validation |
 | `just metrics` | Quality KPI report (tests, coverage, build health, code size, E2E inventory) |
 | `just test-visual` | Browser-mode visual screenshot lane for mocked component states |
+| `just visual-shot C S [V] [T] [OUT]` | One visual-host fixture shot at a real window size through Edge headless, for viewport-anchored surfaces the 960x640 browser lane cannot judge; `just visual-shot-stop` stops only the server it started |
 | `just test-macos` | Rust tests on the remote Mac Mini |
 | `just test-macos-e2e` | macOS E2E suite on the remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |
@@ -197,8 +198,9 @@ src-tauri/              # Rust backend
     coordination/       # Multi-agent team orchestration (mesh CLI, pipelines)
     daemon/             # Companion daemon: WSL on Windows, native on macOS/Linux
                         #   (launcher, protocol, server, session-activity hub, compaction,
-                        #   codex-notify, auth, watch)
-    session_scanner/    # Multi-CLI session detection
+                        #   codex-notify, agy-hooks, usage-poller, auth, watch)
+    session_scanner/    # Multi-CLI session detection (registry in cli_tool.rs; accounts/
+                        #   and idle/ hold the per-tool provider and activity slices)
     services/           # Shared backend services (task queries, task sync)
     db/                 # SQLite queries and migrations
     git/                # libgit2 wrapper

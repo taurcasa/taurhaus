@@ -22,7 +22,7 @@ taurhaus is a local desktop application that manages AI CLI tool sessions and pr
 │  - Session scanning, tmux, Windows/WSL watch bridge │
 │  - Token-authenticated, localhost-only              │
 ├────────────────────────────────────────────────────┤
-│  tmux / CLI tools (Claude, Codex, Gemini)           │
+│  tmux / CLI tools (Claude, Codex, Antigravity, Grok)│
 │  - User-controlled, permissive flags                │
 │  - taurhaus launches but doesn't sandbox them       │
 └─────────────────────────────────────────────────────┘

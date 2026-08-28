@@ -54,7 +54,7 @@ Use these conventions for day-to-day team messaging. This section is operational
 - No split assignment across multiple micro-messages.
 - No "You have task X assigned" framing; give direct execution instructions.
 
-## Mesh Team Coordination (for Codex/Gemini agents)
+## Mesh Team Coordination (for mesh-bridged agents: Codex, Antigravity, Grok)
 
 When you are part of a Mesh team, use the **explicit lifecycle commands** — not `mesh task update` — for all task work. `task update` is a legacy compatibility command that loses workflow meaning.
 
@@ -255,7 +255,10 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
-- **IPC**: Fine-grained commands (currently 85 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
+- **Harness model**: Four registered CLI harnesses — `claude` (Claude Code), `codex` (Codex CLI), `agy` (Antigravity CLI), `grok` (Grok CLI). Per-tool code lives in capability slices behind `src-tauri/src/session_scanner/cli_tool.rs`; never branch on tool identity outside those slices. See `docs/architecture/harness-model.md`.
+- **IPC**: Fine-grained commands (currently 90 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
+- **Daemon protocol**: `PROTOCOL_VERSION = 13` in `src-tauri/src/daemon/protocol.rs`; app and daemon must match exactly. 11 made the account methods generic, 12 replaced the retired Google tool value with `agy`, 13 added `grok`.
+- **Accounts and usage**: Per-tool providers in `src-tauri/src/session_scanner/accounts/`, gated on the registry's `account_selector` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`; Antigravity has one implicit account) and `usage` flag. Choices live in `project_tool_accounts` (migration 013). Tokens are never logged, persisted, or refreshed by taurhaus.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
 - **File rendering**: Classification → IPC → cache → render. See [`docs/file-rendering-pipeline.md`](docs/file-rendering-pipeline.md).
@@ -360,8 +363,8 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 - `just check` is the full gate and is run by team-lead in serialized fashion (or before release)
 - E2E at milestones.
 - Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
-- Visual dual review: self-review + Gemini Pro 3 cross-review. Lower score wins, Claude is final arbiter with justified override.
-- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See the archived v0.5.x process note at [`docs/archive/design-workflow.md`](docs/archive/design-workflow.md). The UI specialist (Gemini) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.
+- Visual dual review: self-review + a cross-review from the other model family (Opus ↔ Codex, as every PR review loop runs). Lower score wins, the orchestrator is final arbiter with justified override.
+- **Design-led UI work** follows the design-first loop: brief → design proposal → approval → implement → review. See the archived v0.5.x process note at [`docs/archive/design-workflow.md`](docs/archive/design-workflow.md). The UI specialist role (`antigravity-ui-specialist`, run on the Antigravity CLI) is the design lead — give it functional requirements and creative freedom, not pixel-level specs.
 
 ### Tasks
 - Claude Code native task format (subject, description, status, blocks/blockedBy, metadata)

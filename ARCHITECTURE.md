@@ -9,7 +9,7 @@ This document is the system-level overview.
 
 ## System Overview
 
-taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles process scanning, tmux session management, activity detection, and WSL file watching only when the app is bridging into Linux workspaces. It also owns foreground tmux focus (a `tmux list-clients` probe carried inside the versioned session snapshot), Codex native idle notify ingestion (`taurhaus-daemon codex-notify`), Claude account detection on Windows/WSL, and the daemon-side compaction owner. The app and daemon communicate using an authenticated JSON-line protocol over TCP; [`daemon::server::DEFAULT_PORT`](src-tauri/src/daemon/server.rs) defines the default endpoint as `127.0.0.1:17233`. The app refuses a daemon whose protocol version differs from its own.
+taurhaus is a cross-platform dual-process desktop application built with Tauri 2. The native GUI (Rust + Svelte 5) handles storage, git, search, native/local file watching, and UI-facing orchestration. A lightweight companion daemon handles process scanning, tmux session management, activity detection, and WSL file watching only when the app is bridging into Linux workspaces. It also owns foreground tmux focus (a `tmux list-clients` probe carried inside the versioned session snapshot), Codex native idle notify ingestion (`taurhaus-daemon codex-notify`), the Antigravity activity-hook sink (`agy_hooks.rs`), provider account detection and the usage poller on Windows/WSL, and the daemon-side compaction owner. The app and daemon communicate using an authenticated JSON-line protocol over TCP; [`daemon::server::DEFAULT_PORT`](src-tauri/src/daemon/server.rs) defines the default endpoint as `127.0.0.1:17233`. The app refuses a daemon whose protocol version differs from its own.
 
 The daemon can run on all supported platforms, but it is only responsible for watch/process work that the app cannot do directly:
 
@@ -20,7 +20,7 @@ The daemon can run on all supported platforms, but it is only responsible for wa
 
 ## Harness Model
 
-taurhaus does not host models itself: Claude Code is the Claude harness (subscription models are only reachable through it), Codex and Gemini use their own CLIs, and taurhaus coordinates all of them from outside through tmux panes and the mesh bridge. Harness-native capabilities (a sessions registry, hooks, turn-complete notifications) are used where they exist; tmux + mesh is the floor that reaches any CLI. Per-tool behaviour is confined to capability slices behind one registry (`src-tauri/src/session_scanner/cli_tool.rs`), so adding a CLI touches only the slices where it differs. Model and reasoning effort are separate fields end to end, a Claude subscription is chosen per project, and the app and daemon refuse to run on mismatched protocol versions. See [Harness Model](docs/architecture/harness-model.md).
+taurhaus does not host models itself: Claude Code is the Claude harness (subscription models are only reachable through it), Codex CLI, Antigravity CLI (`agy`) and Grok CLI (`grok`) are theirs, and taurhaus coordinates all four from outside through tmux panes and the mesh bridge. Harness-native capabilities (a sessions registry, hooks, turn-complete notifications) are used where they exist; tmux + mesh is the floor that reaches any CLI. Per-tool behaviour is confined to capability slices behind one registry (`src-tauri/src/session_scanner/cli_tool.rs`), so adding a CLI touches only the slices where it differs. Model and reasoning effort are separate fields end to end, an account is chosen per project and tool wherever the harness has a selector, and the app and daemon refuse to run on mismatched protocol versions. See [Harness Model](docs/architecture/harness-model.md).
 
 ## Platform Abstraction
 
@@ -59,14 +59,17 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `src/lib/modelCatalog.js` | Helpers over the backend-owned `ModelCatalog` from `settings.terminal_contract` |
 | `src/lib/context/ModelCatalogContext.js` | Model catalog context provider |
 | `src/lib/components/ModelSelect.svelte` | Effort-aware model picker fed by the backend catalog |
-| `src/lib/claudeAccounts.svelte.js` | Claude account state for the chooser and chip |
-| `src/lib/components/ClaudeAccountChooser.svelte` | Per-launch account decision (Shell), shown only when a Claude launch is unplaced and 2+ accounts are signed in |
-| `src/lib/components/ClaudeAccountChip.svelte` | Per-project Claude account display/change control (OverviewTab) |
+| `src/lib/accounts.svelte.js` | Per-tool account state (accounts, pins, usage, pending chooser) |
+| `src/lib/accountMenu.js` | Registry-driven account rows for a context menu; the one place compact usage is rendered as menu text |
+| `src/lib/usageWindows.js` | Normalisation helpers over a provider's usage windows |
+| `src/lib/components/AccountChooser.svelte` | Per-launch account decision (Shell), shown only when a launch is unplaced and 2+ accounts of that tool are signed in |
+| `src/lib/components/AccountChip.svelte` | Per-project account display/change control (OverviewTab) |
+| `src/lib/components/UsageMeter.svelte` | One bar per usage window, in the tool's own titles (full and compact forms) |
 | `Sidebar.svelte` | Project list, session indicators, context menu, hover cards |
 | `src/lib/OverviewTab.svelte` | Project summary, README, recent commits, sessions |
 | `src/lib/FilesTab.svelte` | File tree with syntax-highlighted code preview |
 | `src/lib/GitTab.svelte` | Commit history, diffs, cross-tab navigation |
-| `src/lib/TaskBoard.svelte` | Kanban board aggregating tasks from Claude Code, Codex, Gemini |
+| `src/lib/TaskBoard.svelte` | Kanban board aggregating tasks from Claude Code and Codex |
 | `src/lib/TaskDetailPanel.svelte` | Task detail view with metadata and description |
 | `src/lib/SearchOverlay.svelte` | Full-text search across all projects (Ctrl+K) |
 | `src/lib/Settings.svelte` | App preferences and configuration |
@@ -107,9 +110,9 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `fs/` | File tree, content reading, asset serving, file watching |
 | `search/` | tantivy full-text search index (build, update, query) |
 | `session/` | Session import, parsing, archival |
-| `session_scanner/` | CLI tool detection (process scanning, idle detection), plus `launch.rs` (ModelSpec/LaunchSpec command renderer), `claude_accounts.rs`, `idle/claude_registry.rs` (authoritative Claude registry), `tmux.rs` (`list_clients`/`focus_from_clients`), `classification.rs`/`scans.rs` (authoritative vs heuristic state, degraded-scan last-good snapshot) |
-| `task_scanner/` | Task aggregation from Claude Code, Codex, Gemini (`claude_index.rs` maps source_key -> project for robust scans) |
-| `daemon/` | TCP protocol/server/event-listener/launcher code for the companion daemon, plus the session-activity hub (`session_activity.rs`: versioned snapshot, tmux focus, degradation cursor), `handlers.rs`, `compaction.rs` (daemon-side compaction owner), `codex_notify.rs` (`codex-notify` subcommand), `auth.rs`, `watch.rs`, `session_listener.rs` |
+| `session_scanner/` | CLI tool detection (process scanning, idle detection), plus `cli_tool.rs` (the harness registry), `launch.rs` (ModelSpec/LaunchSpec command renderer), `accounts/` (per-tool account + usage providers), `idle/` (`claude_registry.rs`, `codex.rs`, `agy.rs`, `grok.rs`), `tmux.rs` (`list_clients`/`focus_from_clients`), `classification.rs`/`scans.rs` (authoritative vs heuristic state, degraded-scan last-good snapshot) |
+| `task_scanner/` | Task aggregation from Claude Code and Codex — the two harnesses with a verified task source (`claude_index.rs` maps source_key -> project for robust scans) |
+| `daemon/` | TCP protocol/server/event-listener/launcher code for the companion daemon, plus the session-activity hub (`session_activity.rs`: versioned snapshot, tmux focus, degradation cursor), `handlers.rs`, `compaction.rs` (daemon-side compaction owner), `codex_notify.rs` (`codex-notify` subcommand), `agy_hooks.rs` (Antigravity activity-hook sink), `usage_poller.rs` (per-account usage polling), `auth.rs`, `watch.rs`, `session_listener.rs` |
 | `daemon_api.rs` | App-facing daemon request wrapper used by commands and startup flows |
 | `terminal/` | Terminal emulator management (Windows Terminal, iTerm2, etc.) |
 | `claude_code/` | Claude Code project resolution, memory, teams |
@@ -121,7 +124,8 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `config/` | Application configuration |
 | `coordination/` | Multi-CLI team orchestration (behind `mesh-bridged-backend` feature flag) |
 | `coordination/runtime/` | Split runtime surface for system, tmux, process, and recording concerns |
-| `coordination/compact_hook.rs` | One `SessionStart(source=compact)` hook bridge for Claude and Codex, plus the managed Codex `hooks.json` installer |
+| `coordination/compact_hook.rs` | One compaction hook bridge for Claude, Codex and Grok (tool inferred from grok's reserved `GROK_*` hook env, else from the transcript path), plus the managed Codex `hooks.json` and Grok `~/.grok/hooks` installers |
+| `coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's opt-in activity hooks (`agy.hooks.degraded`) |
 | `startup/` | Startup sequence orchestration (DB init, daemon connect, watcher/index bootstrap, task/session hydration) |
 | `startup/setup.rs`, `startup/telemetry.rs`, `startup/orchestration.rs` | Split startup path resolution, startup logging, and orchestration phases |
 | `startup/compaction.rs`, `startup/harness.rs` | Compaction owner selection (daemon vs app) and startup harness sequencing |
@@ -154,7 +158,7 @@ See [data model reference](docs/architecture/data-model.md) for schema details.
 
 ### IPC Commands
 
-Fine-grained, one command per operation. The default build currently registers 89 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L171). Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
+Fine-grained, one command per operation. The default build currently registers 90 commands in the authoritative [`generate_handler!` list](src-tauri/src/lib.rs#L171). Frontend calls in parallel for speed. See [IPC reference](docs/architecture/ipc-reference.md) for the command catalog.
 
 Grouped by command module:
 - **Projects** (12): includes `create_project`, registration flows, path/directory helpers, and first-run checks
@@ -163,8 +167,8 @@ Grouped by command module:
 - **Search** (3): search, rebuild, index status
 - **Sessions** (3): list/latest/detail
 - **Relationships** (4): list/create/dismiss/remove
-- **Command Center** (9): launch/stop/navigate/list/list snapshot/resolve Claude launch account/record activity/get project activity/get foreground project
-- **Claude accounts** (2): `list_claude_accounts`, `set_project_claude_account`
+- **Command Center** (9): launch/stop/navigate/list/list snapshot/resolve launch account/record activity/get project activity/get foreground project
+- **Accounts and usage** (3): `list_accounts`, `refresh_accounts_usage`, `set_project_account`
 - **Tasks** (6): board data + detail + archive + commit context helpers
 - **Daemon** (5): platform/status/start/install checks
 - **Mesh install** (2): check/install mesh binary
@@ -193,7 +197,9 @@ Logging is structured and machine-first:
   - session activity transitions: `activity.state.changed` (`pid`, `tool`, `from`, `to`, `source`)
   - process inventory health: `session_scanner.process_scan.degraded/recovered` — one `degraded` on entry, a bounded 60s reminder while the outage lasts, one `recovered` on exit
   - launch rendering: `launch.command.rendered`, `launch.account.*`, `launch.model.*`, `launch.effort.*`, `launch.flag.deprecated`
-  - compaction: `compaction.owner.selected/failed`, `compaction.signal_*`, `compaction.extractor.*`, `compaction.codex_hook.*`
+  - compaction: `compaction.owner.selected/failed`, `compaction.signal_*`, `compaction.extractor.*`, `compaction.<tool>_hook.*` (`claude`/`codex`/`grok`, built from the inferred tool in `compact_hook.rs`), `compaction.hook.compat_import`, `compaction.compact_hook.failed`
+  - accounts and usage: `usage.fetched`, `usage.failed` (`daemon/usage_poller.rs`), `account.provider.floor` (`session_scanner/accounts/mod.rs`), `claude.usage.legacy_bridge.removed` (the one-shot status-line-bridge uninstall)
+  - Antigravity activity hooks: `agy.hooks.degraded` (`coordination/agy_hooks_installer.rs`)
   - Codex native idle notify: `codex.notify.appended`
   - daemon pairing: `startup.daemon_protocol.checked`
 
@@ -220,10 +226,10 @@ The `coordination/` subsystem powers multi-agent team orchestration and is gated
 - **Liveness repair**: pane/process/daemon reconciliation runs in explicit recovery flows and the background self-heal loop, not on the UI-critical snapshot IPC path. Background self-heal uses an isolated orchestrator instance so it does not block foreground coordination IPC on the shared cached orchestrator mutex.
 - **Mesh daemon hot-swap**: mesh installs are version-aware. Member daemon reconciliation checks executable identity and automatically replaces drifted daemons; bounded background self-heal does the same for drifted team-daemons, so normal upgrades do not require a manual `team-daemon stop/start/restart-all` cycle.
 - **Runtime responsiveness**: Mesh steady-state polling stays on the fast snapshot path, and the frontend suspends hidden-tab refresh work, which avoids switch-away stalls and reduces Windows popup latency during runtime navigation.
-- **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude. Codex/Gemini leads currently validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
+- **Runtime/disband behavior**: disband removes persisted team state and performs best-effort teardown of managed agent resources (mesh membership, daemon processes, panes). Attach-existing leads are preserved only for Claude — the validation is capability-driven (`should_use_mesh_sidecar`, i.e. any harness without the native inbox poller), so Codex, Antigravity and Grok leads validate as `launch_new` only, and mesh-backed or app-owned leads are torn down like other managed members.
 - **Compaction reinjection**: When a managed agent loses context (compaction), taurhaus resolves which team member was affected and re-delivers their working context. Two delivery paths exist, and they do not share a pipeline.
   - **Transcript path** (default): `CompactionSignalExtractor` tails active managed transcripts, `CompactionSignalWatcher` consumes the low-traffic signal log, and `CompactionSignalProcessor` resolves the attached member and appends a bounded reinjection card to the mesh inbox — only when the operational snapshot still has resumable task context.
-  - **Hook path**: `coordination/compact_hook.rs` serves both Claude and Codex (tool inferred from the transcript path). It accepts only `SessionStart` with `source=compact` — a `PostCompact` payload is skipped and returns an empty response — and hands the card straight back to the CLI as `hookSpecificOutput.additionalContext`, bypassing the signal log and the mesh inbox entirely. It installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, logs standalone hook execution into the canonical JSONL sink, and manages an idempotent, removable, exe-path self-repairing Codex `hooks.json` installer.
+  - **Hook path**: `coordination/compact_hook.rs` serves Claude, Codex and Grok; the tool is inferred from the reserved `GROK_*` env names grok injects into every hook process, and otherwise from the transcript path. It accepts `SessionStart` with `source=compact`, plus `PostCompact` for a harness whose registry delivery is the mesh inbox — grok, whose session-start source never reports `compact`. A `PostCompact` payload for a stdout-answered harness is skipped as `post_compact_signal_only`. Where the registry declares `HookStdout` delivery (Claude, Codex) the card goes straight back to the CLI as `hookSpecificOutput.additionalContext`, bypassing the signal log and the mesh inbox entirely; where it declares `MeshInbox` (grok, whose passive-hook stdout is documented as ignored) the card is queued in the member's inbox. It installs runtime-appropriate `.sh` / `.cmd` wrappers, normalizes current hook payload field variants, logs standalone hook execution into the canonical JSONL sink, and manages idempotent, removable, exe-path self-repairing Codex `hooks.json` and Grok `~/.grok/hooks` installers. Because grok also loads `~/.claude/settings.json` hooks, the registry declares `compaction_hook_compat_import` and the bridge deduplicates, so one compaction is one reinjection.
 
   The Codex hook path is **opt-in**: `harness.codex_compaction` defaults to `transcript` (the hardened extractor) until validated on a live team, and hook installation is gated on `CliVersions.codex_compaction_hooks_supported`. Exactly one owner runs per host (`startup/compaction.rs`): `Hooks` when the hook path is active, otherwise daemon when configured and reachable, otherwise app — with the app fallback revoked on daemon recovery.
 - **Runtime UI architecture**: Mesh View uses a deterministic node canvas (`MeshCanvas`) backed by a pure layout engine (`meshLayout.js`) instead of force-sim layouts. Lead/agent boxes and cubic connection routes are computed together from container size and roster cardinality (single-row up to medium teams, split rows for larger teams), with explicit state mapping for setup/initializing/runtime.
@@ -243,14 +249,14 @@ The template system provides reusable role templates and team presets, with comp
 - **Frontend pipeline**: `MeshSetupView` hosts `MeshTeamBuilder` as the primary setup surface (quick presets, role filters, drag/drop roster editing), while `TemplateBrowserPanel` and `TeamCustomizerPanel` remain the advanced catalog/history/edit flows. All of them still resolve into the same `InitializeTeamRequest` shape consumed by `coordination_initialize_team`.
 - **Operational visibility**: storage mode, dirty state, and pending actions are exposed via `templates_get_storage_status`; manual flush is available via `templates_flush_pending`.
 - **Role model**: roles are context-steering lanes, not capability labels. The persisted schema now combines lane identity (`focus_area`, `context_summary`, `behavior_summary`), operating style (`communication_style`), workflow expectations (`quality_gates`, `definition_of_done`, `phase_scope`, `mode`), composition metadata (`inherits_from`), and deliverable expectations (`required_artifacts`). Behavioral contract, defaults, capabilities, provenance, and constraints still complete the role definition.
-- **Lead tool support**: built-in and user templates can define lead roles for Claude, Codex, or Gemini. Frontend preset/customizer flows preserve the selected lead tool/model all the way into `coordination_initialize_team`; they do not silently backfill Claude defaults.
+- **Lead tool support**: built-in and user templates can define lead roles for Claude, Codex, or Antigravity (`claude-orchestrator`, `codex-orchestrator`, `antigravity-orchestrator` and the `v2`/`v3` lead roles); the shipped Grok role is `grok-developer` (`kind: agent`), so a Grok lead needs a user template. Frontend preset/customizer flows preserve the selected lead tool/model all the way into `coordination_initialize_team`; they do not silently backfill Claude defaults.
 - **Role adapters**: Taurhaus can export/import Claude agent files, Copilot agent files, and instruction-only formats. Taurhaus-authored Claude/Copilot exports compile the extended role fields into explicit Markdown sections and now re-import those sections back into structured fields, while instruction-only formats remain intentionally lossy. Imported roles persist `provenance` and explicit `non_roundtrippable_fields` so downgraded conversions stay visible to operators.
 
 See [team templates guide](docs/team-templates.md) for user-facing workflows.
 
 ### Session Scanner
 
-Detects running CLI tool sessions (Claude Code, Codex, Gemini CLI). The detection logic is platform-agnostic — it calls into the `platform/` module for OS-specific process inspection.
+Detects running CLI tool sessions (Claude Code, Codex, Antigravity CLI, Grok CLI). The detection logic is platform-agnostic — it calls into the `platform/` module for OS-specific process inspection.
 
 Two session views exist on purpose:
 
@@ -261,7 +267,8 @@ Two session views exist on purpose:
 |------|-----------|-----------------|
 | Claude Code | Sessions registry `<CLAUDE_CONFIG_DIR>/sessions/<pid>.json` (authoritative), read under the process's own `CLAUDE_CONFIG_DIR` with a `procStart` PID-reuse guard | Registry status (`busy`/`idle`/`waiting`); rchar rate is the fallback heuristic |
 | Codex | Rollout transcript bound with fd proof | `codex-notify.jsonl` idle edge when `codex_notify_supported`; transcript mtime as the heuristic |
-| Gemini CLI | Process name + SHA-256 path hash | TCP socket state to :443 (ESTABLISHED = active) |
+| Antigravity CLI (`agy`) | Conversation id from `~/.gemini/antigravity-cli/cache/last_conversations.json`, confirmed by the presence lock in `~/.gemini/antigravity-cli/presence/` (`idle/agy.rs`) | Opt-in `agy-hooks.jsonl` sink (`daemon/agy_hooks.rs`), bounded to a 5-minute record age; process-IO hysteresis otherwise (`authoritative_idle: false`) |
+| Grok CLI (`grok`) | `<GROK_HOME>/active_sessions.json` row bound by pid and cwd — written at the first prompt, removed on `/quit` (`idle/grok.rs`) | `<GROK_HOME>/sessions/<encoded-cwd>/<session-id>/events.jsonl` turn lifecycle: busy unless the newest lifecycle line is `turn_ended` (authoritative) |
 
 Authoritative states skip the rchar heuristic and 2-poll bidirectional hysteresis; heuristic states still use hysteresis to prevent flickering. Tool processes without a controlling terminal (e.g. detached `codex exec`) are dropped before classification and are never sessions.
 
@@ -322,18 +329,20 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 - `git_changed` — .git directory modified (triggers commit list refresh)
 - `session_file_created` — new session handoff file detected
 
-**Pairing rule:** `PROTOCOL_VERSION = 10`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
+**Pairing rule:** `PROTOCOL_VERSION = 13`. App and daemon must match **exactly** — startup (`startup/setup.rs`, `ensure_expected_daemon_runtime` in `startup/daemon.rs`) and every reconnect path reject a mismatch.
 
-**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons (`list_claude_accounts`, `claude_project_transcript`). The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one (7 for hub-owned focus, 9 for the degradation cursor). After changing the contract, run `just install-daemon`.
+**Bump rule:** bump the constant when a wire change requires the app to be rebuilt against the new daemon; a change to the `CliTool` wire vocabulary counts, because either side decodes the other's tool value as `Unknown`. Purely additive methods are the documented exception — they ship without a bump and degrade to `UNKNOWN_METHOD` on older daemons. The regression tests in `protocol.rs` do not pin the current value; each asserts only that the version is above the last incompatible one: 7 for hub-owned focus, 9 for the degradation cursor, 10 for the Claude-only account methods, 11 for the retired Google tool value, 12 for the missing `grok` value. After changing the contract, run `just install-daemon`.
 
-**Commands (app → daemon, 27 methods):**
+**Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`.
+
+**Commands (app → daemon, 28 methods):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
-- `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory`
+- `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory` (a method constant with no handler — not callable)
 - `list_display_sessions`, `list_runtime_sessions`, `get_runtime_session_snapshot` (carries tmux focus + the degraded flag), `wait_session_updates`, `launch_session`, `stop_session`, `navigate_to_session`
 - `get_project_tasks` (supports optional `scan_cycle_id` in protocol v6)
 - `set_codex_compaction_mode`
-- `list_claude_accounts`, `claude_project_transcript` (additive since v10)
+- `list_accounts`, `project_transcript`, `refresh_usage` (generic across tools since v11)
 
 ## Startup Sequence
 
