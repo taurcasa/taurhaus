@@ -18,11 +18,15 @@ neither the app nor the daemon knows about it — and is never printed.
 
 Cost estimate
 -------------
-`--dry-run` prices the run from PRICE_USD below, which mirrors OpenAI's
-published per-image image-output pricing for the `gpt-image` family (high
-quality: $0.167 square, $0.25 landscape/portrait). Model pricing changes without
-this script noticing, so treat the estimate as an order of magnitude and pass
-`--price-usd <amount>` to price a run against the current rate card.
+`--dry-run` prices the run from PRICE_USD below, keyed by model: the published
+per-image *image-output* rates (gpt-image-2 high: $0.211 square, $0.165
+landscape; gpt-image-1 high: $0.167 square, $0.25 landscape). The 16:9 pair has
+no published rate and is the landscape rate scaled by pixel count — printed as
+derived. The estimate covers the generated image only: an `/images/edits` call
+also bills the attached reference image and the prompt as input tokens. A model
+or size with no rate here is reported as unpriced rather than guessed at. Rate
+cards move without this script noticing, so pass `--price-usd <amount>` to price
+a run against the current one.
 """
 
 from __future__ import annotations
@@ -76,26 +80,37 @@ RETRY_BACKOFF_S = 5
 RESPONSE_CHUNK_BYTES = 64 * 1024
 RETRYABLE_STATUS = (408, 409, 429)
 
-# Assumed per-image price in USD, keyed by (quality, size). See "Cost estimate".
+# Per-image price in USD for the *generated image only*, keyed by model and then
+# by (quality, size). See "Cost estimate" in the module docstring: a combination
+# that is not listed is reported as unpriced rather than guessed at.
 PRICE_USD = {
-    ("low", "1024x1024"): 0.011,
-    ("low", "1536x1024"): 0.016,
-    ("low", "1024x1536"): 0.016,
-    ("medium", "1024x1024"): 0.042,
-    ("medium", "1536x1024"): 0.063,
-    ("medium", "1024x1536"): 0.063,
-    ("high", "1024x1024"): 0.167,
-    ("high", "1536x1024"): 0.250,
-    ("high", "1024x1536"): 0.250,
-    # The 16:9 pair is priced here at the landscape tier — an assumption, not a
-    # published rate. Pass --price-usd to price a run properly.
-    ("low", "2048x1152"): 0.016,
-    ("low", "1152x2048"): 0.016,
-    ("medium", "2048x1152"): 0.063,
-    ("medium", "1152x2048"): 0.063,
-    ("high", "2048x1152"): 0.250,
-    ("high", "1152x2048"): 0.250,
+    "gpt-image-2": {
+        # Published image-output rates (2026-08).
+        ("high", "1024x1024"): 0.211,
+        ("high", "1536x1024"): 0.165,
+        ("high", "1024x1536"): 0.165,
+        # Not published for the 16:9 pair: the landscape rate scaled by pixel
+        # count (2048x1152 is 1.5x the pixels of 1536x1024). Marked as derived
+        # wherever it is printed.
+        ("high", "2048x1152"): 0.248,
+        ("high", "1152x2048"): 0.248,
+    },
+    "gpt-image-1": {
+        # Published image-output rates.
+        ("low", "1024x1024"): 0.011,
+        ("low", "1536x1024"): 0.016,
+        ("low", "1024x1536"): 0.016,
+        ("medium", "1024x1024"): 0.042,
+        ("medium", "1536x1024"): 0.063,
+        ("medium", "1024x1536"): 0.063,
+        ("high", "1024x1024"): 0.167,
+        ("high", "1536x1024"): 0.250,
+        ("high", "1024x1536"): 0.250,
+    },
 }
+
+# Rates this script derived rather than read off a rate card.
+DERIVED_PRICES = {("gpt-image-2", "high", "2048x1152"), ("gpt-image-2", "high", "1152x2048")}
 
 # Entries whose prompt was never reconstructed carry this marker instead of one.
 PLACEHOLDER_PROMPT_MARKER = "prompt not available"
@@ -278,9 +293,18 @@ def aspect_mismatch(entry, size):
 
 
 def price_for(config, override):
+    """`(price per image | None, how that number was arrived at)`."""
     if override is not None:
-        return override
-    return PRICE_USD.get((config.quality, config.size), PRICE_USD[("high", "1536x1024")])
+        return override, "your --price-usd"
+    rates = PRICE_USD.get(config.model)
+    if rates is None:
+        return None, f"no rate card here for {config.model}"
+    price = rates.get((config.quality, config.size))
+    if price is None:
+        return None, f"no rate card here for {config.model} at {config.quality} {config.size}"
+    if (config.model, config.quality, config.size) in DERIVED_PRICES:
+        return price, f"{config.model} landscape rate scaled to {config.size} by pixel count"
+    return price, f"published {config.model} image-output rate"
 
 
 # --------------------------------------------------------------------------- #
@@ -627,7 +651,17 @@ def _fail(message):
     return 2
 
 
-def _print_plan(selected, skipped, config, price, use_reference, root):
+def _print_cost(count, price, basis, use_reference):
+    if price is None:
+        print(f"Estimated cost: unavailable — {basis}. Pass --price-usd <amount> to price this run.")
+        return
+    caveat = "generated images only"
+    if use_reference:
+        caveat += "; an /images/edits call also bills the attached reference image as input tokens"
+    print(f"Estimated cost: {count} x ${price:.3f} = ${count * price:.2f} ({basis}; {caveat})")
+
+
+def _print_plan(selected, skipped, config, price, basis, use_reference, root):
     print(f"Model {config.model} · size {config.size} · quality {config.quality}")
     print(f"Output: max width {config.max_width}px · JPEG quality {config.jpeg_quality}")
     print(f"{len(selected)} image(s) selected:")
@@ -637,7 +671,7 @@ def _print_plan(selected, skipped, config, price, use_reference, root):
         print(f"  {image_id:<32} {entry.get('output_path', '?'):<48} {route}")
     for image_id, reason in skipped:
         print(f"  {image_id:<32} skipped — {reason}")
-    print(f"Estimated cost: {len(selected)} x ${price:.2f} = ${len(selected) * price:.2f}")
+    _print_cost(len(selected), price, basis, use_reference)
 
 
 def _log_record(root, record):
@@ -772,7 +806,8 @@ def main(argv=None, repo_root=None):
         return 1 if skipped else 0
 
     if args.dry_run:
-        _print_plan(selected, skipped, config, price_for(config, args.price_usd), not args.no_reference, root)
+        price, basis = price_for(config, args.price_usd)
+        _print_plan(selected, skipped, config, price, basis, not args.no_reference, root)
         print("Dry run — nothing was written.")
         return 0
 

@@ -65,6 +65,16 @@ Useful flags:
 | `--allow-aspect-change` | Reshape entries whose `aspect_ratio` the configured size contradicts. |
 | `--price-usd <amount>` | Price the estimate against the current rate card. |
 
+## What the estimate is
+
+The dry run prices the selection from the per-model image-output rates in the
+script, and says which they are: a published rate, a rate derived by scaling
+(the 16:9 sizes have none published), or your `--price-usd`. It covers the
+generated images only — an `/images/edits` call also bills the attached
+reference image and the prompt as input tokens. A model or size with no rate in
+the script is reported as unpriced and asks for `--price-usd`, rather than
+quoting some other model's number.
+
 ## Geometry
 
 Every entry declares an `aspect_ratio`, and `2048x1152` — exact 16:9 — is the

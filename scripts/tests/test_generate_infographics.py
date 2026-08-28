@@ -154,7 +154,7 @@ class EnvParsingTests(unittest.TestCase):
     def test_accepts_the_16_9_size_gpt_image_2_takes(self):
         config = gen.resolve_config({"OPENAI_API_KEY": FAKE_KEY, "OPENAI_IMAGE_SIZE": "2048x1152"}, {})
         self.assertEqual(config.size, "2048x1152")
-        self.assertGreater(gen.price_for(config, None), 0)
+        self.assertGreater(gen.price_for(config, None)[0], 0)
 
     def test_the_default_size_is_the_shape_the_manifest_declares(self):
         # Regression: 8541bf2 shipped DEFAULT_SIZE = "1536x1024" (3:2) while every
@@ -287,6 +287,60 @@ class SelectionTests(unittest.TestCase):
     def test_unknown_id_is_an_error(self):
         with self.assertRaises(gen.SelectionError):
             gen.select_entries(self.manifest, "id", ["no-such-image"])
+
+
+class PricingTests(unittest.TestCase):
+    def config_for(self, model, size="1536x1024", quality="high"):
+        return gen.resolve_config(
+            {
+                "OPENAI_API_KEY": FAKE_KEY,
+                "OPENAI_IMAGE_MODEL": model,
+                "OPENAI_IMAGE_SIZE": size,
+                "OPENAI_IMAGE_QUALITY": quality,
+            },
+            {},
+        )
+
+    def test_the_estimate_follows_the_model(self):
+        # Regression: 8541bf2 defaulted to gpt-image-2 but priced every run from the
+        # published GPT Image 1 rate card, so the dry run's headline cost was wrong
+        # for the model it was about to call.
+        one, _ = gen.price_for(self.config_for("gpt-image-1"), None)
+        two, _ = gen.price_for(self.config_for("gpt-image-2"), None)
+        self.assertEqual(one, 0.250)
+        self.assertNotEqual(one, two)
+
+    def test_an_unknown_model_is_reported_unpriced_rather_than_guessed(self):
+        amount, basis = gen.price_for(self.config_for("some-gateway-model"), None)
+        self.assertIsNone(amount)
+        self.assertIn("some-gateway-model", basis)
+
+    def test_an_override_wins_over_every_rate_card(self):
+        amount, basis = gen.price_for(self.config_for("some-gateway-model"), 1.25)
+        self.assertEqual(amount, 1.25)
+        self.assertIn("--price-usd", basis)
+
+    def test_the_dry_run_says_what_the_estimate_leaves_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp, env_text=f"OPENAI_API_KEY={FAKE_KEY}\n")
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = gen.main(["--dry-run", "--id", "data-model"], repo_root=root)
+            output = buffer.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("input", output.lower())
+        self.assertIn("$", output)
+
+    def test_the_dry_run_asks_for_a_price_when_it_has_no_rate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp, env_text=f"OPENAI_API_KEY={FAKE_KEY}\n")
+            buffer = io.StringIO()
+            with mock.patch.dict(os.environ, {"OPENAI_IMAGE_MODEL": "some-gateway-model"}):
+                with redirect_stdout(buffer):
+                    code = gen.main(["--dry-run", "--id", "data-model"], repo_root=root)
+            output = buffer.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("--price-usd", output)
 
 
 class RequestBuildingTests(unittest.TestCase):
