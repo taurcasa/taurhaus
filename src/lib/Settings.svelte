@@ -83,7 +83,7 @@
         tmux_layout: 'new_window',
         cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
         default_account_ids: {},
-        harness: { codex_compaction: 'hooks', agy_hooks: false },
+        harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
       },
       terminal_contract: terminalContract,
       dark_mode: dark,
@@ -283,7 +283,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cliDefaults,
-        harness: { codex_compaction: 'hooks', agy_hooks: false },
+        harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
       }
     }
     if (!settings.terminal.cli_commands) settings.terminal.cli_commands = cliDefaults
@@ -587,7 +587,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true } }
                   }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
@@ -616,7 +616,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true } }
                   }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
@@ -642,7 +642,7 @@
                     : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
                     const cliDefaults = getTerminalCliDefaults()
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } };
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true } };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
@@ -822,6 +822,27 @@
               <label for="agy-hooks-toggle" class="text-[13px] {t.textSecondary}">Antigravity activity hooks</label>
               <p class="mt-1 text-[11px] {textTertiary}">
                 Opt in to native busy and idle signals. Antigravity may require workspace trust before loading hooks.
+              </p>
+            </div>
+          </div>
+          <div class="mt-4 flex items-start gap-3 border-t {t.keyline} pt-4">
+            <input
+              id="grok-hooks-toggle"
+              type="checkbox"
+              class="mt-0.5 h-3.5 w-3.5 accent-brand-500 {fieldFocusRing}"
+              checked={settings.terminal?.harness?.grok_hooks ?? true}
+              onchange={(e) => {
+                ensureCliCommands()
+                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true }
+                settings.terminal.harness.grok_hooks = e.target.checked
+                saveSettings()
+              }}
+              data-testid="grok-hooks-toggle"
+            />
+            <div class="min-w-0">
+              <label for="grok-hooks-toggle" class="text-[13px] {t.textSecondary}">Grok compaction hooks</label>
+              <p class="mt-1 text-[11px] {textTertiary}">
+                Installed for managed Grok members in <code class="font-mono">~/.grok/hooks</code>, which needs no workspace trust. Turn off to leave Grok's hook directory untouched.
               </p>
             </div>
           </div>

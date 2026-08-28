@@ -222,6 +222,7 @@ function normalizeSettings(raw) {
     : {}
   const codexCompaction = harness.codex_compaction ?? harness.codexCompaction
   const agyHooks = harness.agy_hooks ?? harness.agyHooks
+  const grokHooks = harness.grok_hooks ?? harness.grokHooks
   const terminalContract = normalizeTerminalContract(
     settings.terminal_contract && typeof settings.terminal_contract === 'object'
       ? settings.terminal_contract
@@ -271,6 +272,7 @@ function normalizeSettings(raw) {
       harness: {
         codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
         agy_hooks: Boolean(agyHooks),
+        grok_hooks: grokHooks == null ? true : Boolean(grokHooks),
       },
       claude_default_account_id:
         terminal.claude_default_account_id ?? terminal.claudeDefaultAccountId ?? null,

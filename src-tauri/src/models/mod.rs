@@ -903,6 +903,14 @@ pub struct HarnessSettings {
     /// Antigravity hook loading is trust-gated upstream and remains opt-in.
     #[serde(default)]
     pub agy_hooks: bool,
+    /// grok's personal hook directory is always trusted, so its compaction
+    /// bridge is on by default and can be switched off.
+    #[serde(default = "default_true")]
+    pub grok_hooks: bool,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 impl Default for HarnessSettings {
@@ -910,6 +918,7 @@ impl Default for HarnessSettings {
         Self {
             codex_compaction: CodexCompactionMode::Transcript,
             agy_hooks: false,
+            grok_hooks: true,
         }
     }
 }

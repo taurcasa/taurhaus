@@ -465,7 +465,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 session_source: true,
                 runtime_session_capture: false,
                 authoritative_idle: true,
-                compaction_hook: false,
+                compaction_hook: true,
                 // grok reads `~/.claude/settings.json` hooks by default, so one
                 // compaction can reach the bridge through two registrations.
                 compaction_hook_compat_import: true,
@@ -887,6 +887,8 @@ impl CliToolSpec {
             crate::coordination::compact_hook::ClaudeCompactionSignalSource;
         static CODEX: crate::coordination::compact_hook::CodexCompactionSignalSource =
             crate::coordination::compact_hook::CodexCompactionSignalSource;
+        static GROK: crate::coordination::compact_hook::GrokCompactionSignalSource =
+            crate::coordination::compact_hook::GrokCompactionSignalSource;
 
         if !self.capabilities.compaction_hook {
             if self.tool == CliTool::Agy {
@@ -910,7 +912,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => None,
-            CliTool::Grok => None,
+            CliTool::Grok => Some(&GROK),
             CliTool::Unknown => None,
         }
     }

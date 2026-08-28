@@ -104,7 +104,7 @@ function mockSettings(overrides = {}) {
     custom_command: '',
     tmux_layout: 'new_window',
     cli_commands: mockCliCommandDefaults(),
-    harness: { codex_compaction: 'hooks', agy_hooks: false },
+    harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
     ...(overrides.terminal ?? {}),
   }
 
@@ -573,6 +573,27 @@ describe('Settings component', () => {
     const section = await screen.findByTestId('settings-cli-tools')
     expect(section).toHaveTextContent('{session_id}')
     expect(section).toHaveTextContent(/already quoted/i)
+  })
+
+  it('keeps Grok compaction hooks on by default and persists the toggle', async () => {
+    // Regression: commit 358a7c9 registered grok without a compaction slice.
+    // Its hook directory is always trusted, so the bridge is on by default —
+    // and a user who does not want taurhaus in `~/.grok` must be able to say so.
+    render(Settings, { props: defaultProps() })
+
+    const toggle = await screen.findByTestId('grok-hooks-toggle')
+    expect(toggle.checked).toBe(true)
+
+    await fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          terminal: expect.objectContaining({
+            harness: expect.objectContaining({ grok_hooks: false }),
+          }),
+        })
+      )
+    )
   })
 
   it('terminal emulator dropdown has Windows Terminal and Custom options', async () => {

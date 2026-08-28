@@ -316,6 +316,34 @@ pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationErr
     }
 }
 
+pub(crate) fn reconcile_grok_hooks(
+    enabled: bool,
+    has_managed_grok: bool,
+) -> Result<bool, CoordinationError> {
+    reconcile_grok_hooks_at(
+        &PlatformPaths::grok_dir(),
+        enabled,
+        has_managed_grok,
+        &compact_hook_executable()?,
+    )
+}
+
+pub(crate) fn reconcile_grok_hooks_at(
+    grok_home: &std::path::Path,
+    enabled: bool,
+    has_managed_grok: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    if enabled && has_managed_grok {
+        crate::coordination::compact_hook::ensure_grok_compact_hook_installed_at(
+            grok_home,
+            taurhaus_exe,
+        )
+    } else {
+        crate::coordination::compact_hook::remove_grok_compact_hook_at(grok_home)
+    }
+}
+
 fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {
     if cfg!(target_os = "windows") {
         return Ok(PlatformPaths::daemon_binary_path());

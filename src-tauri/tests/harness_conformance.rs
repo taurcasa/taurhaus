@@ -299,6 +299,7 @@ fn grok_stays_on_the_declared_floor_until_its_slices_land() {
     // registry entry must be honest about which slices it has not landed yet.
     let grok = spec(CliTool::Grok);
     assert!(grok.transcript_parser().is_none());
+    assert!(grok.compaction_signal_source().is_some());
     assert!(grok.account_provider().is_none());
     assert!(grok.usage_provider().is_none());
 }
@@ -853,6 +854,11 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
             temp.path()
                 .join("codex/sessions/2026/08/27/rollout-session.jsonl"),
         ),
+        (
+            CliTool::Grok,
+            temp.path()
+                .join(".grok/sessions/%2Fproject/session/updates.jsonl"),
+        ),
     ] {
         let source = spec(tool)
             .compaction_signal_source()
@@ -885,7 +891,20 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
     }
 
     assert!(spec(CliTool::Agy).compaction_signal_source().is_none());
-    assert!(spec(CliTool::Grok).compaction_signal_source().is_none());
+
+    // grok speaks camelCase and names its workspace root rather than a cwd.
+    let grok: taurhaus_lib::coordination::compact_hook::CompactHookInput = serde_json::from_str(
+        &serde_json::json!({
+            "hookEventName": "SessionStart",
+            "sessionId": "01a04585-2d53-7123",
+            "source": "compact",
+            "workspaceRoot": "/home/user/projects/taurhaus",
+            "transcriptPath": "/home/user/.grok/sessions/%2Fp/01a04585/updates.jsonl",
+        })
+        .to_string(),
+    )
+    .expect("grok camelCase hook payload");
+    assert_eq!(grok.inferred_tool(), Some(CliTool::Grok));
 }
 
 #[test]

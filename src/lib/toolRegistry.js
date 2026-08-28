@@ -147,7 +147,7 @@ export const FALLBACK_TOOLS = Object.freeze([
       sessionSource: true,
       runtimeSessionCapture: false,
       authoritativeIdle: true,
-      compactionHook: false,
+      compactionHook: true,
       compactionHookCompatImport: true,
       transcriptParser: false,
       transcriptCompactionSignals: false,

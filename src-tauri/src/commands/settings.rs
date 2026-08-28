@@ -80,6 +80,8 @@ fn update_settings_with_span(
         reconcile_codex_compaction_setting(app, &updated);
         #[cfg(feature = "mesh-bridged-backend")]
         reconcile_agy_hooks_setting(&updated);
+        #[cfg(feature = "mesh-bridged-backend")]
+        reconcile_grok_hooks_setting(app, &updated);
         enqueue_activity_watch_reconcile(app.clone(), "settings_updated");
         Ok(updated)
     })()
@@ -104,6 +106,36 @@ fn reconcile_agy_hooks_setting(settings: &Settings) {
             "coordination",
             "agy.hooks.reconcile_failed",
             Some("Antigravity native activity hooks remain disabled".to_string()),
+            fields,
+        );
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_grok_hooks_setting(app: &tauri::AppHandle, settings: &Settings) {
+    use tauri::Manager;
+
+    let has_managed_grok = app
+        .try_state::<crate::coordination::state::CoordinationState>()
+        .and_then(|state| {
+            crate::coordination::compact_hook::any_managed_grok_member(state.teams_dir()).ok()
+        })
+        .unwrap_or(false);
+    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks(
+        settings.terminal.harness.grok_hooks,
+        has_managed_grok,
+    ) {
+        tracing::warn!(error = %error, "Grok compaction hook reconciliation failed");
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "error.message".to_string(),
+            serde_json::Value::String(error.to_string()),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            "compaction.grok_hook.reconcile_failed",
+            Some("Grok compaction hooks remain unreconciled".to_string()),
             fields,
         );
     }
