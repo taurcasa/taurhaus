@@ -234,6 +234,9 @@ fn registry_declares_native_and_floor_capabilities() {
         Some("--always-approve")
     );
     assert!(grok.capabilities.compaction_hook_compat_import);
+    // grok's registry row appears at the first prompt, so identity is captured
+    // and backfilled rather than skipped — two grok members can share a project.
+    assert!(grok.capabilities.runtime_session_capture);
     // grok documents passive-hook stdout as ignored, so its card is queued in
     // the mesh inbox rather than answered on stdout.
     assert_eq!(

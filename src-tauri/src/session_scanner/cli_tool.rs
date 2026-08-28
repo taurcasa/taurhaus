@@ -489,7 +489,12 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 team_flags: false,
                 native_inbox_poller: false,
                 session_source: true,
-                runtime_session_capture: false,
+                // grok writes its `active_sessions.json` row at the member's
+                // first prompt, not at process start, so activation usually
+                // finds nothing and liveness backfills the identity later.
+                // Without it, hook routing falls back to the cwd two grok
+                // members on one project share.
+                runtime_session_capture: true,
                 authoritative_idle: true,
                 compaction_hook: true,
                 // grok reads `~/.claude/settings.json` hooks by default, so one

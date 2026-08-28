@@ -145,7 +145,7 @@ export const FALLBACK_TOOLS = Object.freeze([
       teamFlags: false,
       nativeInboxPoller: false,
       sessionSource: true,
-      runtimeSessionCapture: false,
+      runtimeSessionCapture: true,
       authoritativeIdle: true,
       compactionHook: true,
       compactionHookCompatImport: true,
