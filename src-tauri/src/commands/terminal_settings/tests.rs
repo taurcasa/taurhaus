@@ -358,3 +358,192 @@ fn an_unknown_agy_version_leaves_an_installed_hook_alone() {
     assert!(!reconcile_agy_hooks_at(&root, true, None, &exe).expect("unknown agy version"));
     assert!(agy_hooks_installed_at(&root));
 }
+
+/// The Codex compact hook lives in one host-global `<CODEX_HOME>/hooks.json`,
+/// so every managed launch has to reconcile it against the whole roster and not
+/// just the team it is about to touch.
+///
+// Regression: commit 7ada241 introduced the roster-wide reconciler
+// (`reconcile_codex_hook_for_managed_launch`) because d673af1 reconciled that
+// one global file from the operated team alone. A non-Codex team operation
+// therefore uninstalled the hook while another team's Codex member was still
+// live, and that member silently lost compaction reinjection for the rest of
+// its session. `commands/coordination.rs` has exactly four managed-launch entry
+// points and all four are affected, so this module pins both halves: each
+// site's own `has_codex` derivation run through the roster-wide reconciler
+// leaves a live member's hook alone, and each site is actually wired to it.
+mod managed_launch_sites {
+    use super::*;
+
+    use crate::coordination::compact_hook::{
+        codex_compact_hook_is_installed_at, team_has_managed_codex_member,
+    };
+    use crate::session_scanner::cli_tool::{spec, CliTool};
+
+    /// The four `#[tauri::command]` entry points in `commands/coordination.rs`
+    /// that launch or resume a managed pane.
+    const LAUNCH_SITES: [&str; 4] = [
+        "coordination_initialize_team",
+        "coordination_add_agent",
+        "coordination_resume_member",
+        "coordination_resume_team",
+    ];
+
+    /// A host running two teams: one with a live Codex member that owns the
+    /// installed global hook, one with only a Claude member. Nothing here
+    /// touches a real `~/.codex`, `~/.claude` or `~/.grok`.
+    struct Host {
+        _tmp: tempfile::TempDir,
+        teams_dir: std::path::PathBuf,
+        codex_home: std::path::PathBuf,
+        exe: std::path::PathBuf,
+    }
+
+    fn host_with_a_live_codex_member() -> Host {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let codex_home = tmp.path().join("codex-home");
+        let exe = tmp.path().join("taurhaus-daemon");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        std::fs::write(&exe, b"daemon").expect("daemon fixture");
+        write_team(&teams_dir, "codex-team", "codex");
+        write_team(&teams_dir, "claude-team", "claude");
+
+        reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+            .expect("install the hook the live Codex member needs");
+        assert!(codex_compact_hook_is_installed_at(&codex_home));
+
+        Host {
+            _tmp: tmp,
+            teams_dir,
+            codex_home,
+            exe,
+        }
+    }
+
+    /// `coordination_initialize_team` and `coordination_add_agent` derive
+    /// `has_codex` from the *requested* member, before that member is on any
+    /// roster.
+    fn requested_member_has_codex(cli_tool: &str) -> bool {
+        CliTool::from_alias(cli_tool).is_ok_and(|tool| spec(tool).capabilities.hook_trust)
+    }
+
+    /// What one launch site passes as its `has_codex` argument when the
+    /// operation targets the Claude-only team. `resume_member`/`resume_team`
+    /// read the operated team's own roster instead of a requested member.
+    fn has_codex_for(site: &str, teams_dir: &std::path::Path) -> bool {
+        match site {
+            "coordination_initialize_team" | "coordination_add_agent" => {
+                requested_member_has_codex("claude")
+            }
+            _ => team_has_managed_codex_member(teams_dir, "claude-team")
+                .expect("read the operated team's roster"),
+        }
+    }
+
+    #[test]
+    fn no_launch_site_uninstalls_a_live_codex_members_hook() {
+        let mut offenders = Vec::new();
+        for site in LAUNCH_SITES {
+            // A fresh host per site, so one site's outcome cannot mask the next.
+            let host = host_with_a_live_codex_member();
+            let has_codex = has_codex_for(site, &host.teams_dir);
+            assert!(
+                !has_codex,
+                "{site} operates on the Claude-only team, so its own signal is false"
+            );
+
+            reconcile_codex_hook_for_managed_launch_at(
+                &host.teams_dir,
+                &host.codex_home,
+                has_codex,
+                Some(true),
+                &host.exe,
+            )
+            .unwrap_or_else(|error| panic!("{site}: reconcile before the launch: {error}"));
+            if !codex_compact_hook_is_installed_at(&host.codex_home) {
+                offenders.push(site);
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these launch sites uninstalled the hook the live codex-team member still needs: {offenders:?}"
+        );
+    }
+
+    #[test]
+    fn the_last_codex_team_still_takes_the_hook_away() {
+        // The roster-wide reconciler must not degrade into "never uninstall":
+        // once no team runs Codex, a launch has to clean the global file up.
+        let mut offenders = Vec::new();
+        for site in LAUNCH_SITES {
+            let host = host_with_a_live_codex_member();
+            let has_codex = has_codex_for(site, &host.teams_dir);
+            std::fs::remove_dir_all(host.teams_dir.join("codex-team"))
+                .expect("disband the Codex team");
+
+            reconcile_codex_hook_for_managed_launch_at(
+                &host.teams_dir,
+                &host.codex_home,
+                has_codex,
+                Some(true),
+                &host.exe,
+            )
+            .unwrap_or_else(|error| panic!("{site}: reconcile before the launch: {error}"));
+            if codex_compact_hook_is_installed_at(&host.codex_home) {
+                offenders.push(site);
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these launch sites left the global hook behind after the last Codex member went away: {offenders:?}"
+        );
+    }
+
+    fn coordination_source() -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/coordination.rs"),
+        )
+        .expect("commands/coordination.rs is readable")
+    }
+
+    /// The body of one top-level `fn <name>`, up to its closing brace in
+    /// column 0.
+    fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
+        let needle = format!("fn {name}(");
+        let start = source
+            .find(&needle)
+            .unwrap_or_else(|| panic!("{name} is defined in commands/coordination.rs"));
+        let rest = &source[start..];
+        let end = rest
+            .find("\n}\n")
+            .unwrap_or_else(|| panic!("{name} has a top-level closing brace"));
+        &rest[..end]
+    }
+
+    #[test]
+    fn every_launch_site_is_wired_to_the_roster_wide_reconciler() {
+        let source = coordination_source();
+
+        let offenders: Vec<&str> = LAUNCH_SITES
+            .into_iter()
+            .filter(|site| {
+                let body = function_body(&source, site);
+                !body.contains("reconcile_codex_before_managed_launch(state.teams_dir(),")
+                    || body.contains("terminal_settings::reconcile_codex_hook(")
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "these launch sites do not reconcile the host-global Codex hook against the whole roster: {offenders:?}"
+        );
+
+        let shared = function_body(&source, "reconcile_codex_before_managed_launch");
+        assert!(
+            shared.contains("terminal_settings::reconcile_codex_hook_for_managed_launch("),
+            "the shared launch helper must call the roster-wide reconciler"
+        );
+    }
+}
