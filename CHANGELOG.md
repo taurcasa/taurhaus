@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Antigravity CLI (`agy`) is the Google harness** — registry, process detection, model/effort and auto-approval launch rendering, conversation identity, presence-aware stop, native `/usage` windows, an implicit account, opt-in activity hooks, Google-blue UI treatment, bundled roles, and conformance coverage now ship as one capability-sliced integration.
+
+### Changed
+
+- **Gemini CLI removed** — Google now refuses that client for individual Code Assist accounts and directs users to Antigravity. Persisted `gemini` tool values deliberately load as an unknown tool; reselect Antigravity explicitly because it is a different binary with different flags, and no compatibility alias is provided.
+- Mesh and taureval need separate follow-ups before their own external role/tool contracts can launch `agy`; this PR intentionally does not modify those repositories.
+
 ## [0.7.0] - 2026-08-28
 
 Accounts and usage become first-class across CLIs: every tool that can run on more than one account (Claude Code via `CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`) gets the same flow — detection, a per-project memory that follows the account the project used last, a one-gesture choice from the sidebar's right-click menu, resume on the account that owns the session, and usage shown exactly as the CLI's own `/usage` or `/status` shows it. Daemon protocol is now **11** — the app and the bundled daemon update together and refuse a mismatched pair.

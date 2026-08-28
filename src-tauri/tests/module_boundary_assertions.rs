@@ -23,6 +23,29 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn collect_repo_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(dir).expect("directory should be readable") {
+        let entry = entry.expect("directory entry should be readable");
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if ![".git", "node_modules", "target", "dist"].contains(&name) {
+                collect_repo_source_files(&path, out);
+            }
+            continue;
+        }
+        if matches!(
+            path.extension().and_then(|ext| ext.to_str()),
+            Some("rs" | "js" | "svelte" | "ts" | "json" | "yaml" | "yml" | "txt" | "sql")
+        ) {
+            out.push(path);
+        }
+    }
+}
+
 fn runtime_section(source: &str) -> &str {
     source
         .split("\n#[cfg(test)]")
@@ -233,7 +256,6 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/session_scanner/launch.rs",
         "src/task_scanner/claude.rs",
         "src/task_scanner/codex.rs",
-        "src/task_scanner/gemini.rs",
         "src/templates/adapters.rs",
     ];
     const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 66;
@@ -272,6 +294,73 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     assert_eq!(
         allowed_count, EXPECTED_RUNTIME_LITERAL_COUNT,
         "update consumers instead of growing the pinned CliTool literal count"
+    );
+}
+
+#[test]
+fn retired_gemini_tool_literal_does_not_return() {
+    // Regression: 9a66d1c made Gemini CLI a persisted tool identity throughout
+    // the repository. Antigravity is a different binary and must not acquire a
+    // compatibility alias; only explicit unknown-value migration tests and old
+    // database migrations may retain the retired wire value.
+    const ALLOWED_MIGRATION_FILES: &[&str] = &[
+        "src/lib/toolRegistry.test.js",
+        "src-tauri/src/db/migrations/006_tasks.sql",
+        "src-tauri/src/db/migrations/009_task_source_key_identity.sql",
+        "src-tauri/src/models/mod.rs",
+        "src-tauri/src/session_scanner/cli_tool.rs",
+    ];
+    const CAPTURED_USAGE_FIXTURE: &str = "src-tauri/src/daemon/fixtures/agy-usage-1.1.22.json";
+
+    let crate_dir = crate_root();
+    let repository = crate_dir.parent().expect("crate lives in repository");
+    let mut files = Vec::new();
+    collect_repo_source_files(repository, &mut files);
+    let violations = files
+        .into_iter()
+        .flat_map(|path| {
+            let relative = path
+                .strip_prefix(repository)
+                .expect("source lives in repository")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if relative == "src-tauri/tests/module_boundary_assertions.rs"
+                || relative.starts_with("docs/")
+                || relative == CAPTURED_USAGE_FIXTURE
+                || ALLOWED_MIGRATION_FILES.contains(&relative.as_str())
+            {
+                return Vec::new();
+            }
+            fs::read_to_string(&path)
+                .unwrap_or_default()
+                .lines()
+                .enumerate()
+                .filter_map(|(index, line)| {
+                    let line = line.to_ascii_lowercase();
+                    if !line.contains("gemini") {
+                        return None;
+                    }
+                    let verified_antigravity_data = line.contains("gemini-3.")
+                        || line.contains("gemini 3.")
+                        || line.contains("gemini-\\d")
+                        || line.contains("starts_with(\"gemini-\")")
+                        || line.contains(".gemini")
+                        || line.contains("gemini models")
+                        || line.contains("gemini-weekly")
+                        || line.contains("gemini-5h")
+                        || line.contains("gemini_md")
+                        || line.contains("geminimd")
+                        || line.contains("gemini.md");
+                    (!verified_antigravity_data)
+                        .then(|| format!("{relative}:{}: {line}", index + 1))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        violations.is_empty(),
+        "retired Gemini tool literals returned outside verified Antigravity data and migration coverage: {violations:?}"
     );
 }
 
@@ -322,7 +411,7 @@ fn generic_account_core_contains_no_tool_identity_literals() {
         "CliTool::Agy",
         "\"claude\"",
         "\"codex\"",
-        "\"gemini\"",
+        "\"agy\"",
         "\".credentials.json\"",
     ];
     let violations = GENERIC_ACCOUNT_FILES
