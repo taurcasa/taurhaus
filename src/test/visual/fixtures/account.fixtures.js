@@ -60,6 +60,31 @@ function resetFiveHour(reported) {
   }
 }
 
+/**
+ * Grok selects a whole account through `GROK_HOME` and publishes no quota
+ * endpoint, so its rows carry an identity and never a usage meter — the
+ * registry's `usage_note` stands where a meter would be.
+ */
+const GROK_PRIMARY = {
+  id: 'grok-user-1',
+  dir: '/home/user/.grok',
+  label: 'm.stier@giesi.com',
+  display_name: 'Matthias Stier',
+  plan: 'supergrok',
+  logged_in: true,
+  is_default: true,
+}
+
+const GROK_SECOND = {
+  id: 'grok-user-2',
+  dir: '/home/user/.grok-work',
+  label: 'work@example.com',
+  display_name: 'Work',
+  plan: 'supergrok',
+  logged_in: true,
+  is_default: false,
+}
+
 export const accountScenarios = [
   {
     name: 'single-account-light',
@@ -154,6 +179,26 @@ export const accountScenarios = [
     ],
     projectName: 'taurhaus',
     selectedAccountId: null,
+    expected: { chooser: true, chip: true },
+  },
+  {
+    // Grok on two GROK_HOMEs: the chooser and chip work exactly as they do for
+    // Claude, but no account carries a usage window.
+    name: 'grok-two-accounts-light',
+    theme: 'light',
+    tool: 'grok',
+    accounts: [GROK_PRIMARY, GROK_SECOND],
+    projectName: 'taurhaus',
+    selectedAccountId: null,
+    expected: { chooser: true, chip: true },
+  },
+  {
+    name: 'grok-two-accounts-dark',
+    theme: 'dark',
+    tool: 'grok',
+    accounts: [GROK_PRIMARY, GROK_SECOND],
+    projectName: 'taurhaus',
+    selectedAccountId: 'grok-user-2',
     expected: { chooser: true, chip: true },
   },
 ]

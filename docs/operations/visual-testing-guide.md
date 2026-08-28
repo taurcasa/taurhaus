@@ -60,13 +60,14 @@ Fixture examples already in the repo:
 - `runtime_fiveAgents_dark` (`meshCanvas.fixtures.js`)
 - `active_claudeWorking_dirty_dark` (`hoverCard.fixtures.js`)
 - `active_claude_selected_dark` (`sidebar.fixtures.js`)
-- `active_claude_light`, `idle_agy_dark`, `cross_project_agy_light` (`meshNodeDetail.fixtures.js`)
-- `account.fixtures.js` and `shellPopups.fixtures.js` cover the account chooser, chip menu and usage meters — the surfaces `just visual-shot` exists for
+- `active_claude_light`, `idle_agy_dark`, `idle_grok_dark`, `cross_project_agy_light` (`meshNodeDetail.fixtures.js`)
+- `account.fixtures.js` and `shellPopups.fixtures.js` cover the account chooser, chip menu and usage meters — the surfaces `just visual-shot` exists for; `grok-two-accounts-light` is the tool that shows identities with no usage meter at all
 
-The fixture roster is not a per-tool matrix: the mesh and sidebar builders cycle
-`['codex', 'agy', 'claude']` (`src/test/visual/fixtures/builders.js`), so a tool
-added after those fixtures — `grok` today — has no visual scenario yet. Add one
-in the relevant domain fixture when you change a surface that renders it.
+The fixture roster is a per-tool matrix, and it has to stay one: the mesh and
+sidebar builders cycle `['codex', 'agy', 'claude', 'grok']`
+(`src/test/visual/fixtures/builders.js`). When a harness joins the registry, add
+its scenario to the mesh canvas, mesh node detail, sidebar, roster and account
+fixtures in the same PR — otherwise its surfaces are shot by no one.
 
 Rules:
 

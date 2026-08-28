@@ -36,7 +36,10 @@ describe('tool registry module boundary', () => {
     }
 
     expect(violations).toEqual([])
-    expect(allowedComparisonCount).toBe(2)
+    // One comparison remains, in `ipc/mocks/tasks.js`: the mock task detail
+    // picks a source key for the two tools that actually have task sources.
+    // The second one went away with the invented `source: 'agy'` task.
+    expect(allowedComparisonCount).toBe(1)
   })
 
   it('builds tool pickers from the registry instead of markup literals', () => {

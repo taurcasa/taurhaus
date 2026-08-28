@@ -83,10 +83,11 @@ describe('mockData', () => {
     expect(states).toContain('dormant')
   })
 
-  it('covers all three CLI tools in MOCK_CLAUDE_SESSIONS', () => {
+  it('covers every registered CLI harness in MOCK_CLAUDE_SESSIONS', () => {
     const tools = new Set(MOCK_CLAUDE_SESSIONS.map(s => s.cli_tool))
     expect(tools).toContain('claude')
     expect(tools).toContain('codex')
     expect(tools).toContain('agy')
+    expect(tools).toContain('grok')
   })
 })

@@ -165,19 +165,20 @@ describe('sessionIndicator', () => {
     expect(toolIndicators(null)).toEqual([])
   })
 
-  it('toolIndicators for all three tools have distinct icons', () => {
+  it('toolIndicators for every registered harness have distinct icons', () => {
     const sessions = [
       session({ state: 'active', cli_tool: 'claude' }),
       session({ state: 'active', cli_tool: 'codex', pid: 2 }),
       session({ state: 'idle', cli_tool: 'agy', pid: 3 }),
+      session({ state: 'idle', cli_tool: 'grok', pid: 4 }),
     ]
     const indicators = toolIndicators(sessions)
-    expect(indicators).toHaveLength(3)
-    expect(indicators.map(i => i.fullName)).toEqual(['Claude', 'Codex', 'Antigravity'])
+    expect(indicators).toHaveLength(4)
+    expect(indicators.map(i => i.fullName)).toEqual(['Claude', 'Codex', 'Antigravity', 'Grok'])
 
     // Each tool has a distinct SVG path
     const paths = indicators.map(i => i.icon.path)
-    expect(new Set(paths).size).toBe(3)
+    expect(new Set(paths).size).toBe(4)
 
     expect(indicators[2].icon.viewBox).toBe('0 0 16 16')
   })
