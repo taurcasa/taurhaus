@@ -95,17 +95,16 @@ function reviewProblem(review, label) {
   return ''
 }
 
-// A gate is green only when it says pass AND every command it ran passed AND it ran something AND
-// every required command is among the ones that passed. A skipped `just check-quick` is not a pass:
-// the run would otherwise complete green over a lane nobody executed. Its own vocabulary is pass/fail,
-// so it is checked here rather than through laneProblem.
+// A gate is green only when it says pass AND every command it listed passed AND it ran something AND
+// every required command is among them AND it contradicts itself nowhere. A skipped `just check-quick`
+// is not a pass, and neither is a skipped `cargo test`: the run would otherwise complete green over a
+// lane nobody executed. A command that did not apply is left off the list rather than reported
+// `skipped`. Its own vocabulary is pass/fail, so it is checked here rather than through laneProblem.
 function gateProblem(gate) {
   if (!gate) return 'the gate agent returned no result (it was skipped or died)'
-  if (gate.error && gate.status !== 'pass') return 'the gate could not run: ' + gate.error
+  if (gate.error) return 'the gate could not run: ' + gate.error
   const ran = Array.isArray(gate.commands) ? gate.commands.filter(Boolean) : []
   if (ran.length === 0) return 'the gate reported no commands run'
-  const failed = ran.filter((c) => c.status !== 'pass' && c.status !== 'skipped')
-  if (failed.length > 0) return 'gate commands failed: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
   const matches = (c, required) => String(c.command == null ? '' : c.command).indexOf(required) !== -1
   const missing = REQUIRED_GATES.filter((required) => !ran.some((c) => c.status === 'pass' && matches(c, required)))
   if (missing.length > 0) {
@@ -119,7 +118,11 @@ function gateProblem(gate) {
         .join(', ')
     )
   }
-  if (gate.status !== 'pass') return 'the gate reported status ' + JSON.stringify(gate.status) + (Array.isArray(gate.failures) && gate.failures.length > 0 ? ': ' + gate.failures.join('; ') : '')
+  const failed = ran.filter((c) => c.status !== 'pass')
+  if (failed.length > 0) return 'gate commands did not pass: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
+  const reported = Array.isArray(gate.failures) ? gate.failures.filter(Boolean) : []
+  if (reported.length > 0) return 'the gate reported failures under a passing status: ' + reported.join('; ')
+  if (gate.status !== 'pass') return 'the gate reported status ' + JSON.stringify(gate.status)
   return ''
 }
 
@@ -159,7 +162,7 @@ const RULES = {
         REQUIRED_GATES.join(', ') +
         ' — a required command reported `skipped` fails the run, so run it, or report it `fail` with the reason it could not run.'
       : '') +
-    ' Mark a command `skipped` only when it is optional and did not apply, with the reason in `detail`.',
+    ' Every command you list has to have passed: any entry that is not `pass` fails the run, required or not. A gate command that did not apply because nothing it covers changed is simply left off the list and explained in the summary — do not report it `skipped` and never report a command you did not run as `pass`. `failures` and `error` stay empty under a passing status; a `status` of pass next to either one is a contradiction and fails the run.',
   safety:
     'SAFETY: tests never read or write the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok and never invoke a real CLI; no load or stress runs; kill anything you start (trap/finally) and never kill a process you did not start; never print tokens or secrets.',
   readOnly:
@@ -355,21 +358,21 @@ const GATE_SCHEMA = {
   type: 'object',
   required: ['status', 'commands', 'diff_stat', 'commits'],
   properties: {
-    status: { type: 'string', enum: ['pass', 'fail'], description: "'pass' only when every command you ran passed" },
+    status: { type: 'string', enum: ['pass', 'fail'], description: "'pass' only when every command you ran passed and `failures` and `error` are empty" },
     commands: {
       type: 'array',
-      description: 'every gate command you ran, in order',
+      description: 'every gate command you ran, in order; a command that did not apply is left off the list',
       items: {
         type: 'object',
         required: ['command', 'status'],
         properties: {
           command: { type: 'string', description: 'the exact command line' },
-          status: { type: 'string', enum: ['pass', 'fail', 'skipped'] },
+          status: { type: 'string', enum: ['pass', 'fail', 'skipped'], description: 'anything but `pass` fails the run, required command or not' },
           detail: { type: 'string', description: 'the failure, or why it was skipped' },
         },
       },
     },
-    failures: { type: 'array', items: { type: 'string' } },
+    failures: { type: 'array', items: { type: 'string' }, description: 'must be empty when status is pass' },
     diff_stat: { type: 'string' },
     commits: { type: 'array', items: { type: 'string' } },
     error: { type: 'string' },

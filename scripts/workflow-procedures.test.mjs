@@ -269,14 +269,36 @@ describe('workflow procedures — fail closed', () => {
       ).rejects.toThrow(/required gate/i)
     })
 
-    it(`${script} still passes when an optional command is skipped with a reason`, async () => {
+    // Regression: gateProblem excluded every `skipped` command from the failure set, so a gate could
+    // report `just check-quick` and `just lint` green while the targeted cargo tests the spec asked
+    // for were never run, and the workflow still returned a green ledger. A command that did not
+    // apply is left off the list; one that is listed has to have passed.
+    it(`${script} fails when a listed gate command is skipped, required or not`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: {
+            status: 'pass',
+            commands: [
+              { command: 'just check-quick', status: 'pass' },
+              { command: 'just lint', status: 'pass' },
+              { command: 'cd src-tauri && cargo test coordination', status: 'skipped', detail: 'no Rust file changed' },
+            ],
+            failures: [],
+            diff_stat: '',
+            commits: [],
+          },
+        })
+      ).rejects.toThrow(/cargo test coordination/)
+    })
+
+    it(`${script} passes when the gate lists only commands that ran and passed`, async () => {
       const { result } = await run(script, argsFor(script), {
         gate: {
           status: 'pass',
           commands: [
             { command: 'just check-quick', status: 'pass' },
             { command: 'just lint', status: 'pass' },
-            { command: 'cd src-tauri && cargo test coordination', status: 'skipped', detail: 'no Rust file changed' },
+            { command: 'cd src-tauri && cargo test coordination', status: 'pass' },
           ],
           failures: [],
           diff_stat: '',
@@ -284,6 +306,44 @@ describe('workflow procedures — fail closed', () => {
         },
       })
       expect(result.gate.status).toBe('pass')
+    })
+
+    // Regression: a non-empty `failures` was read only when the top-level status was not `pass`, and
+    // `error` only alongside a non-pass status — so a gate that contradicted itself (`status: 'pass'`
+    // next to the failures it collected) was accepted as green.
+    it(`${script} fails when a passing gate still reports failures`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: {
+            status: 'pass',
+            commands: [
+              { command: 'just check-quick', status: 'pass' },
+              { command: 'just lint', status: 'pass' },
+            ],
+            failures: ['cd src-tauri && cargo test coordination: 2 failed'],
+            diff_stat: '',
+            commits: [],
+          },
+        })
+      ).rejects.toThrow(/2 failed/)
+    })
+
+    it(`${script} fails when a passing gate still reports an error`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: {
+            status: 'pass',
+            commands: [
+              { command: 'just check-quick', status: 'pass' },
+              { command: 'just lint', status: 'pass' },
+            ],
+            failures: [],
+            error: 'the lint lane never returned',
+            diff_stat: '',
+            commits: [],
+          },
+        })
+      ).rejects.toThrow(/never returned/)
     })
 
     it(`${script} takes the required commands from args.requiredGates when a spec names other gates`, async () => {

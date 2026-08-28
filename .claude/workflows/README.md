@@ -90,11 +90,14 @@ a completed ledger with no findings reads as an approval:
   recorded in the ledger only after its result validates.
 - **A `fix_required` verdict counts** even when the reviewer filed no blocker or major: its findings
   become the fix round.
-- **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any failed
-  command, a `status` other than `pass`, or a gate that ran nothing aborts.
-- **A skipped required gate is not a pass.** `just check-quick` and `just lint` (or whatever
-  `requiredGates` names) must appear among the commands that passed. One reported `skipped`, or never
-  run at all, fails the run — an optional command may still be skipped with its reason in `detail`.
+- **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any command
+  that did not pass, a `status` other than `pass`, or a gate that ran nothing aborts. So does a gate
+  that contradicts itself — `status: 'pass'` arriving with a non-empty `failures` or `error`.
+- **A skipped gate command is not a pass.** `just check-quick` and `just lint` (or whatever
+  `requiredGates` names) must appear among the commands that passed; one reported `skipped`, or never
+  run at all, fails the run. So does any other listed command that did not pass — the targeted
+  `cargo test` included. A gate command that did not apply is left off the list and explained in the
+  summary, never reported `skipped` to get past the gate.
 - **What stays open does not fail it.** Findings the loop could not close come back as `remaining` —
   that is what `fix-round` is for.
 - **A reviewer is named by the model that ran it.** The lane must report `model_used`, the reviewer
