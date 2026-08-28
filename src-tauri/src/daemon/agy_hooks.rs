@@ -58,6 +58,11 @@ pub struct AgyHookRecord {
     pub ts: DateTime<Utc>,
     pub conversation_id: String,
     pub state: AgyHookState,
+    /// Whatever `Stop` said about why the turn ended. agy spells it in
+    /// SCREAMING_SNAKE and only `NO_TOOL_CALL` has ever been observed, so this
+    /// stays an open string: an unseen member must never gate the idle edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +78,8 @@ struct HookPayload {
     conversation_id: Option<String>,
     #[serde(default)]
     fully_idle: bool,
+    #[serde(default)]
+    termination_reason: Option<String>,
 }
 
 /// Append one native Antigravity activity edge to the bounded JSONL sink.
@@ -103,6 +110,10 @@ pub fn append_event_at(
             AgyHookEvent::Busy => AgyHookState::Busy,
             AgyHookEvent::Idle => AgyHookState::Idle,
         },
+        termination_reason: payload
+            .termination_reason
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
     };
     let parent = path
         .parent()
@@ -295,6 +306,107 @@ mod tests {
     }
 
     #[test]
+    fn observed_stop_payload_records_idle_with_its_termination_reason() {
+        // Regression: commit 4e9e2c5 read only `conversationId` and `fullyIdle`
+        // from the Stop payload, so the reason a turn ended was thrown away.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+        // Verbatim shape captured from agy 1.1.22 (docs/design/research/
+        // agy-hooks-trust-verification.md), unknown fields included.
+        let stop = r#"{
+            "artifactDirectoryPath": "/home/user/.gemini/antigravity-cli/brain/7f71fcb0",
+            "conversationId": "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869",
+            "error": "",
+            "executionNum": 0,
+            "fullyIdle": true,
+            "modelName": "gemini-3.7-flash-high",
+            "terminationReason": "NO_TOOL_CALL",
+            "transcriptPath": "/home/user/.gemini/antigravity-cli/brain/7f71fcb0/transcript_full.jsonl",
+            "workspacePaths": ["/home/user/projects/taurhaus"]
+        }"#;
+
+        let outcome = append_event_at(&path, AgyHookEvent::Idle, stop, ts).unwrap();
+
+        assert!(outcome.recorded);
+        let record =
+            latest_record_for_session(&path, "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869").unwrap();
+        assert_eq!(record.state, AgyHookState::Idle);
+        assert_eq!(record.termination_reason.as_deref(), Some("NO_TOOL_CALL"));
+    }
+
+    #[test]
+    fn termination_reason_is_an_open_string_and_never_gates_the_idle_edge() {
+        // Regression: only `NO_TOOL_CALL` was ever observed, so enumerating the
+        // reason would drop the idle edge for every unseen enum member.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+
+        append_event_at(
+            &path,
+            AgyHookEvent::Idle,
+            r#"{"conversationId":"conversation-1","fullyIdle":true,"terminationReason":"SOME_FUTURE_REASON"}"#,
+            ts,
+        )
+        .unwrap();
+
+        let record = latest_record_for_session(&path, "conversation-1").unwrap();
+        assert_eq!(record.state, AgyHookState::Idle);
+        assert_eq!(
+            record.termination_reason.as_deref(),
+            Some("SOME_FUTURE_REASON")
+        );
+
+        // A Stop that is not fully idle is still not an idle edge, whatever it
+        // says its reason was: a subagent may still be running.
+        let partial = append_event_at(
+            &path,
+            AgyHookEvent::Idle,
+            r#"{"conversationId":"conversation-1","fullyIdle":false,"terminationReason":"NO_TOOL_CALL"}"#,
+            ts + chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        assert!(!partial.recorded);
+    }
+
+    #[test]
+    fn repeated_pre_invocation_busy_writes_are_idempotent() {
+        // Regression: PreInvocation fires once per model invocation, several
+        // times per turn, so repeats must keep exactly one busy state per
+        // conversation instead of flipping or fanning it out.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+        let busy = r#"{"conversationId":"conversation-1","invocationNum":0,"modelName":"gemini-3.7-flash-high"}"#;
+
+        for step in 0..5 {
+            append_event_at(
+                &path,
+                AgyHookEvent::Busy,
+                busy,
+                ts + chrono::Duration::seconds(step),
+            )
+            .unwrap();
+        }
+
+        let contents = std::fs::read(&path).unwrap();
+        let records = latest_records(&contents);
+        assert_eq!(records.len(), 1, "one effective record per conversation");
+        let record = latest_record_for_session(&path, "conversation-1").unwrap();
+        assert_eq!(record.state, AgyHookState::Busy);
+        assert_eq!(
+            record.ts,
+            ts + chrono::Duration::seconds(4),
+            "the newest invocation refreshes recency"
+        );
+        assert_eq!(record.termination_reason, None);
+    }
+
+    #[test]
     fn agy_hook_sink_throttles_duplicates_and_caps_at_five_megabytes() {
         // Regression: commit c0aa59a's native edge path had no agy-specific
         // hook-rate protection; synchronous hooks must remain millisecond work.
@@ -346,6 +458,7 @@ mod tests {
                     ts,
                     conversation_id: format!("conversation-{index}"),
                     state: AgyHookState::Idle,
+                    termination_reason: None,
                 },
             )
             .unwrap();
