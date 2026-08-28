@@ -48,7 +48,7 @@ describe('toolRegistry', () => {
     // Regression: commit bfecae9 fixed the frontend registry at three
     // harnesses, so a fourth tool had no label, accent or usage explanation.
     expect(toolDisplayName('grok')).toBe('Grok CLI')
-    expect(toolMedallionAccent('grok')).toBe('grok')
+    expect(toolMedallionAccent('grok')).toBe('graphite')
     expect(toolDescriptor('grok').capabilities.autoApproveFlag).toBe('--always-approve')
     expect(toolDescriptor('grok').capabilities.usage).toBe(false)
     expect(toolDescriptor('grok').capabilities.usageNote).toBe(

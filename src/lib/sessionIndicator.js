@@ -5,7 +5,7 @@ import { getToolIcon, getToolName } from './toolLogos.js'
 
 const STACKING_THRESHOLD = 4
 const TEAM_GROUP_MIN_MEMBERS = 2
-const TOOL_ORDER = ['claude', 'codex', 'agy']
+const TOOL_ORDER = ['claude', 'codex', 'agy', 'grok']
 
 /** Get the display name for a session's CLI tool, defaulting to "Claude". */
 function toolName(session) {

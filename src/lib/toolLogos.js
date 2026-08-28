@@ -9,6 +9,7 @@
  * Claude: Anthropic starburst (Bootstrap Icons, 16x16)
  * Codex:  OpenAI blossom/knot (Bootstrap Icons, 16x16)
  * Antigravity: compact orbit mark drawn for taurhaus (16x16)
+ * Grok: angular double-slash letterform drawn for taurhaus (16x16)
  */
 
 import { toolLabel } from './toolRegistry.js'
@@ -25,6 +26,10 @@ export const TOOL_ICONS = {
   agy: {
     viewBox: '0 0 16 16',
     path: 'M8 1.15l2.15 2.16L8 5.46 5.85 3.31 8 1.15zm0 9.39l2.15 2.15L8 14.85l-2.15-2.16L8 10.54zM2.64 4.18c.28-.36.79-.42 1.15-.14.35.28.42.79.14 1.15A4.5 4.5 0 003 8a4.5 4.5 0 00.93 2.81.82.82 0 01-1.29 1.01A6.13 6.13 0 011.36 8c0-1.43.49-2.77 1.28-3.82zm10.72 0A6.13 6.13 0 0114.64 8c0 1.43-.49 2.77-1.28 3.82a.82.82 0 01-1.29-1.01A4.5 4.5 0 0013 8a4.5 4.5 0 00-.93-2.81.82.82 0 011.29-1.01z',
+  },
+  grok: {
+    viewBox: '0 0 16 16',
+    path: 'M2.3 1.5h2.9l8.5 13h-2.9zM13.7 1.5h-2.4L8.4 6l1.2 1.85zM2.3 14.5h2.4l3-4.6-1.2-1.85z',
   },
   unknown: {
     viewBox: '0 0 16 16',
@@ -45,6 +50,10 @@ const TOOL_SIDEBAR_SMALL_ICONS = {
   agy: {
     viewBox: '0 0 16 16',
     path: 'M8 1.2l1.9 1.9L8 5 6.1 3.1 8 1.2zm0 9.8l1.9 1.9L8 14.8l-1.9-1.9L8 11zM2.8 4.3a.75.75 0 011.05-.13.75.75 0 01.13 1.05A4.5 4.5 0 003.1 8c0 1.05.35 2.01.88 2.78a.75.75 0 01-1.18.92A5.95 5.95 0 011.6 8c0-1.4.47-2.69 1.2-3.7zm10.4 0A5.95 5.95 0 0114.4 8c0 1.4-.47 2.69-1.2 3.7a.75.75 0 01-1.18-.92A4.5 4.5 0 0012.9 8c0-1.05-.35-2.01-.88-2.78a.75.75 0 011.18-.92z',
+  },
+  grok: {
+    viewBox: '0 0 16 16',
+    path: 'M2.1 1.4h3.1l8.7 13.2h-3.1zM13.9 1.4h-2.6L8.35 5.7l1.3 1.98zM2.1 14.6h2.6l3.05-4.6-1.3-1.98z',
   },
   unknown: {
     viewBox: '0 0 16 16',

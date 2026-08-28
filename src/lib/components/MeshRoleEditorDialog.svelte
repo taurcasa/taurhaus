@@ -354,6 +354,7 @@
                   <option value="claude">Claude</option>
                   <option value="codex">Codex</option>
                   <option value="agy">Antigravity</option>
+                  <option value="grok">Grok</option>
                 </select>
               </label>
             </div>

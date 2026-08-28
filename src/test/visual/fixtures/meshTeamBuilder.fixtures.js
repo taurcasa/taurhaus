@@ -139,6 +139,14 @@ const roleTemplates = [
     model: 'gemini-3.7-flash-high',
     behaviorSummary: 'Explores sources and design references.',
   }),
+  createRole({
+    roleId: 'agent-grok',
+    name: 'Grok Developer',
+    kind: 'agent',
+    cliTool: 'grok',
+    model: 'grok-4.6',
+    behaviorSummary: 'Implements scoped changes and reports verification.',
+  }),
 ]
 
 const presets = [

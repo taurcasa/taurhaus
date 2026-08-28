@@ -193,10 +193,12 @@ describe('Context menu session actions', () => {
     items.push({ label: 'New Claude Session', action: 'fresh-claude' })
     items.push({ label: 'New Codex Session', action: 'fresh-codex' })
     items.push({ label: 'New Antigravity Session', action: 'fresh-agy' })
+    items.push({ label: 'New Grok Session', action: 'fresh-grok' })
     items.push({ separator: true })
     items.push({ label: 'Resume Claude', action: 'resume-claude' })
     items.push({ label: 'Resume Codex', action: 'resume-codex' })
     items.push({ label: 'Resume Antigravity', action: 'resume-agy' })
+    items.push({ label: 'Resume Grok', action: 'resume-grok' })
 
     if (isLiveSession) {
       items.push({ separator: true })
@@ -219,9 +221,11 @@ describe('Context menu session actions', () => {
       'New Claude Session',
       'New Codex Session',
       'New Antigravity Session',
+      'New Grok Session',
       'Resume Claude',
       'Resume Codex',
       'Resume Antigravity',
+      'Resume Grok',
     ])
   })
 
@@ -292,7 +296,8 @@ describe('Context menu session actions', () => {
     expect(actionable[0].action).toBe('continue-claude')
     expect(actionable[1].action).toBe('fresh-claude')
     expect(actionable[2].action).toBe('fresh-codex')
-    expect(actionable[6].action).toBe('resume-agy')
+    expect(actionable[7].action).toBe('resume-agy')
+    expect(actionable[8].action).toBe('resume-grok')
   })
 })
 

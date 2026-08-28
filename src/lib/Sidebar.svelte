@@ -538,12 +538,14 @@
     items.push(launch('New Claude Session', 'fresh', 'claude', CTX_ICON_PLUS))
     items.push(launch('New Codex Session', 'fresh', 'codex', CTX_ICON_PLUS))
     items.push(launch('New Antigravity Session', 'fresh', 'agy', CTX_ICON_PLUS))
+    items.push(launch('New Grok Session', 'fresh', 'grok', CTX_ICON_PLUS))
 
-    // Resume stays distinct for Claude, Codex, and Antigravity.
+    // Resume stays distinct for every harness that can name a session.
     items.push({ separator: true })
     items.push(launch('Resume Claude', 'resume', 'claude', CTX_ICON_CLOCK))
     items.push(launch('Resume Codex', 'resume', 'codex', CTX_ICON_CLOCK))
     items.push(launch('Resume Antigravity', 'resume', 'agy', CTX_ICON_CLOCK))
+    items.push(launch('Resume Grok', 'resume', 'grok', CTX_ICON_CLOCK))
 
     // Per-tool stop/restart for each running session
     if (liveSessions.length > 0) {

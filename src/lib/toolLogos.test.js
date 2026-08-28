@@ -11,6 +11,16 @@ describe('Antigravity tool visuals', () => {
     expect(getToolName('agy')).toBe('Antigravity')
   })
 
+  it('gives Grok its own mark rather than the unknown-tool fallback', () => {
+    // Regression: commit 8fcb5b3 registered grok without a mark, so every grok
+    // session rendered the neutral question-mark glyph.
+    expect(TOOL_ICONS.grok).toBeDefined()
+    expect(getToolIcon('grok')).toBe(TOOL_ICONS.grok)
+    expect(getToolIcon('grok')).not.toBe(TOOL_ICONS.unknown)
+    expect(getToolIcon('grok', 'sidebarSmall')).not.toBe(TOOL_ICONS.grok)
+    expect(getToolName('grok')).toBe('Grok')
+  })
+
   it('uses a neutral mark and label for an unknown persisted tool', () => {
     // Regression: commit 91f4d3f7 made unknown registry values visually
     // indistinguishable from Claude after a persisted-tool migration.

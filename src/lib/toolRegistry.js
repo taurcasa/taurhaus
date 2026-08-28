@@ -133,8 +133,8 @@ export const FALLBACK_TOOLS = Object.freeze([
     id: 'grok',
     label: 'Grok',
     displayName: 'Grok CLI',
-    accent: 'grok',
-    medallionAccent: 'grok',
+    accent: 'graphite',
+    medallionAccent: 'graphite',
     defaultAgentRoleId: 'grok-developer',
     aliases: ['grok'],
     capabilities: {

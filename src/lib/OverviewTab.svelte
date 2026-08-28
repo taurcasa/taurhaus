@@ -155,7 +155,7 @@
     sessionContext?.openTerminal?.()
   }
 
-  const TOOLS = ['claude', 'codex', 'agy']
+  const TOOLS = ['claude', 'codex', 'agy', 'grok']
 </script>
 
 <!-- Project header -->

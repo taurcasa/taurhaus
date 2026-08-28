@@ -759,6 +759,10 @@
         return dark
           ? 'border-google-blue-400/28 bg-google-blue-500/10'
           : 'border-google-blue-300/85 bg-google-blue-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
+      case 'graphite':
+        return dark
+          ? 'border-graphite-400/28 bg-graphite-500/10'
+          : 'border-graphite-300/85 bg-graphite-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
       case 'sky':
         return dark
           ? 'border-sky-400/28 bg-sky-500/10'
@@ -779,6 +783,8 @@
     switch (toolAccent(normalizeTool(tool))) {
       case 'google-blue':
         return dark ? 'bg-google-blue-300' : 'bg-google-blue-500'
+      case 'graphite':
+        return dark ? 'bg-graphite-300' : 'bg-graphite-500'
       case 'sky':
         return dark ? 'bg-sky-300' : 'bg-sky-500'
       case 'violet':
@@ -799,6 +805,10 @@
         return dark
           ? 'border-google-blue-400/30 bg-google-blue-500/14 text-google-blue-200'
           : 'border-google-blue-300/70 bg-google-blue-50 text-google-blue-900'
+      case 'graphite':
+        return dark
+          ? 'border-graphite-400/30 bg-graphite-500/14 text-graphite-200'
+          : 'border-graphite-300/70 bg-graphite-50 text-graphite-900'
       case 'sky':
         return dark
           ? 'border-sky-400/30 bg-sky-500/14 text-sky-100'
@@ -1210,6 +1220,10 @@
         return dark
           ? 'border-google-blue-400/35 bg-google-blue-500/12 text-google-blue-200'
           : 'border-google-blue-300/70 bg-google-blue-50 text-google-blue-800'
+      case 'graphite':
+        return dark
+          ? 'border-graphite-400/35 bg-graphite-500/12 text-graphite-200'
+          : 'border-graphite-300/70 bg-graphite-50 text-graphite-800'
       case 'emerald':
         return dark
           ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'

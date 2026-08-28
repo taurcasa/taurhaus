@@ -753,6 +753,10 @@ describe('Sidebar component branches', () => {
     expect(screen.queryByText('Continue Antigravity')).not.toBeInTheDocument()
     expect(screen.getByText('New Codex Session')).toBeInTheDocument()
     expect(screen.getByText('Resume Antigravity')).toBeInTheDocument()
+    // Regression: commit 8fcb5b3 registered grok as a harness but left the
+    // sidebar launch menu at three tools, so it could not be started at all.
+    expect(screen.getByText('New Grok Session')).toBeInTheDocument()
+    expect(screen.getByText('Resume Grok')).toBeInTheDocument()
 
     getSessionForProject.mockImplementation(() => session)
     await fireEvent.contextMenu(screen.getByTestId('project-item'))

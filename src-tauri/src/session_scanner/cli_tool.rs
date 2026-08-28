@@ -452,8 +452,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 resume: "grok --always-approve --resume {session_id}".into(),
             },
             label: "Grok",
-            accent: "grok",
-            medallion_accent: "grok",
+            accent: "graphite",
+            medallion_accent: "graphite",
             default_agent_role_id: "grok-developer",
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
