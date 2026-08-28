@@ -807,10 +807,12 @@ fn maybe_ensure_compact_hooks_for_team<T>(
 /// installation is left alone rather than failing the mutation the user asked
 /// for.
 fn reconcile_global_harness_hooks(app: &AppHandle) {
-    let Some(state) = app.try_state::<CoordinationState>() else {
+    let (Some(state), Some(db)) = (
+        app.try_state::<CoordinationState>(),
+        app.try_state::<DbState>(),
+    ) else {
         return;
     };
-    let db = app.state::<DbState>();
     let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
     if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
         state.teams_dir(),
