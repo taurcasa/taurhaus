@@ -196,7 +196,12 @@ function codexWrapper(o) {
   const runner = base + '.run.sh'
   const prompt = base + '.prompt.md'
   const pidFile = base + '.pid'
+  const leaseFile = base + '.lease'
   const deadline = o.timeout + 300
+  // The ownership lease: how long the runner keeps going without a heartbeat from the wrapper, and how
+  // often its watchdog looks. Both are overridable so a test can prove the mechanism in seconds.
+  const LEASE_TTL = 300
+  const LEASE_POLL = 15
   const exec =
     'timeout ' +
     o.timeout +
@@ -209,16 +214,45 @@ function codexWrapper(o) {
     sh(out) +
     ' - < ' +
     sh(prompt)
-  // One runner shape for the first turn and for every resume: record the pid, then run one command.
+  // One runner shape for the first turn and for every resume: record the pid, take the ownership
+  // lease, then run one command. The watchdog is what makes the ownership executable — an instruction
+  // to the wrapper cannot run once the wrapper is gone, and an aborted lane used to leave this group
+  // writing to the checkout until its own timeout expired.
   function runnerBody(command) {
     return [
       '#!/usr/bin/env bash',
       'set -u',
       'PIDFILE=' + sh(pidFile),
       'LOG=' + sh(logFile),
+      'LEASE=' + sh(leaseFile),
       '# setsid makes this shell the process-group leader, so $$ is the pgid that kills the whole run.',
+      'PGID=$$',
       'echo $$ > "$PIDFILE"',
-      'trap \'rm -f "$PIDFILE"\' EXIT INT TERM',
+      ': > "$LEASE"',
+      'trap \'rm -f "$PIDFILE"\' EXIT',
+      '# A TERM aimed at this shell alone still takes the group down with it.',
+      'trap \'trap "" INT TERM; rm -f "$PIDFILE"; kill -TERM -"$PGID" 2>/dev/null; exit 143\' INT TERM',
+      '# Ownership lease: the wrapper touches "$LEASE" while it polls. If it stops - the lane was',
+      '# aborted, the session died - nobody is left to kill this run, so the watchdog kills the group.',
+      'LEASE_TTL="${TAURHAUS_WORKFLOW_LEASE_TTL:-' + LEASE_TTL + '}"',
+      'LEASE_POLL="${TAURHAUS_WORKFLOW_LEASE_POLL:-' + LEASE_POLL + '}"',
+      '(',
+      '  trap "" TERM',
+      '  while [ -f "$PIDFILE" ]; do',
+      '    sleep "$LEASE_POLL"',
+      '    if [ -e "$LEASE" ]; then',
+      '      NOW=$(date +%s 2>/dev/null) || continue',
+      '      MTIME=$(stat -c %Y "$LEASE" 2>/dev/null || stat -f %m "$LEASE" 2>/dev/null) || continue',
+      '      [ -n "$MTIME" ] || continue',
+      '      [ "$((NOW - MTIME))" -lt "$LEASE_TTL" ] && continue',
+      '    fi',
+      '    echo "EXIT=98 ownership lease expired after ${LEASE_TTL}s (nothing refreshed $LEASE)" >> "$LOG"',
+      '    kill -TERM -"$PGID" 2>/dev/null',
+      '    sleep 5',
+      '    kill -KILL -"$PGID" 2>/dev/null',
+      '    exit 0',
+      '  done',
+      ') &',
       'cd ' + sh(ROOT) + ' || { echo "EXIT=97" >> "$LOG"; exit 97; }',
       command + ' >> "$LOG" 2>&1',
       'echo "EXIT=$?" >> "$LOG"',
@@ -229,6 +263,8 @@ function codexWrapper(o) {
     sh(pidFile) +
     ' 2>/dev/null); if [ -n "$PGID" ]; then kill -TERM -"$PGID" 2>/dev/null; sleep 5; kill -KILL -"$PGID" 2>/dev/null; fi; rm -f ' +
     sh(pidFile) +
+    ' ' +
+    sh(leaseFile) +
     '`'
   const resumeCmd =
     'timeout ' +
@@ -250,7 +286,7 @@ function codexWrapper(o) {
       (o.schema ? ', this JSON Schema verbatim to ' + sh(base + '.schema.json') + ':\n' + JSON.stringify(o.schema) + '\n' : ', ') +
       'and this runner verbatim to ' +
       sh(runner) +
-      ' — copy it byte for byte, the quoting is what makes a path with a space or an apostrophe work and the PIDFILE lines are what let you kill the run:\n' +
+      ' — copy it byte for byte, the quoting is what makes a path with a space or an apostrophe work, the PIDFILE lines are what let you kill the run, and the LEASE watchdog is what kills it when you cannot:\n' +
       runnerBody(exec),
     '2) Launch it DETACHED, in its own process group: `rm -f ' +
       sh(out) +
@@ -258,16 +294,24 @@ function codexWrapper(o) {
       sh(logFile) +
       ' ' +
       sh(pidFile) +
+      ' ' +
+      sh(leaseFile) +
       '; chmod +x ' +
       sh(runner) +
       '; setsid nohup bash ' +
       sh(runner) +
       ' >/dev/null 2>&1 < /dev/null & disown` — the runner writes its own pid to ' +
       sh(pidFile) +
-      ', and because it was started with setsid that pid is the process-group id of everything it launches. You own that group until this lane returns.',
+      ', and because it was started with setsid that pid is the process-group id of everything it launches. You own that group until this lane returns, and the runner holds you to it: if ' +
+      sh(leaseFile) +
+      ' goes unrefreshed for ' +
+      LEASE_TTL +
+      ' seconds it kills its own group, so an abandoned lane cannot leave Codex writing to the checkout.',
     '3) Poll in Bash calls of at most 9 minutes each: `until grep -q "^EXIT=" ' +
       sh(logFile) +
-      '; do sleep 20; done` — repeat the call until the marker appears; wait rather than abandoning a run that is still going. Bound the total wait at ' +
+      '; do touch ' +
+      sh(leaseFile) +
+      '; sleep 20; done` — the `touch` is your heartbeat on the lease from step 2: keep it in every wait loop and refresh it at least once a minute, or the runner will take itself down mid-run. Repeat the call until the marker appears; wait rather than abandoning a run that is still going. Bound the total wait at ' +
       deadline +
       ' seconds (the deadline): if the marker has not appeared by then, ' +
       killRun +
@@ -280,7 +324,7 @@ function codexWrapper(o) {
       sh(logFile) +
       '`).' +
       (o.resume
-        ? ' If Codex left uncommitted work or an unfinished implementation (a run killed by the timeout counts), run up to THREE follow-up turns. Each turn is a fresh runner written exactly like the one above — the same PIDFILE, trap and `cd` lines — with this command in place of the exec, launched and polled the same way: `' +
+        ? ' If Codex left uncommitted work or an unfinished implementation (a run killed by the timeout counts), run up to THREE follow-up turns. Each turn is a fresh runner written exactly like the one above — the same PIDFILE, LEASE, watchdog, trap and `cd` lines — with this command in place of the exec, launched and polled (heartbeat included) the same way: `' +
           resumeCmd +
           '`. Substitute the session id you read in this step; use `--last` instead ONLY if the log names no id, and say so under deviations — `--last` resumes the newest session on the machine, which may be another run in this checkout rather than yours. `codex exec resume` does not accept -C, so the runner\'s `cd` into the checkout is what places it. Before each new turn, make sure the previous one is gone (' +
           killRun +

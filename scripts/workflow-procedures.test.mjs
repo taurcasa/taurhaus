@@ -4,7 +4,9 @@
 // the Codex launcher's quoting and flags) is exercised without spawning a single agent.
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseBody } from './check-workflow-scripts.mjs'
 
@@ -211,6 +213,131 @@ describe('workflow procedures — the Codex lane', () => {
     expect(review.prompt).toMatch(/status='unavailable'|status: 'unavailable'|status=unavailable/)
     expect(review.prompt).not.toMatch(/verdict 'approve'|return verdict "approve"/)
   })
+})
+
+describe('workflow procedures — the ownership lease', () => {
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return error.code === 'EPERM'
+    }
+  }
+  const until = async (predicate, timeoutMs, message) => {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+      if (predicate()) return
+      if (Date.now() > deadline) throw new Error(message)
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  }
+  const unquote = (value) => value.replace(/^'|'$/g, '').replace(/'\\''/g, "'")
+
+  // Stages the runner the wrapper is told to write — verbatim, from the prompt the script generates —
+  // with the codex line swapped for a dummy that spawns a descendant, so a test proves the whole
+  // process GROUP dies rather than one shell. The paths carry a space and an apostrophe, like the WSL
+  // checkouts this quoting exists for.
+  const stage = async (dummy) => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wf lease '))
+    const worktree = path.join(home, "Jane's checkout")
+    const scratch = path.join(home, 'scratch dir')
+    fs.mkdirSync(worktree)
+    fs.mkdirSync(scratch)
+    const { calls } = await run('feature-pr.js', { ...BASE_ARGS, worktree, scratch, implementer: 'codex' })
+    const prompt = calls[0].prompt
+    const start = prompt.indexOf('#!/usr/bin/env bash')
+    const endMarker = 'echo "EXIT=$?" >> "$LOG"'
+    expect(start, 'the wrapper prompt carries a runner script').toBeGreaterThan(-1)
+    const source = prompt.slice(start, prompt.indexOf(endMarker, start) + endMarker.length)
+    const dummyPath = path.join(scratch, 'child.sh')
+    fs.writeFileSync(dummyPath, dummy)
+    const runnerSource = source.replace(/^timeout .*$/m, `bash '${dummyPath}' >> "$LOG" 2>&1`)
+    expect(runnerSource, 'the codex invocation is replaced by the dummy').not.toContain('codex exec')
+    const runner = path.join(scratch, 'lease-runner.sh')
+    fs.writeFileSync(runner, runnerSource + '\n', { mode: 0o755 })
+    const grab = (key) => unquote(new RegExp('^' + key + '=(.*)$', 'm').exec(runnerSource)[1])
+    const logFile = grab('LOG')
+    return {
+      home,
+      pidFile: grab('PIDFILE'),
+      leaseFile: grab('LEASE'),
+      readLog: () => (fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : ''),
+      // Launched exactly as the wrapper is told to launch it.
+      launch: () => {
+        const launcher = spawn('setsid', ['nohup', 'bash', runner], {
+          detached: true,
+          stdio: 'ignore',
+          env: { ...process.env, TAURHAUS_WORKFLOW_LEASE_TTL: '2', TAURHAUS_WORKFLOW_LEASE_POLL: '1' },
+        })
+        launcher.unref()
+      },
+    }
+  }
+  const cleanup = (staged, pids) => {
+    for (const pid of pids) {
+      if (pid > 0) {
+        try {
+          process.kill(-pid, 'SIGKILL')
+        } catch {
+          /* already gone */
+        }
+      }
+    }
+    fs.rmSync(staged.home, { recursive: true, force: true })
+  }
+
+  // Regression: cleanup lived only in natural-language instructions for the wrapper agent ("kill the
+  // group before you return"). A lane aborted after the launch never ran them, so the detached setsid
+  // group kept mutating the checkout until its own 1700-3300s timeout, and the runner's trap only
+  // removed the pidfile. The runner now holds an ownership lease the wrapper refreshes while it
+  // polls, and kills its own process group when it goes stale — cleanup that does not need its owner.
+  it('kills the whole detached group when its owner stops refreshing the lease', async () => {
+    const staged = await stage('#!/usr/bin/env bash\nsleep 300 &\necho "CHILD=$!"\nwait\n')
+    let pgid = 0
+    let childPid = 0
+    try {
+      staged.launch()
+      await until(() => fs.existsSync(staged.pidFile) && /CHILD=\d+/.test(staged.readLog()), 20000, 'the dummy run never started')
+      pgid = Number(fs.readFileSync(staged.pidFile, 'utf8').trim())
+      childPid = Number(/CHILD=(\d+)/.exec(staged.readLog())[1])
+      expect(alive(pgid), 'the runner is up').toBe(true)
+      expect(alive(childPid), 'its descendant is up').toBe(true)
+
+      // The owner is gone: from here nothing refreshes the lease.
+      await until(() => !alive(pgid) && !alive(childPid), 30000, 'the abandoned run outlived its owner: nothing killed the process group')
+      expect(staged.readLog(), 'the lease watchdog is what ended it').toMatch(/EXIT=98/)
+    } finally {
+      cleanup(staged, [pgid, childPid])
+    }
+  }, 90000)
+
+  it('leaves a run alone while its owner keeps the lease fresh', async () => {
+    const staged = await stage('#!/usr/bin/env bash\nsleep 6 &\necho "CHILD=$!"\nwait\n')
+    let pgid = 0
+    try {
+      staged.launch()
+      await until(() => fs.existsSync(staged.pidFile) && /CHILD=\d+/.test(staged.readLog()), 20000, 'the dummy run never started')
+      pgid = Number(fs.readFileSync(staged.pidFile, 'utf8').trim())
+      // The wrapper's poll loop: `until grep -q "^EXIT=" LOG; do touch LEASE; sleep 20; done`.
+      const heartbeat = setInterval(() => {
+        try {
+          fs.utimesSync(staged.leaseFile, new Date(), new Date())
+        } catch {
+          /* the run ended */
+        }
+      }, 300)
+      try {
+        await until(() => /^EXIT=/m.test(staged.readLog()), 30000, 'the dummy run never finished')
+      } finally {
+        clearInterval(heartbeat)
+      }
+      expect(staged.readLog(), 'a lease that stays fresh never trips the watchdog').not.toMatch(/EXIT=98/)
+      expect(staged.readLog(), 'the run reached its own exit').toMatch(/EXIT=0/)
+    } finally {
+      cleanup(staged, [pgid])
+    }
+  }, 90000)
 })
 
 describe('workflow procedures — fail closed', () => {

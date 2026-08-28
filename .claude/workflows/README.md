@@ -119,6 +119,14 @@ a completed ledger with no findings reads as an approval:
   in `worktree` is normalized first. `-m` carries `codexModel` and `-c model_reasoning_effort` carries
   `effort`, on the resumed turns too. The implementer lane may take up to three `codex exec resume`
   turns — `resume` does not accept `-C`, so the runner's `cd` is what places it.
+- **An abandoned run kills itself.** Every give-up path above is an instruction, and an instruction
+  cannot run once the lane that owned it is gone — an abort after the launch used to leave the group
+  writing to the checkout until its own 1700-3300s timeout. So the runner holds an ownership lease:
+  it creates `<scratch>/codex-<tag>.lease`, the wrapper `touch`es it in every poll loop, and a
+  watchdog inside the runner kills its own process group (TERM, then KILL) when the lease goes
+  unrefreshed for 300 seconds. `TAURHAUS_WORKFLOW_LEASE_TTL` and `_POLL` override the timings, which
+  is how the regression test proves a real dummy group dies in seconds. The runner's own TERM trap
+  takes the group down with it too.
 - **The wrapper owns what it launches.** The runner is started with `setsid`, so it leads its own
   process group, and its first act is to write that pid to `<scratch>/codex-<tag>.pid`. Every
   give-up path — the poll deadline, the one retry, and the return itself — kills the group
