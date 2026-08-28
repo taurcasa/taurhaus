@@ -10,6 +10,7 @@
  */
 
 import { toolDescriptor } from './toolRegistry.js'
+import { compactSelection } from './usageWindows.js'
 
 /** Menus only ask a question the host can answer more than one way. */
 const MIN_ACCOUNTS_FOR_SUBMENU = 2
@@ -98,21 +99,6 @@ function labelsFor(accounts) {
     const qualifier = identity && identity !== label ? identity : accountDirLabel(account)
     return qualifier && qualifier !== label ? `${label} (${qualifier})` : label
   })
-}
-
-function isSessionWindow(window) {
-  const key = String(window?.key ?? '')
-  const title = String(window?.title ?? '')
-  return key === 'session' || key === 'five_hour' || title.startsWith('Current session')
-}
-
-/** Flagged compact windows, else every non-session window, else the first two. */
-export function compactSelection(windows) {
-  const flagged = windows.filter((window) => window?.compact === true)
-  if (flagged.length) return flagged
-  const nonSession = windows.filter((window) => !isSessionWindow(window))
-  if (nonSession.length) return nonSession
-  return windows.slice(0, 2)
 }
 
 /**

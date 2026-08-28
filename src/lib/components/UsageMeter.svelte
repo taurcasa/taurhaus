@@ -1,4 +1,6 @@
 <script>
+  import { compactSelection } from '../usageWindows.js'
+
   let {
     tool,
     usage = null,
@@ -14,14 +16,6 @@
     }, TICK_MS)
     return () => clearInterval(timer)
   })
-
-  const SESSION_KEYS = new Set(['session', 'five_hour'])
-
-  function isSessionWindow(window) {
-    return (
-      SESSION_KEYS.has(window.key) || String(window.title ?? '').startsWith('Current session')
-    )
-  }
 
   function live(window) {
     if (!Number.isFinite(Number(window?.used_percentage))) return null
@@ -50,12 +44,7 @@
   // omitted when provider windows include longer-lived limits. The flag narrows
   // the list rather than gating it: a provider that flags nothing still has
   // headroom worth showing, and an empty chip reads as "no subscription".
-  const compactWindows = $derived.by(() => {
-    const flagged = windows.filter((window) => window.compact === true)
-    if (flagged.length) return flagged
-    const nonSession = windows.filter((window) => !isSessionWindow(window))
-    return nonSession.length ? nonSession : windows.slice(0, 2)
-  })
+  const compactWindows = $derived(compactSelection(windows))
   const shown = $derived(compact ? compactWindows : windows)
   const observedAt = $derived(usage?.observed_at ? Date.parse(usage.observed_at) : Number.NaN)
   const ageMs = $derived(Number.isFinite(observedAt) ? Math.max(0, now - observedAt) : Number.NaN)
