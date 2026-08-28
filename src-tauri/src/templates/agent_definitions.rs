@@ -6,6 +6,7 @@
 //! into a member's onboarding, so an agent definition and a mesh member read
 //! the same role.
 
+use std::collections::BTreeSet;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -62,6 +63,9 @@ pub fn render_agent_definition(role: &RoleTemplate) -> String {
 pub struct AgentDefinitionExport {
     /// Role ids whose definition file was written.
     pub written: Vec<String>,
+    /// Role ids whose generated definition was deleted because the catalog no
+    /// longer exports that role to Claude Code.
+    pub removed: Vec<String>,
     pub skipped: Vec<SkippedAgentDefinition>,
 }
 
@@ -90,12 +94,17 @@ pub fn agents_dir(project_dir: &Path) -> PathBuf {
     project_dir.join(".claude").join("agents")
 }
 
-/// Write one agent definition per role the harness registry says reads them.
+/// Write one agent definition per role the harness registry says reads them,
+/// and reconcile the directory with the catalog.
 ///
-/// Only a generated file is ever replaced: a definition a person wrote by hand
-/// is reported as skipped and left exactly as it is. The project root has to
-/// exist already — an export never brings a directory tree into being, so a
-/// mistyped or wrongly-resolved path is refused instead of silently populated.
+/// Only a generated file is ever replaced or deleted: a definition a person
+/// wrote by hand is reported as skipped and left exactly as it is. A generated
+/// file whose role left the catalog — renamed, deleted, or moved to a harness
+/// that does not read agent definitions — is removed, because Claude Code and
+/// a workflow's `agentType` would otherwise keep resolving instructions nobody
+/// can edit any more. The project root has to exist already — an export never
+/// brings a directory tree into being, so a mistyped or wrongly-resolved path
+/// is refused instead of silently populated.
 pub fn export_agent_definitions(
     roles: &[RoleTemplate],
     project_dir: &Path,
@@ -109,6 +118,10 @@ pub fn export_agent_definitions(
 
     let dir = agents_dir(project_dir);
     let mut export = AgentDefinitionExport::default();
+    // Every name the catalog still claims, whether this run wrote it or left a
+    // hand-written file at it. Anything else in the directory is either
+    // someone's own agent or a leftover of ours.
+    let mut claimed = BTreeSet::new();
 
     for role in roles
         .iter()
@@ -122,7 +135,8 @@ pub fn export_agent_definitions(
             }
         };
 
-        let target = dir.join(file_name);
+        let target = dir.join(&file_name);
+        claimed.insert(file_name);
         match std::fs::read_to_string(&target) {
             Ok(existing) if !existing.contains(GENERATED_MARKER) => {
                 export.skip(role, AgentDefinitionSkipReason::UserAuthored);
@@ -147,7 +161,54 @@ pub fn export_agent_definitions(
         export.written.push(role.role_id.clone());
     }
 
+    export.removed = remove_obsolete_definitions(&dir, &claimed)?;
+
     Ok(export)
+}
+
+/// Delete the definitions this exporter generated for roles the catalog no
+/// longer claims, and report their role ids. A file without the generated
+/// marker is someone's own agent and is never touched, and neither is anything
+/// that is not a `.md` file directly in the agents directory.
+fn remove_obsolete_definitions(
+    dir: &Path,
+    claimed: &BTreeSet<String>,
+) -> Result<Vec<String>, TemplateStoreError> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(TemplateStoreError::Io(error)),
+    };
+
+    let mut removed = Vec::new();
+    for entry in entries {
+        let entry = entry?;
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if claimed.contains(&file_name) {
+            continue;
+        }
+        let Some(role_id) = file_name.strip_suffix(".md") else {
+            continue;
+        };
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        match std::fs::read_to_string(entry.path()) {
+            Ok(existing) if existing.contains(GENERATED_MARKER) => {}
+            // Not ours: hand-written, or not even text we could have produced.
+            Ok(_) => continue,
+            Err(error) if error.kind() == ErrorKind::InvalidData => continue,
+            // A concurrent delete already did the work.
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => return Err(TemplateStoreError::Io(error)),
+        }
+
+        std::fs::remove_file(entry.path())?;
+        removed.push(role_id.to_string());
+    }
+
+    removed.sort();
+    Ok(removed)
 }
 
 impl AgentDefinitionExport {
@@ -196,6 +257,7 @@ fn trimmed(value: Option<&str>) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::cli_tool::CliTool;
     use pretty_assertions::assert_eq;
 
     fn role(yaml: &str) -> RoleTemplate {
@@ -454,6 +516,92 @@ mod tests {
                 template.role_id
             );
         }
+    }
+
+    #[test]
+    fn a_re_export_deletes_the_generated_file_of_a_role_that_left_the_catalog() {
+        // Regression: an export only wrote the roles it currently had, so the
+        // definition of a role that was renamed or deleted stayed on disk and
+        // Claude Code kept resolving an agent nobody could edit any more.
+        let project = tempfile::tempdir().expect("project dir");
+        let mut retired = claude_role();
+        retired.role_id = "retired-reviewer".to_string();
+
+        let first = export_agent_definitions(&[claude_role(), retired], project.path())
+            .expect("first export");
+        assert_eq!(
+            first.written,
+            vec![
+                "claude-reviewer".to_string(),
+                "retired-reviewer".to_string()
+            ]
+        );
+        assert!(first.removed.is_empty());
+
+        let dir = agents_dir(project.path());
+        std::fs::write(
+            dir.join("hand-written.md"),
+            "---\nname: mine\n---\n\nMy agent.\n",
+        )
+        .expect("user authored definition");
+
+        let second = export_agent_definitions(&[claude_role()], project.path()).expect("re-export");
+
+        assert_eq!(second.written, vec!["claude-reviewer".to_string()]);
+        assert_eq!(second.removed, vec!["retired-reviewer".to_string()]);
+        assert_eq!(
+            file_names(&dir),
+            vec![
+                "claude-reviewer.md".to_string(),
+                "hand-written.md".to_string()
+            ]
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("hand-written.md")).expect("untouched"),
+            "---\nname: mine\n---\n\nMy agent.\n"
+        );
+    }
+
+    #[test]
+    fn a_role_that_moved_to_another_harness_loses_its_generated_definition() {
+        // Only Claude Code reads agent definitions, so a role that moved to a
+        // different harness must stop being an agent as well.
+        let project = tempfile::tempdir().expect("project dir");
+        export_agent_definitions(&[claude_role()], project.path()).expect("first export");
+
+        let mut moved = claude_role();
+        moved.defaults.cli_tool = CliTool::Codex;
+        let result = export_agent_definitions(&[moved], project.path()).expect("re-export");
+
+        assert!(result.written.is_empty());
+        assert_eq!(result.removed, vec!["claude-reviewer".to_string()]);
+        assert!(!agents_dir(project.path())
+            .join("claude-reviewer.md")
+            .exists());
+    }
+
+    #[test]
+    fn an_export_that_writes_nothing_still_leaves_a_foreign_agents_directory_alone() {
+        // Nothing in `.claude/agents` is ours unless it carries the marker: an
+        // export with no Claude roles at all removes nothing.
+        let project = tempfile::tempdir().expect("project dir");
+        let dir = agents_dir(project.path());
+        std::fs::create_dir_all(dir.join("shared")).expect("agents directory");
+        std::fs::write(dir.join("mine.md"), "---\nname: mine\n---\n").expect("hand written");
+        std::fs::write(dir.join("notes.txt"), "not an agent").expect("stray file");
+
+        let result = export_agent_definitions(&[codex_role()], project.path()).expect("export");
+
+        assert!(result.written.is_empty());
+        assert!(result.removed.is_empty());
+        assert_eq!(
+            file_names(&dir),
+            vec![
+                "mine.md".to_string(),
+                "notes.txt".to_string(),
+                "shared".to_string()
+            ]
+        );
     }
 
     #[test]
