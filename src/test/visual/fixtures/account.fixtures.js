@@ -63,14 +63,15 @@ function resetFiveHour(reported) {
 /**
  * Grok selects a whole account through `GROK_HOME` and publishes no quota
  * endpoint, so its rows carry an identity and never a usage meter — the
- * registry's `usage_note` stands where a meter would be.
+ * registry's `usage_note` stands where a meter would be. No `plan` either:
+ * grok reports its tier over ACP, never in a file, so the provider always sets
+ * `plan: None` (`accounts/grok.rs:103-114`) and these rows must not invent one.
  */
 const GROK_PRIMARY = {
   id: 'grok-user-1',
   dir: '/home/user/.grok',
   label: 'm.stier@giesi.com',
   display_name: 'Matthias Stier',
-  plan: 'supergrok',
   logged_in: true,
   is_default: true,
 }
@@ -80,7 +81,6 @@ const GROK_SECOND = {
   dir: '/home/user/.grok-work',
   label: 'work@example.com',
   display_name: 'Work',
-  plan: 'supergrok',
   logged_in: true,
   is_default: false,
 }
