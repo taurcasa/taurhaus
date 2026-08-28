@@ -299,10 +299,12 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
 ///
 /// Exit strategies differ per tool:
 /// - Claude & Antigravity: `/exit` text command (typed + Enter)
+/// - Grok: `/quit` text command, confirmed by its registry row disappearing
 /// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
     let config = cli_tool::spec(tool);
     let presence_lock = stop_presence_lock(tmux_pane, config);
+    let registry_release = stop_registry_release(tmux_pane, config);
     match config.stop_strategy {
         cli_tool::StopStrategy::Interrupt => {
             // Codex exits on Ctrl+C, not a text command
@@ -329,7 +331,13 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
             elapsed += POLL_MS;
 
             match pane_current_command(&pane) {
-                Some(cmd) if stop_has_completed(Some(&cmd), presence_lock.as_deref()) => {
+                Some(cmd)
+                    if stop_has_completed(
+                        Some(&cmd),
+                        presence_lock.as_deref(),
+                        registry_release.as_ref(),
+                    ) =>
+                {
                     tracing::info!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: graceful exit confirmed, killing pane");
                     break;
                 }
@@ -373,13 +381,45 @@ fn stop_presence_lock(
     crate::session_scanner::idle::presence_lock_is_held(&path).then_some(path)
 }
 
+/// The grok home and pid whose registry row proves the session is still up.
+///
+/// grok removes the row on `/quit` and leaves it behind on a kill, so its
+/// disappearance is a positive clean-stop signal rather than an inference from
+/// what the pane is running.
+struct StopRegistryRelease {
+    home: std::path::PathBuf,
+    pid: u32,
+}
+
+fn stop_registry_release(
+    pane: &str,
+    config: &crate::session_scanner::cli_tool::CliToolSpec,
+) -> Option<StopRegistryRelease> {
+    if !config.stop_registry_release {
+        return None;
+    }
+    let pid = pane_process_id(pane)?;
+    let home = crate::platform::process_env_var(pid, "GROK_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(crate::provider::platform_paths::PlatformPaths::grok_dir);
+    crate::session_scanner::idle::grok_session_registry_holds_pid(&home, pid)
+        .then_some(StopRegistryRelease { home, pid })
+}
+
 fn stop_has_completed(
     current_command: Option<&str>,
     presence_lock: Option<&std::path::Path>,
+    registry_release: Option<&StopRegistryRelease>,
 ) -> bool {
     current_command.is_some_and(is_shell)
         || presence_lock
             .is_some_and(|path| !crate::session_scanner::idle::presence_lock_is_held(path))
+        || registry_release.is_some_and(|release| {
+            !crate::session_scanner::idle::grok_session_registry_holds_pid(
+                &release.home,
+                release.pid,
+            )
+        })
 }
 
 fn pane_process_id(pane: &str) -> Option<u32> {
@@ -673,9 +713,9 @@ mod tests {
         let path = tmp.path().join("conversation.lock");
         let lock = std::fs::File::create(&path).unwrap();
         lock.lock_exclusive().unwrap();
-        assert!(!stop_has_completed(Some("agy"), Some(&path)));
+        assert!(!stop_has_completed(Some("agy"), Some(&path), None));
         FileExt::unlock(&lock).unwrap();
-        assert!(stop_has_completed(Some("agy"), Some(&path)));
+        assert!(stop_has_completed(Some("agy"), Some(&path), None));
     }
 
     // -----------------------------------------------------------------------
@@ -729,6 +769,40 @@ mod tests {
     // -----------------------------------------------------------------------
     // Antigravity command tests
     // -----------------------------------------------------------------------
+
+    #[test]
+    fn grok_stop_completes_when_its_registry_row_is_released() {
+        // Regression: commit 16de5ec stopped every SlashExit harness on the
+        // tmux floor alone, so `/quit` was only ever confirmed by the pane
+        // returning to a shell — a pane still showing `grok` after a clean exit
+        // was killed on the timeout instead of recognised as finished.
+        let temp = tempfile::TempDir::new().unwrap();
+        let home = temp.path().to_path_buf();
+        std::fs::write(
+            home.join("active_sessions.json"),
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/home/user/projects/grok","opened_at":"2026-08-27T23:22:06.993848110Z"}]"#,
+        )
+        .unwrap();
+        let release = StopRegistryRelease {
+            home: home.clone(),
+            pid: 4242,
+        };
+
+        assert!(!stop_has_completed(Some("grok"), None, Some(&release)));
+
+        std::fs::write(home.join("active_sessions.json"), "[]").unwrap();
+        assert!(stop_has_completed(Some("grok"), None, Some(&release)));
+    }
+
+    #[test]
+    fn grok_declares_quit_as_its_exit_command() {
+        assert_eq!(
+            build_launch_command(CliTool::Grok, LaunchMode::Fresh),
+            "grok --always-approve"
+        );
+        assert_eq!(cli_tool::spec(CliTool::Grok).exit_command, "/quit");
+        assert!(cli_tool::spec(CliTool::Grok).stop_registry_release);
+    }
 
     #[test]
     fn build_agy_fresh_command() {

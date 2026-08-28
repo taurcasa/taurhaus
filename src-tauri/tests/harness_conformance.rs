@@ -298,7 +298,6 @@ fn grok_stays_on_the_declared_floor_until_its_slices_land() {
     // fourth could only arrive by branching outside the capability slices. Its
     // registry entry must be honest about which slices it has not landed yet.
     let grok = spec(CliTool::Grok);
-    assert!(grok.session_source().is_floor());
     assert!(grok.transcript_parser().is_none());
     assert!(grok.account_provider().is_none());
     assert!(grok.usage_provider().is_none());
@@ -758,6 +757,82 @@ fn undeclared_activity_source_never_claims_authority() {
     // Regression: commit 4e9e2c5 used no session id here, so the test returned
     // before exercising the opt-in hooks gate it claimed to protect.
     assert!(AgyHooksActivitySource::authoritative_state_at(&heuristic, &sink, &root).is_none());
+}
+
+#[test]
+fn grok_identity_and_activity_answer_from_its_own_files() {
+    // Regression: commit 16de5ec registered grok on the session-source floor,
+    // so its live registry and turn lifecycle had no declared slice at all.
+    let home = tempfile::tempdir().expect("grok conformance home");
+    let project = std::env::current_dir().expect("conformance cwd");
+    let project_path = project.to_string_lossy().into_owned();
+    let session_id = "01a04585-2d53-7123-8000-9a0f4d0b21ce";
+    let pid = std::process::id();
+    fs::write(
+        home.path().join("active_sessions.json"),
+        serde_json::json!([{
+            "session_id": session_id,
+            "pid": pid,
+            "cwd": project_path,
+            "opened_at": "2026-08-27T23:22:06.993848110Z",
+        }])
+        .to_string(),
+    )
+    .expect("grok session registry fixture");
+    let session_dir = home
+        .path()
+        .join("sessions")
+        .join("%2Fconformance")
+        .join(session_id);
+    fs::create_dir_all(&session_dir).expect("grok session dir fixture");
+    fs::write(
+        session_dir.join("summary.json"),
+        serde_json::json!({ "info": { "id": session_id, "cwd": project_path } }).to_string(),
+    )
+    .expect("grok summary fixture");
+    fs::write(
+        session_dir.join("events.jsonl"),
+        "{\"ts\":\"1\",\"type\":\"turn_started\",\"turn_number\":0}\n",
+    )
+    .expect("grok events fixture");
+
+    let resolved = taurhaus_lib::session_scanner::idle::GrokResolver::resolve_at(
+        home.path(),
+        &project_path,
+        pid,
+    );
+    assert_eq!(resolved.session_id.as_deref(), Some(session_id));
+    assert_eq!(
+        resolved.jsonl_path.as_deref(),
+        session_dir.join("events.jsonl").to_str()
+    );
+    assert!(!resolved.authoritative);
+
+    let busy =
+        taurhaus_lib::session_scanner::idle::GrokEventsActivitySource::authoritative_state_at(
+            &resolved,
+        )
+        .expect("grok activity source answers from events.jsonl");
+    assert_eq!(busy.state, SessionState::Active);
+    assert_eq!(busy.source, "grok_events");
+
+    fs::write(
+        session_dir.join("events.jsonl"),
+        "{\"ts\":\"1\",\"type\":\"turn_started\",\"turn_number\":0}\n{\"ts\":\"2\",\"type\":\"turn_ended\",\"outcome\":\"completed\"}\n",
+    )
+    .expect("grok settled events fixture");
+    assert_eq!(
+        taurhaus_lib::session_scanner::idle::GrokEventsActivitySource::authoritative_state_at(
+            &resolved
+        )
+        .expect("settled turn")
+        .state,
+        SessionState::Idle
+    );
+
+    // The registry row is grok's own clean-stop proof.
+    assert_eq!(spec(CliTool::Grok).stop_strategy, StopStrategy::SlashExit);
+    assert!(spec(CliTool::Grok).stop_registry_release);
 }
 
 #[test]

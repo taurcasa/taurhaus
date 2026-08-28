@@ -4,6 +4,8 @@
 //! - **Claude Code**: `~/.claude/projects/<slug>/<session-id>.jsonl`
 //! - **Codex CLI**: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
 //! - **Antigravity CLI**: cwd index + flock-held `presence/<conversation>.lock`
+//! - **Grok CLI**: live `active_sessions.json` registry + per-session
+//!   `events.jsonl` turn lifecycle
 //!
 //! The `SessionResolver` trait abstracts per-tool file resolution and
 //! activity detection. The `detect_idle()` entry point dispatches to
@@ -24,6 +26,7 @@ mod agy;
 mod claude;
 mod claude_registry;
 mod codex;
+mod grok;
 
 pub(crate) use agy::presence_lock_is_held;
 #[cfg(test)]
@@ -40,6 +43,9 @@ pub use claude_registry::{
 pub(crate) use claude_registry::{ClaudeRegistryActivitySource, ClaudeRegistrySessionSource};
 pub use codex::CodexResolver;
 pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
+pub(crate) use grok::session_registry_holds_pid as grok_session_registry_holds_pid;
+pub use grok::GrokEventsActivitySource;
+pub use grok::GrokResolver;
 
 /// Threshold: if any session file mtime is less than this, session is Active.
 /// Used for Claude where proc-level signals supplement the mtime.
@@ -406,6 +412,7 @@ mod tests {
         let _ = resolver_for(CliTool::Claude);
         let _ = resolver_for(CliTool::Codex);
         let _ = resolver_for(CliTool::Agy);
+        let _ = resolver_for(CliTool::Grok);
     }
 
     // Run with: cargo test -- --ignored session_scanner::idle::tests::live_

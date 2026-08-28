@@ -462,9 +462,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 display_name_flag: None,
                 team_flags: false,
                 native_inbox_poller: false,
-                session_source: false,
+                session_source: true,
                 runtime_session_capture: false,
-                authoritative_idle: false,
+                authoritative_idle: true,
                 compaction_hook: false,
                 // grok reads `~/.claude/settings.json` hooks by default, so one
                 // compaction can reach the bridge through two registrations.
@@ -484,7 +484,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
-            stop_registry_release: false,
+            stop_registry_release: true,
             onboarding_exit_hint: true,
             onboarding_delivery_hint: Some(
                 "Plain Enter queues a message until the running turn ends; Ctrl+Enter interjects immediately.",
@@ -840,6 +840,8 @@ impl CliToolSpec {
             crate::session_scanner::idle::CodexSessionSource;
         static AGY: std::sync::OnceLock<crate::session_scanner::idle::AgyResolver> =
             std::sync::OnceLock::new();
+        static GROK: std::sync::OnceLock<crate::session_scanner::idle::GrokResolver> =
+            std::sync::OnceLock::new();
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
 
@@ -851,7 +853,7 @@ impl CliToolSpec {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
             CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
-            CliTool::Grok => &NONE,
+            CliTool::Grok => GROK.get_or_init(crate::session_scanner::idle::GrokResolver::new),
             CliTool::Unknown => &NONE,
         }
     }
@@ -863,6 +865,8 @@ impl CliToolSpec {
             crate::session_scanner::idle::CodexNotifyActivitySource;
         static AGY: crate::session_scanner::idle::AgyHooksActivitySource =
             crate::session_scanner::idle::AgyHooksActivitySource;
+        static GROK: crate::session_scanner::idle::GrokEventsActivitySource =
+            crate::session_scanner::idle::GrokEventsActivitySource;
         static NONE: crate::session_scanner::idle::NoActivitySource =
             crate::session_scanner::idle::NoActivitySource;
 
@@ -870,7 +874,7 @@ impl CliToolSpec {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
             CliTool::Agy => &AGY,
-            CliTool::Grok => &NONE,
+            CliTool::Grok => &GROK,
             CliTool::Unknown => &NONE,
         }
     }
@@ -934,6 +938,7 @@ impl CliToolSpec {
         static CLAUDE: OnceLock<crate::session_scanner::idle::ClaudeResolver> = OnceLock::new();
         static CODEX: OnceLock<crate::session_scanner::idle::CodexResolver> = OnceLock::new();
         static AGY: OnceLock<crate::session_scanner::idle::AgyResolver> = OnceLock::new();
+        static GROK: OnceLock<crate::session_scanner::idle::GrokResolver> = OnceLock::new();
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
 
@@ -943,7 +948,7 @@ impl CliToolSpec {
             }
             CliTool::Codex => CODEX.get_or_init(crate::session_scanner::idle::CodexResolver::new),
             CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
-            CliTool::Grok => &NONE,
+            CliTool::Grok => GROK.get_or_init(crate::session_scanner::idle::GrokResolver::new),
             CliTool::Unknown => &NONE,
         }
     }
