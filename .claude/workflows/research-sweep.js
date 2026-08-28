@@ -122,7 +122,7 @@ function gateProblem(gate) {
   const failed = ran.filter((c) => c.status !== 'pass')
   if (failed.length > 0) return 'gate commands did not pass: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
   const reported = Array.isArray(gate.failures) ? gate.failures.filter(Boolean) : []
-  if (reported.length > 0) return 'the gate reported failures under a passing status: ' + reported.join('; ')
+  if (reported.length > 0) return 'the gate reported failures while every command it listed passed: ' + reported.join('; ')
   if (gate.status !== 'pass') return 'the gate reported status ' + JSON.stringify(gate.status)
   return ''
 }
