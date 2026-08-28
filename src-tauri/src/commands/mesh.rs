@@ -540,23 +540,48 @@ where
 
     std::fs::create_dir_all(target_dir)
         .map_err(|e| format!("Failed to create ~/.local/bin: {e}"))?;
+
+    let mut staged = StagedMeshCopy::arm(&temp_path);
     std::fs::copy(bundled_binary, &temp_path).map_err(|e| format!("Failed to copy mesh: {e}"))?;
-
-    let installed_contract = match prepare_and_verify_mesh_copy(&temp_path, bundled_contract) {
-        Ok(contract) => contract,
-        Err(error) => {
-            let _ = std::fs::remove_file(&temp_path);
-            return Err(error);
-        }
-    };
-
+    let installed_contract = prepare_and_verify_mesh_copy(&temp_path, bundled_contract)?;
     std::fs::rename(&temp_path, &target_path)
         .map_err(|e| format!("Failed to install mesh binary: {e}"))?;
+    staged.disarm();
 
     let self_heal_summary = run_self_heal()?;
     Ok(OperationResult::success(
         format_mesh_install_success_message(&installed_contract.version, self_heal_summary),
     ))
+}
+
+/// Removes the staged `.mesh.new` copy unless the install reached the rename.
+///
+/// Every step between the copy and the swap can fail, and a half-written or
+/// verified-but-unswapped copy must never be left sitting next to the live binary
+/// where the next run — or a curious operator — could mistake it for an install.
+struct StagedMeshCopy {
+    path: Option<PathBuf>,
+}
+
+impl StagedMeshCopy {
+    fn arm(path: &Path) -> Self {
+        Self {
+            path: Some(path.to_path_buf()),
+        }
+    }
+
+    /// The staged copy has become the installed binary; there is nothing to remove.
+    fn disarm(&mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for StagedMeshCopy {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
 
 /// Reject a bundled mesh that cannot possibly be a working binary before the
@@ -1501,5 +1526,92 @@ exit 0
             "the working installed binary must be left byte-identical"
         );
         assert_eq!(leftover_temp_copies(&bin_dir), 0);
+    }
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident, review
+    // follow-up. Only `prepare_and_verify_mesh_copy` failures removed the staged
+    // `.mesh.new`: a failing `fs::copy` left whatever sat at that path behind,
+    // right next to the live binary and named like a half-finished install.
+    #[test]
+    fn install_mesh_native_removes_the_staged_copy_when_the_copy_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let target_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&target_dir).expect("bin dir");
+        let target_path = target_dir.join("mesh");
+        write_executable(&target_path, &mesh_version_script("9.9.9"));
+        let before = std::fs::read(&target_path).expect("read installed mesh");
+        std::fs::write(target_dir.join(".mesh.new"), b"stale staged copy")
+            .expect("staged copy from an earlier crashed install");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, &mesh_version_script("9.9.9"));
+        std::fs::set_permissions(&source_mesh, std::fs::Permissions::from_mode(0o000))
+            .expect("make the bundled source unreadable");
+        if std::fs::File::open(&source_mesh).is_ok() {
+            eprintln!(
+                "skipping install_mesh_native_removes_the_staged_copy_when_the_copy_fails: \
+                 this process can read a 0o000 file"
+            );
+            return;
+        }
+
+        let err =
+            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
+                panic!("self-heal must not run when the install is rejected")
+            })
+            .expect_err("an unreadable bundled mesh must be rejected");
+
+        assert!(
+            err.contains("Failed to copy mesh"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            std::fs::read(&target_path).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert_eq!(
+            leftover_temp_copies(&target_dir),
+            0,
+            "a failed install must not leave a staged copy behind"
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident, review
+    // follow-up. A rename that cannot replace the target returned the error with the
+    // verified copy still staged as an executable `.mesh.new`.
+    #[test]
+    fn install_mesh_native_removes_the_staged_copy_when_the_swap_fails() {
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let target_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&target_dir).expect("bin dir");
+        // A directory at the install path fails the rename *after* the copy has been
+        // staged and verified, which is the only step left that can still fail.
+        let target_path = target_dir.join("mesh");
+        std::fs::create_dir(&target_path).expect("directory at the install path");
+        std::fs::write(target_path.join("occupant"), b"x").expect("occupant");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, &mesh_version_script("9.9.9"));
+
+        let err =
+            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
+                panic!("self-heal must not run when the swap fails")
+            })
+            .expect_err("a swap onto a directory must fail");
+
+        assert!(
+            err.contains("Failed to install mesh binary"),
+            "unexpected error: {err}"
+        );
+        assert!(target_path.is_dir(), "the install path must be untouched");
+        assert_eq!(
+            leftover_temp_copies(&target_dir),
+            0,
+            "a failed swap must not leave a staged copy behind"
+        );
     }
 }
