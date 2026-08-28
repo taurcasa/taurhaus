@@ -148,13 +148,20 @@ else
     echo "Codex CLI installed"
 fi
 
-# Gemini CLI
-if command -v gemini &>/dev/null; then
-    echo "Gemini CLI already installed"
+# Antigravity CLI (the Google harness; the Gemini CLI was retired because
+# Google refuses that client for individual Code Assist accounts)
+if command -v agy &>/dev/null; then
+    echo "Antigravity CLI already installed"
 else
-    echo "Installing Gemini CLI..."
-    npm install -g @google/gemini-cli
-    echo "Gemini CLI installed"
+    echo "Antigravity CLI not found — install it from Google's Antigravity"
+    echo "distribution and re-run; there is no npm package for it."
+fi
+
+# Grok CLI
+if command -v grok &>/dev/null; then
+    echo "Grok CLI already installed"
+else
+    echo "Grok CLI not found — install it from xAI's distribution and re-run."
 fi
 echo ""
 
@@ -207,7 +214,8 @@ echo "  npm:     $(npm --version)"
 echo "  tmux:    $(tmux -V)"
 echo "  claude:  $(claude --version 2>/dev/null || echo 'installed')"
 echo "  codex:   $(codex --version 2>/dev/null || echo 'installed')"
-echo "  gemini:  $(gemini --version 2>/dev/null || echo 'installed')"
+echo "  agy:     $(agy --version 2>/dev/null || echo 'not installed')"
+echo "  grok:    $(grok --version 2>/dev/null || echo 'not installed')"
 echo ""
 echo "=== MANUAL STEPS REQUIRED ==="
 echo ""
@@ -221,7 +229,9 @@ echo "   Export in this session only — never write to disk:"
 echo ""
 echo "   export ANTHROPIC_API_KEY=sk-ant-...  # console.anthropic.com"
 echo "   export OPENAI_API_KEY=sk-...         # platform.openai.com"
-echo "   export GEMINI_API_KEY=...            # aistudio.google.com"
+echo ""
+echo "   agy and grok sign in interactively instead (the Google flow and"
+echo "   'grok login'); XAI_API_KEY is grok's env alternative."
 echo ""
 echo "   Keys live in shell memory only. Revoke after testing."
 echo "   Do NOT add these to ~/.zshrc, ~/.zprofile, or any file."
@@ -237,11 +247,12 @@ echo "5. Test process detection (M15):"
 echo "   tmux new-session -s taurhaus"
 echo "   # Pane 1: cd ~/projects/taurhaus && claude"
 echo "   # Pane 2: cd ~/projects/taurhaus && codex"
-echo "   # Pane 3: cd ~/projects/taurhaus && gemini"
+echo "   # Pane 3: cd ~/projects/taurhaus && agy"
+echo "   # Pane 4: cd ~/projects/taurhaus && grok"
 echo "   # Then run the built app and verify detection"
 echo ""
 echo "6. Cleanup after testing:"
-echo "   # Revoke all 3 test API keys in their web consoles"
+echo "   # Revoke both test API keys in their web consoles"
 echo "   # Delete the Scaleway Mac mini when done"
 echo ""
 echo "Finished: $(date)"

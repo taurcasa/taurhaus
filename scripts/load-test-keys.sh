@@ -31,8 +31,14 @@ while IFS='=' read -r key value; do
             echo "OPENAI_API_KEY set (${#value} chars)"
             ;;
         google|gemini)
+            # Antigravity's enterprise/Vertex path only; the retired Gemini
+            # CLI is gone and agy normally signs in through the Google flow.
             export GEMINI_API_KEY="$value"
             echo "GEMINI_API_KEY set (${#value} chars)"
+            ;;
+        xai|grok)
+            export XAI_API_KEY="$value"
+            echo "XAI_API_KEY set (${#value} chars)"
             ;;
         *)
             echo "Unknown key: $key (skipped)"

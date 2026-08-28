@@ -39,14 +39,16 @@ else fail "T01 App bundle exists" "Not found: $APP_BUNDLE"; fi
 if command -v tmux >/dev/null 2>&1; then pass "T02 tmux on PATH ($(tmux -V))"
 else fail "T02 tmux on PATH" "tmux not found"; fi
 
-# T03: CLI tools installed
-for tool in claude codex gemini; do
+# T03: CLI tools installed — the four registered harnesses
+for tool in claude codex agy grok; do
   if command -v $tool >/dev/null 2>&1; then pass "T03.$tool $tool on PATH"
   else fail "T03.$tool $tool on PATH" "not found"; fi
 done
 
-# T04: API keys set
-for key in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY; do
+# T04: API keys set. Only the two harnesses whose smoke test drives an API
+# need a key here; agy signs in through the Google flow and grok through
+# `grok login` (XAI_API_KEY is its env alternative, not a requirement).
+for key in ANTHROPIC_API_KEY OPENAI_API_KEY; do
   if [ -n "${!key:-}" ]; then pass "T04.$key $key is set"
   else fail "T04.$key $key is set" "empty or unset"; fi
 done
@@ -113,10 +115,26 @@ CLAUDE_OUT=$(claude -p "respond with exactly: SMOKE_OK" --max-turns 1 2>&1 || tr
 if echo "$CLAUDE_OUT" | grep -q "SMOKE_OK"; then pass "T30 Claude Code API works"
 else fail "T30 Claude Code API" "$(echo "$CLAUDE_OUT" | head -3)"; fi
 
-# T31: Gemini CLI API
-GEMINI_OUT=$(gemini -p "respond with exactly: SMOKE_OK" 2>&1 || true)
-if echo "$GEMINI_OUT" | grep -q "SMOKE_OK"; then pass "T31 Gemini CLI API works"
-else fail "T31 Gemini CLI API" "$(echo "$GEMINI_OUT" | head -3)"; fi
+# T31: Antigravity CLI. `--print` is string-valued, and a headless run
+# without --dangerously-skip-permissions soft-denies tools and returns
+# nothing, so both flags are required for a meaningful answer.
+if command -v agy >/dev/null 2>&1; then
+  AGY_OUT=$(agy --dangerously-skip-permissions -p "respond with exactly: SMOKE_OK" 2>&1 || true)
+  if echo "$AGY_OUT" | grep -q "SMOKE_OK"; then pass "T31 Antigravity CLI works"
+  else fail "T31 Antigravity CLI" "$(echo "$AGY_OUT" | head -3)"; fi
+else
+  fail "T31 Antigravity CLI" "agy not on PATH"
+fi
+
+# T31b: Grok CLI. `-p` is grok's single-prompt (headless) source; its own
+# hook directory is always trusted, so no approval flag is needed to answer.
+if command -v grok >/dev/null 2>&1; then
+  GROK_OUT=$(grok -p "respond with exactly: SMOKE_OK" 2>&1 || true)
+  if echo "$GROK_OUT" | grep -q "SMOKE_OK"; then pass "T31b Grok CLI works"
+  else fail "T31b Grok CLI" "$(echo "$GROK_OUT" | head -3)"; fi
+else
+  fail "T31b Grok CLI" "grok not on PATH"
+fi
 
 # T32: Codex CLI API (needs to be in a git repo)
 # Note: macOS doesn't have GNU `timeout`. Codex also needs a trusted git repo.
