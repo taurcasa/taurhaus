@@ -341,7 +341,7 @@ def redact(text, secret):
 
 
 def post_with_retry(request, secret="", timeout=REQUEST_TIMEOUT_S):
-    """POST once, retry once on 5xx/429, and raise with the key redacted."""
+    """POST once, retry once on 5xx/429 or a transport error, and raise redacted."""
     attempts = 0
     while True:
         attempts += 1
@@ -596,7 +596,7 @@ def _generate_one(root, config, image_id, entry, args):
 
     output_path = Path(root) / entry["output_path"]
     if args.keep_png:
-        write_atomic(output_path.with_suffix("").with_name(f"{output_path.stem}.generated.png"), png_data)
+        write_atomic(output_path.with_name(f"{output_path.stem}.generated.png"), png_data)
 
     jpeg = png_to_jpeg(png_data, config.max_width, config.jpeg_quality)
     write_atomic(output_path, jpeg)
