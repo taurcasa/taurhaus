@@ -248,8 +248,10 @@ pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
                     agent_name: agent.agent_name.clone(),
                     cli_tool: agent.cli_tool.clone(),
                     message: format!(
-                        "Unsupported CLI tool '{}' for agent '{}'. Choose claude, codex, or agy.",
-                        agent.cli_tool, agent.agent_name
+                        "Unsupported CLI tool '{}' for agent '{}'. Choose {}.",
+                        agent.cli_tool,
+                        agent.agent_name,
+                        supported_cli_tool_list()
                     ),
                 });
             }
@@ -265,6 +267,20 @@ pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
 fn required_binary_for_cli_tool(cli_tool: &str) -> Option<&'static str> {
     let parsed = CliTool::from_alias(cli_tool).ok()?;
     Some(crate::session_scanner::cli_tool::spec(parsed).name)
+}
+
+/// The tools a member may name, read from the registry so a new harness
+/// reaches this message without another edit: "claude, codex, agy, or grok".
+fn supported_cli_tool_list() -> String {
+    let names: Vec<&'static str> = crate::session_scanner::cli_tool::all()
+        .iter()
+        .map(|spec| spec.name)
+        .collect();
+    match names.split_last() {
+        None => String::new(),
+        Some((last, [])) => (*last).to_string(),
+        Some((last, head)) => format!("{}, or {last}", head.join(", ")),
+    }
 }
 
 fn cli_tool_label(binary_name: &str) -> &'static str {
@@ -917,6 +933,30 @@ mod tests {
         assert!(report.agent_warnings[0]
             .message
             .contains("Unsupported CLI tool"));
+    }
+
+    // Regression: the guidance was hardcoded to "claude, codex, or agy" while
+    // `required_binary_for_cli_tool` already accepted `grok`, so the error told
+    // users to pick a tool that excluded a supported harness. The list is now
+    // generated from the registry, so every registered harness is named.
+    #[test]
+    fn preflight_unknown_tool_names_every_registered_harness() {
+        let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+        let report = preflight_check_with_lookup(
+            &[PreflightAgent {
+                agent_name: "qa".to_string(),
+                cli_tool: "unknown-tool".to_string(),
+            }],
+            &lookup,
+        );
+        let message = &report.agent_warnings[0].message;
+        for spec in crate::session_scanner::cli_tool::all() {
+            assert!(
+                message.contains(spec.name),
+                "unsupported-tool guidance must name {}: {message}",
+                spec.name
+            );
+        }
     }
 
     #[test]

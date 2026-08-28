@@ -882,7 +882,7 @@ fn daemon_launch_decode_handles_missing_invalid_and_valid_payloads() {
 #[test]
 fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
     let cmds = crate::models::CliCommandSettings::default();
-    for tool in [CliTool::Claude, CliTool::Codex, CliTool::Agy] {
+    for tool in [CliTool::Claude, CliTool::Codex, CliTool::Agy, CliTool::Grok] {
         for mode in [LaunchMode::Continue, LaunchMode::Fresh, LaunchMode::Resume] {
             let command = base_command(&cmds, tool, mode);
             assert!(
@@ -928,6 +928,17 @@ fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
             CliTool::Agy,
             LaunchMode::Resume,
             "agy --dangerously-skip-permissions --conversation {session_id}",
+        ),
+        (
+            CliTool::Grok,
+            LaunchMode::Continue,
+            "grok --always-approve --continue",
+        ),
+        (CliTool::Grok, LaunchMode::Fresh, "grok --always-approve"),
+        (
+            CliTool::Grok,
+            LaunchMode::Resume,
+            "grok --always-approve --resume {session_id}",
         ),
     ] {
         assert_eq!(base_command(&cmds, tool, mode), expected);
