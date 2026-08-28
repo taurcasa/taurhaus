@@ -212,7 +212,7 @@ const overviewData = {
   readmeContent: {
     content: `# taurhaus
 
-taurhaus is a native desktop operations surface for developers running Claude, Codex, Gemini, and Mesh teams across many projects.
+taurhaus is a native desktop operations surface for developers running Claude, Codex, Antigravity, and Mesh teams across many projects.
 
 ## Why teams use it
 

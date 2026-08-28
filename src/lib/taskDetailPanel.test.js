@@ -41,7 +41,7 @@ const FULL_TASK = {
   archived_reason: null,
 }
 
-/** A sparse task (Gemini TODO item — only subject + status). */
+/** A sparse task (only subject + status). */
 const SPARSE_TASK = {
   id: 'todo-5',
   source_key: 'agy-todo',
@@ -80,7 +80,7 @@ const FULL_DETAIL = {
   ],
 }
 
-/** Sparse detail (Gemini task — no session, commits, or files). */
+/** Sparse detail (no session, commits, or files). */
 const SPARSE_DETAIL = {
   task: SPARSE_TASK,
   session: null,
@@ -362,7 +362,7 @@ describe('Owner section', () => {
 })
 
 describe('Sparse task rendering', () => {
-  it('renders minimal panel for sparse Gemini task', () => {
+  it('renders minimal panel for a sparse task', () => {
     renderPanel({ task: SPARSE_TASK, detail: SPARSE_DETAIL })
     // Header always shows
     expect(screen.getByText('Write unit tests')).toBeTruthy()

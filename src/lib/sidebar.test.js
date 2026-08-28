@@ -192,11 +192,11 @@ describe('Context menu session actions', () => {
     items.push({ separator: true })
     items.push({ label: 'New Claude Session', action: 'fresh-claude' })
     items.push({ label: 'New Codex Session', action: 'fresh-codex' })
-    items.push({ label: 'New Antigravity Session', action: 'fresh-gemini' })
+    items.push({ label: 'New Antigravity Session', action: 'fresh-agy' })
     items.push({ separator: true })
     items.push({ label: 'Resume Claude', action: 'resume-claude' })
     items.push({ label: 'Resume Codex', action: 'resume-codex' })
-    items.push({ label: 'Resume Antigravity', action: 'resume-gemini' })
+    items.push({ label: 'Resume Antigravity', action: 'resume-agy' })
 
     if (isLiveSession) {
       items.push({ separator: true })
@@ -259,7 +259,7 @@ describe('Context menu session actions', () => {
     expect(stop2.danger).toBe(true)
   })
 
-  it('collapses duplicate Codex and Gemini continue labels from the menu', () => {
+  it('collapses duplicate Codex and Antigravity continue labels from the menu', () => {
     const labels = sessionMenuItems(null).filter(i => !i.separator).map((item) => item.label)
     expect(labels).not.toContain('Continue Codex')
     expect(labels).not.toContain('Continue Antigravity')
@@ -292,7 +292,7 @@ describe('Context menu session actions', () => {
     expect(actionable[0].action).toBe('continue-claude')
     expect(actionable[1].action).toBe('fresh-claude')
     expect(actionable[2].action).toBe('fresh-codex')
-    expect(actionable[6].action).toBe('resume-gemini')
+    expect(actionable[6].action).toBe('resume-agy')
   })
 })
 

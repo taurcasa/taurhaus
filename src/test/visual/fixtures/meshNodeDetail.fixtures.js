@@ -124,7 +124,7 @@ const idle_agy_dark = createDetailScenario({
     projectId: 'taurhaus-docs',
     description: 'Tracks architecture drift and prepares review notes for handoff.',
     paneId: '%21',
-    sessionId: 'sess-gemini-idle',
+    sessionId: 'sess-agy-idle',
     sessionState: 'Waiting for follow-up',
     sessionTiming: {
       startedLabel: 'Started 32m ago',
