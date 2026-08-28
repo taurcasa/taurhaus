@@ -100,6 +100,21 @@ function labelsFor(accounts) {
   })
 }
 
+function isSessionWindow(window) {
+  const key = String(window?.key ?? '')
+  const title = String(window?.title ?? '')
+  return key === 'session' || key === 'five_hour' || title.startsWith('Current session')
+}
+
+/** Flagged compact windows, else every non-session window, else the first two. */
+export function compactSelection(windows) {
+  const flagged = windows.filter((window) => window?.compact === true)
+  if (flagged.length) return flagged
+  const nonSession = windows.filter((window) => !isSessionWindow(window))
+  if (nonSession.length) return nonSession
+  return windows.slice(0, 2)
+}
+
 /**
  * The one place a menu row says how much of a subscription is left.
  *
@@ -111,10 +126,11 @@ function labelsFor(accounts) {
 export function accountUsageMeta(account, now = Date.now()) {
   const usage = account?.usage
   if (!usage) return ''
+  // `compact` is a preference, not a gate: a provider that flags nothing still
+  // gets its non-session windows, and a snapshot with only a session window
+  // still shows that (same selection as `UsageMeter`).
   const windows = Array.isArray(usage.windows)
-    ? usage.windows.some((window) => typeof window?.compact === 'boolean')
-      ? usage.windows.filter((window) => window.compact)
-      : usage.windows.filter((window) => window.key !== 'session')
+    ? compactSelection(usage.windows)
     : [
         usage.five_hour ? { title: '5h', ...usage.five_hour } : null,
         usage.seven_day ? { title: '7d', ...usage.seven_day } : null,

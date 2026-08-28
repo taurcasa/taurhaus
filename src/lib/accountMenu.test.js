@@ -100,6 +100,30 @@ describe('accountMenu', () => {
     )
   })
 
+  it('falls back to every non-session window when a provider flags none compact', () => {
+    // Regression: 2c49132 treated `compact` as a gate — a snapshot whose windows
+    // all carry `compact: false` filtered down to nothing and the menu row went
+    // blank, the same defect UsageMeter had.
+    const resets_at = Math.floor(NOW / 1000) + 90_000
+    const account = {
+      usage: {
+        windows: [
+          { key: 'session', title: 'Current session', used_percentage: 3, resets_at, compact: false },
+          { key: 'codex.5h', title: '5h limit', used_percentage: 20, resets_at, compact: false },
+          { key: 'codex.weekly', title: 'Weekly limit', used_percentage: 50, resets_at, compact: false },
+        ],
+      },
+    }
+
+    expect(accountUsageMeta(account, NOW)).toBe('5h limit 20% · Weekly limit 50%')
+    expect(
+      accountUsageMeta(
+        { usage: { windows: [{ key: 'session', title: 'Current session', used_percentage: 3, resets_at }] } },
+        NOW
+      )
+    ).toBe('Current session 3%')
+  })
+
   it('builds one child per account, checked, metered, and disabled where it must be', () => {
     const onSelect = vi.fn()
     const children = buildAccountMenuChildren({
