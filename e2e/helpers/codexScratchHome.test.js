@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -24,14 +24,17 @@ function realHomeFixture() {
   const home = join(root, 'real-codex')
   mkdirSync(join(home, 'sessions', '2026'), { recursive: true })
   writeFileSync(join(home, 'auth.json'), '{"tokens":{"access_token":"secret"}}')
-  writeFileSync(join(home, 'config.toml'), 'model = "gpt-5.4"\n\n[projects."/x"]\ntrust_level = "trusted"\n')
+  writeFileSync(
+    join(home, 'config.toml'),
+    'model = "gpt-5.4"\nnotify = ["/home/operator/bin/my-notifier"]\n\n[projects."/x"]\ntrust_level = "trusted"\n'
+  )
   writeFileSync(join(home, 'history.jsonl'), '{"text":"private"}\n')
   writeFileSync(join(home, 'sessions', '2026', 'rollout-x.jsonl'), '{}\n')
   return home
 }
 
 describe('createCodexScratchHome', () => {
-  it('copies only the credential and config files', () => {
+  it('copies only the credential file', () => {
     const home = realHomeFixture()
     const scratch = join(root, 'scratch-codex')
 
@@ -42,6 +45,39 @@ describe('createCodexScratchHome', () => {
     expect(existsSync(join(scratch, 'config.toml'))).toBe(true)
     expect(existsSync(join(scratch, 'history.jsonl'))).toBe(false)
     expect(existsSync(join(scratch, 'sessions'))).toBe(false)
+  })
+
+  // Regression: 7f105bb copied the operator's whole config.toml into the scratch
+  // home. A config.toml carrying `notify` makes taurhaus preserve the operator's
+  // notifier instead of installing its own, and the lane's only turn signal
+  // (`codex-notify.jsonl`) then stays empty for the whole paid run. Anything the
+  // operator can make Codex execute — notify, MCP servers — is left behind now.
+  it('generates its own config instead of copying the operator integrations', () => {
+    const home = realHomeFixture()
+    const scratch = join(root, 'scratch-codex')
+
+    const result = createCodexScratchHome(home, scratch)
+
+    expect(result.copied).toEqual(['auth.json'])
+    expect(result.generated).toEqual(['config.toml'])
+    const config = readFileSync(join(scratch, 'config.toml'), 'utf8')
+    const settings = config.split('\n').filter((line) => !line.trimStart().startsWith('#'))
+    expect(settings.some((line) => /^\s*notify\s*=/.test(line))).toBe(false)
+    expect(config).not.toContain('gpt-5.4')
+    expect(config).not.toContain('[projects."/x"]')
+  })
+
+  // Regression: 7f105bb copied credentials with copyFileSync alone, which takes the
+  // source mode only when the target is new — a scratch home reused across runs kept
+  // whatever mode was there. The copy holds a live subscription token.
+  it('keeps the copied credentials and the generated config private', () => {
+    const home = realHomeFixture()
+    const scratch = join(root, 'scratch-codex')
+
+    createCodexScratchHome(home, scratch)
+
+    expect(statSync(join(scratch, 'auth.json')).mode & 0o777).toBe(0o600)
+    expect(statSync(join(scratch, 'config.toml')).mode & 0o777).toBe(0o600)
   })
 
   it('reports a missing credential file instead of throwing', () => {

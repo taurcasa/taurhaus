@@ -235,13 +235,14 @@ function prepareCodexScratchHome(specs, scratchHome) {
   if (!wanted) return
 
   const sourceHome = process.env.E2E_CODEX_SOURCE_HOME || resolve(homedir(), '.codex')
-  const { copied, missing } = createCodexScratchHome(sourceHome, scratchHome)
+  const { copied, generated, missing } = createCodexScratchHome(sourceHome, scratchHome)
   previousCodexHome = process.env.CODEX_HOME ?? null
   codexHomeOverridden = true
   process.env.CODEX_HOME = scratchHome
   console.log(
     `[e2e] Codex scratch home ${scratchHome} from ${sourceHome}` +
-      ` (copied: ${copied.join(', ') || 'none'}${missing.length ? `; missing: ${missing.join(', ')}` : ''})`
+      ` (copied: ${copied.join(', ') || 'none'}; generated: ${generated.join(', ')}` +
+      `${missing.length ? `; missing: ${missing.join(', ')}` : ''})`
   )
 }
 
