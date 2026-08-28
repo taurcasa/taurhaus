@@ -63,10 +63,13 @@ function call(o) {
 const CODEX_MODEL = A.codexModel ? String(A.codexModel) : ''
 if (CODEX_MODEL && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(CODEX_MODEL)) throw new Error(NAME + ': args.codexModel must be a bare model slug — got ' + JSON.stringify(A.codexModel))
 
-// Two runs of the same procedure on the same branch would otherwise write the same scratch files and
-// poll the same EXIT marker. A workflow script cannot read the clock (the lint says why), so a
-// concurrent run is told
+// Two runs of the same procedure would otherwise write the same scratch files, poll the same EXIT
+// marker and — the part that kills — claim the same pidfile. The scratch dir is shared across
+// checkouts, and `tag` defaults to the branch, so two worktrees on one branch (the normal shape of
+// parallel agent work) collide unless the checkout is part of the name. A workflow script cannot read
+// the clock (the lint says why), so two deliberate runs of one procedure in one checkout are told
 // apart by args.stamp — any short token the caller passes.
+const CHECKOUT = ROOT.slice(ROOT.lastIndexOf('/') + 1).replace(/[^A-Za-z0-9._-]+/g, '-') || 'checkout'
 const STAMP = A.stamp ? String(A.stamp).replace(/[^A-Za-z0-9._-]+/g, '-') : ''
 const CODEX_FLAGS = (CODEX_MODEL ? ' -m ' + sh(CODEX_MODEL) : '') + (A.effort ? ' -c ' + sh('model_reasoning_effort="' + A.effort + '"') : '')
 const CODEX_ID = 'codex ' + (CODEX_MODEL || 'cli default') + (A.effort ? ' at ' + A.effort : '')
@@ -224,10 +227,14 @@ const RULES = {
 // runner script so nothing is nested inside quotes, and every path is one single-quoted word.
 // Ownership: the runner is its own process-group leader (setsid) and records that pid, so every
 // give-up path kills the whole group — the runner, its `timeout` and codex itself. Killing the runner
-// shell alone would leave an agent writing to the checkout while the retry started. Resumes name the
-// session this run created rather than `--last`, which is whatever ran most recently on the machine.
+// shell alone would leave an agent writing to the checkout while the retry started. Every artifact is
+// named for the checkout, the tag and the stamp so two runs cannot claim one pidfile; the launch
+// refuses over a live owner rather than overwriting it, and every kill first proves the pid still
+// names this runner — a stale pidfile points at a recycled pid, and killing that is killing a
+// stranger. Resumes name the session this run created rather than `--last`, which is whatever ran
+// most recently on the machine.
 function codexWrapper(o) {
-  const base = SCRATCH + '/codex-' + o.tag + (STAMP ? '-' + STAMP : '')
+  const base = SCRATCH + '/codex-' + CHECKOUT + '-' + o.tag + (STAMP ? '-' + STAMP : '')
   const out = base + (o.schema ? '.json' : '.out.md')
   const logFile = base + '.log'
   const runner = base + '.run.sh'
@@ -295,10 +302,16 @@ function codexWrapper(o) {
       'echo "EXIT=$?" >> "$LOG"',
     ].join('\n')
   }
+  // Never kill a pid this run cannot prove is its own: a pidfile outlives a crashed runner, and the
+  // pid it names can already belong to something else. `ps` is the fallback where /proc is not mounted.
+  const ownsPid = (name) =>
+    '{ tr "\\0" " " < /proc/"$' + name + '"/cmdline 2>/dev/null || ps -o args= -p "$' + name + '" 2>/dev/null; } | grep -qF ' + sh(runner)
   const killRun =
-    'kill the whole group, not just the runner shell: `PGID=$(cat ' +
+    'kill the whole group, not just the runner shell, and only while that pid is still the run you started: `PGID=$(cat ' +
     sh(pidFile) +
-    ' 2>/dev/null); if [ -n "$PGID" ]; then kill -TERM -"$PGID" 2>/dev/null; sleep 5; kill -KILL -"$PGID" 2>/dev/null; fi; rm -f ' +
+    ' 2>/dev/null); if [ -n "$PGID" ] && ' +
+    ownsPid('PGID') +
+    '; then kill -TERM -"$PGID" 2>/dev/null; sleep 5; kill -KILL -"$PGID" 2>/dev/null; fi; rm -f ' +
     sh(pidFile) +
     ' ' +
     sh(leaseFile) +
@@ -325,7 +338,13 @@ function codexWrapper(o) {
       sh(runner) +
       ' — copy it byte for byte, the quoting is what makes a path with a space or an apostrophe work, the PIDFILE lines are what let you kill the run, and the LEASE watchdog is what kills it when you cannot:\n' +
       runnerBody(exec),
-    '2) Launch it DETACHED, in its own process group: `rm -f ' +
+    '2) FIRST make sure no live run already owns these files: `OWNER=$(cat ' +
+      sh(pidFile) +
+      ' 2>/dev/null); if [ -n "$OWNER" ] && kill -0 "$OWNER" 2>/dev/null && ' +
+      ownsPid('OWNER') +
+      '; then echo "BUSY $OWNER"; fi` — if that prints BUSY, another run of this procedure is live in this checkout. Do NOT launch, and do NOT remove or overwrite ' +
+      sh(pidFile) +
+      ': it belongs to that run, and overwriting it would point its kill paths at whatever the pid becomes. Return status=\'unavailable\' immediately, with the pid and the pidfile path in error (two runs of one procedure in one checkout are unsupported — they would fight over the git index anyway). Otherwise launch it DETACHED, in its own process group: `rm -f ' +
       sh(out) +
       ' ' +
       sh(logFile) +

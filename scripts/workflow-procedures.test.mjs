@@ -215,6 +215,63 @@ describe('workflow procedures — the Codex lane', () => {
   })
 })
 
+describe('workflow procedures — ownership of what the wrapper launches', () => {
+  const spacey = { ...BASE_ARGS, worktree: "/home/dev/Jane's checkout", scratch: '/tmp/scratch dir', implementer: 'codex', effort: 'high', codexModel: 'gpt-5.6-terra' }
+  const pidfileOf = (calls) => /^PIDFILE=(.*)$/m.exec(calls[0].prompt)[1]
+
+  // Regression: the scratch names were `codex-<tag>[-<stamp>]`, and `tag` defaults to the branch. Two
+  // worktrees of this repo on the same branch — the normal shape of parallel agent work — therefore
+  // shared one pidfile in the shared scratch dir: the second run overwrote the first run's pid, and
+  // the first run's give-up paths then aimed `kill -TERM -<pgid>` at whatever that pid had become.
+  it('derives the ownership file names from the checkout, not the branch alone', async () => {
+    const w1 = await run('feature-pr.js', { ...spacey, worktree: '/home/dev/taurhaus-w1' })
+    const w2 = await run('feature-pr.js', { ...spacey, worktree: '/home/dev/taurhaus-w2' })
+    expect(pidfileOf(w1.calls)).toContain('taurhaus-w1')
+    expect(pidfileOf(w2.calls)).toContain('taurhaus-w2')
+    expect(pidfileOf(w1.calls), 'two checkouts on one branch must not share a pidfile').not.toBe(pidfileOf(w2.calls))
+  })
+
+  it('separates the lanes of one run by tag and two deliberate runs by stamp', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, worktree: '/home/dev/taurhaus-w1' })
+    const stamped = await run('feature-pr.js', { ...spacey, worktree: '/home/dev/taurhaus-w1', stamp: 'r2' })
+    expect(pidfileOf(stamped.calls)).toContain('-r2.pid')
+    expect(pidfileOf(stamped.calls)).not.toBe(pidfileOf(calls))
+    const pids = calls.filter((c) => c.prompt.includes('PIDFILE=')).map((c) => /^PIDFILE=(.*)$/m.exec(c.prompt)[1])
+    expect(new Set(pids).size, 'every lane of one run owns its own pidfile').toBe(pids.length)
+  })
+
+  it('refuses to launch over a live run that already owns the pidfile', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    const prompt = calls[0].prompt
+    expect(prompt, 'the guard reads the owner pid').toMatch(/OWNER=\$\(cat/)
+    expect(prompt, 'and proves the pid is still this runner').toMatch(/\/proc\/"\$OWNER"\/cmdline/)
+    expect(prompt).toMatch(/do NOT launch/i)
+    expect(prompt, 'a busy pidfile is reported, not overwritten').toMatch(/status='unavailable'/)
+    expect(prompt.indexOf('BUSY'), 'the guard runs before anything is launched').toBeLessThan(prompt.indexOf('setsid nohup bash'))
+    expect(prompt.indexOf('BUSY'), 'and before the launch line clears the old artifacts').toBeLessThan(prompt.indexOf('chmod +x'))
+  })
+
+  // Regression: every give-up path killed `-$(cat <pidfile>)` on sight. A pidfile that outlived its
+  // run — or that another run had written — pointed the kill at a recycled or foreign pid, and the
+  // wrapper took down a process it had never started.
+  it('proves the pid is still the runner it started before every kill', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    const prompt = calls[0].prompt
+    const runnerStart = prompt.indexOf('#!/usr/bin/env bash')
+    const runnerEnd = prompt.indexOf('echo "EXIT=$?" >> "$LOG"', runnerStart)
+    // The runner's own watchdog and TERM trap kill $$ — the group it leads — so only the kills the
+    // wrapper performs from outside need to prove ownership first.
+    const outside = prompt.slice(0, runnerStart) + prompt.slice(runnerEnd)
+    const kills = [...outside.matchAll(/kill -TERM -"\$PGID"/g)]
+    expect(kills.length, 'the deadline, the retry and the return path each own a kill').toBeGreaterThanOrEqual(3)
+    for (const kill of kills) {
+      const before = outside.slice(Math.max(0, kill.index - 400), kill.index)
+      expect(before, 'a kill with no cmdline check in front of it').toMatch(/\/proc\/"\$PGID"\/cmdline/)
+      expect(before, 'the cmdline has to name this run\'s runner').toContain('.run.sh')
+    }
+  })
+})
+
 describe('workflow procedures — the ownership lease', () => {
   const alive = (pid) => {
     try {

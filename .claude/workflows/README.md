@@ -44,7 +44,7 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call — and to Codex as `-c model_reasoning_effort` |
 | `codexModel` | the Codex CLI's own default | model slug passed to `codex exec` as `-m`; the ledger records what actually ran, never a guess |
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
-| `stamp` | — | a short token appended to the scratch file names; pass one when two runs of the same procedure share a branch (a workflow script cannot read the clock itself) |
+| `stamp` | — | a short token appended to the scratch file names; the names already carry the checkout and the tag, so pass one only to run the same procedure in the same checkout twice in sequence (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
 | `gates` | check-quick + lint + targeted cargo tests | the gate commands, when a spec names different ones |
 | `requiredGates` | `['just check-quick', 'just lint']` | the commands the gate must actually run and pass; matched as substrings of the reported command line, `[]` opts out |
@@ -132,12 +132,23 @@ a completed ledger with no findings reads as an approval:
   is how the regression test proves a real dummy group dies in seconds. The runner's own TERM trap
   takes the group down with it too.
 - **The wrapper owns what it launches.** The runner is started with `setsid`, so it leads its own
-  process group, and its first act is to write that pid to `<scratch>/codex-<tag>.pid`. Every
-  give-up path — the poll deadline, the one retry, and the return itself — kills the group
-  (`kill -TERM -"$PGID"`, then `-KILL`), not just the runner shell: killing the shell alone left
-  `timeout` and Codex alive to keep writing to the checkout while the retry ran. The resumed turns
-  name the session id read from the log rather than `--last`, which resolves to the newest session on
-  the machine and can belong to somebody else's run in the same checkout.
+  process group, and its first act is to write that pid to its pidfile. Every give-up path — the poll
+  deadline, the one retry, and the return itself — kills the group (`kill -TERM -"$PGID"`, then
+  `-KILL`), not just the runner shell: killing the shell alone left `timeout` and Codex alive to keep
+  writing to the checkout while the retry ran. The resumed turns name the session id read from the log
+  rather than `--last`, which resolves to the newest session on the machine and can belong to somebody
+  else's run in the same checkout.
+- **Ownership artifacts never collide, and a kill is never aimed at a stranger.** Every scratch file
+  is named `codex-<checkout>-<tag>[-<stamp>]` — the basename of `worktree`, then the tag, then
+  `args.stamp`. `tag` defaults to the branch and the scratch dir is shared, so without the checkout in
+  the name two worktrees on one branch wrote the same pidfile and each run's kill paths then aimed at
+  the other's pid. Before launching, the wrapper reads the pidfile: if that pid is alive **and** its
+  `/proc/<pid>/cmdline` names this runner, it refuses to launch and returns `unavailable` with the pid
+  rather than overwriting the file. And every kill — the deadline, the retry, the return — re-reads
+  the pid's own command line first and kills only a group whose leader still names the runner it
+  started; a pidfile outlives a crashed run, and the pid it names can already be somebody else.
+  Running one procedure twice in the same worktree at once is **not supported**: the two runs would
+  fight over the git index anyway. Run them in different worktrees, or in sequence with a `stamp`.
 - **Effort is inherited** unless `args.effort` pins one, and then it applies to every call in the run.
 
 ## Sizing policy
