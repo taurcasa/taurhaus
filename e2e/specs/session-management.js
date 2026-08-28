@@ -140,7 +140,7 @@ function canonicalizeSettings(settings = {}) {
       cli_commands: {
         claude: canonicalizeToolCommands(cliCommands.claude),
         codex: canonicalizeToolCommands(cliCommands.codex),
-        gemini: canonicalizeToolCommands(cliCommands.gemini),
+        agy: canonicalizeToolCommands(cliCommands.agy),
       },
     },
     dark_mode: settings.dark_mode ?? settings.darkMode ?? false,

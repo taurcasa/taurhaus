@@ -8,8 +8,8 @@ version: 1.0.0
 kind: agent
 
 defaults:
-  cli_tool: gemini
-  model: gemini-3.1-pro
+  cli_tool: agy
+  model: gemini-3.7-flash-high
   reasoning_effort: null
   default_name_pattern: designer-{n}
 

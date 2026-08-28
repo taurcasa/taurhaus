@@ -2,14 +2,14 @@ schema:
   kind: role_template
   version: 1
 
-role_id: gemini-orchestrator
-name: Gemini Orchestrator
+role_id: antigravity-orchestrator
+name: Antigravity Orchestrator
 version: 1.0.0
 kind: lead
 
 defaults:
-  cli_tool: gemini
-  model: gemini-3.1-pro
+  cli_tool: agy
+  model: gemini-3.7-flash-high
   reasoning_effort: null
   default_name_pattern: lead-{project}
 
@@ -27,7 +27,7 @@ instructions: |
 
   Never do implementation work yourself unless all team members are occupied and the task is urgent. Your context is too valuable to spend on code -> spend it on coordination.
 
-  Operate through Gemini CLI conventions while preserving the same team-lead contract: clear routing, explicit ownership, and concise status synthesis.
+  Operate through Antigravity CLI conventions while preserving the same team-lead contract: clear routing, explicit ownership, and concise status synthesis.
 
 focus_area: "Team orchestration, delegation, and unblock decisions"
 context_summary: "Carries the live map of team assignments, blockers, priorities, and handoffs so the next routing decision stays coherent after compaction."

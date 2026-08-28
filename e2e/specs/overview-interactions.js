@@ -145,9 +145,9 @@ describe('Overview Interactions', () => {
       expect(await btn.isEnabled()).toBe(true)
     })
 
-    it('Gemini launch button exists and is enabled', async function () {
+    it('Antigravity launch button exists and is enabled', async function () {
       if (!mainApp) return this.skip()
-      const btn = await $('[data-testid="action-launch-gemini"]')
+      const btn = await $('[data-testid="action-launch-agy"]')
       expect(await btn.isDisplayed()).toBe(true)
       expect(await btn.isEnabled()).toBe(true)
     })
