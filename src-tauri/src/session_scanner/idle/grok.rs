@@ -350,10 +350,13 @@ fn read_tail_state(path: &Path, length: u64) -> Option<SessionState> {
     let mut file = std::fs::File::open(path).ok()?;
     let offset = length.saturating_sub(EVENTS_TAIL_BYTES);
     file.seek(SeekFrom::Start(offset)).ok()?;
-    let mut tail = String::new();
-    file.take(EVENTS_TAIL_BYTES)
-        .read_to_string(&mut tail)
-        .ok()?;
+    // The seek lands mid-line, and on a long turn mid-character too, so the tail
+    // is decoded lossily and the truncated first line simply fails to parse —
+    // rather than the whole read failing and flapping a busy session back to the
+    // process-IO floor for a poll.
+    let mut tail = Vec::new();
+    file.take(EVENTS_TAIL_BYTES).read_to_end(&mut tail).ok()?;
+    let tail = String::from_utf8_lossy(&tail);
 
     tail.lines()
         .rev()
