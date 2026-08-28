@@ -942,7 +942,15 @@ fn replace_without_atomic_rename(tmp: &Path, target: &Path) -> std::io::Result<(
         }
         Err(err) => {
             if had_target {
-                let _ = fs::rename(&displaced, target);
+                if let Err(restore) = fs::rename(&displaced, target) {
+                    return Err(std::io::Error::new(
+                        err.kind(),
+                        format!(
+                            "{err}; and restoring the previous file failed ({restore}) — it is at {}",
+                            displaced.display()
+                        ),
+                    ));
+                }
             }
             Err(err)
         }

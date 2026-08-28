@@ -164,7 +164,7 @@ export-agents PROJECT: ensure-tauri-resources
     # Resolve PROJECT against the directory the command was typed in, before
     # cargo runs from src-tauri — otherwise a relative path lands in the Rust
     # subdirectory. A path that is not an existing directory fails here.
-    project="$(cd "{{invocation_directory()}}" && cd "{{PROJECT}}" && pwd)"
+    project="$(cd -- {{quote(invocation_directory())}} && cd -- {{quote(PROJECT)}} && pwd)"
     cd src-tauri && cargo run --bin taurhaus -- --export-agent-definitions "$project"
 
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).

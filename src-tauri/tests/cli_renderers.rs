@@ -391,7 +391,9 @@ fn the_export_agents_recipe_resolves_a_relative_project_against_the_caller() {
 
     let root = repo_root();
     let caller = tempfile::tempdir().expect("caller dir");
-    let project = caller.path().join("my-project");
+    // A name with a space and shell syntax: the recipe must quote what it
+    // interpolates, or `$(...)` would run and the space would split the path.
+    let project = caller.path().join("my $(printf injected) project");
     std::fs::create_dir_all(&project).expect("relative project dir");
 
     let dry_run = Command::new("just")
@@ -402,7 +404,7 @@ fn the_export_agents_recipe_resolves_a_relative_project_against_the_caller() {
         .arg(&root)
         .arg("--dry-run")
         .arg("export-agents")
-        .arg("my-project")
+        .arg("my $(printf injected) project")
         .output()
         .expect("dry-run the export-agents recipe");
     assert!(
