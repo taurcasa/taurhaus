@@ -1,6 +1,6 @@
 //! Windows platform implementation — no-op stubs for process inspection.
 //!
-//! On Windows, CLI tools (claude, codex, agy) run inside WSL2, not as native
+//! On Windows, CLI tools (claude, codex, agy, grok) run inside WSL2, not as native
 //! Windows processes. Low-level process inspection therefore remains stubbed
 //! here; higher-level session scanning must be routed through the WSL daemon.
 

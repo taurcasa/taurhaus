@@ -37,7 +37,7 @@ import { normalizeProjectPath } from './pathUtils.js'
 const POLL_INTERVAL_MS = 500
 const DEFAULT_TAURI_POLL_INTERVAL_MS = 5000
 
-/** @type {Map<string, object[]>} Reactive map of project_path → ClaudeSession[] */
+/** @type {Map<string, object[]>} Reactive map of project_path → CLI sessions of any registered tool. */
 let sessions = $state(new Map())
 
 /** Whether the poll loop is running. */

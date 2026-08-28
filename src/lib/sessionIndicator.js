@@ -7,7 +7,7 @@ const STACKING_THRESHOLD = 4
 const TEAM_GROUP_MIN_MEMBERS = 2
 const TOOL_ORDER = ['claude', 'codex', 'agy', 'grok']
 
-/** Get the display name for a session's CLI tool, defaulting to "Claude". */
+/** Get the display name for a session's CLI tool: "Claude" when absent, "Unknown tool" when unregistered. */
 function toolName(session) {
   return getToolName(session?.cli_tool)
 }

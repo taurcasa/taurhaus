@@ -104,7 +104,8 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
         }
     }
 
-    // Fallback: PATH-based lookup for tmux, claude, codex, agy, etc.
+    // Fallback: PATH-based lookup for tmux and any registered harness binary
+    // (claude, codex, agy, grok).
     if cfg!(target_os = "windows") {
         CommandInvocation {
             program: "wsl".into(),
