@@ -2,8 +2,9 @@ node_modules/
 dist/
 .playwright-mcp/
 
-# Claude Code (local dev data, not published)
-.claude/
+# Claude Code (local dev data, not published) — except the versioned workflow procedures
+.claude/*
+!.claude/workflows/
 
 # Session handoff files (auto-generated, local only)
 docs/sessions/
