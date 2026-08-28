@@ -359,6 +359,7 @@ function normalizeUsageWindow(raw) {
     resets_at: Number.isFinite(resetsAt) ? resetsAt : null,
     severity: String(window.severity ?? 'normal'),
     is_active: Boolean(window.is_active ?? window.isActive ?? true),
+    ...(window.compact == null ? {} : { compact: Boolean(window.compact) }),
   }
 }
 

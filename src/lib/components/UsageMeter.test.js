@@ -80,6 +80,37 @@ describe('UsageMeter', () => {
     expect(screen.queryByTestId('usage-reset')).not.toBeInTheDocument()
   })
 
+  it('keeps only provider-designated weekly buckets in compact mode', () => {
+    // Regression: 5680a7a rendered every Codex window in the compact chip,
+    // including 5h buckets whose dotted titles collided with its separators.
+    const resets_at = Math.floor(NOW.getTime() / 1000) + 90_000
+    render(UsageMeter, {
+      props: {
+        tool: 'codex',
+        compact: true,
+        usage: {
+          observed_at: NOW.toISOString(),
+          windows: [
+            { key: 'codex.5h', title: '5h limit', used_percentage: 20, resets_at, compact: false },
+            { key: 'codex.weekly', title: 'Weekly limit', used_percentage: 50, resets_at, compact: true },
+            {
+              key: 'codex_bengalfox.weekly',
+              title: 'GPT-5.3-Codex-Spark · Weekly limit',
+              used_percentage: 3,
+              resets_at,
+              compact: true,
+            },
+          ],
+        },
+      },
+    })
+
+    expect(screen.getByTestId('usage-meter')).toHaveTextContent(
+      'Weekly limit 50% · GPT-5.3-Codex-Spark Weekly limit 3%'
+    )
+    expect(screen.getByTestId('usage-meter')).not.toHaveTextContent('5h limit')
+  })
+
   // Regression: 79be608 built every row from `used_percentage` alone and used
   // `resets_at` only to pick the footer text. A 91 % five-hour reading whose
   // window reset ten minutes ago still rendered as a fresh 91 % bar, steering

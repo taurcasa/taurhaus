@@ -361,9 +361,9 @@ mod tests {
     }
 
     #[test]
-    fn first_successful_fetch_is_visible_on_the_next_account_list() {
-        // Regression: 701cd7c retired accounts with no previous observation
-        // from the bounded refresh sync, dropping their first-ever snapshot.
+    fn successful_fetch_attaches_a_snapshot_to_the_detected_account() {
+        // Provider/poller integration coverage: the frontend retirement defect
+        // did not occur in this poller, whose snapshot attachment is unchanged.
         let root = tempfile::tempdir().unwrap();
         std::fs::write(
             root.path().join(".credentials.json"),

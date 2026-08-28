@@ -41,6 +41,9 @@
   // Compact surfaces compare account headroom, so session-only noise is
   // omitted when provider windows include longer-lived limits.
   const compactWindows = $derived.by(() => {
+    if (windows.some((window) => typeof window?.compact === 'boolean')) {
+      return windows.filter((window) => window.compact)
+    }
     const nonSession = windows.filter((window) => window.key !== 'session')
     return nonSession.length ? nonSession : windows.slice(-2)
   })
@@ -62,6 +65,10 @@
 
   function percent(window) {
     return Math.round(Number(window.used_percentage))
+  }
+
+  function compactTitle(window) {
+    return String(window.title).replaceAll(' · ', ' ')
   }
 
   function barWidth(window) {
@@ -111,7 +118,7 @@
 
 {#if shown.length && compact}
   <span class="text-[10px] leading-none tabular-nums {valueTone}" data-tool={tool} data-testid="usage-meter">
-    {shown.map((window) => `${window.title} ${percent(window)}%`).join(' · ')}
+    {shown.map((window) => `${compactTitle(window)} ${percent(window)}%`).join(' · ')}
     {#if statusSuffix()}<span class="{mutedTone}"> · {statusSuffix()}</span>{/if}
   </span>
 {:else if shown.length}

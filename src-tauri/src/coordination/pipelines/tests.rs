@@ -24,7 +24,7 @@ use crate::coordination::runtime::{
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::models::CliCommandSettings;
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::templates::storage::TemplateStore;
 use crate::templates::types::BehavioralContract;
 
@@ -1430,8 +1430,12 @@ fn managed_codex_team_launch_carries_the_account_selector() {
     // coordination sidecars on the process-implicit account directory.
     let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
     let mut commands = crate::models::CliCommandSettings::default();
+    let selector = spec(CliTool::Codex)
+        .capabilities
+        .account_selector
+        .expect("Codex selector capability");
     commands.account_selector_dirs.insert(
-        "CODEX_HOME".to_string(),
+        selector.to_string(),
         std::path::PathBuf::from("/accounts/codex-work"),
     );
 

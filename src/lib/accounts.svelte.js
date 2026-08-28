@@ -146,7 +146,7 @@ export function rememberChoice(projectOrId, tool, accountId) {
 const detections = new Map()
 const DETECTION_TTL_MS = 60_000
 const USAGE_SYNC_INITIAL_RETRY_MS = 250
-const USAGE_SYNC_MAX_RETRY_MS = 4_000
+const USAGE_SYNC_MAX_RETRY_MS = 16_000
 const USAGE_SYNC_DEADLINE_MS = 30_000
 const usageSyncTimers = new Map()
 

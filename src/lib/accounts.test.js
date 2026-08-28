@@ -354,7 +354,7 @@ describe('claudeAccounts store', () => {
   })
 
   it('publishes an account first usage snapshot after an asynchronous refresh', async () => {
-    // Regression: 701cd7c stopped the refresh retry chain for accounts without
+    // Regression: c71cedb stopped the refresh retry chain for accounts without
     // an existing observation, so their first successful background fetch was
     // never read and a newly opened chooser stayed meterless.
     vi.useFakeTimers()
@@ -378,10 +378,9 @@ describe('claudeAccounts store', () => {
     }
   })
 
-  it('stops syncing when an account still has no usage', async () => {
-    // Regression: 701cd7c treated a missing usage entry as still pending, so
-    // one account with no snapshot kept list_accounts running at 4 Hz for the
-    // full 30-second deadline even after every observable snapshot advanced.
+  it('skips usage sync for accounts the provider marks unsupported', async () => {
+    // An account without subscription usage must not keep another account's
+    // refresh chain alive after that observable snapshot advances.
     vi.useFakeTimers()
     try {
       const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
@@ -400,6 +399,25 @@ describe('claudeAccounts store', () => {
       await vi.advanceTimersByTimeAsync(30_000)
 
       expect(listAccounts).toHaveBeenCalledTimes(3)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  it('backs off while a usage-capable account waits for its first snapshot', async () => {
+    // Regression: 701cd7c polled list_accounts at 4 Hz for the full refresh
+    // deadline when a usage-capable account had not published a snapshot yet.
+    vi.useFakeTimers()
+    try {
+      const report = detected([{ ...PRIMARY, usage: null }])
+      listAccounts.mockResolvedValue(report)
+      await refreshAccounts('claude')
+
+      await refreshUsage('claude')
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(listAccounts.mock.calls.length).toBeLessThanOrEqual(8)
     } finally {
       resetAccountsForTest()
       vi.useRealTimers()

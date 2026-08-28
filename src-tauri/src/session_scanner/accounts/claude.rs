@@ -313,6 +313,7 @@ fn normalize_usage(payload: UsagePayload) -> Vec<UsageWindow> {
                 resets_at: parse_reset(mirror.resets_at.as_deref()),
                 severity: Severity::Normal,
                 is_active: false,
+                compact: key != "session",
             })
         })
         .collect::<Vec<_>>()
@@ -322,6 +323,7 @@ fn normalize_usage(payload: UsagePayload) -> Vec<UsageWindow> {
             .into_iter()
             .enumerate()
             .filter_map(|(index, limit)| {
+                let compact = limit.kind != "session";
                 let (key, title) = match limit.kind.as_str() {
                     "session" => (limit.kind, "Current session".to_string()),
                     "weekly_all" => (limit.kind, "Current week (all models)".to_string()),
@@ -353,6 +355,7 @@ fn normalize_usage(payload: UsagePayload) -> Vec<UsageWindow> {
                         _ => Severity::Normal,
                     },
                     is_active: limit.is_active,
+                    compact,
                 })
             })
             .collect()
@@ -366,6 +369,7 @@ fn normalize_usage(payload: UsagePayload) -> Vec<UsageWindow> {
                 resets_at: parse_reset(sonnet.resets_at.as_deref()),
                 severity: Severity::Normal,
                 is_active: false,
+                compact: true,
             });
         }
     }

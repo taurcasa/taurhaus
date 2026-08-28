@@ -7,6 +7,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::models::CliCommandSettings;
 use crate::models::{CliVersions, CodexCompactionMode, TerminalSettings};
 use crate::provider::platform_paths::PlatformPaths;
+use crate::session_scanner::cli_tool::all;
 
 pub fn load_terminal_settings(db: &DbState) -> TerminalSettings {
     let conn = match db.0.lock() {
@@ -52,13 +53,7 @@ pub(crate) fn apply_managed_codex_launch_inputs(
         user_notify_configured,
         &daemon_executable,
     );
-    if has_managed_codex {
-        cli_commands
-            .account_selector_dirs
-            .insert("CODEX_HOME".to_string(), PlatformPaths::codex_dir());
-    } else {
-        cli_commands.account_selector_dirs.remove("CODEX_HOME");
-    }
+    apply_managed_account_selector(cli_commands, has_managed_codex, PlatformPaths::codex_dir());
     if has_managed_codex && notify_supported && user_notify_configured {
         tracing::info!(
             path = %codex_config_path.display(),
@@ -100,6 +95,27 @@ pub(crate) fn apply_managed_codex_launch_inputs(
             Some("Managed Codex notify requires the installed taurhaus daemon".to_string()),
             fields,
         );
+    }
+}
+
+fn apply_managed_account_selector(
+    cli_commands: &mut crate::models::CliCommandSettings,
+    enabled: bool,
+    dir: std::path::PathBuf,
+) {
+    let Some(selector) = all()
+        .iter()
+        .find(|entry| entry.capabilities.hook_trust && entry.capabilities.notify_sink)
+        .and_then(|entry| entry.capabilities.account_selector)
+    else {
+        return;
+    };
+    if enabled {
+        cli_commands
+            .account_selector_dirs
+            .insert(selector.to_string(), dir);
+    } else {
+        cli_commands.account_selector_dirs.remove(selector);
     }
 }
 

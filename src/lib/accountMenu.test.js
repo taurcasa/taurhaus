@@ -75,6 +75,31 @@ describe('accountMenu', () => {
     expect(accountUsageMeta({ usage: null }, NOW)).toBe('')
   })
 
+  it('renders only provider-designated compact windows', () => {
+    // Regression: 5680a7a treated every non-session Codex bucket as compact,
+    // crowding both 5h and weekly limits into account menu rows.
+    const resets_at = Math.floor(NOW / 1000) + 90_000
+    const account = {
+      usage: {
+        windows: [
+          { key: 'codex.5h', title: '5h limit', used_percentage: 20, resets_at, compact: false },
+          { key: 'codex.weekly', title: 'Weekly limit', used_percentage: 50, resets_at, compact: true },
+          {
+            key: 'codex_bengalfox.weekly',
+            title: 'GPT-5.3-Codex-Spark · Weekly limit',
+            used_percentage: 3,
+            resets_at,
+            compact: true,
+          },
+        ],
+      },
+    }
+
+    expect(accountUsageMeta(account, NOW)).toBe(
+      'Weekly limit 50% · GPT-5.3-Codex-Spark Weekly limit 3%'
+    )
+  })
+
   it('builds one child per account, checked, metered, and disabled where it must be', () => {
     const onSelect = vi.fn()
     const children = buildAccountMenuChildren({
@@ -114,6 +139,22 @@ describe('accountMenu', () => {
       'Matthias (b@example.com)',
     ])
     expect(new Set(children.map((child) => child.key)).size).toBe(2)
+  })
+
+  it('qualifies repeated provider labels with their config dirs', () => {
+    // Regression: 5680a7a labelled every non-ChatGPT Codex home "API key",
+    // and the collision qualifier repeated that same text for both choices.
+    const children = buildAccountMenuChildren({
+      accounts: [
+        { id: 'key-1', label: 'API key', dir: '/home/user/.codex', logged_in: true },
+        { id: 'key-2', label: 'API key', dir: '/home/user/.codex-work', logged_in: true },
+      ],
+    })
+
+    expect(children.map((child) => child.label)).toEqual([
+      'API key (.codex)',
+      'API key (.codex-work)',
+    ])
   })
 
   // Regression: 6ec843e labelled a repeated account by its config dir, which

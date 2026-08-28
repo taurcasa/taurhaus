@@ -65,7 +65,11 @@ impl AccountProvider for CodexAccountProvider {
     fn identify(&self, dir: &Path) -> Option<AccountIdentity> {
         let auth = read_auth(dir)?;
         let fallback_id = canonical_path(dir).display().to_string();
+        let has_non_chatgpt_credential = auth.has_non_chatgpt_credential();
         let Some(tokens) = auth.tokens.filter(|_| auth.auth_mode == "chatgpt") else {
+            if !has_non_chatgpt_credential {
+                return None;
+            }
             return Some(AccountIdentity {
                 id: fallback_id,
                 label: "API key".to_string(),
@@ -136,6 +140,38 @@ struct AuthFile {
     #[serde(default)]
     auth_mode: String,
     tokens: Option<AuthTokens>,
+    #[serde(rename = "OPENAI_API_KEY")]
+    openai_api_key: Option<String>,
+    personal_access_token: Option<String>,
+    bedrock_api_key: Option<String>,
+    agent_identity: Option<Value>,
+}
+
+impl AuthFile {
+    fn has_non_chatgpt_credential(&self) -> bool {
+        [
+            self.openai_api_key.as_deref(),
+            self.personal_access_token.as_deref(),
+            self.bedrock_api_key.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|credential| !credential.trim().is_empty())
+            || self
+                .agent_identity
+                .as_ref()
+                .is_some_and(non_empty_credential_value)
+    }
+}
+
+fn non_empty_credential_value(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::String(value) => !value.trim().is_empty(),
+        Value::Array(value) => !value.is_empty(),
+        Value::Object(value) => !value.is_empty(),
+        Value::Bool(_) | Value::Number(_) => false,
+    }
 }
 
 #[derive(Deserialize)]
@@ -346,6 +382,8 @@ fn rate_limit_windows(
         .flatten()
         .map(|window| {
             let (kind, title) = window_kind(window.limit_window_seconds);
+            let compact = kind == "weekly";
+            let reached = rate_limit.limit_reached && window.used_percent >= 100.0;
             UsageWindow {
                 key: format!("{key_prefix}.{kind}"),
                 title: title_prefix
@@ -353,14 +391,15 @@ fn rate_limit_windows(
                     .unwrap_or(title),
                 used_percentage: window.used_percent,
                 resets_at: window.reset_at,
-                severity: if rate_limit.limit_reached {
+                severity: if reached {
                     Severity::Critical
                 } else if window.used_percent >= 80.0 {
                     Severity::Warning
                 } else {
                     Severity::Normal
                 },
-                is_active: rate_limit.limit_reached && active_limit,
+                is_active: reached && active_limit,
+                compact,
             }
         })
         .collect()
@@ -547,6 +586,19 @@ mod tests {
     }
 
     #[test]
+    fn credential_stubs_are_not_logged_in_api_key_accounts() {
+        // Regression: 5680a7a treated every parseable auth.json as credential
+        // material, so `{}` and Codex's null API-key field became phantom
+        // logged-in accounts that forced the account chooser open.
+        for auth in [json!({}), json!({"OPENAI_API_KEY": null})] {
+            let root = TempDir::new().unwrap();
+            write_auth(root.path(), auth);
+
+            assert_eq!(CodexAccountProvider.identify(root.path()), None);
+        }
+    }
+
+    #[test]
     fn candidates_include_default_siblings_and_existing_live_homes() {
         // Regression: 08c3961 declared CODEX_HOME but registered no provider,
         // leaving sibling and live-process homes undiscoverable.
@@ -633,6 +685,14 @@ mod tests {
             .windows
             .iter()
             .all(|window| window.severity == Severity::Normal));
+        assert_eq!(
+            snapshot
+                .windows
+                .iter()
+                .map(|window| window.compact)
+                .collect::<Vec<_>>(),
+            vec![true, false, true]
+        );
 
         let (url, headers, timeout) = http.request.lock().unwrap().clone().unwrap();
         assert_eq!(url, "https://chatgpt.com/backend-api/wham/usage");
@@ -750,5 +810,43 @@ mod tests {
             snapshot.note.as_deref(),
             Some("credits balance 12.5 · spend limit reached · Try Codex credits")
         );
+    }
+
+    #[test]
+    fn reached_limit_does_not_mark_an_unsaturated_sibling_window_critical() {
+        // Regression: 5680a7a applied a rate-limit group's reached flag to both
+        // windows, so a saturated 5h bucket painted its 3% weekly sibling as
+        // critical and active too.
+        let root = TempDir::new().unwrap();
+        write_auth(root.path(), chatgpt_auth(4_102_444_800));
+        let http = FakeHttp::response(
+            200,
+            json!({
+                "rate_limit": {
+                    "allowed": false,
+                    "limit_reached": true,
+                    "primary_window": {
+                        "used_percent": 100,
+                        "limit_window_seconds": 18000,
+                        "reset_at": 2000000000
+                    },
+                    "secondary_window": {
+                        "used_percent": 3,
+                        "limit_window_seconds": 604800,
+                        "reset_at": 2000000001
+                    }
+                },
+                "additional_rate_limits": [],
+                "rate_limit_reached_type": "rate_limit_reached"
+            })
+            .to_string(),
+        );
+
+        let snapshot = CodexUsageProvider.fetch(root.path(), &http);
+
+        assert_eq!(snapshot.windows[0].severity, Severity::Critical);
+        assert!(snapshot.windows[0].is_active);
+        assert_eq!(snapshot.windows[1].severity, Severity::Normal);
+        assert!(!snapshot.windows[1].is_active);
     }
 }
