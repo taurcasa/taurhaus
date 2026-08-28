@@ -457,22 +457,31 @@ fn resolve_registry_release_with(
     })
 }
 
+/// Whether the harness has actually finished, given what proof this stop has.
+///
+/// The proofs are ranked, not combined: a harness that publishes its own
+/// clean-stop signal is believed over the pane, because every launch runs
+/// `exec "$SHELL" -ic '…; exec "$SHELL"'` and a shell can be back on top of the
+/// pane while the harness child is still working. Silence from an authoritative
+/// proof keeps the poll going until the deadline, where the tmux floor takes
+/// over and kills the pane anyway.
 fn stop_has_completed(
     current_command: Option<&str>,
     presence_lock: Option<&std::path::Path>,
     registry_release: Option<&StopRegistryRelease>,
 ) -> bool {
+    // Only a registry that was read and no longer names the pid proves the
+    // stop; an unreadable one is silence, not release.
+    if let Some(release) = registry_release {
+        return crate::session_scanner::idle::grok_session_registry_residence(
+            &release.home,
+            release.pid,
+        ) == crate::session_scanner::idle::GrokRegistryResidence::Released;
+    }
+    if let Some(path) = presence_lock {
+        return !crate::session_scanner::idle::presence_lock_is_held(path);
+    }
     current_command.is_some_and(is_shell)
-        || presence_lock
-            .is_some_and(|path| !crate::session_scanner::idle::presence_lock_is_held(path))
-        // Only a registry that was read and no longer names the pid proves the
-        // stop; an unreadable one is silence, not release.
-        || registry_release.is_some_and(|release| {
-            crate::session_scanner::idle::grok_session_registry_residence(
-                &release.home,
-                release.pid,
-            ) == crate::session_scanner::idle::GrokRegistryResidence::Released
-        })
 }
 
 fn pane_process_id(pane: &str) -> Option<u32> {
@@ -856,6 +865,54 @@ mod tests {
 
         std::fs::write(home.join("active_sessions.json"), "[]").unwrap();
         assert!(stop_has_completed(Some("grok"), None, Some(&release)));
+    }
+
+    #[test]
+    fn the_registry_proof_outranks_the_pane_returning_to_a_shell() {
+        // Regression: commit 358a7c9 ORed grok's registry proof with the tmux
+        // floor, so the poll settled on the first shell the pane reported.
+        // Every launch runs `exec "$SHELL" -ic '…; exec "$SHELL"'`, so a shell
+        // can sit on top of the pane while the grok child still holds its
+        // `active_sessions.json` row — and an unreadable registry passed as a
+        // stop for the same reason. Both killed the pane while the session was
+        // still resident.
+        let temp = tempfile::TempDir::new().unwrap();
+        let home = temp.path().to_path_buf();
+        let registry = home.join("active_sessions.json");
+        std::fs::write(
+            &registry,
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/home/user/projects/grok","opened_at":"2026-08-27T23:22:06.993848110Z"}]"#,
+        )
+        .unwrap();
+        let release = StopRegistryRelease {
+            home: home.clone(),
+            pid: 4242,
+        };
+
+        assert!(
+            !stop_has_completed(Some("bash"), None, Some(&release)),
+            "a pane back at a shell does not release grok's registry row"
+        );
+
+        std::fs::write(
+            &registry,
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/p","#,
+        )
+        .unwrap();
+        assert!(
+            !stop_has_completed(Some("bash"), None, Some(&release)),
+            "an unreadable registry is silence, not a stop"
+        );
+
+        std::fs::write(&registry, "[]").unwrap();
+        assert!(
+            stop_has_completed(Some("bash"), None, Some(&release)),
+            "the released row is the proof, whatever the pane runs"
+        );
+
+        // A harness with no registry proof keeps the tmux floor.
+        assert!(stop_has_completed(Some("bash"), None, None));
+        assert!(!stop_has_completed(Some("grok"), None, None));
     }
 
     #[test]
