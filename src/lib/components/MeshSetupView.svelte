@@ -18,6 +18,7 @@
     onGateReady = () => {},
     onApplyPreset = () => {},
     onBrowseCatalog = () => {},
+    onOpenTemplateBrowser = () => {},
     onTeamNameChange = () => {},
     onDescriptionChange = () => {},
     onAssignLeadRole = () => {},
@@ -57,6 +58,7 @@
       {availableProjects}
       {modelCatalog}
       onBrowseCatalog={onBrowseCatalog}
+      onOpenTemplateBrowser={onOpenTemplateBrowser}
       onTeamNameChange={onTeamNameChange}
       onDescriptionChange={onDescriptionChange}
       onApplyPreset={onApplyPreset}
@@ -86,6 +88,7 @@
       {availableProjects}
       {modelCatalog}
       onBrowseCatalog={onBrowseCatalog}
+      onOpenTemplateBrowser={onOpenTemplateBrowser}
       onTeamNameChange={onTeamNameChange}
       onDescriptionChange={onDescriptionChange}
       onApplyPreset={onApplyPreset}

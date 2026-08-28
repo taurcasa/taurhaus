@@ -280,7 +280,8 @@ and the Workflow API's `agentType` reads the same registry. Taurhaus generates
 those files from the role catalog, so a workflow stage, a mesh member, and a
 taureval run are all steered by one text.
 
-Run it from the template browser action **Export as Claude Code agents**, from
+Run it from the template browser action **Export as Claude Code agents** — open
+the browser with **Browse templates** in the mesh team builder — from
 `just export-agents <project>`, or through the `export_agent_definitions` IPC
 command (`exportAgentDefinitions(projectId)` on the frontend). Each returns
 `{ written, skipped }`.

@@ -498,6 +498,11 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     }
   }
 
+  function openTemplateBrowser() {
+    openTemplates()
+    state.slideOver = 'templates'
+  }
+
   return {
     closeSlideOver,
     handleAppendAgentRole,
@@ -519,6 +524,7 @@ export function createMeshTabSetup({ state, refs, deps, gate }) {
     loadTeamPresets,
     openAddAgentPanel,
     openCaptureRoleDialog,
+    openTemplateBrowser,
     openTemplates,
     submitAddAgent,
     submitCaptureRole,
