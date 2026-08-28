@@ -67,7 +67,7 @@ fn source_without_test_only_items(source: &str) -> String {
 }
 
 fn cli_tool_literal_count(source: &str) -> usize {
-    ["CliTool::Claude", "CliTool::Codex", "CliTool::Gemini"]
+    ["CliTool::Claude", "CliTool::Codex", "CliTool::Agy"]
         .into_iter()
         .map(|literal| source.match_indices(literal).count())
         .sum()
@@ -316,7 +316,7 @@ fn generic_account_core_contains_no_tool_identity_literals() {
     let literals = [
         "CliTool::Claude",
         "CliTool::Codex",
-        "CliTool::Gemini",
+        "CliTool::Agy",
         "\"claude\"",
         "\"codex\"",
         "\"gemini\"",

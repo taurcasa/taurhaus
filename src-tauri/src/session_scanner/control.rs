@@ -682,7 +682,7 @@ mod tests {
     #[test]
     fn build_gemini_fresh_command() {
         assert_eq!(
-            build_launch_command(CliTool::Gemini, LaunchMode::Fresh),
+            build_launch_command(CliTool::Agy, LaunchMode::Fresh),
             "gemini --yolo"
         );
     }
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn build_gemini_resume_command() {
         assert_eq!(
-            build_launch_command(CliTool::Gemini, LaunchMode::Resume),
+            build_launch_command(CliTool::Agy, LaunchMode::Resume),
             "gemini --yolo --resume"
         );
     }

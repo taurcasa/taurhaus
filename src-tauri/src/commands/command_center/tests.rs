@@ -882,7 +882,7 @@ fn daemon_launch_decode_handles_missing_invalid_and_valid_payloads() {
 #[test]
 fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
     let cmds = crate::models::CliCommandSettings::default();
-    for tool in [CliTool::Claude, CliTool::Codex, CliTool::Gemini] {
+    for tool in [CliTool::Claude, CliTool::Codex, CliTool::Agy] {
         for mode in [LaunchMode::Continue, LaunchMode::Fresh, LaunchMode::Resume] {
             let command = base_command(&cmds, tool, mode);
             assert!(
@@ -914,17 +914,9 @@ fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
             LaunchMode::Resume,
             "codex resume --last --yolo",
         ),
-        (
-            CliTool::Gemini,
-            LaunchMode::Continue,
-            "gemini --yolo --resume",
-        ),
-        (CliTool::Gemini, LaunchMode::Fresh, "gemini --yolo"),
-        (
-            CliTool::Gemini,
-            LaunchMode::Resume,
-            "gemini --yolo --resume",
-        ),
+        (CliTool::Agy, LaunchMode::Continue, "gemini --yolo --resume"),
+        (CliTool::Agy, LaunchMode::Fresh, "gemini --yolo"),
+        (CliTool::Agy, LaunchMode::Resume, "gemini --yolo --resume"),
     ] {
         assert_eq!(base_command(&cmds, tool, mode), expected);
     }
@@ -1887,7 +1879,7 @@ fn record_session_activity_persists_lowercase_cli_tool_from_enum() {
     record_session_activity_impl(
         &db,
         "p1".to_string(),
-        CliTool::Gemini,
+        CliTool::Agy,
         "2026-03-04T10:00:00Z".to_string(),
         "2026-03-04T11:00:00Z".to_string(),
         1_000,

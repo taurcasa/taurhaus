@@ -157,7 +157,7 @@ fn parse_checkbox_line(
         description: None,
         active_form: None,
         status,
-        source: CliTool::Gemini,
+        source: CliTool::Agy,
         blocks: vec![],
         blocked_by: vec![],
         owner: None,
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!(tasks[0].session_id.as_deref(), Some(GEMINI_SOURCE_KEY));
         assert_eq!(tasks[0].subject, "Pending task");
         assert_eq!(tasks[0].status, TaskStatus::Pending);
-        assert_eq!(tasks[0].source, CliTool::Gemini);
+        assert_eq!(tasks[0].source, CliTool::Agy);
         assert_eq!(tasks[1].id, "todo-1");
         assert_eq!(tasks[1].subject, "Done task");
         assert_eq!(tasks[1].status, TaskStatus::Completed);

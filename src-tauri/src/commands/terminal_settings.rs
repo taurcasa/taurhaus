@@ -105,7 +105,7 @@ fn apply_managed_account_selector(
 ) {
     let Some(selector) = all()
         .iter()
-        .find(|entry| entry.capabilities.hook_trust && entry.capabilities.notify_sink)
+        .find(|entry| entry.capabilities.managed_home)
         .and_then(|entry| entry.capabilities.account_selector)
     else {
         return;

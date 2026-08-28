@@ -399,7 +399,7 @@ mod tests {
         // Just verify that resolver_for doesn't panic for any tool variant
         let _ = resolver_for(CliTool::Claude);
         let _ = resolver_for(CliTool::Codex);
-        let _ = resolver_for(CliTool::Gemini);
+        let _ = resolver_for(CliTool::Agy);
     }
 
     // Run with: cargo test -- --ignored session_scanner::idle::tests::live_
@@ -425,7 +425,7 @@ mod tests {
     #[test]
     #[ignore]
     fn live_gemini_resolver_finds_session() {
-        let resolver = resolver_for(CliTool::Gemini);
+        let resolver = resolver_for(CliTool::Agy);
         let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
         println!(
             "Gemini: state={:?}, session_id={:?}, path={:?}",

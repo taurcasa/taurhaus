@@ -1,6 +1,6 @@
 //! CLI tool abstraction — detect and configure multiple AI coding tools.
 //!
-//! Supports Claude Code, Codex CLI, and Gemini CLI. Each tool has its
+//! Supports Claude Code, Codex CLI, and Antigravity CLI. Each tool has its
 //! own process signature, session directory layout, and launch commands.
 
 use std::str::FromStr;
@@ -17,7 +17,7 @@ pub enum CliTool {
     #[default]
     Claude,
     Codex,
-    Gemini,
+    Agy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +96,7 @@ pub enum SessionRoot {
 pub struct CliCapabilities {
     pub model_flag: Option<&'static str>,
     pub effort_flag: Option<EffortFlag>,
+    pub auto_approve_flag: Option<&'static str>,
     pub display_name_flag: Option<&'static str>,
     pub team_flags: bool,
     pub native_inbox_poller: bool,
@@ -113,6 +114,8 @@ pub struct CliCapabilities {
     pub usage: bool,
     pub notify_sink: bool,
     pub hook_trust: bool,
+    /// The app supplies a managed account home for team launches.
+    pub managed_home: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -178,6 +181,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: Some("-n"),
                 team_flags: true,
                 native_inbox_poller: true,
@@ -195,6 +199,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 usage: true,
                 notify_sink: false,
                 hook_trust: false,
+                managed_home: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             process_activity_signal: ProcessActivitySignal::ReadChars,
@@ -228,6 +233,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                     flag: "-c",
                     key: "model_reasoning_effort",
                 }),
+                auto_approve_flag: Some("--yolo"),
                 display_name_flag: None,
                 team_flags: false,
                 native_inbox_poller: false,
@@ -245,6 +251,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 usage: true,
                 notify_sink: true,
                 hook_trust: true,
+                managed_home: true,
             },
             stop_strategy: StopStrategy::Interrupt,
             process_activity_signal: ProcessActivitySignal::ReadChars,
@@ -257,24 +264,25 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             exit_command: "/exit",
         },
         CliToolSpec {
-            tool: CliTool::Gemini,
-            name: "gemini",
-            aliases: &["gemini"],
-            argv_signatures: &["gemini", "@google/gemini-cli"],
-            model_prefixes: &["gemini-"],
-            model_markers: &["gemini"],
+            tool: CliTool::Agy,
+            name: "agy",
+            aliases: &["agy", "antigravity"],
+            argv_signatures: &["agy"],
+            model_prefixes: &[],
+            model_markers: &[],
             default_commands: ToolCommands {
-                continue_cmd: "gemini --yolo --resume".into(),
-                fresh: "gemini --yolo".into(),
-                resume: "gemini --yolo --resume".into(),
+                continue_cmd: "agy --continue".into(),
+                fresh: "agy".into(),
+                resume: "agy --conversation {session_id}".into(),
             },
-            label: "Gemini",
-            accent: "violet",
-            medallion_accent: "sky",
-            default_agent_role_id: "custom-doc-writer",
+            label: "Antigravity",
+            accent: "google-blue",
+            medallion_accent: "google-blue",
+            default_agent_role_id: "antigravity-ui-specialist",
             capabilities: CliCapabilities {
-                model_flag: Some("-m"),
-                effort_flag: None,
+                model_flag: Some("--model"),
+                effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: None,
                 team_flags: false,
                 native_inbox_poller: false,
@@ -286,21 +294,22 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 transcript_compaction_signals: false,
                 catalog: true,
                 session_root: SessionRoot::ToolHome,
-                account_selector: Some("GEMINI_CLI_HOME"),
+                account_selector: None,
                 account_selection: false,
                 team_config_namespace: false,
                 usage: false,
                 notify_sink: false,
                 hook_trust: false,
+                managed_home: false,
             },
             stop_strategy: StopStrategy::SlashExit,
-            process_activity_signal: ProcessActivitySignal::Tcp,
+            process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
-            display_name: "Gemini CLI",
-            settings_label: "Gemini CLI",
+            display_name: "Antigravity CLI",
+            settings_label: "Antigravity CLI",
             base_dir_name: ".gemini",
-            projects_subdir: "tmp",
-            session_extension: "jsonl",
+            projects_subdir: "antigravity-cli/conversations",
+            session_extension: "db",
             exit_command: "/exit",
         },
     ]
@@ -333,7 +342,7 @@ pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &To
     match tool {
         CliTool::Claude => &settings.claude,
         CliTool::Codex => &settings.codex,
-        CliTool::Gemini => &settings.gemini,
+        CliTool::Agy => &settings.agy,
     }
 }
 
@@ -397,6 +406,7 @@ impl From<EffortFlag> for EffortFlagDescriptor {
 pub struct CliCapabilityDescriptor {
     pub model_flag: Option<String>,
     pub effort_flag: Option<EffortFlagDescriptor>,
+    pub auto_approve_flag: Option<String>,
     pub display_name_flag: Option<String>,
     pub team_flags: bool,
     pub native_inbox_poller: bool,
@@ -414,6 +424,7 @@ pub struct CliCapabilityDescriptor {
     pub usage: bool,
     pub notify_sink: bool,
     pub hook_trust: bool,
+    pub managed_home: bool,
 }
 
 impl From<CliCapabilities> for CliCapabilityDescriptor {
@@ -421,6 +432,7 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
         Self {
             model_flag: value.model_flag.map(str::to_string),
             effort_flag: value.effort_flag.map(Into::into),
+            auto_approve_flag: value.auto_approve_flag.map(str::to_string),
             display_name_flag: value.display_name_flag.map(str::to_string),
             team_flags: value.team_flags,
             native_inbox_poller: value.native_inbox_poller,
@@ -438,6 +450,7 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
             usage: value.usage,
             notify_sink: value.notify_sink,
             hook_trust: value.hook_trust,
+            managed_home: value.managed_home,
         }
     }
 }
@@ -488,7 +501,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
-            CliTool::Gemini => None,
+            CliTool::Agy => None,
         }
     }
 
@@ -504,7 +517,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
-            CliTool::Gemini => None,
+            CliTool::Agy => None,
         }
     }
 
@@ -538,9 +551,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
-            CliTool::Gemini => {
-                GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new)
-            }
+            CliTool::Agy => GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new),
         }
     }
 
@@ -555,7 +566,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
-            CliTool::Gemini => &NONE,
+            CliTool::Agy => &NONE,
         }
     }
 
@@ -575,7 +586,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
-            CliTool::Gemini => None,
+            CliTool::Agy => None,
         }
     }
 
@@ -588,7 +599,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
-            CliTool::Gemini => None,
+            CliTool::Agy => None,
         }
     }
 
@@ -606,9 +617,7 @@ impl CliToolSpec {
                 CLAUDE.get_or_init(crate::session_scanner::idle::ClaudeResolver::new)
             }
             CliTool::Codex => CODEX.get_or_init(crate::session_scanner::idle::CodexResolver::new),
-            CliTool::Gemini => {
-                GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new)
-            }
+            CliTool::Agy => GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new),
         }
     }
 }
@@ -622,16 +631,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn registry_replaces_gemini_with_antigravity_capabilities() {
+        // Regression: commit 9a66d1c made Gemini CLI the third fixed harness;
+        // Google now refuses that client for individuals, so the registry must
+        // expose agy without accepting the incompatible persisted tool value.
+        let agy = all()
+            .iter()
+            .find(|entry| entry.name == "agy")
+            .expect("Antigravity registry entry");
+        assert_eq!(agy.aliases, ["agy", "antigravity"]);
+        assert_eq!(agy.default_commands.fresh, "agy");
+        assert_eq!(agy.default_commands.continue_cmd, "agy --continue");
+        assert_eq!(
+            agy.default_commands.resume,
+            "agy --conversation {session_id}"
+        );
+        assert!("gemini".parse::<CliTool>().is_err());
+        assert!(serde_json::from_str::<CliTool>("\"gemini\"").is_err());
+
+        let descriptor = serde_json::to_value(CliToolDescriptor::from(agy)).unwrap();
+        assert_eq!(
+            descriptor["capabilities"]["autoApproveFlag"],
+            "--dangerously-skip-permissions"
+        );
+        assert_eq!(descriptor["capabilities"]["managedHome"], false);
+    }
+
+    #[test]
+    fn managed_home_is_an_explicit_registry_capability() {
+        // Regression: commit 2c49132 selected Codex's managed CODEX_HOME by
+        // coupling two unrelated native capabilities (hook trust + notify).
+        let managed = descriptors()
+            .into_iter()
+            .filter(|entry| {
+                serde_json::to_value(entry).unwrap()["capabilities"]["managedHome"] == true
+            })
+            .map(|entry| entry.id.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(managed, ["codex"]);
+    }
+
+    #[test]
     fn cli_tool_serializes_lowercase() {
         assert_eq!(
             serde_json::to_string(&CliTool::Claude).unwrap(),
             "\"claude\""
         );
         assert_eq!(serde_json::to_string(&CliTool::Codex).unwrap(), "\"codex\"");
-        assert_eq!(
-            serde_json::to_string(&CliTool::Gemini).unwrap(),
-            "\"gemini\""
-        );
+        assert_eq!(serde_json::to_string(&CliTool::Agy).unwrap(), "\"agy\"");
     }
 
     #[test]
@@ -640,8 +687,9 @@ mod tests {
         assert_eq!(c, CliTool::Claude);
         let x: CliTool = serde_json::from_str("\"codex\"").unwrap();
         assert_eq!(x, CliTool::Codex);
-        let g: CliTool = serde_json::from_str("\"gemini\"").unwrap();
-        assert_eq!(g, CliTool::Gemini);
+        let a: CliTool = serde_json::from_str("\"agy\"").unwrap();
+        assert_eq!(a, CliTool::Agy);
+        assert!(serde_json::from_str::<CliTool>("\"gemini\"").is_err());
     }
 
     #[test]
@@ -653,8 +701,8 @@ mod tests {
         let codex = config_for(CliTool::Codex);
         assert_eq!(codex.base_dir_name, ".codex");
 
-        let gemini = config_for(CliTool::Gemini);
-        assert_eq!(gemini.base_dir_name, ".gemini");
+        let agy = config_for(CliTool::Agy);
+        assert_eq!(agy.base_dir_name, ".gemini");
     }
 
     #[test]
@@ -663,14 +711,14 @@ mod tests {
         assert_eq!(tools.len(), 3);
         assert!(tools.iter().any(|c| c.tool == CliTool::Claude));
         assert!(tools.iter().any(|c| c.tool == CliTool::Codex));
-        assert!(tools.iter().any(|c| c.tool == CliTool::Gemini));
+        assert!(tools.iter().any(|c| c.tool == CliTool::Agy));
     }
 
     #[test]
     fn cli_tool_from_str_is_case_insensitive() {
         assert_eq!("Claude".parse::<CliTool>().unwrap(), CliTool::Claude);
         assert_eq!("CODEX".parse::<CliTool>().unwrap(), CliTool::Codex);
-        assert_eq!("gemini".parse::<CliTool>().unwrap(), CliTool::Gemini);
+        assert_eq!("AGY".parse::<CliTool>().unwrap(), CliTool::Agy);
     }
 
     #[test]
@@ -681,6 +729,8 @@ mod tests {
         );
         assert_eq!(CliTool::from_alias("mesh").unwrap(), CliTool::Codex);
         assert_eq!(CliTool::from_alias("mesh_bridged").unwrap(), CliTool::Codex);
+        assert_eq!(CliTool::from_alias("antigravity").unwrap(), CliTool::Agy);
+        assert!(CliTool::from_alias("gemini").is_err());
     }
 
     #[test]

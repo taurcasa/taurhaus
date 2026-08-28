@@ -1046,12 +1046,7 @@ fn create_resumable_team(
     orchestrator
         .add_member(
             team_name,
-            member_with_project(
-                "reviewer",
-                MemberRole::Agent,
-                CliTool::Gemini,
-                "/tmp/reviewer",
-            ),
+            member_with_project("reviewer", MemberRole::Agent, CliTool::Agy, "/tmp/reviewer"),
         )
         .expect("add reviewer");
 

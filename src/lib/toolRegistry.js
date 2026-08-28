@@ -3,6 +3,7 @@ import { createToolRegistryState } from './toolRegistryState.svelte.js'
 const CAPABILITY_DEFAULTS = Object.freeze({
   modelFlag: null,
   effortFlag: null,
+  autoApproveFlag: null,
   displayNameFlag: null,
   teamFlags: false,
   nativeInboxPoller: false,
@@ -20,6 +21,7 @@ const CAPABILITY_DEFAULTS = Object.freeze({
   usage: false,
   notifySink: false,
   hookTrust: false,
+  managedHome: false,
 })
 
 export const FALLBACK_TOOLS = Object.freeze([
@@ -34,6 +36,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     capabilities: {
       modelFlag: '--model',
       effortFlag: { kind: 'argument', flag: '--effort' },
+      autoApproveFlag: '--dangerously-skip-permissions',
       displayNameFlag: '-n',
       teamFlags: true,
       nativeInboxPoller: true,
@@ -51,6 +54,7 @@ export const FALLBACK_TOOLS = Object.freeze([
       usage: true,
       notifySink: false,
       hookTrust: false,
+      managedHome: false,
     },
   },
   {
@@ -64,6 +68,7 @@ export const FALLBACK_TOOLS = Object.freeze([
     capabilities: {
       modelFlag: '-m',
       effortFlag: { kind: 'config', flag: '-c', key: 'model_reasoning_effort' },
+      autoApproveFlag: '--yolo',
       displayNameFlag: null,
       teamFlags: false,
       nativeInboxPoller: false,
@@ -81,19 +86,21 @@ export const FALLBACK_TOOLS = Object.freeze([
       usage: true,
       notifySink: true,
       hookTrust: true,
+      managedHome: true,
     },
   },
   {
-    id: 'gemini',
-    label: 'Gemini',
-    displayName: 'Gemini CLI',
-    accent: 'violet',
-    medallionAccent: 'sky',
-    defaultAgentRoleId: 'custom-doc-writer',
-    aliases: ['gemini'],
+    id: 'agy',
+    label: 'Antigravity',
+    displayName: 'Antigravity CLI',
+    accent: 'google-blue',
+    medallionAccent: 'google-blue',
+    defaultAgentRoleId: 'antigravity-ui-specialist',
+    aliases: ['agy', 'antigravity'],
     capabilities: {
-      modelFlag: '-m',
-      effortFlag: null,
+      modelFlag: '--model',
+      effortFlag: { kind: 'argument', flag: '--effort' },
+      autoApproveFlag: '--dangerously-skip-permissions',
       displayNameFlag: null,
       teamFlags: false,
       nativeInboxPoller: false,
@@ -105,12 +112,13 @@ export const FALLBACK_TOOLS = Object.freeze([
       transcriptCompactionSignals: false,
       catalog: true,
       sessionRoot: 'toolHome',
-      accountSelector: 'GEMINI_CLI_HOME',
+      accountSelector: null,
       accountSelection: false,
       teamConfigNamespace: false,
       usage: false,
       notifySink: false,
       hookTrust: false,
+      managedHome: false,
     },
   },
 ])
@@ -133,6 +141,9 @@ function normalizeCapabilities(raw) {
     ...CAPABILITY_DEFAULTS,
     modelFlag: stringOrNull(capability(source, 'modelFlag', 'model_flag', null)),
     effortFlag: effortFlag && typeof effortFlag === 'object' ? { ...effortFlag } : null,
+    autoApproveFlag: stringOrNull(
+      capability(source, 'autoApproveFlag', 'auto_approve_flag', null)
+    ),
     displayNameFlag: stringOrNull(capability(source, 'displayNameFlag', 'display_name_flag', null)),
     teamFlags: Boolean(capability(source, 'teamFlags', 'team_flags')),
     nativeInboxPoller: Boolean(capability(source, 'nativeInboxPoller', 'native_inbox_poller')),
@@ -159,6 +170,7 @@ function normalizeCapabilities(raw) {
     usage: Boolean(capability(source, 'usage', 'usage')),
     notifySink: Boolean(capability(source, 'notifySink', 'notify_sink')),
     hookTrust: Boolean(capability(source, 'hookTrust', 'hook_trust')),
+    managedHome: Boolean(capability(source, 'managedHome', 'managed_home')),
   }
 }
 

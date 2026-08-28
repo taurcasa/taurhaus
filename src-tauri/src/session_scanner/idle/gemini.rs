@@ -173,7 +173,7 @@ mod tests {
         File::create(&session).unwrap();
 
         let _base_dir = set_base_dir_for_test(tmp.path().to_path_buf());
-        let result = detect_runtime_idle(project, 4242, Some("%42"), CliTool::Gemini);
+        let result = detect_runtime_idle(project, 4242, Some("%42"), CliTool::Agy);
 
         assert_eq!(result.state, SessionState::Active);
         assert_eq!(result.session_id.as_deref(), Some("feedface"));

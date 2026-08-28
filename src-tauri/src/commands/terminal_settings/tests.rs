@@ -141,11 +141,14 @@ fn codex_notify_input_requires_managed_launch_and_supported_version() {
 
 #[test]
 fn managed_codex_selector_is_inserted_and_removed_by_registry_capability() {
+    // Regression: commit 2c49132 inferred the managed home from hook trust and
+    // notify support, so an unrelated capability change could select the
+    // wrong tool's account directory.
     let root = tempfile::tempdir().expect("tempdir");
     let codex_home = root.path().join("codex-home");
     let selector = all()
         .iter()
-        .find(|entry| entry.capabilities.hook_trust && entry.capabilities.notify_sink)
+        .find(|entry| entry.capabilities.managed_home)
         .and_then(|entry| entry.capabilities.account_selector)
         .expect("Codex selector capability");
     let mut commands = crate::models::CliCommandSettings::default();

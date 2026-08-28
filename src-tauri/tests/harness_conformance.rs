@@ -50,11 +50,11 @@ const LAUNCH_GOLDENS: &[LaunchGolden] = &[
         expected: include_str!("fixtures/launch/codex.golden.txt"),
     },
     LaunchGolden {
-        tool: CliTool::Gemini,
+        tool: CliTool::Agy,
         model: "gemini-3.1-pro",
         effort: None,
         bypass_hook_trust: false,
-        expected: include_str!("fixtures/launch/gemini.golden.txt"),
+        expected: include_str!("fixtures/launch/agy.golden.txt"),
     },
 ];
 
@@ -107,6 +107,7 @@ fn account_dir_launch_cases_use_each_registry_selector() {
     let commands = CliCommandSettings::default();
     let rendered = all()
         .iter()
+        .filter(|entry| entry.capabilities.account_selector.is_some())
         .map(|entry| {
             let account_dir = std::path::PathBuf::from(format!("/accounts/{}", entry.name));
             let command = LaunchSpec {
@@ -217,13 +218,13 @@ fn registry_declares_native_and_floor_capabilities() {
     assert!(codex.capabilities.notify_sink);
     assert_eq!(codex.stop_strategy, StopStrategy::Interrupt);
 
-    let gemini = spec(CliTool::Gemini);
-    assert!(gemini.capabilities.session_source);
-    assert!(!gemini.capabilities.runtime_session_capture);
-    assert!(!gemini.capabilities.compaction_hook);
-    assert!(!gemini.capabilities.transcript_parser);
-    assert!(!gemini.capabilities.catalog || gemini.capabilities.model_flag.is_some());
-    assert_eq!(gemini.stop_strategy, StopStrategy::SlashExit);
+    let agy = spec(CliTool::Agy);
+    assert!(agy.capabilities.session_source);
+    assert!(!agy.capabilities.runtime_session_capture);
+    assert!(!agy.capabilities.compaction_hook);
+    assert!(!agy.capabilities.transcript_parser);
+    assert!(!agy.capabilities.catalog || agy.capabilities.model_flag.is_some());
+    assert_eq!(agy.stop_strategy, StopStrategy::SlashExit);
 
     for entry in all() {
         assert!(
@@ -247,7 +248,7 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
         vec![
             (CliTool::Claude, Some("CLAUDE_CONFIG_DIR")),
             (CliTool::Codex, Some("CODEX_HOME")),
-            (CliTool::Gemini, Some("GEMINI_CLI_HOME")),
+            (CliTool::Agy, None),
         ]
     );
 
@@ -268,7 +269,7 @@ fn account_providers_are_registered_behind_the_capability_slice() {
     // whole pipeline instead of registering one account slice.
     assert!(spec(CliTool::Claude).account_provider().is_some());
     assert!(spec(CliTool::Codex).account_provider().is_some());
-    assert!(spec(CliTool::Gemini).account_provider().is_none());
+    assert!(spec(CliTool::Agy).account_provider().is_none());
 }
 
 fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
@@ -289,7 +290,7 @@ fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
             )
             .expect("Codex usage fixture credentials");
         }
-        CliTool::Gemini => unreachable!("Gemini has no usage provider"),
+        CliTool::Agy => unreachable!("Antigravity usage provider lands in step 4"),
     }
 }
 
@@ -451,14 +452,14 @@ fn absent_catalog_and_launch_flags_use_the_declared_floor() {
     // launch arm to declare flags although `catalog: none` is a valid entry.
     assert!(ModelCatalog::default_from_entries(&[], false).is_none());
 
-    let mut capabilities = spec(CliTool::Gemini).capabilities;
+    let mut capabilities = spec(CliTool::Agy).capabilities;
     capabilities.catalog = false;
     capabilities.model_flag = None;
     capabilities.effort_flag = None;
     let rendered = LaunchSpec {
-        tool: CliTool::Gemini,
+        tool: CliTool::Agy,
         mode: LaunchMode::Fresh,
-        base: "gemini --yolo",
+        base: "agy",
         model: ModelSpec {
             model: Some("future-model".to_string()),
             reasoning_effort: Some("high".to_string()),
@@ -471,7 +472,7 @@ fn absent_catalog_and_launch_flags_use_the_declared_floor() {
     }
     .render_with_capabilities(capabilities);
 
-    assert_eq!(rendered.command, "gemini --yolo");
+    assert_eq!(rendered.command, "agy");
     assert_eq!(
         rendered.notes,
         vec![
@@ -622,8 +623,8 @@ fn undeclared_session_source_uses_the_non_authoritative_floor() {
 
 #[test]
 fn session_source_wiring_matches_every_registry_declaration() {
-    // Regression: f90b362 mapped Gemini's declared session source to the floor,
-    // while tests instantiated GeminiResolver directly and missed the registry.
+    // Regression: f90b362 mapped the third harness's declared session source
+    // to the floor while tests instantiated its resolver directly.
     for entry in all() {
         assert_eq!(
             entry.session_source().is_floor(),
@@ -646,7 +647,7 @@ fn undeclared_activity_source_never_claims_authority() {
         authoritative: false,
     };
 
-    assert!(spec(CliTool::Gemini)
+    assert!(spec(CliTool::Agy)
         .activity_source()
         .authoritative_state("/tmp/taurhaus-conformance-project", 42, &heuristic)
         .is_none());
@@ -701,7 +702,7 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
             .expect("second removal is idempotent"));
     }
 
-    assert!(spec(CliTool::Gemini).compaction_signal_source().is_none());
+    assert!(spec(CliTool::Agy).compaction_signal_source().is_none());
 }
 
 #[test]
@@ -733,5 +734,5 @@ fn transcript_parsers_match_declared_capabilities() {
         .expect("Claude transcript parser")
         .parse_compaction_boundary("{}", 0)
         .is_none());
-    assert!(spec(CliTool::Gemini).transcript_parser().is_none());
+    assert!(spec(CliTool::Agy).transcript_parser().is_none());
 }

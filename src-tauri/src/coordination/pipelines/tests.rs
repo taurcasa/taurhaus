@@ -1336,7 +1336,7 @@ fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
 #[test]
 fn build_cli_launch_command_uses_configured_fresh_command() {
     let mut cmds = crate::models::CliCommandSettings::default();
-    cmds.gemini.fresh = "gemini --yolo --sandbox read-only".to_string();
+    cmds.agy.fresh = "gemini --yolo --sandbox read-only".to_string();
     let agent = AgentSetupConfig {
         name: "reviewer".to_string(),
         cli_tool: "gemini".to_string(),

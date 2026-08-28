@@ -257,10 +257,11 @@ pub struct ToolCommands {
 /// Per-tool launch command configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct CliCommandSettings {
     pub claude: ToolCommands,
     pub codex: ToolCommands,
-    pub gemini: ToolCommands,
+    pub agy: ToolCommands,
     /// Runtime-only launch input. The coordination command resolves managed hook
     /// trust before pipeline rendering; this is never persisted or sent to the UI.
     #[serde(skip)]
@@ -286,7 +287,7 @@ impl Default for CliCommandSettings {
             codex: crate::session_scanner::cli_tool::spec(CliTool::Codex)
                 .default_commands
                 .clone(),
-            gemini: crate::session_scanner::cli_tool::spec(CliTool::Gemini)
+            agy: crate::session_scanner::cli_tool::spec(CliTool::Agy)
                 .default_commands
                 .clone(),
             codex_bypass_hook_trust: false,
@@ -614,7 +615,7 @@ impl ModelCatalog {
         match tool {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
-            CliTool::Gemini => &MODEL_CATALOG.gemini,
+            CliTool::Agy => &MODEL_CATALOG.gemini,
         }
     }
 
@@ -655,7 +656,7 @@ impl ModelCatalog {
                 Some(entry) => entry.efforts.iter().any(|allowed| allowed == effort),
                 None => CODEX_EFFORTS_WITH_ULTRA.contains(&effort),
             },
-            CliTool::Gemini => false,
+            CliTool::Agy => false,
         }
     }
 }
@@ -1401,9 +1402,9 @@ mod tests {
         assert_eq!(cmds.codex.fresh, "codex --yolo");
         assert_eq!(cmds.codex.resume, "codex resume --last --yolo");
         // Gemini
-        assert_eq!(cmds.gemini.continue_cmd, "gemini --yolo --resume");
-        assert_eq!(cmds.gemini.fresh, "gemini --yolo");
-        assert_eq!(cmds.gemini.resume, "gemini --yolo --resume");
+        assert_eq!(cmds.agy.continue_cmd, "agy --continue");
+        assert_eq!(cmds.agy.fresh, "agy");
+        assert_eq!(cmds.agy.resume, "agy --conversation {session_id}");
     }
 
     #[test]
@@ -1412,6 +1413,23 @@ mod tests {
         let json = serde_json::to_string(&cmds).unwrap();
         let back: CliCommandSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(cmds, back);
+    }
+
+    #[test]
+    fn legacy_gemini_command_key_is_ignored_without_losing_other_tools() {
+        // Regression: commit 9a66d1c persisted the retired Gemini command key;
+        // renaming the fixed struct used to make the entire settings object
+        // fall back and discard unrelated Claude and Codex custom commands.
+        let value = serde_json::json!({
+            "claude": {"continueCmd": "claude custom-c", "fresh": "claude custom", "resume": "claude custom-r"},
+            "codex": {"continueCmd": "codex custom-c", "fresh": "codex custom", "resume": "codex custom-r"},
+            "gemini": {"continueCmd": "gemini old-c", "fresh": "gemini old", "resume": "gemini old-r"}
+        });
+
+        let loaded: CliCommandSettings = serde_json::from_value(value).unwrap();
+        assert_eq!(loaded.claude.fresh, "claude custom");
+        assert_eq!(loaded.codex.fresh, "codex custom");
+        assert_eq!(loaded.agy, CliCommandSettings::default().agy);
     }
 
     #[test]
@@ -1564,7 +1582,7 @@ mod tests {
             "gpt-5.6-sol"
         );
         assert_eq!(
-            ModelCatalog::default_for(CliTool::Gemini)
+            ModelCatalog::default_for(CliTool::Agy)
                 .expect("Gemini catalog")
                 .id,
             "gemini-3.1-pro"
@@ -1617,7 +1635,7 @@ mod tests {
             "max"
         ));
         assert!(!ModelCatalog::supports_effort(
-            CliTool::Gemini,
+            CliTool::Agy,
             Some("gemini-3.1-pro"),
             "high"
         ));

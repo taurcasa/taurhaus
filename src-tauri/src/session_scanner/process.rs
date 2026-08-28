@@ -1446,38 +1446,38 @@ mod tests {
     fn detect_gemini_processes() {
         assert_eq!(
             detect_cli_tool("node /path/@google/gemini-cli/dist/cli.mjs"),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
         assert_eq!(
             detect_cli_tool("/usr/bin/node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@google/gemini-cli/dist/cli.mjs --sandbox"),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
-        assert_eq!(detect_cli_tool("gemini --sandbox"), Some(CliTool::Gemini));
-        assert_eq!(detect_cli_tool("gemini --yolo"), Some(CliTool::Gemini));
+        assert_eq!(detect_cli_tool("gemini --sandbox"), Some(CliTool::Agy));
+        assert_eq!(detect_cli_tool("gemini --yolo"), Some(CliTool::Agy));
         assert_eq!(
             detect_cli_tool("/usr/local/bin/gemini --resume"),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
         // Real fnm shim path (observed from live ps output)
         assert_eq!(
             detect_cli_tool(
                 "node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"
             ),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
         // Real node-launched via full path (observed from live ps output)
         assert_eq!(
             detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
         // Newer observed launch includes node runtime flags before script path.
         assert_eq!(
             detect_cli_tool("node --no-warnings=DEP0040 /run/user/1000/fnm_multishells/764222_1772661944031/bin/gemini --yolo"),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
         assert_eq!(
             detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node --no-warnings=DEP0040 /run/user/1000/fnm_multishells/764222_1772661944031/bin/gemini --yolo"),
-            Some(CliTool::Gemini)
+            Some(CliTool::Agy)
         );
     }
 
@@ -1521,7 +1521,7 @@ mod tests {
             InventoryEntry::new(
                 3000,
                 "node /path/@google/gemini-cli/dist/cli.mjs",
-                CliTool::Gemini,
+                CliTool::Agy,
                 true
             )
         );

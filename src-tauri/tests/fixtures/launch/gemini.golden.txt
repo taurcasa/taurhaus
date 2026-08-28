@@ -1,1 +1,0 @@
-gemini --yolo -m 'gemini-3.1-pro'

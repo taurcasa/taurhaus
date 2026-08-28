@@ -357,7 +357,7 @@ impl LaunchSpec<'_> {
                     }
                 }
             }
-            CliTool::Gemini => {
+            CliTool::Agy => {
                 if let Some(effort) = requested_effort {
                     notes.push(LaunchNote::EffortIgnored {
                         found: effort.to_string(),
@@ -1135,7 +1135,7 @@ mod tests {
     #[test]
     fn gemini_render_adds_model_and_notes_unsupported_effort() {
         let rendered = LaunchSpec {
-            tool: CliTool::Gemini,
+            tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
             base: "gemini --yolo",
             model: model_spec("gemini-3.1-pro", Some("high")),
@@ -1162,7 +1162,7 @@ mod tests {
     #[test]
     fn gemini_render_respects_long_model_flag_and_notes_it() {
         let rendered = LaunchSpec {
-            tool: CliTool::Gemini,
+            tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
             base: "gemini --yolo --model gemini-2.5-pro",
             model: model_spec("gemini-3.1-pro", None),

@@ -381,7 +381,7 @@ mod tests {
 
         assert_eq!(context.operation, MemberActivationOperationKind::AddAgent);
         assert_eq!(context.member.role, MemberRole::Agent);
-        assert_eq!(context.member.cli_tool, CliTool::Gemini);
+        assert_eq!(context.member.cli_tool, CliTool::Agy);
         assert_eq!(context.member.model, "gemini-2.5-pro");
         assert_eq!(context.pane_policy, MemberActivationPanePolicy::CreateNew);
         assert_eq!(
