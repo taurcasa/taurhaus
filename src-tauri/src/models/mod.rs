@@ -528,27 +528,34 @@ pub struct ModelCatalog {
 }
 
 static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
+    // Team decision 2026-08-28 (docs/design/model-steering-v4-plan.md): Claude
+    // roles run Fable 5 or Opus 5 only. The retired ids stay so persisted roles
+    // still resolve; they carry a hint at the model that replaces them.
     claude: vec![
         model_catalog_entry("opus", "Opus 5", CLAUDE_EFFORTS, None, false, None),
-        model_catalog_entry("sonnet", "Sonnet", CLAUDE_EFFORTS, None, false, None),
-        model_catalog_entry("haiku", "Haiku", CLAUDE_EFFORTS, None, false, None),
+        model_catalog_entry("fable", "Fable 5", CLAUDE_EFFORTS, None, false, None),
+        model_catalog_entry("sonnet", "Sonnet", CLAUDE_EFFORTS, None, true, Some("opus")),
+        model_catalog_entry("haiku", "Haiku", CLAUDE_EFFORTS, None, true, Some("opus")),
         model_catalog_entry(
             "claude-opus-4-6",
             "Claude Opus 4.6",
             CLAUDE_EFFORTS,
             None,
-            false,
-            None,
+            true,
+            Some("opus"),
         ),
         model_catalog_entry(
             "claude-sonnet-4-5",
             "Claude Sonnet 4.5",
             CLAUDE_EFFORTS,
             None,
-            false,
-            None,
+            true,
+            Some("opus"),
         ),
     ],
+    // Same decision for Codex: gpt-5.6-sol, with gpt-5.6-luna for small work.
+    // terra is not used, so every retired id points at sol rather than chaining
+    // a hint through another deprecated model.
     codex: vec![
         model_catalog_entry(
             "gpt-5.6-sol",
@@ -563,8 +570,8 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             "GPT-5.6-Terra",
             CODEX_EFFORTS_WITH_ULTRA,
             Some("medium"),
-            false,
-            None,
+            true,
+            Some("gpt-5.6-sol"),
         ),
         model_catalog_entry(
             "gpt-5.6-luna",
@@ -579,8 +586,8 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             "GPT-5.5",
             CODEX_EFFORTS_THROUGH_XHIGH,
             Some("medium"),
-            false,
-            None,
+            true,
+            Some("gpt-5.6-sol"),
         ),
         model_catalog_entry(
             "gpt-5.4",
@@ -588,7 +595,7 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             CODEX_EFFORTS_THROUGH_XHIGH,
             Some("medium"),
             true,
-            Some("gpt-5.6-terra"),
+            Some("gpt-5.6-sol"),
         ),
         model_catalog_entry(
             "gpt-5.4-mini",
@@ -1866,6 +1873,72 @@ mod tests {
     }
 
     #[test]
+    fn claude_catalog_leads_with_opus_then_fable() {
+        // Team decision 2026-08-28 (docs/design/model-steering-v4-plan.md):
+        // Claude roles run Fable 5 or Opus 5 only. The retired ids stay in the
+        // catalog so persisted roles keep resolving, but carry a hint.
+        assert_eq!(
+            ModelCatalog::entries_for(CliTool::Claude)
+                .iter()
+                .map(|entry| entry.id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "opus",
+                "fable",
+                "sonnet",
+                "haiku",
+                "claude-opus-4-6",
+                "claude-sonnet-4-5",
+            ]
+        );
+
+        let fable = ModelCatalog::entry_for(CliTool::Claude, "fable").expect("fable");
+        assert_eq!(fable.label, "Fable 5");
+        assert_eq!(fable.efforts, ["low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(fable.default_effort, None);
+        assert!(!fable.deprecated);
+        assert!(
+            !ModelCatalog::entry_for(CliTool::Claude, "opus")
+                .expect("opus")
+                .deprecated
+        );
+
+        for id in ["sonnet", "haiku", "claude-opus-4-6", "claude-sonnet-4-5"] {
+            let entry =
+                ModelCatalog::entry_for(CliTool::Claude, id).unwrap_or_else(|| panic!("{id}"));
+            assert!(entry.deprecated, "{id} is deprecated");
+            assert_eq!(
+                entry.replacement.as_deref(),
+                Some("opus"),
+                "{id} replacement"
+            );
+        }
+    }
+
+    #[test]
+    fn retired_codex_models_point_at_sol() {
+        // Same decision: Codex roles run gpt-5.6-sol, with gpt-5.6-luna for
+        // small work. terra is not used, so no hint may still point at it.
+        for id in ["gpt-5.6-terra", "gpt-5.5", "gpt-5.4"] {
+            let entry =
+                ModelCatalog::entry_for(CliTool::Codex, id).unwrap_or_else(|| panic!("{id}"));
+            assert!(entry.deprecated, "{id} is deprecated");
+            assert_eq!(
+                entry.replacement.as_deref(),
+                Some("gpt-5.6-sol"),
+                "{id} replacement"
+            );
+        }
+
+        for id in ["gpt-5.6-sol", "gpt-5.6-luna"] {
+            let entry =
+                ModelCatalog::entry_for(CliTool::Codex, id).unwrap_or_else(|| panic!("{id}"));
+            assert!(!entry.deprecated, "{id} is current");
+            assert_eq!(entry.replacement, None, "{id} needs no replacement");
+        }
+    }
+
+    #[test]
     fn grok_catalog_matches_the_verified_1_0_5_models() {
         // Regression: commit bfecae9 had no grok catalog, so `grok models`'
         // verified per-model effort menus could not gate a launch and an
@@ -1930,7 +2003,7 @@ mod tests {
             .expect("gpt-5.4 catalog entry");
 
         assert!(deprecated.deprecated);
-        assert_eq!(deprecated.replacement.as_deref(), Some("gpt-5.6-terra"));
+        assert_eq!(deprecated.replacement.as_deref(), Some("gpt-5.6-sol"));
     }
 
     #[test]
