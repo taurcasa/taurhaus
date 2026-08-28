@@ -455,6 +455,13 @@ async function initializeManagedCodexTeam() {
     throw new Error(`Codex is parked on an interactive prompt and will not take a turn:\n${paneContents.trimEnd()}`)
   }
 
+  // The onboarding message can be left sitting in the composer when its Enter
+  // lands while Codex is still starting. Anything typed next would be appended
+  // to it — `/compact` would go out as prose, not as a command — so submit
+  // whatever is there first. An empty composer ignores a bare Enter.
+  tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
+  await waitForMemberIdle(teamName, memberName)
+
   writeOperationalSnapshot(teamName, memberName, TAURHAUS_PROJECT_PATH)
 
   return { teamName, memberName, paneId, sessionId }
