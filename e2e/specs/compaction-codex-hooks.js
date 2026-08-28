@@ -69,6 +69,7 @@ let laneSkipReason = 'Codex compaction prerequisites unavailable'
 let originalSettings = null
 let managed = null
 let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
+let restorePaneEnvironmentOnTeardown = null
 const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 
@@ -261,6 +262,24 @@ function applyPaneEnvironment() {
   }
 }
 
+/**
+ * Run `work` with the isolated roots visible to panes created inside it.
+ *
+ * The `taurhaus` tmux session is shared with whatever the operator is running,
+ * so the override lives for exactly as long as the pane-creating call and is
+ * restored on every path out — including a failed initialization.
+ */
+async function withPaneEnvironment(work) {
+  const restore = applyPaneEnvironment()
+  restorePaneEnvironmentOnTeardown = restore
+  try {
+    return await work()
+  } finally {
+    restore()
+    restorePaneEnvironmentOnTeardown = null
+  }
+}
+
 /** A Claude lead role and a Codex agent role from the template catalog. */
 async function pickRoleIds() {
   const roles = await invokeTauriOrThrow('templates_list_roles_full')
@@ -289,10 +308,11 @@ async function initializeManagedCodexTeam() {
   const memberName = 'codex-compaction-agent'
   const { leadRoleId, agentRoleId } = await pickRoleIds()
 
-  const restorePaneEnvironment = applyPaneEnvironment()
-  let report
-  try {
-    report = await invokeTauriOrThrow('coordination_initialize_team', {
+  let paneId = null
+  let sessionId = null
+  await withPaneEnvironment(async () => {
+    createdTeamNames.add(teamName)
+    const report = await invokeTauriOrThrow('coordination_initialize_team', {
       request: {
         teamName,
         teamDescription: 'E2E lane for Codex compaction through the hook bridge',
@@ -315,18 +335,11 @@ async function initializeManagedCodexTeam() {
         ],
       },
     })
-  } finally {
-    createdTeamNames.add(teamName)
-  }
 
-  if (report?.failedStep) {
-    restorePaneEnvironment()
-    throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
-  }
+    if (report?.failedStep) {
+      throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
+    }
 
-  let paneId = null
-  let sessionId = null
-  try {
     // The pane is required; the captured rollout id is not — the bridge falls
     // back to matching the payload's cwd against the member's project path, so
     // a scanner that has not caught up yet must not fail the lane.
@@ -347,9 +360,7 @@ async function initializeManagedCodexTeam() {
       if (!paneId) throw error
       console.log(`[e2e] ${memberName} pane ${paneId} has no captured session id yet; the bridge will match on cwd`)
     })
-  } finally {
-    restorePaneEnvironment()
-  }
+  })
 
   writeOperationalSnapshot(teamName, memberName, TAURHAUS_PROJECT_PATH)
 
@@ -523,6 +534,11 @@ describe('Codex compaction via hooks', function () {
   after(async function () {
     this.timeout(120_000)
 
+    // Safety net: an abort mid-initialization must not leave the operator's
+    // shared tmux session pointing at this run's temp roots.
+    restorePaneEnvironmentOnTeardown?.()
+    restorePaneEnvironmentOnTeardown = null
+
     if (originalSettings) {
       await invokeTauri('update_settings', { settings: originalSettings })
     }
@@ -578,16 +594,12 @@ describe('Codex compaction via hooks', function () {
     // scratch home, then restart the member so it reads the new config.
     setAutoCompactTokenLimit(join(codexHome, 'config.toml'), AUTO_COMPACT_TOKEN_LIMIT)
 
-    const restorePaneEnvironment = applyPaneEnvironment()
-    let resumed
-    try {
+    const resumed = await withPaneEnvironment(async () => {
       tmuxQuietly(['kill-pane', '-t', managed.paneId])
-      resumed = await invokeTauriOrThrow('coordination_resume_member', {
+      return await invokeTauriOrThrow('coordination_resume_member', {
         request: { teamName: managed.teamName, memberName: managed.memberName },
       })
-    } finally {
-      restorePaneEnvironment()
-    }
+    })
     expect(resumed?.resumed).toBe(true)
     const paneId = resumed?.paneId ?? resumed?.pane_id
     expect(paneId).toBeTruthy()
