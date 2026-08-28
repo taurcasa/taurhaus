@@ -88,8 +88,11 @@ compaction, manually and automatically. It is therefore excluded from both
 E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
 ```
 
-It reads `~/.codex` once, copying only `auth.json` and `config.toml` into a scratch
-`CODEX_HOME` under the session temp root, and never writes back to it. Point
+It reads `~/.codex` once, copying only `auth.json` into a scratch `CODEX_HOME` under
+the session temp root, and never writes back to it. The scratch `config.toml` is
+generated, not copied: the operator's own config can register things Codex executes
+(`notify`, MCP servers), and a configured `notify` in particular would displace the
+notifier taurhaus installs, which is the lane's only turn signal. Point
 `E2E_CODEX_SOURCE_HOME` somewhere else to copy from another Codex home. On a host
 without `codex` ≥ 0.147, without Codex credentials, or without mesh/tmux, the lane
 skips itself and prints why. See

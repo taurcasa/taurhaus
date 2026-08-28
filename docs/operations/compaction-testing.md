@@ -174,18 +174,28 @@ What it isolates:
 
 - `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` are the wdio session's temp roots, so the
   team, its inboxes and the JSONL log the assertions read are all throwaway.
-- `CODEX_HOME` is a scratch copy holding **only** `auth.json` and `config.toml`
-  (`e2e/helpers/codexScratchHome.js`). Sessions, history and the Codex databases are
-  never copied, and nothing is written back to `~/.codex` — the managed `hooks.json` and
-  every rollout transcript land in the scratch home.
+- `CODEX_HOME` is a scratch home holding **only** `auth.json`, copied from the operator's,
+  plus a generated minimal `config.toml` (`e2e/helpers/codexScratchHome.js`). The
+  operator's config is deliberately not copied: it can register things Codex executes,
+  and a configured `notify` would make taurhaus preserve *that* notifier instead of
+  installing its own — which is the only turn signal the lane has. Sessions, history and
+  the Codex databases are never copied, and nothing is written back to `~/.codex` — the
+  managed `hooks.json` and every rollout transcript land in the scratch home.
 - The hook is a separate process Codex spawns, so it resolves the teams dir and the log
   sink from the pane's environment. The lane sets those roots on the shared `taurhaus`
-  tmux session only for the length of team initialization and restores them immediately
-  after.
+  tmux session only for the one call that creates panes, restores them the moment it
+  returns, and restores them again from a `process.on('exit')` handler for a run that is
+  killed before its teardown.
 
-It covers one trigger, for the reason in the version note above: only automatic
-compaction reaches the bridge, so driving a manual `/compact` here would only spend
-turns to assert an absence.
+It covers both triggers, as two cases in this order:
+
+1. **automatic** — the case that proves delivery, so it runs first: Mocha bails on the
+   first failure and the delivery proof must not be lost to a failure in the other case.
+2. **manual** — `/compact` typed into the pane. It pins the version note above rather
+   than asserting a delivery that cannot happen: Codex writes a compaction boundary to
+   its own transcript, and no `compaction.codex_hook.*` event is produced at all. The
+   day Codex starts sending `SessionStart` for a manual compaction, that case fails and
+   this note and the lane get updated together.
 
 The case is bounded rather than paid for in full: the scratch `config.toml` gets
 `model_auto_compact_token_limit = 20000` **before the member launches**, so it reads the
@@ -200,8 +210,19 @@ It asserts this acceptance trail in `taurhaus.log.jsonl`:
 - `compaction.codex_hook.received` → `resolved` → `delivered` for that member, with
   `additional_context_bytes` greater than zero,
 - `compaction.injected` for the member with `tool = codex`,
+- no `compaction.codex_hook.failed` / `compaction.compact_hook.failed` — `delivered` is
+  emitted before the response is serialized and written, and a failure at that last step
+  is reported separately (stage `serialize_response`),
 - and **no** `compaction.signal_emitted`, `compaction.detected` or
   `compaction.extractor.*` for it — in hooks mode the tailer owns nothing.
+
+Those are diagnostics. The acceptance signal is on Codex's side of the boundary: the
+operational snapshot the lane writes carries a marker that exists nowhere else, the
+bridge renders it into the card (`Current task: #<id> — …`), and the case only passes
+once that marker appears in Codex's own rollout transcript — measured on this host, as a
+`developer` message about a second after the hook returns. Without it a broken or
+ignored hook response would leave the paid lane green while the member got no context
+back.
 
 Codex's `SessionStart` payload is printed, so a run shows exactly what the harness put on
 the wire.
