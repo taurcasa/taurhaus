@@ -346,7 +346,7 @@ describe('TaskBoard component', () => {
   it('uses stable identity tie-breaker for equal in-progress recency', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
-        makeTask({ id: '2', subject: 'C', source: 'gemini', source_key: 'k2', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '2', subject: 'C', source: 'codex', source_key: 'k2', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
         makeTask({ id: '1', subject: 'B', source: 'claude', source_key: 'k1', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
         makeTask({ id: '1', subject: 'A', source: 'claude', source_key: 'k0', status: 'in_progress', state_changed_at: '2026-03-01T11:00:00Z' }),
       ],
@@ -386,7 +386,7 @@ describe('TaskBoard component', () => {
   it('uses stable identity tie-breaker for equal pending sort keys', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
-        makeTask({ id: '2', subject: 'C', source: 'gemini', source_key: 'k2', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '2', subject: 'C', source: 'codex', source_key: 'k2', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
         makeTask({ id: '1', subject: 'B', source: 'claude', source_key: 'k1', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
         makeTask({ id: '1', subject: 'A', source: 'claude', source_key: 'k0', status: 'pending', blocked_by: ['x'], state_changed_at: '2026-03-01T11:00:00Z' }),
       ],
@@ -426,7 +426,7 @@ describe('TaskBoard component', () => {
   it('uses stable identity tie-breaker for equal completed timestamps', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
-        makeTask({ id: '2', subject: 'C', source: 'gemini', source_key: 'k2', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
+        makeTask({ id: '2', subject: 'C', source: 'codex', source_key: 'k2', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
         makeTask({ id: '1', subject: 'B', source: 'claude', source_key: 'k1', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
         makeTask({ id: '1', subject: 'A', source: 'claude', source_key: 'k0', status: 'completed', updated_at: '2026-03-01T11:00:00Z' }),
       ],
@@ -537,7 +537,7 @@ describe('TaskBoard component', () => {
       tasks: [
         makeTask({ id: '1', source: 'claude', status: 'pending' }),
         makeTask({ id: '2', source: 'codex', status: 'in_progress' }),
-        makeTask({ id: '3', source: 'gemini', status: 'completed' }),
+        makeTask({ id: '3', source: 'agy', status: 'completed' }),
       ],
       errors: [],
     })
@@ -546,7 +546,7 @@ describe('TaskBoard component', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Claude')).toBeTruthy()
       expect(screen.getByLabelText('Codex')).toBeTruthy()
-      expect(screen.getByLabelText('Gemini')).toBeTruthy()
+      expect(screen.getByLabelText('Antigravity')).toBeTruthy()
     })
   })
 

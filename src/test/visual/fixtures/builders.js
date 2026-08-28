@@ -55,7 +55,7 @@ export function createLeadMember(overrides = {}) {
 export function createAgentMembers(count, {
   canvasSize = { width: 900, height: 520 },
   statusCycle = ['active', 'idle', 'active', 'idle', 'offline'],
-  toolCycle = ['codex', 'gemini', 'claude'],
+  toolCycle = ['codex', 'agy', 'claude'],
 } = {}) {
   const width = Number(canvasSize.width ?? 900)
   const height = Number(canvasSize.height ?? 520)
@@ -79,7 +79,7 @@ export function createAgentMembers(count, {
 
   return Array.from({ length: count }, (_, index) => {
     const tool = cycle(toolCycle, index)
-    const toolLabel = tool === 'codex' ? 'Codex' : tool === 'gemini' ? 'Gemini' : 'Claude'
+    const toolLabel = tool === 'codex' ? 'Codex' : tool === 'agy' ? 'Antigravity' : 'Claude'
     const rowIndex = wrap && index >= row1Count ? 1 : 0
     const rowOffset = rowIndex === 0 ? index : index - row1Count
     const rowCount = rowIndex === 0 ? row1Count : row2Count
@@ -90,7 +90,7 @@ export function createAgentMembers(count, {
       role: 'agent',
       tool,
       toolLabel,
-      model: tool === 'codex' ? 'gpt-5.4 high' : tool === 'gemini' ? '2.5-pro' : 'sonnet',
+      model: tool === 'codex' ? 'gpt-5.4 high' : tool === 'agy' ? '2.5-pro' : 'sonnet',
       status: cycle(statusCycle, index),
       position: rowPosition(rowIndex, rowOffset, rowCount),
     })

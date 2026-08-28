@@ -63,6 +63,7 @@ function createScenario({
   sessionStore = { sessionsByProject: {}, sessionByProject: {} },
   expected,
   compareAgainst = null,
+  openContextMenu = false,
 }) {
   return {
     name,
@@ -73,6 +74,7 @@ function createScenario({
     sessionStore,
     expected,
     compareAgainst,
+    openContextMenu,
   }
 }
 
@@ -231,7 +233,7 @@ const active_multiTool_dark = createScenario({
       '/projects/multi-tool-runtime': [
         createSession({ cli_tool: 'claude', state: 'active', tmux_window: '1', tmux_pane: '%11' }),
         createSession({ cli_tool: 'codex', state: 'active', tmux_window: '2', tmux_pane: '%12' }),
-        createSession({ cli_tool: 'gemini', state: 'active', tmux_window: '4', tmux_pane: '%14' }),
+        createSession({ cli_tool: 'agy', state: 'active', tmux_window: '4', tmux_pane: '%14' }),
       ],
     },
     sessionByProject: {
@@ -239,9 +241,15 @@ const active_multiTool_dark = createScenario({
     },
   },
   expected: {
-    labels: ['Multi Tool Runtime', 'Claude: running', 'Codex: running', 'Gemini: running'],
+    labels: ['Multi Tool Runtime', 'Claude: running', 'Codex: running', 'Antigravity: running'],
     selectedProjectName: 'Multi Tool Runtime',
   },
+})
+
+const antigravity_context_menu = createScenario({
+  ...active_multiTool_dark,
+  name: 'antigravity_context_menu',
+  openContextMenu: true,
 })
 
 const idle_codex_dark = createScenario({
@@ -429,7 +437,7 @@ const team_rail_three_light = createScenario({
         }),
         createSession({
           pid: 23,
-          cli_tool: 'gemini',
+          cli_tool: 'agy',
           state: 'idle',
           tmux_pane: '%23',
           group_kind: 'mesh_team',
@@ -538,7 +546,7 @@ const team_stack_mixed_dark = createScenario({
         }),
         createSession({
           pid: 33,
-          cli_tool: 'gemini',
+          cli_tool: 'agy',
           state: 'idle',
           tmux_pane: '%33',
           group_kind: 'mesh_team',
@@ -618,7 +626,7 @@ const team_stack_mixed_light = createScenario({
         }),
         createSession({
           pid: 33,
-          cli_tool: 'gemini',
+          cli_tool: 'agy',
           state: 'idle',
           tmux_pane: '%33',
           group_kind: 'mesh_team',
@@ -699,7 +707,7 @@ const team_plus_standalone_dark = createScenario({
         }),
         createSession({
           pid: 43,
-          cli_tool: 'gemini',
+          cli_tool: 'agy',
           state: 'active',
           tmux_pane: '%43',
           group_kind: 'standalone',
@@ -720,7 +728,7 @@ const team_plus_standalone_dark = createScenario({
     },
   },
   expected: {
-    labels: ['Team Plus Standalone', 'team-plus-standalone: 2 team sessions active', 'Gemini: running', 'Connected'],
+    labels: ['Team Plus Standalone', 'team-plus-standalone: 2 team sessions active', 'Antigravity: running', 'Connected'],
     selectedProjectName: 'Team Plus Standalone',
   },
 })
@@ -756,7 +764,7 @@ const team_rail_threshold_dark = createScenario({
         }),
         createSession({
           pid: 53,
-          cli_tool: 'gemini',
+          cli_tool: 'agy',
           state: 'idle',
           tmux_pane: '%53',
           group_kind: 'standalone',
@@ -784,7 +792,7 @@ const team_rail_threshold_dark = createScenario({
     },
   },
   expected: {
-    labels: ['Team Rail Threshold', 'team-rail-threshold: 2 team sessions active', 'Gemini: idle', 'Claude: running', 'Connected'],
+    labels: ['Team Rail Threshold', 'team-rail-threshold: 2 team sessions active', 'Antigravity: idle', 'Claude: running', 'Connected'],
     selectedProjectName: 'Team Rail Threshold',
   },
 })
@@ -811,7 +819,7 @@ const activity_levels_dark = createScenario({
           activity_attribution: 'unattributed',
           activity_confidence: 'low',
         }),
-        createSession({ cli_tool: 'gemini', state: 'active', pid: 43, tmux_window: '3', tmux_pane: '%43', _presenceStale: true }),
+        createSession({ cli_tool: 'agy', state: 'active', pid: 43, tmux_window: '3', tmux_pane: '%43', _presenceStale: true }),
       ],
     },
     sessionByProject: {
@@ -823,13 +831,14 @@ const activity_levels_dark = createScenario({
       'Activity Signal Levels',
       'Claude: running',
       'Codex: project active (unattributed)',
-      'Gemini: retained stale running',
+      'Antigravity: retained stale running',
     ],
     selectedProjectName: 'Activity Signal Levels',
   },
 })
 
 export const sidebarScenarios = [
+  antigravity_context_menu,
   active_claude_selected_dark,
   active_multiTool_dark,
   activity_levels_dark,

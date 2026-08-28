@@ -13,6 +13,17 @@
   --color-brand-900: #134E4A;
   --color-brand-950: #0A2E2B;
 
+  /* Antigravity accent — Google blue, reserved for the agy harness identity. */
+  --color-google-blue-50: #E8F0FE;
+  --color-google-blue-200: #AECBFA;
+  --color-google-blue-300: #8AB4F8;
+  --color-google-blue-400: #669DF6;
+  --color-google-blue-500: #4285F4;
+  --color-google-blue-600: #1A73E8;
+  --color-google-blue-700: #1967D2;
+  --color-google-blue-800: #185ABC;
+  --color-google-blue-900: #174EA6;
+
   /* Success — Green */
   --color-success-50: #F0FDF4;
   --color-success-300: #86EFAC;

@@ -537,13 +537,13 @@
     items.push({ separator: true })
     items.push(launch('New Claude Session', 'fresh', 'claude', CTX_ICON_PLUS))
     items.push(launch('New Codex Session', 'fresh', 'codex', CTX_ICON_PLUS))
-    items.push(launch('New Gemini Session', 'fresh', 'gemini', CTX_ICON_PLUS))
+    items.push(launch('New Antigravity Session', 'fresh', 'agy', CTX_ICON_PLUS))
 
-    // Resume stays distinct for Claude, Codex, and Gemini.
+    // Resume stays distinct for Claude, Codex, and Antigravity.
     items.push({ separator: true })
     items.push(launch('Resume Claude', 'resume', 'claude', CTX_ICON_CLOCK))
     items.push(launch('Resume Codex', 'resume', 'codex', CTX_ICON_CLOCK))
-    items.push(launch('Resume Gemini', 'resume', 'gemini', CTX_ICON_CLOCK))
+    items.push(launch('Resume Antigravity', 'resume', 'agy', CTX_ICON_CLOCK))
 
     // Per-tool stop/restart for each running session
     if (liveSessions.length > 0) {

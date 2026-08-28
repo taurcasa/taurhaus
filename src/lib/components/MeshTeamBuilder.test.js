@@ -72,11 +72,11 @@ function sampleRoles(extraAgentCount = 0) {
       mode: 'implementation',
     },
     {
-      roleId: 'agent-gemini',
-      name: 'Gemini Researcher',
+      roleId: 'agent-antigravity',
+      name: 'Antigravity Researcher',
       kind: 'agent',
-      cliTool: 'gemini',
-      model: 'gemini-2.5-pro',
+      cliTool: 'agy',
+      model: 'gemini-3.7-flash-high',
       behaviorSummary: 'Finds source material.',
       mode: 'research',
     },
@@ -87,8 +87,8 @@ function sampleRoles(extraAgentCount = 0) {
       roleId: `agent-extra-${index + 1}`,
       name: `Extra Agent ${index + 1}`,
       kind: 'agent',
-      cliTool: index % 2 === 0 ? 'codex' : 'gemini',
-      model: index % 2 === 0 ? 'gpt-5.4 high' : 'gemini-2.5-pro',
+      cliTool: index % 2 === 0 ? 'codex' : 'agy',
+      model: index % 2 === 0 ? 'gpt-5.4 high' : 'gemini-3.7-flash-high',
       behaviorSummary: `Extra agent summary ${index + 1}.`,
     })
   }
@@ -162,7 +162,7 @@ function samplePresets() {
       description: 'Lean research and validation crew.',
       leadCount: 1,
       agentCount: 2,
-      tools: ['gemini', 'claude'],
+      tools: ['agy', 'claude'],
       builtIn: false,
     },
   ]
@@ -304,12 +304,16 @@ describe('MeshTeamBuilder', () => {
     expect(screen.queryByTestId('mesh-builder-role-lead-claude')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-role-lead-codex')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-role-agent-codex')).toBeInTheDocument()
-    expect(screen.queryByTestId('mesh-builder-role-agent-gemini')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-role-agent-antigravity')).not.toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('mesh-builder-filter-tool-codex'))
 
     expect(screen.getByTestId('mesh-builder-role-lead-claude')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-role-agent-gemini')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-role-agent-antigravity')).toBeInTheDocument()
+
+    // Regression: 9a66d1c made the third tool filter a Gemini-only branch.
+    await fireEvent.click(screen.getByTestId('mesh-builder-filter-tool-agy'))
+    expect(screen.getByTestId('mesh-builder-role-agent-antigravity')).toBeInTheDocument()
   })
 
   it('filters roles by kind chips', async () => {
@@ -337,12 +341,12 @@ describe('MeshTeamBuilder', () => {
 
     expect(screen.queryByTestId('mesh-builder-role-lead-claude')).not.toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-role-agent-codex')).toBeInTheDocument()
-    expect(screen.queryByTestId('mesh-builder-role-agent-gemini')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-builder-role-agent-antigravity')).not.toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('mesh-builder-filter-mode-implementation'))
 
     expect(screen.getByTestId('mesh-builder-role-lead-claude')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-role-agent-gemini')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-role-agent-antigravity')).toBeInTheDocument()
   })
 
   it('shows an empty-results state when filters remove every role', async () => {
@@ -491,13 +495,13 @@ describe('MeshTeamBuilder', () => {
   it('restores pinned roles from localStorage on remount', () => {
     window.localStorage.setItem(
       PINNED_ROLE_IDS_STORAGE_KEY,
-      JSON.stringify(['lead-codex', 'agent-gemini'])
+      JSON.stringify(['lead-codex', 'agent-antigravity'])
     )
 
     renderBuilder()
 
     expect(screen.getByTestId('mesh-builder-pinned-chip-lead-codex')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-builder-pinned-chip-agent-gemini')).toBeInTheDocument()
+    expect(screen.getByTestId('mesh-builder-pinned-chip-agent-antigravity')).toBeInTheDocument()
   })
 
   it('pins roles in compact mode and lets pinned chips assign the same role callbacks', async () => {
@@ -1037,7 +1041,7 @@ describe('MeshTeamBuilder role-inherited reasoning effort', () => {
 
   it('keeps the inherit-global option for a member whose role declares no effort', async () => {
     const config = roleBoundTeamConfig()
-    config.agents[0].roleId = 'agent-gemini'
+    config.agents[0].roleId = 'agent-antigravity'
     config.agents[0].tool = 'codex'
     renderBuilder({ teamConfig: config })
 

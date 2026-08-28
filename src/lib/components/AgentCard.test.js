@@ -74,10 +74,10 @@ describe('AgentCard', () => {
       target: { value: 'api-dev' },
     })
     await fireEvent.change(screen.getByTestId('agent-card-tool-select'), {
-      target: { value: 'gemini' },
+      target: { value: 'agy' },
     })
     await fireEvent.change(screen.getByTestId('agent-card-model-select'), {
-      target: { value: 'gemini-3.1-pro' },
+      target: { value: 'gemini-3.7-flash-high' },
     })
     await fireEvent.input(screen.getByTestId('agent-card-project-input'), {
       target: { value: '/projects/api' },
@@ -90,8 +90,8 @@ describe('AgentCard', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(onSave).toHaveBeenCalledWith({
       name: 'api-dev',
-      tool: 'gemini',
-      model: 'gemini-3.1-pro',
+      tool: 'agy',
+      model: 'gemini-3.7-flash-high',
       reasoningEffort: null,
       projectId: '/projects/api',
       description: 'Own API tasks',

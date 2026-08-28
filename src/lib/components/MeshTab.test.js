@@ -2710,10 +2710,10 @@ describe('MeshTab', () => {
       leadModel: 'gpt-5.4 high',
     },
     {
-      presetId: 'custom-gemini-team',
-      leadRoleId: 'gemini-orchestrator',
-      leadTool: 'gemini',
-      leadModel: 'gemini-3.1-pro',
+      presetId: 'custom-antigravity-team',
+      leadRoleId: 'antigravity-orchestrator',
+      leadTool: 'agy',
+      leadModel: 'gemini-3.7-flash-high',
     },
   ])('composes and initializes backend-loaded non-Claude preset $presetId cleanly', async ({
     presetId,
@@ -3768,7 +3768,7 @@ describe('MeshTab', () => {
         roleId: 'runtime-agent',
         name: 'Runtime Agent',
         kind: 'agent',
-        cliTool: 'gemini',
+        cliTool: 'agy',
         model: '',
         instructions: '',
       },
@@ -3783,8 +3783,8 @@ describe('MeshTab', () => {
     })
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-role-card-runtime-agent'))
-    expect(screen.getByTestId('mesh-add-agent-tool-select')).toHaveValue('gemini')
-    expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('gemini-3.1-pro')
+    expect(screen.getByTestId('mesh-add-agent-tool-select')).toHaveValue('agy')
+    expect(screen.getByTestId('mesh-add-agent-model-select')).toHaveValue('gemini-3.7-flash-high')
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-unlock-toggle'))
     await fireEvent.change(screen.getByTestId('mesh-add-agent-tool-select'), {
@@ -3828,24 +3828,24 @@ describe('MeshTab', () => {
         instructions: 'Codex implementation',
       },
       {
-        roleId: 'agent-gemini',
-        name: 'Agent Gemini',
+        roleId: 'agent-antigravity',
+        name: 'Agent Antigravity',
         kind: 'agent',
-        cliTool: 'gemini',
-        model: 'gemini-3.1-pro',
-        instructions: 'Gemini analysis',
+        cliTool: 'agy',
+        model: 'gemini-3.7-flash-high',
+        instructions: 'Antigravity analysis',
       },
     ])
 
     await fireEvent.click(screen.getByTestId('mesh-runtime-primary-action'))
     await waitFor(() => {
       expect(screen.getByTestId('mesh-add-agent-role-card-agent-codex')).toBeInTheDocument()
-      expect(screen.getByTestId('mesh-add-agent-role-card-agent-gemini')).toBeInTheDocument()
+      expect(screen.getByTestId('mesh-add-agent-role-card-agent-antigravity')).toBeInTheDocument()
     })
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-filter-tool-codex'))
     expect(screen.getByTestId('mesh-add-agent-role-card-agent-codex')).toBeInTheDocument()
-    expect(screen.queryByTestId('mesh-add-agent-role-card-agent-gemini')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mesh-add-agent-role-card-agent-antigravity')).not.toBeInTheDocument()
 
     await fireEvent.click(screen.getByTestId('mesh-add-agent-filter-tool-codex'))
     await fireEvent.click(screen.getByTestId('mesh-add-agent-filter-kind-lead'))

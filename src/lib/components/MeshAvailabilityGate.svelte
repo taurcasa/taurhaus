@@ -45,9 +45,9 @@
           description: null,
         },
         {
-          name: 'gemini-check',
-          cliTool: 'gemini',
-          model: defaultModelFor(catalog, 'gemini'),
+          name: 'antigravity-check',
+          cliTool: 'agy',
+          model: defaultModelFor(catalog, 'agy'),
           projectId,
           description: null,
         },

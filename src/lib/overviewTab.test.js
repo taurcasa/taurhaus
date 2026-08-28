@@ -199,11 +199,11 @@ describe('OverviewTab', () => {
 
   // --- Quick actions ---
 
-  it('renders Claude, Codex, and Gemini launch buttons', () => {
+  it('renders Claude, Codex, and Antigravity launch buttons', () => {
     render(OverviewTab, { props: defaultProps() })
     expect(screen.getByTestId('action-launch-claude')).toBeTruthy()
     expect(screen.getByTestId('action-launch-codex')).toBeTruthy()
-    expect(screen.getByTestId('action-launch-gemini')).toBeTruthy()
+    expect(screen.getByTestId('action-launch-agy')).toBeTruthy()
   })
 
   it('renders Terminal button', () => {
@@ -225,11 +225,11 @@ describe('OverviewTab', () => {
     expect(onLaunchSession).toHaveBeenCalledWith('codex')
   })
 
-  it('clicking Gemini button calls onLaunchSession("gemini")', async () => {
+  it('clicking Antigravity calls onLaunchSession("agy")', async () => {
     const onLaunchSession = vi.fn()
     render(OverviewTab, { props: defaultProps({ onLaunchSession }) })
-    await fireEvent.click(screen.getByTestId('action-launch-gemini'))
-    expect(onLaunchSession).toHaveBeenCalledWith('gemini')
+    await fireEvent.click(screen.getByTestId('action-launch-agy'))
+    expect(onLaunchSession).toHaveBeenCalledWith('agy')
   })
 
   it('clicking Terminal button calls onOpenTerminal', async () => {

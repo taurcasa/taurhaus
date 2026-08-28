@@ -353,7 +353,7 @@
                 >
                   <option value="claude">Claude</option>
                   <option value="codex">Codex</option>
-                  <option value="gemini">Gemini</option>
+                  <option value="agy">Antigravity</option>
                 </select>
               </label>
             </div>

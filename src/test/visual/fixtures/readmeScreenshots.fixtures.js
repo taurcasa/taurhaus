@@ -146,7 +146,7 @@ const sidebarSessionsByProject = {
       member_name: 'developer1',
     }),
     session({
-      cli_tool: 'gemini',
+      cli_tool: 'agy',
       state: 'idle',
       tmux_session: 'mesh',
       tmux_window: '5',
@@ -172,7 +172,7 @@ const sidebarSessionsByProject = {
   ],
   '/projects/shared-prompts': [
     session({
-      cli_tool: 'gemini',
+      cli_tool: 'agy',
       state: 'active',
       tmux_session: 'shared-prompts',
       tmux_window: '2',
@@ -264,8 +264,8 @@ const tasks = [
   },
   {
     id: '597',
-    source: 'gemini',
-    source_key: 'gemini:#597',
+    source: 'agy',
+    source_key: 'agy:#597',
     subject: 'Finalize README shot list',
     description: 'Define the screenshots required for the new README.',
     active_form: null,
@@ -451,8 +451,8 @@ const meshAgents = createAgentMembers(5).map((member, index) => withRoleDetails(
   isCrossProject: index === 4,
   projectLabel: index === 4 ? 'mesh' : 'taurhaus',
   status: ['active', 'idle', 'active', 'offline', 'idle'][index],
-  tool: ['codex', 'claude', 'gemini', 'codex', 'claude'][index],
-  toolLabel: ['Codex', 'Claude', 'Gemini', 'Codex', 'Claude'][index],
+  tool: ['codex', 'claude', 'agy', 'codex', 'claude'][index],
+  toolLabel: ['Codex', 'Claude', 'Antigravity', 'Codex', 'Claude'][index],
   model: ['gpt-5.4 high', 'opus', '2.5-pro', 'gpt-5.4 high', 'sonnet'][index],
   roleName: ['developer', 'architect', 'reviewer', 'ui-specialist', 'mesh-expert'][index],
   focusArea: [

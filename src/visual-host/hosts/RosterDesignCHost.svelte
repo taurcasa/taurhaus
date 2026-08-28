@@ -39,7 +39,7 @@
     if (tool === 'codex') return dark
       ? 'from-emerald-900/35 to-transparent border-l-emerald-500/50'
       : 'from-emerald-50/80 to-transparent border-l-emerald-400/50'
-    if (tool === 'gemini') return dark
+    if (tool === 'agy') return dark
       ? 'from-blue-900/35 to-transparent border-l-blue-500/50'
       : 'from-blue-50/80 to-transparent border-l-blue-400/50'
     return ''
@@ -48,19 +48,19 @@
   function toolAccent(tool) {
     if (tool === 'claude') return dark ? 'text-brand-400' : 'text-brand-600'
     if (tool === 'codex') return dark ? 'text-emerald-400' : 'text-emerald-600'
-    if (tool === 'gemini') return dark ? 'text-blue-400' : 'text-blue-600'
+    if (tool === 'agy') return dark ? 'text-blue-400' : 'text-blue-600'
     return textMuted
   }
 
   function toolBadge(tool) {
     if (tool === 'claude') return dark ? 'bg-brand-500/15 text-brand-300 border-brand-500/20' : 'bg-brand-50 text-brand-700 border-brand-200'
     if (tool === 'codex') return dark ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    if (tool === 'gemini') return dark ? 'bg-blue-500/15 text-blue-300 border-blue-500/20' : 'bg-blue-50 text-blue-700 border-blue-200'
+    if (tool === 'agy') return dark ? 'bg-blue-500/15 text-blue-300 border-blue-500/20' : 'bg-blue-50 text-blue-700 border-blue-200'
     return ''
   }
 
   function toolLetter(tool) {
-    return { claude: 'C', codex: 'X', gemini: 'G' }[tool] ?? '?'
+    return { claude: 'C', codex: 'X', agy: 'G' }[tool] ?? '?'
   }
 </script>
 
@@ -75,7 +75,7 @@
 
     <!-- Tool filter pills -->
     <div class="mb-3 flex gap-1.5">
-      {#each [['all', 'All'], ['claude', 'C'], ['codex', 'X'], ['gemini', 'G']] as [id, label]}
+      {#each [['all', 'All'], ['claude', 'C'], ['codex', 'X'], ['agy', 'G']] as [id, label]}
         <button class="flex h-7 items-center justify-center rounded-lg px-2.5 text-[10px] font-bold transition {id === 'all' ? (dark ? 'bg-white/[0.1] text-white' : 'bg-brand-100 text-brand-700') : (dark ? 'bg-white/[0.04] text-zinc-500 hover:text-zinc-300' : 'bg-zinc-100 text-zinc-400 hover:text-zinc-600')}">
           {label}
         </button>
@@ -200,7 +200,7 @@
         <!-- Empty state — visual invitation -->
         <div class="flex flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed py-16 {dark ? 'border-white/[0.06]' : 'border-zinc-200/60'}">
           <div class="mb-4 flex gap-2">
-            {#each ['claude', 'codex', 'gemini'] as tool}
+            {#each ['claude', 'codex', 'agy'] as tool}
               <span class="flex h-10 w-10 items-center justify-center rounded-xl border {toolBadge(tool)}">
                 <span class="text-sm font-bold">{toolLetter(tool)}</span>
               </span>

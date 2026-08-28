@@ -120,7 +120,7 @@ describe('Sidebar account submenus', () => {
       )
     }
 
-    expect(screen.getByTestId('menu-item-resume-gemini')).not.toHaveAttribute('aria-haspopup')
+    expect(screen.getByTestId('menu-item-resume-antigravity')).not.toHaveAttribute('aria-haspopup')
   })
 
   it('requests usage when the account context menu opens', async () => {

@@ -581,7 +581,7 @@
                   >
                     <option value="claude">Claude</option>
                     <option value="codex">Codex</option>
-                    <option value="gemini">Gemini</option>
+                    <option value="agy">Antigravity</option>
                   </select>
                   <div class="w-[18rem] max-w-full">
                     <ModelSelect

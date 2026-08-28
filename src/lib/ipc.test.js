@@ -735,7 +735,7 @@ describe('ipc module', () => {
           cliCommands: {
             claude: { continueCmd: 'claude --continue', fresh: 'claude', resume: 'claude --resume' },
             codex: { continueCmd: 'codex resume --last --yolo', fresh: 'codex --yolo', resume: 'codex resume --yolo' },
-            gemini: { continueCmd: 'gemini --resume', fresh: 'gemini', resume: 'gemini --resume' },
+            agy: { continueCmd: 'agy --continue', fresh: 'agy', resume: 'agy --conversation {session_id}' },
           },
         },
         terminalContract: {
@@ -753,16 +753,16 @@ describe('ipc module', () => {
               fresh: 'codex --yolo',
               resume: 'codex resume --last --yolo',
             },
-            gemini: {
-              continueCmd: 'gemini --yolo --resume',
-              fresh: 'gemini --yolo',
-              resume: 'gemini --yolo --resume',
+            agy: {
+              continueCmd: 'agy --continue',
+              fresh: 'agy',
+              resume: 'agy --conversation {session_id}',
             },
           },
           modelCatalog: {
             claude: [{ id: 'opus', label: 'Opus 5', efforts: ['high'], defaultEffort: null, deprecated: false, replacement: null }],
             codex: [{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'high'], defaultEffort: 'low', deprecated: false, replacement: null }],
-            gemini: [{ id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', efforts: [], defaultEffort: null, deprecated: false, replacement: null }],
+            agy: [{ id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)', efforts: [], defaultEffort: null, deprecated: false, replacement: null }],
           },
           cliVersions: {
             codex: '0.149.0',
@@ -840,10 +840,10 @@ describe('ipc module', () => {
               fresh: 'codex --yolo',
               resume: 'codex resume --last --yolo',
             },
-            gemini: {
-              continueCmd: 'gemini --yolo --resume',
-              fresh: 'gemini --yolo',
-              resume: 'gemini --yolo --resume',
+            agy: {
+              continueCmd: 'agy --continue',
+              fresh: 'agy',
+              resume: 'agy --conversation {session_id}',
             },
           },
         },
@@ -1653,8 +1653,8 @@ describe('ipc module', () => {
           name: 'Role A',
           source: 'CUSTOM',
           readOnly: true,
-          cliTool: 'gemini',
-          defaults: { model: 'gemini-3.1-pro' },
+          cliTool: 'agy',
+          defaults: { model: 'gemini-3.7-flash-high' },
           focus_area: 'Documentation systems',
           context_summary: 'Maintains operational docs and architecture-facing explanations.',
           behavior_summary: 'Clarifies shipped behavior without assuming implementation ownership.',
@@ -1667,8 +1667,8 @@ describe('ipc module', () => {
       expect(result).toEqual([
         expect.objectContaining({
           roleId: 'role-a',
-          cliTool: 'gemini',
-          model: 'gemini-3.1-pro',
+          cliTool: 'agy',
+          model: 'gemini-3.7-flash-high',
           focusArea: 'Documentation systems',
           contextSummary: 'Maintains operational docs and architecture-facing explanations.',
           behaviorSummary: 'Clarifies shipped behavior without assuming implementation ownership.',

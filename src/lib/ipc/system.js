@@ -20,17 +20,17 @@ const DEFAULT_CLI_COMMANDS = {
     fresh: 'codex --yolo',
     resume: 'codex resume --last --yolo',
   },
-  gemini: {
-    continue_cmd: 'gemini --yolo --resume',
-    fresh: 'gemini --yolo',
-    resume: 'gemini --yolo --resume',
+  agy: {
+    continue_cmd: 'agy --continue',
+    fresh: 'agy',
+    resume: 'agy --conversation {session_id}',
   },
 }
 
 const EMPTY_MODEL_CATALOG = {
   claude: [],
   codex: [],
-  gemini: [],
+  agy: [],
 }
 
 const EMPTY_CLI_VERSIONS = {
@@ -109,7 +109,7 @@ function normalizeModelCatalog(raw, defaults = EMPTY_MODEL_CATALOG) {
   return {
     claude: normalizeModelCatalogEntries(catalog.claude, defaults.claude),
     codex: normalizeModelCatalogEntries(catalog.codex, defaults.codex),
-    gemini: normalizeModelCatalogEntries(catalog.gemini, defaults.gemini),
+    agy: normalizeModelCatalogEntries(catalog.agy, defaults.agy),
   }
 }
 
@@ -145,7 +145,7 @@ export function buildFrontendFallbackTerminalContract(platform = 'linux') {
     cli_command_defaults: {
       claude: { ...fallback.cli_command_defaults.claude },
       codex: { ...fallback.cli_command_defaults.codex },
-      gemini: { ...fallback.cli_command_defaults.gemini },
+      agy: { ...fallback.cli_command_defaults.agy },
     },
     model_catalog: normalizeModelCatalog(fallback.model_catalog),
     cli_versions: normalizeCliVersions(fallback.cli_versions),
@@ -189,7 +189,7 @@ function normalizeTerminalContract(raw) {
     cli_command_defaults: {
       claude: normalizeToolCommands(cliCommandDefaults.claude, defaults.cli_command_defaults.claude),
       codex: normalizeToolCommands(cliCommandDefaults.codex, defaults.cli_command_defaults.codex),
-      gemini: normalizeToolCommands(cliCommandDefaults.gemini, defaults.cli_command_defaults.gemini),
+      agy: normalizeToolCommands(cliCommandDefaults.agy, defaults.cli_command_defaults.agy),
     },
     model_catalog: normalizeModelCatalog(modelCatalog, defaults.model_catalog),
     cli_versions: normalizeCliVersions(cliVersions, defaults.cli_versions),
@@ -212,6 +212,7 @@ function normalizeSettings(raw) {
     ? terminal.harness
     : {}
   const codexCompaction = harness.codex_compaction ?? harness.codexCompaction
+  const agyHooks = harness.agy_hooks ?? harness.agyHooks
   const terminalContract = normalizeTerminalContract(
     settings.terminal_contract && typeof settings.terminal_contract === 'object'
       ? settings.terminal_contract
@@ -255,10 +256,11 @@ function normalizeSettings(raw) {
       cli_commands: {
         claude: normalizeToolCommands(cliCommands.claude, terminalContract.cli_command_defaults.claude),
         codex: normalizeToolCommands(cliCommands.codex, terminalContract.cli_command_defaults.codex),
-        gemini: normalizeToolCommands(cliCommands.gemini, terminalContract.cli_command_defaults.gemini),
+        agy: normalizeToolCommands(cliCommands.agy, terminalContract.cli_command_defaults.agy),
       },
       harness: {
         codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
+        agy_hooks: Boolean(agyHooks),
       },
       claude_default_account_id:
         terminal.claude_default_account_id ?? terminal.claudeDefaultAccountId ?? null,

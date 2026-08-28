@@ -244,9 +244,9 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
           ...baseTeamConfig(),
           lead: {
             ...baseTeamConfig().lead,
-            tool: 'gemini',
-            model: 'gemini-3.1-pro',
-            roleId: 'gemini-orchestrator',
+            tool: 'agy',
+            model: 'gemini-3.7-flash-high',
+            roleId: 'antigravity-orchestrator',
           },
         },
         projectPath: '/projects/taurhaus',
@@ -254,12 +254,12 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     })
 
     await fireEvent.click(await screen.findByTestId('team-customizer-save-preset-trigger'))
-    await fireEvent.input(screen.getByTestId('save-preset-name-input'), { target: { value: 'Gemini Team' } })
+    await fireEvent.input(screen.getByTestId('save-preset-name-input'), { target: { value: 'Antigravity Team' } })
     await fireEvent.click(screen.getByTestId('save-preset-confirm'))
 
     expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
       expect.objectContaining({
-        leadRoleId: 'gemini-orchestrator',
+        leadRoleId: 'antigravity-orchestrator',
       })
     )
   })

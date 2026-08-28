@@ -44,12 +44,12 @@ const FULL_TASK = {
 /** A sparse task (Gemini TODO item — only subject + status). */
 const SPARSE_TASK = {
   id: 'todo-5',
-  source_key: 'gemini-todo',
+  source_key: 'agy-todo',
   subject: 'Write unit tests',
   description: null,
   active_form: null,
   status: 'pending',
-  source: 'gemini',
+  source: 'agy',
   blocks: [],
   blocked_by: [],
   owner: null,
@@ -366,7 +366,7 @@ describe('Sparse task rendering', () => {
     renderPanel({ task: SPARSE_TASK, detail: SPARSE_DETAIL })
     // Header always shows
     expect(screen.getByText('Write unit tests')).toBeTruthy()
-    expect(screen.getByText('Gemini')).toBeTruthy()
+    expect(screen.getByText('Antigravity')).toBeTruthy()
     expect(screen.getByText('Pending')).toBeTruthy()
     // All detail sections absent
     expect(screen.queryByTestId('detail-description')).toBeNull()

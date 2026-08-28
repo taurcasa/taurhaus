@@ -8,7 +8,7 @@ export function buildMockProjectTasks() {
       { id: '3', source_key: 'sess-aaa-111', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 7200000).toISOString(), updated_at: new Date(Date.now() - 7200000).toISOString() },
       { id: 'codex-0', source_key: 'legacy-codex', subject: 'Initialize project structure', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 10800000).toISOString(), updated_at: new Date(Date.now() - 10800000).toISOString() },
       { id: 'codex-1', source_key: 'legacy-codex', subject: 'Implement CLI parsing', description: null, active_form: 'Implementing CLI parsing', status: 'in_progress', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 900000).toISOString(), updated_at: new Date(Date.now() - 900000).toISOString() },
-      { id: 'todo-1', source_key: 'gemini-todo', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'gemini', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 1800000).toISOString(), updated_at: new Date(Date.now() - 1800000).toISOString() },
+      { id: 'todo-1', source_key: 'agy-todo', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'agy', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 1800000).toISOString(), updated_at: new Date(Date.now() - 1800000).toISOString() },
     ],
     errors: [],
     // Backend task scanner contract includes per-source scan outcomes.
@@ -20,7 +20,7 @@ export function buildMockTaskDetail(taskId, source, sourceKey) {
   return {
     task: {
       id: taskId,
-      source_key: sourceKey || (source === 'gemini' ? 'gemini-todo' : source === 'codex' ? 'legacy-codex' : 'legacy-claude'),
+      source_key: sourceKey || (source === 'agy' ? 'agy-todo' : source === 'codex' ? 'legacy-codex' : 'legacy-claude'),
       subject: 'Add task scanner backend',
       description: 'Parse tasks from all three CLI tools and present them in a unified task board.',
       active_form: 'Adding task scanner',
@@ -67,7 +67,7 @@ export function buildMockArchivedSessions() {
         ],
         commit_count: 12,
         file_count: 8,
-        sources: ['claude', 'codex', 'gemini'],
+        sources: ['claude', 'codex', 'agy'],
         last_archived_at: new Date(now - 3600000).toISOString(),
         enrichment_warnings: [],
       },

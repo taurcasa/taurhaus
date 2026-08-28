@@ -23,6 +23,10 @@ describe('describeSessionActionError', () => {
     expect(describeSessionActionError('stop', { tool: 'claude' }, new Error('boom'))).toBe(
       'Could not stop Claude. Please try again.'
     )
+    // Regression: 9a66d1c exposed Gemini-specific failure copy for Google's harness.
+    expect(describeSessionActionError('restart', { tool: 'agy' }, new Error('boom'))).toBe(
+      'Could not restart Antigravity. Please try again.'
+    )
   })
 })
 

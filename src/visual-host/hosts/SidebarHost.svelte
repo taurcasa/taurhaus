@@ -1,4 +1,5 @@
 <script>
+  import { onMount, tick } from 'svelte'
   import Sidebar from '../../lib/Sidebar.svelte'
 
   let { scenario, theme = 'light' } = $props()
@@ -10,6 +11,14 @@
     onToggleSettings: () => {},
     onRetry: () => {},
     onProjectRemoved: () => {},
+  })
+
+  onMount(async () => {
+    if (!scenario?.openContextMenu) return
+    await tick()
+    document.querySelector('[data-testid="project-item"]')?.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, clientX: 280, clientY: 180 })
+    )
   })
 </script>
 

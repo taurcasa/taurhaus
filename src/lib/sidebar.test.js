@@ -192,11 +192,11 @@ describe('Context menu session actions', () => {
     items.push({ separator: true })
     items.push({ label: 'New Claude Session', action: 'fresh-claude' })
     items.push({ label: 'New Codex Session', action: 'fresh-codex' })
-    items.push({ label: 'New Gemini Session', action: 'fresh-gemini' })
+    items.push({ label: 'New Antigravity Session', action: 'fresh-gemini' })
     items.push({ separator: true })
     items.push({ label: 'Resume Claude', action: 'resume-claude' })
     items.push({ label: 'Resume Codex', action: 'resume-codex' })
-    items.push({ label: 'Resume Gemini', action: 'resume-gemini' })
+    items.push({ label: 'Resume Antigravity', action: 'resume-gemini' })
 
     if (isLiveSession) {
       items.push({ separator: true })
@@ -218,10 +218,10 @@ describe('Context menu session actions', () => {
       'Continue Claude',
       'New Claude Session',
       'New Codex Session',
-      'New Gemini Session',
+      'New Antigravity Session',
       'Resume Claude',
       'Resume Codex',
-      'Resume Gemini',
+      'Resume Antigravity',
     ])
   })
 
@@ -262,7 +262,7 @@ describe('Context menu session actions', () => {
   it('collapses duplicate Codex and Gemini continue labels from the menu', () => {
     const labels = sessionMenuItems(null).filter(i => !i.separator).map((item) => item.label)
     expect(labels).not.toContain('Continue Codex')
-    expect(labels).not.toContain('Continue Gemini')
+    expect(labels).not.toContain('Continue Antigravity')
   })
 
   it('has stable separator positions between states', () => {

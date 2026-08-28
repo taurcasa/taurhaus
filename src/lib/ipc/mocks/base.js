@@ -108,8 +108,8 @@ export const MOCK_MODEL_CATALOG = {
     { id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium', deprecated: false, replacement: null },
     { id: 'gpt-5.4', label: 'GPT-5.4', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'medium', deprecated: true, replacement: 'gpt-5.6-terra' },
   ],
-  gemini: [
-    { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', efforts: [], defaultEffort: null, deprecated: false, replacement: null },
+  agy: [
+    { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)', efforts: [], defaultEffort: null, deprecated: false, replacement: null },
   ],
 }
 
@@ -133,10 +133,10 @@ export const MOCK_SETTINGS = {
         fresh: 'codex --yolo',
         resume: 'codex resume --last --yolo',
       },
-      gemini: {
-        continue_cmd: 'gemini --yolo --resume',
-        fresh: 'gemini --yolo',
-        resume: 'gemini --yolo --resume',
+      agy: {
+        continue_cmd: 'agy --continue',
+        fresh: 'agy',
+        resume: 'agy --conversation {session_id}',
       },
     },
     harness: { codex_compaction: 'transcript' },
@@ -157,10 +157,10 @@ export const MOCK_SETTINGS = {
         fresh: 'codex --yolo',
         resume: 'codex resume --last --yolo',
       },
-      gemini: {
-        continue_cmd: 'gemini --yolo --resume',
-        fresh: 'gemini --yolo',
-        resume: 'gemini --yolo --resume',
+      agy: {
+        continue_cmd: 'agy --continue',
+        fresh: 'agy',
+        resume: 'agy --conversation {session_id}',
       },
     },
   },
@@ -216,14 +216,14 @@ export const MOCK_CLAUDE_SESSIONS = [
     pid: 12360,
     project_path: '~/projects/taurui',
     tty: '/dev/pts/6',
-    args: 'gemini --yolo',
-    cli_tool: 'gemini',
+    args: 'agy',
+    cli_tool: 'agy',
     tmux_session: 'taurhaus',
     tmux_window: '4',
     tmux_pane: '%10',
     tmux_window_name: 'taurui',
     state: 'active',
-    session_id: 'gemini-sess-5678',
+    session_id: 'agy-sess-5678',
     jsonl_path: null,
   },
 ]

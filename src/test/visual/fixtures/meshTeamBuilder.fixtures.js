@@ -132,11 +132,11 @@ const roleTemplates = [
     behaviorSummary: 'Reviews quality and release risk.',
   }),
   createRole({
-    roleId: 'agent-gemini',
-    name: 'Gemini Researcher',
+    roleId: 'agent-antigravity',
+    name: 'Antigravity Researcher',
     kind: 'agent',
-    cliTool: 'gemini',
-    model: 'gemini-2.5-pro',
+    cliTool: 'agy',
+    model: 'gemini-3.7-flash-high',
     behaviorSummary: 'Explores sources and design references.',
   }),
 ]

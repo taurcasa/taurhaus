@@ -53,10 +53,10 @@ function mockCliCommandDefaults() {
       fresh: 'codex --yolo',
       resume: 'codex resume --last --yolo',
     },
-    gemini: {
-      continue_cmd: 'gemini --yolo --resume',
-      fresh: 'gemini --yolo',
-      resume: 'gemini --yolo --resume',
+    agy: {
+      continue_cmd: 'agy --continue',
+      fresh: 'agy',
+      resume: 'agy --conversation {session_id}',
     },
   }
 }
@@ -99,7 +99,7 @@ function mockSettings(overrides = {}) {
     custom_command: '',
     tmux_layout: 'new_window',
     cli_commands: mockCliCommandDefaults(),
-    harness: { codex_compaction: 'hooks' },
+    harness: { codex_compaction: 'hooks', agy_hooks: false },
     ...(overrides.terminal ?? {}),
   }
 
@@ -327,7 +327,9 @@ describe('Settings component', () => {
       expect(select).toHaveValue('manual')
       expect(screen.getByTestId('terminal-linux-note')).toBeTruthy()
       expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
-      expect(screen.getByTestId('cli-gemini-fresh').placeholder).toBe('gemini --yolo')
+      // Regression: 4cd067a changed the registry while the Settings fallback
+      // still rendered Gemini commands.
+      expect(screen.getByTestId('cli-agy-fresh').placeholder).toBe('agy')
     })
   })
 
@@ -352,7 +354,24 @@ describe('Settings component', () => {
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
         terminal: expect.objectContaining({
-          harness: { codex_compaction: 'transcript' },
+          harness: expect.objectContaining({ codex_compaction: 'transcript' }),
+        }),
+      }))
+    })
+  })
+
+  it('keeps Antigravity native activity hooks opt-in and persists the toggle', async () => {
+    // Regression: 4e9e2c5 added the backend hook sink without an opt-in UI.
+    render(Settings, { props: defaultProps() })
+
+    const toggle = await screen.findByTestId('agy-hooks-toggle')
+    expect(toggle).not.toBeChecked()
+    await fireEvent.click(toggle)
+
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+        terminal: expect.objectContaining({
+          harness: expect.objectContaining({ agy_hooks: true }),
         }),
       }))
     })
@@ -529,13 +548,13 @@ describe('Settings component', () => {
 
   it('keeps the CLI product names in the command settings headings', async () => {
     // Regression: 91f4d3f rendered short registry labels in place of the
-    // existing Claude Code and Gemini CLI product names.
+    // existing Claude Code and Antigravity CLI product names.
     render(Settings, { props: defaultProps() })
 
     const section = await screen.findByTestId('settings-cli-tools')
     expect(section).toHaveTextContent('Claude Code')
     expect(section).toHaveTextContent('Codex')
-    expect(section).toHaveTextContent('Gemini CLI')
+    expect(section).toHaveTextContent('Antigravity CLI')
   })
 
   it('terminal emulator dropdown has Windows Terminal and Custom options', async () => {

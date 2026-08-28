@@ -115,7 +115,7 @@ describe('HoverCard', () => {
             state: 'idle',
             project_unattributed_active: true,
             _duration: 9_000,
-            toolLabel: 'Gemini',
+            toolLabel: 'Antigravity',
           },
         ],
       },
@@ -152,7 +152,7 @@ describe('HoverCard', () => {
         sessions: [
           { live: true, state: 'active', toolLabel: 'Claude' },
           { live: true, state: 'idle', toolLabel: 'Codex' },
-          { live: true, state: 'active', toolLabel: 'Gemini' },
+          { live: true, state: 'active', toolLabel: 'Antigravity' },
           { live: true, state: 'idle', toolLabel: 'Claude' },
         ],
       },

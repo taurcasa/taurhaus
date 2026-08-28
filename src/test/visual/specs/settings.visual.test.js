@@ -16,10 +16,10 @@ function cliCommandDefaults() {
       fresh: 'codex --yolo',
       resume: 'codex resume --last --yolo',
     },
-    gemini: {
-      continue_cmd: 'gemini --yolo --resume',
-      fresh: 'gemini --yolo',
-      resume: 'gemini --yolo --resume',
+    agy: {
+      continue_cmd: 'agy --continue',
+      fresh: 'agy',
+      resume: 'agy --conversation {session_id}',
     },
   }
 }
