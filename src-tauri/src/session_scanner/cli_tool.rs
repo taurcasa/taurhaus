@@ -903,6 +903,13 @@ impl CliToolSpec {
     /// subcommand, and `grok -- "--help explain this"` is a prompt, not
     /// `--help`.
     pub fn argv_elements_are_session<S: AsRef<str>>(&self, argv: &[S]) -> bool {
+        self.argv_session_scan(argv, true)
+    }
+
+    /// `scan_past_prompt` is only safe when `argv` holds real elements: the
+    /// joined fallback cannot tell a COMMAND after the prompt from a word
+    /// inside it, so there the first positional decides.
+    fn argv_session_scan<S: AsRef<str>>(&self, argv: &[S], scan_past_prompt: bool) -> bool {
         let Some(executable_index) = argv
             .iter()
             .position(|element| self.matches_argv_token(element.as_ref()))
@@ -910,6 +917,12 @@ impl CliToolSpec {
             return false;
         };
         let mut index = executable_index + 1;
+        // Grammar: `<tool> [OPTIONS] [PROMPT] [COMMAND]`. The first positional
+        // is either a utility subcommand (not a session) or the prompt the TUI
+        // opens with; a COMMAND may still follow the prompt (`grok hello
+        // version` exits, `grok hello agent stdio` is a service), so scanning
+        // continues past the prompt until `--` or the end of argv.
+        let mut positionals = 0usize;
         while let Some(element) = argv.get(index).map(AsRef::as_ref) {
             // End of options: everything after it is prompt text, never a
             // subcommand and never a terminating flag.
@@ -929,9 +942,16 @@ impl CliToolSpec {
                 index += if takes_separate_value { 2 } else { 1 };
                 continue;
             }
-            // The first positional decides: a utility subcommand is not a
-            // session, and anything else is the prompt the TUI opens with.
-            return !self.non_session_subcommands.contains(&element);
+            if self.non_session_subcommands.contains(&element) {
+                return false;
+            }
+            positionals += 1;
+            if !scan_past_prompt || positionals >= 2 {
+                // Two ordinary positionals: no grammar makes that a
+                // subcommand, so it is prompt text.
+                return true;
+            }
+            index += 1;
         }
         true
     }
@@ -943,7 +963,7 @@ impl CliToolSpec {
     /// argv element, so `grok "help me"` reads as the `help` subcommand here.
     /// Prefer `argv_elements_are_session` wherever the elements survive.
     pub fn argv_is_session(&self, args: &str) -> bool {
-        self.argv_elements_are_session(&args.split_whitespace().collect::<Vec<_>>())
+        self.argv_session_scan(&args.split_whitespace().collect::<Vec<_>>(), false)
     }
 
     pub fn session_source(&self) -> &'static dyn crate::session_scanner::idle::SessionSource {
@@ -1299,6 +1319,8 @@ mod tests {
             vec!["grok", "--", "help"],
             vec!["grok", "explain the --help flag"],
             vec!["grok", "--model", "grok-4.6", "version the changelog"],
+            vec!["grok", "hello there", "--model", "grok-4.6"],
+            vec!["grok", "hello there", "--", "version"],
         ] {
             assert!(
                 grok.argv_elements_are_session(&interactive),
@@ -1314,6 +1336,13 @@ mod tests {
             vec!["grok", "version"],
             vec!["grok", "-p", "summarise"],
             vec!["grok", "--model", "grok-4.6", "inspect"],
+            // Regression: commit 574a9ba stopped scanning at the first
+            // positional, so a COMMAND after the prompt (`grok hello version`
+            // exits, `grok hello agent stdio` is a headless service) and a
+            // terminating flag after it were accepted as interactive sessions.
+            vec!["grok", "hello there", "version"],
+            vec!["grok", "hello there", "agent", "stdio"],
+            vec!["grok", "hello there", "--help"],
         ] {
             assert!(
                 !grok.argv_elements_are_session(&non_session),
