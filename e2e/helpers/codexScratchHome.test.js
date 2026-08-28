@@ -7,6 +7,7 @@ import {
   CODEX_SCRATCH_FILES,
   createCodexScratchHome,
   setAutoCompactTokenLimit,
+  trustProject,
 } from './codexScratchHome.js'
 
 let root
@@ -98,5 +99,37 @@ describe('setAutoCompactTokenLimit', () => {
     setAutoCompactTokenLimit(configPath, 9_000)
 
     expect(readFileSync(configPath, 'utf8').trim()).toBe('model_auto_compact_token_limit = 9000')
+  })
+})
+
+describe('trustProject', () => {
+  it('adds a trusted project table so Codex does not stop at its trust prompt', () => {
+    const configPath = join(root, 'config.toml')
+    writeFileSync(configPath, 'model = "gpt-5.4"\n')
+
+    trustProject(configPath, '/tmp/taurhaus-e2e-abc/projects/taurhaus')
+
+    const contents = readFileSync(configPath, 'utf8')
+    expect(contents).toContain('[projects."/tmp/taurhaus-e2e-abc/projects/taurhaus"]')
+    expect(contents).toContain('trust_level = "trusted"')
+    expect(contents.startsWith('model = "gpt-5.4"')).toBe(true)
+  })
+
+  it('is idempotent for a path that is already trusted', () => {
+    const configPath = join(root, 'config.toml')
+    writeFileSync(configPath, '[projects."/work/repo"]\ntrust_level = "trusted"\n')
+
+    trustProject(configPath, '/work/repo')
+
+    const contents = readFileSync(configPath, 'utf8')
+    expect(contents.match(/\[projects\."\/work\/repo"\]/g)).toHaveLength(1)
+  })
+
+  it('writes a config that does not exist yet', () => {
+    const configPath = join(root, 'fresh.toml')
+
+    trustProject(configPath, '/work/repo')
+
+    expect(readFileSync(configPath, 'utf8')).toContain('[projects."/work/repo"]')
   })
 })

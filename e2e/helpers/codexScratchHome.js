@@ -8,7 +8,7 @@
  * and every mutation the run causes land in the scratch copy.
  */
 
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** The only files copied out of the operator's real Codex home. */
@@ -66,4 +66,28 @@ export function setAutoCompactTokenLimit(configPath, limit) {
 
   const contents = lines.join('\n')
   writeFileSync(configPath, contents.endsWith('\n') ? contents : `${contents}\n`)
+}
+
+/**
+ * Mark a directory trusted in a scratch `config.toml`.
+ *
+ * Codex stops at an interactive "Do you trust the contents of this directory?"
+ * prompt for any unknown workspace — `--yolo` is an approval policy and does
+ * not answer it — so a managed member launched in a fresh fixture project never
+ * reaches its first turn. The operator's own projects carry this entry; the
+ * scratch home needs it for the fixture path.
+ */
+export function trustProject(configPath, projectPath) {
+  const table = `[projects.${JSON.stringify(projectPath)}]`
+
+  let contents = ''
+  try {
+    contents = readFileSync(configPath, 'utf8')
+  } catch {
+    contents = ''
+  }
+  if (contents.includes(table)) return
+
+  const prefix = contents.length === 0 || contents.endsWith('\n') ? '' : '\n'
+  appendFileSync(configPath, `${prefix}\n${table}\ntrust_level = "trusted"\n`)
 }

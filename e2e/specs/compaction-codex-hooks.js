@@ -33,7 +33,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
-import { setAutoCompactTokenLimit } from '../helpers/codexScratchHome.js'
+import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
 import { TAURHAUS_PROJECT_PATH, TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
 
 /** Codex gained the stable `SessionStart(source=compact)` hook in 0.147. */
@@ -251,9 +251,17 @@ function applyPaneEnvironment() {
 
   return function restorePaneEnvironment() {
     for (const [key, shown] of previous) {
-      // `show-environment` prints `NAME=value`, or `-NAME` when it was unset.
-      if (!shown || shown.startsWith('-')) {
+      // `show-environment` prints `NAME=value` when the session sets it, `-NAME`
+      // when the session explicitly removes it, and fails when the session says
+      // nothing about it (the global environment then decides). `-u` deletes the
+      // session entry, which is the restore for that last case; `-r` restores an
+      // explicit removal.
+      if (!shown) {
         tmuxQuietly(['set-environment', '-t', TMUX_SESSION, '-u', key])
+        continue
+      }
+      if (shown.startsWith('-')) {
+        tmuxQuietly(['set-environment', '-t', TMUX_SESSION, '-r', key])
         continue
       }
       const value = shown.slice(shown.indexOf('=') + 1)
@@ -518,6 +526,11 @@ describe('Codex compaction via hooks', function () {
       laneSkipReason = blockingErrors[0] || 'Mesh or tmux unavailable'
       return
     }
+
+    // Codex asks about directory trust for an unknown workspace before it will
+    // take a turn, and `--yolo` does not answer that. The fixture project is
+    // new every run, so the scratch config has to carry it.
+    trustProject(join(codexHome, 'config.toml'), TAURHAUS_PROJECT_PATH)
 
     originalSettings = await invokeTauriOrThrow('get_settings')
     await setCodexCompactionMode('hooks')
