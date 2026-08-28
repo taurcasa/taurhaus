@@ -254,6 +254,26 @@ mod tests {
     }
 
     #[test]
+    fn the_frontmatter_parses_as_yaml_even_when_the_role_text_fights_it() {
+        let mut template = claude_role();
+        let hostile = "Reviews: \"risk\" first\nand # scope second\ttoo";
+        template.focus_area = Some(hostile.to_string());
+
+        let rendered = render_agent_definition(&template);
+        let frontmatter = rendered
+            .split("---\n")
+            .nth(1)
+            .expect("rendered frontmatter block");
+        let parsed: serde_norway::Value =
+            serde_norway::from_str(frontmatter).expect("frontmatter parses as YAML");
+
+        assert_eq!(parsed["name"].as_str(), Some("claude-reviewer"));
+        assert_eq!(parsed["description"].as_str(), Some(hostile));
+        assert_eq!(parsed["model"].as_str(), Some("claude-opus-4-6"));
+        assert!(parsed.get("effort").is_none());
+    }
+
+    #[test]
     fn exports_one_file_per_claude_role_and_skips_the_other_harnesses() {
         let project = tempfile::tempdir().expect("project dir");
         let roles = vec![claude_role(), codex_role()];
