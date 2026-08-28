@@ -423,8 +423,9 @@ def post_with_retry(request, secret="", timeout=REQUEST_TIMEOUT_S):
         attempts += 1
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return_reason = "before the request could be retried" if attempts > 1 else "before it started"
-            raise timed_out(return_reason)
+            raise timed_out(
+                "before the request could be retried" if attempts > 1 else "before it started"
+            )
         try:
             with urllib.request.urlopen(request, timeout=remaining) as response:
                 return json.loads(_read_within(response, deadline).decode("utf-8"))
