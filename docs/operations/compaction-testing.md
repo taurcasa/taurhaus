@@ -43,11 +43,11 @@ Why:
   - `event_msg.payload.type="context_compacted"`
 - Codex *does* have first-party hooks, and taurhaus can use them, but that path is **opt-in**: `terminal.harness.codex_compaction` defaults to `transcript`, and `hooks` additionally requires Codex ≥ 0.147 (`CliVersions.codex_compaction_hooks_supported`) plus an installed managed `hooks.json`. Managed launches in hooks mode carry `--dangerously-bypass-hook-trust`. Test whichever mode the setting is actually in.
 
-#### Which hook a Codex compaction fires (measured, 0.149.0)
+#### Which hook a Codex compaction fires (measured, 0.149.0 and 0.150.1)
 
 taurhaus registers exactly one Codex hook: `SessionStart` with matcher `compact`
 (`compact_hook.rs`, `ensure_settings_hook_entry`). Whether a compaction reaches it
-depends on the trigger. Measured on Linux with Codex 0.149.0, using a probe home that
+depends on the trigger. Measured on Linux with Codex 0.149.0 and re-measured on 0.150.1, using a probe home that
 registered `PreCompact`, `PostCompact` and `SessionStart(compact)` together:
 
 | Trigger | `PreCompact` | `PostCompact` | `SessionStart(source=compact)` | Reaches the taurhaus bridge |
@@ -62,7 +62,7 @@ told apart by what the test did rather than by a field.
 
 Consequences for testing:
 
-- A manual `/compact` **cannot** validate the hook mode on 0.149. It compacts — the
+- A manual `/compact` **cannot** validate the hook mode on either version. It compacts — the
   transcript boundary appears — but the bridge is never invoked, so there is no
   `compaction.codex_hook.received` to wait for. `just test-compaction-codex` remains
   valid for the transcript mode, which is what it asserts.
@@ -183,21 +183,19 @@ What it isolates:
   tmux session only for the length of team initialization and restores them immediately
   after.
 
-The two cases follow the version note above:
+It covers one trigger, for the reason in the version note above: only automatic
+compaction reaches the bridge, so driving a manual `/compact` here would only spend
+turns to assert an absence.
 
-- **manual** — `/compact` typed into the member's pane over tmux. This case does **not**
-  assert a delivery, because on 0.149 a manual compaction never fires
-  `SessionStart(compact)`. It waits for Codex's own transcript boundary and then asserts
-  that no `compaction.*_hook.*` event was produced, pinning that gap. If it starts
-  failing, Codex changed and the manual trigger became usable again.
-- **automatic** — Codex's own auto-compaction, and the case that proves the bridge. It is
-  bounded rather than paid for in full: the scratch `config.toml` gets
-  `model_auto_compact_token_limit = 20000`, the member is restarted so it reads that, and
-  the lane feeds it one ~130 KB filler file per turn, capped at **6 turns**. A probe on
-  this host crossed the threshold on the first turn. If the cap is reached without a
-  compaction the case fails saying so — and nothing else in the lane proves the hook path.
+The case is bounded rather than paid for in full: the scratch `config.toml` gets
+`model_auto_compact_token_limit = 20000` **before the member launches**, so it reads the
+lowered threshold from its first turn and no restart is needed, and the lane then feeds
+it one ~130 KB filler file per turn, capped at **6 turns**. A probe on this host crossed
+the threshold on the first turn. If the cap is reached the case fails saying how many
+compaction boundaries Codex wrote in that window, which separates "Codex never compacted"
+from "Codex compacted without calling the bridge".
 
-The automatic case asserts the acceptance trail in `taurhaus.log.jsonl`:
+It asserts this acceptance trail in `taurhaus.log.jsonl`:
 
 - `compaction.codex_hook.received` → `resolved` → `delivered` for that member, with
   `additional_context_bytes` greater than zero,
