@@ -246,6 +246,7 @@ fn build_app() -> tauri::Builder<tauri::Wry> {
             // Kept for direct E2E IPC assertions.
             commands::templates::templates_flush_pending,
             commands::templates::export_role_to_file,
+            commands::templates::export_agent_definitions,
             #[cfg(feature = "mesh-bridged-backend")]
             commands::coordination::coordination_create_team,
             #[cfg(feature = "mesh-bridged-backend")]
@@ -315,6 +316,9 @@ fn maybe_run_coordination_cli_mode() -> Option<i32> {
         Some("--compact-hook" | "--claude-compact-hook") => Some(run_compact_hook_cli()),
         Some("--launch-command") => Some(run_launch_command_cli(args.next().as_deref())),
         Some("--render-onboarding") => Some(run_render_onboarding_cli(args.next().as_deref())),
+        Some("--export-agent-definitions") => {
+            Some(run_export_agent_definitions_cli(args.next().as_deref()))
+        }
         _ => None,
     }
 }
@@ -624,6 +628,46 @@ fn render_onboarding_cli<R: Read>(json_arg: Option<&str>, mut stdin: R) -> Resul
         role_context,
     )
     .ok_or_else(|| "onboarding is not required for this harness".to_string())
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn run_export_agent_definitions_cli(project_dir: Option<&str>) -> i32 {
+    match export_agent_definitions_cli(project_dir) {
+        Ok(response) => write_renderer_stdout(io::stdout(), &response),
+        Err(error) => {
+            tracing::warn!(error = %error, "agent definition export failed");
+            1
+        }
+    }
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn export_agent_definitions_cli(project_dir: Option<&str>) -> Result<String, String> {
+    let project_dir = project_dir
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            "a project directory is required: --export-agent-definitions <dir>".to_string()
+        })?;
+
+    let store = crate::templates::storage::TemplateStore::new(
+        crate::provider::platform_paths::PlatformPaths::app_data_root(),
+    );
+    let roles = store
+        .list_roles()
+        .map_err(|error| format!("failed to read the role catalog: {error}"))?
+        .into_iter()
+        .map(|record| record.template)
+        .collect::<Vec<_>>();
+
+    let export = crate::templates::agent_definitions::export_agent_definitions(
+        &roles,
+        std::path::Path::new(project_dir),
+    )
+    .map_err(|error| format!("failed to write agent definitions: {error}"))?;
+
+    serde_json::to_string(&export)
+        .map_err(|error| format!("failed to encode the export result: {error}"))
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

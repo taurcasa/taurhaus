@@ -228,6 +228,7 @@
             <MeshTab
               {dark}
               projectPath={selectedProject.path}
+              projectId={selectedProject.id}
               availableProjects={projects}
               onFocusPane={onMeshFocusPane}
             />

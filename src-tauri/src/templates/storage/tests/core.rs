@@ -375,3 +375,82 @@ fn state_round_trip_persists_pending_actions() {
 
     assert_eq!(loaded, state);
 }
+
+#[test]
+fn replacing_without_an_atomic_rename_never_leaves_a_partial_file() {
+    // Regression: the branch that runs when Windows reports an unsupported
+    // rename fell back to `fs::write`, truncating the live file and rewriting
+    // it in place — a reader could see half a definition, and an interrupted
+    // write left one on disk. Every observable state has to be a whole file.
+    let root = TempDir::new().expect("tempdir");
+    let target = root.path().join("agents").join("reviewer.md");
+    fs::create_dir_all(target.parent().expect("target parent")).expect("create target parent");
+    fs::write(&target, "old contents").expect("existing file");
+
+    let tmp = temp_path_for(&target);
+    fs::write(&tmp, "new contents").expect("staged replacement");
+
+    replace_without_atomic_rename(&tmp, &target).expect("replacement succeeds");
+
+    assert_eq!(
+        fs::read_to_string(&target).expect("replaced file"),
+        "new contents"
+    );
+    assert!(!tmp.exists(), "the staged replacement was left behind");
+    let leftovers: Vec<_> = fs::read_dir(target.parent().expect("target parent"))
+        .expect("read agents dir")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(leftovers, vec!["reviewer.md".to_string()]);
+}
+
+#[test]
+fn replacing_without_an_atomic_rename_creates_a_file_that_was_not_there() {
+    let root = TempDir::new().expect("tempdir");
+    let target = root.path().join("reviewer.md");
+    let tmp = temp_path_for(&target);
+    fs::write(&tmp, "new contents").expect("staged replacement");
+
+    replace_without_atomic_rename(&tmp, &target).expect("replacement succeeds");
+
+    assert_eq!(
+        fs::read_to_string(&target).expect("written file"),
+        "new contents"
+    );
+}
+
+#[test]
+fn a_failed_replacement_without_an_atomic_rename_keeps_the_old_file() {
+    // Nothing may be reported as written that was not, and a failure has to
+    // leave the file that was already there exactly as it was.
+    let root = TempDir::new().expect("tempdir");
+    let target = root.path().join("reviewer.md");
+    fs::write(&target, "old contents").expect("existing file");
+    let missing = temp_path_for(&target);
+
+    let error = replace_without_atomic_rename(&missing, &target)
+        .expect_err("a replacement that cannot be staged fails");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(
+        fs::read_to_string(&target).expect("untouched file"),
+        "old contents"
+    );
+    let leftovers: Vec<_> = fs::read_dir(root.path())
+        .expect("read dir")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(leftovers, vec!["reviewer.md".to_string()]);
+}

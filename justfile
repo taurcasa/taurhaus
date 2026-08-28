@@ -154,6 +154,19 @@ infographics *ARGS:
 infographics-dry-run:
     python3 scripts/generate-infographics.py --dry-run --stale
 
+# Write the Claude role templates into a project's .claude/agents directory,
+# where Claude Code and the Workflow API resolve a subagent by name.
+# Only generated files are replaced; a hand-written agent is reported as skipped.
+# Example: just export-agents ~/projects/taurhaus
+export-agents PROJECT: ensure-tauri-resources
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Resolve PROJECT against the directory the command was typed in, before
+    # cargo runs from src-tauri — otherwise a relative path lands in the Rust
+    # subdirectory. A path that is not an existing directory fails here.
+    project="$(cd -- {{quote(invocation_directory())}} && cd -- {{quote(PROJECT)}} && pwd)"
+    cd src-tauri && cargo run --bin taurhaus -- --export-agent-definitions "$project"
+
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).
 # This is the primary "does everything work?" test command.
 test: test-rust test-frontend
@@ -180,6 +193,7 @@ test-rust-unit: ensure-tauri-resources
 
 # Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
+    cd src-tauri && cargo test --test cli_renderers -- --test-threads=1
     cd src-tauri && cargo test --test coordination_feature_gate -- --test-threads=1
     cd src-tauri && cargo test --test coordination_integration -- --test-threads=1
     cd src-tauri && cargo test --test coordination_module_visibility -- --test-threads=1

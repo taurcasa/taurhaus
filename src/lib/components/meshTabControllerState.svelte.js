@@ -300,6 +300,7 @@ export function createMeshTabPublicApi({ state, gate, setup, init, runtime }) {
     handleReset: setup.handleReset,
     toggleNode: runtime.toggleNode,
     clearSelectedNode: runtime.clearSelectedNode,
+    openTemplateBrowser: setup.openTemplateBrowser,
     openTemplates: setup.openTemplates,
     requestDisband: runtime.requestDisband,
     cancelConfirm: runtime.cancelConfirm,

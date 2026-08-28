@@ -183,102 +183,64 @@ impl DeliveryRenderer {
         }
     }
 
-    fn append_role_context_sections(rendered: &mut String, role_context: &RoleContext<'_>) {
-        let role_id = role_context
-            .role_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let communication_style = role_context
-            .communication_style
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let instructions = role_context
-            .instructions
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let behavioral_contract = role_context.behavioral_contract.filter(|contract| {
+    /// The role steering text that follows every onboarding contract. It is
+    /// also the body of a generated Claude Code agent definition, so a role
+    /// steers a mesh member and a subagent with the very same words.
+    pub fn render_role_sections(role_context: &RoleContext<'_>) -> String {
+        let mut blocks: Vec<String> = Vec::new();
+
+        if let Some(role_id) = Self::trimmed(role_context.role_id) {
+            blocks.push(format!("Role: {role_id}"));
+        }
+
+        if let Some(communication_style) = Self::trimmed(role_context.communication_style) {
+            blocks.push(format!("Communication Style:\n{communication_style}"));
+        }
+
+        if let Some(instructions) = Self::trimmed(role_context.instructions) {
+            blocks.push(format!("Instructions:\n{instructions}"));
+        }
+
+        if let Some(contract) = role_context.behavioral_contract.filter(|contract| {
             !contract.communication.is_empty()
                 || !contract.execution.is_empty()
                 || !contract.escalation.is_empty()
-        });
-        let has_quality_gates = role_context
-            .quality_gates
-            .map(Self::has_non_empty_items)
-            .unwrap_or(false);
-        let has_handoff_expectations = role_context
-            .handoff_expectations
-            .map(Self::has_non_empty_items)
-            .unwrap_or(false);
-        let has_definition_of_done = role_context
-            .definition_of_done
-            .map(Self::has_non_empty_items)
-            .unwrap_or(false);
-        let has_capabilities = role_context
-            .capabilities
-            .map(Self::has_non_empty_items)
-            .unwrap_or(false);
+        }) {
+            let mut block = String::from("Behavioral Contract:");
+            Self::append_titled_bullets(&mut block, "Communication", &contract.communication);
+            Self::append_titled_bullets(&mut block, "Execution", &contract.execution);
+            Self::append_titled_bullets(&mut block, "Escalation", &contract.escalation);
+            blocks.push(block);
+        }
 
-        if role_id.is_none()
-            && communication_style.is_none()
-            && instructions.is_none()
-            && behavioral_contract.is_none()
-            && !has_quality_gates
-            && !has_handoff_expectations
-            && !has_definition_of_done
-            && !has_capabilities
-        {
+        for (title, items) in [
+            ("Quality Gates", role_context.quality_gates),
+            ("Handoff Expectations", role_context.handoff_expectations),
+            ("Definition of Done", role_context.definition_of_done),
+            ("Capabilities", role_context.capabilities),
+        ] {
+            let Some(items) = items.filter(|items| Self::has_non_empty_items(items)) else {
+                continue;
+            };
+            let mut block = format!("{title}:\n");
+            Self::append_bullets(&mut block, items);
+            blocks.push(block);
+        }
+
+        blocks.join("\n\n")
+    }
+
+    fn append_role_context_sections(rendered: &mut String, role_context: &RoleContext<'_>) {
+        let sections = Self::render_role_sections(role_context);
+        if sections.is_empty() {
             return;
         }
+        rendered.push_str("\n\n");
+        rendered.push_str(&sections);
+    }
 
-        if let Some(role_id) = role_id {
-            rendered.push_str("\n\nRole: ");
-            rendered.push_str(role_id);
-        }
-
-        if let Some(communication_style) = communication_style {
-            rendered.push_str("\n\nCommunication Style:\n");
-            rendered.push_str(communication_style);
-        }
-
-        if let Some(instructions) = instructions {
-            rendered.push_str("\n\nInstructions:\n");
-            rendered.push_str(instructions);
-        }
-
-        if let Some(contract) = behavioral_contract {
-            rendered.push_str("\n\nBehavioral Contract:");
-            Self::append_titled_bullets(rendered, "Communication", &contract.communication);
-            Self::append_titled_bullets(rendered, "Execution", &contract.execution);
-            Self::append_titled_bullets(rendered, "Escalation", &contract.escalation);
-        }
-
-        if let Some(quality_gates) = role_context.quality_gates {
-            if has_quality_gates {
-                rendered.push_str("\n\nQuality Gates:\n");
-                Self::append_bullets(rendered, quality_gates);
-            }
-        }
-
-        if let Some(handoff_expectations) = role_context.handoff_expectations {
-            if has_handoff_expectations {
-                rendered.push_str("\n\nHandoff Expectations:\n");
-                Self::append_bullets(rendered, handoff_expectations);
-            }
-        }
-
-        if let Some(definition_of_done) = role_context.definition_of_done {
-            if has_definition_of_done {
-                rendered.push_str("\n\nDefinition of Done:\n");
-                Self::append_bullets(rendered, definition_of_done);
-            }
-        }
-
-        if let Some(capabilities) = role_context.capabilities {
-            if has_capabilities {
-                rendered.push_str("\n\nCapabilities:\n");
-                Self::append_bullets(rendered, capabilities);
-            }
-        }
+    fn trimmed(value: Option<&str>) -> Option<&str> {
+        value.map(str::trim).filter(|value| !value.is_empty())
     }
 
     fn has_non_empty_items(items: &[String]) -> bool {

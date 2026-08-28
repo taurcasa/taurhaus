@@ -6,6 +6,7 @@ vi.mock('../ipc.js', () => ({
   listRoleTemplates: vi.fn(),
   getRoleTemplate: vi.fn(),
   exportRoleToFile: vi.fn(),
+  exportAgentDefinitions: vi.fn(),
   importRoleFromFile: vi.fn(),
   upsertRoleTemplate: vi.fn(),
   deleteRoleTemplate: vi.fn(),
@@ -33,6 +34,7 @@ const {
   listRoleTemplates,
   getRoleTemplate,
   exportRoleToFile,
+  exportAgentDefinitions,
   importRoleFromFile,
   upsertRoleTemplate,
   deleteRoleTemplate,
@@ -1332,5 +1334,112 @@ describe('TemplateBrowserPanel', () => {
       expect(screen.getByTestId('role-template-card-new-role')).toBeInTheDocument()
     })
     expect(screen.queryByTestId('role-template-card-old-role')).not.toBeInTheDocument()
+  })
+
+  it('writes the Claude roles into the project as agent definitions', async () => {
+    exportAgentDefinitions.mockResolvedValue({
+      written: ['claude-orchestrator', 'claude-reviewer'],
+      skipped: [{ roleId: 'my-agent', reason: 'user_authored' }],
+    })
+
+    render(TemplateBrowserPanel, {
+      props: { open: true, projectId: 'project-1', modelCatalog: TEST_MODEL_CATALOG },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(exportAgentDefinitions).toHaveBeenCalledWith('project-1')
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent(
+        'Exported 2 agent definitions to .claude/agents · 1 hand-written agent left untouched'
+      )
+    })
+  })
+
+  it('reports the obsolete agent definitions the export retired', async () => {
+    // Regression: an export left the definition of a role that was renamed,
+    // deleted, or moved to another harness on disk, so the notice had nothing
+    // to say about the agents Claude Code stopped resolving.
+    exportAgentDefinitions.mockResolvedValue({
+      written: ['claude-reviewer'],
+      removed: ['retired-orchestrator', 'moved-to-codex'],
+      skipped: [{ roleId: 'my-agent', reason: 'user_authored' }],
+    })
+
+    render(TemplateBrowserPanel, {
+      props: { open: true, projectId: 'project-1', modelCatalog: TEST_MODEL_CATALOG },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent(
+        'Exported 1 agent definition to .claude/agents \u00b7 removed 2 obsolete \u00b7 1 hand-written agent left untouched'
+      )
+    })
+  })
+
+  it('separates a hand-written agent from a role id Claude cannot register', async () => {
+    exportAgentDefinitions.mockResolvedValue({
+      written: ['claude-reviewer'],
+      skipped: [
+        { roleId: 'my-agent', reason: 'user_authored' },
+        { roleId: 'QA_reviewer', reason: 'unsupported_agent_name' },
+      ],
+    })
+
+    render(TemplateBrowserPanel, {
+      props: { open: true, projectId: 'project-1', modelCatalog: TEST_MODEL_CATALOG },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('template-browser-notice')).toHaveTextContent(
+        'Exported 1 agent definition to .claude/agents \u00b7 1 hand-written agent left untouched \u00b7 1 role skipped for an id Claude cannot register'
+      )
+    })
+  })
+
+  it('cannot export agent definitions without a project', async () => {
+    render(TemplateBrowserPanel, { props: { open: true, modelCatalog: TEST_MODEL_CATALOG } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeDisabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    expect(exportAgentDefinitions).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed agent definition export', async () => {
+    exportAgentDefinitions.mockRejectedValue(new Error('project is not registered'))
+
+    render(TemplateBrowserPanel, {
+      props: { open: true, projectId: 'project-1', modelCatalog: TEST_MODEL_CATALOG },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role-export-agents-button')).toBeEnabled()
+    })
+
+    await fireEvent.click(screen.getByTestId('role-export-agents-button'))
+
+    await waitFor(() => {
+      expect(screen.getByText('project is not registered')).toBeInTheDocument()
+    })
   })
 })

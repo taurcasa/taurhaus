@@ -22,6 +22,9 @@
     onInspectRole = () => {},
     onImportRole = () => {},
     onExportRole = () => {},
+    onExportAgentDefinitions = () => {},
+    canExportAgentDefinitions = false,
+    exportingAgentDefinitions = false,
     onOpenEditRoleEditor = () => {},
     onRequestRoleDelete = () => {},
     exportingRoleId = '',
@@ -260,6 +263,19 @@
       </button>
     </div>
   </div>
+
+  <button
+    class="w-full inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-[11px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed {actionSecondary}"
+    onclick={onExportAgentDefinitions}
+    disabled={!canExportAgentDefinitions || exportingAgentDefinitions}
+    title={canExportAgentDefinitions
+      ? 'Write every Claude role into this project\'s .claude/agents folder'
+      : 'Open a project first'}
+    data-testid="role-export-agents-button"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+    {exportingAgentDefinitions ? 'Exporting…' : 'Export as Claude Code agents'}
+  </button>
 
   {#if !hasCustomRoles}
     <div class="p-4 rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center space-y-2 {dark ? 'border-zinc-800 bg-white/[0.01]' : 'border-zinc-200 bg-black/[0.01]'}" data-testid="role-custom-empty-state">
