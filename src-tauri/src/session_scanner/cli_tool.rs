@@ -419,8 +419,19 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             aliases: &["grok"],
             argv_signatures: &["grok"],
             // A single-prompt source is the only thing that makes grok headless;
-            // a bare positional PROMPT is still the first turn of the TUI.
-            non_session_flags: &["-p", "--single", "--prompt-file", "--prompt-json"],
+            // a bare positional PROMPT is still the first turn of the TUI. The
+            // four terminating flags print and exit, and their short forms are
+            // the spellings `grok --help` lists.
+            non_session_flags: &[
+                "-p",
+                "--single",
+                "--prompt-file",
+                "--prompt-json",
+                "-h",
+                "--help",
+                "-v",
+                "--version",
+            ],
             non_session_subcommands: &[
                 "agent",
                 "completions",
@@ -1205,6 +1216,16 @@ mod tests {
             "grok --system-prompt-override terse update",
             "grok --system-prompt terse version",
             "grok help",
+            // Regression: commit 16de5ec declared only the bare `help` and
+            // `version` subcommands, so `grok --help` and `grok --version` —
+            // the flag spellings `grok --help` lists, both with short forms —
+            // printed their text and exited while the scanner counted them as
+            // interactive sessions.
+            "grok --help",
+            "grok -h",
+            "grok --version",
+            "grok -v",
+            "grok --model grok-4.6 --help",
         ] {
             assert!(!grok.argv_is_session(non_session), "{non_session}");
         }
