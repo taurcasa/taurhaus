@@ -147,6 +147,7 @@ function commandExists(program) {
 function hostSkipReason() {
   if (process.platform !== 'linux') return `Codex compaction lane is Linux-only (got ${process.platform})`
   if (!dataDir) return 'TAURHAUS_DATA_DIR is not set for this session'
+  if (!process.env.TAURHAUS_CLAUDE_DIR) return 'TAURHAUS_CLAUDE_DIR is not set for this session'
   if (!codexHome) return 'CODEX_HOME scratch copy was not prepared for this session'
   if (!existsSync(join(codexHome, 'auth.json'))) {
     return `no Codex credentials were copied into ${codexHome} (is ~/.codex/auth.json present?)`
@@ -238,9 +239,13 @@ function applyPaneEnvironment() {
 
   const previous = new Map()
   for (const key of PANE_ENV_KEYS) {
+    const value = process.env[key]
+    // An empty value would hand the pane a broken root, which is worse than
+    // leaving the operator's own environment in place.
+    if (!value) continue
     const shown = tmuxQuietly(['show-environment', '-t', TMUX_SESSION, key])
     previous.set(key, shown.ok ? shown.output : null)
-    tmuxQuietly(['set-environment', '-t', TMUX_SESSION, key, process.env[key] ?? ''])
+    tmuxQuietly(['set-environment', '-t', TMUX_SESSION, key, value])
   }
 
   return function restorePaneEnvironment() {
