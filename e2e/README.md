@@ -68,6 +68,24 @@ Full suite:
 just test-e2e-full
 ```
 
+## Paid lane: `compaction-codex-hooks`
+
+`e2e/specs/compaction-codex-hooks.js` drives a real Codex (and Claude) subscription:
+it builds a managed team and pays for the turns that take its Codex member to
+compaction, manually and automatically. It is therefore excluded from both
+`just test-e2e` and `just test-e2e-full` and only runs when asked for by name:
+
+```bash
+E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+```
+
+It reads `~/.codex` once, copying only `auth.json` and `config.toml` into a scratch
+`CODEX_HOME` under the session temp root, and never writes back to it. Point
+`E2E_CODEX_SOURCE_HOME` somewhere else to copy from another Codex home. On a host
+without `codex` ≥ 0.147, without Codex credentials, or without mesh/tmux, the lane
+skips itself and prints why. See
+[`docs/operations/compaction-testing.md`](../docs/operations/compaction-testing.md).
+
 ## Quick diagnosis for "Could not connect to localhost"
 
 1. Verify daemon is listening:

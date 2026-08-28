@@ -125,6 +125,62 @@ just test-compaction codex taurhaus-team architect
 
 `just test-compaction` accepts `claude` and `codex` only; any other tool exits with `Unsupported tool` (`justfile`, recipe `test-compaction`). Grok has no scripted lane yet.
 
+### Codex hooks, end to end
+
+The two recipes above drive a team you already have. `e2e/specs/compaction-codex-hooks.js`
+builds one instead: it initializes a Claude-led team with a single managed Codex member
+under `terminal.harness.codex_compaction = hooks`, drives it to compaction twice, and
+asserts that the card came back through the hook bridge rather than the transcript
+tailer.
+
+```bash
+E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+```
+
+It runs on Linux only and spends **real Codex and Claude subscription turns**, so it is
+excluded from both `just test-e2e` and `just test-e2e-full` and never runs as part of a
+suite. It skips itself, with the reason printed, when `codex` is missing or older than
+0.147, when `~/.codex/auth.json` is absent, when `claude` is not on `PATH`, or when mesh
+or tmux are unavailable.
+
+What it isolates:
+
+- `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` are the wdio session's temp roots, so the
+  team, its inboxes and the JSONL log the assertions read are all throwaway.
+- `CODEX_HOME` is a scratch copy holding **only** `auth.json` and `config.toml`
+  (`e2e/helpers/codexScratchHome.js`). Sessions, history and the Codex databases are
+  never copied, and nothing is written back to `~/.codex` — the managed `hooks.json` and
+  every rollout transcript land in the scratch home.
+- The hook is a separate process Codex spawns, so it resolves the teams dir and the log
+  sink from the pane's environment. The lane sets those roots on the shared `taurhaus`
+  tmux session only for the length of team initialization and restores them immediately
+  after.
+
+The two cases:
+
+- **manual** — `/compact` typed into the member's pane over tmux, the deterministic
+  trigger.
+- **automatic** — Codex's own auto-compaction. It is bounded rather than paid for in
+  full: the scratch `config.toml` gets `model_auto_compact_token_limit = 20000`, the
+  member is restarted so it reads that, and the lane then feeds it one ~4k-token filler
+  file per turn, capped at **6 turns**. Crossing the threshold normally takes about three.
+  If the cap is reached without a compaction the case fails saying so, and the manual case
+  still stands as proof of the bridge.
+
+Both cases assert the same acceptance trail in `taurhaus.log.jsonl`:
+
+- `compaction.codex_hook.received` → `resolved` → `delivered` for that member, with
+  `additional_context_bytes` greater than zero,
+- `compaction.injected` for the member with `tool = codex`,
+- and **no** `compaction.signal_emitted`, `compaction.detected` or
+  `compaction.extractor.*` for it — in hooks mode the tailer owns nothing.
+
+Codex's `SessionStart` payload is printed for each case, so a run shows exactly what the
+harness put on the wire. Note that taurhaus registers only `SessionStart` with matcher
+`compact` in the Codex `hooks.json`: there is no `PostCompact` entry and therefore no
+`trigger` field to read back. What separates the two cases is what the lane did, not a
+field in the payload.
+
 ## Manual-run diagnostics
 
 Only the two scripted lanes write run metadata — `scripts/test-compaction-claude.py`
