@@ -700,15 +700,17 @@ mod tests {
         .unwrap();
         upsert_task(
             &conn,
-            &make_task("gemini", "todo-1", "Gemini task", "completed"),
+            &make_task("agy", "todo-1", "Antigravity task", "completed"),
         )
         .unwrap();
 
+        // Rows come back ORDER BY source, so the expected sequence is alphabetical:
+        // "agy" sorts ahead of "claude"/"codex" where the retired tool sorted last.
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(tasks.len(), 3);
-        assert_eq!(tasks[0].source, "claude");
-        assert_eq!(tasks[1].source, "codex");
-        assert_eq!(tasks[2].source, "gemini");
+        assert_eq!(tasks[0].source, "agy");
+        assert_eq!(tasks[1].source, "claude");
+        assert_eq!(tasks[2].source, "codex");
     }
 
     #[test]
@@ -1278,10 +1280,10 @@ mod tests {
     fn archived_query_includes_tasks_without_session_id() {
         let (conn, _tmp) = test_db();
 
-        // Task with no session_id (e.g., Gemini/Codex source)
+        // Task with no session_id (e.g., Agy/Codex source)
         upsert_task(
             &conn,
-            &make_task("gemini", "todo-1", "Gemini task", "completed"),
+            &make_task("agy", "todo-1", "Antigravity task", "completed"),
         )
         .unwrap();
 
@@ -1294,7 +1296,7 @@ mod tests {
         upsert_task(&conn, &make_task("claude", "99", "Active", "in_progress")).unwrap();
         upsert_task(
             &conn,
-            &make_task("gemini", "todo-99", "Active gemini", "in_progress"),
+            &make_task("agy", "todo-99", "Active agy", "in_progress"),
         )
         .unwrap();
 
@@ -1309,8 +1311,8 @@ mod tests {
         archive_or_delete_stale_tasks(
             &conn,
             "/projects/foo",
-            "gemini",
-            &default_source_key("gemini"),
+            "agy",
+            &default_source_key("agy"),
             &["todo-99"],
         )
         .unwrap();
@@ -1389,7 +1391,7 @@ mod tests {
         .unwrap();
         upsert_task(
             &conn,
-            &make_task("gemini", "todo-1", "Gemini done", "completed"),
+            &make_task("agy", "todo-1", "Antigravity done", "completed"),
         )
         .unwrap();
 
@@ -1400,11 +1402,7 @@ mod tests {
             &make_task("codex", "codex-99", "Active", "in_progress"),
         )
         .unwrap();
-        upsert_task(
-            &conn,
-            &make_task("gemini", "todo-99", "Active", "in_progress"),
-        )
-        .unwrap();
+        upsert_task(&conn, &make_task("agy", "todo-99", "Active", "in_progress")).unwrap();
 
         archive_or_delete_stale_tasks(
             &conn,
@@ -1425,8 +1423,8 @@ mod tests {
         archive_or_delete_stale_tasks(
             &conn,
             "/projects/foo",
-            "gemini",
-            &default_source_key("gemini"),
+            "agy",
+            &default_source_key("agy"),
             &["todo-99"],
         )
         .unwrap();
@@ -1437,7 +1435,7 @@ mod tests {
         let sources: Vec<&str> = archived.iter().map(|t| t.source.as_str()).collect();
         assert!(sources.contains(&"claude"));
         assert!(sources.contains(&"codex"));
-        assert!(sources.contains(&"gemini"));
+        assert!(sources.contains(&"agy"));
     }
 
     #[test]

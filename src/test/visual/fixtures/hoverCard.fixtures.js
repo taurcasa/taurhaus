@@ -257,7 +257,7 @@ const multiSession_threeLive_dark = createScenario({
   sessions: [
     createLiveSession({ state: 'idle', tool: 'claude', cli_tool: 'claude', toolLabel: 'Claude', _duration: 11 * 60_000 }),
     createLiveSession({ id: 'live-session-2', state: 'active', tool: 'codex', cli_tool: 'codex', toolLabel: 'Codex', _duration: 4 * 60_000 }),
-    createLiveSession({ id: 'live-session-3', state: 'idle', tool: 'gemini', cli_tool: 'gemini', toolLabel: 'Gemini', _duration: 8 * 60_000, project_unattributed_active: true }),
+    createLiveSession({ id: 'live-session-3', state: 'idle', tool: 'agy', cli_tool: 'agy', toolLabel: 'Antigravity', _duration: 8 * 60_000, project_unattributed_active: true }),
   ],
   latestSession: createLatestSession({
     summary: 'Coordinate the multi-session handoff',

@@ -105,7 +105,7 @@ fn apply_managed_account_selector(
 ) {
     let Some(selector) = all()
         .iter()
-        .find(|entry| entry.capabilities.hook_trust && entry.capabilities.notify_sink)
+        .find(|entry| entry.capabilities.managed_home)
         .and_then(|entry| entry.capabilities.account_selector)
     else {
         return;
@@ -302,6 +302,18 @@ pub(crate) fn reconcile_codex_compaction(
         );
     }
     Ok(changed)
+}
+
+pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationError> {
+    let root = PlatformPaths::agy_dir();
+    if enabled {
+        crate::coordination::agy_hooks_installer::ensure_agy_hooks_installed_at(
+            &root,
+            &PlatformPaths::daemon_binary_path(),
+        )
+    } else {
+        crate::coordination::agy_hooks_installer::remove_agy_hooks_at(&root)
+    }
 }
 
 fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {

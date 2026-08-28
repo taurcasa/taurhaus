@@ -35,7 +35,7 @@ function makeAgents(count) {
   return Array.from({ length: count }, (_, index) => ({
     id: `agent-${index + 1}`,
     name: `agent-${index + 1}`,
-    tool: index % 2 === 0 ? 'codex' : 'gemini',
+    tool: index % 2 === 0 ? 'codex' : 'agy',
     model: 'gpt-5',
     status: index % 3 === 0 ? 'active' : 'idle',
   }))
@@ -371,7 +371,7 @@ describe('MeshCanvas', () => {
           { id: 'developer1', name: 'developer1', tool: 'codex', model: 'gpt-5', status: 'active' },
           { id: 'developer2', name: 'developer2', tool: 'codex', model: 'gpt-5', status: 'active' },
           { id: 'developer3', name: 'developer3', tool: 'codex', model: 'gpt-5', status: 'active' },
-          { id: 'mesh-expert', name: 'mesh-expert', tool: 'gemini', model: 'gemini-3.1-pro', status: 'active' },
+          { id: 'mesh-expert', name: 'mesh-expert', tool: 'agy', model: 'gemini-3.7-flash-high', status: 'active' },
         ],
         mode: 'runtime',
       },

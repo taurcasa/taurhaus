@@ -25,6 +25,16 @@ impl ModelSpec {
             return ModelSpec::default();
         }
 
+        // Canonical catalog ids win over the legacy `model-effort` migration
+        // spelling. Several Antigravity providers publish real ids ending in
+        // an effort word, so prefix heuristics are not sufficient here.
+        if ModelCatalog::contains_model_id(trimmed) {
+            return ModelSpec {
+                model: Some(trimmed.to_string()),
+                reasoning_effort: None,
+            };
+        }
+
         let split = trimmed
             .char_indices()
             .rev()
@@ -357,14 +367,7 @@ impl LaunchSpec<'_> {
                     }
                 }
             }
-            CliTool::Gemini => {
-                if let Some(effort) = requested_effort {
-                    notes.push(LaunchNote::EffortIgnored {
-                        found: effort.to_string(),
-                        reason: EffortIgnoreReason::Invalid,
-                    });
-                }
-                // unverified (S12): Gemini is not installed on the audit host.
+            CliTool::Agy => {
                 if let Some(model) = requested_model {
                     if let Some(model_flag) = capabilities.model_flag {
                         if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
@@ -382,7 +385,31 @@ impl LaunchSpec<'_> {
                         });
                     }
                 }
+
+                if let Some(effort) = requested_effort {
+                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
+                        if command_contains_flag(self.base, flag) {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: flag.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, effort);
+                        }
+                    } else {
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Effort,
+                            found: effort.to_string(),
+                        });
+                    }
+                }
             }
+            CliTool::Unknown => {}
         }
 
         // Last, so the selector lands in front of any tool-specific team
@@ -601,7 +628,15 @@ mod tests {
 
     #[test]
     fn parse_legacy_keeps_model_only() {
-        for raw in ["claude-opus-4-6", "gpt-5.6-terra"] {
+        // Regression: commit 5576838 only protected Google-prefixed Antigravity
+        // ids, truncating the catalog's GPT-OSS id into a nonexistent model.
+        for raw in [
+            "claude-opus-4-6",
+            "gpt-5.6-terra",
+            "gemini-3.7-flash-high",
+            "gemini-3.1-pro-low",
+            "gpt-oss-120b-medium",
+        ] {
             assert_eq!(ModelSpec::parse_legacy(raw), model_spec(raw, None));
         }
     }
@@ -1133,11 +1168,13 @@ mod tests {
     }
 
     #[test]
-    fn gemini_render_adds_model_and_notes_unsupported_effort() {
+    fn agy_render_adds_model_and_effort() {
+        // Regression: commit 4cd067a registered agy with its verified flags but
+        // left the retired Google harness renderer dropping effort.
         let rendered = LaunchSpec {
-            tool: CliTool::Gemini,
+            tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
-            base: "gemini --yolo",
+            base: "agy",
             model: model_spec("gemini-3.1-pro", Some("high")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
@@ -1147,24 +1184,62 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, "gemini --yolo -m 'gemini-3.1-pro'");
-        assert!(matches!(
-            rendered.notes.as_slice(),
-            [LaunchNote::EffortIgnored {
-                found,
-                reason: EffortIgnoreReason::Invalid,
-            }] if found == "high"
-        ));
+        assert_eq!(
+            rendered.command,
+            "agy --model 'gemini-3.1-pro' --effort 'high'"
+        );
+        assert!(rendered.notes.is_empty());
     }
 
-    // Regression: 791f6be checked only Gemini's short model flag, so a
+    #[test]
+    fn agy_free_form_base_can_remove_dangerous_permission_bypass() {
+        // Regression: commit efcd7d2 force-injected the high-risk flag after
+        // Settings, so an interactive agy user could not opt back into prompts.
+        let base = "agy --sandbox";
+        let rendered = LaunchSpec {
+            tool: CliTool::Agy,
+            mode: LaunchMode::Fresh,
+            base,
+            model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, base);
+    }
+
+    #[test]
+    fn agy_render_rejects_unknown_effort() {
+        // Regression: commit 4cd067a had no agy effort renderer, so every
+        // requested value was discarded without exercising the vocabulary.
+        let rendered = LaunchSpec {
+            tool: CliTool::Agy,
+            mode: LaunchMode::Fresh,
+            base: "agy",
+            model: model_spec("gemini-3.7-flash-high", Some("xhigh")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.notes[0].event_name(), "launch.effort.invalid");
+    }
+
+    // Regression: 791f6be checked only the third harness's short model flag, so a
     // free-form base using --model received a second model selection.
     #[test]
-    fn gemini_render_respects_long_model_flag_and_notes_it() {
+    fn agy_render_respects_model_flag_and_notes_it() {
         let rendered = LaunchSpec {
-            tool: CliTool::Gemini,
+            tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
-            base: "gemini --yolo --model gemini-2.5-pro",
+            base: "agy --model gemini-3.1-pro-low",
             model: model_spec("gemini-3.1-pro", None),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
@@ -1174,7 +1249,7 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, "gemini --yolo --model gemini-2.5-pro");
+        assert_eq!(rendered.command, "agy --model gemini-3.1-pro-low");
         assert_eq!(
             rendered.notes,
             vec![LaunchNote::ModelIgnored {

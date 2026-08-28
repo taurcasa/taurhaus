@@ -213,70 +213,6 @@ pub fn process_rchar(pid: u32) -> Option<u64> {
     }
 }
 
-/// Collect socket "inodes" owned by a process.
-///
-/// On macOS there are no socket inodes like Linux. Instead, we collect
-/// file descriptor numbers that are sockets. These are used as identifiers
-/// for cross-referencing with TCP connection data.
-///
-/// Uses `lsof -p PID -i TCP -n -P -F nT` to list TCP connections.
-/// Returns fd numbers as u64 for API compatibility with the Linux version.
-pub fn collect_socket_inodes(pid: u32) -> Vec<u64> {
-    // On macOS, we don't need separate inode collection — has_established_443
-    // handles everything via lsof. Return empty to maintain API compatibility.
-    // The socket_inodes parameter is ignored in has_established_443 on macOS.
-    let _ = pid;
-    vec![]
-}
-
-/// Check if the process has ESTABLISHED TCP connections to port 443.
-///
-/// Uses `lsof -p PID -i TCP -s TCP:ESTABLISHED -n -P` and checks for
-/// connections to remote port 443.
-///
-/// The `_socket_inodes` parameter is ignored on macOS — lsof already
-/// filters by PID, so we don't need cross-referencing.
-pub fn has_established_443(pid: u32, _socket_inodes: &[u64]) -> bool {
-    let output = match Command::new("lsof")
-        .args([
-            "-p",
-            &pid.to_string(),
-            "-i",
-            "TCP",
-            "-s",
-            "TCP:ESTABLISHED",
-            "-n",
-            "-P",
-        ])
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => return false,
-    };
-
-    if !output.status.success() {
-        return false;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Look for lines containing ":443" in the remote address
-    // lsof output format: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
-    // NAME field contains: host:port->remote:port
-    for line in stdout.lines().skip(1) {
-        // Skip header
-        if line.contains("->") {
-            // Extract remote part after "->"
-            if let Some(remote) = line.split("->").nth(1) {
-                if remote.contains(":443") {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
-}
-
 /// Check if a file watcher error indicates the system watch limit was hit.
 ///
 /// On macOS, FSEvents doesn't have a per-user watch limit like Linux's inotify.
@@ -307,16 +243,6 @@ mod tests {
     #[test]
     fn process_rchar_returns_none_for_nonexistent_pid() {
         assert!(process_rchar(999_999_999).is_none());
-    }
-
-    #[test]
-    fn collect_socket_inodes_returns_empty() {
-        assert!(collect_socket_inodes(999_999_999).is_empty());
-    }
-
-    #[test]
-    fn has_established_443_returns_false_for_nonexistent_pid() {
-        assert!(!has_established_443(999_999_999, &[]));
     }
 
     #[test]

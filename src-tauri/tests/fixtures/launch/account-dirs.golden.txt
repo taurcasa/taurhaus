@@ -1,3 +1,2 @@
 claude=CLAUDE_CONFIG_DIR='/accounts/claude' claude --dangerously-skip-permissions
 codex=CODEX_HOME='/accounts/codex' codex --yolo
-gemini=GEMINI_CLI_HOME='/accounts/gemini' gemini --yolo

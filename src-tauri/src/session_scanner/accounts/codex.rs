@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{
-    AccountIdentity, AccountProvider, HttpClient, Severity, UsageProvider, UsageSnapshot,
+    AccountIdentity, AccountProvider, ProviderEnv, Severity, UsageProvider, UsageSnapshot,
     UsageStatus, UsageWindow,
 };
 
@@ -260,7 +260,7 @@ impl UsageProvider for CodexUsageProvider {
         Some(dir.join(AUTH_FILENAME))
     }
 
-    fn fetch(&self, dir: &Path, http: &dyn HttpClient) -> UsageSnapshot {
+    fn fetch(&self, dir: &Path, env: &dyn ProviderEnv) -> UsageSnapshot {
         let observed_at = chrono::Utc::now();
         let unauthorized = || usage_snapshot(observed_at, UsageStatus::Unauthorized, Vec::new());
         let Some(auth) = read_auth(dir) else {
@@ -289,7 +289,10 @@ impl UsageProvider for CodexUsageProvider {
             ("ChatGPT-Account-ID", account_id.as_str()),
             ("User-Agent", user_agent.as_str()),
         ];
-        let response = match http.get(USAGE_ENDPOINT, &headers, Duration::from_secs(5)) {
+        let response = match env
+            .http()
+            .get(USAGE_ENDPOINT, &headers, Duration::from_secs(5))
+        {
             Ok(response) => response,
             Err(_) => return usage_snapshot(observed_at, UsageStatus::Stale, Vec::new()),
         };

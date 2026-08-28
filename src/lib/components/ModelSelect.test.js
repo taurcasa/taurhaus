@@ -33,10 +33,10 @@ const CATALOG = {
       replacement: 'gpt-5.6-terra',
     },
   ],
-  gemini: [
+  agy: [
     {
-      id: 'gemini-3.1-pro',
-      label: 'Gemini 3.1 Pro',
+      id: 'gemini-3.7-flash-high',
+      label: 'Gemini 3.7 Flash (High)',
       efforts: [],
       defaultEffort: null,
       deprecated: false,
@@ -82,7 +82,7 @@ describe('ModelSelect', () => {
     unmount()
 
     render(ModelSelect, {
-      props: { tool: 'gemini', model: 'gemini-3.1-pro', catalog: CATALOG },
+      props: { tool: 'agy', model: 'gemini-3.7-flash-high', catalog: CATALOG },
     })
 
     expect(screen.queryByTestId('model-select-effort')).not.toBeInTheDocument()
@@ -274,8 +274,8 @@ describe('ModelSelect', () => {
   it('shows an inherited effort even when the model declares none', () => {
     render(ModelSelect, {
       props: {
-        tool: 'gemini',
-        model: 'gemini-3.1-pro',
+        tool: 'agy',
+        model: 'gemini-3.7-flash-high',
         inheritedEffort: 'medium',
         catalog: CATALOG,
       },

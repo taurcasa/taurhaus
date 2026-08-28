@@ -78,12 +78,35 @@ fn update_settings_with_span(
         let updated = update_settings_impl(db, settings)?;
         #[cfg(feature = "mesh-bridged-backend")]
         reconcile_codex_compaction_setting(app, &updated);
+        #[cfg(feature = "mesh-bridged-backend")]
+        reconcile_agy_hooks_setting(&updated);
         enqueue_activity_watch_reconcile(app.clone(), "settings_updated");
         Ok(updated)
     })()
     .ipc_cmd("update_settings");
     span.finish_result(&result);
     result
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_agy_hooks_setting(settings: &Settings) {
+    if let Err(error) =
+        crate::commands::terminal_settings::reconcile_agy_hooks(settings.terminal.harness.agy_hooks)
+    {
+        tracing::warn!(error = %error, "Antigravity hook reconciliation failed");
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "error.message".to_string(),
+            serde_json::Value::String(error.to_string()),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            "agy.hooks.reconcile_failed",
+            Some("Antigravity native activity hooks remain disabled".to_string()),
+            fields,
+        );
+    }
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

@@ -311,7 +311,7 @@ pub(crate) fn persisted_to_unified(
             "completed" => crate::task_scanner::TaskStatus::Completed,
             _ => crate::task_scanner::TaskStatus::Pending,
         },
-        source: t.source.parse::<CliTool>().unwrap_or_default(),
+        source: CliTool::from_persisted(&t.source),
         blocks: t.blocks,
         blocked_by: t.blocked_by,
         owner: t.owner,
@@ -578,7 +578,6 @@ fn transcript_time_range(
         let range = match source.as_str() {
             "claude" => crate::claude_code::resolver::session_time_range(path, session_id),
             "codex" => crate::task_scanner::codex::session_time_range(path, session_id),
-            "gemini" => crate::task_scanner::gemini::session_time_range(path, session_id),
             _ => None,
         };
         if let Some(r) = range {
@@ -705,6 +704,21 @@ mod tests {
         assert_eq!(duration_ms, Some(3_600_000));
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].contains("missing-session"));
+    }
+
+    #[test]
+    fn retired_database_tool_loads_as_unknown() {
+        // Regression: commit 4cd067a removed the old wire value while task rows
+        // still persisted it, causing upgrades to relabel those rows as Claude.
+        let task = make_archived_task(
+            "gemini",
+            "legacy-session",
+            Some("legacy-session"),
+            "2026-03-01T10:00:00Z",
+            "2026-03-01T11:00:00Z",
+        );
+
+        assert_eq!(persisted_to_unified(task).source, CliTool::Unknown);
     }
 
     #[test]

@@ -213,7 +213,7 @@ fn sample_preflight_request() -> InitializeTeamRequest {
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
-                cli_tool: "gemini".to_string(),
+                cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
                 role_id: None,
                 role_name: None,
@@ -389,7 +389,7 @@ fn get_team_status_validates_non_empty_team_name() {
 
 #[test]
 fn preflight_all_tools_present_returns_clean_report() {
-    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "codex", "gemini"]);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "codex", "agy"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
         .expect("preflight should succeed");
     assert!(report.can_initialize);
@@ -399,7 +399,7 @@ fn preflight_all_tools_present_returns_clean_report() {
 
 #[test]
 fn preflight_mesh_missing_returns_blocking_error() {
-    let lookup = MockBinaryLookup::with_available(&["tmux", "claude", "codex", "gemini"]);
+    let lookup = MockBinaryLookup::with_available(&["tmux", "claude", "codex", "agy"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
         .expect("preflight should succeed");
     assert!(!report.can_initialize);
@@ -410,7 +410,7 @@ fn preflight_mesh_missing_returns_blocking_error() {
 
 #[test]
 fn preflight_tmux_missing_returns_blocking_error() {
-    let lookup = MockBinaryLookup::with_available(&["mesh", "claude", "codex", "gemini"]);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "claude", "codex", "agy"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
         .expect("preflight should succeed");
     assert!(!report.can_initialize);
@@ -421,7 +421,7 @@ fn preflight_tmux_missing_returns_blocking_error() {
 
 #[test]
 fn preflight_agent_tool_missing_returns_warning() {
-    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "gemini"]);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux", "claude", "agy"]);
     let report = coordination_preflight_check_with_lookup(sample_preflight_request(), &lookup)
         .expect("preflight should succeed");
     assert!(report.can_initialize);
@@ -449,7 +449,7 @@ fn preflight_multiple_issues_reports_all() {
     assert!(report
         .agent_warnings
         .iter()
-        .any(|w| w.agent_name == "reviewer" && w.message.contains("Gemini CLI not found")));
+        .any(|w| w.agent_name == "reviewer" && w.message.contains("Antigravity CLI not found")));
 }
 
 #[test]
@@ -681,7 +681,16 @@ fn add_agent_progress_events_are_emitted_in_step_order() {
 #[test]
 fn reonboard_succeeds_for_existing_member() {
     let tmp = TempDir::new().expect("tempdir");
-    let state = test_state(tmp.path().to_path_buf());
+    let fake = FakeBackend::default();
+    let state = CoordinationState::with_components_and_runtime(
+        tmp.path().to_path_buf(),
+        BackendSelector::m0(),
+        Arc::new({
+            let fake = fake.clone();
+            move |_kind, _teams_dir| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+        }),
+        Arc::new(|| Arc::new(RecordingCoordinationRuntime::default())),
+    );
     coordination_initialize_team_internal(
         &state,
         None,
@@ -697,12 +706,21 @@ fn reonboard_succeeds_for_existing_member() {
         &state,
         ReonboardRequest {
             team_name: "architecture-final".to_string(),
-            member_name: "frontend-dev".to_string(),
+            member_name: "team-lead".to_string(),
         },
     )
     .expect("reonboard should succeed");
 
     assert!(result.delivered);
+    let requests = fake.delivered_requests();
+    let DeliveryRequest::OperatorNotice(delivery) = requests.last().expect("reonboard delivery")
+    else {
+        panic!("expected operator notice")
+    };
+    // Regression: commit efcd7d2 silently replaced Claude re-onboarding with
+    // the lifecycle-only role-context block, dropping the explicit mesh loop.
+    assert!(delivery.message.starts_with("[taurhaus] onboarding"));
+    assert!(delivery.message.contains("mesh read --unread --mark-read"));
 }
 
 #[test]
@@ -2438,7 +2456,7 @@ fn initialize_team_request_round_trip() {
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
-                cli_tool: "gemini".to_string(),
+                cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
                 role_id: None,
                 role_name: None,
@@ -2898,8 +2916,8 @@ fn live_status_provider_snapshot_yields_to_current_pane_loss() {
                 "pid": 303,
                 "project_path": "/projects/api",
                 "tty": "pts/3",
-                "args": "gemini",
-                "cli_tool": "gemini",
+                "args": "agy",
+                "cli_tool": "agy",
                 "tmux_session": "taurhaus",
                 "tmux_window": "@3",
                 "tmux_pane": reviewer_runtime.pane_id.clone().expect("reviewer pane id"),

@@ -109,22 +109,22 @@ const idle_codex_dark = createDetailScenario({
   }),
 })
 
-const idle_gemini_dark = createDetailScenario({
-  name: 'idle_gemini_dark',
+const idle_agy_dark = createDetailScenario({
+  name: 'idle_agy_dark',
   theme: 'dark',
   mode: 'runtime',
   focusEnabled: true,
   member: createMember({
-    name: 'research-gemini',
+    name: 'research-antigravity',
     role: 'agent',
-    tool: 'gemini',
-    toolLabel: 'Gemini',
+    tool: 'agy',
+    toolLabel: 'Antigravity',
     status: 'idle',
     model: '2.5-pro',
     projectId: 'taurhaus-docs',
     description: 'Tracks architecture drift and prepares review notes for handoff.',
     paneId: '%21',
-    sessionId: 'sess-gemini-idle',
+    sessionId: 'sess-agy-idle',
     sessionState: 'Waiting for follow-up',
     sessionTiming: {
       startedLabel: 'Started 32m ago',
@@ -133,16 +133,16 @@ const idle_gemini_dark = createDetailScenario({
   }),
 })
 
-export const cross_project_gemini_dark = createDetailScenario({
-  name: 'cross_project_gemini_dark',
+export const cross_project_agy_dark = createDetailScenario({
+  name: 'cross_project_agy_dark',
   theme: 'dark',
   mode: 'runtime',
   focusEnabled: true,
   member: createMember({
     name: 'mesh-expert',
     role: 'agent',
-    tool: 'gemini',
-    toolLabel: 'Gemini',
+    tool: 'agy',
+    toolLabel: 'Antigravity',
     status: 'active',
     model: '2.5-pro',
     projectId: '/home/user/projects/mesh',
@@ -159,16 +159,16 @@ export const cross_project_gemini_dark = createDetailScenario({
   }),
 })
 
-export const cross_project_gemini_light = createDetailScenario({
-  name: 'cross_project_gemini_light',
+export const cross_project_agy_light = createDetailScenario({
+  name: 'cross_project_agy_light',
   theme: 'light',
   mode: 'runtime',
   focusEnabled: true,
   member: createMember({
     name: 'mesh-expert',
     role: 'agent',
-    tool: 'gemini',
-    toolLabel: 'Gemini',
+    tool: 'agy',
+    toolLabel: 'Antigravity',
     status: 'active',
     model: '2.5-pro',
     projectId: '/home/user/projects/mesh',
@@ -214,10 +214,10 @@ export const noSession_dark = createDetailScenario({
   mode: 'setup',
   focusEnabled: false,
   member: createMember({
-    name: 'new-gemini-agent',
+    name: 'new-antigravity-agent',
     role: 'agent',
-    tool: 'gemini',
-    toolLabel: 'Gemini',
+    tool: 'agy',
+    toolLabel: 'Antigravity',
     status: 'offline',
     model: '2.5-pro',
     projectId: 'taurhaus-onboarding',
@@ -233,9 +233,9 @@ export const meshNodeDetailScenarios = [
   active_claude_dark,
   active_claude_light,
   idle_codex_dark,
-  idle_gemini_dark,
-  cross_project_gemini_dark,
-  cross_project_gemini_light,
+  idle_agy_dark,
+  cross_project_agy_dark,
+  cross_project_agy_light,
   disconnected_dark,
   noSession_dark,
 ]

@@ -17,7 +17,7 @@ function createAgents(count) {
   return Array.from({ length: count }, (_, index) => ({
     id: `agent-${index + 1}`,
     name: `agent-${index + 1}`,
-    tool: index % 2 === 0 ? 'codex' : 'gemini',
+    tool: index % 2 === 0 ? 'codex' : 'agy',
     model: 'gpt-5.4 high',
     status: index % 3 === 0 ? 'active' : 'idle',
   }))

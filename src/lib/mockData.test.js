@@ -87,6 +87,6 @@ describe('mockData', () => {
     const tools = new Set(MOCK_CLAUDE_SESSIONS.map(s => s.cli_tool))
     expect(tools).toContain('claude')
     expect(tools).toContain('codex')
-    expect(tools).toContain('gemini')
+    expect(tools).toContain('agy')
   })
 })

@@ -104,7 +104,7 @@ fn binary_lookup_invocation(binary_name: &str) -> CommandInvocation {
         }
     }
 
-    // Fallback: PATH-based lookup for tmux, claude, codex, gemini, etc.
+    // Fallback: PATH-based lookup for tmux, claude, codex, agy, etc.
     if cfg!(target_os = "windows") {
         CommandInvocation {
             program: "wsl".into(),
@@ -247,9 +247,8 @@ pub fn preflight_check_with_lookup<L: BinaryLookup + ?Sized>(
                     agent_name: agent.agent_name.clone(),
                     cli_tool: agent.cli_tool.clone(),
                     message: format!(
-                        "Unsupported CLI tool '{}' for agent '{}'. Choose claude, codex, or gemini.",
-                        agent.cli_tool,
-                        agent.agent_name
+                        "Unsupported CLI tool '{}' for agent '{}'. Choose claude, codex, or agy.",
+                        agent.cli_tool, agent.agent_name
                     ),
                 });
             }

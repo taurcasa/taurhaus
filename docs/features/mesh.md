@@ -105,12 +105,12 @@ Use those fields to express how a role should communicate, what checks it must s
 
 Role metadata remains visible through setup and runtime so the lead can route work with more than just a name and tool. The richer schema makes it possible to tell, for example, whether a role is meant for planning vs review, what kind of evidence it should return, and what a successful handoff should include.
 
-The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and presets may resolve to Claude, Codex, or Gemini lead roles.
+The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and presets may resolve to Claude, Codex, or Antigravity lead roles.
 
 Lead-mode rule:
 
 - Claude leads may use the existing attach-existing flow
-- Codex and Gemini leads are currently launch-new only
+- Codex and Antigravity leads are currently launch-new only
 
 Users can still save the current draft back into the preset catalog from the advanced customizer flow.
 

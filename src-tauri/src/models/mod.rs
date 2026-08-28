@@ -257,10 +257,11 @@ pub struct ToolCommands {
 /// Per-tool launch command configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct CliCommandSettings {
     pub claude: ToolCommands,
     pub codex: ToolCommands,
-    pub gemini: ToolCommands,
+    pub agy: ToolCommands,
     /// Runtime-only launch input. The coordination command resolves managed hook
     /// trust before pipeline rendering; this is never persisted or sent to the UI.
     #[serde(skip)]
@@ -286,7 +287,7 @@ impl Default for CliCommandSettings {
             codex: crate::session_scanner::cli_tool::spec(CliTool::Codex)
                 .default_commands
                 .clone(),
-            gemini: crate::session_scanner::cli_tool::spec(CliTool::Gemini)
+            agy: crate::session_scanner::cli_tool::spec(CliTool::Agy)
                 .default_commands
                 .clone(),
             codex_bypass_hook_trust: false,
@@ -489,7 +490,7 @@ pub struct ModelCatalogEntry {
 pub struct ModelCatalog {
     pub claude: Vec<ModelCatalogEntry>,
     pub codex: Vec<ModelCatalogEntry>,
-    pub gemini: Vec<ModelCatalogEntry>,
+    pub agy: Vec<ModelCatalogEntry>,
 }
 
 static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
@@ -564,20 +565,127 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             Some("gpt-5.6-luna"),
         ),
     ],
-    gemini: vec![model_catalog_entry(
-        "gemini-3.1-pro",
-        "Gemini 3.1 Pro",
-        &[],
-        None,
-        false,
-        None,
-    )],
+    agy: vec![
+        model_catalog_entry(
+            "gemini-3.7-flash-high",
+            "Gemini 3.7 Flash (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.7-flash-medium",
+            "Gemini 3.7 Flash (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.7-flash-low",
+            "Gemini 3.7 Flash (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.6-flash-high",
+            "Gemini 3.6 Flash (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.6-flash-medium",
+            "Gemini 3.6 Flash (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.6-flash-low",
+            "Gemini 3.6 Flash (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.5-flash-high",
+            "Gemini 3.5 Flash (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.5-flash-medium",
+            "Gemini 3.5 Flash (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.5-flash-low",
+            "Gemini 3.5 Flash (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.1-pro-high",
+            "Gemini 3.1 Pro (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.1-pro-low",
+            "Gemini 3.1 Pro (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "claude-sonnet-4-6",
+            "Claude Sonnet 4.6 (Thinking)",
+            AGY_EFFORTS,
+            None,
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "claude-opus-4-6-thinking",
+            "Claude Opus 4.6 (Thinking)",
+            AGY_EFFORTS,
+            None,
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gpt-oss-120b-medium",
+            "GPT-OSS 120B (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+    ],
 });
 
 const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const CODEX_EFFORTS_WITH_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
 const CODEX_EFFORTS_WITH_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const CODEX_EFFORTS_THROUGH_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
+const AGY_EFFORTS: &[&str] = &["low", "medium", "high"];
 
 fn model_catalog_entry(
     id: &str,
@@ -614,7 +722,8 @@ impl ModelCatalog {
         match tool {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
-            CliTool::Gemini => &MODEL_CATALOG.gemini,
+            CliTool::Agy => &MODEL_CATALOG.agy,
+            CliTool::Unknown => &[],
         }
     }
 
@@ -655,8 +764,18 @@ impl ModelCatalog {
                 Some(entry) => entry.efforts.iter().any(|allowed| allowed == effort),
                 None => CODEX_EFFORTS_WITH_ULTRA.contains(&effort),
             },
-            CliTool::Gemini => false,
+            CliTool::Agy => AGY_EFFORTS.contains(&effort),
+            CliTool::Unknown => false,
         }
+    }
+
+    pub fn contains_model_id(model_id: &str) -> bool {
+        MODEL_CATALOG
+            .claude
+            .iter()
+            .chain(&MODEL_CATALOG.codex)
+            .chain(&MODEL_CATALOG.agy)
+            .any(|entry| entry.id == model_id)
     }
 }
 
@@ -745,12 +864,16 @@ pub struct HarnessSettings {
     #[serde(default)]
     #[serde(alias = "codex_compaction")]
     pub codex_compaction: CodexCompactionMode,
+    /// Antigravity hook loading is trust-gated upstream and remains opt-in.
+    #[serde(default)]
+    pub agy_hooks: bool,
 }
 
 impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
             codex_compaction: CodexCompactionMode::Transcript,
+            agy_hooks: false,
         }
     }
 }
@@ -1112,6 +1235,13 @@ mod tests {
             CodexCompactionMode::Transcript
         );
     }
+
+    #[test]
+    fn terminal_settings_default_agy_hooks_off() {
+        // Regression: commit 6fe0aa3 enabled verified Codex hooks by policy;
+        // agy's workspace-trust loading is unverified and must stay opt-in.
+        assert!(!TerminalSettings::default().harness.agy_hooks);
+    }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
 
@@ -1400,10 +1530,16 @@ mod tests {
         assert_eq!(cmds.codex.continue_cmd, "codex --yolo");
         assert_eq!(cmds.codex.fresh, "codex --yolo");
         assert_eq!(cmds.codex.resume, "codex resume --last --yolo");
-        // Gemini
-        assert_eq!(cmds.gemini.continue_cmd, "gemini --yolo --resume");
-        assert_eq!(cmds.gemini.fresh, "gemini --yolo");
-        assert_eq!(cmds.gemini.resume, "gemini --yolo --resume");
+        // Antigravity
+        assert_eq!(
+            cmds.agy.continue_cmd,
+            "agy --dangerously-skip-permissions --continue"
+        );
+        assert_eq!(cmds.agy.fresh, "agy --dangerously-skip-permissions");
+        assert_eq!(
+            cmds.agy.resume,
+            "agy --dangerously-skip-permissions --conversation {session_id}"
+        );
     }
 
     #[test]
@@ -1412,6 +1548,23 @@ mod tests {
         let json = serde_json::to_string(&cmds).unwrap();
         let back: CliCommandSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(cmds, back);
+    }
+
+    #[test]
+    fn legacy_gemini_command_key_is_ignored_without_losing_other_tools() {
+        // Regression: commit 9a66d1c persisted the retired Gemini command key;
+        // renaming the fixed struct used to make the entire settings object
+        // fall back and discard unrelated Claude and Codex custom commands.
+        let value = serde_json::json!({
+            "claude": {"continueCmd": "claude custom-c", "fresh": "claude custom", "resume": "claude custom-r"},
+            "codex": {"continueCmd": "codex custom-c", "fresh": "codex custom", "resume": "codex custom-r"},
+            "gemini": {"continueCmd": "retired old-c", "fresh": "retired old", "resume": "retired old-r"}
+        });
+
+        let loaded: CliCommandSettings = serde_json::from_value(value).unwrap();
+        assert_eq!(loaded.claude.fresh, "claude custom");
+        assert_eq!(loaded.codex.fresh, "codex custom");
+        assert_eq!(loaded.agy, CliCommandSettings::default().agy);
     }
 
     #[test]
@@ -1564,11 +1717,30 @@ mod tests {
             "gpt-5.6-sol"
         );
         assert_eq!(
-            ModelCatalog::default_for(CliTool::Gemini)
-                .expect("Gemini catalog")
+            ModelCatalog::default_for(CliTool::Agy)
+                .expect("Antigravity catalog")
                 .id,
-            "gemini-3.1-pro"
+            "gemini-3.7-flash-high"
         );
+    }
+
+    #[test]
+    fn agy_catalog_matches_the_verified_1_1_22_models() {
+        // Regression: commit 5680a7a retained Antigravity CLI's single stale model
+        // after Google's supported harness changed to Antigravity CLI 1.1.22.
+        assert_eq!(ModelCatalog::entries_for(CliTool::Agy).len(), 14);
+        assert!(ModelCatalog::entry_for(CliTool::Agy, "claude-opus-4-6-thinking").is_some());
+        assert!(ModelCatalog::entry_for(CliTool::Agy, "gpt-oss-120b-medium").is_some());
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Agy,
+            Some("gemini-3.7-flash-high"),
+            "medium"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Agy,
+            Some("gemini-3.7-flash-high"),
+            "xhigh"
+        ));
     }
 
     #[test]
@@ -1616,8 +1788,8 @@ mod tests {
             Some("gpt-5.5"),
             "max"
         ));
-        assert!(!ModelCatalog::supports_effort(
-            CliTool::Gemini,
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Agy,
             Some("gemini-3.1-pro"),
             "high"
         ));

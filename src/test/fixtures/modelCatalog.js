@@ -44,12 +44,20 @@ export const TEST_MODEL_CATALOG = {
       replacement: 'gpt-5.6-terra',
     },
   ],
-  gemini: [
+  agy: [
     {
-      id: 'gemini-3.1-pro',
-      label: 'Gemini 3.1 Pro',
+      id: 'gemini-3.7-flash-high',
+      label: 'Gemini 3.7 Flash (High)',
       efforts: [],
       defaultEffort: null,
+      deprecated: false,
+      replacement: null,
+    },
+    {
+      id: 'claude-sonnet-4-6',
+      label: 'Claude Sonnet 4.6',
+      efforts: ['low', 'medium', 'high'],
+      defaultEffort: 'medium',
       deprecated: false,
       replacement: null,
     },

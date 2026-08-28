@@ -258,7 +258,7 @@ describe('sessionStore', () => {
     const mockSessions = [
       { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude --continue', cli_tool: 'claude' },
       { pid: 200, project_path: '/home/user/proj-a', state: 'idle', tty: '/dev/pts/2', args: 'codex --yolo', cli_tool: 'codex' },
-      { pid: 300, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/3', args: 'gemini --yolo', cli_tool: 'gemini' },
+      { pid: 300, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/3', args: 'agy', cli_tool: 'agy' },
     ]
     ipc.listClaudeSessions.mockResolvedValue(mockSessions)
     store.startPolling()
@@ -269,7 +269,7 @@ describe('sessionStore', () => {
     expect(sessions.size).toBe(1) // One project key
     const all = store.getSessionsForProject('/home/user/proj-a')
     expect(all).toHaveLength(3)
-    expect(all.map(s => s.cli_tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(all.map(s => s.cli_tool)).toEqual(['claude', 'codex', 'agy'])
 
     // getSessionForProject returns the first one
     expect(store.getSessionForProject('/home/user/proj-a').cli_tool).toBe('claude')
@@ -280,7 +280,7 @@ describe('sessionStore', () => {
     const mockSessions = [
       { pid: 100, project_path: '/home/user/proj-a', state: 'active', tty: '/dev/pts/1', args: 'claude --continue', cli_tool: 'claude' },
       { pid: 200, project_path: '/home/user/proj-b', state: 'idle', tty: '/dev/pts/2', args: 'codex --yolo', cli_tool: 'codex' },
-      { pid: 300, project_path: '/home/user/proj-c', state: 'active', tty: '/dev/pts/3', args: 'gemini --yolo', cli_tool: 'gemini' },
+      { pid: 300, project_path: '/home/user/proj-c', state: 'active', tty: '/dev/pts/3', args: 'agy', cli_tool: 'agy' },
     ]
     ipc.listClaudeSessions.mockResolvedValue(mockSessions)
     store.startPolling()
@@ -291,7 +291,7 @@ describe('sessionStore', () => {
     expect(sessions.size).toBe(3)
     expect(store.getSessionForProject('/home/user/proj-a').cli_tool).toBe('claude')
     expect(store.getSessionForProject('/home/user/proj-b').cli_tool).toBe('codex')
-    expect(store.getSessionForProject('/home/user/proj-c').cli_tool).toBe('gemini')
+    expect(store.getSessionForProject('/home/user/proj-c').cli_tool).toBe('agy')
   })
 
   // --- Activity Tracker Tests ---
@@ -731,8 +731,8 @@ describe('sessionStore', () => {
           projectPath: '/proj-daemon-camel',
           state: 'idle',
           tty: '/dev/pts/10',
-          args: 'gemini',
-          cliTool: 'gemini',
+          args: 'agy',
+          cliTool: 'agy',
           tmuxSession: 'taurhaus',
           tmuxWindow: '4',
           tmuxPane: '%10',
@@ -743,7 +743,7 @@ describe('sessionStore', () => {
     const session = store.getSessionForProject('/proj-daemon-camel')
     expect(session).toBeTruthy()
     expect(session.project_path).toBe('/proj-daemon-camel')
-    expect(session.cli_tool).toBe('gemini')
+    expect(session.cli_tool).toBe('agy')
     expect(session.tmux_pane).toBe('%10')
   })
 

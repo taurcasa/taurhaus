@@ -114,8 +114,8 @@ describe('TemplateBrowserPanel', () => {
         roleId: 'custom-doc-writer',
         name: 'Documentation Writer',
         kind: 'agent',
-        cliTool: 'gemini',
-        model: 'gemini-2.5-pro',
+        cliTool: 'agy',
+        model: 'gemini-3.7-flash-high',
         focusArea: 'Documentation systems',
         contextSummary: 'Maintains operational docs and architecture-facing explanations.',
         behaviorSummary: 'Writes and clarifies docs without taking over code ownership lanes.',
@@ -600,7 +600,7 @@ describe('TemplateBrowserPanel', () => {
     const modelSelect = await screen.findByTestId('team-customizer-agent-agent-1-model-select')
     expect(modelSelect).toHaveValue('gpt-5.6-terra')
 
-    await fireEvent.change(modelSelect, { target: { value: 'gemini-3.1-pro' } })
+    await fireEvent.change(modelSelect, { target: { value: 'gemini-3.7-flash-high' } })
     await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-save'))
     await fireEvent.click(screen.getByTestId('team-customizer-save'))
 
@@ -614,7 +614,7 @@ describe('TemplateBrowserPanel', () => {
         expect.objectContaining({
           roleId: 'custom-doc-writer',
           count: 1,
-          overrides: expect.objectContaining({ model: 'gemini-3.1-pro', reasoningEffort: null }),
+          overrides: expect.objectContaining({ model: 'gemini-3.7-flash-high', reasoningEffort: null }),
         }),
         expect.objectContaining({
           roleId: 'custom-doc-writer',
@@ -709,7 +709,7 @@ describe('TemplateBrowserPanel', () => {
     await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-edit'))
     await fireEvent.change(
       await screen.findByTestId('team-customizer-agent-agent-1-model-select'),
-      { target: { value: 'gemini-3.1-pro' } }
+      { target: { value: 'claude-sonnet-4-6' } }
     )
     await fireEvent.click(screen.getByTestId('team-customizer-agent-agent-1-save'))
     await fireEvent.click(screen.getByTestId('team-customizer-save'))
@@ -723,7 +723,7 @@ describe('TemplateBrowserPanel', () => {
         expect.objectContaining({
           roleId: 'custom-doc-writer',
           count: 1,
-          overrides: expect.objectContaining({ model: 'gemini-3.1-pro', reasoningEffort: null }),
+          overrides: expect.objectContaining({ model: 'claude-sonnet-4-6', reasoningEffort: 'medium' }),
         }),
         expect.objectContaining({ roleId: 'custom-doc-writer', count: 1, overrides: null }),
       ],
@@ -947,8 +947,8 @@ describe('TemplateBrowserPanel', () => {
           roleId: 'custom-doc-writer',
           name: 'Documentation Writer',
           kind: 'agent',
-          cliTool: 'gemini',
-          model: 'gemini-2.5-pro',
+          cliTool: 'agy',
+          model: 'gemini-3.7-flash-high',
           capabilities: ['documentation'],
           builtIn: false,
           readOnly: false,
@@ -1066,8 +1066,8 @@ describe('TemplateBrowserPanel', () => {
           roleId: 'custom-doc-writer',
           name: 'Documentation Writer',
           kind: 'agent',
-          cliTool: 'gemini',
-          model: 'gemini-2.5-pro',
+          cliTool: 'agy',
+          model: 'gemini-3.7-flash-high',
           focusArea: 'Documentation systems',
           contextSummary: 'Maintains operational docs and architecture-facing explanations.',
           behaviorSummary: 'Writes and clarifies docs without taking over code ownership lanes.',
@@ -1080,8 +1080,8 @@ describe('TemplateBrowserPanel', () => {
           roleId: 'custom-doc-writer',
           name: 'Documentation Writer',
           kind: 'agent',
-          cliTool: 'gemini',
-          model: 'gemini-2.5-pro',
+          cliTool: 'agy',
+          model: 'gemini-3.7-flash-high',
           focusArea: 'Documentation systems',
           contextSummary: 'Maintains operational docs and architecture-facing explanations.',
           behaviorSummary: 'Writes and clarifies docs without taking over code ownership lanes.',
@@ -1138,8 +1138,8 @@ describe('TemplateBrowserPanel', () => {
         name: 'Documentation Writer',
         kind: 'agent',
         defaults: {
-          cliTool: 'gemini',
-          model: 'gemini-2.5-pro',
+          cliTool: 'agy',
+          model: 'gemini-3.7-flash-high',
           defaultNamePattern: 'documentation-writer-{n}',
         },
         version: '1.0.0',
@@ -1170,8 +1170,8 @@ describe('TemplateBrowserPanel', () => {
         roleId: 'custom-doc-writer',
         name: 'Documentation Writer',
         kind: 'agent',
-        cliTool: 'gemini',
-        model: 'gemini-2.5-pro',
+        cliTool: 'agy',
+        model: 'gemini-3.7-flash-high',
         source: 'user',
         readOnly: false,
       },
@@ -1201,8 +1201,8 @@ describe('TemplateBrowserPanel', () => {
         kind: 'agent',
         version: '1.0.0',
         defaults: {
-          cliTool: 'gemini',
-          model: 'gemini-2.5-pro',
+          cliTool: 'agy',
+          model: 'gemini-3.7-flash-high',
           defaultNamePattern: 'documentation-writer-{n}',
         },
         instructions: 'Imported replacement instructions',
@@ -1232,8 +1232,8 @@ describe('TemplateBrowserPanel', () => {
         roleId: 'custom-doc-writer',
         name: 'Documentation Writer',
         kind: 'agent',
-        cliTool: 'gemini',
-        model: 'gemini-2.5-pro',
+        cliTool: 'agy',
+        model: 'gemini-3.7-flash-high',
         source: 'user',
         readOnly: false,
       },
@@ -1311,8 +1311,8 @@ describe('TemplateBrowserPanel', () => {
         roleId: 'old-role',
         name: 'Old Role',
         kind: 'agent',
-        cliTool: 'gemini',
-        model: 'gemini-2.5-pro',
+        cliTool: 'agy',
+        model: 'gemini-3.7-flash-high',
         capabilities: [],
         builtIn: false,
       },
@@ -1324,7 +1324,7 @@ describe('TemplateBrowserPanel', () => {
         description: 'stale',
         roleCount: 1,
         agentCount: 0,
-        tools: ['gemini'],
+        tools: ['agy'],
       },
     ])
 

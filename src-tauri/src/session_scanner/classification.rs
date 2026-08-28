@@ -40,7 +40,7 @@ pub(crate) fn detect_runtime_idle_for_process_with_pane(
 
 /// Compute a process's raw state from tool-specific signals.
 ///
-/// For Claude/Gemini we keep the existing behavior: project-level file signal
+/// For Claude/Agy we keep the existing behavior: project-level file signal
 /// OR process-level signal marks the process active.
 ///
 /// Codex needs special handling for multi-session projects: the file signal is
@@ -173,15 +173,8 @@ where
             let (process_active, recent_io) = if authoritative {
                 (authoritative_active, authoritative_active)
             } else {
-                match tool_spec.process_activity_signal {
-                    crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars => {
-                        let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
-                        (recent_io, recent_io)
-                    }
-                    crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp => {
-                        (proc_io::has_api_connections(proc.pid), false)
-                    }
-                }
+                let recent_io = proc_io::is_process_active_hysteresis(proc.pid);
+                (recent_io, recent_io)
             };
             process_signal_ms += process_signal_started.elapsed();
 
@@ -294,10 +287,8 @@ fn activity_source(
         return source;
     }
     if process_active {
-        match process_signal {
-            crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars => "process_io",
-            crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp => "tcp",
-        }
+        let _ = process_signal;
+        "process_io"
     } else if file_active {
         "transcript"
     } else {
@@ -629,15 +620,6 @@ mod tests {
         assert_eq!(
             activity_source(
                 None,
-                true,
-                false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp,
-            ),
-            "tcp"
-        );
-        assert_eq!(
-            activity_source(
-                None,
                 false,
                 true,
                 crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
@@ -649,7 +631,7 @@ mod tests {
                 None,
                 false,
                 false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::Tcp,
+                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
             ),
             "none"
         );

@@ -14,7 +14,7 @@ import {
 
 describe('meshDefaults', () => {
   it('exposes the canonical tool list', () => {
-    expect(toolOptions()).toEqual(['claude', 'codex', 'gemini'])
+    expect(toolOptions()).toEqual(['claude', 'codex', 'agy'])
   })
 
   it('normalizes tool values', () => {
@@ -25,7 +25,7 @@ describe('meshDefaults', () => {
 
   it('resolves role defaults from camel/snake payload variants', () => {
     const role = {
-      cli_tool: 'gemini',
+      cli_tool: 'agy',
       defaults: {
         default_name_pattern: 'ui-{project}-{n}',
       },
@@ -37,12 +37,12 @@ describe('meshDefaults', () => {
       'specialist-{n}'
     )
 
-    expect(resolveRoleTool(role, 'codex')).toBe('gemini')
+    expect(resolveRoleTool(role, 'codex')).toBe('agy')
     expect(resolveRoleTool({}, 'codex')).toBe('codex')
     // Regression: two hardcoded model lists (meshDefaults.js, RoleEditor.svelte)
     // shadowed the backend catalog; a role now reports only what it declares and
     // the catalog supplies the default.
-    expect(resolveRoleModel({ model: 'gemini-3.1-pro' })).toBe('gemini-3.1-pro')
+    expect(resolveRoleModel({ model: 'gemini-3.7-flash-high' })).toBe('gemini-3.7-flash-high')
     expect(resolveRoleModel({ model: '' })).toBe('')
     expect(resolveRoleModel({})).toBe('')
     expect(resolveRoleModel({ defaults: { model: 'gpt-5.6-terra' } })).toBe('gpt-5.6-terra')

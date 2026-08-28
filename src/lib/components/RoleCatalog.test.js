@@ -15,8 +15,8 @@ function sampleRole(overrides = {}) {
     roleId: 'mesh-expert',
     name: 'Mesh Expert',
     kind: 'agent',
-    cliTool: 'gemini',
-    model: 'gemini-2.5-pro',
+    cliTool: 'agy',
+    model: 'gemini-3.7-flash-high',
     focusArea: 'Mesh orchestration',
     contextSummary: 'Owns cross-repo protocol awareness and runtime coordination constraints.',
     behaviorSummary: 'Advises on mesh boundaries and avoids unrelated product edits.',
@@ -63,6 +63,18 @@ describe('RoleCatalog', () => {
     expect(screen.getByText('Advises on mesh boundaries and avoids unrelated product edits.')).toBeInTheDocument()
     expect(screen.queryByText('protocols')).not.toBeInTheDocument()
     expect(screen.queryByText('runtime')).not.toBeInTheDocument()
+  })
+
+  it('renders a persisted unknown tool as unknown instead of Claude', () => {
+    // Regression: commit 91f4d3f7 routed unrecognised registry values through
+    // the Claude fallback, hiding that an upgraded role needs tool reselection.
+    renderCatalog({
+      filteredRoleTemplates: [sampleRole({ cliTool: 'unknown' })],
+    })
+
+    const badge = screen.getByTestId('role-tool-badge-mesh-expert')
+    expect(badge).toHaveTextContent('Unknown tool')
+    expect(badge).not.toHaveTextContent('Claude')
   })
 
   it('renders the import button and forwards clicks', async () => {

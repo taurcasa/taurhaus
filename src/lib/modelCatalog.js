@@ -9,7 +9,7 @@ import { normalizeTool, resolveRoleModel, resolveRoleReasoningEffort } from './m
  * model, and the backend then applies its own catalog default.
  */
 
-export const EMPTY_MODEL_CATALOG = Object.freeze({ claude: [], codex: [], gemini: [] })
+export const EMPTY_MODEL_CATALOG = Object.freeze({ claude: [], codex: [], agy: [] })
 
 // Same effort words as the Rust `ModelSpec::parse_legacy` (session_scanner/launch.rs).
 const LEGACY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']
@@ -75,6 +75,16 @@ export function defaultModelFor(catalog, tool) {
 export function parseLegacyModel(value) {
   const raw = trimmed(value)
   if (!raw) return { model: '', reasoningEffort: null }
+
+  // Antigravity model ids can encode their tier in the id itself. Treating the
+  // trailing word as taurhaus' legacy separate-effort spelling corrupts both
+  // Google ids and cross-provider GPT-OSS ids.
+  if (
+    /^gemini-\d+\.\d+-(?:flash|pro)-(?:low|medium|high)$/.test(raw) ||
+    /^gpt-oss-[\w.-]+-(?:low|medium|high)$/.test(raw)
+  ) {
+    return { model: raw, reasoningEffort: null }
+  }
 
   const whitespaceIndex = raw.search(/\s\S*$/)
   const splitIndex = whitespaceIndex >= 0 ? whitespaceIndex : raw.lastIndexOf('-')

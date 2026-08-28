@@ -54,7 +54,7 @@ mod tests {
         let selector = BackendSelector::m0();
         assert_eq!(selector.select(CliTool::Claude), BackendKind::MeshBridged);
         assert_eq!(selector.select(CliTool::Codex), BackendKind::MeshBridged);
-        assert_eq!(selector.select(CliTool::Gemini), BackendKind::MeshBridged);
+        assert_eq!(selector.select(CliTool::Agy), BackendKind::MeshBridged);
     }
 
     #[test]
@@ -62,7 +62,7 @@ mod tests {
         let selector = BackendSelector::default();
         assert_eq!(selector.select(CliTool::Claude), BackendKind::ClaudeNative);
         assert_eq!(selector.select(CliTool::Codex), BackendKind::MeshBridged);
-        assert_eq!(selector.select(CliTool::Gemini), BackendKind::MeshBridged);
+        assert_eq!(selector.select(CliTool::Agy), BackendKind::MeshBridged);
     }
 
     #[test]

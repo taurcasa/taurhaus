@@ -107,7 +107,7 @@ describe('meshTabUtils cross-project metadata', () => {
         {
           name: 'mesh-expert',
           role: 'member',
-          cliTool: 'gemini',
+          cliTool: 'agy',
           model: '2.5-pro',
           projectId: '/home/user/projects/mesh',
           sessionStatus: 'active',
@@ -321,7 +321,7 @@ describe('meshTabUtils cross-project metadata', () => {
       {
         presetId: 'codex-team',
         leadRoleId: 'codex-orchestrator',
-        tools: ['codex', 'gemini'],
+        tools: ['codex', 'agy'],
         agentSlots: [],
       },
       {

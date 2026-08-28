@@ -166,7 +166,7 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     // Regression: 91f4d3f (PR 15) looked the fallback role up in the tool
     // registry only, so an agent row with an empty or unrecognized tool saved
     // `roleId: ""` and the backend rejected the preset; main's default arm had
-    // always answered `codex-developer` for anything that was not claude/gemini.
+    // always answered `codex-developer` for anything outside its original tool pair.
     const config = baseTeamConfig()
     config.agents = [
       { id: 'agent-1', name: 'dev-1', tool: '', model: 'gpt-5.4', projectId: '/projects/taurhaus' },
@@ -244,9 +244,9 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
           ...baseTeamConfig(),
           lead: {
             ...baseTeamConfig().lead,
-            tool: 'gemini',
-            model: 'gemini-3.1-pro',
-            roleId: 'gemini-orchestrator',
+            tool: 'agy',
+            model: 'gemini-3.7-flash-high',
+            roleId: 'antigravity-orchestrator',
           },
         },
         projectPath: '/projects/taurhaus',
@@ -254,12 +254,12 @@ describe('TeamCustomizerPanel - Save as Preset', () => {
     })
 
     await fireEvent.click(await screen.findByTestId('team-customizer-save-preset-trigger'))
-    await fireEvent.input(screen.getByTestId('save-preset-name-input'), { target: { value: 'Gemini Team' } })
+    await fireEvent.input(screen.getByTestId('save-preset-name-input'), { target: { value: 'Antigravity Team' } })
     await fireEvent.click(screen.getByTestId('save-preset-confirm'))
 
     expect(ipc.upsertTeamPreset).toHaveBeenCalledWith(
       expect.objectContaining({
-        leadRoleId: 'gemini-orchestrator',
+        leadRoleId: 'antigravity-orchestrator',
       })
     )
   })

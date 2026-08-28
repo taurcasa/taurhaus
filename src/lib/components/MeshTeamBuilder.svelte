@@ -755,6 +755,10 @@
     }
 
     switch (toolAccent(normalizeTool(tool))) {
+      case 'google-blue':
+        return dark
+          ? 'border-google-blue-400/28 bg-google-blue-500/10'
+          : 'border-google-blue-300/85 bg-google-blue-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]'
       case 'sky':
         return dark
           ? 'border-sky-400/28 bg-sky-500/10'
@@ -773,6 +777,8 @@
   function memberAccentTone(tool, kind = 'agent') {
     if (kind === 'lead') return dark ? 'bg-amber-300' : 'bg-amber-500'
     switch (toolAccent(normalizeTool(tool))) {
+      case 'google-blue':
+        return dark ? 'bg-google-blue-300' : 'bg-google-blue-500'
       case 'sky':
         return dark ? 'bg-sky-300' : 'bg-sky-500'
       case 'violet':
@@ -789,6 +795,10 @@
         : 'border-amber-300/70 bg-amber-50 text-amber-900'
     }
     switch (toolAccent(normalizeTool(tool))) {
+      case 'google-blue':
+        return dark
+          ? 'border-google-blue-400/30 bg-google-blue-500/14 text-google-blue-200'
+          : 'border-google-blue-300/70 bg-google-blue-50 text-google-blue-900'
       case 'sky':
         return dark
           ? 'border-sky-400/30 bg-sky-500/14 text-sky-100'
@@ -1196,6 +1206,10 @@
 
   function roleMedallionTone(tool) {
     switch (toolAccent(tool)) {
+      case 'google-blue':
+        return dark
+          ? 'border-google-blue-400/35 bg-google-blue-500/12 text-google-blue-200'
+          : 'border-google-blue-300/70 bg-google-blue-50 text-google-blue-800'
       case 'emerald':
         return dark
           ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'

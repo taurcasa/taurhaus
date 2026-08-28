@@ -9,8 +9,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+#[cfg(test)]
+use super::HttpClient;
 use super::{
-    AccountIdentity, AccountProvider, HttpClient, Severity, UsageProvider, UsageSnapshot,
+    AccountIdentity, AccountProvider, ProviderEnv, Severity, UsageProvider, UsageSnapshot,
     UsageStatus, UsageWindow,
 };
 
@@ -189,7 +191,7 @@ impl UsageProvider for ClaudeUsageProvider {
         Some(dir.join(CREDENTIALS_FILENAME))
     }
 
-    fn fetch(&self, dir: &Path, http: &dyn HttpClient) -> UsageSnapshot {
+    fn fetch(&self, dir: &Path, env: &dyn ProviderEnv) -> UsageSnapshot {
         let observed_at = chrono::Utc::now();
         let credentials = std::fs::read_to_string(dir.join(CREDENTIALS_FILENAME))
             .ok()
@@ -214,7 +216,7 @@ impl UsageProvider for ClaudeUsageProvider {
             ("Content-Type", "application/json"),
             ("User-Agent", user_agent.as_str()),
         ];
-        let response = match http.get(
+        let response = match env.http().get(
             "https://api.anthropic.com/api/oauth/usage",
             &headers,
             std::time::Duration::from_secs(5),

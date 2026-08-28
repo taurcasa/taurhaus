@@ -41,10 +41,10 @@ const CATALOG = {
       replacement: null,
     },
   ],
-  gemini: [
+  agy: [
     {
-      id: 'gemini-3.1-pro',
-      label: 'Gemini 3.1 Pro',
+      id: 'gemini-3.7-flash-high',
+      label: 'Gemini 3.7 Flash (High)',
       efforts: [],
       defaultEffort: null,
       deprecated: false,
@@ -79,7 +79,7 @@ describe('modelCatalog lookups', () => {
 
   it('effortsFor and isKnownModel answer per model', () => {
     expect(effortsFor(CATALOG, 'codex', 'gpt-5.4')).toEqual(['low', 'medium', 'high', 'xhigh'])
-    expect(effortsFor(CATALOG, 'gemini', 'gemini-3.1-pro')).toEqual([])
+    expect(effortsFor(CATALOG, 'agy', 'gemini-3.7-flash-high')).toEqual([])
     expect(effortsFor(CATALOG, 'codex', 'mystery-model')).toEqual([])
     expect(isKnownModel(CATALOG, 'codex', 'gpt-5.4')).toBe(true)
     expect(isKnownModel(CATALOG, 'codex', 'mystery-model')).toBe(false)
@@ -92,7 +92,7 @@ describe('modelCatalog lookups', () => {
   it('toolEffortsFor unions the efforts the tool declares anywhere in the catalog', () => {
     expect(toolEffortsFor(CATALOG, 'codex')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(toolEffortsFor(CATALOG, 'claude')).toEqual(['low', 'medium', 'high'])
-    expect(toolEffortsFor(CATALOG, 'gemini')).toEqual([])
+    expect(toolEffortsFor(CATALOG, 'agy')).toEqual([])
     expect(toolEffortsFor(null, 'codex')).toEqual([])
   })
 })
@@ -115,6 +115,12 @@ describe('parseLegacyModel', () => {
     })
     expect(parseLegacyModel('claude-opus-4-6')).toEqual({
       model: 'claude-opus-4-6',
+      reasoningEffort: null,
+    })
+    // Regression: commit 8e68468 only protected Google-prefixed Antigravity
+    // ids, truncating the catalog's GPT-OSS id into a nonexistent model.
+    expect(parseLegacyModel('gpt-oss-120b-medium')).toEqual({
+      model: 'gpt-oss-120b-medium',
       reasoningEffort: null,
     })
   })

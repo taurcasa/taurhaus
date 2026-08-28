@@ -114,9 +114,10 @@ When the active platform does not support custom launch commands, the custom-com
 |------|----------|-------|--------|
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
-| Gemini | `gemini --yolo --resume` | `gemini --yolo` | `gemini --yolo --resume` |
+| Antigravity | `agy --dangerously-skip-permissions --continue` | `agy --dangerously-skip-permissions` | `agy --dangerously-skip-permissions --conversation {session_id}` |
 
 Each tool has a "Reset to defaults" button. Commands are editable per-mode (continue, fresh, resume).
+For Antigravity resume commands, `{session_id}` is replaced with the project's last conversation UUID before launch.
 
 ### Search index
 

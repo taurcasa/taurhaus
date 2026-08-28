@@ -476,7 +476,7 @@ describe('Sidebar component branches', () => {
         interactive: false,
         colorClass: 'text-warning-300',
         isActive: false,
-        ariaLabel: 'Gemini idle',
+        ariaLabel: 'Antigravity idle',
         icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' },
         session: { state: 'idle' },
       },
@@ -486,7 +486,7 @@ describe('Sidebar component branches', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('sidebar-team-indicator')).toBeInTheDocument()
-      expect(screen.getByLabelText('Gemini idle')).toBeInTheDocument()
+      expect(screen.getByLabelText('Antigravity idle')).toBeInTheDocument()
     })
 
     expect(screen.getByTestId('sidebar-team-indicator').className).toContain('sidebar-session-team-rail')
@@ -644,7 +644,7 @@ describe('Sidebar component branches', () => {
         tone: 'active',
         memberTools: [
           { tool: 'codex', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: true, colorClass: 'text-success-300' },
-          { tool: 'gemini', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: false, colorClass: 'text-warning-300' },
+          { tool: 'agy', icon: { viewBox: '0 0 10 10', path: 'M0 0h10v10z' }, iconVariant: 'default', isActive: false, colorClass: 'text-warning-300' },
         ],
         members: [
           {
@@ -750,9 +750,9 @@ describe('Sidebar component branches', () => {
     await fireEvent.contextMenu(screen.getByTestId('project-item'))
     expect(screen.queryByText('Open in Terminal')).not.toBeInTheDocument()
     expect(screen.queryByText('Continue Codex')).not.toBeInTheDocument()
-    expect(screen.queryByText('Continue Gemini')).not.toBeInTheDocument()
+    expect(screen.queryByText('Continue Antigravity')).not.toBeInTheDocument()
     expect(screen.getByText('New Codex Session')).toBeInTheDocument()
-    expect(screen.getByText('Resume Gemini')).toBeInTheDocument()
+    expect(screen.getByText('Resume Antigravity')).toBeInTheDocument()
 
     getSessionForProject.mockImplementation(() => session)
     await fireEvent.contextMenu(screen.getByTestId('project-item'))

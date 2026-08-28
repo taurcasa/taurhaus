@@ -261,14 +261,14 @@ describe('SessionHistory component', () => {
 
   it('renders source tool icons in header', async () => {
     getArchivedSessions.mockResolvedValue({
-      sessions: [makeSession({ sources: ['claude', 'gemini'] })],
+      sessions: [makeSession({ sources: ['claude', 'agy'] })],
       errors: [],
     })
 
     render(SessionHistory, { props: { projectPath: '/test', dark: false } })
     await waitFor(() => {
       expect(screen.getByLabelText('Claude')).toBeTruthy()
-      expect(screen.getByLabelText('Gemini')).toBeTruthy()
+      expect(screen.getByLabelText('Antigravity')).toBeTruthy()
     })
   })
 

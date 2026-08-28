@@ -29,7 +29,9 @@ use serde::{Deserialize, Serialize};
 /// would read every replayed snapshot as a live observation.
 /// v11: account discovery and transcript lookup became tool-parameterised;
 /// app and daemon ship together in 0.6.9 and must use the same wire names.
-pub const PROTOCOL_VERSION: u32 = 11;
+/// v12: the third harness wire vocabulary changed from the retired Google CLI
+/// value to Antigravity CLI. Mixed v11 pairs cannot decode each other's tool.
+pub const PROTOCOL_VERSION: u32 = 12;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -1018,9 +1020,21 @@ mod tests {
         // Regression: commit d6839a3 added Claude-only account methods without
         // a protocol bump; replacing those wire names requires the exact-version
         // gate to reject both mixed app/daemon pairs.
-        assert_eq!(PROTOCOL_VERSION, 11);
+        let last_protocol_with_claude_only_account_methods = 10;
+        assert!(PROTOCOL_VERSION > last_protocol_with_claude_only_account_methods);
         assert_eq!(method::LIST_ACCOUNTS, "list_accounts");
         assert_eq!(method::PROJECT_TRANSCRIPT, "project_transcript");
+    }
+
+    #[test]
+    fn protocol_version_excludes_daemons_with_retired_cli_tool_vocabulary() {
+        // Regression: commit 4cd067a replaced the daemon wire value for the
+        // third harness while leaving protocol 11 pairs mutually incompatible.
+        let last_protocol_with_retired_google_tool = 11;
+        assert!(
+            PROTOCOL_VERSION > last_protocol_with_retired_google_tool,
+            "the CliTool vocabulary changed: bump PROTOCOL_VERSION so the exact-version gate refuses pre-18a daemons"
+        );
     }
 
     #[test]

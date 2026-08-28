@@ -1992,6 +1992,46 @@ mod tests {
     }
 
     #[test]
+    fn retired_tool_member_does_not_abort_team_config() {
+        // Regression: commit 4cd067a removed the persisted third-harness wire
+        // value, so one pre-18a member made the whole team config unloadable.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "legacy-google-team";
+        let dir = team_dir(tmp.path(), team_name);
+        fs::create_dir_all(&dir).expect("create team dir");
+        fs::write(
+            dir.join(CONFIG_FILENAME),
+            r#"{
+  "name": "legacy-google-team",
+  "createdAt": 1772399806546,
+  "members": [
+    {
+      "name": "legacy-member",
+      "agentType": "general-purpose",
+      "cli_tool": "gemini",
+      "model": "gemini-3.1-pro",
+      "cwd": "/home/user/projects/taurhaus"
+    },
+    {
+      "name": "codex-member",
+      "agentType": "general-purpose",
+      "cli_tool": "codex",
+      "model": "gpt-5.4",
+      "cwd": "/home/user/projects/taurhaus"
+    }
+  ]
+}"#,
+        )
+        .expect("write legacy team config");
+
+        let config = TeamConfigStore::load(tmp.path(), team_name)
+            .expect("legacy member must not abort team config");
+        assert_eq!(config.members.len(), 2);
+        assert_eq!(config.members[0].cli_tool.to_string(), "unknown");
+        assert_eq!(config.members[1].cli_tool, CliTool::Codex);
+    }
+
+    #[test]
     fn load_mesh_format_without_name_uses_folder_name() {
         let tmp = TempDir::new().expect("tempdir");
         let team_name = "legacy-mesh-team";
@@ -2137,7 +2177,7 @@ mod tests {
       "name": "cwd-fallback",
       "role": "agent",
       "cwd": "/tmp/cwd-only",
-      "cli_tool": "gemini"
+      "cli_tool": "agy"
     }
   ]
 }"#;

@@ -2,6 +2,7 @@
 
 pub mod activity_export;
 pub mod activity_schema;
+pub mod agy_hooks_installer;
 pub mod audit;
 pub mod backend;
 pub mod compact_hook;

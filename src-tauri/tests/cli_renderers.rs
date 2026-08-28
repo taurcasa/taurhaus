@@ -261,3 +261,23 @@ fn render_onboarding_cli_matches_delivery_renderer_bytes() {
         assert_eq!(actual, golden);
     }
 }
+
+#[test]
+fn render_onboarding_cli_uses_the_agy_variant() {
+    // Regression: commit ac6f006 exposed one generic renderer CLI, so adding
+    // Antigravity without selecting its variant omitted `/exit` and the inbox.
+    let role_yaml = include_str!("../resources/templates/roles/quick-dev-codex.yaml");
+    let role_wire: serde_norway::Value =
+        serde_norway::from_str(role_yaml).expect("bundled role parses as wire value");
+    let request = serde_json::json!({
+        "tool": "agy",
+        "team_name": "taureval-golden",
+        "member_name": "agent-under-test",
+        "lead_name": "evaluator",
+        "role": role_wire
+    });
+    let actual = run_renderer("--render-onboarding", &request);
+
+    assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
+    assert!(actual.contains("enter /exit"));
+}

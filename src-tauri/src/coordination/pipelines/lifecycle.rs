@@ -375,27 +375,14 @@ fn render_onboarding_message(
     has_role_context: bool,
     role_context: RoleContext<'_>,
 ) -> Option<String> {
-    if crate::session_scanner::cli_tool::spec(cli_tool)
-        .capabilities
-        .native_inbox_poller
-    {
-        if !has_role_context {
-            return None;
-        }
-        return Some(DeliveryRenderer::render_claude_role_context(
-            team_name,
-            member_name,
-            lead_name,
-            role_context,
-        ));
-    }
-
-    Some(DeliveryRenderer::render_onboarding(
+    DeliveryRenderer::render_for_tool(
+        cli_tool,
         team_name,
         member_name,
         lead_name,
+        has_role_context,
         role_context,
-    ))
+    )
 }
 
 fn log_team_config_sync_error(

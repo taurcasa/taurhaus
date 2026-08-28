@@ -3,7 +3,7 @@
 //! Each CLI tool stores session data differently:
 //! - **Claude Code**: `~/.claude/projects/<slug>/<session-id>.jsonl`
 //! - **Codex CLI**: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
-//! - **Gemini CLI**: `~/.gemini/tmp/<sha256(path)>/chats/session-*.json`
+//! - **Antigravity CLI**: cwd index + flock-held `presence/<conversation>.lock`
 //!
 //! The `SessionResolver` trait abstracts per-tool file resolution and
 //! activity detection. The `detect_idle()` entry point dispatches to
@@ -20,24 +20,29 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
+mod agy;
 mod claude;
 mod claude_registry;
 mod codex;
-mod gemini;
 
+pub(crate) use agy::presence_lock_is_held;
+#[cfg(test)]
+pub(crate) use agy::set_base_dir_for_test as set_agy_base_dir_for_test;
+pub use agy::AgyHooksActivitySource;
+pub use agy::AgyResolver;
+#[cfg(test)]
+pub(crate) use agy::AGY_RESOLVER_TEST_LOCK;
 pub use claude::ClaudeResolver;
 pub use claude_registry::{
-    config_dir_for_transcript, ActivitySource, AuthoritativeState, NoSessionSource, SessionSource,
+    config_dir_for_transcript, ActivitySource, AuthoritativeState, NoActivitySource,
+    NoSessionSource, SessionSource,
 };
-pub(crate) use claude_registry::{
-    ClaudeRegistryActivitySource, ClaudeRegistrySessionSource, NoActivitySource,
-};
+pub(crate) use claude_registry::{ClaudeRegistryActivitySource, ClaudeRegistrySessionSource};
 pub use codex::CodexResolver;
 pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
-pub use gemini::GeminiResolver;
 
 /// Threshold: if any session file mtime is less than this, session is Active.
-/// Used for Claude and Gemini where proc-level signals supplement the mtime.
+/// Used for Claude where proc-level signals supplement the mtime.
 pub(super) const ACTIVE_THRESHOLD: Duration = Duration::from_secs(5);
 
 /// Longer threshold for Codex — session file mtime is the ONLY activity signal
@@ -99,6 +104,15 @@ pub trait SessionResolver: Send + Sync {
     /// Checks tool-specific session files and returns activity state,
     /// session ID, and path to the active session file.
     fn detect_idle(&self, project_path: &str) -> IdleResult;
+
+    /// Resolve the persisted session identity used by a resume command.
+    ///
+    /// Most harnesses expose the same identity through their project resolver.
+    /// A harness whose liveness proof disappears on clean exit can override
+    /// this without weakening live-session detection.
+    fn resume_session_id(&self, project_path: &str) -> Option<String> {
+        self.detect_idle(project_path).session_id
+    }
 }
 
 /// Get the resolver for a CLI tool.
@@ -282,14 +296,6 @@ pub(super) fn scan_latest_file(dir: &Path, extension: &str) -> Option<PathBuf> {
         .map(|entry| entry.path())
 }
 
-/// Compute the SHA-256 hex digest of a project path.
-///
-/// Used by Gemini CLI which stores sessions under `~/.gemini/tmp/<sha256>/`.
-pub(super) fn project_path_sha256(project_path: &str) -> String {
-    use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(project_path.as_bytes()))
-}
-
 /// Pick the most recent of two optional timestamps.
 pub(super) fn most_recent_mtime(
     a: Option<SystemTime>,
@@ -399,7 +405,7 @@ mod tests {
         // Just verify that resolver_for doesn't panic for any tool variant
         let _ = resolver_for(CliTool::Claude);
         let _ = resolver_for(CliTool::Codex);
-        let _ = resolver_for(CliTool::Gemini);
+        let _ = resolver_for(CliTool::Agy);
     }
 
     // Run with: cargo test -- --ignored session_scanner::idle::tests::live_
@@ -424,20 +430,20 @@ mod tests {
 
     #[test]
     #[ignore]
-    fn live_gemini_resolver_finds_session() {
-        let resolver = resolver_for(CliTool::Gemini);
+    fn live_agy_resolver_finds_session() {
+        let resolver = resolver_for(CliTool::Agy);
         let result = resolver.detect_idle("/home/testuser/projects/taurhaus");
         println!(
-            "Gemini: state={:?}, session_id={:?}, path={:?}",
+            "Antigravity: state={:?}, session_id={:?}, path={:?}",
             result.state, result.session_id, result.jsonl_path
         );
         assert!(
             result.jsonl_path.is_some(),
-            "Gemini resolver should find a session file"
+            "Antigravity resolver should find a session file"
         );
         assert!(
             result.session_id.is_some(),
-            "Gemini resolver should extract session ID"
+            "Antigravity resolver should extract session ID"
         );
     }
 

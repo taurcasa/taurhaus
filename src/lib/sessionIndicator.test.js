@@ -102,9 +102,9 @@ describe('sessionIndicator', () => {
     expect(codexBadge.toolLabel).toBe('Codex')
     expect(codexBadge.ariaLabel).toContain('Codex')
 
-    const geminiBadge = sessionBadge({ state: 'active', cli_tool: 'gemini' })
-    expect(geminiBadge.toolLabel).toBe('Gemini')
-    expect(geminiBadge.ariaLabel).toContain('Gemini')
+    const agyBadge = sessionBadge({ state: 'active', cli_tool: 'agy' })
+    expect(agyBadge.toolLabel).toBe('Antigravity')
+    expect(agyBadge.ariaLabel).toContain('Antigravity')
   })
 
   it('defaults to Claude when cli_tool is missing', () => {
@@ -123,14 +123,14 @@ describe('sessionIndicator', () => {
 
   it('uniqueTools deduplicates tools in stable sidebar order', () => {
     const tools = uniqueTools([
-      session({ cli_tool: 'gemini' }),
+      session({ cli_tool: 'agy' }),
       session({ cli_tool: 'codex', pid: 2 }),
       session({ cli_tool: 'claude', pid: 3 }),
       session({ cli_tool: 'codex', pid: 4 }),
     ])
 
-    expect(tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
-    expect(tools.map(tool => tool.fullName)).toEqual(['Claude', 'Codex', 'Gemini'])
+    expect(tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'agy'])
+    expect(tools.map(tool => tool.fullName)).toEqual(['Claude', 'Codex', 'Antigravity'])
   })
 
   it('toolIndicators returns one indicator per live session with icon data', () => {
@@ -169,18 +169,17 @@ describe('sessionIndicator', () => {
     const sessions = [
       session({ state: 'active', cli_tool: 'claude' }),
       session({ state: 'active', cli_tool: 'codex', pid: 2 }),
-      session({ state: 'idle', cli_tool: 'gemini', pid: 3 }),
+      session({ state: 'idle', cli_tool: 'agy', pid: 3 }),
     ]
     const indicators = toolIndicators(sessions)
     expect(indicators).toHaveLength(3)
-    expect(indicators.map(i => i.fullName)).toEqual(['Claude', 'Codex', 'Gemini'])
+    expect(indicators.map(i => i.fullName)).toEqual(['Claude', 'Codex', 'Antigravity'])
 
     // Each tool has a distinct SVG path
     const paths = indicators.map(i => i.icon.path)
     expect(new Set(paths).size).toBe(3)
 
-    // Gemini uses 65x65 viewBox (different from the 16x16 bootstrap icons)
-    expect(indicators[2].icon.viewBox).toBe('0 0 65 65')
+    expect(indicators[2].icon.viewBox).toBe('0 0 16 16')
   })
 
   it('toolIndicators carries session reference', () => {
@@ -239,7 +238,7 @@ describe('sessionIndicator', () => {
     const indicators = groupedSessionIndicators([
       session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
       session({ state: 'idle', cli_tool: 'codex', pid: 2, group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-      session({ state: 'idle', cli_tool: 'gemini', pid: 3, group_kind: 'standalone' }),
+      session({ state: 'idle', cli_tool: 'agy', pid: 3, group_kind: 'standalone' }),
     ])
 
     expect(indicators).toHaveLength(1)
@@ -324,7 +323,7 @@ describe('sessionIndicator', () => {
     const indicators = toolIndicators([
       session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
       session({ pid: 2, cli_tool: 'codex', state: 'idle', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-      session({ pid: 3, cli_tool: 'gemini', state: 'idle', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3' }),
+      session({ pid: 3, cli_tool: 'agy', state: 'idle', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3' }),
     ])
 
     expect(indicators).toHaveLength(1)
@@ -335,7 +334,7 @@ describe('sessionIndicator', () => {
       count: 3,
       tone: 'active',
     })
-    expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(indicators[0].memberTools.map(tool => tool.tool)).toEqual(['claude', 'agy', 'codex'])
     expect(indicators[0].memberTools.map(tool => tool.colorClass)).toEqual([
       'text-success-300',
       'text-warning-300',
@@ -358,7 +357,7 @@ describe('sessionIndicator', () => {
     const indicators = toolIndicators([
       session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
       session({ pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2', state: 'idle' }),
-      session({ pid: 3, cli_tool: 'gemini', state: 'idle', group_kind: 'standalone' }),
+      session({ pid: 3, cli_tool: 'agy', state: 'idle', group_kind: 'standalone' }),
       session({ pid: 4, cli_tool: 'claude', state: 'active', group_kind: 'standalone' }),
     ])
 
@@ -370,7 +369,7 @@ describe('sessionIndicator', () => {
       count: 2,
       isActive: true,
     })
-    expect(indicators.slice(1).map(indicator => indicator.fullName)).toEqual(['Gemini', 'Claude'])
+    expect(indicators.slice(1).map(indicator => indicator.fullName)).toEqual(['Antigravity', 'Claude'])
     expect(indicators.slice(1).every(indicator => indicator.iconVariant === 'default')).toBe(true)
   })
 
@@ -378,7 +377,7 @@ describe('sessionIndicator', () => {
     const indicators = toolIndicators([
       session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
       session({ pid: 2, cli_tool: 'codex', state: 'idle', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-      session({ pid: 3, cli_tool: 'gemini', state: 'idle', group_kind: 'standalone' }),
+      session({ pid: 3, cli_tool: 'agy', state: 'idle', group_kind: 'standalone' }),
     ])
 
     expect(indicators).toHaveLength(2)
@@ -390,7 +389,7 @@ describe('sessionIndicator', () => {
     })
     expect(indicators[1]).toMatchObject({
       kind: 'session',
-      fullName: 'Gemini',
+      fullName: 'Antigravity',
       iconVariant: 'default',
     })
   })
@@ -399,9 +398,9 @@ describe('sessionIndicator', () => {
     const indicators = toolIndicators([
       session({ group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
       session({ pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2', state: 'idle' }),
-      session({ pid: 3, cli_tool: 'gemini', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3', state: 'idle' }),
+      session({ pid: 3, cli_tool: 'agy', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3', state: 'idle' }),
       session({ pid: 4, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer4', state: 'active' }),
-      session({ pid: 5, cli_tool: 'gemini', state: 'idle' }),
+      session({ pid: 5, cli_tool: 'agy', state: 'idle' }),
     ])
 
     expect(indicators).toHaveLength(2)
@@ -412,7 +411,7 @@ describe('sessionIndicator', () => {
       count: 4,
       isActive: true,
     })
-    expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'gemini'])
+    expect(indicators[0].tools.map(tool => tool.tool)).toEqual(['claude', 'codex', 'agy'])
     expect(indicators[0].tools.map(tool => tool.iconVariant)).toEqual(['default', 'default', 'default'])
     expect(indicators[0].tools.map(tool => tool.colorClass)).toEqual([
       'text-success-300',
@@ -422,7 +421,7 @@ describe('sessionIndicator', () => {
     expect(indicators[0].tools[1].icon).toEqual(getToolIcon('codex', 'default'))
     expect(indicators[1]).toMatchObject({
       kind: 'session',
-      fullName: 'Gemini',
+      fullName: 'Antigravity',
     })
   })
 
@@ -430,7 +429,7 @@ describe('sessionIndicator', () => {
     const indicators = toolIndicators([
       session({ state: 'idle', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'lead' }),
       session({ state: 'idle', pid: 2, cli_tool: 'codex', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer2' }),
-      session({ state: 'idle', pid: 3, cli_tool: 'gemini', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3' }),
+      session({ state: 'idle', pid: 3, cli_tool: 'agy', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer3' }),
       session({ state: 'idle', pid: 4, cli_tool: 'claude', group_kind: 'mesh_team', group_id: 'team-a', group_label: 'team-a', member_name: 'developer4' }),
     ])
 

@@ -885,7 +885,7 @@ fn initialize_request(team_name: &str) -> InitializeTeamRequest {
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
-                cli_tool: "gemini".to_string(),
+                cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
                 reasoning_effort: None,
                 project_id: "/tmp/reviewer".to_string(),
@@ -1046,12 +1046,7 @@ fn create_resumable_team(
     orchestrator
         .add_member(
             team_name,
-            member_with_project(
-                "reviewer",
-                MemberRole::Agent,
-                CliTool::Gemini,
-                "/tmp/reviewer",
-            ),
+            member_with_project("reviewer", MemberRole::Agent, CliTool::Agy, "/tmp/reviewer"),
         )
         .expect("add reviewer");
 
@@ -4268,13 +4263,13 @@ fn initialize_team_codex_lead_launch_new_uses_sidecar_lifecycle() {
 }
 
 #[test]
-fn initialize_team_gemini_lead_launch_new_uses_sidecar_lifecycle() {
-    // Regression: e86980b used Gemini's project-scoped SessionSource as a
+fn initialize_team_agy_lead_launch_new_uses_sidecar_lifecycle() {
+    // Regression: e86980b used the Google harness's project-scoped SessionSource as a
     // per-pane runtime identity source, persisting the wrong session id.
     assert_non_claude_lead_launch_new_uses_sidecar(
-        "gemini",
-        "gemini-2.5-pro",
-        "architecture-final-init-gemini-lead",
+        "agy",
+        "gemini-3.7-flash-high",
+        "architecture-final-init-agy-lead",
         false,
     );
 }

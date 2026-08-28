@@ -17,7 +17,7 @@ export const MOCK_ROLES = [
   { id: 'codex-lead', name: 'Codex Lead', kind: 'lead', tool: 'codex', model: 'gpt-5.4', summary: 'Drives implementation with broad codebase context.' },
   { id: 'developer', name: 'Developer', kind: 'agent', tool: 'codex', model: 'gpt-5.4', summary: 'Implements features and fixes with focused execution.' },
   { id: 'architect', name: 'Architect', kind: 'agent', tool: 'claude', model: 'opus', summary: 'Reviews architecture decisions and guards module boundaries.' },
-  { id: 'designer', name: 'UI Specialist', kind: 'agent', tool: 'gemini', model: '3.1-pro', summary: 'Designs interfaces with creative ownership and visual polish.' },
+  { id: 'designer', name: 'UI Specialist', kind: 'agent', tool: 'agy', model: '3.1-pro', summary: 'Designs interfaces with creative ownership and visual polish.' },
   { id: 'qa', name: 'QA Engineer', kind: 'agent', tool: 'codex', model: 'gpt-5.4', summary: 'Writes tests, finds regressions, and validates acceptance criteria.' },
   { id: 'researcher', name: 'Researcher', kind: 'agent', tool: 'claude', model: 'sonnet', summary: 'Explores options, reads docs, and produces technical summaries.' },
   { id: 'reviewer', name: 'Code Reviewer', kind: 'agent', tool: 'claude', model: 'opus', summary: 'Reviews PRs for correctness, style, and security.' },
@@ -26,7 +26,7 @@ export const MOCK_ROLES = [
 export const MOCK_PRESETS = [
   { name: 'Pair', agents: 1, leads: 1, tools: ['claude', 'codex'] },
   { name: 'Dev Team', agents: 2, leads: 1, tools: ['claude', 'codex'] },
-  { name: 'Full Team', agents: 3, leads: 1, tools: ['claude', 'codex', 'gemini'] },
+  { name: 'Full Team', agents: 3, leads: 1, tools: ['claude', 'codex', 'agy'] },
   { name: 'Research', agents: 2, leads: 1, tools: ['claude'] },
 ]
 

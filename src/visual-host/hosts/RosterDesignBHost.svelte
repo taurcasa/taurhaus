@@ -36,7 +36,7 @@
     if (tool === 'codex') return dark
       ? 'bg-gradient-to-br from-emerald-900/50 to-emerald-950/70 border-emerald-700/25'
       : 'bg-gradient-to-br from-emerald-50 to-emerald-100/80 border-emerald-200/60'
-    if (tool === 'gemini') return dark
+    if (tool === 'agy') return dark
       ? 'bg-gradient-to-br from-blue-900/50 to-blue-950/70 border-blue-700/25'
       : 'bg-gradient-to-br from-blue-50 to-blue-100/80 border-blue-200/60'
     return dark ? 'bg-white/[0.03] border-white/[0.08]' : 'bg-zinc-50 border-zinc-200'
@@ -45,19 +45,19 @@
   function toolAccent(tool) {
     if (tool === 'claude') return dark ? 'text-brand-400' : 'text-brand-600'
     if (tool === 'codex') return dark ? 'text-emerald-400' : 'text-emerald-600'
-    if (tool === 'gemini') return dark ? 'text-blue-400' : 'text-blue-600'
+    if (tool === 'agy') return dark ? 'text-blue-400' : 'text-blue-600'
     return textMuted
   }
 
   function toolBadge(tool) {
     if (tool === 'claude') return dark ? 'bg-brand-500/15 text-brand-300' : 'bg-brand-100 text-brand-700'
     if (tool === 'codex') return dark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700'
-    if (tool === 'gemini') return dark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700'
+    if (tool === 'agy') return dark ? 'bg-blue-500/15 text-blue-300' : 'bg-blue-100 text-blue-700'
     return ''
   }
 
   function toolLetter(tool) {
-    return { claude: 'C', codex: 'X', gemini: 'G' }[tool] ?? '?'
+    return { claude: 'C', codex: 'X', agy: 'G' }[tool] ?? '?'
   }
 </script>
 

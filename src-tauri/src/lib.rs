@@ -95,7 +95,7 @@ pub struct SearchState(pub Mutex<search::indexer::SearchIndex>);
 #[cfg(target_os = "macos")]
 fn inherit_macos_shell_env() {
     // Print key env vars as key=value lines, one per line.
-    let env_cmd = r#"echo "PATH=$PATH"; echo "NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS"; echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"; echo "OPENAI_API_KEY=$OPENAI_API_KEY"; echo "GEMINI_API_KEY=$GEMINI_API_KEY""#;
+    let env_cmd = r#"echo "PATH=$PATH"; echo "NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS"; echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"; echo "OPENAI_API_KEY=$OPENAI_API_KEY""#;
     if let Ok(output) = std::process::Command::new("/bin/zsh")
         .args(["-lc", env_cmd])
         .output()
@@ -615,25 +615,15 @@ fn render_onboarding_cli<R: Read>(json_arg: Option<&str>, mut stdin: R) -> Resul
     let request: RenderOnboardingCliRequest = serde_json::from_str(&json)
         .map_err(|error| format!("invalid onboarding request: {error}"))?;
     let role_context = RoleContext::from(&request.role);
-    let rendered = if crate::session_scanner::cli_tool::spec(request.tool)
-        .capabilities
-        .native_inbox_poller
-    {
-        DeliveryRenderer::render_claude_role_context(
-            &request.team_name,
-            &request.member_name,
-            &request.lead_name,
-            role_context,
-        )
-    } else {
-        DeliveryRenderer::render_onboarding(
-            &request.team_name,
-            &request.member_name,
-            &request.lead_name,
-            role_context,
-        )
-    };
-    Ok(rendered)
+    DeliveryRenderer::render_for_tool(
+        request.tool,
+        &request.team_name,
+        &request.member_name,
+        &request.lead_name,
+        true,
+        role_context,
+    )
+    .ok_or_else(|| "onboarding is not required for this harness".to_string())
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

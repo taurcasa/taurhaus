@@ -4,8 +4,8 @@ import { commands } from 'vitest/browser'
 
 import {
   active_claude_dark,
-  cross_project_gemini_dark,
-  cross_project_gemini_light,
+  cross_project_agy_dark,
+  cross_project_agy_light,
   meshNodeDetailScenarios,
   noSession_dark,
 } from '../fixtures/meshNodeDetail.fixtures.js'
@@ -60,7 +60,7 @@ describe('MeshNodeDetail visual spec', () => {
       expect(screen.getByTestId('mesh-node-detail-runtime')).toBeInTheDocument()
     }
 
-    if (scenario === cross_project_gemini_dark || scenario === cross_project_gemini_light) {
+    if (scenario === cross_project_agy_dark || scenario === cross_project_agy_light) {
       expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: mesh')
       expect(screen.getByTestId('mesh-node-detail-project-context')).toHaveTextContent('/home/user/projects/mesh')
       expect(screen.getByTestId('mesh-node-detail-location')).toHaveTextContent('Location: other project')

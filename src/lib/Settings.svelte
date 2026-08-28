@@ -67,10 +67,10 @@
         fresh: source?.codex?.fresh ?? '',
         resume: source?.codex?.resume ?? '',
       },
-      gemini: {
-        continue_cmd: source?.gemini?.continue_cmd ?? '',
-        fresh: source?.gemini?.fresh ?? '',
-        resume: source?.gemini?.resume ?? '',
+      agy: {
+        continue_cmd: source?.agy?.continue_cmd ?? '',
+        fresh: source?.agy?.fresh ?? '',
+        resume: source?.agy?.resume ?? '',
       },
     }
   }
@@ -89,7 +89,7 @@
         tmux_layout: 'new_window',
         cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
         default_account_ids: {},
-        harness: { codex_compaction: 'hooks' },
+        harness: { codex_compaction: 'hooks', agy_hooks: false },
       },
       terminal_contract: terminalContract,
       dark_mode: dark,
@@ -289,7 +289,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cliDefaults,
-        harness: { codex_compaction: 'hooks' },
+        harness: { codex_compaction: 'hooks', agy_hooks: false },
       }
     }
     if (!settings.terminal.cli_commands) settings.terminal.cli_commands = cliDefaults
@@ -593,7 +593,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks' } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } }
                   }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
@@ -622,7 +622,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks' } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } }
                   }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
@@ -648,7 +648,7 @@
                     : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
                     const cliDefaults = getTerminalCliDefaults()
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks' } };
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
@@ -796,7 +796,7 @@
               value={settings.terminal?.harness?.codex_compaction ?? 'hooks'}
               onchange={(e) => {
                 ensureCliCommands()
-                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks' }
+                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: false }
                 settings.terminal.harness.codex_compaction = e.target.value
                 saveSettings()
               }}
@@ -809,6 +809,27 @@
           <p class="mt-2 text-[11px] {textTertiary}">
             Native hooks restore working context immediately after Codex compacts a managed session.
           </p>
+          <div class="mt-4 flex items-start gap-3 border-t {t.keyline} pt-4">
+            <input
+              id="agy-hooks-toggle"
+              type="checkbox"
+              class="mt-0.5 h-3.5 w-3.5 accent-google-blue-500 {fieldFocusRing}"
+              checked={settings.terminal?.harness?.agy_hooks ?? false}
+              onchange={(e) => {
+                ensureCliCommands()
+                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: false }
+                settings.terminal.harness.agy_hooks = e.target.checked
+                saveSettings()
+              }}
+              data-testid="agy-hooks-toggle"
+            />
+            <div class="min-w-0">
+              <label for="agy-hooks-toggle" class="text-[13px] {t.textSecondary}">Antigravity activity hooks</label>
+              <p class="mt-1 text-[11px] {textTertiary}">
+                Opt in to native busy and idle signals. Antigravity may require workspace trust before loading hooks.
+              </p>
+            </div>
+          </div>
         </section>
 
         <!-- ═══ SEARCH ═══ -->

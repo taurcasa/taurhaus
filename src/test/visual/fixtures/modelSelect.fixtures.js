@@ -43,10 +43,10 @@ const CATALOG = {
       replacement: 'gpt-5.6-terra',
     },
   ],
-  gemini: [
+  agy: [
     {
-      id: 'gemini-3.1-pro',
-      label: 'Gemini 3.1 Pro',
+      id: 'gemini-3.7-flash-high',
+      label: 'Gemini 3.7 Flash (High)',
       efforts: [],
       defaultEffort: null,
       deprecated: false,
@@ -99,8 +99,8 @@ const BASE_CASES = [
   },
   {
     label: 'Tool without efforts',
-    tool: 'gemini',
-    model: 'gemini-3.1-pro',
+    tool: 'agy',
+    model: 'gemini-3.7-flash-high',
     reasoningEffort: null,
   },
   {

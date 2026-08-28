@@ -38,9 +38,15 @@ describe('toolRegistry', () => {
     // Regression: 91f4d3f replaced Settings product names and the runtime role
     // palette with the generic registry label/accent pair.
     expect(toolDisplayName('claude')).toBe('Claude Code')
-    expect(toolDisplayName('gemini')).toBe('Gemini CLI')
+    expect(toolDisplayName('agy')).toBe('Antigravity CLI')
     expect(toolMedallionAccent('claude')).toBe('amber')
     expect(toolMedallionAccent('codex')).toBe('emerald')
-    expect(toolMedallionAccent('gemini')).toBe('sky')
+    expect(toolMedallionAccent('agy')).toBe('google-blue')
+  })
+
+  it('exposes Antigravity without retaining Gemini as a tool alias', () => {
+    // Regression: 9a66d1c hard-coded Gemini as the third frontend harness.
+    expect(toolDisplayName('antigravity')).toBe('Antigravity CLI')
+    expect(toolDescriptor('gemini')).toBeNull()
   })
 })

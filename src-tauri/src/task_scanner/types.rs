@@ -1,6 +1,6 @@
 //! Unified task types for the compound task board.
 //!
-//! These types represent tasks from any CLI tool (Claude, Codex, Gemini)
+//! These types represent tasks from any supported CLI harness.
 //! in a normalized format suitable for frontend display.
 
 use crate::session_scanner::cli_tool::CliTool;

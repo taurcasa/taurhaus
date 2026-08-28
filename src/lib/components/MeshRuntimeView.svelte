@@ -166,6 +166,10 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
 
   function roleMedallionTone(tool) {
     switch (toolMedallionAccent(tool)) {
+      case 'google-blue':
+        return dark
+          ? 'border-google-blue-400/35 bg-google-blue-500/12 text-google-blue-200'
+          : 'border-google-blue-300/70 bg-google-blue-50 text-google-blue-800'
       case 'amber':
         return dark
           ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
@@ -676,7 +680,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
               >
                 <option value="claude">Claude</option>
                 <option value="codex">Codex</option>
-                <option value="gemini">Gemini</option>
+                <option value="agy">Antigravity</option>
               </select>
               <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>

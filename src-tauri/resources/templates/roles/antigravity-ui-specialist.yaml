@@ -2,14 +2,14 @@ schema:
   kind: role_template
   version: 1
 
-role_id: gemini-ui-specialist
-name: Gemini UI Specialist
+role_id: antigravity-ui-specialist
+name: Antigravity UI Specialist
 version: 1.0.0
 kind: agent
 
 defaults:
-  cli_tool: gemini
-  model: gemini-3.1-pro
+  cli_tool: agy
+  model: gemini-3.7-flash-high
   reasoning_effort: null
   default_name_pattern: ui-specialist-{n}
 

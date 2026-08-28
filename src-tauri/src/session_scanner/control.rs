@@ -298,16 +298,17 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
 /// window, tmux automatically closes the window too.
 ///
 /// Exit strategies differ per tool:
-/// - Claude & Gemini: `/exit` text command (typed + Enter)
+/// - Claude & Antigravity: `/exit` text command (typed + Enter)
 /// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
-    match cli_tool::spec(tool).stop_strategy {
+    let config = cli_tool::spec(tool);
+    let presence_lock = stop_presence_lock(tmux_pane, config);
+    match config.stop_strategy {
         cli_tool::StopStrategy::Interrupt => {
             // Codex exits on Ctrl+C, not a text command
             run_tmux_raw_key(tmux_pane, "C-c")?;
         }
         cli_tool::StopStrategy::SlashExit => {
-            let config = cli_tool::config_for(tool);
             run_tmux_send_keys(tmux_pane, config.exit_command)?;
         }
     }
@@ -328,8 +329,8 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
             elapsed += POLL_MS;
 
             match pane_current_command(&pane) {
-                Some(cmd) if is_shell(&cmd) => {
-                    tracing::info!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: shell detected, killing pane");
+                Some(cmd) if stop_has_completed(Some(&cmd), presence_lock.as_deref()) => {
+                    tracing::info!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: graceful exit confirmed, killing pane");
                     break;
                 }
                 None => {
@@ -354,6 +355,41 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+fn stop_presence_lock(
+    pane: &str,
+    config: &crate::session_scanner::cli_tool::CliToolSpec,
+) -> Option<std::path::PathBuf> {
+    let presence_dir = config.stop_presence_dir?;
+    let pid = pane_process_id(pane)?;
+    let cwd = crate::platform::process_cwd(pid)?;
+    let cwd = cwd.to_string_lossy();
+    let resolved = config.session_source().resolve(&cwd, pid, Some(pane));
+    let transcript = std::path::Path::new(resolved.jsonl_path.as_deref()?);
+    let stem = transcript.file_stem()?.to_str()?;
+    let app_data = transcript.parent()?.parent()?;
+    let path = app_data.join(presence_dir).join(format!("{stem}.lock"));
+    crate::session_scanner::idle::presence_lock_is_held(&path).then_some(path)
+}
+
+fn stop_has_completed(
+    current_command: Option<&str>,
+    presence_lock: Option<&std::path::Path>,
+) -> bool {
+    current_command.is_some_and(is_shell)
+        || presence_lock
+            .is_some_and(|path| !crate::session_scanner::idle::presence_lock_is_held(path))
+}
+
+fn pane_process_id(pane: &str) -> Option<u32> {
+    tmux_command()
+        .args(["display-message", "-p", "-t", pane, "#{pane_pid}"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(|pid| pid.trim().parse().ok())
 }
 
 /// Get the current command running in a tmux pane.
@@ -519,7 +555,6 @@ fn propagate_env_to_tmux() {
     const PROPAGATE_VARS: &[&str] = &[
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "GEMINI_API_KEY",
         "NODE_EXTRA_CA_CERTS",
         "PATH",
         "TAURHAUS_DATA_DIR",
@@ -627,6 +662,22 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn agy_stop_waits_for_presence_lock_release() {
+        // Regression: commit 9a66d1c treated slash-exit tools as stopped only
+        // when tmux returned to a shell; agy exposes a stronger clean-shutdown
+        // signal through its conversation presence lock.
+        use fs2::FileExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("conversation.lock");
+        let lock = std::fs::File::create(&path).unwrap();
+        lock.lock_exclusive().unwrap();
+        assert!(!stop_has_completed(Some("agy"), Some(&path)));
+        FileExt::unlock(&lock).unwrap();
+        assert!(stop_has_completed(Some("agy"), Some(&path)));
+    }
+
     // -----------------------------------------------------------------------
     // Claude command tests
     // -----------------------------------------------------------------------
@@ -676,22 +727,22 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Gemini command tests
+    // Antigravity command tests
     // -----------------------------------------------------------------------
 
     #[test]
-    fn build_gemini_fresh_command() {
+    fn build_agy_fresh_command() {
         assert_eq!(
-            build_launch_command(CliTool::Gemini, LaunchMode::Fresh),
-            "gemini --yolo"
+            build_launch_command(CliTool::Agy, LaunchMode::Fresh),
+            "agy --dangerously-skip-permissions"
         );
     }
 
     #[test]
-    fn build_gemini_resume_command() {
+    fn build_agy_resume_command() {
         assert_eq!(
-            build_launch_command(CliTool::Gemini, LaunchMode::Resume),
-            "gemini --yolo --resume"
+            build_launch_command(CliTool::Agy, LaunchMode::Resume),
+            "agy --dangerously-skip-permissions --conversation {session_id}"
         );
     }
 
@@ -703,14 +754,14 @@ mod tests {
     fn validate_command_override_accepts_tool_commands() {
         assert!(validate_command_override("claude --dangerously-skip-permissions").is_ok());
         assert!(validate_command_override("codex --yolo").is_ok());
-        assert!(validate_command_override("gemini --yolo --resume").is_ok());
+        assert!(validate_command_override("agy --conversation session-id").is_ok());
         assert!(validate_command_override("/usr/local/bin/claude --flag").is_ok());
     }
 
     // Regression: configuring a CLI command such as `claude2` (a second
     // Claude install/alias) in Settings made every launch fail with
     // "Could not start Claude" because the validator required the basename
-    // to be *exactly* claude/codex/gemini. The Settings UI offers a free-text
+    // to be an exact built-in harness name. The Settings UI offers a free-text
     // field, so whatever works in the user's terminal must work here too:
     // aliases, alternate binaries, env-var prefixes, wrappers, shell syntax.
     #[test]

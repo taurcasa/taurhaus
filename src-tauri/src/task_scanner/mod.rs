@@ -1,18 +1,16 @@
-//! Task scanner — reads task data from Claude, Codex, and Gemini CLI tools.
+//! Task scanner — reads task data from harnesses with verified task sources.
 //!
 //! Each tool tracks tasks differently:
 //! - **Claude Code**: Structured JSON at `~/.claude/tasks/{session-id}/*.json`
 //! - **Codex CLI**: `update_plan` function calls in session JSONL files
-//! - **Gemini CLI**: `TODO.md` markdown checkboxes in the project directory
 //!
-//! The `get_tasks_for_project()` orchestrator calls all three parsers and
+//! The `get_tasks_for_project()` orchestrator calls the registered parsers and
 //! aggregates results. Partial failures are collected as errors — one source
 //! failing doesn't prevent others from returning.
 
 pub mod claude;
 pub mod claude_index;
 pub mod codex;
-pub mod gemini;
 pub mod types;
 
 pub use claude::TranscriptParser;
@@ -49,21 +47,18 @@ pub fn get_tasks_for_project_with_index(
                 .map(|parser| parser.get_tasks(project_path, tool_sessions, index))
                 .unwrap_or(ScanOutcome::DefinitivelyEmpty)
         },
-        gemini::get_tasks,
         claude_index,
     )
 }
 
-fn get_tasks_for_project_with<TF, GF>(
-    project_path: &str,
+fn get_tasks_for_project_with<TF>(
+    _project_path: &str,
     sessions: &[RuntimeSession],
     mut get_transcript_tasks: TF,
-    get_gemini_tasks: GF,
     claude_index: Option<&ClaudeSourceIndex>,
 ) -> TaskResult
 where
     TF: FnMut(&CliToolSpec, &[&RuntimeSession], Option<&ClaudeSourceIndex>) -> ScanOutcome,
-    GF: Fn(&str) -> ScanOutcome,
 {
     let mut result = TaskResult::empty();
 
@@ -82,9 +77,6 @@ where
         );
     }
 
-    // Gemini's TODO.md integration is project-local, not a verified transcript
-    // format, so it remains a separate non-transcript source.
-    apply_source_outcome(&mut result, "gemini", get_gemini_tasks(project_path));
     result
 }
 
@@ -115,7 +107,6 @@ mod tests {
             "/nonexistent/task-scanner-test-project",
             &sessions,
             |_entry, _sessions, _index| ScanOutcome::DefinitivelyEmpty,
-            |_project_path| ScanOutcome::DefinitivelyEmpty,
             None,
         );
         // Should not error — parsers gracefully return empty vecs for missing data

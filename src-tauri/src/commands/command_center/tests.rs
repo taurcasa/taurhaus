@@ -882,7 +882,7 @@ fn daemon_launch_decode_handles_missing_invalid_and_valid_payloads() {
 #[test]
 fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
     let cmds = crate::models::CliCommandSettings::default();
-    for tool in [CliTool::Claude, CliTool::Codex, CliTool::Gemini] {
+    for tool in [CliTool::Claude, CliTool::Codex, CliTool::Agy] {
         for mode in [LaunchMode::Continue, LaunchMode::Fresh, LaunchMode::Resume] {
             let command = base_command(&cmds, tool, mode);
             assert!(
@@ -915,15 +915,19 @@ fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
             "codex resume --last --yolo",
         ),
         (
-            CliTool::Gemini,
+            CliTool::Agy,
             LaunchMode::Continue,
-            "gemini --yolo --resume",
+            "agy --dangerously-skip-permissions --continue",
         ),
-        (CliTool::Gemini, LaunchMode::Fresh, "gemini --yolo"),
         (
-            CliTool::Gemini,
+            CliTool::Agy,
+            LaunchMode::Fresh,
+            "agy --dangerously-skip-permissions",
+        ),
+        (
+            CliTool::Agy,
             LaunchMode::Resume,
-            "gemini --yolo --resume",
+            "agy --dangerously-skip-permissions --conversation {session_id}",
         ),
     ] {
         assert_eq!(base_command(&cmds, tool, mode), expected);
@@ -1118,6 +1122,77 @@ fn launch_cli_session_renders_non_team_base_only_and_logs_command() {
     assert_eq!(rendered["tool"], "claude");
     assert_eq!(rendered["mode"], "fresh");
     assert_eq!(rendered["command"], "claude --dangerously-skip-permissions");
+}
+
+#[test]
+fn agy_resume_expands_the_last_conversation_id_before_launch() {
+    // Regression: commit 4cd067a stored `{session_id}` in agy's resume base but
+    // no launch path expanded it, so the shell passed the placeholder literally
+    // and Antigravity could not reopen the project's conversation.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _resolver_guard = crate::session_scanner::idle::AGY_RESOLVER_TEST_LOCK
+        .lock()
+        .unwrap();
+    let temp = TempDir::new().expect("tempdir");
+    let project_path = temp.path().join("project");
+    let agy_root = temp.path().join(".gemini");
+    let app_data = agy_root.join("antigravity-cli");
+    let conversation_id = "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869";
+    std::fs::create_dir_all(app_data.join("cache")).expect("agy cache dir");
+    std::fs::create_dir_all(app_data.join("conversations")).expect("agy conversations dir");
+    std::fs::write(
+        app_data.join("cache/last_conversations.json"),
+        serde_json::json!({ project_path.to_string_lossy(): conversation_id }).to_string(),
+    )
+    .expect("agy conversation index");
+    std::fs::write(
+        app_data
+            .join("conversations")
+            .join(format!("{conversation_id}.db")),
+        [],
+    )
+    .expect("agy conversation database");
+
+    let _agy_root = crate::session_scanner::idle::set_agy_base_dir_for_test(agy_root.clone());
+    let _accounts = install_detection_override(
+        CliTool::Agy,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: vec![agy_root],
+            accounts: Vec::new(),
+        },
+    );
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) =
+        setup_db_with_project("p-agy-resume", project_path.to_string_lossy().as_ref());
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-agy-resume".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Agy),
+        None,
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        format!("agy --dangerously-skip-permissions --conversation '{conversation_id}'")
+    );
+    assert!(!request.params["command_override"]
+        .as_str()
+        .expect("command string")
+        .contains("{session_id}"));
 }
 
 /// Detection is faked here on purpose: no test may read the developer's real
@@ -1887,7 +1962,7 @@ fn record_session_activity_persists_lowercase_cli_tool_from_enum() {
     record_session_activity_impl(
         &db,
         "p1".to_string(),
-        CliTool::Gemini,
+        CliTool::Agy,
         "2026-03-04T10:00:00Z".to_string(),
         "2026-03-04T11:00:00Z".to_string(),
         1_000,
@@ -1901,7 +1976,7 @@ fn record_session_activity_persists_lowercase_cli_tool_from_enum() {
             row.get(0)
         })
         .expect("query cli_tool");
-    assert_eq!(stored_tool, "gemini");
+    assert_eq!(stored_tool, "agy");
 }
 
 #[test]

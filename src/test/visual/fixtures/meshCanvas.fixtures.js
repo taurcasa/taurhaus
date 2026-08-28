@@ -60,7 +60,7 @@ export const runtime_fiveAgents_dark = createMeshCanvasScenario({
     {
       id: 'mesh-expert',
       name: 'mesh-expert',
-      tool: 'gemini',
+      tool: 'agy',
       model: '2.5-pro',
       status: 'active',
       projectId: '/home/user/projects/mesh',
@@ -82,7 +82,7 @@ export const runtime_fiveAgents_light = createMeshCanvasScenario({
     {
       id: 'mesh-expert',
       name: 'mesh-expert',
-      tool: 'gemini',
+      tool: 'agy',
       model: '2.5-pro',
       status: 'active',
       projectId: '/home/user/projects/mesh',

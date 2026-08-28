@@ -372,8 +372,8 @@ mod tests {
 
     #[test]
     fn add_agent_context_uses_create_member_and_finalize_at_end() {
-        let mut member = sample_agent("backend-dev", "gemini", "/tmp/api");
-        member.model = "gemini-2.5-pro".to_string();
+        let mut member = sample_agent("backend-dev", "agy", "/tmp/api");
+        member.model = "gemini-3.7-flash-high".to_string();
 
         let context =
             MemberActivationContext::for_add_agent("architecture-final", "team-lead", &member)
@@ -381,8 +381,8 @@ mod tests {
 
         assert_eq!(context.operation, MemberActivationOperationKind::AddAgent);
         assert_eq!(context.member.role, MemberRole::Agent);
-        assert_eq!(context.member.cli_tool, CliTool::Gemini);
-        assert_eq!(context.member.model, "gemini-2.5-pro");
+        assert_eq!(context.member.cli_tool, CliTool::Agy);
+        assert_eq!(context.member.model, "gemini-3.7-flash-high");
         assert_eq!(context.pane_policy, MemberActivationPanePolicy::CreateNew);
         assert_eq!(
             context.delivery_policy,

@@ -18,6 +18,9 @@ fn main() {
     if maybe_run_codex_notify_mode() {
         return;
     }
+    if maybe_run_agy_hook_mode() {
+        return;
+    }
     if maybe_run_compact_hook_mode() {
         return;
     }
@@ -190,6 +193,84 @@ fn maybe_run_codex_notify_mode() -> bool {
     true
 }
 
+fn maybe_run_agy_hook_mode() -> bool {
+    if std::env::args().nth(1).as_deref() != Some("agy-hook") {
+        return false;
+    }
+
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new("info"))
+        .with_writer(std::io::stderr)
+        .init();
+    let _log_state = LogFileState::new(PlatformPaths::log_path())
+        .inspect(install_global_sink)
+        .map_err(|error| tracing::warn!(error = %error, "Antigravity hook log sink unavailable"))
+        .ok();
+    let Some(event) = std::env::args()
+        .nth(2)
+        .as_deref()
+        .and_then(taurhaus_lib::daemon::agy_hooks::AgyHookEvent::parse)
+    else {
+        tracing::warn!("agy-hook requires busy or idle");
+        eprintln!("agy-hook requires busy or idle");
+        std::process::exit(1);
+    };
+    let mut payload = String::new();
+    use std::io::Read as _;
+    if let Err(error) = std::io::stdin().read_to_string(&mut payload) {
+        tracing::warn!(error = %error, "Antigravity hook stdin read failed");
+        eprintln!("failed to read Antigravity hook payload: {error}");
+        println!("{{}}");
+        return true;
+    }
+    let path = PlatformPaths::agy_hooks_path();
+    let outcome = match taurhaus_lib::daemon::agy_hooks::append_event_at(
+        &path,
+        event,
+        &payload,
+        chrono::Utc::now(),
+    ) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            tracing::warn!(error, path = %path.display(), "Antigravity hook append failed");
+            eprintln!("{error}");
+            println!("{{}}");
+            return true;
+        }
+    };
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "path".to_string(),
+        serde_json::Value::String(path.display().to_string()),
+    );
+    fields.insert(
+        "recorded".to_string(),
+        serde_json::Value::Bool(outcome.recorded),
+    );
+    fields.insert(
+        "throttled".to_string(),
+        serde_json::Value::Bool(outcome.throttled),
+    );
+    fields.insert(
+        "truncated".to_string(),
+        serde_json::Value::Bool(outcome.truncated),
+    );
+    taurhaus_lib::logging::emit_global(
+        "debug",
+        "daemon",
+        "agy.hook.appended",
+        Some("Recorded Antigravity native activity edge".to_string()),
+        fields,
+    );
+    tracing::debug!(
+        ?event,
+        ?outcome,
+        "Antigravity native activity edge recorded"
+    );
+    println!("{{}}");
+    true
+}
+
 fn maybe_run_compact_hook_mode() -> bool {
     let mode = std::env::args().nth(1);
     if !matches!(
@@ -326,6 +407,7 @@ fn print_help() {
     eprintln!();
     eprintln!("Usage: taurhaus-daemon [OPTIONS]");
     eprintln!("       taurhaus-daemon codex-notify <JSON>");
+    eprintln!("       taurhaus-daemon agy-hook <busy|idle>");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT})");

@@ -46,6 +46,41 @@ fn get_role_prefers_user_override() {
     assert_eq!(role.template.instructions, "user override");
 }
 
+#[test]
+fn retired_tool_role_does_not_abort_the_catalog() {
+    // Regression: commit 4cd067a removed the persisted third-harness wire value,
+    // so one pre-18a role made the entire role catalog fail deserialization.
+    let (_root, app_data, builtins) = setup_dirs();
+    seed_valid_catalog(&builtins);
+    let store = TemplateStore::with_builtins_dir(app_data.clone(), builtins);
+    store.ensure_directories().expect("ensure dirs");
+    write(
+        &app_data.join("templates/roles/gemini-ui-specialist.yaml"),
+        &agent_role_yaml("gemini-ui-specialist", "legacy role")
+            .replace("cli_tool: codex", "cli_tool: gemini"),
+    );
+    write(
+        &app_data.join("templates/presets/legacy-google-team.yaml"),
+        &preset_yaml_with_agent("legacy-google-team", "gemini-ui-specialist"),
+    );
+
+    let roles = store
+        .list_roles()
+        .expect("legacy role must not abort catalog");
+    let retired = roles
+        .iter()
+        .find(|role| role.template.role_id == "gemini-ui-specialist")
+        .expect("retired role remains visible for explicit migration");
+    assert_eq!(retired.template.defaults.cli_tool.to_string(), "unknown");
+    assert!(roles.iter().any(|role| role.template.role_id == "lead"));
+    assert!(roles.iter().any(|role| role.template.role_id == "dev"));
+    assert!(store
+        .list_presets()
+        .expect("legacy role reference must not abort presets")
+        .iter()
+        .any(|preset| preset.template.preset_id == "legacy-google-team"));
+}
+
 // Regression: ff40911 stripped legacy effort suffixes only at launch time,
 // leaving template storage unable to preserve the requested effort separately.
 #[test]

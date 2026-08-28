@@ -10,6 +10,7 @@
     "capabilities": {
       "modelFlag": "--model",
       "effortFlag": { "kind": "argument", "flag": "--effort" },
+      "autoApproveFlag": "--dangerously-skip-permissions",
       "displayNameFlag": "-n",
       "teamFlags": true,
       "nativeInboxPoller": true,
@@ -26,7 +27,8 @@
       "teamConfigNamespace": true,
       "usage": true,
       "notifySink": false,
-      "hookTrust": false
+      "hookTrust": false,
+      "managedHome": false
     }
   },
   {
@@ -40,6 +42,7 @@
     "capabilities": {
       "modelFlag": "-m",
       "effortFlag": { "kind": "config", "flag": "-c", "key": "model_reasoning_effort" },
+      "autoApproveFlag": "--yolo",
       "displayNameFlag": null,
       "teamFlags": false,
       "nativeInboxPoller": false,
@@ -56,20 +59,22 @@
       "teamConfigNamespace": false,
       "usage": true,
       "notifySink": true,
-      "hookTrust": true
+      "hookTrust": true,
+      "managedHome": true
     }
   },
   {
-    "id": "gemini",
-    "label": "Gemini",
-    "displayName": "Gemini CLI",
-    "accent": "violet",
-    "medallionAccent": "sky",
-    "defaultAgentRoleId": "custom-doc-writer",
-    "aliases": ["gemini"],
+    "id": "agy",
+    "label": "Antigravity",
+    "displayName": "Antigravity CLI",
+    "accent": "google-blue",
+    "medallionAccent": "google-blue",
+    "defaultAgentRoleId": "antigravity-ui-specialist",
+    "aliases": ["agy", "antigravity"],
     "capabilities": {
-      "modelFlag": "-m",
-      "effortFlag": null,
+      "modelFlag": "--model",
+      "effortFlag": { "kind": "argument", "flag": "--effort" },
+      "autoApproveFlag": "--dangerously-skip-permissions",
       "displayNameFlag": null,
       "teamFlags": false,
       "nativeInboxPoller": false,
@@ -81,12 +86,13 @@
       "transcriptCompactionSignals": false,
       "catalog": true,
       "sessionRoot": "toolHome",
-      "accountSelector": "GEMINI_CLI_HOME",
+      "accountSelector": null,
       "accountSelection": false,
       "teamConfigNamespace": false,
-      "usage": false,
+      "usage": true,
       "notifySink": false,
-      "hookTrust": false
+      "hookTrust": false,
+      "managedHome": false
     }
   }
 ]

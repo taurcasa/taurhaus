@@ -6,7 +6,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde_json::{Map, Value};
 
 use crate::session_scanner::accounts::{
-    self, Account, ReqwestHttpClient, UsageSnapshot, UsageStatus,
+    self, Account, SystemProviderEnv, UsageSnapshot, UsageStatus,
 };
 use crate::session_scanner::cli_tool::{spec, CliTool};
 
@@ -182,10 +182,10 @@ where
 }
 
 fn poll(tool: CliTool, force: bool) {
-    poll_with_http(tool, force, &ReqwestHttpClient);
+    poll_with_env(tool, force, &SystemProviderEnv);
 }
 
-fn poll_with_http(tool: CliTool, force: bool, http: &dyn accounts::HttpClient) {
+fn poll_with_env(tool: CliTool, force: bool, env: &dyn accounts::ProviderEnv) {
     let tool_spec = spec(tool);
     let Some(provider) = tool_spec.usage_provider() else {
         return;
@@ -242,7 +242,7 @@ fn poll_with_http(tool: CliTool, force: bool, http: &dyn accounts::HttpClient) {
             entry.in_flight = true;
         }
 
-        let mut snapshot = provider.fetch(&account.dir, http);
+        let mut snapshot = provider.fetch(&account.dir, env);
         let live = live_dirs.iter().any(|dir| same_path(dir, &account.dir));
         let mut state = POLLER
             .state
@@ -402,7 +402,7 @@ mod tests {
             .entries
             .remove(&(CliTool::Claude, account.id.clone()));
 
-        poll_with_http(CliTool::Claude, true, &FakeHttp);
+        poll_with_env(CliTool::Claude, true, &FakeHttp);
         let mut listed = vec![account];
         attach_usage(CliTool::Claude, &mut listed);
 
