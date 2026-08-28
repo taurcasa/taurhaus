@@ -6,14 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-28
+
+Accounts and usage become first-class across CLIs: every tool that can run on more than one account (Claude Code via `CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`) gets the same flow — detection, a per-project memory that follows the account the project used last, a one-gesture choice from the sidebar's right-click menu, resume on the account that owns the session, and usage shown exactly as the CLI's own `/usage` or `/status` shows it. Daemon protocol is now **11** — the app and the bundled daemon update together and refuse a mismatched pair.
+
 ### Added
 
-- **Generic accounts and native usage core** — account detection, per-project pins and last-used memory, launch/resume resolution, selector rendering, account UI, and ordered usage windows are tool-agnostic capability slices. Claude is the first provider and reads its OAuth usage endpoint with request-time-only credentials; the 0.6.8 status-line bridge is retired and removed once without changing foreign status-line commands.
-- **Codex accounts and native usage** — Codex config homes are selectable through `CODEX_HOME`, ChatGPT identities come from display-only `id_token` claims, and in-memory `wham/usage` snapshots expose 5-hour and weekly limits per model family. Managed Codex team sidecars carry the same selector; tokens are never logged, persisted, refreshed, or written back.
+- **Account choice where you launch** — every Claude and Codex launch entry in the sidebar's right-click menu (New / Continue / Resume / restart) opens a submenu of accounts with their usage and a tick on the one that would be used; picking one launches immediately without a modal. A `<Tool> account` submenu pins or clears the project's account. Team-delegated Continue/Resume say so instead of silently ignoring a pick. (#34)
+- **Usage like the CLIs show it** — Claude: *Current session · Current week (all models) · Current week (Fable)* from Claude Code's own OAuth usage endpoint; Codex: *5h limit · Weekly limit* per model family from `wham/usage`. Meters live on the account chip, in the chooser, in the submenus and in Settings → Accounts; compact meters show the weekly buckets. Tokens are read at request time, kept in memory only, never logged, persisted or refreshed by taurhaus — an expired or rejected credential shows as "sign in again" until the CLI refreshes it. (#35, #38)
+- **Per-project account memory** — a project defaults to the account it last used (from taurhaus launches or sessions taurhaus sees running), then to a pin, a global default, or a selector already in your launch command (`claude2`); Settings → Accounts shows the effective default and *why*. (#35)
+- **Generic account and usage core** — `AccountProvider`/`UsageProvider` capability slices behind the tool registry; adding a tool's accounts or usage touches only its slice. Migration 013 (`project_tool_accounts`) carries the 0.6.8 Claude pins over. (#35)
+- **`just visual-shot`** — screenshots of any visual-host fixture through Windows Edge headless (`?component=&scenario=&viewport=&theme=`), used to reproduce and verify UI fixes with real renders. (#34)
 
 ### Changed
 
-- **0.6.9 app and daemon ship together on protocol 11** — generic `list_accounts`, usage refresh, and tool-agnostic transcript requests replace the Claude-only daemon contract. A 0.6.9 app deliberately rejects an older daemon (and conversely) rather than mixing account semantics across versions.
+- **Daemon protocol 11** — generic `list_accounts`, `project_transcript` and `refresh_usage` replace the Claude-only methods; the 0.7.0 app and daemon ship together (`just install-daemon` after `just install-windows`) and reject a mismatched pair. (#35)
+- **Status-line bridge retired** — the 0.6.8 bridge that wrapped your Claude `statusLine` is removed and uninstalled once on first start (your original status line is restored byte-for-byte; a status line that merely references the old script is left alone). It could never carry the per-model buckets and it edited user config. (#35)
+- Research reports backing the accounts/usage design (Codex, Gemini, Antigravity, Grok CLIs) live under `docs/design/research/`. (#36, #37)
+
+### Fixed
+
+- **Account popups no longer land at the bottom of the window half cut off** — the shell frame's `position: relative` rule overrode the chooser overlay, and the chip menu was clipped by its header; both are viewport-anchored now, reproduced and verified with real renders. (#34)
+- Codex accounts without an `auth_mode` key and compact meters for providers without flagged weekly windows render correctly. (#38)
 
 ## [0.6.8] - 2026-08-27
 
