@@ -103,4 +103,54 @@ describe('lane cleanup', () => {
     expect(() => proc.emit('exit')).not.toThrow()
     expect(cleanup.owed()).toEqual([])
   })
+
+  // Regression: 2daa0b8 ("test(e2e): put the lane's tmux cleanup on the signal
+  // path") put the undos in front of SIGINT, SIGTERM and exit only.
+  // `e2e/wdio.conf.js` handles `uncaughtException` and `unhandledRejection`
+  // separately — it deletes the session temp root and *returns* — and
+  // registering those handlers is exactly what stops Node from terminating on a
+  // crash. So a crash inside the lane ran no undo at all: the managed panes
+  // stayed alive over a deleted root and the operator's daemon stayed in the
+  // mode the lane put it in.
+  it('runs on a crash a handler already suppresses, ahead of that handler', () => {
+    const proc = new EventEmitter()
+    const order = []
+    proc.on('uncaughtException', () => order.push('wdio-deletes-the-session-root'))
+
+    const cleanup = createLaneCleanup({ logger: silentLogger() })
+    cleanup.install(proc)
+    cleanup.owe('panes', () => order.push('panes'))
+
+    proc.emit('uncaughtException', new Error('boom'))
+
+    expect(order).toEqual(['panes', 'wdio-deletes-the-session-root'])
+  })
+
+  it('runs on a suppressed unhandled rejection too', () => {
+    const proc = new EventEmitter()
+    const undo = vi.fn()
+    proc.on('unhandledRejection', () => {})
+
+    const cleanup = createLaneCleanup({ logger: silentLogger() })
+    cleanup.install(proc)
+    cleanup.owe('daemon-mode', undo)
+
+    proc.emit('unhandledRejection', new Error('boom'))
+
+    expect(undo).toHaveBeenCalledTimes(1)
+  })
+
+  // A crash nobody handles still terminates the process, and Node emits `exit`
+  // on its way out, so the undos already run. Listening ourselves would suppress
+  // that termination and turn a crash into a hang, so `install` stays out of a
+  // crash path no one else is on.
+  it('does not take a crash off the default termination path', () => {
+    const proc = new EventEmitter()
+    const cleanup = createLaneCleanup({ logger: silentLogger() })
+
+    cleanup.install(proc)
+
+    expect(proc.listenerCount('uncaughtException')).toBe(0)
+    expect(proc.listenerCount('unhandledRejection')).toBe(0)
+  })
 })

@@ -48,11 +48,24 @@ export function createLaneCleanup({ logger = console } = {}) {
      * SIGINT/SIGTERM handler when the config module loads — before any spec —
      * and that handler deletes the session temp root and exits without
      * returning, so a listener added after it never runs.
+     *
+     * A crash leaves by a different door. `wdio.conf.js` also handles
+     * `uncaughtException` and `unhandledRejection`, and having a listener at all
+     * is what stops Node terminating on one: its handler deletes the session
+     * temp root and returns, so the run carries on over roots that are gone and
+     * nothing hands the host back what the lane changed. The undos go in front
+     * of those two as well — but only where something already listens. A crash
+     * nobody handles still terminates the process and still emits `exit` on the
+     * way out, which the undos are already on; listening ourselves would
+     * suppress that termination and turn a crash into a hang.
      */
     install(proc = process) {
       proc.prependListener('SIGINT', run)
       proc.prependListener('SIGTERM', run)
       proc.prependListener('exit', run)
+      for (const crash of ['uncaughtException', 'unhandledRejection']) {
+        if (proc.listenerCount(crash) > 0) proc.prependListener(crash, run)
+      }
     },
   }
 }
