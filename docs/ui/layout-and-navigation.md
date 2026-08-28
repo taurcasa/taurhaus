@@ -29,7 +29,7 @@ All non-interactive titlebar space is draggable (`data-tauri-drag-region`).
 Project list organized by activity groups (Active, Recent, Stale, Dormant). Each project row shows:
 - Project name (14px, white/75 opacity)
 - Git branch as a rounded pill
-- CLI tool session logos (Claude, Codex, Gemini) color-coded by state
+- CLI tool session logos (Claude, Codex, Antigravity, Grok) color-coded by state
 - Mesh team indicators render as a rail for small groups and a stacked cluster with count for larger groups
 - Row tint (`bg-white/[0.03]`) when any session exists
 - Selected item: 3px left border accent
@@ -128,7 +128,7 @@ A modal that overlays the entire view. Triggered by the titlebar search button o
 ### Context menu
 
 Right-click on sidebar project items. Provides per-tool actions:
-- Launch Claude/Codex/Gemini session (continue, fresh, resume)
+- Launch a session for any registered tool (Claude, Codex, Antigravity, Grok); fresh and resume for all four, continue for Claude and Grok
 - Stop/restart running sessions
 - Navigate to running session in terminal
 - Remove project

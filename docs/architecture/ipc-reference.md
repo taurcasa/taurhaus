@@ -4,7 +4,7 @@ Reference for taurhaus Tauri IPC commands exposed from `src-tauri/src/commands/`
 
 ## Overview
 
-The backend currently registers 89 `#[tauri::command]` functions in `src-tauri/src/lib.rs` `generate_handler!` (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
+The backend currently registers 90 `#[tauri::command]` functions in `src-tauri/src/lib.rs` `generate_handler!` (with `mesh-bridged-backend` enabled). Command names are snake_case (for example, `get_project`), while frontend wrapper arguments are camelCase (for example, `projectId`) via Tauri's serde argument mapping.
 
 ## Projects commands
 

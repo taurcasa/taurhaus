@@ -4,6 +4,8 @@ The Mesh tab lets you set up, monitor, and manage multi-agent teams for a projec
 
 ![Mesh View Lifecycle](../images/mesh-view-lifecycle.jpg)
 
+> Stale render: the setup block says the team lead is fixed to Claude. Lead roles ship for Claude, Codex and Antigravity, and the team builder filters the catalog by role kind, not by tool.
+
 ## Overview
 
 Mesh view responsibilities:
@@ -105,12 +107,12 @@ Use those fields to express how a role should communicate, what checks it must s
 
 Role metadata remains visible through setup and runtime so the lead can route work with more than just a name and tool. The richer schema makes it possible to tell, for example, whether a role is meant for planning vs review, what kind of evidence it should return, and what a successful handoff should include.
 
-The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and presets may resolve to Claude, Codex, or Antigravity lead roles.
+The lead is no longer fixed to Claude. The selected lead role determines tool/model defaults, and the built-in lead roles cover Claude, Codex and Antigravity (`claude-orchestrator`, `codex-orchestrator`, `antigravity-orchestrator`, plus the `v2`/`v3` lead roles). The shipped Grok role is `grok-developer` (`kind: agent`), so a Grok lead needs a user template.
 
 Lead-mode rule:
 
 - Claude leads may use the existing attach-existing flow
-- Codex and Antigravity leads are currently launch-new only
+- Codex, Antigravity and Grok leads are currently launch-new only — the rule is capability-driven (`should_use_mesh_sidecar`, i.e. any harness without the native inbox poller), not a per-tool list
 
 Users can still save the current draft back into the preset catalog from the advanced customizer flow.
 

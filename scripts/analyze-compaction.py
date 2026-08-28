@@ -392,8 +392,13 @@ def infer_cli_tool(cli_tool: object, model: object) -> Optional[str]:
         return "claude"
     if "gpt" in lower or "codex" in lower:
         return "codex"
+    # Antigravity roles run gemini-* model ids (see the bundled
+    # antigravity-* role templates). The retired Gemini CLI is not a tool
+    # value any more, so a gemini-* model means agy.
     if "gemini" in lower:
-        return "gemini"
+        return "agy"
+    if "grok" in lower:
+        return "grok"
     return None
 
 

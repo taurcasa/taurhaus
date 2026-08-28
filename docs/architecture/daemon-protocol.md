@@ -4,11 +4,13 @@ The daemon is a companion process that handles filesystem access, process scanni
 
 ![Daemon Protocol](../images/daemon-protocol.jpg)
 
+> Stale render: the diagram says 22 methods and uses superseded method names. The catalog is 27 callable methods (28 constants — `list_directory` has no handler) plus 3 push events at protocol 13; the tables below are authoritative.
+
 ## Why a daemon
 
 The app and the daemon exist as separate processes because of platform boundaries:
 
-- **Windows**: The GUI runs as a native Windows app, but AI CLI tools (Claude Code, Codex, Gemini CLI) run inside WSL2. The daemon runs inside WSL2 where it has access to `/proc` and the Linux filesystem.
+- **Windows**: The GUI runs as a native Windows app, but AI CLI tools (Claude Code, Codex, Antigravity CLI, Grok CLI) run inside WSL2. The daemon runs inside WSL2 where it has access to `/proc` and the Linux filesystem.
 - **macOS / Linux**: The daemon runs natively as a subprocess (`is_native_daemon()` is true for both). No platform boundary — but the same protocol keeps the architecture consistent.
 
 On every platform the daemon process hosts the single session hub: the app reads sessions from the daemon snapshot and only falls back to a local scan when no daemon is configured or reachable.
@@ -20,7 +22,7 @@ On every platform the daemon process hosts the single session hub: the app reads
 | Transport | TCP |
 | Default address | `127.0.0.1:17233` ([authoritative source](../../src-tauri/src/daemon/server.rs)) |
 | Format | NDJSON — one JSON object per line |
-| Protocol version | 10 (current) |
+| Protocol version | 13 (current) |
 | Authentication | Shared token (32-byte hex, file-based) |
 
 ### Authentication
@@ -178,9 +180,9 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 - `resume` — tool-specific resume (e.g., `codex resume --last`)
 
 **CLI tools** (`cli_tool` field, defaults to `claude`):
-- `claude`, `codex`, `gemini`
+- `claude`, `codex`, `agy`, `grok`. An unrecognised value — including the pre-18a Google value — decodes to `Unknown` rather than to another harness, which is why every vocabulary change bumps the protocol.
 
-### Accounts and usage (protocol 11)
+### Accounts and usage (generic since protocol 11)
 
 | Method | Params | Result | Description |
 |--------|--------|--------|-------------|
@@ -188,7 +190,7 @@ The client deserializes each line as a `DaemonMessage` enum using serde's `#[ser
 | `project_transcript` | `{ tool, project }` | `{ transcript }` | The newest provider transcript that owns the tool's project history. |
 | `refresh_usage` | `{ tool }` | `{ started }` | Requests an on-demand, debounced provider usage refresh. |
 
-On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. Protocol 11 ships with app 0.6.9; older Claude-only account methods are intentionally incompatible.
+On Windows, config dirs and transcripts live inside WSL, so the daemon owns these reads. These methods replaced the Claude-only ones in protocol 11 (shipped with app 0.7.0); the older names are intentionally incompatible. `tool` is any registered harness — all four have an account provider, but only the three with an `account_selector` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`) can be switched; Antigravity returns one implicit account. `refresh_usage` answers `{"started": false}` for a tool with no usage provider (grok) and for a request inside the 5-second debounce (`daemon/usage_poller.rs:113-133`).
 
 ### Session activity stream (app bridge)
 
@@ -274,9 +276,9 @@ Managed Codex launches render the `notify` flag only when all four hold (`comman
 
 ### Protocol version check
 
-On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v11) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
+On connect, the app sends `ping` and checks `protocol_version` in the response. The gate is exact-match, not a floor: any version *different* from what the app expects (current: v13) is rejected, so a newer daemon is disconnected the same way an older one is, and the user is warned to rebuild the daemon (`just install-daemon`). Old daemons without the field deserialize as version 0.
 
-The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode`; v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods and added `account_observations` to both session snapshot results.
+The same check runs for the rest of the app's life, not only at startup: the health monitor pings for the protocol version rather than liveness (`daemon_lifecycle.rs`), and every reconnect confirms it before the daemon counts as connected — `DaemonProvider::reconnect_checked` is the gate the inline and manual paths use (runtime-snapshot IPC, task sync, the Start Daemon button), so reachability alone never adopts a daemon. A mismatched daemon is disconnected so the restart path can replace it — since v8 the hub snapshot is the only live tmux-focus transport, so a daemon that merely answers TCP is not a daemon the app can use. v9 added `set_codex_compaction_mode`; v10 added the scanner-blackout cursor; v11 replaced the Claude-only account methods with generic account methods (`list_accounts`, `project_transcript`, `refresh_usage`) and added `account_observations` to both session snapshot results; v12 replaced the retired Google value in the `CliTool` wire vocabulary with `agy`; v13 added `grok`. The last two are vocabulary-only changes, and they bump the version because either side decodes the other's tool value as `Unknown` — a session that silently loses its harness identity, not a method that fails loudly. The regression tests that pin this live in `daemon/protocol.rs` (`protocol_version_excludes_daemons_*`).
 
 Separately, startup now validates that the connected daemon is serving from the current installed binary. A daemon still running from a replaced or deleted inode is terminated and restarted before Taurhaus keeps the connection.
 
@@ -291,6 +293,8 @@ Separately, startup now validates that the connected daemon is serving from the 
 | `src-tauri/src/daemon/session_listener.rs` | App-side long-poll client for session updates |
 | `src-tauri/src/daemon/compaction.rs` | Daemon-owned Codex compaction runtime and the hooks/transcript mode switch driven by `set_codex_compaction_mode` |
 | `src-tauri/src/daemon/codex_notify.rs` | `codex-notify` sink (bounded append-only JSONL) |
+| `src-tauri/src/daemon/agy_hooks.rs` | Antigravity activity-hook sink — bounded append-only `<app data>/agy-hooks.jsonl` |
+| `src-tauri/src/daemon/usage_poller.rs` | Per-(tool, account) usage polling behind `refresh_usage` |
 | `src-tauri/src/session_scanner/tmux.rs` | `list_clients` / `focus_from_clients` focus probe |
 | `src-tauri/src/daemon/event_listener.rs` | Event listener thread (app-side) |
 | `src-tauri/src/daemon/launcher.rs` | Connection + auto-start logic |

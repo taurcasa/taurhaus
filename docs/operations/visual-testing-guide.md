@@ -57,10 +57,20 @@ If the test needs the real backend or real workflow wiring, it belongs in WDIO E
 
 Fixture examples already in the repo:
 
-- `runtime_fiveAgents_dark`
-- `active_claudeWorking_dirty_dark`
-- `active_claude_selected_dark`
-- `active_claude_light`
+- `runtime_fiveAgents_dark` (`meshCanvas.fixtures.js`)
+- `active_claudeWorking_dirty_dark` (`hoverCard.fixtures.js`)
+- `active_claude_selected_dark` (`sidebar.fixtures.js`)
+- `active_claude_light`, `idle_agy_dark`, `idle_grok_dark`, `cross_project_agy_light` (`meshNodeDetail.fixtures.js`)
+- `account.fixtures.js` and `shellPopups.fixtures.js` cover the account chooser, chip menu and usage meters — the surfaces `just visual-shot` exists for; `grok-two-accounts-light` is the tool that shows identities with no usage meter at all
+
+The fixture roster is a per-tool matrix, and it has to stay one: the mesh
+builder cycles all four tools — `toolCycle = ['codex', 'agy', 'claude', 'grok']`
+in `createAgentMembers` (`src/test/visual/fixtures/builders.js:71-74`, consumed
+by `meshCanvas.fixtures.js` and `readmeScreenshots.fixtures.js`) — while
+`sidebar.fixtures.js` uses no builder and maintains its own four-tool scenario,
+`active_multiTool_dark`, session by session (`:225-250`). When a harness joins the registry, add
+its scenario to the mesh canvas, mesh node detail, sidebar, roster and account
+fixtures in the same PR — otherwise its surfaces are shot by no one.
 
 Rules:
 

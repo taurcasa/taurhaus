@@ -26,7 +26,7 @@ const FULL_TASK = {
   id: '1',
   source_key: 'sess-abc',
   subject: 'Add task scanner backend',
-  description: 'Parse tasks from all three CLI tools',
+  description: 'Parse tasks from the Claude and Codex transcripts',
   active_form: 'Adding task scanner',
   status: 'in_progress',
   source: 'claude',
@@ -44,12 +44,12 @@ const FULL_TASK = {
 /** A sparse task (only subject + status). */
 const SPARSE_TASK = {
   id: 'todo-5',
-  source_key: 'agy-todo',
+  source_key: 'legacy-codex',
   subject: 'Write unit tests',
   description: null,
   active_form: null,
   status: 'pending',
-  source: 'agy',
+  source: 'codex',
   blocks: [],
   blocked_by: [],
   owner: null,
@@ -176,7 +176,7 @@ describe('Description section', () => {
     await waitFor(() => {
       expect(within(description).getByTestId('markdown-content')).toBeTruthy()
     }, { timeout: 3000 })
-    expect(within(description).getByText('Parse tasks from all three CLI tools')).toBeTruthy()
+    expect(within(description).getByText('Parse tasks from the Claude and Codex transcripts')).toBeTruthy()
   })
 
   it('renders description through markdown pipeline', async () => {
@@ -366,7 +366,7 @@ describe('Sparse task rendering', () => {
     renderPanel({ task: SPARSE_TASK, detail: SPARSE_DETAIL })
     // Header always shows
     expect(screen.getByText('Write unit tests')).toBeTruthy()
-    expect(screen.getByText('Antigravity')).toBeTruthy()
+    expect(screen.getByText('Codex')).toBeTruthy()
     expect(screen.getByText('Pending')).toBeTruthy()
     // All detail sections absent
     expect(screen.queryByTestId('detail-description')).toBeNull()

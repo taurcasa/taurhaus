@@ -1,14 +1,18 @@
 import { MOCK_DIFF_HUNKS } from './base.js'
 
+// Task sources mirror the backend scanner, which has exactly two:
+// `task_scanner/claude.rs` and `task_scanner/codex.rs`. Antigravity and Grok
+// declare `transcript_parser: false` and contribute no tasks, so a mock task
+// must never carry `source: 'agy'` or `source: 'grok'`.
 export function buildMockProjectTasks() {
   return {
     tasks: [
-      { id: '1', source_key: 'sess-aaa-111', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: 'Adding task scanner', status: 'in_progress', source: 'claude', blocks: ['2'], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 300000).toISOString(), updated_at: new Date(Date.now() - 300000).toISOString() },
+      { id: '1', source_key: 'sess-aaa-111', subject: 'Add task scanner backend', description: 'Parse tasks from the Claude and Codex transcripts', active_form: 'Adding task scanner', status: 'in_progress', source: 'claude', blocks: ['2'], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 300000).toISOString(), updated_at: new Date(Date.now() - 300000).toISOString() },
       { id: '2', source_key: 'sess-aaa-111', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'pending', source: 'claude', blocks: [], blocked_by: ['1'], owner: null, state_changed_at: new Date(Date.now() - 3600000).toISOString(), updated_at: new Date(Date.now() - 3600000).toISOString() },
       { id: '3', source_key: 'sess-aaa-111', subject: 'Write integration tests', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 7200000).toISOString(), updated_at: new Date(Date.now() - 7200000).toISOString() },
       { id: 'codex-0', source_key: 'legacy-codex', subject: 'Initialize project structure', description: null, active_form: null, status: 'completed', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 10800000).toISOString(), updated_at: new Date(Date.now() - 10800000).toISOString() },
       { id: 'codex-1', source_key: 'legacy-codex', subject: 'Implement CLI parsing', description: null, active_form: 'Implementing CLI parsing', status: 'in_progress', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 900000).toISOString(), updated_at: new Date(Date.now() - 900000).toISOString() },
-      { id: 'todo-1', source_key: 'agy-todo', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'agy', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 1800000).toISOString(), updated_at: new Date(Date.now() - 1800000).toISOString() },
+      { id: 'codex-2', source_key: 'legacy-codex', subject: 'Write unit tests', description: null, active_form: null, status: 'pending', source: 'codex', blocks: [], blocked_by: [], owner: null, state_changed_at: new Date(Date.now() - 1800000).toISOString(), updated_at: new Date(Date.now() - 1800000).toISOString() },
     ],
     errors: [],
     // Backend task scanner contract includes per-source scan outcomes.
@@ -20,9 +24,9 @@ export function buildMockTaskDetail(taskId, source, sourceKey) {
   return {
     task: {
       id: taskId,
-      source_key: sourceKey || (source === 'agy' ? 'agy-todo' : source === 'codex' ? 'legacy-codex' : 'legacy-claude'),
+      source_key: sourceKey || (source === 'codex' ? 'legacy-codex' : 'legacy-claude'),
       subject: 'Add task scanner backend',
-      description: 'Parse tasks from all three CLI tools and present them in a unified task board.',
+      description: 'Parse tasks from the Claude and Codex transcripts and present them in a unified task board.',
       active_form: 'Adding task scanner',
       status: 'in_progress',
       source: source || 'claude',
@@ -62,12 +66,12 @@ export function buildMockArchivedSessions() {
         ended_at: new Date(now - 2 * 86400000 + 8100000).toISOString(),
         duration_ms: 8100000,
         tasks: [
-          { id: '10', source_key: 'sess-aaa-111', subject: 'Add task scanner backend', description: 'Parse tasks from all three CLI tools', active_form: null, status: 'completed', source: 'claude', blocks: ['11'], blocked_by: [], owner: null, archived_at: new Date(now - 3600000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
+          { id: '10', source_key: 'sess-aaa-111', subject: 'Add task scanner backend', description: 'Parse tasks from the Claude and Codex transcripts', active_form: null, status: 'completed', source: 'claude', blocks: ['11'], blocked_by: [], owner: null, archived_at: new Date(now - 3600000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
           { id: '11', source_key: 'sess-aaa-111', subject: 'Build TaskBoard UI component', description: null, active_form: null, status: 'completed', source: 'claude', blocks: [], blocked_by: ['10'], owner: null, archived_at: new Date(now - 3500000).toISOString(), archived_reason: 'completed_and_removed', last_status: 'completed' },
         ],
         commit_count: 12,
         file_count: 8,
-        sources: ['claude', 'codex', 'agy'],
+        sources: ['claude', 'codex'],
         last_archived_at: new Date(now - 3600000).toISOString(),
         enrichment_warnings: [],
       },

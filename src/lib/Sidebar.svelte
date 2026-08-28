@@ -530,8 +530,9 @@
       allSessions,
     )
 
-    // Continue appears only where it launches something a Fresh session does
-    // not: Claude and Grok both reopen the project's last conversation with it.
+    // Continue is listed for Claude and Grok, which reopen the project's last
+    // conversation. Antigravity's continue command also differs from its fresh
+    // one; it is deliberately absent here until that lane is exercised.
     items.push(launch('Continue Claude', 'continue', 'claude', CTX_ICON_PLAY))
     items.push(launch('Continue Grok', 'continue', 'grok', CTX_ICON_PLAY))
 

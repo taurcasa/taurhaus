@@ -239,4 +239,20 @@ export const MOCK_CLAUDE_SESSIONS = [
     session_id: 'agy-sess-5678',
     jsonl_path: null,
   },
+  {
+    pid: 12370,
+    project_path: '~/projects/mir',
+    tty: '/dev/pts/7',
+    args: 'grok --always-approve',
+    cli_tool: 'grok',
+    tmux_session: 'taurhaus',
+    tmux_window: '3',
+    tmux_pane: '%12',
+    tmux_window_name: 'mir',
+    state: 'idle',
+    // grok names its own session in `<GROK_HOME>/active_sessions.json`; the
+    // transcript is an `events.jsonl` under the encoded cwd, not a flat file.
+    session_id: 'grok-sess-9012',
+    jsonl_path: null,
+  },
 ]

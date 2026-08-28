@@ -135,6 +135,7 @@ function canonicalizeSettings(settings = {}) {
         claude: canonicalizeToolCommands(cliCommands.claude),
         codex: canonicalizeToolCommands(cliCommands.codex),
         agy: canonicalizeToolCommands(cliCommands.agy),
+        grok: canonicalizeToolCommands(cliCommands.grok),
       },
     },
     dark_mode: settings.dark_mode ?? settings.darkMode ?? false,

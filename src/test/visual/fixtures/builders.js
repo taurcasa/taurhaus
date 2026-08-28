@@ -2,6 +2,22 @@ function cycle(list, index) {
   return list[index % list.length]
 }
 
+// One entry per registered harness, so a roster fixture can cycle through all
+// four the way a real team does. Labels match `toolRegistry.js`.
+const TOOL_LABELS = {
+  claude: 'Claude',
+  codex: 'Codex',
+  agy: 'Antigravity',
+  grok: 'Grok',
+}
+
+const TOOL_MODELS = {
+  claude: 'sonnet',
+  codex: 'gpt-5.4 high',
+  agy: '2.5-pro',
+  grok: 'grok-4.6',
+}
+
 function createMember({
   id,
   name,
@@ -55,7 +71,7 @@ export function createLeadMember(overrides = {}) {
 export function createAgentMembers(count, {
   canvasSize = { width: 900, height: 520 },
   statusCycle = ['active', 'idle', 'active', 'idle', 'offline'],
-  toolCycle = ['codex', 'agy', 'claude'],
+  toolCycle = ['codex', 'agy', 'claude', 'grok'],
 } = {}) {
   const width = Number(canvasSize.width ?? 900)
   const height = Number(canvasSize.height ?? 520)
@@ -79,7 +95,7 @@ export function createAgentMembers(count, {
 
   return Array.from({ length: count }, (_, index) => {
     const tool = cycle(toolCycle, index)
-    const toolLabel = tool === 'codex' ? 'Codex' : tool === 'agy' ? 'Antigravity' : 'Claude'
+    const toolLabel = TOOL_LABELS[tool] ?? 'Claude'
     const rowIndex = wrap && index >= row1Count ? 1 : 0
     const rowOffset = rowIndex === 0 ? index : index - row1Count
     const rowCount = rowIndex === 0 ? row1Count : row2Count
@@ -90,7 +106,7 @@ export function createAgentMembers(count, {
       role: 'agent',
       tool,
       toolLabel,
-      model: tool === 'codex' ? 'gpt-5.4 high' : tool === 'agy' ? '2.5-pro' : 'sonnet',
+      model: TOOL_MODELS[tool] ?? 'sonnet',
       status: cycle(statusCycle, index),
       position: rowPosition(rowIndex, rowOffset, rowCount),
     })

@@ -133,6 +133,32 @@ const idle_agy_dark = createDetailScenario({
   }),
 })
 
+const idle_grok_dark = createDetailScenario({
+  name: 'idle_grok_dark',
+  theme: 'dark',
+  mode: 'runtime',
+  focusEnabled: true,
+  member: createMember({
+    name: 'grok-dev',
+    role: 'agent',
+    tool: 'grok',
+    toolLabel: 'Grok',
+    status: 'idle',
+    model: 'grok-4.6',
+    projectId: 'taurhaus',
+    description: 'Implements scoped changes on the xAI harness and reports verification steps.',
+    paneId: '%27',
+    sessionId: 'sess-grok-idle',
+    // grok's busy/idle comes from the turn lifecycle in `events.jsonl`, so an
+    // idle node means the newest lifecycle line is `turn_ended`.
+    sessionState: 'Turn ended',
+    sessionTiming: {
+      startedLabel: 'Started 18m ago',
+      activeLabel: 'Idle for 3m',
+    },
+  }),
+})
+
 export const cross_project_agy_dark = createDetailScenario({
   name: 'cross_project_agy_dark',
   theme: 'dark',
@@ -234,6 +260,7 @@ export const meshNodeDetailScenarios = [
   active_claude_light,
   idle_codex_dark,
   idle_agy_dark,
+  idle_grok_dark,
   cross_project_agy_dark,
   cross_project_agy_light,
   disconnected_dark,

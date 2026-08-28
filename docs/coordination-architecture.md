@@ -5,6 +5,8 @@
 
 ![Coordination Architecture](images/coordination-architecture.jpg)
 
+> Stale render: the diagram labels `ClaudeNativeBackend` "Planned". It is implemented in `backend/claude.rs` **and routed**. The selector only picks the orchestrator's floor backend (`select_floor`, `backend/selector.rs:43-45` — mesh-bridged today); `state.rs:185-188` installs `ClaudeNativeBackend` as `orchestrator.claude_backend`, and `orchestrator/delivery.rs:71-79` sends every member whose tool has `native_inbox_poller` — Claude — to it, leaving Codex, Antigravity and Grok on the floor backend. See D10 below.
+
 ## Overview
 
 Taurhaus gains the ability to create, monitor, and manage multi-agent teams that collaborate via the filesystem. The integration leverages mesh (a Rust CLI for non-Claude agents) and Claude Code's native team system, with the filesystem (`~/.claude/`) as the shared API surface.
@@ -92,21 +94,22 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 
 **Status**: Partial
 
-**Decision**: Claude Code agents use native CLI flags. Codex/Gemini agents use mesh daemon bridge.
+**Decision**: Claude Code agents use native CLI flags. Every other harness — Codex, Antigravity, Grok — uses the mesh daemon bridge. The split is capability-driven, not a per-tool branch: `should_use_mesh_sidecar_for_cli_tool` is `!capabilities.native_inbox_poller` (`coordination/pipelines/helpers.rs:320-322`).
 
 | Agent Type | Launch Method | Delivery | Wake | Messaging |
 |---|---|---|---|---|
 | Claude Code | Native CLI flags (`--model`, `--effort`, `-n <agent_name>`, `--team-name`, `--agent-name`, `--agent-id`) | `MeshInboxStore::append` | Native inbox poller | Native `SendMessage` tool |
 | Codex | tmux + `mesh daemon`; `-m` + `-c 'model_reasoning_effort="…"'` (+ `--dangerously-bypass-hook-trust` in hooks mode) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
-| Gemini | tmux + `mesh daemon`; `-m` (unverified) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+| Antigravity (`agy`) | tmux + `mesh daemon`; `--model` + `--effort` (+ `--dangerously-skip-permissions`) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+| Grok (`grok`) | tmux + `mesh daemon`; `--model` + `--effort` (+ `--always-approve`) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI. Onboarding adds one line: plain Enter queues a message until the running turn ends, Ctrl+Enter interjects immediately |
 
 Launch flags are rendered by `LaunchSpec::render` in `session_scanner/launch.rs`.
 
 **Operator delivery is one writer for every tool.** Taurhaus appends to `teams/<team>/inboxes/<member>.json` through `MeshInboxStore::append` regardless of backend; the orchestrator ensures the member daemon after every inbox append for non-Claude members. `mesh send` / `mesh read` remain agent-originated traffic only. Codex additionally has the opt-in `SessionStart(compact)` hook path described above.
 
-**Rationale**: Claude Code is the only CLI tool with native local team capabilities (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Gemini CLI has no team features.
+**Rationale**: Claude Code is the only registered harness with `native_inbox_poller` (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Antigravity and Grok have no local team features either; Grok's ACP/leader surface exists but is deliberately out of scope.
 
-**Which Claude account a team runs on**: team members always launch on the default Claude config dir (`PlatformPaths::claude_dir()`, honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Per-project account selection does not apply to teams; `MeshTeamBuilder` says so in one line when more than one account is registered.
+**Which account a team runs on**: team members always launch on the team's config dir, not on a per-project account. For Claude that is `PlatformPaths::claude_dir()` (honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Codex is the one harness that declares `managed_home`, so a managed Codex setup pins `CODEX_HOME` through `cli_commands.account_selector_dirs` (`commands/terminal_settings.rs:101-120`). A launch that names an account anyway is not silently obeyed: it is dropped and logged once per project as `launch.account.ignored_for_team` (warn). `MeshTeamBuilder` says so in one line when more than one **Claude** account is registered — the note reads the first tool declaring `team_config_namespace`, and Claude is the only one that does (`cli_tool.rs:248`), so extra Codex or Grok accounts are silent.
 
 **Model and effort**: `Member.model` and `Member.reasoning_effort` are persisted separately, surfaced in live status, and passed to `mesh join --model`. The UI model list comes from `ModelCatalog` on `TerminalPlatformContract`.
 
@@ -183,7 +186,7 @@ struct BackendCapabilities {
 
 **Status**: Implemented
 
-**Decision**: Runtime delivery selects the backend from the target member's configured CLI tool. Claude members use the native inbox-file backend; Codex and Gemini members use the mesh-bridged backend and member daemon. `BackendSelector::m0()` remains only as the compatibility constructor for the default external-agent backend, while the orchestrator and initialization pipeline perform per-member routing.
+**Decision**: Runtime delivery selects the backend from the target member's configured CLI tool. Claude members use the native inbox-file backend; Codex, Antigravity and Grok members use the mesh-bridged backend and member daemon. `BackendSelector::m0()` remains only as the compatibility constructor for the default external-agent backend, while the orchestrator and initialization pipeline perform per-member routing.
 
 ### D11: Channel-based daemon → orchestrator event pipeline
 
@@ -230,7 +233,8 @@ src-tauri/src/
       mod.rs  initialize.rs  members.rs  lifecycle.rs  helpers.rs
     runtime/
       mod.rs  process.rs  recording.rs  system.rs  tmux.rs
-    compact_hook.rs         # Claude + Codex hook bridge
+    compact_hook.rs         # Claude + Codex + Grok hook bridge
+    agy_hooks_installer.rs  # Antigravity opt-in activity hooks
     compaction_processor.rs  compaction_events.rs
     activity_export.rs  activity_schema.rs
     delivery.rs             # DeliveryRenderer / onboarding
@@ -250,6 +254,7 @@ The one configuration taurhaus does own is the compact-hook registration, becaus
 |---|---|---|
 | Claude | `<claude_dir>/settings.json` (`SessionStart` matcher `compact`) + `<claude_dir>/hooks/taurhaus-session-start-compact.*` | whenever any team has a managed Claude member — reconciled at startup and after team mutations |
 | Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | only when `harness.codex_compaction=hooks` (the setting defaults to `transcript`) and Codex ≥ 0.147; removed when the setting flips back |
+| Grok | `<GROK_HOME>/hooks/taurhaus.json` (registering both `SessionStart` matcher `compact` and `PostCompact` matcher `manual\|auto`) + `<GROK_HOME>/hooks/taurhaus-session-start-compact.*` | while `harness.grok_hooks` is on (the default) and at least one managed grok member exists; grok registers hooks per home, not per session, so every roster mutation reconciles it, not just startup and a Settings save (`commands/terminal_settings.rs:328-364`). grok's personal hook dir is always trusted, so no trust grant or bypass flag is involved |
 
 Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains foreign hooks — and settings files are rewritten atomically.
 
@@ -257,7 +262,8 @@ Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains fo
 
 | Path | Channel |
 |---|---|
-| hook path — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| hook path, `HookStdout` — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| hook path, `MeshInbox` — Grok | grok's session-start source never reports `compact`, so the bridge answers grok's own `PostCompact` event; passive-hook stdout is documented as ignored, so the card is queued in the member's mesh inbox instead of returned. A `PostCompact` from a stdout-answered harness is skipped as `post_compact_signal_only` (`compact_hook.rs:453-456`). grok also loads `~/.claude/settings.json` hooks, so one compaction can reach the bridge twice: the registry sets `compaction_hook_compat_import` and the bridge drops the second within the dedupe window (`compact_hook.rs:468-481`, `compaction.hook.compat_import`) |
 | transcript path — Codex in the default `transcript` mode | the card is appended to the member's inbox as an operator-originated message (`compaction_processor.rs` → `MeshInboxStore::append`) |
 
 Everything else — queued messages, operator notices — is an inbox write. Inbox files stay external and ephemeral.
@@ -377,7 +383,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Stale compaction records are persisted as `Stale` results instead of being injected late.
 - Delivery is suppressed when the operational snapshot no longer contains a resumable task (for example, the last task was already `completed` or `deleted`), so finished work does not generate stale resume cards.
 - Mesh inbox corruption now fails closed: corrupt inbox files are quarantined and logged as `mesh.inbox.corrupt`, and append/load return an error instead of silently treating corruption as empty.
-- Hook delivery uses the same resumable-task guard and emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, or `compact` when the tool cannot be inferred, and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`. Also `compaction.codex_hook.degraded` and `compaction.compact_hook.parse_payload_debug`.
+- Hook delivery uses the same resumable-task guard and emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, `grok`, or `compact` when the tool cannot be inferred (`compact_hook.rs:1078-1083`), and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`. Also `compaction.codex_hook.degraded` and `compaction.compact_hook.parse_payload_debug`.
 
 **End-to-end path**:
 1. `RuntimeSession` discovery identifies active managed Codex transcripts.

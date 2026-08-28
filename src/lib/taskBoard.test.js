@@ -532,12 +532,13 @@ describe('TaskBoard component', () => {
     })
   })
 
-  it('renders all three tool types', async () => {
+  // Only Claude and Codex have task sources — `task_scanner/` has exactly
+  // those two parsers, and agy/grok declare `transcript_parser: false`.
+  it('renders a tool badge for each implemented task source', async () => {
     getProjectTasks.mockResolvedValue({
       tasks: [
         makeTask({ id: '1', source: 'claude', status: 'pending' }),
         makeTask({ id: '2', source: 'codex', status: 'in_progress' }),
-        makeTask({ id: '3', source: 'agy', status: 'completed' }),
       ],
       errors: [],
     })
@@ -546,7 +547,6 @@ describe('TaskBoard component', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Claude')).toBeTruthy()
       expect(screen.getByLabelText('Codex')).toBeTruthy()
-      expect(screen.getByLabelText('Antigravity')).toBeTruthy()
     })
   })
 

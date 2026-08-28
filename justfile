@@ -1291,7 +1291,7 @@ screenshot:
     @echo "Screenshot recipe not yet configured"
 
 # Agent pre-completion quality gate.
-# Codex/Gemini agents must run this before reporting a task as done.
+# Agents must run this before reporting a task as done.
 # Referenced in AGENTS.md — extend here as new friction points surface.
 agent-quality: check-quick
     @echo "Agent quality gate passed."

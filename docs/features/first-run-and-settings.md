@@ -115,9 +115,25 @@ When the active platform does not support custom launch commands, the custom-com
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
 | Antigravity | `agy --dangerously-skip-permissions --continue` | `agy --dangerously-skip-permissions` | `agy --dangerously-skip-permissions --conversation {session_id}` |
+| Grok | `grok --always-approve --continue` | `grok --always-approve` | `grok --always-approve --resume {session_id}` |
 
 Each tool has a "Reset to defaults" button. Commands are editable per-mode (continue, fresh, resume).
-For Antigravity resume commands, `{session_id}` is replaced with the project's last conversation UUID before launch.
+For Antigravity and Grok resume commands, `{session_id}` is replaced with the project's last session id before launch.
+
+These fields are free-form: there is no backend allowlist on the command text.
+
+### Accounts
+
+A per-tool section appears for every harness that has an account selector **and** at least two accounts detected — Claude Code (`CLAUDE_CONFIG_DIR`), Codex (`CODEX_HOME`) and Grok (`GROK_HOME`). Antigravity has one implicit account and never appears here.
+
+| Element | What it shows |
+|---------|---------------|
+| Account radio list | Every detected account of that tool, labelled from its own identity; picking one sets the tool's **global default** (`terminal.default_account_ids[tool]`) |
+| Compact usage meter | The account's weekly buckets, in the titles the tool itself uses |
+| Usage note | For a tool with `usage: false` the registry's sentence stands where a meter would be — Grok's is "Grok shows credits in its own /usage" |
+| Effective default line | The default candidate Settings displays for that tool, and **why**. Settings computes the line itself (`Settings.svelte:196-211`) and reports one of three origins: `default` (the selected default candidate — the tool's stored global default when one is set, otherwise the detected account the provider flags `is_default`, `Settings.svelte:167-174`), `from your launch command "<command>"` (a CLI command that already sets the selector), or `default config directory`. It is not the launch result: it does not check `logged_in`, so a signed-out account can appear here, while the authoritative resolver takes only usable accounts (`accounts/mod.rs:263-266`) and falls back from a signed-out default to another signed-in one (`accounts/mod.rs:168-179, 221-234`). The fuller launch-time order — request, session, pin, last used, global default, base command, default dir — lives in `accounts.svelte.js:89-121` and drives launches, not this line |
+
+Usage snapshots are fetched at request time from the tool's own endpoint or command and kept in memory only; Settings refreshes them on open (`Settings.svelte:157`) and the daemon's `usage_poller` refreshes them on its own schedule. Credentials and tokens are what taurhaus never logs, persists or refreshes — an expired or rejected credential shows as "sign in again" until the CLI itself refreshes it.
 
 ### Search index
 

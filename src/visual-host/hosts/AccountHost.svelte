@@ -8,6 +8,9 @@
   const accounts = $derived(scenario?.accounts ?? [])
   const labelTone = $derived(dark ? 'text-zinc-400' : 'text-zinc-500')
   const showChooser = $derived(accounts.filter((account) => account.logged_in).length >= 2)
+  // Scenarios default to Claude; a scenario names another harness to shoot a
+  // tool whose usage surface differs (Grok reports no windows at all).
+  const tool = $derived(scenario?.tool ?? 'claude')
 </script>
 
 <div class="flex w-full max-w-3xl flex-col gap-6 p-6">
@@ -16,7 +19,7 @@
       Project header chip
     </span>
     <AccountChip
-      tool="claude"
+      {tool}
       {accounts}
       selectedAccountId={scenario?.selectedAccountId ?? null}
       defaultAccountId={scenario?.defaultAccountId ?? null}
@@ -32,7 +35,7 @@
         Launch chooser
       </span>
       <AccountChooser
-        tool="claude"
+        {tool}
         {accounts}
         projectName={scenario?.projectName ?? ''}
         defaultAccountId={scenario?.defaultAccountId ?? null}

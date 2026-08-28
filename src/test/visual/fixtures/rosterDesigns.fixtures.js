@@ -21,6 +21,7 @@ export const MOCK_ROLES = [
   { id: 'qa', name: 'QA Engineer', kind: 'agent', tool: 'codex', model: 'gpt-5.4', summary: 'Writes tests, finds regressions, and validates acceptance criteria.' },
   { id: 'researcher', name: 'Researcher', kind: 'agent', tool: 'claude', model: 'sonnet', summary: 'Explores options, reads docs, and produces technical summaries.' },
   { id: 'reviewer', name: 'Code Reviewer', kind: 'agent', tool: 'claude', model: 'opus', summary: 'Reviews PRs for correctness, style, and security.' },
+  { id: 'grok-developer', name: 'Grok Developer', kind: 'agent', tool: 'grok', model: 'grok-4.6', summary: 'Implements scoped changes on the xAI harness with TDD.' },
 ]
 
 export const MOCK_PRESETS = [
@@ -28,6 +29,7 @@ export const MOCK_PRESETS = [
   { name: 'Dev Team', agents: 2, leads: 1, tools: ['claude', 'codex'] },
   { name: 'Full Team', agents: 3, leads: 1, tools: ['claude', 'codex', 'agy'] },
   { name: 'Research', agents: 2, leads: 1, tools: ['claude'] },
+  { name: 'Grok Pair', agents: 1, leads: 1, tools: ['claude', 'grok'] },
 ]
 
 export const MOCK_TEAM_PARTIAL = {
@@ -41,5 +43,5 @@ export const MOCK_TEAM_READY = {
   name: 'taurhaus-team',
   description: 'Multi-tool dev team for parallel implementation.',
   lead: MOCK_ROLES[0],
-  agents: [MOCK_ROLES[2], MOCK_ROLES[3], MOCK_ROLES[4], MOCK_ROLES[5]],
+  agents: [MOCK_ROLES[2], MOCK_ROLES[3], MOCK_ROLES[4], MOCK_ROLES[5], MOCK_ROLES[8]],
 }

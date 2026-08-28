@@ -4,7 +4,7 @@ Session management detects live AI CLI tool sessions, maps them to projects, and
 
 ## Overview
 
-taurhaus automatically detects running AI sessions (Claude Code, Codex, Antigravity CLI), shows their status in the sidebar, and preserves session history for later context.
+taurhaus automatically detects running AI sessions (Claude Code, Codex, Antigravity CLI, Grok CLI), shows their status in the sidebar, and preserves session history for later context.
 
 When a session is actively working, you see a green indicator. When it's waiting for input, it turns amber. Hover over a project to see session details; click a tool icon to jump to that terminal.
 
@@ -19,6 +19,7 @@ Supported CLI tools:
 - Claude Code (`claude`)
 - Codex CLI (`codex`)
 - Antigravity CLI (`agy`)
+- Grok CLI (`grok`)
 
 Each tool has:
 - its own process signature matcher
@@ -34,6 +35,8 @@ Task history groups archived work by session. Each tool's sessions are tracked u
 taurhaus scans for running tool processes and matches them to your registered projects. Detection is automatic — you don't need to configure anything.
 
 ![Session Detection Pipeline](../images/session-detection.jpg)
+
+> Stale render: this diagram and the two below still show the retired Gemini TCP-port heuristic and omit Antigravity and Grok. The tables in this page are authoritative; the corrected prompts are in [`docs/images/infographics.manifest.yaml`](../images/infographics.manifest.yaml).
 
 ## Diagrams
 
@@ -63,7 +66,8 @@ SessionResolver-based file detection:
 |------|---------------------|--------------------|------------|
 | Claude | `~/.claude/projects/<slug>/*.jsonl` + `<session>/subagents/*.jsonl` | 5s mtime | Subagent mtime keeps compaction work marked active |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` matched by transcript/project metadata | 10s mtime | 7-day lookback supports resumed sessions stored in older date dirs |
-| Antigravity | `last_conversations.json` plus `~/.gemini/antigravity-cli/presence/*.lock` | presence lock | Conversation id is selected by canonical project path; stale locks fall back to process IO |
+| Antigravity | `~/.gemini/antigravity-cli/cache/last_conversations.json` plus `~/.gemini/antigravity-cli/presence/*.lock` | presence lock | Conversation id is selected by canonical project path; stale locks fall back to process IO |
+| Grok | `<GROK_HOME>/active_sessions.json` (identity, bound by pid and cwd) plus `<GROK_HOME>/sessions/<encoded-cwd>/<session-id>/events.jsonl` (activity) | turn lifecycle, not mtime | Busy unless the newest lifecycle line is `turn_ended`; the registry row appears at the member's first prompt, not at process start, so identity can be backfilled by liveness |
 
 Path roots for these tool-specific locations are centralized behind backend `PlatformPaths` and shared path-normalization helpers so Windows, WSL, and native lookups use one authority.
 
@@ -71,6 +75,7 @@ Process-level supplemental signals:
 - Claude: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis
 - Antigravity: `/proc` IO (`rchar` delta threshold) unless the opt-in hooks sink supplies an authoritative state
 - Codex: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis; file mtime is kept as fallback only when the project has a single Codex session
+- Grok: `events.jsonl` is authoritative (`authoritative_idle: true`), and the rchar heuristic and hysteresis are skipped **for that poll only when it yields a lifecycle state**. A missing, unreadable, empty or unrecognised `events.jsonl` returns no state (`idle/grok.rs:474-478`), and classification then falls back to `/proc` IO with hysteresis like the other tools (`classification.rs:173-178`, `:200-207`)
 
 ## Bidirectional hysteresis
 
@@ -158,7 +163,7 @@ Indicator visibility is conditional:
 |------|---------|
 | `src/lib/sessionStore.svelte.js` | Session snapshot store, event-apply path, mock-mode polling, per-session runtime metrics, activity persistence trigger |
 | `src/lib/sessionIndicator.js` | Tool indicator semantics, active/idle coloring, row tinting |
-| `src/lib/toolLogos.js` | Shared SVG logos + display names for Claude/Codex/Antigravity |
+| `src/lib/toolLogos.js` | Shared SVG logos + sidebar variants for Claude/Codex/Antigravity/Grok, with an `unknown` fallback |
 | `src/lib/Sidebar.svelte` | Session badges in project list, tmux jump interactions, hover-card entry point |
 | `src/lib/HoverCard.svelte` | Live session detail card + historical activity preview |
 | `src/lib/SessionHistory.svelte` | Archived session timeline with task/commit/file drill-down |

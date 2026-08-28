@@ -24,7 +24,7 @@ Mode handling:
 - Frontend uses compatibility helpers such as `launchClaudeSession(...)`, which call backend `launch_cli_session`.
 - Backend resolves project path, then resolves command from settings per `(tool, mode)`.
 - Session launches in tmux using selected layout strategy.
-- In the current UI, `Continue` is distinct for Claude, `New <Tool> Session` is available for Claude/Codex/Antigravity, and `Resume <Tool>` is available for Claude/Codex/Antigravity.
+- In the current UI, `Continue` is hard-coded to Claude and Grok (`Sidebar.svelte:533-536`). Antigravity's continue command also differs from its fresh one (`agy --dangerously-skip-permissions --continue` vs `agy --dangerously-skip-permissions`, `cli_tool.rs:367-370`), so it would qualify by the same rule but has no menu item; only Codex's continue and fresh commands are identical. `New <Tool> Session` and `Resume <Tool>` are available for all four harnesses (Claude, Codex, Antigravity, Grok). See `src/lib/Sidebar.svelte`.
 
 ## Per-tool launch commands
 
@@ -35,10 +35,11 @@ Default commands (configurable in Settings):
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
 | Antigravity | `agy --dangerously-skip-permissions --continue` | `agy --dangerously-skip-permissions` | `agy --dangerously-skip-permissions --conversation {session_id}` |
+| Grok | `grok --always-approve --continue` | `grok --always-approve` | `grok --always-approve --resume {session_id}` |
 
 Notes:
 - Commands are editable per tool/mode in `Settings -> Terminal & Sessions / CLI Tools`.
-- `{session_id}` is a Settings token that taurhaus replaces with the project's last Antigravity conversation UUID before launch.
+- `{session_id}` is a tool-agnostic Settings token, used by the Antigravity and Grok resume commands above. Taurhaus replaces it with the project's last conversation/session id for that tool, resolved through the tool's own session resolver against the account home the launch selected (`command_center/launching.rs:476-507`); a launch with no resumable conversation fails with an explicit error instead of running the literal token.
 - Override commands are validated for safety before execution.
 
 ## Stop behavior
@@ -102,12 +103,13 @@ Windows-specific detail:
 
 ## Context-menu integration
 
-Right-click project menu exposes command-center actions:
-- `Continue Claude`
-- `New Claude Session`, `New Codex Session`, `New Antigravity Session`
-- `Resume Claude`, `Resume Codex`, `Resume Antigravity`
+Right-click project menu exposes command-center actions (`Sidebar.svelte:521-568`):
+- `Continue Claude`, `Continue Grok` — hard-coded to these two; Antigravity's continue command differs from its fresh one too but has no item
+- `New Claude Session`, `New Codex Session`, `New Antigravity Session`, `New Grok Session`
+- `Resume Claude`, `Resume Codex`, `Resume Antigravity`, `Resume Grok`
 - `Open in Terminal` when a live session has tmux metadata
 - Per-running-session Restart/Stop actions
+- An account submenu on a launch item of a tool that has an account selector **and** at least two signed-in accounts, plus a `<Tool> account` submenu that pins or clears the project's choice
 
 Interaction model:
 - Stop action includes confirmation timeout

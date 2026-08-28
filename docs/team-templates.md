@@ -226,7 +226,7 @@ Model editing uses the shared effort-aware `ModelSelect` (model plus reasoning e
 
 The builder's catalog hand-off (`onBrowseCatalog`) opens `TemplateBrowserPanel` for advanced import/export/history work, and preset editing/saving can flow through the advanced customizer panel when needed.
 
-When more than one Claude account is registered, the builder notes that team members run on the default account — per-team account selection is a follow-up.
+When more than one **Claude** account is registered, the builder notes that team members run on the team's config dir — per-team account selection is a follow-up. The note is scoped to Claude: it reads the first tool declaring `teamConfigNamespace` (`MeshTeamBuilder.svelte:82-89`), and Claude is the only harness that does (`cli_tool.rs:248`), so extra Codex or Grok accounts produce no note. A launch that names an account anyway is dropped and logged once as `launch.account.ignored_for_team`.
 
 ## Composition And Validation
 
@@ -242,7 +242,7 @@ Apply sends the final roster in the same initialize shape used by manual setup.
 Current lead-mode rule:
 
 - **Claude leads** may use the existing attach-existing flow.
-- **Codex and Antigravity leads** are currently `launch_new` only. If a preset or request tries `attach_existing`, backend validation rejects it with a clear error instead of silently falling back.
+- **Codex, Antigravity and Grok leads** are currently `launch_new` only. The check is capability-driven — `should_use_mesh_sidecar`, i.e. any harness without `native_inbox_poller` — so it covers every future non-Claude harness too. If a preset or request tries `attach_existing`, backend validation rejects it with a clear error instead of silently falling back.
 
 ## Import, Export, and Provenance
 

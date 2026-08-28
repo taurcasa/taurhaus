@@ -56,7 +56,7 @@ export const runtime_fiveAgents_dark = createMeshCanvasScenario({
     { id: 'architect', name: 'architect', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
     { id: 'developer1', name: 'developer1', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
     { id: 'developer2', name: 'developer2', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
-    { id: 'developer3', name: 'developer3', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
+    { id: 'grok-dev', name: 'grok-dev', tool: 'grok', model: 'grok-4.6', status: 'idle' },
     {
       id: 'mesh-expert',
       name: 'mesh-expert',
@@ -78,7 +78,7 @@ export const runtime_fiveAgents_light = createMeshCanvasScenario({
     { id: 'architect', name: 'architect', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
     { id: 'developer1', name: 'developer1', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
     { id: 'developer2', name: 'developer2', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
-    { id: 'developer3', name: 'developer3', tool: 'codex', model: 'gpt-5.4 high', status: 'active' },
+    { id: 'grok-dev', name: 'grok-dev', tool: 'grok', model: 'grok-4.6', status: 'idle' },
     {
       id: 'mesh-expert',
       name: 'mesh-expert',
