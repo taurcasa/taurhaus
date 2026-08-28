@@ -251,6 +251,36 @@ fn the_first_grok_team_installs_the_hook_and_the_last_removal_takes_it_away() {
 }
 
 #[test]
+fn a_grok_team_whose_config_cannot_be_parsed_never_uninstalls_the_hook() {
+    // Regression: commit c1005ec logged and swallowed each failed per-team
+    // config load during managed-member discovery and answered `false`, so a
+    // single malformed `config.json` — the team's own — read as "no grok
+    // members left" and uninstalled the hook a live grok session needed.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = tmp.path().join("teams");
+    let grok_home = tmp.path().join("grok-home");
+    let exe = tmp.path().join("taurhaus");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"fixture").expect("executable fixture");
+    write_grok_team(&teams_dir, "grok-team", "grok");
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("install");
+
+    // The team is still listed; only its config is unreadable.
+    std::fs::write(
+        teams_dir.join("grok-team").join("config.json"),
+        b"{ this is not json",
+    )
+    .expect("corrupt the team config");
+
+    reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe)
+        .expect_err("an unparseable team config is a discovery failure, not an empty roster");
+    assert!(
+        crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home),
+        "a team whose config cannot be read is not proof its grok member is gone"
+    );
+}
+
+#[test]
 fn a_roster_that_cannot_be_read_never_uninstalls_the_grok_hook() {
     // Regression: commit c1005ec turned a failed managed-member discovery into
     // "no grok members" (`.ok().unwrap_or(false)`), so an unreadable team

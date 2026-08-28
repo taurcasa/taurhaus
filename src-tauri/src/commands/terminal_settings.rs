@@ -322,8 +322,9 @@ pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationErr
 /// soon as the first managed grok member exists and go away once the last one
 /// does — every roster mutation calls this, not just startup and a Settings
 /// save. A discovery failure is reported rather than answered with "no members":
-/// an unreadable team directory is not proof the last grok member is gone, and
-/// uninstalling on it would silently disable reinjection for a live session.
+/// neither an unreadable teams directory nor one team's unreadable config is
+/// proof the last grok member is gone, and uninstalling on either would
+/// silently disable reinjection for a live session.
 pub(crate) fn reconcile_grok_hooks_for_roster(
     teams_dir: &std::path::Path,
     enabled: bool,

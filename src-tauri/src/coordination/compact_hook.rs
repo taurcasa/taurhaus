@@ -706,19 +706,25 @@ pub fn any_managed_grok_member(teams_dir: &Path) -> Result<bool, CoordinationErr
 }
 
 /// Whether any team on this host runs a member on `tool`.
+///
+/// A directory under `teams/` that holds no team config is not a team and is
+/// skipped. Every other read failure is reported: the caller uninstalls a
+/// global hook on `false`, and "this roster cannot be read" is not proof the
+/// last member on `tool` is gone.
 fn any_managed_member(teams_dir: &Path, tool: CliTool) -> Result<bool, CoordinationError> {
     for team_name in TeamConfigStore::list(teams_dir)? {
         match team_has_managed_member(teams_dir, &team_name, tool) {
             Ok(true) => return Ok(true),
             Ok(false) => {}
-            Err(error) => {
-                tracing::warn!(
+            Err(CoordinationError::NotFound(reason)) => {
+                tracing::debug!(
                     team_name,
                     tool = %tool,
-                    error = %error,
-                    "skipping invalid team config during managed member discovery"
+                    reason,
+                    "skipping a directory without a team config during managed member discovery"
                 );
             }
+            Err(error) => return Err(error),
         }
     }
     Ok(false)
