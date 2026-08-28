@@ -333,7 +333,7 @@ The initial project scan indexes all files for search. This is a one-time operat
 
 #### File watcher limits on Linux/WSL
 
-taurhaus uses Linux file watchers (inotify) to detect changes in your projects. The helper service uses roughly 4-6 watcher instances, and each Mesh team member adds 2 more. The AI tools themselves (Claude Code, Codex, Antigravity, Grok) also create their own watchers independently.
+taurhaus uses Linux file watchers (inotify) to detect changes in your projects. The helper service uses roughly 4-6 watcher instances, and each Mesh team member adds 2 more. The AI tools themselves (Claude Code, Codex, Antigravity) also create their own watchers independently.
 
 The default Linux limit is 128 instances per user. If you run large Mesh teams or many projects, you may hit this limit — taurhaus will log a warning if it happens.
 
