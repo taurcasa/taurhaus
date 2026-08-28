@@ -4,9 +4,21 @@
  * This lane proves on a real host that a managed Codex member running with
  * `terminal.harness.codex_compaction = hooks` gets its restored-context card
  * back through `coordination/compact_hook.rs` — not through the JSONL
- * transcript tailer. Both triggers are covered as separate cases: a manual
- * `/compact` typed into the member's pane, and Codex's own automatic
- * compaction.
+ * transcript tailer.
+ *
+ * The two triggers do not behave the same on Codex 0.149.0, which is the point
+ * of covering both. Measured on this host with a probe that registered all
+ * three compaction hooks:
+ *
+ *   - automatic (`trigger: auto`): `PreCompact` → `PostCompact` →
+ *     `SessionStart(source=compact)`. taurhaus registers the last of those, so
+ *     the bridge runs and the card comes back. This is the case that matters
+ *     in real use, and the case that proves the path.
+ *   - manual (`/compact`, `trigger: manual`): `PreCompact` → `PostCompact` and
+ *     *no* `SessionStart`. The bridge is never invoked. The runbook's
+ *     "operator-triggered `/compact`" is therefore not a usable trigger for the
+ *     hook path on this version, and the manual case here pins that rather than
+ *     asserting a delivery that cannot happen.
  *
  * It costs real Codex (and Claude, for the team lead) subscription turns, so it
  * is excluded from `just test-e2e` and `just test-e2e-full` and runs only as
@@ -26,7 +38,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
@@ -47,15 +59,17 @@ const PANE_ENV_KEYS = ['TAURHAUS_DATA_DIR', 'TAURHAUS_CLAUDE_DIR', 'CODEX_HOME']
  * Cost bound for the automatic case. Codex auto-compacts when the thread
  * crosses `model_auto_compact_token_limit`; lowering it to 20k reaches the same
  * code path after a couple of turns instead of paying for a full ~250k-token
- * context window. Each filler file is ~40 KB, so a turn that reads one adds
- * roughly 10k tokens and the threshold is crossed within the first turns; the
- * cap stops the case at six either way.
+ * context window. Each filler file is ~130 KB, which is more than the lowered
+ * threshold on its own: a probe on this host crossed it on the first turn. The
+ * cap stops the case at six turns either way.
  */
 const AUTO_COMPACT_TOKEN_LIMIT = 20_000
 const AUTO_COMPACTION_MAX_TURNS = 6
-const AUTO_COMPACTION_FILLER_LINES = 320
+const AUTO_COMPACTION_FILLER_LINES = 900
 
 const HOOK_DELIVERY_TIMEOUT_MS = 150_000
+/** Headroom for the hook process to run and flush after a compaction lands. */
+const HOOK_SETTLE_MS = 15_000
 const AUTO_TURN_TIMEOUT_MS = 90_000
 const TEAM_READY_TIMEOUT_MS = 180_000
 /**
@@ -529,6 +543,47 @@ async function waitForTurnAfter(previousTurns, timeoutMs = 90_000) {
   }
 }
 
+/** The member's newest Codex rollout transcript, or null. */
+function newestRolloutPath() {
+  const root = join(codexHome, 'sessions')
+  const found = []
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
+        found.push({ path, mtime: statSync(path).mtimeMs })
+      }
+    }
+  }
+  walk(root)
+  found.sort((left, right) => right.mtime - left.mtime)
+  return found[0]?.path ?? null
+}
+
+/**
+ * Compaction boundaries Codex has written to its own transcript.
+ *
+ * This is the harness's own record that a compaction happened, independent of
+ * whether any hook ran — which is exactly what the manual case needs in order
+ * to tell "Codex did not compact" from "Codex compacted without calling us".
+ */
+function rolloutCompactionCount() {
+  const path = newestRolloutPath()
+  if (!path) return 0
+  try {
+    return (readFileSync(path, 'utf8').match(/"type":"compacted"/g) ?? []).length
+  } catch {
+    return 0
+  }
+}
+
 /**
  * Print every compaction event seen in a window.
  *
@@ -709,32 +764,34 @@ describe('Codex compaction via hooks', function () {
     }
   })
 
-  it('delivers the restored-context card after a manual /compact', async function () {
+  it('compacts on a manual /compact without reaching the hook bridge', async function () {
     if (!laneEnabled) return this.skip()
     this.timeout(300_000)
 
+    const boundariesBefore = rolloutCompactionCount()
     const offset = currentLogOffset()
     const submitted = await sendPaneLine(managed.paneId, '/compact')
     expect(submitted).toBe(true)
 
-    let events
-    try {
-      ;({ events } = await waitForLogEvents(
-        offset,
-        (collected) => hookDelivery(collected, managed.memberName),
-        {
-          timeout: HOOK_DELIVERY_TIMEOUT_MS,
-          timeoutMsg: `No compaction.codex_hook.delivered for ${managed.memberName} within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
-        }
-      ))
-    } catch (error) {
-      dumpCompactionEvents('manual /compact timed out', readLog(offset).events)
-      throw error
-    }
+    // Codex's own transcript is the proof that a compaction happened at all.
+    await browser.waitUntil(async () => rolloutCompactionCount() > boundariesBefore, {
+      timeout: HOOK_DELIVERY_TIMEOUT_MS,
+      interval: 2_000,
+      timeoutMsg: `Codex wrote no compaction boundary within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
+    })
 
-    reportHookPayload('manual', events, managed.memberName)
-    const delivered = assertHookBridgeDelivered(events, managed)
-    console.log(`[e2e] manual compaction card: ${delivered.additional_context_bytes} bytes of additionalContext`)
+    // Give the bridge every chance to be called before concluding it was not.
+    await browser.pause(HOOK_SETTLE_MS)
+    const seen = readLog(offset).events
+    dumpCompactionEvents('manual /compact', seen)
+
+    // Pinned harness contract, measured on Codex 0.149.0: a manual compaction
+    // fires PreCompact and PostCompact only. taurhaus registers `SessionStart`
+    // with matcher `compact`, so the bridge is never invoked and no card is
+    // produced. If this starts failing, Codex has changed and the runbook's
+    // manual trigger became usable for the hook path — update both.
+    expect(selectEvents(seen, { eventPrefix: 'compaction.codex_hook.' })).toEqual([])
+    expect(selectEvents(seen, { eventPrefix: 'compaction.compact_hook.' })).toEqual([])
   })
 
   it('delivers the restored-context card after Codex compacts on its own', async function () {
@@ -796,8 +853,9 @@ describe('Codex compaction via hooks', function () {
       dumpCompactionEvents('automatic compaction cap reached', collected)
       throw new Error(
         `Codex did not auto-compact within the ${AUTO_COMPACTION_MAX_TURNS}-turn cap ` +
-          `(model_auto_compact_token_limit = ${AUTO_COMPACT_TOKEN_LIMIT}); ` +
-          'the manual case still proves the hook bridge.'
+          `(model_auto_compact_token_limit = ${AUTO_COMPACT_TOKEN_LIMIT}). ` +
+          'Automatic compaction is the only trigger that reaches the bridge on Codex 0.149, ' +
+          'so nothing else in this lane proves the hook path.'
       )
     }
 
