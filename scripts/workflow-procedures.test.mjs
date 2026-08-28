@@ -161,6 +161,50 @@ describe('workflow procedures — the Codex lane', () => {
     expect(prompt).toMatch(/pkill|kill the run/i)
   })
 
+  // Regression: the launcher used `pkill -f <runner>`, which kills the runner shell but leaves its
+  // `timeout`/codex process group alive — an orphaned agent kept mutating the checkout while the
+  // retry started. The runner now records its own pid (it is the process-group leader under setsid)
+  // and every give-up path kills that group.
+  it('records the detached run\'s pid so the whole process group can be killed', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    const prompt = calls[0].prompt
+    expect(prompt).toMatch(/echo \$\$ > "\$PIDFILE"/)
+    expect(prompt).toContain("PIDFILE='/tmp/scratch dir/codex-")
+    expect(prompt).toMatch(/setsid nohup bash/)
+  })
+
+  it('kills the process group rather than the runner shell alone, and never pkill', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    const prompt = calls[0].prompt
+    expect(prompt).toMatch(/kill -TERM -"\$PGID"/)
+    expect(prompt).toMatch(/kill -KILL -"\$PGID"/)
+    expect(prompt).not.toMatch(/pkill/)
+  })
+
+  it('kills the run on the deadline, before a retry, and before returning', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    const prompt = calls[0].prompt
+    const kills = prompt.match(/kill -TERM -"\$PGID"/g) || []
+    expect(kills.length, 'the deadline, the retry and the return path each own a kill').toBeGreaterThanOrEqual(3)
+    expect(prompt).toMatch(/deadline/i)
+    expect(prompt).toMatch(/still running|outlives|orphan/i)
+  })
+
+  it('resumes the session it started instead of whatever ran last in the checkout', async () => {
+    const { calls } = await run('feature-pr.js', spacey)
+    const prompt = calls[0].prompt
+    expect(prompt).toMatch(/codex exec resume <SESSION_ID>/)
+    expect(prompt).toMatch(/session id/i)
+    expect(prompt).toMatch(/--last[^\n]*(newest|another|someone)/i)
+  })
+
+  it('gives concurrent runs their own scratch files when args.stamp is passed', async () => {
+    const { calls } = await run('feature-pr.js', { ...spacey, stamp: '20260828T2350' })
+    expect(calls[0].prompt).toContain('-20260828T2350.prompt.md')
+    const { calls: plain } = await run('feature-pr.js', spacey)
+    expect(plain[0].prompt).not.toContain('-20260828T2350')
+  })
+
   it('tells the wrapper to report an unavailable Codex instead of inventing an approval', async () => {
     const { calls } = await run('feature-pr.js', { ...BASE_ARGS, implementer: 'opus' })
     const review = calls.find((c) => c.label.startsWith('review:'))

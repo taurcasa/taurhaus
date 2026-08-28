@@ -44,6 +44,7 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call — and to Codex as `-c model_reasoning_effort` |
 | `codexModel` | the Codex CLI's own default | model slug passed to `codex exec` as `-m`; the ledger records what actually ran, never a guess |
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
+| `stamp` | — | a short token appended to the scratch file names; pass one when two runs of the same procedure share a branch (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
 | `gates` | check-quick + lint + targeted cargo tests | the gate commands, when a spec names different ones |
 | `requiredGates` | `['just check-quick', 'just lint']` | the commands the gate must actually run and pass; matched as substrings of the reported command line, `[]` opts out |
@@ -107,8 +108,15 @@ a completed ledger with no findings reads as an approval:
   Every path is one single-quoted shell word and the command lives in the runner rather than inside a
   nested `bash -c '…'`, so a checkout under `/mnt/c/Users/Jane Doe/…` works; a Windows or `\\wsl$` path
   in `worktree` is normalized first. `-m` carries `codexModel` and `-c model_reasoning_effort` carries
-  `effort`, on the resumed turns too. The implementer lane may take up to three `codex exec resume
-  --last` turns — `resume` does not accept `-C`, so the runner's `cd` is what places it.
+  `effort`, on the resumed turns too. The implementer lane may take up to three `codex exec resume`
+  turns — `resume` does not accept `-C`, so the runner's `cd` is what places it.
+- **The wrapper owns what it launches.** The runner is started with `setsid`, so it leads its own
+  process group, and its first act is to write that pid to `<scratch>/codex-<tag>.pid`. Every
+  give-up path — the poll deadline, the one retry, and the return itself — kills the group
+  (`kill -TERM -"$PGID"`, then `-KILL`), not just the runner shell: killing the shell alone left
+  `timeout` and Codex alive to keep writing to the checkout while the retry ran. The resumed turns
+  name the session id read from the log rather than `--last`, which resolves to the newest session on
+  the machine and can belong to somebody else's run in the same checkout.
 - **Effort is inherited** unless `args.effort` pins one, and then it applies to every call in the run.
 
 ## Sizing policy

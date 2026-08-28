@@ -64,6 +64,12 @@ function call(o) {
 // and the ledger says so rather than claiming a model nobody requested.
 const CODEX_MODEL = A.codexModel ? String(A.codexModel) : ''
 if (CODEX_MODEL && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(CODEX_MODEL)) throw new Error(NAME + ': args.codexModel must be a bare model slug — got ' + JSON.stringify(A.codexModel))
+
+// Two runs of the same procedure on the same branch would otherwise write the same scratch files and
+// poll the same EXIT marker. A workflow script cannot read the clock (the lint says why), so a
+// concurrent run is told
+// apart by args.stamp — any short token the caller passes.
+const STAMP = A.stamp ? String(A.stamp).replace(/[^A-Za-z0-9._-]+/g, '-') : ''
 const CODEX_FLAGS = (CODEX_MODEL ? ' -m ' + sh(CODEX_MODEL) : '') + (A.effort ? ' -c ' + sh('model_reasoning_effort="' + A.effort + '"') : '')
 const CODEX_ID = 'codex ' + (CODEX_MODEL || 'cli default') + (A.effort ? ' at ' + A.effort : '')
 const MODELS = { opus: MODEL + (A.effort ? ' at ' + A.effort : ''), codex: CODEX_ID }
@@ -171,12 +177,17 @@ const RULES = {
 // The Codex lane: a thin Opus wrapper drives `codex exec` detached and polls for the EXIT marker,
 // because one Bash call is capped at 10 minutes and Codex runs take longer. The command lives in a
 // runner script so nothing is nested inside quotes, and every path is one single-quoted word.
+// Ownership: the runner is its own process-group leader (setsid) and records that pid, so every
+// give-up path kills the whole group — the runner, its `timeout` and codex itself. Killing the runner
+// shell alone would leave an agent writing to the checkout while the retry started. Resumes name the
+// session this run created rather than `--last`, which is whatever ran most recently on the machine.
 function codexWrapper(o) {
-  const base = SCRATCH + '/codex-' + o.tag
+  const base = SCRATCH + '/codex-' + o.tag + (STAMP ? '-' + STAMP : '')
   const out = base + (o.schema ? '.json' : '.out.md')
   const logFile = base + '.log'
   const runner = base + '.run.sh'
   const prompt = base + '.prompt.md'
+  const pidFile = base + '.pid'
   const deadline = o.timeout + 300
   const exec =
     'timeout ' +
@@ -190,17 +201,31 @@ function codexWrapper(o) {
     sh(out) +
     ' - < ' +
     sh(prompt)
-  const runnerBody = [
-    '#!/usr/bin/env bash',
-    'set -u',
-    'cd ' + sh(ROOT) + ' || { echo "EXIT=97" >> ' + sh(logFile) + '; exit 97; }',
-    exec + ' >> ' + sh(logFile) + ' 2>&1',
-    'echo "EXIT=$?" >> ' + sh(logFile),
-  ].join('\n')
+  // One runner shape for the first turn and for every resume: record the pid, then run one command.
+  function runnerBody(command) {
+    return [
+      '#!/usr/bin/env bash',
+      'set -u',
+      'PIDFILE=' + sh(pidFile),
+      'LOG=' + sh(logFile),
+      '# setsid makes this shell the process-group leader, so $$ is the pgid that kills the whole run.',
+      'echo $$ > "$PIDFILE"',
+      'trap \'rm -f "$PIDFILE"\' EXIT INT TERM',
+      'cd ' + sh(ROOT) + ' || { echo "EXIT=97" >> "$LOG"; exit 97; }',
+      command + ' >> "$LOG" 2>&1',
+      'echo "EXIT=$?" >> "$LOG"',
+    ].join('\n')
+  }
+  const killRun =
+    'kill the whole group, not just the runner shell: `PGID=$(cat ' +
+    sh(pidFile) +
+    ' 2>/dev/null); if [ -n "$PGID" ]; then kill -TERM -"$PGID" 2>/dev/null; sleep 5; kill -KILL -"$PGID" 2>/dev/null; fi; rm -f ' +
+    sh(pidFile) +
+    '`'
   const resumeCmd =
     'timeout ' +
     o.timeout +
-    ' codex exec resume --last --yolo --skip-git-repo-check' +
+    ' codex exec resume <SESSION_ID> --yolo --skip-git-repo-check' +
     CODEX_FLAGS +
     ' -o ' +
     sh(base + '-r<N>.md') +
@@ -217,39 +242,53 @@ function codexWrapper(o) {
       (o.schema ? ', this JSON Schema verbatim to ' + sh(base + '.schema.json') + ':\n' + JSON.stringify(o.schema) + '\n' : ', ') +
       'and this runner verbatim to ' +
       sh(runner) +
-      ' — copy it byte for byte, the quoting is what makes a path with a space or an apostrophe work:\n' +
-      runnerBody,
-    '2) Launch it DETACHED: `rm -f ' +
+      ' — copy it byte for byte, the quoting is what makes a path with a space or an apostrophe work and the PIDFILE lines are what let you kill the run:\n' +
+      runnerBody(exec),
+    '2) Launch it DETACHED, in its own process group: `rm -f ' +
       sh(out) +
       ' ' +
       sh(logFile) +
+      ' ' +
+      sh(pidFile) +
       '; chmod +x ' +
       sh(runner) +
       '; setsid nohup bash ' +
       sh(runner) +
-      ' >/dev/null 2>&1 < /dev/null & disown`',
+      ' >/dev/null 2>&1 < /dev/null & disown` — the runner writes its own pid to ' +
+      sh(pidFile) +
+      ', and because it was started with setsid that pid is the process-group id of everything it launches. You own that group until this lane returns.',
     '3) Poll in Bash calls of at most 9 minutes each: `until grep -q "^EXIT=" ' +
       sh(logFile) +
       '; do sleep 20; done` — repeat the call until the marker appears; wait rather than abandoning a run that is still going. Bound the total wait at ' +
       deadline +
-      ' seconds (the deadline): if the marker has not appeared by then, kill the run (`pkill -f ' +
-      sh(runner) +
-      '`) and treat it as a failure in step 5.',
+      ' seconds (the deadline): if the marker has not appeared by then, ' +
+      killRun +
+      ', and treat it as a failure in step 5.',
     '4) Read ' +
       sh(out) +
       ' and the tail of ' +
       sh(logFile) +
-      ' — the `EXIT=` line is the exit code and the log header names the model Codex actually ran.' +
+      ' — the `EXIT=` line is the exit code, and the log header names the model Codex actually ran and the session id of the session it created (`grep -iEm1 "session[ _-]?id" ' +
+      sh(logFile) +
+      '`).' +
       (o.resume
-        ? ' If Codex left uncommitted work or an unfinished implementation (a run killed by the timeout counts), run up to THREE follow-up turns, each through the same runner + poll pattern with the same flags: `' +
+        ? ' If Codex left uncommitted work or an unfinished implementation (a run killed by the timeout counts), run up to THREE follow-up turns. Each turn is a fresh runner written exactly like the one above — the same PIDFILE, trap and `cd` lines — with this command in place of the exec, launched and polled the same way: `' +
           resumeCmd +
-          '` (`codex exec resume` does not accept -C, so the runner\'s `cd` into the checkout is what places it). Report every turn and its exit code under deviations, and verify the gate claims yourself (`cd src-tauri && cargo check --all-targets`) before returning.'
+          '`. Substitute the session id you read in this step; use `--last` instead ONLY if the log names no id, and say so under deviations — `--last` resumes the newest session on the machine, which may be another run in this checkout rather than yours. `codex exec resume` does not accept -C, so the runner\'s `cd` into the checkout is what places it. Before each new turn, make sure the previous one is gone (' +
+          killRun +
+          '). Report every turn and its exit code under deviations, and verify the gate claims yourself (`cd src-tauri && cargo check --all-targets`) before returning.'
         : ''),
     '5) Return the result as your structured output' +
       (o.reviewer ? ", with reviewer='" + o.reviewer + "'" : '') +
       ", and model_used set to the model named in the log (or 'unknown'). " +
       RULES.honest +
-      ' Concretely: a non-zero EXIT, a missing or empty output file, output that does not match the schema, or the step-3 deadline is a failure — retry steps 2-4 once, and if it fails again return status=\'unavailable\' with the exit code and the last 20 log lines in error and no findings.',
+      ' Concretely: a non-zero EXIT, a missing or empty output file, output that does not match the schema, or the step-3 deadline is a failure — ' +
+      killRun +
+      ' first, so nothing you launched outlives the attempt, then retry steps 2-4 once, and if it fails again return status=\'unavailable\' with the exit code and the last 20 log lines in error and no findings. Whatever the outcome, before you return: if ' +
+      sh(pidFile) +
+      ' still exists, the run is still running — ' +
+      killRun +
+      ' and never leave it orphaned. Kill only the group you started; never another process.',
     '',
     'TASK FOR CODEX:',
     o.task,
