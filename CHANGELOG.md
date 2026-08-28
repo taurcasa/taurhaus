@@ -6,13 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Bundled mesh 0.2.21** — mesh recognises `agy` and `grok` member CLIs (Gemini CLI removed, no alias), carries per-CLI submission behaviour (grok: `ACTION REQUIRED:` notices interject with `C-i`, everything else queues on Enter; claude/codex/agy sequences unchanged), and its USAGE guide covers launch flags and `/exit` / `/quit` stops for the four harnesses.
+- **`v3-developer-agy` role** — the Antigravity counterpart of the V3 vertical-slice developer, same contract and gates, running `gemini-3.7-flash-high` at high effort.
+- **Antigravity activity hooks are on by default** — agy 1.1.22 was observed firing `PreInvocation` and `Stop` for interactive sessions once the workspace is trusted, so the busy/idle sink no longer has to be opted into. It stays inert until the member answers the folder-trust prompt on first launch, which Antigravity onboarding now spells out, and it is gated on agy 1.1.10 or newer because `Stop` never fires below that. An agy version that cannot be resolved leaves an installed hook alone rather than uninstalling it, and the gated outcome is logged once per run as `agy.hooks.degraded`.
+- **Antigravity hooks are written to the shared `~/.gemini/config/hooks.json`** — agy 1.0.8 moved user-level hooks there and its migration symlinks the old `antigravity-cli/hooks.json` onto it. taurhaus now merges its single entry into the shared file by hook name (anything else in the file is preserved), follows a symlinked target instead of replacing it with a private regular file, and clears any entry left behind in the legacy path. The `Stop` payload's `terminationReason` is kept as an open string — only `NO_TOOL_CALL` has ever been observed, and an unseen value must never drop an idle edge. `harness.agy_hooks` also gained the snake_case alias its siblings have; without it the setting the frontend sends was silently discarded.
+
 ### Added
 
 - **`v3-developer-agy` role** — the Antigravity counterpart of the V3 vertical-slice developer, same contract and gates, running `gemini-3.7-flash-high` at high effort.
-
-### Changed
-
-- **Antigravity activity hooks are on by default** — agy 1.1.22 was observed firing `PreInvocation` and `Stop` for interactive sessions once the workspace is trusted, so the busy/idle sink no longer has to be opted into. It stays inert until the member answers the folder-trust prompt on first launch, which Antigravity onboarding now spells out, and it is gated on agy 1.1.10 or newer because `Stop` never fires below that. An agy version that cannot be resolved leaves an installed hook alone rather than uninstalling it, and the gated outcome is logged once per run as `agy.hooks.degraded`.
 
 ### Fixed
 
