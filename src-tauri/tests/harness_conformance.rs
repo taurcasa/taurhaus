@@ -19,7 +19,9 @@ use taurhaus_lib::session_scanner::accounts::{
     CommandError, CommandOutput, HttpClient, HttpError, HttpErrorKind, HttpResponse, ProviderEnv,
     UsageStatus,
 };
-use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
+use taurhaus_lib::session_scanner::cli_tool::{
+    all, spec, CliTool, CompactionDelivery, SessionRoot, StopStrategy,
+};
 use taurhaus_lib::session_scanner::idle::{AgyHooksActivitySource, IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{
     base_command, LaunchCapability, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
@@ -232,6 +234,20 @@ fn registry_declares_native_and_floor_capabilities() {
         Some("--always-approve")
     );
     assert!(grok.capabilities.compaction_hook_compat_import);
+    // grok documents passive-hook stdout as ignored, so its card is queued in
+    // the mesh inbox rather than answered on stdout.
+    assert_eq!(
+        grok.capabilities.compaction_delivery,
+        CompactionDelivery::MeshInbox
+    );
+    assert_eq!(
+        claude.capabilities.compaction_delivery,
+        CompactionDelivery::HookStdout
+    );
+    assert_eq!(
+        codex.capabilities.compaction_delivery,
+        CompactionDelivery::HookStdout
+    );
     assert!(!grok.capabilities.usage);
     assert!(grok.capabilities.usage_note.is_some());
     assert_eq!(grok.stop_strategy, StopStrategy::SlashExit);

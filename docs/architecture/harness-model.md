@@ -22,7 +22,7 @@ Adding a CLI must touch only the slices where that tool differs; the rest of the
 | Session identity | sessions registry | fd-verified rollout binding | `last_conversations.json` + presence lock | `active_sessions.json` row bound by pid and cwd | `/proc` + tmux pane, no session id |
 | Busy / idle | registry status (authoritative) | turn-complete notify (authoritative) | opt-in hooks sink; process-IO floor otherwise | `events.jsonl` turn lifecycle (authoritative) | rchar-rate hysteresis + pane liveness |
 | Message delivery + wake | native inbox poller | inbox + tmux wake | inbox + tmux wake | inbox + tmux wake (plain Enter queues, Ctrl+Enter interjects) | inbox + tmux wake |
-| Compaction signal | `SessionStart(source=compact)` hook | opt-in hook, transcript tailer fallback | unavailable, `compaction.unsupported` logged once | own file in the always-trusted `~/.grok/hooks`; `SessionStart(compact)` reinjects, `PostCompact` observes | none, logged once |
+| Compaction signal | `SessionStart(source=compact)` hook | opt-in hook, transcript tailer fallback | unavailable, `compaction.unsupported` logged once | own file in the always-trusted `~/.grok/hooks`; `SessionStart(compact)` fires the bridge, `PostCompact` observes; the card is queued in the mesh inbox because grok discards passive-hook stdout | none, logged once |
 | Transcript parser | JSONL | rollout JSONL | none | none | none |
 | Account selection | config-dir identities + selector | `auth.json` identities + selector | one implicit OAuth account under the shared Google tooling root | `auth.json` identities + `GROK_HOME` | implicit single account |
 | Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable; no quota endpoint, per-turn cost is in-band | unavailable |
@@ -57,6 +57,7 @@ The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session i
 - A tmux pane is identified by pid + start time, not by pane id; a foreign pane is quarantined, never typed into.
 - Compaction has exactly one owner (the daemon where configured and reachable, the app otherwise); the fallback is revoked on recovery.
 - A harness that imports another vendor's hook registrations (grok reads `~/.claude/settings.json` by default) can invoke one bridge twice for one event; the registry declares that and the bridge deduplicates, so one compaction is one reinjection.
+- The hook that observes a compaction is not always the channel that can deliver the card: the registry names the delivery per harness (`additionalContext` on the hook's stdout for Claude Code and Codex, the member's mesh inbox for grok, whose passive-hook stdout is documented as ignored), and the delivery is recorded only once it has actually happened.
 
 ## How changes are made
 

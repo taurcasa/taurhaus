@@ -8,14 +8,14 @@ use crate::coordination::compaction_events::{
     emit_compaction_unresolved, CompactionUnresolvedEvent, CompactionUnresolvedReason,
 };
 use crate::coordination::domain::Member;
-use crate::coordination::reinjection::{CompactionReinjectionService, OperationalReinjectionCard};
+use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::roster::get_team_roster_with_attachments;
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::{
     emit_compaction_delivery_event, emit_compaction_detected_event, is_stale_compaction,
     CompactionDeliveryResult, CompactionSignalRecord, MemberCompactionState, MemberCompactionStore,
-    MemberRuntimeStore, MeshInboxMessage, MeshInboxStore, OperationalContextSnapshot,
-    OperationalContextSnapshotStore, TeamConfigStore,
+    MemberRuntimeStore, OperationalContextSnapshot, OperationalContextSnapshotStore,
+    TeamConfigStore,
 };
 use crate::provider::path::normalize_project_path;
 use crate::provider::platform_paths::PlatformPaths;
@@ -208,7 +208,7 @@ impl CompactionSignalProcessor {
         }
 
         let card = CompactionReinjectionService::compose(&resolved.member, &resolved.snapshot);
-        match append_codex_inbox_message(
+        match CompactionReinjectionService::deliver_to_inbox(
             teams_dir,
             &resolved.team_name,
             &resolved.member_name,
@@ -260,30 +260,6 @@ impl CompactionSignalProcessor {
             }
         }
     }
-}
-
-fn append_codex_inbox_message(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
-    card: &OperationalReinjectionCard,
-    now: DateTime<Utc>,
-) -> Result<(), crate::coordination::errors::CoordinationError> {
-    let rendered_payload = CompactionReinjectionService::render_additional_context_text(card)
-        .map_err(|error| {
-            crate::coordination::errors::CoordinationError::StoreError(format!(
-                "failed to serialize Codex post-compaction card for '{}' in '{}': {error}",
-                member_name, team_name
-            ))
-        })?;
-    let inbox_message = MeshInboxMessage::operator_originated(
-        member_name,
-        rendered_payload,
-        Some("post_compaction_context".to_string()),
-        now,
-        None,
-    );
-    MeshInboxStore::append(teams_dir, team_name, member_name, &inbox_message)
 }
 
 fn resolve_managed_codex_signal(
@@ -574,8 +550,9 @@ mod tests {
     use crate::coordination::domain::{HealthState, MemberRole};
     use crate::coordination::runtime::RecordingCoordinationRuntime;
     use crate::coordination::stores::{
-        CompactionSignalKind, MemberRuntimeRecord, OperationalAssignmentFooterSnapshot,
-        OperationalOwnershipSnapshot, OperationalWorkingSetSnapshot, TeamConfig,
+        CompactionSignalKind, MemberRuntimeRecord, MeshInboxStore,
+        OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot,
+        OperationalWorkingSetSnapshot, TeamConfig,
     };
 
     fn timestamp(value: &str) -> DateTime<Utc> {
@@ -730,8 +707,14 @@ mod tests {
         let rendered = CompactionReinjectionService::render_additional_context_text(&card)
             .expect("render card");
 
-        append_codex_inbox_message(teams_dir, team_name, member_name, &card, now)
-            .expect("append compaction card");
+        CompactionReinjectionService::deliver_to_inbox(
+            teams_dir,
+            team_name,
+            member_name,
+            &card,
+            now,
+        )
+        .expect("append compaction card");
         let backend =
             crate::coordination::backend::ClaudeNativeBackend::new(teams_dir.to_path_buf());
         crate::coordination::backend::CoordinationBackend::deliver(

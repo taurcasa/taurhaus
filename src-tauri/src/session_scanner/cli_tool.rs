@@ -102,6 +102,22 @@ pub enum SessionRoot {
     AppManagedClaudeDir,
 }
 
+/// Where a harness actually reads the post-compaction card.
+///
+/// Backend-only: the frontend descriptor never carries it, because nothing in
+/// the UI changes with the delivery channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompactionDelivery {
+    /// The hook answer's `hookSpecificOutput.additionalContext` is read into the
+    /// next turn (Claude Code, Codex).
+    HookStdout,
+    /// The harness documents passive-hook stdout as ignored, so the card is
+    /// queued in the member's mesh inbox instead. grok 1.0.5:
+    /// "For events like `SessionStart` or `PostToolUse`, stdout is ignored"
+    /// (`~/.grok/docs/user-guide/10-hooks.md`, "Passive Hooks").
+    MeshInbox,
+}
+
 /// Capability declarations consumed by tool-agnostic call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
@@ -115,6 +131,8 @@ pub struct CliCapabilities {
     pub runtime_session_capture: bool,
     pub authoritative_idle: bool,
     pub compaction_hook: bool,
+    /// Where the composed card is handed over once the hook has fired.
+    pub compaction_delivery: CompactionDelivery,
     /// The harness also loads another vendor's hook registrations, so one
     /// compaction can invoke the bridge more than once.
     pub compaction_hook_compat_import: bool,
@@ -217,6 +235,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 runtime_session_capture: true,
                 authoritative_idle: true,
                 compaction_hook: true,
+                compaction_delivery: CompactionDelivery::HookStdout,
                 compaction_hook_compat_import: false,
                 transcript_parser: true,
                 transcript_compaction_signals: false,
@@ -277,6 +296,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 runtime_session_capture: true,
                 authoritative_idle: true,
                 compaction_hook: true,
+                compaction_delivery: CompactionDelivery::HookStdout,
                 compaction_hook_compat_import: false,
                 transcript_parser: true,
                 transcript_compaction_signals: true,
@@ -360,6 +380,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 runtime_session_capture: false,
                 authoritative_idle: false,
                 compaction_hook: false,
+                compaction_delivery: CompactionDelivery::HookStdout,
                 compaction_hook_compat_import: false,
                 transcript_parser: false,
                 transcript_compaction_signals: false,
@@ -468,6 +489,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 compaction_hook: true,
                 // grok reads `~/.claude/settings.json` hooks by default, so one
                 // compaction can reach the bridge through two registrations.
+                compaction_delivery: CompactionDelivery::MeshInbox,
                 compaction_hook_compat_import: true,
                 transcript_parser: false,
                 transcript_compaction_signals: false,
@@ -530,6 +552,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         runtime_session_capture: false,
         authoritative_idle: false,
         compaction_hook: false,
+        compaction_delivery: CompactionDelivery::HookStdout,
         compaction_hook_compat_import: false,
         transcript_parser: false,
         transcript_compaction_signals: false,

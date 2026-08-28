@@ -1,14 +1,20 @@
 //! Post-compaction reinjection payload composition and rendering.
 
+use std::path::Path;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::coordination::domain::Member;
+use crate::coordination::errors::CoordinationError;
 use crate::coordination::stores::operational::OperationalContextSnapshot;
+use crate::coordination::stores::{MeshInboxMessage, MeshInboxStore};
 use crate::templates::types::RuntimeCompactSummary;
 
 pub const OPERATIONAL_REINJECTION_CARD_VERSION: u32 = 1;
 pub const POST_COMPACTION_REASON: &str = "post_compaction";
+/// Inbox summary the mesh member sees for a queued post-compaction card.
+pub const POST_COMPACTION_INBOX_SUMMARY: &str = "post_compaction_context";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -87,6 +93,33 @@ impl CompactionReinjectionService {
         snapshot: &OperationalContextSnapshot,
     ) -> OperationalReinjectionCard {
         Self::compose_at(member, snapshot, Utc::now())
+    }
+
+    /// Queue the card in the member's mesh inbox.
+    ///
+    /// This is the delivery for every harness that does not read a hook's
+    /// stdout — the transcript-signal path Codex uses, and grok, whose passive
+    /// `SessionStart` hook discards whatever the bridge prints.
+    pub fn deliver_to_inbox(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        card: &OperationalReinjectionCard,
+        now: DateTime<Utc>,
+    ) -> Result<(), CoordinationError> {
+        let rendered_payload = Self::render_additional_context_text(card).map_err(|error| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize post-compaction card for '{member_name}' in '{team_name}': {error}"
+            ))
+        })?;
+        let inbox_message = MeshInboxMessage::operator_originated(
+            member_name,
+            rendered_payload,
+            Some(POST_COMPACTION_INBOX_SUMMARY.to_string()),
+            now,
+            None,
+        );
+        MeshInboxStore::append(teams_dir, team_name, member_name, &inbox_message)
     }
 
     pub fn compose_at(

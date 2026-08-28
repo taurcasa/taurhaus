@@ -19,7 +19,7 @@ use crate::coordination::stores::{
 };
 use crate::provider::path;
 use crate::provider::platform_paths::PlatformPaths;
-use crate::session_scanner::cli_tool::{spec, CliTool};
+use crate::session_scanner::cli_tool::{spec, CliTool, CompactionDelivery};
 use taurhaus_lib::logging::emit_global;
 
 const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
@@ -148,6 +148,7 @@ enum CompactHookFailureStage {
     ReadStdin,
     ParsePayload,
     RenderAdditionalContext,
+    DeliverInbox,
     RecordDelivery,
     SerializeResponse,
 }
@@ -158,6 +159,7 @@ impl CompactHookFailureStage {
             Self::ReadStdin => "read_stdin",
             Self::ParsePayload => "parse_payload",
             Self::RenderAdditionalContext => "render_additional_context",
+            Self::DeliverInbox => "deliver_inbox",
             Self::RecordDelivery => "record_delivery",
             Self::SerializeResponse => "serialize_response",
         }
@@ -553,6 +555,39 @@ pub fn handle_compact_hook(
             ))
         })?;
 
+    // A harness that ignores passive-hook stdout has to be handed the card
+    // before the delivery is recorded — the hook answer would go nowhere.
+    let delivery = spec(tool).capabilities.compaction_delivery;
+    if delivery == CompactionDelivery::MeshInbox {
+        if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
+            teams_dir,
+            &matched.team_name,
+            &matched.member.name,
+            &card,
+            Utc::now(),
+        ) {
+            let _ = record_delivery_at(
+                teams_dir,
+                &matched.team_name,
+                &matched.member.name,
+                tool,
+                &payload.session_id,
+                compaction_timestamp,
+                CompactionDeliveryResult::Failed,
+            );
+            emit_compact_hook_failed(
+                CompactHookFailureStage::DeliverInbox,
+                Some(&payload),
+                Some(&matched),
+                None,
+                None,
+                None,
+                &error.to_string(),
+            );
+            return Err(error);
+        }
+    }
+
     record_delivery_at(
         teams_dir,
         &matched.team_name,
@@ -576,11 +611,14 @@ pub fn handle_compact_hook(
 
     emit_compact_hook_delivered(&payload, &matched, additional_context.len());
 
-    Ok(CompactHookResponse {
-        hook_specific_output: Some(CompactHookSpecificOutput {
-            hook_event_name: SESSION_START_HOOK_EVENT.to_string(),
-            additional_context,
-        }),
+    Ok(match delivery {
+        CompactionDelivery::HookStdout => CompactHookResponse {
+            hook_specific_output: Some(CompactHookSpecificOutput {
+                hook_event_name: SESSION_START_HOOK_EVENT.to_string(),
+                additional_context,
+            }),
+        },
+        CompactionDelivery::MeshInbox => CompactHookResponse::default(),
     })
 }
 
@@ -1510,9 +1548,10 @@ mod tests {
 
     use crate::coordination::domain::{HealthState, MemberRole};
     use crate::coordination::stores::{
-        MemberCompactionStore, MemberRuntimeRecord, OperationalAssignmentFooterSnapshot,
-        OperationalContextSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
-        OperationalWorkingSetSnapshot, TeamConfig,
+        MemberCompactionStore, MemberRuntimeRecord, MeshInboxStore,
+        OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+        OperationalOwnershipSnapshot, OperationalTaskSnapshot, OperationalWorkingSetSnapshot,
+        TeamConfig,
     };
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
 
@@ -1756,15 +1795,74 @@ mod tests {
         write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
         write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
 
+        handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+            .expect("hook should succeed");
+
+        let inbox =
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name).expect("grok inbox");
+        assert_eq!(inbox.len(), 1);
+        assert!(inbox[0].text.contains("Current task: #680"));
+    }
+
+    #[test]
+    fn a_grok_compaction_is_delivered_through_the_mesh_inbox() {
+        // Regression: commit c1005ec answered a grok compaction with
+        // `hookSpecificOutput.additionalContext` on stdout and recorded the card
+        // as Injected, but grok 1.0.5 documents passive-hook stdout as ignored
+        // ("Passive Hooks", `~/.grok/docs/user-guide/10-hooks.md`), so the
+        // restored context was never handed to the model.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+
         let response =
             handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
                 .expect("hook should succeed");
 
-        let output = response
-            .hook_specific_output
-            .expect("grok compaction should inject additional context");
-        assert_eq!(output.hook_event_name, "SessionStart");
-        assert!(output.additional_context.contains("Current task: #680"));
+        assert_eq!(
+            response,
+            CompactHookResponse::default(),
+            "grok ignores passive-hook stdout, so the bridge must not answer with one"
+        );
+        let inbox =
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name).expect("grok inbox");
+        assert_eq!(inbox.len(), 1, "the card is queued where grok reads it");
+        assert!(inbox[0].text.contains("Current task: #680"));
+        assert_eq!(inbox[0].summary.as_deref(), Some("post_compaction_context"));
+        let state = MemberCompactionStore::load(tmp.path(), "grok-team", &member.name)
+            .expect("compaction state")
+            .expect("recorded delivery");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Injected
+        );
+    }
+
+    #[test]
+    fn a_failed_grok_inbox_append_is_never_recorded_as_injected() {
+        // Regression: commit c1005ec recorded Injected before any delivery
+        // happened, so a card that never reached the member still suppressed the
+        // next compaction through the compat-import dedupe window.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+        // A file where the inbox directory belongs makes the append fail.
+        fs::write(tmp.path().join("grok-team").join("inboxes"), b"not a dir")
+            .expect("block the inbox directory");
+
+        handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+            .expect_err("a blocked inbox is a delivery failure");
+
+        let state = MemberCompactionStore::load(tmp.path(), "grok-team", &member.name)
+            .expect("compaction state")
+            .expect("recorded delivery");
+        assert_eq!(state.last_delivery_result, CompactionDeliveryResult::Failed);
     }
 
     #[test]
@@ -1781,15 +1879,14 @@ mod tests {
         write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
         let payload = grok_payload(&project, "01a04585-2d53-7123");
 
-        assert!(handle_compact_hook(&payload, tmp.path())
-            .expect("first invocation")
-            .hook_specific_output
-            .is_some());
-        assert!(
-            handle_compact_hook(&payload, tmp.path())
-                .expect("second invocation")
-                .hook_specific_output
-                .is_none(),
+        handle_compact_hook(&payload, tmp.path()).expect("first invocation");
+        handle_compact_hook(&payload, tmp.path()).expect("second invocation");
+
+        assert_eq!(
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name)
+                .expect("grok inbox")
+                .len(),
+            1,
             "the imported Claude registration must not reinject the same compaction"
         );
     }
