@@ -123,6 +123,16 @@ async function invokeTauriOrThrow(command, args = undefined) {
   return result.result
 }
 
+/** For teardown calls that must not hang the run if the backend is wedged. */
+async function invokeTauriWithTimeout(command, args = undefined, timeoutMs = 10_000) {
+  return await Promise.race([
+    invokeTauri(command, args),
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ ok: false, error: `Timed out after ${timeoutMs}ms` }), timeoutMs)
+    }),
+  ])
+}
+
 function parseCodexVersion() {
   let raw
   try {
@@ -638,12 +648,12 @@ describe('Codex compaction via hooks', function () {
     restorePaneEnvironmentOnTeardown = null
 
     if (originalSettings) {
-      await invokeTauri('update_settings', { settings: originalSettings })
+      await invokeTauriWithTimeout('update_settings', { settings: originalSettings })
     }
 
     for (const teamName of createdTeamNames) {
       if (!teamName.startsWith('e2e-')) continue
-      await invokeTauri('coordination_disband_team', { teamName })
+      await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 30_000)
     }
     createdTeamNames.clear()
 
