@@ -43,9 +43,16 @@ pub use claude_registry::{
 pub(crate) use claude_registry::{ClaudeRegistryActivitySource, ClaudeRegistrySessionSource};
 pub use codex::CodexResolver;
 pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
+pub(crate) use grok::newest_session_transcript as grok_newest_session_transcript;
 pub(crate) use grok::session_registry_holds_pid as grok_session_registry_holds_pid;
+pub(crate) use grok::session_transcript as grok_session_transcript;
+#[cfg(test)]
+pub(crate) use grok::set_base_dir_for_test as set_grok_base_dir_for_test;
 pub use grok::GrokEventsActivitySource;
 pub use grok::GrokResolver;
+#[cfg(test)]
+pub(crate) use grok::GROK_RESOLVER_TEST_LOCK;
+pub(crate) use grok::SESSION_FILES as GROK_SESSION_FILES;
 
 /// Threshold: if any session file mtime is less than this, session is Active.
 /// Used for Claude where proc-level signals supplement the mtime.
@@ -118,6 +125,20 @@ pub trait SessionResolver: Send + Sync {
     /// this without weakening live-session detection.
     fn resume_session_id(&self, project_path: &str) -> Option<String> {
         self.detect_idle(project_path).session_id
+    }
+
+    /// The persisted identity inside the account home this launch will use.
+    ///
+    /// A harness whose whole history is scoped by its account selector has to
+    /// look in the home the command is about to set, not in the default one.
+    /// Harnesses that keep one history ignore the directory.
+    fn resume_session_id_in(
+        &self,
+        project_path: &str,
+        config_dir: Option<&Path>,
+    ) -> Option<String> {
+        let _ = config_dir;
+        self.resume_session_id(project_path)
     }
 }
 

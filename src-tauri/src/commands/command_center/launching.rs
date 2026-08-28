@@ -122,7 +122,7 @@ pub(super) fn launch_cli_session_impl(
     }
 
     let terminal_settings = load_terminal_settings(db);
-    let base = resolved_launch_base(&terminal_settings.cli_commands, tool, mode, &linux_path)?;
+    let configured_base = base_command(&terminal_settings.cli_commands, tool, mode);
     let account = crate::session_scanner::cli_tool::spec(tool)
         .account_provider()
         .map(|_| {
@@ -138,7 +138,7 @@ pub(super) fn launch_cli_session_impl(
                         .default_account_ids
                         .get(&tool.to_string())
                         .map(String::as_str),
-                    base: base.as_ref(),
+                    base: configured_base,
                 },
             );
             log_account_resolution(&project_id, tool, &launch);
@@ -151,6 +151,11 @@ pub(super) fn launch_cli_session_impl(
         .as_ref()
         .and_then(|resolution| resolution.account.as_ref())
         .map(|account| account.id.clone());
+    // The session token is expanded after the account, not before: a harness
+    // that scopes its whole history behind an account selector keeps a
+    // different conversation in every home, so the launch has to look in the
+    // one it is about to select.
+    let base = resolved_launch_base(configured_base, tool, &linux_path, config_dir.as_deref())?;
     let rendered = LaunchSpec {
         tool,
         mode,
@@ -472,20 +477,23 @@ const SESSION_ID_PLACEHOLDER: &str = "{session_id}";
 
 /// Resolve the Settings session token before the command crosses the daemon
 /// boundary. The daemon deliberately executes command overrides verbatim.
+///
+/// `config_dir` is the account home this launch selected, so a harness whose
+/// history is scoped by its account selector resolves the conversation from the
+/// home the command will actually run against.
 fn resolved_launch_base<'a>(
-    commands: &'a crate::models::CliCommandSettings,
+    base: &'a str,
     tool: CliTool,
-    mode: LaunchMode,
     project_path: &str,
+    config_dir: Option<&std::path::Path>,
 ) -> Result<Cow<'a, str>, String> {
-    let base = base_command(commands, tool, mode);
     if !base.contains(SESSION_ID_PLACEHOLDER) {
         return Ok(Cow::Borrowed(base));
     }
 
     let session_id = crate::session_scanner::cli_tool::spec(tool)
         .session_resolver()
-        .resume_session_id(project_path)
+        .resume_session_id_in(project_path, config_dir)
         .ok_or_else(|| {
             format!(
                 "No resumable {} conversation was found for this project",

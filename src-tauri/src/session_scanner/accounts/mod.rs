@@ -961,13 +961,17 @@ pub fn account_label_for_session(
     let tool_spec = spec(tool);
     let provider = tool_spec.account_provider()?;
     let scan = scan(tool);
+    let locator = tool_spec.transcript_locator();
     let slug = crate::session_scanner::idle::path_to_slug(project_path);
     let transcript_name = format!("{session_id}.{}", tool_spec.session_extension);
     let owner = scan.config_dirs.iter().find_map(|config_dir| {
-        let transcript = config_dir
-            .join(tool_spec.projects_subdir)
-            .join(&slug)
-            .join(&transcript_name);
+        let transcript = match locator {
+            Some(locator) => locator.session_transcript(config_dir, session_id)?,
+            None => config_dir
+                .join(tool_spec.projects_subdir)
+                .join(&slug)
+                .join(&transcript_name),
+        };
         transcript
             .is_file()
             .then(|| provider.session_dir(&transcript))
@@ -1000,6 +1004,16 @@ pub fn newest_project_transcript(
     project_path: &str,
 ) -> Option<PathBuf> {
     let tool_spec = spec(tool);
+    // A harness that does not lay its history out the Claude way declares its
+    // own locator; the loop below is the shared `<projects>/<slug>/<id>.<ext>`
+    // layout, not a default every harness happens to follow.
+    if let Some(locator) = tool_spec.transcript_locator() {
+        return config_dirs
+            .iter()
+            .filter_map(|config_dir| locator.newest_project_transcript(config_dir, project_path))
+            .max_by_key(|(modified, _)| *modified)
+            .map(|(_, path)| path);
+    }
     let slug = crate::session_scanner::idle::path_to_slug(project_path);
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
     for config_dir in config_dirs {
@@ -1224,6 +1238,24 @@ pub trait AccountProvider: Sync {
     fn candidate_dirs(&self, home: &Path, live_selector_values: &[PathBuf]) -> Vec<PathBuf>;
     fn identify(&self, dir: &Path) -> Option<AccountIdentity>;
     fn session_dir(&self, transcript: &Path) -> Option<PathBuf>;
+}
+
+/// Finds a harness's persisted transcripts inside one account directory.
+///
+/// Claude Code, Codex and Antigravity all file history as
+/// `<home>/<projects_subdir>/<project-slug>/<session-id>.<ext>`, which the
+/// generic lookup handles from registry data alone. A harness that nests its
+/// history under its own session records declares this slice instead.
+pub trait TranscriptLocator: Sync {
+    /// Newest transcript a project owns here, with the time it was written.
+    fn newest_project_transcript(
+        &self,
+        config_dir: &Path,
+        project_path: &str,
+    ) -> Option<(std::time::SystemTime, PathBuf)>;
+
+    /// The transcript of one named session, if this directory holds it.
+    fn session_transcript(&self, config_dir: &Path, session_id: &str) -> Option<PathBuf>;
 }
 
 /// Per-tool subscription-usage fetch and normalisation.

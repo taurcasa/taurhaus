@@ -31,6 +31,16 @@ use crate::provider::path::normalize_project_path;
 use crate::session_scanner::SessionState;
 
 const ACTIVE_SESSIONS_FILE: &str = "active_sessions.json";
+/// The files a grok session directory holds, newest-answer first. A path that
+/// names none of them is not a grok transcript, so a foreign `<home>/sessions/…`
+/// layout can never be attributed to a grok home.
+pub(crate) const SESSION_FILES: &[&str] = &[
+    EVENTS_FILE,
+    "updates.jsonl",
+    "chat_history.jsonl",
+    SUMMARY_FILE,
+    "signals.json",
+];
 const SESSIONS_DIR: &str = "sessions";
 const EVENTS_FILE: &str = "events.jsonl";
 const SUMMARY_FILE: &str = "summary.json";
@@ -87,6 +97,11 @@ struct SessionSummary {
 #[derive(Debug, Deserialize)]
 struct SessionSummaryInfo {
     id: String,
+    /// The directory the session ran in. Authoritative — the encoded group
+    /// directory name is a slug plus hash once the cwd outgrows a path
+    /// component, so it is never decoded back into a path.
+    #[serde(default)]
+    cwd: Option<String>,
 }
 
 /// Resolves a live grok session without interpreting its transcript.
@@ -150,6 +165,16 @@ impl GrokResolver {
         };
         idle_result_for(base_dir, &row)
     }
+
+    /// The conversation a `--resume` should reopen, inside one grok home.
+    ///
+    /// `active_sessions.json` proves residence, not history: grok removes the
+    /// row on `/quit`, so the ordinary way to end a conversation also erases the
+    /// only live evidence of it. The persisted session records answer instead —
+    /// each carries its own authoritative `summary.json`.
+    pub fn resume_session_id_at(base_dir: &Path, project_path: &str) -> Option<String> {
+        newest_session_record(base_dir, project_path).map(|record| record.session_id)
+    }
 }
 
 impl Default for GrokResolver {
@@ -167,6 +192,17 @@ impl SessionResolver for GrokResolver {
             return IdleResult::idle();
         };
         idle_result_for(&base_dir, &row)
+    }
+
+    fn resume_session_id_in(
+        &self,
+        project_path: &str,
+        config_dir: Option<&Path>,
+    ) -> Option<String> {
+        let base_dir = config_dir
+            .map(Path::to_path_buf)
+            .or_else(|| self.default_base_dir())?;
+        Self::resume_session_id_at(&base_dir, project_path)
     }
 }
 
@@ -277,28 +313,122 @@ fn process_is_live(pid: u32) -> bool {
 /// cwd too long to encode. Neither is decoded here: the session directory is
 /// located by its own id and confirmed against `summary.json`'s `info.id`.
 fn session_events_path(base_dir: &Path, session_id: &str) -> Option<PathBuf> {
+    let events = session_dir_for(base_dir, session_id)?.join(EVENTS_FILE);
+    events.is_file().then_some(events)
+}
+
+/// The one session directory that claims this id, confirmed by its own summary.
+fn session_dir_for(base_dir: &Path, session_id: &str) -> Option<PathBuf> {
     if !valid_session_id(session_id) {
         return None;
     }
-    let groups = std::fs::read_dir(base_dir.join(SESSIONS_DIR)).ok()?;
-    for group in groups.flatten() {
-        let candidate = group.path().join(session_id);
-        if !summary_confirms_session(&candidate, session_id) {
-            continue;
-        }
-        let events = candidate.join(EVENTS_FILE);
-        if events.is_file() {
-            return Some(events);
-        }
-    }
-    None
+    std::fs::read_dir(base_dir.join(SESSIONS_DIR))
+        .ok()?
+        .flatten()
+        .map(|group| group.path().join(session_id))
+        .find(|candidate| summary_confirms_session(candidate, session_id))
 }
 
 fn summary_confirms_session(session_dir: &Path, session_id: &str) -> bool {
-    let Ok(raw) = std::fs::read_to_string(session_dir.join(SUMMARY_FILE)) else {
-        return false;
-    };
-    serde_json::from_str::<SessionSummary>(&raw).is_ok_and(|summary| summary.info.id == session_id)
+    read_summary(session_dir).is_some_and(|info| info.id == session_id)
+}
+
+fn read_summary(session_dir: &Path) -> Option<SessionSummaryInfo> {
+    let raw = std::fs::read_to_string(session_dir.join(SUMMARY_FILE)).ok()?;
+    serde_json::from_str::<SessionSummary>(&raw)
+        .ok()
+        .map(|summary| summary.info)
+}
+
+/// One persisted session directory belonging to a project.
+struct SessionRecord {
+    session_id: String,
+    dir: PathBuf,
+    modified: std::time::SystemTime,
+}
+
+/// The newest persisted session a project owns inside one grok home.
+///
+/// Sessions live at `<home>/sessions/<group>/<session-id>/`, and only each
+/// session's own `summary.json` says which directory it ran in — the group name
+/// is grok's percent-encoded cwd until the cwd outgrows a path component, after
+/// which it is a slug plus hash. Reading `info.cwd` works for both.
+fn newest_session_record(base_dir: &Path, project_path: &str) -> Option<SessionRecord> {
+    let wanted = normalize_project_path(project_path);
+    let mut newest: Option<SessionRecord> = None;
+    for group in std::fs::read_dir(base_dir.join(SESSIONS_DIR))
+        .ok()?
+        .flatten()
+    {
+        let Ok(sessions) = std::fs::read_dir(group.path()) else {
+            continue;
+        };
+        for session in sessions.flatten() {
+            let dir = session.path();
+            let Some(info) = read_summary(&dir) else {
+                continue;
+            };
+            if !valid_session_id(&info.id)
+                || dir.file_name().and_then(|name| name.to_str()) != Some(info.id.as_str())
+            {
+                continue;
+            }
+            if info
+                .cwd
+                .as_deref()
+                .map(normalize_project_path)
+                .is_none_or(|cwd| cwd != wanted)
+            {
+                continue;
+            }
+            let Some(modified) = session_modified_at(&dir) else {
+                continue;
+            };
+            if newest
+                .as_ref()
+                .is_none_or(|record| modified > record.modified)
+            {
+                newest = Some(SessionRecord {
+                    session_id: info.id,
+                    dir,
+                    modified,
+                });
+            }
+        }
+    }
+    newest
+}
+
+/// The newest write anywhere in a session directory that taurhaus recognises.
+fn session_modified_at(session_dir: &Path) -> Option<std::time::SystemTime> {
+    SESSION_FILES
+        .iter()
+        .filter_map(|name| std::fs::metadata(session_dir.join(name)).ok())
+        .filter_map(|metadata| metadata.modified().ok())
+        .max()
+}
+
+/// The transcript of one named session inside one grok home, in the shape the
+/// account provider maps back to the home that holds it.
+pub(crate) fn session_transcript(base_dir: &Path, session_id: &str) -> Option<PathBuf> {
+    recognised_transcript(&session_dir_for(base_dir, session_id)?)
+}
+
+fn recognised_transcript(session_dir: &Path) -> Option<PathBuf> {
+    SESSION_FILES
+        .iter()
+        .map(|name| session_dir.join(name))
+        .find(|path| path.is_file())
+}
+
+/// The newest persisted transcript a project owns inside one grok home, in the
+/// shape the account provider maps back to the home that holds it.
+pub(crate) fn newest_session_transcript(
+    base_dir: &Path,
+    project_path: &str,
+) -> Option<(std::time::SystemTime, PathBuf)> {
+    let record = newest_session_record(base_dir, project_path)?;
+    Some((record.modified, recognised_transcript(&record.dir)?))
 }
 
 /// Session ids are UUIDv7; anything else is not used to build a path.
@@ -395,17 +525,147 @@ mod tests {
     }
 
     fn write_session(home: &Path, group: &str, session_id: &str, events: &[&str]) -> PathBuf {
+        write_session_for(home, group, session_id, "/home/user/projects/grok", events)
+    }
+
+    fn write_session_for(
+        home: &Path,
+        group: &str,
+        session_id: &str,
+        cwd: &str,
+        events: &[&str],
+    ) -> PathBuf {
         let dir = home.join(SESSIONS_DIR).join(group).join(session_id);
         fs::create_dir_all(&dir).unwrap();
         fs::write(
             dir.join(SUMMARY_FILE),
-            serde_json::json!({ "info": { "id": session_id, "cwd": "/home/user/projects/grok" } })
-                .to_string(),
+            serde_json::json!({ "info": { "id": session_id, "cwd": cwd } }).to_string(),
         )
         .unwrap();
         let events_path = dir.join(EVENTS_FILE);
         fs::write(&events_path, format!("{}\n", events.join("\n"))).unwrap();
         events_path
+    }
+
+    /// Give one session a newer mtime than any other without sleeping.
+    fn touch_newer(path: &Path) {
+        let when = std::time::SystemTime::now() + std::time::Duration::from_secs(120);
+        fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(when)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_cleanly_closed_conversation_is_still_resumable() {
+        // Regression: commit 358a7c9 resolved a grok resume from the live
+        // `active_sessions.json` registry alone. grok removes that row on
+        // `/quit`, so the most common way to end a conversation also made it
+        // impossible to resume.
+        let tmp = TempDir::new().unwrap();
+        let home = grok_home(&tmp);
+        let project = "/home/user/projects/grok";
+        let older = "01a04585-2d53-7123-8000-000000000001";
+        let newer = "01a04585-2d53-7123-8000-000000000002";
+        write_session_for(&home, "%2Fp", older, project, &[r#"{"type":"turn_ended"}"#]);
+        let newest =
+            write_session_for(&home, "%2Fp", newer, project, &[r#"{"type":"turn_ended"}"#]);
+        write_session_for(
+            &home,
+            "%2Fother",
+            "01a04585-2d53-7123-8000-000000000003",
+            "/home/user/projects/other",
+            &[r#"{"type":"turn_ended"}"#],
+        );
+        touch_newer(&newest);
+        // No registry at all: this is exactly the state a clean `/quit` leaves.
+        assert!(!home.join(ACTIVE_SESSIONS_FILE).exists());
+
+        assert_eq!(
+            GrokResolver::resume_session_id_at(&home, project).as_deref(),
+            Some(newer),
+            "the newest persisted session for this project answers the resume"
+        );
+        assert_eq!(
+            GrokResolver::resume_session_id_at(&home, "/home/user/projects/nothing-here"),
+            None
+        );
+    }
+
+    #[test]
+    fn an_explicitly_selected_home_resolves_its_own_history() {
+        // Regression: commit 358a7c9 resolved `{session_id}` before the launch
+        // account, so a resume onto a second GROK_HOME searched the default
+        // home and either failed or named a foreign account's conversation.
+        let _guard = GROK_RESOLVER_TEST_LOCK.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let default_home = tmp.path().join(".grok");
+        let work_home = tmp.path().join(".grok-work");
+        let project = "/home/user/projects/grok";
+        let default_session = "01a04585-2d53-7123-8000-00000000000a";
+        let work_session = "01a04585-2d53-7123-8000-00000000000b";
+        write_session_for(
+            &default_home,
+            "%2Fp",
+            default_session,
+            project,
+            &[r#"{"type":"turn_ended"}"#],
+        );
+        write_session_for(
+            &work_home,
+            "%2Fp",
+            work_session,
+            project,
+            &[r#"{"type":"turn_ended"}"#],
+        );
+
+        let _base_dir = set_base_dir_for_test(default_home);
+        let resolver = GrokResolver::new();
+
+        assert_eq!(
+            SessionResolver::resume_session_id_in(&resolver, project, Some(&work_home)).as_deref(),
+            Some(work_session)
+        );
+        assert_eq!(
+            SessionResolver::resume_session_id_in(&resolver, project, None).as_deref(),
+            Some(default_session),
+            "without an explicit home the default one still answers"
+        );
+    }
+
+    #[test]
+    fn cold_history_lookup_finds_the_newest_transcript_across_homes() {
+        // Regression: commit 8fcb5b3 left cold Continue/Resume account
+        // derivation on Claude's `<projects>/<slug>/<id>.<ext>` layout, which
+        // cannot see grok's `sessions/<group>/<id>/events.jsonl`, so no grok
+        // history could name the account that owns it.
+        let tmp = TempDir::new().unwrap();
+        let home_a = tmp.path().join(".grok");
+        let home_b = tmp.path().join(".grok-work");
+        let project = "/home/user/projects/grok";
+        write_session_for(
+            &home_a,
+            "%2Fp",
+            "01a04585-2d53-7123-8000-00000000000a",
+            project,
+            &[r#"{"type":"turn_ended"}"#],
+        );
+        let newest = write_session_for(
+            &home_b,
+            "%2Fp",
+            "01a04585-2d53-7123-8000-00000000000b",
+            project,
+            &[r#"{"type":"turn_ended"}"#],
+        );
+        touch_newer(&newest);
+
+        assert_eq!(
+            newest_session_transcript(&home_b, project).map(|(_, path)| path),
+            Some(newest)
+        );
+        assert_eq!(newest_session_transcript(&home_a, "/nowhere"), None);
     }
 
     #[test]

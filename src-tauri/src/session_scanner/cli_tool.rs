@@ -811,6 +811,20 @@ impl CliToolSpec {
         }
     }
 
+    /// The harness's own transcript layout, where the shared
+    /// `<projects>/<slug>/<id>.<ext>` lookup cannot find its history.
+    pub fn transcript_locator(
+        &self,
+    ) -> Option<&'static dyn crate::session_scanner::accounts::TranscriptLocator> {
+        static GROK: crate::session_scanner::accounts::grok::GrokTranscriptLocator =
+            crate::session_scanner::accounts::grok::GrokTranscriptLocator;
+
+        match self.tool {
+            CliTool::Grok => Some(&GROK),
+            CliTool::Claude | CliTool::Codex | CliTool::Agy | CliTool::Unknown => None,
+        }
+    }
+
     pub fn matches_argv_token(&self, token: &str) -> bool {
         self.argv_signatures.iter().any(|signature| {
             if signature.starts_with('@') {

@@ -13,24 +13,35 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{AccountIdentity, AccountProvider};
+use super::{AccountIdentity, AccountProvider, TranscriptLocator};
+use crate::session_scanner::idle::GROK_SESSION_FILES as SESSION_FILES;
 
 const AUTH_FILENAME: &str = "auth.json";
 const DEFAULT_HOME_NAME: &str = ".grok";
 const HOME_PREFIX: &str = ".grok-";
 const SESSIONS_DIR: &str = "sessions";
-/// The files a grok session directory holds. A transcript path only resolves an
-/// account when it is one of these, so a foreign `<home>/sessions/…` layout
-/// cannot be attributed to a grok home.
-const SESSION_FILES: &[&str] = &[
-    "events.jsonl",
-    "updates.jsonl",
-    "chat_history.jsonl",
-    "summary.json",
-    "signals.json",
-];
 
 pub struct GrokAccountProvider;
+
+/// grok files history as `<home>/sessions/<group>/<session-id>/<file>`, where
+/// the group is its percent-encoded cwd until the cwd outgrows a path component
+/// and becomes a slug plus hash. Only each session's own `summary.json` names
+/// the project, so discovery reads the records rather than building a path.
+pub struct GrokTranscriptLocator;
+
+impl TranscriptLocator for GrokTranscriptLocator {
+    fn newest_project_transcript(
+        &self,
+        config_dir: &Path,
+        project_path: &str,
+    ) -> Option<(std::time::SystemTime, PathBuf)> {
+        crate::session_scanner::idle::grok_newest_session_transcript(config_dir, project_path)
+    }
+
+    fn session_transcript(&self, config_dir: &Path, session_id: &str) -> Option<PathBuf> {
+        crate::session_scanner::idle::grok_session_transcript(config_dir, session_id)
+    }
+}
 
 impl AccountProvider for GrokAccountProvider {
     fn default_dir(&self, home: &Path) -> PathBuf {
@@ -315,6 +326,60 @@ mod tests {
                 fs::canonicalize(external).unwrap(),
             ]
         );
+    }
+
+    fn write_session(home: &Path, group: &str, session_id: &str, cwd: &str) -> PathBuf {
+        let dir = home.join(SESSIONS_DIR).join(group).join(session_id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("summary.json"),
+            json!({ "info": { "id": session_id, "cwd": cwd } }).to_string(),
+        )
+        .unwrap();
+        let events = dir.join("events.jsonl");
+        fs::write(&events, "{\"type\":\"turn_ended\"}\n").unwrap();
+        events
+    }
+
+    #[test]
+    fn cold_lookup_derives_the_home_that_owns_a_project_history() {
+        // Regression: commit 8fcb5b3 left cold Continue/Resume account
+        // derivation on the Claude `<projects>/<slug>/<id>.<ext>` layout, so a
+        // grok history under `sessions/<group>/<id>/` was invisible and no grok
+        // account could be derived from it.
+        let root = TempDir::new().unwrap();
+        let home_a = root.path().join(".grok");
+        let home_b = root.path().join(".grok-work");
+        let project = "/home/user/projects/grok";
+        write_session(
+            &home_a,
+            "%2Fhome%2Fuser%2Fprojects%2Fgrok",
+            "01a04585-2d53-7123-8000-00000000000a",
+            project,
+        );
+        let newest = write_session(
+            &home_b,
+            "slug-9f2a1c",
+            "01a04585-2d53-7123-8000-00000000000b",
+            project,
+        );
+        let when = std::time::SystemTime::now() + std::time::Duration::from_secs(120);
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&newest)
+            .unwrap()
+            .set_modified(when)
+            .unwrap();
+
+        let transcript = crate::session_scanner::accounts::newest_project_transcript(
+            crate::session_scanner::cli_tool::CliTool::Grok,
+            &[home_a, home_b.clone()],
+            project,
+        )
+        .expect("cold lookup finds grok history");
+
+        assert_eq!(transcript, newest);
+        assert_eq!(GrokAccountProvider.session_dir(&transcript), Some(home_b));
     }
 
     #[test]
