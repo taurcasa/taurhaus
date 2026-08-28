@@ -109,7 +109,7 @@ Launch flags are rendered by `LaunchSpec::render` in `session_scanner/launch.rs`
 
 **Rationale**: Claude Code is the only registered harness with `native_inbox_poller` (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Antigravity and Grok have no local team features either; Grok's ACP/leader surface exists but is deliberately out of scope.
 
-**Which account a team runs on**: team members always launch on the team's config dir, not on a per-project account. For Claude that is `PlatformPaths::claude_dir()` (honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Codex is the one harness that declares `managed_home`, so a managed Codex setup pins `CODEX_HOME` through `cli_commands.account_selector_dirs` (`commands/terminal_settings.rs:101-120`). A launch that names an account anyway is not silently obeyed: it is dropped and logged once per project as `launch.account.ignored_for_team` (warn). `MeshTeamBuilder` says so in one line when more than one account is registered.
+**Which account a team runs on**: team members always launch on the team's config dir, not on a per-project account. For Claude that is `PlatformPaths::claude_dir()` (honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Codex is the one harness that declares `managed_home`, so a managed Codex setup pins `CODEX_HOME` through `cli_commands.account_selector_dirs` (`commands/terminal_settings.rs:101-120`). A launch that names an account anyway is not silently obeyed: it is dropped and logged once per project as `launch.account.ignored_for_team` (warn). `MeshTeamBuilder` says so in one line when more than one **Claude** account is registered — the note reads the first tool declaring `team_config_namespace`, and Claude is the only one that does (`cli_tool.rs:248`), so extra Codex or Grok accounts are silent.
 
 **Model and effort**: `Member.model` and `Member.reasoning_effort` are persisted separately, surfaced in live status, and passed to `mesh join --model`. The UI model list comes from `ModelCatalog` on `TerminalPlatformContract`.
 
@@ -254,6 +254,7 @@ The one configuration taurhaus does own is the compact-hook registration, becaus
 |---|---|---|
 | Claude | `<claude_dir>/settings.json` (`SessionStart` matcher `compact`) + `<claude_dir>/hooks/taurhaus-session-start-compact.*` | whenever any team has a managed Claude member — reconciled at startup and after team mutations |
 | Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | only when `harness.codex_compaction=hooks` (the setting defaults to `transcript`) and Codex ≥ 0.147; removed when the setting flips back |
+| Grok | `<GROK_HOME>/hooks/taurhaus.json` (registering both `SessionStart` matcher `compact` and `PostCompact` matcher `manual\|auto`) + `<GROK_HOME>/hooks/taurhaus-session-start-compact.*` | while `harness.grok_hooks` is on (the default) and at least one managed grok member exists; grok registers hooks per home, not per session, so every roster mutation reconciles it, not just startup and a Settings save (`commands/terminal_settings.rs:328-364`). grok's personal hook dir is always trusted, so no trust grant or bypass flag is involved |
 
 Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains foreign hooks — and settings files are rewritten atomically.
 
@@ -261,7 +262,8 @@ Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains fo
 
 | Path | Channel |
 |---|---|
-| hook path — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| hook path, `HookStdout` — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| hook path, `MeshInbox` — Grok | grok's session-start source never reports `compact`, so the bridge answers grok's own `PostCompact` event; passive-hook stdout is documented as ignored, so the card is queued in the member's mesh inbox instead of returned. A `PostCompact` from a stdout-answered harness is skipped as `post_compact_signal_only` (`compact_hook.rs:453-456`). grok also loads `~/.claude/settings.json` hooks, so one compaction can reach the bridge twice: the registry sets `compaction_hook_compat_import` and the bridge drops the second within the dedupe window (`compact_hook.rs:468-481`, `compaction.hook.compat_import`) |
 | transcript path — Codex in the default `transcript` mode | the card is appended to the member's inbox as an operator-originated message (`compaction_processor.rs` → `MeshInboxStore::append`) |
 
 Everything else — queued messages, operator notices — is an inbox write. Inbox files stay external and ephemeral.
@@ -381,7 +383,7 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 - Stale compaction records are persisted as `Stale` results instead of being injected late.
 - Delivery is suppressed when the operational snapshot no longer contains a resumable task (for example, the last task was already `completed` or `deleted`), so finished work does not generate stale resume cards.
 - Mesh inbox corruption now fails closed: corrupt inbox files are quarantined and logged as `mesh.inbox.corrupt`, and append/load return an error instead of silently treating corruption as empty.
-- Hook delivery uses the same resumable-task guard and emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, or `compact` when the tool cannot be inferred, and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`. Also `compaction.codex_hook.degraded` and `compaction.compact_hook.parse_payload_debug`.
+- Hook delivery uses the same resumable-task guard and emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, `grok`, or `compact` when the tool cannot be inferred (`compact_hook.rs:1078-1083`), and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`. Also `compaction.codex_hook.degraded` and `compaction.compact_hook.parse_payload_debug`.
 
 **End-to-end path**:
 1. `RuntimeSession` discovery identifies active managed Codex transcripts.
