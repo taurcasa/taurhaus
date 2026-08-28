@@ -289,6 +289,44 @@ async function withPaneEnvironment(work) {
   }
 }
 
+/** Visible contents of a pane, for logging and for blocking-prompt detection. */
+function capturePane(paneId) {
+  const captured = tmuxQuietly(['capture-pane', '-p', '-J', '-t', paneId])
+  return captured.ok ? captured.output : ''
+}
+
+/**
+ * Codex refuses to take a turn while an interactive first-run prompt is up —
+ * directory trust, a deprecated-model migration, and whatever it adds next.
+ * A member parked on one looks exactly like a member that is merely slow, so
+ * the lane names it instead of spending its budget waiting.
+ */
+const BLOCKING_PANE_PROMPTS = [/Do you trust the contents/i, /will be deprecated/i, /press enter to (continue|confirm)/i]
+
+function blockingPrompt(paneContents) {
+  return BLOCKING_PANE_PROMPTS.some((pattern) => pattern.test(paneContents))
+}
+
+/**
+ * The newest Codex model the backend catalog still offers.
+ *
+ * The bundled `codex-developer` role pins a model Codex has since deprecated,
+ * and a member launched on it stops at a migration prompt before its first
+ * turn. The catalog is ordered newest first and marks what is retired.
+ */
+async function pickCodexModel() {
+  const settings = await invokeTauriOrThrow('get_settings')
+  const contract = settings?.terminalContract ?? settings?.terminal_contract ?? {}
+  const catalog = contract?.modelCatalog ?? contract?.model_catalog ?? {}
+  const entries = Array.isArray(catalog?.codex) ? catalog.codex : []
+  const usable = entries.find((entry) => entry?.deprecated !== true)
+  if (!usable) throw new Error('The backend model catalog offers no supported Codex model')
+  return {
+    model: usable.id,
+    reasoningEffort: usable.defaultEffort ?? usable.default_effort ?? null,
+  }
+}
+
 /** A Claude lead role and a Codex agent role from the template catalog. */
 async function pickRoleIds() {
   const roles = await invokeTauriOrThrow('templates_list_roles_full')
@@ -316,6 +354,8 @@ async function initializeManagedCodexTeam() {
   const teamName = `e2e-codex-compaction-${uniqueSuffix}`
   const memberName = 'codex-compaction-agent'
   const { leadRoleId, agentRoleId } = await pickRoleIds()
+  const codexModel = await pickCodexModel()
+  console.log(`[e2e] managed Codex member will run ${codexModel.model} (effort ${codexModel.reasoningEffort ?? 'default'})`)
 
   let paneId = null
   let sessionId = null
@@ -337,7 +377,8 @@ async function initializeManagedCodexTeam() {
           {
             name: memberName,
             cliTool: 'codex',
-            model: '',
+            model: codexModel.model,
+            reasoningEffort: codexModel.reasoningEffort,
             projectId: TAURHAUS_PROJECT_PATH,
             roleId: agentRoleId,
           },
@@ -370,6 +411,12 @@ async function initializeManagedCodexTeam() {
       console.log(`[e2e] ${memberName} pane ${paneId} has no captured session id yet; the bridge will match on cwd`)
     })
   })
+
+  const paneContents = capturePane(paneId)
+  console.log(`[e2e] ${memberName} pane ${paneId} on launch:\n${paneContents.trimEnd()}`)
+  if (blockingPrompt(paneContents)) {
+    throw new Error(`Codex is parked on an interactive prompt and will not take a turn:\n${paneContents.trimEnd()}`)
+  }
 
   writeOperationalSnapshot(teamName, memberName, TAURHAUS_PROJECT_PATH)
 
