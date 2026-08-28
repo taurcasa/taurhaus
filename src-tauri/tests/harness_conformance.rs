@@ -268,7 +268,7 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
             (CliTool::Claude, Some("CLAUDE_CONFIG_DIR")),
             (CliTool::Codex, Some("CODEX_HOME")),
             (CliTool::Agy, None),
-            (CliTool::Grok, None),
+            (CliTool::Grok, Some("GROK_HOME")),
         ]
     );
 
@@ -290,18 +290,25 @@ fn account_providers_are_registered_behind_the_capability_slice() {
     assert!(spec(CliTool::Claude).account_provider().is_some());
     assert!(spec(CliTool::Codex).account_provider().is_some());
     assert!(spec(CliTool::Agy).account_provider().is_some());
+    assert!(spec(CliTool::Grok).account_provider().is_some());
 }
 
 #[test]
-fn grok_stays_on_the_declared_floor_until_its_slices_land() {
+fn grok_declares_the_slices_it_does_not_have() {
     // Regression: commit bfecae9 fixed the harness set at three CLIs, so a
     // fourth could only arrive by branching outside the capability slices. Its
     // registry entry must be honest about which slices it has not landed yet.
     let grok = spec(CliTool::Grok);
     assert!(grok.transcript_parser().is_none());
     assert!(grok.compaction_signal_source().is_some());
-    assert!(grok.account_provider().is_none());
-    assert!(grok.usage_provider().is_none());
+    assert!(
+        grok.usage_provider().is_none(),
+        "grok publishes no subscription quota endpoint"
+    );
+    assert_eq!(
+        grok.capabilities.usage_note,
+        Some("Grok shows credits in its own /usage")
+    );
 }
 
 fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
@@ -490,7 +497,10 @@ fn claude_only_capabilities_are_declared_independently() {
         .filter(|entry| entry.capabilities.account_selection)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(account_tools, vec![CliTool::Claude, CliTool::Codex]);
+    assert_eq!(
+        account_tools,
+        vec![CliTool::Claude, CliTool::Codex, CliTool::Grok]
+    );
 
     let team_namespace_tools = all()
         .iter()

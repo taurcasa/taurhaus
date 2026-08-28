@@ -197,6 +197,28 @@ describe('Settings component', () => {
     expect(refreshAccountsUsage).toHaveBeenCalledWith('codex')
   })
 
+  it('shows Grok accounts without a meter and says where usage lives', async () => {
+    // Regression: commit c1005ec left grok without an account provider, and a
+    // harness with no usage endpoint must explain the missing meter rather than
+    // leave an empty gap where every other tool shows one.
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(
+        detected(
+          tool === 'grok'
+            ? TWO_ACCOUNTS.map((account, index) => ({ ...account, id: `grok-${index + 1}` }))
+            : []
+        )
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(screen.getByTestId('settings-accounts-grok')).toBeInTheDocument())
+    expect(screen.getByTestId('usage-note-grok')).toHaveTextContent(
+      'Grok shows credits in its own /usage'
+    )
+  })
+
   it('hides the accounts card when no tool has multiple accounts', async () => {
     // Regression: c11770e exposed account controls to single-account users,
     // contradicting the chooser and overview visibility rule.

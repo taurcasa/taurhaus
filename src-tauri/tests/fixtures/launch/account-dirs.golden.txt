@@ -1,2 +1,3 @@
 claude=CLAUDE_CONFIG_DIR='/accounts/claude' claude --dangerously-skip-permissions
 codex=CODEX_HOME='/accounts/codex' codex --yolo
+grok=GROK_HOME='/accounts/grok' grok --always-approve

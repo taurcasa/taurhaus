@@ -473,8 +473,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 transcript_compaction_signals: false,
                 catalog: true,
                 session_root: SessionRoot::ToolHome,
-                account_selector: None,
-                account_selection: false,
+                account_selector: Some("GROK_HOME"),
+                account_selection: true,
                 team_config_namespace: false,
                 usage: false,
                 usage_note: Some("Grok shows credits in its own /usage"),
@@ -756,12 +756,14 @@ impl CliToolSpec {
             crate::session_scanner::accounts::codex::CodexAccountProvider;
         static AGY: crate::session_scanner::accounts::agy::AgyAccountProvider =
             crate::session_scanner::accounts::agy::AgyAccountProvider;
+        static GROK: crate::session_scanner::accounts::grok::GrokAccountProvider =
+            crate::session_scanner::accounts::grok::GrokAccountProvider;
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => Some(&AGY),
-            CliTool::Grok => None,
+            CliTool::Grok => Some(&GROK),
             CliTool::Unknown => None,
         }
     }

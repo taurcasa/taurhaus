@@ -6,6 +6,7 @@
 pub mod agy;
 pub mod claude;
 pub mod codex;
+pub mod grok;
 pub mod legacy_statusline;
 
 use std::collections::{HashMap, HashSet};

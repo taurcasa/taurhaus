@@ -771,6 +771,11 @@
                       </label>
                     {/each}
                   </div>
+                  {#if !tool.capabilities.usage && tool.capabilities.usageNote}
+                    <p class="mt-2 text-[11px] {textTertiary}" data-testid="usage-note-{tool.id}">
+                      {tool.capabilities.usageNote}
+                    </p>
+                  {/if}
                   <p class="mt-2 text-[11px] {textTertiary}" data-testid="effective-default-{tool.id}">
                     Effective default: {effective.account ? accountLabel(effective.account) : 'none'} — {effective.origin}
                   </p>
