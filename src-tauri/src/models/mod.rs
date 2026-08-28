@@ -490,7 +490,7 @@ pub struct ModelCatalogEntry {
 pub struct ModelCatalog {
     pub claude: Vec<ModelCatalogEntry>,
     pub codex: Vec<ModelCatalogEntry>,
-    pub gemini: Vec<ModelCatalogEntry>,
+    pub agy: Vec<ModelCatalogEntry>,
 }
 
 static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
@@ -565,20 +565,127 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             Some("gpt-5.6-luna"),
         ),
     ],
-    gemini: vec![model_catalog_entry(
-        "gemini-3.1-pro",
-        "Gemini 3.1 Pro",
-        &[],
-        None,
-        false,
-        None,
-    )],
+    agy: vec![
+        model_catalog_entry(
+            "gemini-3.7-flash-high",
+            "Gemini 3.7 Flash (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.7-flash-medium",
+            "Gemini 3.7 Flash (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.7-flash-low",
+            "Gemini 3.7 Flash (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.6-flash-high",
+            "Gemini 3.6 Flash (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.6-flash-medium",
+            "Gemini 3.6 Flash (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.6-flash-low",
+            "Gemini 3.6 Flash (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.5-flash-high",
+            "Gemini 3.5 Flash (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.5-flash-medium",
+            "Gemini 3.5 Flash (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.5-flash-low",
+            "Gemini 3.5 Flash (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.1-pro-high",
+            "Gemini 3.1 Pro (High)",
+            AGY_EFFORTS,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gemini-3.1-pro-low",
+            "Gemini 3.1 Pro (Low)",
+            AGY_EFFORTS,
+            Some("low"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "claude-sonnet-4-6",
+            "Claude Sonnet 4.6 (Thinking)",
+            AGY_EFFORTS,
+            None,
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "claude-opus-4-6-thinking",
+            "Claude Opus 4.6 (Thinking)",
+            AGY_EFFORTS,
+            None,
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "gpt-oss-120b-medium",
+            "GPT-OSS 120B (Medium)",
+            AGY_EFFORTS,
+            Some("medium"),
+            false,
+            None,
+        ),
+    ],
 });
 
 const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const CODEX_EFFORTS_WITH_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
 const CODEX_EFFORTS_WITH_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const CODEX_EFFORTS_THROUGH_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
+const AGY_EFFORTS: &[&str] = &["low", "medium", "high"];
 
 fn model_catalog_entry(
     id: &str,
@@ -615,7 +722,7 @@ impl ModelCatalog {
         match tool {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
-            CliTool::Agy => &MODEL_CATALOG.gemini,
+            CliTool::Agy => &MODEL_CATALOG.agy,
         }
     }
 
@@ -656,7 +763,7 @@ impl ModelCatalog {
                 Some(entry) => entry.efforts.iter().any(|allowed| allowed == effort),
                 None => CODEX_EFFORTS_WITH_ULTRA.contains(&effort),
             },
-            CliTool::Agy => false,
+            CliTool::Agy => AGY_EFFORTS.contains(&effort),
         }
     }
 }
@@ -1583,10 +1690,29 @@ mod tests {
         );
         assert_eq!(
             ModelCatalog::default_for(CliTool::Agy)
-                .expect("Gemini catalog")
+                .expect("Antigravity catalog")
                 .id,
-            "gemini-3.1-pro"
+            "gemini-3.7-flash-high"
         );
+    }
+
+    #[test]
+    fn agy_catalog_matches_the_verified_1_1_22_models() {
+        // Regression: commit 5680a7a retained Gemini CLI's single stale model
+        // after Google's supported harness changed to Antigravity CLI 1.1.22.
+        assert_eq!(ModelCatalog::entries_for(CliTool::Agy).len(), 14);
+        assert!(ModelCatalog::entry_for(CliTool::Agy, "claude-opus-4-6-thinking").is_some());
+        assert!(ModelCatalog::entry_for(CliTool::Agy, "gpt-oss-120b-medium").is_some());
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Agy,
+            Some("gemini-3.7-flash-high"),
+            "medium"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Agy,
+            Some("gemini-3.7-flash-high"),
+            "xhigh"
+        ));
     }
 
     #[test]
@@ -1634,7 +1760,7 @@ mod tests {
             Some("gpt-5.5"),
             "max"
         ));
-        assert!(!ModelCatalog::supports_effort(
+        assert!(ModelCatalog::supports_effort(
             CliTool::Agy,
             Some("gemini-3.1-pro"),
             "high"

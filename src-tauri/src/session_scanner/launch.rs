@@ -358,13 +358,13 @@ impl LaunchSpec<'_> {
                 }
             }
             CliTool::Agy => {
-                if let Some(effort) = requested_effort {
-                    notes.push(LaunchNote::EffortIgnored {
-                        found: effort.to_string(),
-                        reason: EffortIgnoreReason::Invalid,
-                    });
+                if let Some(auto_approve_flag) = capabilities.auto_approve_flag {
+                    if !command_contains_flag(self.base, auto_approve_flag) {
+                        command.push(' ');
+                        command.push_str(auto_approve_flag);
+                    }
                 }
-                // unverified (S12): Gemini is not installed on the audit host.
+
                 if let Some(model) = requested_model {
                     if let Some(model_flag) = capabilities.model_flag {
                         if let Some(found) = first_present_flag(self.base, &[model_flag, "--model"])
@@ -379,6 +379,29 @@ impl LaunchSpec<'_> {
                         notes.push(LaunchNote::CapabilityMissing {
                             capability: LaunchCapability::Model,
                             found: model.to_string(),
+                        });
+                    }
+                }
+
+                if let Some(effort) = requested_effort {
+                    if !ModelCatalog::supports_effort(self.tool, requested_model, effort) {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
+                        if command_contains_flag(self.base, flag) {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: flag.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, effort);
+                        }
+                    } else {
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Effort,
+                            found: effort.to_string(),
                         });
                     }
                 }
@@ -1133,7 +1156,9 @@ mod tests {
     }
 
     #[test]
-    fn agy_render_adds_model_before_effort_support_lands() {
+    fn agy_render_adds_model_effort_and_auto_approve() {
+        // Regression: commit 4cd067a registered agy with its verified flags but
+        // left the old Gemini renderer dropping effort and auto-approval.
         let rendered = LaunchSpec {
             tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
@@ -1147,14 +1172,31 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, "agy --model 'gemini-3.1-pro'");
-        assert!(matches!(
-            rendered.notes.as_slice(),
-            [LaunchNote::EffortIgnored {
-                found,
-                reason: EffortIgnoreReason::Invalid,
-            }] if found == "high"
-        ));
+        assert_eq!(
+            rendered.command,
+            "agy --dangerously-skip-permissions --model 'gemini-3.1-pro' --effort 'high'"
+        );
+        assert!(rendered.notes.is_empty());
+    }
+
+    #[test]
+    fn agy_render_rejects_unknown_effort() {
+        // Regression: commit 4cd067a had no agy effort renderer, so every
+        // requested value was discarded without exercising the vocabulary.
+        let rendered = LaunchSpec {
+            tool: CliTool::Agy,
+            mode: LaunchMode::Fresh,
+            base: "agy",
+            model: model_spec("gemini-3.7-flash-high", Some("xhigh")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.notes[0].event_name(), "launch.effort.invalid");
     }
 
     // Regression: 791f6be checked only the third harness's short model flag, so a
@@ -1174,7 +1216,10 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, "agy --model gemini-3.1-pro-low");
+        assert_eq!(
+            rendered.command,
+            "agy --model gemini-3.1-pro-low --dangerously-skip-permissions"
+        );
         assert_eq!(
             rendered.notes,
             vec![LaunchNote::ModelIgnored {

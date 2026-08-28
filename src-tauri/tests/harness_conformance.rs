@@ -51,8 +51,8 @@ const LAUNCH_GOLDENS: &[LaunchGolden] = &[
     },
     LaunchGolden {
         tool: CliTool::Agy,
-        model: "gemini-3.1-pro",
-        effort: None,
+        model: "gemini-3.7-flash-high",
+        effort: Some("high"),
         bypass_hook_trust: false,
         expected: include_str!("fixtures/launch/agy.golden.txt"),
     },
@@ -456,6 +456,7 @@ fn absent_catalog_and_launch_flags_use_the_declared_floor() {
     capabilities.catalog = false;
     capabilities.model_flag = None;
     capabilities.effort_flag = None;
+    capabilities.auto_approve_flag = None;
     let rendered = LaunchSpec {
         tool: CliTool::Agy,
         mode: LaunchMode::Fresh,

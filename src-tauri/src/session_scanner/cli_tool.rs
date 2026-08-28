@@ -155,6 +155,8 @@ pub struct CliToolSpec {
     /// Presence directory next to the transcript directory, when a released
     /// flock is the harness's clean-stop confirmation.
     pub stop_presence_dir: Option<&'static str>,
+    /// Add the harness-specific exit and mesh inbox hints to onboarding text.
+    pub onboarding_exit_hint: bool,
     pub process_activity_signal: ProcessActivitySignal,
     pub pane_binding: bool,
     pub display_name: &'static str,
@@ -215,6 +217,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
+            onboarding_exit_hint: false,
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Claude Code",
@@ -271,6 +274,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             stop_strategy: StopStrategy::Interrupt,
             stop_presence_dir: None,
+            onboarding_exit_hint: false,
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: true,
             display_name: "Codex CLI",
@@ -350,6 +354,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: Some("presence"),
+            onboarding_exit_hint: true,
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Antigravity CLI",
