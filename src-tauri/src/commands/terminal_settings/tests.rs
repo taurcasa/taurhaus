@@ -150,14 +150,6 @@ fn codex_notify_input_preserves_user_config_toml_notify() {
     assert!(commands.codex_notify_executable.is_none());
 }
 
-#[test]
-fn daemon_compaction_does_not_guess_mode_from_an_app_database_path() {
-    // Regression: 6fe0aa3 made the WSL daemon guess the desktop app's SQLite path
-    // and fail open to hooks, disabling transcript fallback on the shipping layout.
-    let daemon_source = include_str!("../../daemon/compaction.rs");
-    assert!(!daemon_source.contains("persisted_codex_compaction_mode"));
-}
-
 fn write_grok_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
     let dir = teams_dir.join(team_name);
     std::fs::create_dir_all(&dir).expect("team dir");

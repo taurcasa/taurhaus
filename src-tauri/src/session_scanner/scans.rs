@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use super::cache::{
-    finalize_display_scan, publish_compaction_runtime_sessions, scan_inputs_with_cache,
-    ScanCompletionMetrics, ScanInputs,
+    finalize_display_scan, scan_inputs_with_cache, update_runtime_sessions, ScanCompletionMetrics,
+    ScanInputs,
 };
 use super::classification::{
     classify_display_runtime_sessions_with, deduplicate_runtime_sessions,
@@ -258,7 +258,7 @@ pub fn scan_sessions_for_runtime() -> (Vec<RuntimeSession>, bool) {
         .collect();
 
     deduplicate_runtime_sessions(&mut sessions);
-    publish_compaction_runtime_sessions(&sessions);
+    update_runtime_sessions(&sessions);
     remember_runtime_snapshot(&sessions);
     (sessions, false)
 }
@@ -399,8 +399,7 @@ mod tests {
         set_binding_store_path_for_test, CODEX_RECONCILE_CALLS, CODEX_TEST_LOCK,
     };
     use crate::session_scanner::{
-        clear_scan_cache, set_display_scan_compaction_hook, state_tracker_snapshot,
-        StateChangeCapture, SCANNER_TEST_LOCK,
+        clear_scan_cache, state_tracker_snapshot, StateChangeCapture, SCANNER_TEST_LOCK,
     };
     use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
     use std::sync::MutexGuard;
@@ -691,7 +690,6 @@ mod tests {
     const INVENTORY_FILTERED: u8 = 3;
     static E2E_INVENTORY_MODE: AtomicU8 = AtomicU8::new(INVENTORY_HEALTHY);
     static E2E_IDLE_CALLS: AtomicUsize = AtomicUsize::new(0);
-    static E2E_COMPACTION_PUBLISHES: AtomicUsize = AtomicUsize::new(0);
     const E2E_CLAUDE_PID: u32 = 910_001;
     const E2E_CODEX_PID: u32 = 910_002;
     const E2E_PROJECT: &str = "/home/user/e2e-project";
@@ -739,12 +737,8 @@ mod tests {
         }
     }
 
-    fn e2e_compaction_publish(_sessions: &[RuntimeSession]) {
-        E2E_COMPACTION_PUBLISHES.fetch_add(1, Ordering::SeqCst);
-    }
-
     /// Holds the scanner/Codex locks, redirects the Codex binding store to a
-    /// temp dir and installs the inventory/idle/compaction seams; restores
+    /// temp dir and installs the inventory/idle seams; restores
     /// everything on drop (also on panic).
     struct E2eScanner {
         _scanner: MutexGuard<'static, ()>,
@@ -766,10 +760,8 @@ mod tests {
             clear_last_good_snapshot();
             E2E_INVENTORY_MODE.store(INVENTORY_HEALTHY, Ordering::SeqCst);
             E2E_IDLE_CALLS.store(0, Ordering::SeqCst);
-            E2E_COMPACTION_PUBLISHES.store(0, Ordering::SeqCst);
             process::set_inventory_provider_override(Some(e2e_inventory));
             set_runtime_idle_detector_override(Some(e2e_idle));
-            set_display_scan_compaction_hook(Some(e2e_compaction_publish));
             Self {
                 _scanner: scanner,
                 _codex: codex,
@@ -785,7 +777,6 @@ mod tests {
             let _ = scan_sessions_for_authoritative_snapshot();
             process::set_inventory_provider_override(None);
             set_runtime_idle_detector_override(None);
-            set_display_scan_compaction_hook(None);
             set_binding_store_path_for_test(None);
             clear_scan_cache();
             clear_last_good_snapshot();
@@ -824,7 +815,6 @@ mod tests {
         assert_eq!(idle_calls, 2);
         let reconcile_calls = CODEX_RECONCILE_CALLS.load(Ordering::SeqCst);
         assert!(reconcile_calls >= 1);
-        assert_eq!(E2E_COMPACTION_PUBLISHES.load(Ordering::SeqCst), 1);
         let trackers = e2e_trackers();
         assert_eq!(
             trackers,
@@ -856,11 +846,6 @@ mod tests {
             "degraded scan must not reconcile Codex bindings"
         );
         assert_eq!(
-            E2E_COMPACTION_PUBLISHES.load(Ordering::SeqCst),
-            1,
-            "degraded scan must not publish compaction sessions"
-        );
-        assert_eq!(
             e2e_trackers(),
             trackers,
             "degraded scan must not move hysteresis trackers"
@@ -872,7 +857,6 @@ mod tests {
         assert!(!degraded);
         assert_eq!(recovered, display);
         assert_eq!(E2E_IDLE_CALLS.load(Ordering::SeqCst), idle_calls + 2);
-        assert_eq!(E2E_COMPACTION_PUBLISHES.load(Ordering::SeqCst), 2);
     }
 
     // Regression: same gap on the runtime path — `scan_sessions_for_runtime`

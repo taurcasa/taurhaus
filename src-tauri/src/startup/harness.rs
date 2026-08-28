@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use super::compaction::{configured_compaction_owner, CompactionOwner};
 use super::orchestration::daemon_watch_bootstrap_enabled;
 use super::telemetry;
 use super::SetupContext;
@@ -15,14 +14,12 @@ pub(super) struct StartupOrchestrationHooks<
     SpawnBootstrap,
     StartRuntimeMonitors,
     InitializeWatchers,
-    InitializeCompaction,
     InitializeSearch,
     SpawnBackgroundTasks,
 > {
     pub(super) spawn_background_bootstrap: SpawnBootstrap,
     pub(super) start_runtime_monitors: StartRuntimeMonitors,
     pub(super) initialize_watchers: InitializeWatchers,
-    pub(super) initialize_compaction: InitializeCompaction,
     pub(super) initialize_search: InitializeSearch,
     pub(super) spawn_background_tasks: SpawnBackgroundTasks,
 }
@@ -45,7 +42,6 @@ pub(super) fn run_startup_orchestration_with<
     SpawnBootstrap,
     StartRuntimeMonitors,
     InitializeWatchers,
-    InitializeCompaction,
     InitializeSearch,
     SpawnBackgroundTasks,
 >(
@@ -54,7 +50,6 @@ pub(super) fn run_startup_orchestration_with<
         SpawnBootstrap,
         StartRuntimeMonitors,
         InitializeWatchers,
-        InitializeCompaction,
         InitializeSearch,
         SpawnBackgroundTasks,
     >,
@@ -63,7 +58,6 @@ where
     SpawnBootstrap: FnOnce(),
     StartRuntimeMonitors: FnOnce(),
     InitializeWatchers: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
-    InitializeCompaction: FnOnce() -> Result<(), Box<dyn std::error::Error>>,
     InitializeSearch: FnOnce() -> Result<u64, Box<dyn std::error::Error>>,
     SpawnBackgroundTasks: FnOnce(),
 {
@@ -71,7 +65,6 @@ where
         spawn_background_bootstrap,
         start_runtime_monitors,
         initialize_watchers,
-        initialize_compaction,
         initialize_search,
         spawn_background_tasks,
     } = hooks;
@@ -96,19 +89,6 @@ where
         true,
         daemon_watch_bootstrap_enabled(context),
     );
-
-    if configured_compaction_owner(
-        context.daemon_addr.is_some(),
-        context.daemon_connected_at_startup,
-    ) == CompactionOwner::App
-    {
-        if let Err(error) = initialize_compaction() {
-            tracing::warn!(
-                error = %error,
-                "app-owned compaction initialization failed; startup continues"
-            );
-        }
-    }
 
     let search_started_at = Instant::now();
     let search_doc_count = match initialize_search() {
@@ -167,10 +147,6 @@ mod tests {
                     calls.borrow_mut().push("watchers");
                     Ok(())
                 },
-                initialize_compaction: || {
-                    calls.borrow_mut().push("compaction");
-                    Ok(())
-                },
                 initialize_search: || {
                     calls.borrow_mut().push("search");
                     Ok(7)
@@ -185,57 +161,6 @@ mod tests {
             vec!["bootstrap", "monitors", "watchers", "search", "tasks"]
         );
         assert!(report.daemon_watch_bootstrap);
-        assert_eq!(report.search_doc_count, 7);
-    }
-
-    #[test]
-    fn run_startup_orchestration_with_treats_app_compaction_failure_as_best_effort() {
-        // Regression: 27770fbd put compaction initialization on the app startup
-        // critical path even when the app was the configured owner.
-        let calls = RefCell::new(Vec::new());
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let context = SetupContext {
-            data_dir: temp_dir.path().to_path_buf(),
-            log_path: temp_dir.path().join("taurhaus.log.jsonl"),
-            db_path: temp_dir.path().join("taurhaus.db"),
-            wsl_distro: None,
-            daemon_addr: None,
-            daemon_connected_at_startup: false,
-        };
-
-        let report = run_startup_orchestration_with(
-            &context,
-            StartupOrchestrationHooks {
-                spawn_background_bootstrap: || calls.borrow_mut().push("bootstrap"),
-                start_runtime_monitors: || calls.borrow_mut().push("monitors"),
-                initialize_watchers: || {
-                    calls.borrow_mut().push("watchers");
-                    Ok(())
-                },
-                initialize_compaction: || {
-                    calls.borrow_mut().push("compaction");
-                    Err(io::Error::other("compaction boom").into())
-                },
-                initialize_search: || {
-                    calls.borrow_mut().push("search");
-                    Ok(7)
-                },
-                spawn_background_tasks: || calls.borrow_mut().push("tasks"),
-            },
-        )
-        .expect("compaction failure should not abort app startup");
-
-        assert_eq!(
-            calls.into_inner(),
-            vec![
-                "bootstrap",
-                "monitors",
-                "watchers",
-                "compaction",
-                "search",
-                "tasks"
-            ]
-        );
         assert_eq!(report.search_doc_count, 7);
     }
 
@@ -260,10 +185,6 @@ mod tests {
                 initialize_watchers: || {
                     calls.borrow_mut().push("watchers");
                     Err(io::Error::other("watchers boom").into())
-                },
-                initialize_compaction: || {
-                    calls.borrow_mut().push("compaction");
-                    Ok(())
                 },
                 initialize_search: || {
                     calls.borrow_mut().push("search");
@@ -301,10 +222,6 @@ mod tests {
                 start_runtime_monitors: || calls.borrow_mut().push("monitors"),
                 initialize_watchers: || {
                     calls.borrow_mut().push("watchers");
-                    Ok(())
-                },
-                initialize_compaction: || {
-                    calls.borrow_mut().push("compaction");
                     Ok(())
                 },
                 initialize_search: || {

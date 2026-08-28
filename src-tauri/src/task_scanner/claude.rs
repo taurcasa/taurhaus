@@ -34,7 +34,7 @@ pub trait TranscriptParser: Send + Sync {
         &self,
         _line: &str,
         _jsonl_offset: u64,
-    ) -> Option<crate::session_scanner::compaction_extractor::ParsedSignalBoundary> {
+    ) -> Option<crate::session_scanner::transcript_boundary::ParsedSignalBoundary> {
         None
     }
 }

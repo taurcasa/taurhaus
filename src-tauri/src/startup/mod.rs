@@ -2,8 +2,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 pub(crate) mod bootstrap;
-#[cfg(feature = "mesh-bridged-backend")]
-pub(crate) mod compaction;
 pub(crate) mod daemon;
 #[cfg(test)]
 mod harness;

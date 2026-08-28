@@ -484,7 +484,7 @@ pub fn handle_compact_hook(
         payload
             .transcript_path
             .as_deref()
-            .and_then(crate::session_scanner::compaction_extractor::latest_compaction_timestamp)
+            .and_then(crate::session_scanner::transcript_boundary::latest_compaction_timestamp)
             .unwrap_or_else(Utc::now)
     } else {
         Utc::now()

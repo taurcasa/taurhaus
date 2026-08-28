@@ -250,7 +250,6 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/daemon/agy_hooks.rs",
         "src/models/mod.rs",
         "src/session_scanner/cli_tool.rs",
-        "src/session_scanner/compaction_extractor.rs",
         "src/session_scanner/accounts/claude.rs",
         "src/session_scanner/accounts/codex.rs",
         "src/session_scanner/accounts/agy.rs",
@@ -259,11 +258,12 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/session_scanner/idle/codex.rs",
         "src/session_scanner/idle/agy.rs",
         "src/session_scanner/launch.rs",
+        "src/session_scanner/transcript_boundary.rs",
         "src/task_scanner/claude.rs",
         "src/task_scanner/codex.rs",
         "src/templates/adapters.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 90;
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 82;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
@@ -300,6 +300,37 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         allowed_count, EXPECTED_RUNTIME_LITERAL_COUNT,
         "update consumers instead of growing the pinned CliTool literal count"
     );
+}
+
+#[test]
+fn transcript_compaction_pipeline_stays_retired() {
+    // Regression: commit 27770fbd introduced the Codex transcript extractor,
+    // watcher, and processor. Native compact hooks now own delivery, so none
+    // of those alternate-owner entry points may return.
+    for relative in [
+        "src/session_scanner/compaction_extractor.rs",
+        "src/session_scanner/compaction_watcher.rs",
+        "src/coordination/compaction_processor.rs",
+        "src/coordination/stores/compaction_signal.rs",
+        "src/startup/compaction.rs",
+        "src/daemon/compaction.rs",
+    ] {
+        assert!(
+            !crate_root().join(relative).exists(),
+            "retired transcript pipeline file returned: {relative}"
+        );
+    }
+
+    for relative in [
+        "src/session_scanner/mod.rs",
+        "src/coordination/mod.rs",
+        "src/daemon/mod.rs",
+    ] {
+        let source = read_source(relative);
+        assert!(!source.contains("compaction_extractor"), "{relative}");
+        assert!(!source.contains("compaction_watcher"), "{relative}");
+        assert!(!source.contains("compaction_processor"), "{relative}");
+    }
 }
 
 #[test]
