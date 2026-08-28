@@ -347,7 +347,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 account_selector: None,
                 account_selection: false,
                 team_config_namespace: false,
-                usage: false,
+                usage: true,
                 notify_sink: false,
                 hook_trust: false,
                 managed_home: false,
@@ -549,11 +549,13 @@ impl CliToolSpec {
             crate::session_scanner::accounts::claude::ClaudeAccountProvider;
         static CODEX: crate::session_scanner::accounts::codex::CodexAccountProvider =
             crate::session_scanner::accounts::codex::CodexAccountProvider;
+        static AGY: crate::session_scanner::accounts::agy::AgyAccountProvider =
+            crate::session_scanner::accounts::agy::AgyAccountProvider;
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
-            CliTool::Agy => None,
+            CliTool::Agy => Some(&AGY),
         }
     }
 
@@ -565,11 +567,13 @@ impl CliToolSpec {
             crate::session_scanner::accounts::claude::ClaudeUsageProvider;
         static CODEX: crate::session_scanner::accounts::codex::CodexUsageProvider =
             crate::session_scanner::accounts::codex::CodexUsageProvider;
+        static AGY: crate::session_scanner::accounts::agy::AgyUsageProvider =
+            crate::session_scanner::accounts::agy::AgyUsageProvider;
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
-            CliTool::Agy => None,
+            CliTool::Agy => Some(&AGY),
         }
     }
 

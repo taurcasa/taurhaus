@@ -115,7 +115,7 @@ export const FALLBACK_TOOLS = Object.freeze([
       accountSelector: null,
       accountSelection: false,
       teamConfigNamespace: false,
-      usage: false,
+      usage: true,
       notifySink: false,
       hookTrust: false,
       managedHome: false,

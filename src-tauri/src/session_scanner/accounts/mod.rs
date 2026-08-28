@@ -3,6 +3,7 @@
 //! Per-tool implementations live in sibling modules. Consumers use the
 //! registry-provided traits and these normalised wire types.
 
+pub mod agy;
 pub mod claude;
 pub mod codex;
 pub mod legacy_statusline;
@@ -1086,6 +1087,20 @@ pub struct HttpError {
     pub kind: HttpErrorKind,
 }
 
+/// Captured output from a command-backed provider request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandOutput {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Failure safe to expose across the provider boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandError {
+    pub timed_out: bool,
+}
+
 /// Injectable HTTP seam. Tests provide fakes and never call live endpoints.
 pub trait HttpClient: Sync {
     fn get(
@@ -1131,6 +1146,77 @@ impl HttpClient for ReqwestHttpClient {
     }
 }
 
+/// Injectable provider environment. Tests fake both transports and never run
+/// a real harness or call a live endpoint.
+pub trait ProviderEnv: Sync {
+    fn http(&self) -> &dyn HttpClient;
+
+    fn run_command(
+        &self,
+        argv: &[&str],
+        cwd: &Path,
+        timeout: Duration,
+        env: &[(&str, &str)],
+    ) -> Result<CommandOutput, CommandError>;
+}
+
+/// HTTP-only fakes remain valid environments for the existing providers.
+impl<T: HttpClient> ProviderEnv for T {
+    fn http(&self) -> &dyn HttpClient {
+        self
+    }
+
+    fn run_command(
+        &self,
+        _argv: &[&str],
+        _cwd: &Path,
+        _timeout: Duration,
+        _env: &[(&str, &str)],
+    ) -> Result<CommandOutput, CommandError> {
+        Err(CommandError { timed_out: false })
+    }
+}
+
+/// Production provider environment used only on the blocking usage thread.
+pub struct SystemProviderEnv;
+
+impl ProviderEnv for SystemProviderEnv {
+    fn http(&self) -> &dyn HttpClient {
+        static HTTP: ReqwestHttpClient = ReqwestHttpClient;
+        &HTTP
+    }
+
+    fn run_command(
+        &self,
+        argv: &[&str],
+        cwd: &Path,
+        timeout: Duration,
+        env: &[(&str, &str)],
+    ) -> Result<CommandOutput, CommandError> {
+        let Some((program, args)) = argv.split_first() else {
+            return Err(CommandError { timed_out: false });
+        };
+        let mut command = std::process::Command::new(program);
+        command
+            .args(args)
+            .current_dir(cwd)
+            .envs(env.iter().copied());
+        let output = crate::process_utils::run_command_with_timeout(
+            &mut command,
+            timeout,
+            "account usage provider",
+        )
+        .map_err(|error| CommandError {
+            timed_out: error.kind() == std::io::ErrorKind::TimedOut,
+        })?;
+        Ok(CommandOutput {
+            success: output.status.success(),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
+    }
+}
+
 /// Per-tool account detection and resume derivation.
 pub trait AccountProvider: Sync {
     fn default_dir(&self, home: &Path) -> PathBuf;
@@ -1142,7 +1228,7 @@ pub trait AccountProvider: Sync {
 /// Per-tool subscription-usage fetch and normalisation.
 pub trait UsageProvider: Sync {
     fn credential_path(&self, dir: &Path) -> Option<PathBuf>;
-    fn fetch(&self, dir: &Path, http: &dyn HttpClient) -> UsageSnapshot;
+    fn fetch(&self, dir: &Path, env: &dyn ProviderEnv) -> UsageSnapshot;
 }
 
 #[cfg(test)]

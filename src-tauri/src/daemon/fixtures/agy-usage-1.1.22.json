@@ -1,0 +1,66 @@
+{
+  "conversation_id": "",
+  "status": "SUCCESS",
+  "response": "Gemini Models\tWeekly Limit Remaining\t100%\t2026-09-03T23:11:28Z\nGemini Models\t5 Hour Limit Remaining\t99%\t2026-08-28T04:11:28Z\nClaude and GPT models\tWeekly Limit Remaining\t100%\t2026-09-03T23:11:28Z\nClaude and GPT models\t5 Hour Limit Remaining\t100%\t2026-08-28T04:11:28Z\n",
+  "duration_seconds": 0.021,
+  "num_turns": 0,
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "thinking_tokens": 0,
+    "cache_read_tokens": 0,
+    "total_tokens": 0
+  },
+  "command": {
+    "name": "usage",
+    "data": {
+      "description": "Within each group, models share a weekly limit and a 5-hour limit. Quota use is proportional to token cost.",
+      "groups": [
+        {
+          "name": "Gemini Models",
+          "description": "Models within this group: Gemini Flash, Gemini Pro",
+          "buckets": [
+            {
+              "id": "gemini-weekly",
+              "name": "Weekly Limit Remaining",
+              "window": "weekly",
+              "remaining_fraction": 0.9988006949424744,
+              "reset_time": "2026-09-03T23:11:28Z",
+              "description": "You have used some of your weekly limit, it will fully refresh in 6 days, 23 hours."
+            },
+            {
+              "id": "gemini-5h",
+              "name": "5 Hour Limit Remaining",
+              "window": "5h",
+              "remaining_fraction": 0.9928041100502014,
+              "reset_time": "2026-08-28T04:11:28Z",
+              "description": "You have used some of your 5-hour limit."
+            }
+          ]
+        },
+        {
+          "name": "Claude and GPT models",
+          "description": "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+          "buckets": [
+            {
+              "id": "3p-weekly",
+              "name": "Weekly Limit Remaining",
+              "window": "weekly",
+              "remaining_fraction": 1.0,
+              "reset_time": "2026-09-03T23:11:28Z",
+              "description": "Your weekly limit is fully available."
+            },
+            {
+              "id": "3p-5h",
+              "name": "5 Hour Limit Remaining",
+              "window": "5h",
+              "remaining_fraction": 1.0,
+              "reset_time": "2026-08-28T04:11:28Z",
+              "description": "Your 5-hour limit is fully available."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

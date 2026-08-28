@@ -16,7 +16,8 @@ use taurhaus_lib::coordination::stores::MeshInboxStore;
 use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::{CliCommandSettings, ModelCatalog};
 use taurhaus_lib::session_scanner::accounts::{
-    HttpClient, HttpError, HttpErrorKind, HttpResponse, UsageStatus,
+    CommandError, CommandOutput, HttpClient, HttpError, HttpErrorKind, HttpResponse, ProviderEnv,
+    UsageStatus,
 };
 use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
 use taurhaus_lib::session_scanner::idle::{IdleResult, SessionSource};
@@ -258,7 +259,7 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
             .filter(|entry| entry.capabilities.usage)
             .map(|entry| entry.tool)
             .collect::<Vec<_>>(),
-        vec![CliTool::Claude, CliTool::Codex]
+        vec![CliTool::Claude, CliTool::Codex, CliTool::Agy]
     );
 }
 
@@ -269,7 +270,7 @@ fn account_providers_are_registered_behind_the_capability_slice() {
     // whole pipeline instead of registering one account slice.
     assert!(spec(CliTool::Claude).account_provider().is_some());
     assert!(spec(CliTool::Codex).account_provider().is_some());
-    assert!(spec(CliTool::Agy).account_provider().is_none());
+    assert!(spec(CliTool::Agy).account_provider().is_some());
 }
 
 fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
@@ -290,12 +291,54 @@ fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
             )
             .expect("Codex usage fixture credentials");
         }
-        CliTool::Agy => unreachable!("Antigravity usage provider lands in step 4"),
+        CliTool::Agy => {
+            fs::create_dir_all(config_dir.join("antigravity-cli"))
+                .expect("Antigravity app-data fixture");
+            fs::write(
+                config_dir.join("google_accounts.json"),
+                r#"{"active":"fixture@example.com"}"#,
+            )
+            .expect("Antigravity account fixture");
+            fs::write(
+                config_dir.join("antigravity-cli/antigravity-oauth-token"),
+                "{}",
+            )
+            .expect("Antigravity credential fixture");
+        }
     }
 }
 
 struct ConformanceHttp {
     status: Option<u16>,
+}
+
+struct ConformanceAgyEnv {
+    http: ConformanceHttp,
+    status: Option<u16>,
+}
+
+impl ProviderEnv for ConformanceAgyEnv {
+    fn http(&self) -> &dyn HttpClient {
+        &self.http
+    }
+
+    fn run_command(
+        &self,
+        _argv: &[&str],
+        _cwd: &std::path::Path,
+        _timeout: std::time::Duration,
+        _env: &[(&str, &str)],
+    ) -> Result<CommandOutput, CommandError> {
+        match self.status {
+            None => Err(CommandError { timed_out: false }),
+            Some(401) => Ok(CommandOutput {
+                success: false,
+                stdout: String::new(),
+                stderr: "Please sign in".to_string(),
+            }),
+            Some(_) => unreachable!("conformance only exercises failure statuses"),
+        }
+    }
 }
 
 impl HttpClient for ConformanceHttp {
@@ -362,18 +405,34 @@ fn account_and_usage_provider_slices_obey_the_registry_contract() {
         };
         let config_dir = tempfile::tempdir().expect("usage fixture account dir");
         write_usage_credentials(entry.tool, config_dir.path());
+        let stale_http = ConformanceHttp { status: None };
+        let stale_agy = ConformanceAgyEnv {
+            http: ConformanceHttp { status: None },
+            status: None,
+        };
+        let stale_env: &dyn ProviderEnv = if entry.tool == CliTool::Agy {
+            &stale_agy
+        } else {
+            &stale_http
+        };
         assert_eq!(
-            usage
-                .fetch(config_dir.path(), &ConformanceHttp { status: None })
-                .status,
+            usage.fetch(config_dir.path(), stale_env).status,
             UsageStatus::Stale,
             "{} network failure status",
             entry.name
         );
+        let unauthorized_http = ConformanceHttp { status: Some(401) };
+        let unauthorized_agy = ConformanceAgyEnv {
+            http: ConformanceHttp { status: Some(401) },
+            status: Some(401),
+        };
+        let unauthorized_env: &dyn ProviderEnv = if entry.tool == CliTool::Agy {
+            &unauthorized_agy
+        } else {
+            &unauthorized_http
+        };
         assert_eq!(
-            usage
-                .fetch(config_dir.path(), &ConformanceHttp { status: Some(401) },)
-                .status,
+            usage.fetch(config_dir.path(), unauthorized_env).status,
             UsageStatus::Unauthorized,
             "{} rejected credential status",
             entry.name
@@ -412,7 +471,10 @@ fn claude_only_capabilities_are_declared_independently() {
         .filter(|entry| entry.capabilities.usage)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(usage_tools, vec![CliTool::Claude, CliTool::Codex]);
+    assert_eq!(
+        usage_tools,
+        vec![CliTool::Claude, CliTool::Codex, CliTool::Agy]
+    );
 }
 
 #[test]
