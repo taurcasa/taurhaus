@@ -133,7 +133,7 @@ function actionableFrom(findings, verdicts) {
 function trailers(family) {
   const author =
     family === 'codex'
-      ? 'Co-Authored-By: Codex (' + (CODEX_MODEL || 'gpt-5.6') + ') <noreply@openai.com>'
+      ? 'Co-Authored-By: Codex' + (CODEX_MODEL ? ' (' + CODEX_MODEL + ')' : '') + ' <noreply@openai.com>'
       : 'Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>'
   return 'Commit with these trailer lines:\n' + (A.sessionUrl ? author + '\nClaude-Session: ' + A.sessionUrl : author)
 }
@@ -326,7 +326,7 @@ const IMPL_SCHEMA = {
 
 const FINDINGS_SCHEMA = {
   type: 'object',
-  required: ['status', 'findings', 'verdict'],
+  required: ['status', 'findings', 'verdict', 'model_used'],
   properties: {
     status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
     error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
@@ -434,7 +434,7 @@ function reviewAgent(lens, round, prior) {
       task: reviewPrompt(lens, round, prior) + '\nRespond with JSON matching the provided schema only.',
       schema: FINDINGS_SCHEMA,
       timeout: 1700,
-      reviewer: 'codex gpt-5.6 ' + lens.key,
+      reviewer: CODEX_ID + ' ' + lens.key,
     }),
     call({ label: label, phase: groupPhase, schema: FINDINGS_SCHEMA })
   )

@@ -55,8 +55,9 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 Per script:
 
 - `feature-pr`: `maxRounds` (default 3).
-- `fix-round`: `findings` (required — the open findings from the run that stopped short), `startRound`
-  (default 2), `maxRounds` (default 2), `fixNotes`.
+- `fix-round`: `findings` (required — the open findings from the run that stopped short; every
+  severity but a nit is fixed, because a minor only reaches `remaining` when a reviewer demanded it),
+  `startRound` (default 2), `maxRounds` (default 2), `fixNotes`.
 - `research-sweep`: `question` (required), `researchers` (required — `[{family, prompt, label?, report?}]`),
   `outputs` (report directory, default `scratch`).
 - `docs-sweep`: `table` (drift table path), `groups` (file groups to sweep), `maxRounds` (default 3).
@@ -96,6 +97,9 @@ a completed ledger with no findings reads as an approval:
   run at all, fails the run — an optional command may still be skipped with its reason in `detail`.
 - **What stays open does not fail it.** Findings the loop could not close come back as `remaining` —
   that is what `fix-round` is for.
+- **A reviewer is named by the model that ran it.** The lane must report `model_used`, the reviewer
+  label carries `codexModel` (or "cli default" when none is pinned), and a commit trailer names a
+  Codex model only when the run pinned one. No script claims a model nobody requested.
 
 ## The model split
 

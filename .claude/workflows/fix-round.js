@@ -131,7 +131,7 @@ function actionableFrom(findings, verdicts) {
 function trailers(family) {
   const author =
     family === 'codex'
-      ? 'Co-Authored-By: Codex (' + (CODEX_MODEL || 'gpt-5.6') + ') <noreply@openai.com>'
+      ? 'Co-Authored-By: Codex' + (CODEX_MODEL ? ' (' + CODEX_MODEL + ')' : '') + ' <noreply@openai.com>'
       : 'Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>'
   return 'Commit with these trailer lines:\n' + (A.sessionUrl ? author + '\nClaude-Session: ' + A.sessionUrl : author)
 }
@@ -326,7 +326,7 @@ const IMPL_SCHEMA = {
 
 const FINDINGS_SCHEMA = {
   type: 'object',
-  required: ['status', 'findings', 'verdict'],
+  required: ['status', 'findings', 'verdict', 'model_used'],
   properties: {
     status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
     error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
@@ -417,13 +417,13 @@ function reviewAgent(round, prior) {
       task: reviewPrompt(round, prior) + '\nRespond with JSON matching the provided schema only.',
       schema: FINDINGS_SCHEMA,
       timeout: 1700,
-      reviewer: 'codex gpt-5.6 conformance',
+      reviewer: CODEX_ID + ' conformance',
     }),
     call({ label: label, phase: 'Fix', schema: FINDINGS_SCHEMA })
   )
 }
 
-function fixAgent(findings, minors, round) {
+function fixAgent(findings, nits, round) {
   const task = [
     COMMON,
     '',
@@ -433,7 +433,7 @@ function fixAgent(findings, minors, round) {
       round +
       '. Apply these confirmed findings — verify each against the code first and skip a wrong one with a stated reason. Every blocker and major gets a red-first regression test:',
     JSON.stringify(findings, null, 1),
-    'Take the minors too where they are trivial: ' + JSON.stringify(minors, null, 1),
+    'Take the nits too where they are trivial: ' + JSON.stringify(nits, null, 1),
     'Keep the change minimal and local to the files named — no new features, no architecture reshaping, no wire changes.' + (A.fixNotes ? ' ' + A.fixNotes : ''),
     'Re-run the gates.',
     trailers(IMPLEMENTER),
@@ -458,13 +458,17 @@ function fixAgent(findings, minors, round) {
 
 phase('Fix')
 let round = START_ROUND
-let actionable = OPEN.filter((f) => f.severity === 'blocker' || f.severity === 'major')
-let minors = OPEN.filter((f) => f.severity === 'minor')
+// Everything handed to this workflow is already an open finding another run could not close, so
+// every severity but a nit is actionable here: the other procedures emit a minor as `remaining`
+// whenever a reviewer returned fix_required, and filtering to blocker/major dropped it silently.
+let actionable = OPEN.filter((f) => f.severity !== 'nit')
+let nits = OPEN.filter((f) => f.severity === 'nit')
 const allFindings = OPEN.slice()
 const fixes = []
-log('Starting at round ' + round + ' with ' + actionable.length + ' actionable findings (max ' + MAX_ROUNDS + ' rounds)')
+log('Starting at round ' + round + ' with ' + actionable.length + ' actionable findings and ' + nits.length + ' nits (max ' + MAX_ROUNDS + ' rounds)')
+if (actionable.length === 0) log('Nothing to fix: every finding handed over is a nit — running the gate only')
 while (actionable.length > 0 && fixes.length < MAX_ROUNDS) {
-  const fixed = await fixAgent(actionable, minors, round)
+  const fixed = await fixAgent(actionable, nits, round)
   const fixProblem = laneProblem(fixed, 'the ' + IMPLEMENTER + ' fixer (round ' + round + ')')
   if (fixProblem) fail(fixProblem)
   fixes.push(fixed)

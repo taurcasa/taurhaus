@@ -128,7 +128,7 @@ function actionableFrom(findings, verdicts) {
 function trailers(family) {
   const author =
     family === 'codex'
-      ? 'Co-Authored-By: Codex (' + (CODEX_MODEL || 'gpt-5.6') + ') <noreply@openai.com>'
+      ? 'Co-Authored-By: Codex' + (CODEX_MODEL ? ' (' + CODEX_MODEL + ')' : '') + ' <noreply@openai.com>'
       : 'Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>'
   return 'Commit with these trailer lines:\n' + (A.sessionUrl ? author + '\nClaude-Session: ' + A.sessionUrl : author)
 }

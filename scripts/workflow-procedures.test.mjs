@@ -361,6 +361,63 @@ describe('workflow procedures — the review verdict', () => {
   })
 })
 
+describe('workflow procedures — attribution', () => {
+  // Regression: the wrapper was told to claim reviewer 'codex gpt-5.6' whatever args.codexModel
+  // pinned, so a Luna or Terra run filed findings under a model that never ran.
+  it('names the requested Codex model as the reviewer, never a hard-coded one', async () => {
+    for (const script of MUTATING) {
+      const { calls } = await run(script, argsFor(script, { codexModel: 'gpt-5.6-luna' }))
+      const prompts = calls.map((c) => c.prompt).join('\n')
+      expect(prompts, script).toContain('gpt-5.6-luna')
+      expect(prompts.match(/gpt-5\.6(?!-)/g), `${script} claims a model nobody pinned`).toBeNull()
+    }
+  })
+
+  it('claims no Codex model at all when none is pinned', async () => {
+    for (const script of MUTATING) {
+      const { calls } = await run(script, argsFor(script))
+      const prompts = calls.map((c) => c.prompt).join('\n')
+      expect(prompts.match(/gpt-5\.6/g), `${script} invents a Codex model`).toBeNull()
+    }
+  })
+
+  it('requires every review lane to report the model that ran it', async () => {
+    for (const script of MUTATING) {
+      const { calls } = await run(script, argsFor(script))
+      const review = calls.find((c) => c.label.startsWith('review:') || c.label.startsWith('verify:'))
+      expect(review.opts.schema.required, script).toContain('model_used')
+    }
+  })
+})
+
+describe('fix-round — the handover', () => {
+  const minor = { title: 'weak test', severity: 'minor', file: 'a.js:1', evidence: 'e', fix: 'f' }
+
+  // Regression: only blocker/major findings were actionable, so a minor-only handover (which the
+  // other procedures do emit as `remaining` when a reviewer returns fix_required) skipped every fix
+  // and re-review and returned remaining: [] — the finding vanished.
+  it('fixes an open minor handed over from a run that stopped short', async () => {
+    const { state } = await run('fix-round.js', { ...BASE_ARGS, findings: [minor] })
+    expect(state.counts.work, 'the fixer must run').toBe(1)
+    expect(state.counts.review, 'the re-review must run').toBe(1)
+  })
+
+  it('carries an unclosed minor back in remaining', async () => {
+    const { result } = await run(
+      'fix-round.js',
+      { ...BASE_ARGS, findings: [minor], maxRounds: 1 },
+      { review: { status: 'ok', reviewer: 'codex', verdict: 'fix_required', findings: [minor] } }
+    )
+    expect(result.ledger.remaining.map((f) => f.title)).toContain('weak test')
+  })
+
+  it('has nothing to fix when only nits are handed over', async () => {
+    const { state, logs } = await run('fix-round.js', { ...BASE_ARGS, findings: [{ ...minor, severity: 'nit' }] })
+    expect(state.counts.work).toBe(0)
+    expect(logs.join('\n')).toMatch(/nit/i)
+  })
+})
+
 describe('research-sweep', () => {
   it('reports an unavailable researcher instead of dropping it silently', async () => {
     const { result, logs } = await run(
