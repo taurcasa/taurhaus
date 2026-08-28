@@ -836,7 +836,7 @@ pub(super) fn resolve_launch_account_preview_impl(
     };
 
     let explicit_transcript = session_id.and_then(|wanted| {
-        crate::session_scanner::latest_compaction_runtime_sessions()
+        crate::session_scanner::latest_runtime_sessions()
             .into_iter()
             .find(|session| {
                 session.cli_tool == tool && session.session_id.as_deref() == Some(wanted)

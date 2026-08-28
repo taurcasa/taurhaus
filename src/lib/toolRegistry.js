@@ -13,7 +13,6 @@ const CAPABILITY_DEFAULTS = Object.freeze({
   compactionHook: false,
   compactionHookCompatImport: false,
   transcriptParser: false,
-  transcriptCompactionSignals: false,
   catalog: false,
   sessionRoot: 'toolHome',
   accountSelector: null,
@@ -48,7 +47,6 @@ export const FALLBACK_TOOLS = Object.freeze([
       compactionHook: true,
       compactionHookCompatImport: false,
       transcriptParser: true,
-      transcriptCompactionSignals: false,
       catalog: true,
       sessionRoot: 'appManagedClaudeDir',
       accountSelector: 'CLAUDE_CONFIG_DIR',
@@ -82,7 +80,6 @@ export const FALLBACK_TOOLS = Object.freeze([
       compactionHook: true,
       compactionHookCompatImport: false,
       transcriptParser: true,
-      transcriptCompactionSignals: true,
       catalog: true,
       sessionRoot: 'toolHome',
       accountSelector: 'CODEX_HOME',
@@ -116,7 +113,6 @@ export const FALLBACK_TOOLS = Object.freeze([
       compactionHook: false,
       compactionHookCompatImport: false,
       transcriptParser: false,
-      transcriptCompactionSignals: false,
       catalog: true,
       sessionRoot: 'toolHome',
       accountSelector: null,
@@ -150,7 +146,6 @@ export const FALLBACK_TOOLS = Object.freeze([
       compactionHook: true,
       compactionHookCompatImport: true,
       transcriptParser: false,
-      transcriptCompactionSignals: false,
       catalog: true,
       sessionRoot: 'toolHome',
       accountSelector: 'GROK_HOME',
@@ -199,9 +194,6 @@ function normalizeCapabilities(raw) {
       capability(source, 'compactionHookCompatImport', 'compaction_hook_compat_import')
     ),
     transcriptParser: Boolean(capability(source, 'transcriptParser', 'transcript_parser')),
-    transcriptCompactionSignals: Boolean(
-      capability(source, 'transcriptCompactionSignals', 'transcript_compaction_signals')
-    ),
     catalog: Boolean(capability(source, 'catalog', 'catalog')),
     sessionRoot:
       stringOrNull(capability(source, 'sessionRoot', 'session_root', 'toolHome')) ?? 'toolHome',

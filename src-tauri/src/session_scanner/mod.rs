@@ -23,20 +23,17 @@ mod types;
 
 pub mod accounts;
 pub mod cli_tool;
-pub mod compaction_extractor;
-pub mod compaction_watcher;
 pub mod control;
 pub mod idle;
 pub mod launch;
 pub mod proc_io;
 pub mod process;
 pub mod tmux;
+pub mod transcript_boundary;
 
 #[cfg(test)]
-pub(crate) use cache::{
-    clear_scan_cache, set_display_scan_compaction_hook, state_tracker_snapshot,
-};
-pub use cache::{latest_compaction_runtime_sessions, notify_tmux_changed};
+pub(crate) use cache::{clear_scan_cache, state_tracker_snapshot};
+pub use cache::{latest_runtime_sessions, notify_tmux_changed};
 pub use cli_tool::CliTool;
 pub use scans::{
     scan_sessions_for_authoritative_snapshot, scan_sessions_for_display, scan_sessions_for_runtime,

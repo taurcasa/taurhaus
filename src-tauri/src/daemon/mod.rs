@@ -1,7 +1,6 @@
 pub mod agy_hooks;
 pub mod auth;
 pub mod codex_notify;
-pub(crate) mod compaction;
 pub mod event_listener;
 pub(crate) mod handlers;
 pub mod launcher;

@@ -38,8 +38,8 @@ impl TranscriptParser for CodexTranscriptParser {
         &self,
         line: &str,
         jsonl_offset: u64,
-    ) -> Option<crate::session_scanner::compaction_extractor::ParsedSignalBoundary> {
-        use crate::coordination::stores::CompactionSignalKind;
+    ) -> Option<crate::session_scanner::transcript_boundary::ParsedSignalBoundary> {
+        use crate::session_scanner::transcript_boundary::CompactionSignalKind;
         use serde_json::Value;
 
         let parsed: Value = serde_json::from_str(line).ok()?;
@@ -63,7 +63,7 @@ impl TranscriptParser for CodexTranscriptParser {
         };
 
         Some(
-            crate::session_scanner::compaction_extractor::ParsedSignalBoundary {
+            crate::session_scanner::transcript_boundary::ParsedSignalBoundary {
                 timestamp,
                 jsonl_offset,
                 signal_kind,

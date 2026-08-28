@@ -269,22 +269,22 @@ def wait_for(predicate: Callable[[], Optional[Dict[str, Any]]], timeout_seconds:
     raise CompactionTestError("timed out waiting for expected compaction evidence")
 
 
-def event_matches(record: Dict[str, Any], *, event: str, team_name: str, member_name: str, session_id: Optional[str], since: datetime) -> bool:
+def event_matches(record: Dict[str, Any], *, event: str, team_name: Optional[str], member_name: Optional[str], session_id: Optional[str], since: datetime) -> bool:
     if record.get("event") != event:
         return False
     ts = record.get("ts")
     if not isinstance(ts, str) or parse_iso(ts) < since:
         return False
-    if record.get("team_name") != team_name:
+    if team_name and record.get("team_name") != team_name:
         return False
-    if record.get("member_name") != member_name:
+    if member_name and record.get("member_name") != member_name:
         return False
     if session_id and record.get("session_id") != session_id:
         return False
     return True
 
 
-def find_log_event(log_path: Path, *, event: str, team_name: str, member_name: str, session_id: Optional[str], since: datetime) -> Optional[Dict[str, Any]]:
+def find_log_event(log_path: Path, *, event: str, team_name: Optional[str], member_name: Optional[str], session_id: Optional[str], since: datetime) -> Optional[Dict[str, Any]]:
     found: Optional[Dict[str, Any]] = None
     for record in iter_jsonl_records(log_path):
         if event_matches(record, event=event, team_name=team_name, member_name=member_name, session_id=session_id, since=since):
@@ -292,7 +292,7 @@ def find_log_event(log_path: Path, *, event: str, team_name: str, member_name: s
     return found
 
 
-def find_any_log_event(log_path: Path, *, events: Iterable[str], team_name: str, member_name: str, session_id: Optional[str], since: datetime) -> Optional[Dict[str, Any]]:
+def find_any_log_event(log_path: Path, *, events: Iterable[str], team_name: Optional[str], member_name: Optional[str], session_id: Optional[str], since: datetime) -> Optional[Dict[str, Any]]:
     for name in events:
         record = find_log_event(log_path, event=name, team_name=team_name, member_name=member_name, session_id=session_id, since=since)
         if record is not None:

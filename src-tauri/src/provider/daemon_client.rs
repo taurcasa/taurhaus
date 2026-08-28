@@ -216,18 +216,6 @@ impl DaemonProvider {
             .map(|info| info.protocol_version)
     }
 
-    pub fn set_codex_compaction_mode(
-        &self,
-        mode: crate::models::CodexCompactionMode,
-    ) -> Result<(), AppError> {
-        let _: serde_json::Value = self.call(
-            protocol::method::SET_CODEX_COMPACTION_MODE,
-            protocol::SetCodexCompactionModeParams { mode },
-            PING_TIMEOUT,
-        )?;
-        Ok(())
-    }
-
     pub fn ping_info_with_timeout(
         &self,
         timeout: Duration,
@@ -859,7 +847,6 @@ mod tests {
         port: u16,
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
-        _extractor_guard: crate::test_support::CompactionExtractorTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
     }
 
@@ -876,7 +863,6 @@ mod tests {
         port: u16,
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestDaemon {
-        let extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let config = DaemonConfig {
             port,
@@ -893,7 +879,6 @@ mod tests {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
-            _extractor_guard: extractor_guard,
             handle: Some(handle),
         }
     }

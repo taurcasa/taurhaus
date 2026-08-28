@@ -788,6 +788,46 @@ mod tests {
     }
 
     #[test]
+    fn legacy_stale_compaction_state_does_not_block_runtime_save() {
+        // Regression: 7516a07 retired CompactionDeliveryResult::Stale without
+        // preserving the shipped 0.8.x wire value, so member activation failed
+        // while saving any runtime record for a member with that state file.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "architect";
+        let compaction_dir = teams_dir.join(team_name).join("state").join("compaction");
+        fs::create_dir_all(&compaction_dir).expect("compaction state dir");
+        fs::write(
+            compaction_dir.join(format!("{member_name}.json")),
+            r#"{
+  "version": 1,
+  "member_name": "architect",
+  "last_session_id": "session-123",
+  "last_compaction_timestamp": "2026-03-10T09:00:00Z",
+  "last_delivery_result": "stale"
+}"#,
+        )
+        .expect("0.8.x compaction state");
+
+        let state = MemberCompactionStore::load(teams_dir, team_name, member_name)
+            .expect("legacy compaction state should remain loadable")
+            .expect("legacy compaction state should exist");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Skipped
+        );
+
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("legacy compaction state must not block member activation");
+    }
+
+    #[test]
     fn cleanup_stale_removes_corrupt_runtime_file() {
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path();

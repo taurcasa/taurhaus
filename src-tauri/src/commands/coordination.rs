@@ -128,7 +128,7 @@ pub async fn coordination_initialize_team(
             })
         });
         let codex_bypass_hook_trust =
-            reconcile_codex_before_managed_launch(&app_for_task, &db, has_codex);
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -192,7 +192,8 @@ pub fn coordination_add_agent(
                 .capabilities
                 .hook_trust
         });
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -236,7 +237,8 @@ pub fn coordination_resume_member(
     let result = {
         let has_codex = team_has_managed_codex_member(state.teams_dir(), &requested_team_name)
             .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -274,7 +276,8 @@ pub fn coordination_resume_team(
     let result = {
         let has_codex = team_has_managed_codex_member(state.teams_dir(), &requested_team_name)
             .map_err(|error| IpcError::internal(sanitize_error(&error.to_string())))?;
-        let codex_bypass_hook_trust = reconcile_codex_before_managed_launch(&app, &db, has_codex);
+        let codex_bypass_hook_trust =
+            reconcile_codex_before_managed_launch(state.teams_dir(), has_codex);
         let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(&db);
         crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
             &mut cli_commands,
@@ -713,20 +716,15 @@ fn coordination_reonboard_impl(
 }
 
 fn reconcile_codex_before_managed_launch(
-    app: &AppHandle,
-    db: &DbState,
+    teams_dir: &std::path::Path,
     has_managed_codex: bool,
 ) -> bool {
-    let mode = crate::commands::terminal_settings::load_terminal_settings(db)
-        .harness
-        .codex_compaction;
-    let mut hook_ready = match crate::commands::terminal_settings::reconcile_codex_compaction(
-        mode,
+    match crate::commands::terminal_settings::reconcile_codex_hook_for_managed_launch(
+        teams_dir,
         has_managed_codex,
     ) {
         Ok(_) => {
-            mode == crate::models::CodexCompactionMode::Hooks
-                && has_managed_codex
+            has_managed_codex
                 && crate::coordination::compact_hook::codex_compact_hook_is_installed()
         }
         Err(error) => {
@@ -749,36 +747,7 @@ fn reconcile_codex_before_managed_launch(
             );
             false
         }
-    };
-    if let Err(error) = crate::startup::compaction::reconcile_compaction_runtime(
-        app,
-        mode,
-        "managed_launch_hook_reconciled",
-    ) {
-        tracing::warn!(
-            error = %error,
-            "managed launch continued after compaction runtime reconciliation degraded"
-        );
-        let mut fields = Map::new();
-        fields.insert("tool".to_string(), Value::String("codex".to_string()));
-        fields.insert(
-            "stage".to_string(),
-            Value::String("reconcile_runtime_owner".to_string()),
-        );
-        fields.insert(
-            "error.message".to_string(),
-            Value::String(sanitize_error(&error.to_string())),
-        );
-        taurhaus_lib::logging::emit_global(
-            "warn",
-            "coordination",
-            "compaction.codex_hook.degraded",
-            Some("Managed launch continued with transcript fallback".to_string()),
-            fields,
-        );
-        hook_ready = false;
     }
-    hook_ready
 }
 
 fn maybe_ensure_compact_hooks_for_team<T>(

@@ -83,7 +83,7 @@ pub fn run(
 ) -> std::io::Result<()> {
     // Passed as a closure rather than called here so `run_for_test` never
     // writes into real config dirs.
-    run_with_legacy_cleanup(config, shutdown, provider, None, retire_legacy_bridge)
+    run_with_legacy_cleanup(config, shutdown, provider, retire_legacy_bridge)
 }
 
 fn retire_legacy_bridge() {
@@ -95,7 +95,6 @@ fn run_with_legacy_cleanup<F>(
     config: &DaemonConfig,
     shutdown: Arc<AtomicBool>,
     provider: Arc<dyn ProjectProvider>,
-    compaction_teams_dir: Option<std::path::PathBuf>,
     cleanup: F,
 ) -> std::io::Result<()>
 where
@@ -107,16 +106,6 @@ where
     {
         tracing::warn!(error = %error, "Legacy Claude status line cleanup not spawned");
     }
-    run_with_compaction_teams_dir(config, shutdown, provider, compaction_teams_dir)
-}
-
-fn run_with_compaction_teams_dir(
-    config: &DaemonConfig,
-    shutdown: Arc<AtomicBool>,
-    provider: Arc<dyn ProjectProvider>,
-    compaction_teams_dir: Option<std::path::PathBuf>,
-) -> std::io::Result<()> {
-    crate::daemon::compaction::reset_requested_mode(crate::models::CodexCompactionMode::Transcript);
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
@@ -146,11 +135,6 @@ fn run_with_compaction_teams_dir(
     let auth_token: Option<Arc<str>> = config.auth_token.as_deref().map(Arc::from);
     let watch_registry =
         crate::daemon::watch::SharedDaemonWatchRegistry::new().map_err(std::io::Error::other)?;
-
-    let compaction_shutdown = shutdown.clone();
-    let compaction_handle = std::thread::spawn(move || {
-        crate::daemon::compaction::run_mode_controller(compaction_teams_dir, compaction_shutdown);
-    });
 
     tracing::info!(port = config.port, "daemon listening");
     emit_daemon_watch_telemetry("startup", &watch_registry);
@@ -234,7 +218,6 @@ fn run_with_compaction_teams_dir(
     }
 
     shutdown.store(true, Ordering::Relaxed);
-    let _ = compaction_handle.join();
     let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())
@@ -260,16 +243,7 @@ pub(crate) fn run_for_test_with_legacy_cleanup<F>(
 where
     F: FnOnce() + Send + 'static,
 {
-    // Regression: 9f723d3 removed the off-WSL compaction gate, so in-process
-    // daemon tests began rewriting the developer's real Claude teams state.
-    let claude_root = tempfile::tempdir()?;
-    run_with_legacy_cleanup(
-        config,
-        shutdown,
-        provider,
-        Some(claude_root.path().join("teams")),
-        cleanup,
-    )
+    run_with_legacy_cleanup(config, shutdown, provider, cleanup)
 }
 
 /// Read a newline-terminated line from a `BufReader`, respecting a max byte limit.
@@ -527,7 +501,6 @@ mod tests {
         port: u16,
         shutdown: Arc<AtomicBool>,
         _heavy_guard: crate::test_support::HeavyTestGuard,
-        _extractor_guard: crate::test_support::CompactionExtractorTestGuard,
         handle: Option<std::thread::JoinHandle<std::io::Result<()>>>,
     }
 
@@ -560,7 +533,6 @@ mod tests {
         config: DaemonConfig,
         heavy_guard: crate::test_support::HeavyTestGuard,
     ) -> TestServer {
-        let extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let port = config.port;
         let shutdown_clone = shutdown.clone();
@@ -571,7 +543,6 @@ mod tests {
             port,
             shutdown,
             _heavy_guard: heavy_guard,
-            _extractor_guard: extractor_guard,
             handle: Some(handle),
         };
 
@@ -624,7 +595,6 @@ mod tests {
     #[test]
     fn slow_legacy_cleanup_never_delays_the_listener() {
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
-        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
@@ -1051,7 +1021,6 @@ mod tests {
         // Regression: a fixed 100ms startup sleep was not enough under load,
         // causing occasional ConnectionRefused before the listener was ready.
         let _heavy_guard = crate::test_support::acquire_heavy_test_guard();
-        let _extractor_guard = crate::test_support::acquire_compaction_extractor_test_guard();
         let shutdown = Arc::new(AtomicBool::new(false));
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();

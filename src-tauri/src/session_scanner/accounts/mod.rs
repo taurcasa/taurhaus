@@ -579,7 +579,7 @@ fn unique_account_id(provider_id: &str, dir: &Path, emitted: &mut HashSet<String
 
 #[cfg(not(test))]
 fn live_selector_values(tool: CliTool, provider: &dyn AccountProvider) -> Vec<PathBuf> {
-    crate::session_scanner::latest_compaction_runtime_sessions()
+    crate::session_scanner::latest_runtime_sessions()
         .into_iter()
         .filter(|session| session.cli_tool == tool)
         .filter_map(|session| session.jsonl_path)

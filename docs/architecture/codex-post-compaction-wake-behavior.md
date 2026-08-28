@@ -1,10 +1,20 @@
-# Codex Post-Compaction Wake Behavior
+# Post-Compaction Wake Behavior for Inbox-Delivered Harnesses
 
-## Applies to transcript mode only
+## No longer applies to Codex
 
-This decision governs `harness.codex_compaction=transcript`, the default Codex compaction mode.
+**Status (2026-08).** Codex no longer has an inbox-and-wake compaction path. Managed Codex uses its
+own `SessionStart(source=compact)` hook by default whenever `CliVersions.codex_compaction_hooks_supported`
+(Codex >= 0.147): the card comes back as `additionalContext`, so there is no inbox append, no wake
+prompt and no next-turn steer. The transcript extractor/watcher, the signal log/watcher/processor,
+the daemon/app owner election and the `harness.codex_compaction` mode setting are all deleted
+(daemon protocol 14). An older Codex logs `compaction.codex_hook.unsupported` once and receives no
+reinjection.
 
-With the opt-in `hooks` mode (requires Codex ≥ 0.147), the card is returned directly as `additionalContext` from Codex's own `SessionStart(source=compact)` hook: there is no inbox append, no wake prompt, and no next-turn steer, and the transcript extractor/watcher are stopped. Everything below is moot in that mode.
+The decision below still stands for harnesses whose registry declares `compaction_delivery: MeshInbox`
+— today grok, whose passive-hook stdout is documented as ignored, so its card is queued in the
+member's inbox and the member's mesh daemon wakes the pane. Read "Codex" below as "a
+`MeshInbox`-delivery harness"; the transcript-boundary detection in step 1 of the operational model
+is a hook fire on every live path.
 
 ## Decision
 

@@ -217,7 +217,7 @@ App/runtime lifecycle notes:
 
 ## Compaction operations
 
-The current compaction pipeline is event-driven. Detection and reinjection no longer depend on a periodic scan loop to notice Codex transcript boundaries.
+Compaction detection is entirely native hooks. There is no transcript tailer, no signal log, no daemon/app owner election and no compaction mode setting: Claude, Codex and Grok all reach the one bridge in `coordination/compact_hook.rs`, and managed Codex gets the hook by default whenever `CliVersions.codex_compaction_hooks_supported` (Codex >= 0.147).
 
 Use this when validating or debugging recent compaction handling:
 
@@ -225,7 +225,7 @@ Use this when validating or debugging recent compaction handling:
 just analyze-compaction --team taurhaus-team --last 30m
 ```
 
-This summarizes recent `compaction.detected`, `compaction.injected`, `compaction.skipped`, `compaction.stale`, and `compaction.failed` events from the structured JSONL logs.
+This summarizes the hook-execution events from the structured JSONL logs — `compaction.claude_hook.*`, `compaction.codex_hook.*`, `compaction.grok_hook.*` and `compaction.compact_hook.*`, where the terminal actions are `delivered`, `skipped` and `failed`. See [`compaction-testing.md`](./compaction-testing.md) for the full diagnostic flow.
 
 ## Release workflow
 

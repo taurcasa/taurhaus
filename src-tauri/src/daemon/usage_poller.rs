@@ -205,7 +205,7 @@ fn poll_with_env(tool: CliTool, force: bool, env: &dyn accounts::ProviderEnv) {
             *entry_tool != tool || account_ids.contains(account_id.as_str())
         });
     }
-    let live_dirs = crate::session_scanner::latest_compaction_runtime_sessions()
+    let live_dirs = crate::session_scanner::latest_runtime_sessions()
         .into_iter()
         .filter(|session| session.cli_tool == tool)
         .filter_map(|session| session.jsonl_path)

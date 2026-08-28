@@ -5,22 +5,19 @@ use std::path::{Path, PathBuf};
 
 use crate::coordination::compaction_events::{emit_compaction_delivery, CompactionDeliveryEvent};
 use crate::coordination::errors::CoordinationError;
-use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::CliTool;
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
 
 const COMPACTION_SCHEMA_VERSION: u32 = 1;
-pub const COMPACTION_FRESHNESS_WINDOW_SECS: i64 = 15;
 const RESERVED_COMPACTION_STATE_BASENAMES: &[&str] = &["extractor-state", "signal-watcher-state"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CompactionDeliveryResult {
     Injected,
+    #[serde(alias = "stale")]
     Skipped,
-    Stale,
     Failed,
 }
 
@@ -168,29 +165,6 @@ impl MemberCompactionStore {
     }
 }
 
-pub fn is_already_handled(
-    team_name: &str,
-    member_name: &str,
-    tool: CliTool,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-) -> bool {
-    match MemberCompactionStore::load(&PlatformPaths::teams_dir(), team_name, member_name) {
-        Ok(Some(state)) => is_already_handled_state(&state, tool, session_id, compaction_timestamp),
-        Ok(None) => false,
-        Err(error) => {
-            tracing::warn!(
-                team_name = team_name,
-                member_name = member_name,
-                tool = %tool,
-                error = %error,
-                "failed to load compaction state during idempotency check"
-            );
-            false
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn record_delivery_at(
     teams_dir: &Path,
@@ -222,10 +196,6 @@ pub fn record_delivery_at(
     Ok(())
 }
 
-pub fn is_stale_compaction(detected_at: DateTime<Utc>, now: DateTime<Utc>) -> bool {
-    now.signed_duration_since(detected_at) > TimeDelta::seconds(COMPACTION_FRESHNESS_WINDOW_SECS)
-}
-
 pub fn prune_state_if_session_mismatch(
     teams_dir: &Path,
     team_name: &str,
@@ -251,39 +221,6 @@ pub fn prune_state_if_session_mismatch(
     Ok(true)
 }
 
-pub fn emit_compaction_detected_event(
-    team_name: &str,
-    member_name: &str,
-    tool: CliTool,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-) {
-    tracing::info!(
-        team_name = team_name,
-        member_name = member_name,
-        tool = %tool,
-        session_id = session_id,
-        compaction_timestamp = %compaction_timestamp.to_rfc3339(),
-        "compaction.detected"
-    );
-    taurhaus_lib::logging::emit_global(
-        "info",
-        "coordination",
-        "compaction.detected",
-        Some("Compaction signal detected".to_string()),
-        compaction_event_fields(
-            team_name,
-            member_name,
-            tool,
-            session_id,
-            compaction_timestamp,
-            None,
-            None,
-            None,
-        ),
-    );
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn emit_compaction_delivery_event(
     team_name: &str,
@@ -298,7 +235,6 @@ pub fn emit_compaction_delivery_event(
     let event = match result {
         CompactionDeliveryResult::Injected => "compaction.injected",
         CompactionDeliveryResult::Skipped => "compaction.skipped",
-        CompactionDeliveryResult::Stale => "compaction.stale",
         CompactionDeliveryResult::Failed => "compaction.failed",
     };
 
@@ -329,15 +265,6 @@ pub fn emit_compaction_delivery_event(
     );
 }
 
-fn is_already_handled_state(
-    state: &MemberCompactionState,
-    _tool: CliTool,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-) -> bool {
-    state.last_session_id == session_id && state.last_compaction_timestamp == compaction_timestamp
-}
-
 fn is_windows_unsupported_rename_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
 }
@@ -354,119 +281,15 @@ fn compaction_state_tmp_path(teams_dir: &Path, team_name: &str, member_name: &st
     compaction_state_dir(teams_dir, team_name).join(format!("{member_name}.json.tmp"))
 }
 
-#[allow(clippy::too_many_arguments)]
-fn compaction_event_fields(
-    team_name: &str,
-    member_name: &str,
-    tool: CliTool,
-    session_id: &str,
-    compaction_timestamp: DateTime<Utc>,
-    result: Option<CompactionDeliveryResult>,
-    skip_reason: Option<&str>,
-    fail_reason: Option<&str>,
-) -> Map<String, Value> {
-    let mut fields = Map::new();
-    fields.insert(
-        "team_name".to_string(),
-        Value::String(team_name.to_string()),
-    );
-    fields.insert(
-        "member_name".to_string(),
-        Value::String(member_name.to_string()),
-    );
-    fields.insert("tool".to_string(), Value::String(tool.to_string()));
-    fields.insert(
-        "session_id".to_string(),
-        Value::String(session_id.to_string()),
-    );
-    fields.insert(
-        "compaction_timestamp".to_string(),
-        Value::String(compaction_timestamp.to_rfc3339()),
-    );
-    if let Some(result) = result {
-        fields.insert(
-            "delivery_result".to_string(),
-            Value::String(
-                serde_json::to_value(result)
-                    .ok()
-                    .and_then(|value| value.as_str().map(ToOwned::to_owned))
-                    .unwrap_or_else(|| "unknown".to_string()),
-            ),
-        );
-    }
-    if let Some(skip_reason) = skip_reason {
-        fields.insert(
-            "skip_reason".to_string(),
-            Value::String(skip_reason.to_string()),
-        );
-    }
-    if let Some(fail_reason) = fail_reason {
-        fields.insert(
-            "fail_reason".to_string(),
-            Value::String(fail_reason.to_string()),
-        );
-    }
-    fields
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fs2::FileExt;
-    use std::ffi::OsString;
-    use std::sync::{LazyLock, Mutex, MutexGuard};
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
-
-    const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 
     fn timestamp(value: &str) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339(value)
             .expect("timestamp")
             .with_timezone(&Utc)
-    }
-
-    static ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
-    struct EnvTestGuard {
-        _in_process: MutexGuard<'static, ()>,
-        lock_file: std::fs::File,
-        previous_override: Option<OsString>,
-    }
-
-    impl EnvTestGuard {
-        fn set_override(&self, value: impl AsRef<std::ffi::OsStr>) {
-            std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, value);
-        }
-    }
-
-    impl Drop for EnvTestGuard {
-        fn drop(&mut self) {
-            match self.previous_override.as_ref() {
-                Some(previous) => std::env::set_var(CLAUDE_DIR_OVERRIDE_ENV, previous),
-                None => std::env::remove_var(CLAUDE_DIR_OVERRIDE_ENV),
-            }
-            let _ = self.lock_file.unlock();
-        }
-    }
-
-    fn acquire_env_test_guard() -> EnvTestGuard {
-        let in_process = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let lock_path = std::env::temp_dir().join("taurhaus-env-tests.lock");
-        let lock_file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap_or_else(|e| panic!("failed to open env test lock at {:?}: {e}", lock_path));
-        lock_file
-            .lock_exclusive()
-            .unwrap_or_else(|e| panic!("failed to lock env test lock at {:?}: {e}", lock_path));
-        EnvTestGuard {
-            _in_process: in_process,
-            lock_file,
-            previous_override: std::env::var_os(CLAUDE_DIR_OVERRIDE_ENV),
-        }
     }
 
     fn sample_state() -> MemberCompactionState {
@@ -518,125 +341,6 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].0, "architect");
         assert_eq!(entries[1].0, "reviewer");
-    }
-
-    #[test]
-    fn idempotency_blocks_duplicate_session_and_timestamp() {
-        let state = sample_state();
-
-        assert!(is_already_handled_state(
-            &state,
-            CliTool::Codex,
-            "session-1",
-            timestamp("2026-03-08T14:30:00Z"),
-        ));
-    }
-
-    #[test]
-    fn idempotency_allows_new_session() {
-        let state = sample_state();
-
-        assert!(!is_already_handled_state(
-            &state,
-            CliTool::Codex,
-            "session-2",
-            timestamp("2026-03-08T14:30:00Z"),
-        ));
-    }
-
-    #[test]
-    fn idempotency_allows_same_session_with_new_timestamp() {
-        let state = sample_state();
-
-        assert!(!is_already_handled_state(
-            &state,
-            CliTool::Codex,
-            "session-1",
-            timestamp("2026-03-08T14:30:01Z"),
-        ));
-    }
-
-    #[test]
-    fn stale_detection_trips_after_freshness_window() {
-        let detected_at = timestamp("2026-03-08T14:30:00Z");
-
-        assert!(!is_stale_compaction(
-            detected_at,
-            timestamp("2026-03-08T14:30:15Z"),
-        ));
-        assert!(is_stale_compaction(
-            detected_at,
-            timestamp("2026-03-08T14:30:16Z"),
-        ));
-    }
-
-    #[test]
-    fn stale_detection_is_not_stale_at_exact_millisecond_boundary() {
-        let detected_at = timestamp("2026-03-08T14:30:00.000Z");
-
-        assert!(!is_stale_compaction(
-            detected_at,
-            timestamp("2026-03-08T14:30:15.000Z"),
-        ));
-        assert!(is_stale_compaction(
-            detected_at,
-            timestamp("2026-03-08T14:30:15.001Z"),
-        ));
-    }
-
-    #[test]
-    fn record_delivery_at_persists_stale_result_to_passed_store_path() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let teams_dir = tmp.path().join("teams");
-
-        record_delivery_at(
-            &teams_dir,
-            "taurhaus-team",
-            "developer1",
-            CliTool::Codex,
-            "session-1",
-            timestamp("2026-03-08T14:30:16Z"),
-            CompactionDeliveryResult::Stale,
-        )
-        .expect("record delivery");
-
-        let stored = MemberCompactionStore::load(&teams_dir, "taurhaus-team", "developer1")
-            .expect("load state")
-            .expect("state should exist");
-
-        assert_eq!(stored.last_delivery_result, CompactionDeliveryResult::Stale);
-        assert_eq!(stored.last_session_id, "session-1");
-    }
-
-    #[test]
-    fn top_level_is_already_handled_reads_saved_default_store_state() {
-        let guard = acquire_env_test_guard();
-        let tmp = tempfile::tempdir().expect("tempdir");
-        guard.set_override(tmp.path());
-
-        let state = sample_state();
-        MemberCompactionStore::save(
-            &tmp.path().join("teams"),
-            "taurhaus-team",
-            "developer1",
-            &state,
-        )
-        .expect("save state");
-
-        assert!(is_already_handled(
-            "taurhaus-team",
-            "developer1",
-            CliTool::Codex,
-            "session-1",
-            timestamp("2026-03-08T14:30:00Z"),
-        ));
-        assert!(!is_already_handled(
-            "taurhaus-team",
-            "developer1",
-            CliTool::Codex,
-            "session-1",
-            timestamp("2026-03-08T14:30:01Z"),
-        ));
     }
 
     #[test]

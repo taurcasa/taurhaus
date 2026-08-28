@@ -4,9 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use super::{
-    compaction_extractor, proc_io, process, tmux, DisplaySession, RuntimeSession, SessionState,
-};
+use super::{proc_io, process, tmux, DisplaySession, RuntimeSession, SessionState};
 
 /// Per-PID state tracker for bidirectional hysteresis.
 struct StateTracker {
@@ -36,22 +34,10 @@ struct ScannerCache {
 
 static SCAN_CACHE: OnceLock<Mutex<ScannerCache>> = OnceLock::new();
 static TMUX_CHANGE_EPOCH: AtomicU64 = AtomicU64::new(0);
-static LATEST_COMPACTION_RUNTIME_SESSIONS: OnceLock<Mutex<Vec<RuntimeSession>>> = OnceLock::new();
-#[allow(clippy::type_complexity)]
-#[cfg(test)]
-static DISPLAY_SCAN_COMPACTION_HOOK: OnceLock<Mutex<Option<fn(&[RuntimeSession])>>> =
-    OnceLock::new();
+static LATEST_RUNTIME_SESSIONS: OnceLock<Mutex<Vec<RuntimeSession>>> = OnceLock::new();
 #[allow(clippy::type_complexity)]
 #[cfg(test)]
 static DISPLAY_SCAN_COMPLETED_HOOK: OnceLock<Mutex<Option<fn(usize)>>> = OnceLock::new();
-
-#[cfg(test)]
-pub(crate) fn set_display_scan_compaction_hook(hook: Option<fn(&[RuntimeSession])>) {
-    *DISPLAY_SCAN_COMPACTION_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner()) = hook;
-}
 
 #[cfg(test)]
 pub(crate) fn set_display_scan_completed_hook(hook: Option<fn(usize)>) {
@@ -80,33 +66,19 @@ fn json_number_u64(value: u64) -> Value {
     Value::Number(serde_json::Number::from(value))
 }
 
-pub(crate) fn publish_compaction_runtime_sessions(runtime_sessions: &[RuntimeSession]) {
+pub(crate) fn update_runtime_sessions(runtime_sessions: &[RuntimeSession]) {
     // Which subscription a project's Claude session writes to has to be known
     // after that session ends — that is when Resume asks.
     super::accounts::record_session_transcripts(runtime_sessions);
 
-    *LATEST_COMPACTION_RUNTIME_SESSIONS
+    *LATEST_RUNTIME_SESSIONS
         .get_or_init(|| Mutex::new(Vec::new()))
         .lock()
         .unwrap_or_else(|error| error.into_inner()) = runtime_sessions.to_vec();
-
-    #[cfg(test)]
-    if let Some(hook) = DISPLAY_SCAN_COMPACTION_HOOK
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .as_ref()
-        .copied()
-    {
-        hook(runtime_sessions);
-        return;
-    }
-
-    compaction_extractor::update_active_runtime_sessions(runtime_sessions);
 }
 
-pub fn latest_compaction_runtime_sessions() -> Vec<RuntimeSession> {
-    LATEST_COMPACTION_RUNTIME_SESSIONS
+pub fn latest_runtime_sessions() -> Vec<RuntimeSession> {
+    LATEST_RUNTIME_SESSIONS
         .get_or_init(|| Mutex::new(Vec::new()))
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -169,7 +141,7 @@ fn emit_scan_completed(metrics: ScanCompletionMetrics, session_count: usize) {
 
 pub(crate) fn finalize_display_scan(
     display_sessions: Vec<DisplaySession>,
-    runtime_sessions_for_compaction: Option<&[RuntimeSession]>,
+    runtime_sessions: Option<&[RuntimeSession]>,
     metrics: ScanCompletionMetrics,
 ) -> Vec<DisplaySession> {
     if metrics.degraded {
@@ -179,8 +151,8 @@ pub(crate) fn finalize_display_scan(
         return display_sessions;
     }
 
-    if let Some(runtime_sessions) = runtime_sessions_for_compaction {
-        publish_compaction_runtime_sessions(runtime_sessions);
+    if let Some(runtime_sessions) = runtime_sessions {
+        update_runtime_sessions(runtime_sessions);
     }
 
     let active_pids: Vec<u32> = display_sessions.iter().map(|session| session.pid).collect();
@@ -391,21 +363,7 @@ mod tests {
     };
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
-    static TEST_COMPACTION_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
     static TEST_COMPLETED_SESSION_COUNT: AtomicUsize = AtomicUsize::new(0);
-    static TEST_COMPACTION_SESSION_IDS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-
-    fn record_compaction_sessions(sessions: &[RuntimeSession]) {
-        TEST_COMPACTION_SESSION_COUNT.store(sessions.len(), AtomicOrdering::SeqCst);
-        let session_ids = sessions
-            .iter()
-            .filter_map(|session| session.session_id.clone())
-            .collect::<Vec<_>>();
-        *TEST_COMPACTION_SESSION_IDS
-            .get_or_init(|| Mutex::new(Vec::new()))
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = session_ids;
-    }
 
     fn record_completed_session_count(session_count: usize) {
         TEST_COMPLETED_SESSION_COUNT.store(session_count, AtomicOrdering::SeqCst);
@@ -432,6 +390,32 @@ mod tests {
         }
     }
 
+    fn runtime_session(pid: u32, session_id: &str) -> RuntimeSession {
+        RuntimeSession {
+            pid,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%7".to_string()),
+            tmux_window_name: Some("taurhaus".to_string()),
+            state: SessionState::Active,
+            session_id: Some(session_id.to_string()),
+            jsonl_path: Some(format!("/tmp/codex/sessions/{session_id}.jsonl")),
+            recent_io: false,
+            last_output_age_secs: Some(1),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }
+    }
+
     fn tmux_map(tty: &str) -> HashMap<String, tmux::TmuxPane> {
         HashMap::from([(
             tty.to_string(),
@@ -446,43 +430,19 @@ mod tests {
     }
 
     #[test]
-    fn finalize_display_scan_processes_runtime_compaction_and_emits_completion() {
+    fn finalize_display_scan_records_runtime_sessions_and_emits_completion() {
         let _guard = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        TEST_COMPACTION_SESSION_COUNT.store(0, AtomicOrdering::SeqCst);
         TEST_COMPLETED_SESSION_COUNT.store(0, AtomicOrdering::SeqCst);
-        TEST_COMPACTION_SESSION_IDS
+        LATEST_RUNTIME_SESSIONS
             .get_or_init(|| Mutex::new(Vec::new()))
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .clear();
-        set_display_scan_compaction_hook(Some(record_compaction_sessions));
         set_display_scan_completed_hook(Some(record_completed_session_count));
 
-        let runtime_sessions = vec![RuntimeSession {
-            pid: 42,
-            project_path: "/home/user/projects/taurhaus".to_string(),
-            tty: "/dev/pts/7".to_string(),
-            args: "codex --yolo".to_string(),
-            cli_tool: CliTool::Codex,
-            tmux_session: Some("taurhaus".to_string()),
-            tmux_window: Some("0".to_string()),
-            tmux_pane: Some("%7".to_string()),
-            tmux_window_name: Some("taurhaus".to_string()),
-            state: SessionState::Active,
-            session_id: Some("sess-123".to_string()),
-            jsonl_path: Some("/home/user/.codex/sessions/sess-123.jsonl".to_string()),
-            recent_io: false,
-            last_output_age_secs: Some(1),
-            activity_confidence: ActivityConfidence::High,
-            activity_attribution: ActivityAttribution::Attributed,
-            project_unattributed_active: false,
-            group_kind: SessionGroupKind::Standalone,
-            group_id: None,
-            group_label: None,
-            member_name: None,
-        }];
+        let runtime_sessions = vec![runtime_session(42, "sess-123")];
         let display_sessions = runtime_sessions
             .iter()
             .cloned()
@@ -495,21 +455,15 @@ mod tests {
             ScanCompletionMetrics::default(),
         );
 
-        set_display_scan_compaction_hook(None);
         set_display_scan_completed_hook(None);
 
         assert_eq!(finalized.len(), 1);
-        assert_eq!(
-            TEST_COMPACTION_SESSION_COUNT.load(AtomicOrdering::SeqCst),
-            1
-        );
         assert_eq!(TEST_COMPLETED_SESSION_COUNT.load(AtomicOrdering::SeqCst), 1);
         assert_eq!(
-            TEST_COMPACTION_SESSION_IDS
-                .get_or_init(|| Mutex::new(Vec::new()))
-                .lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .as_slice(),
+            latest_runtime_sessions()
+                .iter()
+                .filter_map(|session| session.session_id.as_deref())
+                .collect::<Vec<_>>(),
             ["sess-123"]
         );
     }
@@ -735,11 +689,11 @@ mod tests {
         let _guard = SCANNER_TEST_LOCK
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        set_display_scan_compaction_hook(Some(record_compaction_sessions));
-        TEST_COMPACTION_SESSION_COUNT.store(usize::MAX, AtomicOrdering::SeqCst);
         let pid = 900_007;
         reported_state(pid, SessionState::Active);
         let no_runtime_sessions: [RuntimeSession; 0] = [];
+        let last_good_runtime_sessions = vec![runtime_session(pid, "last-good-session")];
+        update_runtime_sessions(&last_good_runtime_sessions);
 
         let degraded = finalize_display_scan(
             Vec::new(),
@@ -750,6 +704,10 @@ mod tests {
             },
         );
         assert!(degraded.is_empty());
+        // Regression: 7516a07 deleted the published-session assertion with the
+        // transcript extractor seam even though account and usage resolution
+        // still consume this last-good snapshot.
+        assert_eq!(latest_runtime_sessions(), last_good_runtime_sessions);
         {
             let guard = STATE_TRACKERS
                 .lock()
@@ -759,29 +717,22 @@ mod tests {
                 "degraded scan must not prune state trackers"
             );
         }
-        assert_eq!(
-            TEST_COMPACTION_SESSION_COUNT.load(AtomicOrdering::SeqCst),
-            usize::MAX,
-            "degraded scan must not publish compaction runtime sessions"
-        );
-
         // Control: a healthy empty scan prunes.
         let _ = finalize_display_scan(
             Vec::new(),
             Some(&no_runtime_sessions),
             ScanCompletionMetrics::default(),
         );
-        set_display_scan_compaction_hook(None);
+        assert!(
+            latest_runtime_sessions().is_empty(),
+            "healthy control scan must publish its runtime-session snapshot"
+        );
         {
             let guard = STATE_TRACKERS
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
             assert!(!guard.as_ref().unwrap().contains_key(&pid));
         }
-        assert_eq!(
-            TEST_COMPACTION_SESSION_COUNT.load(AtomicOrdering::SeqCst),
-            0
-        );
     }
 
     #[test]

@@ -53,18 +53,6 @@ pub(super) fn run_startup_orchestration(
         daemon_watch_bootstrap_enabled(context),
     );
 
-    #[cfg(feature = "mesh-bridged-backend")]
-    if let Err(error) = crate::startup::compaction::initialize(
-        app,
-        context.daemon_addr.is_some(),
-        context.daemon_connected_at_startup,
-    ) {
-        tracing::warn!(
-            error = %error,
-            "app-owned compaction initialization failed; startup continues"
-        );
-    }
-
     let search_started_at = Instant::now();
     let search_doc_count = match crate::startup::search::initialize(app, context) {
         Ok(doc_count) => doc_count,
@@ -93,18 +81,13 @@ pub(super) fn run_startup_orchestration(
 
 #[cfg(feature = "mesh-bridged-backend")]
 fn reconcile_startup_codex_compaction(app: &tauri::AppHandle) -> Result<(), String> {
-    let db = app.state::<crate::commands::projects::DbState>();
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
     let has_managed_codex =
         crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir())
             .map_err(|error| error.to_string())?;
-    crate::commands::terminal_settings::reconcile_codex_compaction(
-        terminal.harness.codex_compaction,
-        has_managed_codex,
-    )
-    .map(|_| ())
-    .map_err(|error| error.to_string())
+    crate::commands::terminal_settings::reconcile_codex_hook(has_managed_codex)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

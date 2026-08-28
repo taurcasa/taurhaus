@@ -69,17 +69,12 @@ The daemon binary and the compact-hook CLI install the *same* sink (`install_glo
 | `agy.hooks.degraded` | warn | Antigravity's activity hooks could not be installed, or the CLI version gate (agy 1.1.10) left them off. Logged once per run for the version gate. |
 | `codex.notify.appended` / `.executable_missing` | info (daemon) / warn | Codex turn-complete sink. |
 | `daemon.data_root.mismatch` | warn | App and daemon resolved different app-data roots. |
-| `compaction.owner.selected` / `.failed` | info / warn | `{owner: hooks \| daemon \| app, status, reason}`. |
-| `compaction.signal_emitted` / `_consumed` / `_replayed` | info | Codex transcript signal stream. |
-| `compaction.signal_failed`, `compaction.unresolved`, `compaction.extractor.failed` | warn | |
-| `compaction.extractor.heartbeat` | debug | Sampled to ≤ 1 per 60 s per teams dir. |
-| `compaction.watcher.missed_event_recovered` | info | Reconciliation caught a missed filesystem event. |
-| `compaction.detected` / `.injected` / `.skipped` / `.stale` | info | Delivery bookkeeping. |
+| `compaction.injected` / `.skipped` | info | Native-hook delivery bookkeeping. |
 | `compaction.failed` | warn | |
 | `compaction.<tool>_hook.received` / `.resolved` / `.delivered` / `.skipped` | info | `<tool>` is `claude`, `codex`, `grok`, or `compact` when the tool cannot be inferred. |
 | `compaction.hook.compat_import` | info | Once per run, on the first resolved invocation of a tool whose registry entry sets `compaction_hook_compat_import` (grok): that tool imports the `~/.claude/settings.json` hook registration as well as its own, so one compaction can reach the bridge twice and duplicates are dropped. The payload does **not** say which registration produced the current invocation — it is emitted before the duplicate check (`compact_hook.rs:468-473`) and announces the capability, not the provenance. |
 | `compaction.<tool>_hook.failed`, `compaction.compact_hook.failed` | warn | Plus `compaction.compact_hook.parse_payload_debug`. |
-| `compaction.codex_hook.degraded` / `.unsupported` / `.version_unknown` | warn | Hooks mode gating. |
+| `compaction.codex_hook.degraded` / `.unsupported` / `.version_unknown` | warn | Native-hook installation and version gating. |
 | `compaction.codex_hook.reconciled` | info | Hook install/removal applied. |
 | `coordination.pane.foreign` | warn | A reused tmux pane no longer belongs to the member. |
 | `coordination.team_daemon.skipped` | info | Lead control-auth credential missing. |

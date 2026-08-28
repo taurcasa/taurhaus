@@ -792,8 +792,7 @@ describe('ipc module', () => {
       expect(result.terminal.emulator).toBe('windows_terminal')
       expect(result.terminal.custom_command).toBe('')
       expect(result.terminal.tmux_layout).toBe('new_window')
-      // Regression: 0b87699 exposed no Codex hook/transcript selection through IPC.
-      expect(result.terminal.harness.codex_compaction).toBe('transcript')
+      expect(result.terminal.harness).not.toHaveProperty('codex_compaction')
       expect(result.terminal.cli_commands.claude.continue_cmd).toBe('claude --continue')
       expect(result.terminal_contract.default_emulator).toBe('windows_terminal')
       expect(result.terminal_contract.supported_emulators).toEqual(['windows_terminal', 'custom'])
@@ -875,7 +874,7 @@ describe('ipc module', () => {
       expect(result).toHaveProperty('thresholds')
       expect(result.thresholds).toHaveProperty('active_days')
       expect(result).toHaveProperty('project_dialog_last_path')
-      expect(result.terminal.harness.codex_compaction).toBe('transcript')
+      expect(result.terminal.harness).not.toHaveProperty('codex_compaction')
       // Regression: 4e9e2c5 defaulted the Antigravity activity hooks off while
       // their trust-gated loading was unverified; settings that predate the
       // harness block must now normalize to on, like grok's.

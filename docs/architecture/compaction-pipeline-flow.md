@@ -1,5 +1,7 @@
 # Compaction Pipeline Flow
 
+> **Retired design (2026-08, C3).** This document describes the deleted Codex transcript extractor/watcher/processor pipeline and is kept only as historical context. Native hooks are now the only compaction owner; use [`docs/operations/compaction-testing.md`](../operations/compaction-testing.md) for the live diagnostic flow.
+
 Task: `#728`
 Owner: `architect`
 Date: `2026-03-08`

@@ -123,7 +123,7 @@ analyze-compaction *ARGS:
 test-compaction-claude TEAM MEMBER *ARGS:
     python3 scripts/test-compaction-claude.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}
 
-# Trigger a real managed Codex compaction and verify transcript + delivery path.
+# Trigger a real managed Codex compaction and verify the native hook delivery path.
 test-compaction-codex TEAM MEMBER *ARGS:
     python3 scripts/test-compaction-codex.py --team {{TEAM}} --member {{MEMBER}} {{ARGS}}
 

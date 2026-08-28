@@ -1,38 +1,6 @@
 use super::*;
 
-use crate::models::CodexCompactionMode;
 use crate::session_scanner::cli_tool::all;
-
-// Regression: 0b87699 had no setting transition that could remove the Codex
-// hook and restore the transcript fallback without touching a real home.
-#[test]
-fn transcript_setting_removes_the_isolated_codex_hook() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let codex_home = tmp.path().join("codex-home");
-    let exe = tmp.path().join("taurhaus-daemon");
-    std::fs::write(&exe, b"daemon").expect("daemon fixture");
-
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("install hook");
-    assert!(codex_home.join("hooks.json").exists());
-
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Transcript,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("remove hook");
-    let hooks = std::fs::read_to_string(codex_home.join("hooks.json")).expect("hooks json");
-    assert!(!hooks.contains("taurhaus-session-start-compact"));
-}
 
 // Regression: 6fe0aa3 installed the Codex compact hook without checking the
 // installed CLI, even though the hook contract starts at Codex 0.147.
@@ -43,22 +11,10 @@ fn unsupported_codex_version_removes_hook_instead_of_installing() {
     let exe = tmp.path().join("taurhaus-daemon");
     std::fs::write(&exe, b"daemon").expect("daemon fixture");
 
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("install supported hook");
-    let changed = reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(false),
-        &exe,
-    )
-    .expect("remove unsupported hook");
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install supported hook");
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, true, Some(false), &exe)
+        .expect("remove unsupported hook");
 
     assert!(changed);
     let hooks = std::fs::read_to_string(codex_home.join("hooks.json")).expect("hooks json");
@@ -74,26 +30,75 @@ fn unknown_codex_version_leaves_existing_hook_untouched() {
     let exe = tmp.path().join("taurhaus-daemon");
     std::fs::write(&exe, b"daemon").expect("daemon fixture");
 
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("install supported hook");
-    let changed = reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        None,
-        &exe,
-    )
-    .expect("leave hook untouched when the version is unknown");
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install supported hook");
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, true, None, &exe)
+        .expect("leave hook untouched when the version is unknown");
 
     assert!(!changed);
     let hooks = std::fs::read_to_string(codex_home.join("hooks.json")).expect("hooks json");
     assert!(hooks.contains("taurhaus-session-start-compact"));
+}
+
+#[test]
+fn unknown_codex_version_without_a_visible_member_leaves_the_hook_untouched() {
+    // Regression: d673af1 made the no-managed-member arm remove the hook even
+    // when the Codex version probe was unavailable, treating missing evidence
+    // as proof that an installed host-global hook was obsolete.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let codex_home = tmp.path().join("codex-home");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install supported hook");
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, false, None, &exe)
+        .expect("leave hook untouched when the version is unknown");
+
+    assert!(!changed);
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+}
+
+#[test]
+fn a_claude_only_launch_keeps_the_hook_needed_by_another_codex_team() {
+    // Regression: d673af1 reconciled the host-global Codex hook from only the
+    // team or agent being launched, so a Claude-only operation uninstalled the
+    // hook while another managed Codex team was still live.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let teams_dir = tmp.path().join("teams");
+    let codex_home = tmp.path().join("codex-home");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::create_dir_all(&teams_dir).expect("teams dir");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    write_team(&teams_dir, "codex-team", "codex");
+    write_team(&teams_dir, "claude-team", "claude");
+
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install hook for the managed Codex team");
+    reconcile_codex_hook_for_managed_launch_at(&teams_dir, &codex_home, false, Some(true), &exe)
+        .expect("reconcile before the Claude-only launch");
+
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+}
+
+#[test]
+fn the_last_codex_member_removes_the_managed_hook() {
+    // Regression: 1615cea collapsed Codex hook reconciliation but left the
+    // no-managed-member arm as a no-op, so disbanding the last Codex team left
+    // taurhaus running from the user's hooks.json on every future session.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let codex_home = tmp.path().join("codex-home");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install for the first managed Codex member");
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, false, Some(true), &exe)
+        .expect("remove after the last managed Codex member");
+    assert!(changed);
+    assert!(!crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
 }
 
 // Regression: 791f6be had no version-gated managed notify input, so adding the
@@ -206,15 +211,7 @@ fn codex_notify_input_preserves_user_config_toml_notify() {
     assert!(commands.codex_notify_executable.is_none());
 }
 
-#[test]
-fn daemon_compaction_does_not_guess_mode_from_an_app_database_path() {
-    // Regression: 6fe0aa3 made the WSL daemon guess the desktop app's SQLite path
-    // and fail open to hooks, disabling transcript fallback on the shipping layout.
-    let daemon_source = include_str!("../../daemon/compaction.rs");
-    assert!(!daemon_source.contains("persisted_codex_compaction_mode"));
-}
-
-fn write_grok_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
+fn write_team(teams_dir: &std::path::Path, team_name: &str, cli_tool: &str) {
     let dir = teams_dir.join(team_name);
     std::fs::create_dir_all(&dir).expect("team dir");
     std::fs::write(
@@ -241,7 +238,7 @@ fn the_first_grok_team_installs_the_hook_and_the_last_removal_takes_it_away() {
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("no grok member");
     assert!(!crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
 
-    write_grok_team(&teams_dir, "grok-team", "grok");
+    write_team(&teams_dir, "grok-team", "grok");
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("first team");
     assert!(crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home));
 
@@ -262,7 +259,7 @@ fn a_grok_team_whose_config_cannot_be_parsed_never_uninstalls_the_hook() {
     let exe = tmp.path().join("taurhaus");
     std::fs::create_dir_all(&teams_dir).expect("teams dir");
     std::fs::write(&exe, b"fixture").expect("executable fixture");
-    write_grok_team(&teams_dir, "grok-team", "grok");
+    write_team(&teams_dir, "grok-team", "grok");
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("install");
 
     // The team is still listed; only its config is unreadable.
@@ -291,7 +288,7 @@ fn a_roster_that_cannot_be_read_never_uninstalls_the_grok_hook() {
     let exe = tmp.path().join("taurhaus");
     std::fs::create_dir_all(&teams_dir).expect("teams dir");
     std::fs::write(&exe, b"fixture").expect("executable fixture");
-    write_grok_team(&teams_dir, "grok-team", "grok");
+    write_team(&teams_dir, "grok-team", "grok");
     reconcile_grok_hooks_for_roster_at(&teams_dir, &grok_home, true, &exe).expect("install");
 
     // A file where the team directory belongs makes discovery fail outright.
@@ -360,4 +357,193 @@ fn an_unknown_agy_version_leaves_an_installed_hook_alone() {
 
     assert!(!reconcile_agy_hooks_at(&root, true, None, &exe).expect("unknown agy version"));
     assert!(agy_hooks_installed_at(&root));
+}
+
+/// The Codex compact hook lives in one host-global `<CODEX_HOME>/hooks.json`,
+/// so every managed launch has to reconcile it against the whole roster and not
+/// just the team it is about to touch.
+///
+// Regression: commit 7ada241 introduced the roster-wide reconciler
+// (`reconcile_codex_hook_for_managed_launch`) because d673af1 reconciled that
+// one global file from the operated team alone. A non-Codex team operation
+// therefore uninstalled the hook while another team's Codex member was still
+// live, and that member silently lost compaction reinjection for the rest of
+// its session. `commands/coordination.rs` has exactly four managed-launch entry
+// points and all four are affected, so this module pins both halves: each
+// site's own `has_codex` derivation run through the roster-wide reconciler
+// leaves a live member's hook alone, and each site is actually wired to it.
+mod managed_launch_sites {
+    use super::*;
+
+    use crate::coordination::compact_hook::{
+        codex_compact_hook_is_installed_at, team_has_managed_codex_member,
+    };
+    use crate::session_scanner::cli_tool::{spec, CliTool};
+
+    /// The four `#[tauri::command]` entry points in `commands/coordination.rs`
+    /// that launch or resume a managed pane.
+    const LAUNCH_SITES: [&str; 4] = [
+        "coordination_initialize_team",
+        "coordination_add_agent",
+        "coordination_resume_member",
+        "coordination_resume_team",
+    ];
+
+    /// A host running two teams: one with a live Codex member that owns the
+    /// installed global hook, one with only a Claude member. Nothing here
+    /// touches a real `~/.codex`, `~/.claude` or `~/.grok`.
+    struct Host {
+        _tmp: tempfile::TempDir,
+        teams_dir: std::path::PathBuf,
+        codex_home: std::path::PathBuf,
+        exe: std::path::PathBuf,
+    }
+
+    fn host_with_a_live_codex_member() -> Host {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let codex_home = tmp.path().join("codex-home");
+        let exe = tmp.path().join("taurhaus-daemon");
+        std::fs::create_dir_all(&teams_dir).expect("teams dir");
+        std::fs::write(&exe, b"daemon").expect("daemon fixture");
+        write_team(&teams_dir, "codex-team", "codex");
+        write_team(&teams_dir, "claude-team", "claude");
+
+        reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+            .expect("install the hook the live Codex member needs");
+        assert!(codex_compact_hook_is_installed_at(&codex_home));
+
+        Host {
+            _tmp: tmp,
+            teams_dir,
+            codex_home,
+            exe,
+        }
+    }
+
+    /// `coordination_initialize_team` and `coordination_add_agent` derive
+    /// `has_codex` from the *requested* member, before that member is on any
+    /// roster.
+    fn requested_member_has_codex(cli_tool: &str) -> bool {
+        CliTool::from_alias(cli_tool).is_ok_and(|tool| spec(tool).capabilities.hook_trust)
+    }
+
+    /// What one launch site passes as its `has_codex` argument when the
+    /// operation targets the Claude-only team. `resume_member`/`resume_team`
+    /// read the operated team's own roster instead of a requested member.
+    fn has_codex_for(site: &str, teams_dir: &std::path::Path) -> bool {
+        match site {
+            "coordination_initialize_team" | "coordination_add_agent" => {
+                requested_member_has_codex("claude")
+            }
+            _ => team_has_managed_codex_member(teams_dir, "claude-team")
+                .expect("read the operated team's roster"),
+        }
+    }
+
+    #[test]
+    fn no_launch_site_uninstalls_a_live_codex_members_hook() {
+        let mut offenders = Vec::new();
+        for site in LAUNCH_SITES {
+            // A fresh host per site, so one site's outcome cannot mask the next.
+            let host = host_with_a_live_codex_member();
+            let has_codex = has_codex_for(site, &host.teams_dir);
+            assert!(
+                !has_codex,
+                "{site} operates on the Claude-only team, so its own signal is false"
+            );
+
+            reconcile_codex_hook_for_managed_launch_at(
+                &host.teams_dir,
+                &host.codex_home,
+                has_codex,
+                Some(true),
+                &host.exe,
+            )
+            .unwrap_or_else(|error| panic!("{site}: reconcile before the launch: {error}"));
+            if !codex_compact_hook_is_installed_at(&host.codex_home) {
+                offenders.push(site);
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these launch sites uninstalled the hook the live codex-team member still needs: {offenders:?}"
+        );
+    }
+
+    #[test]
+    fn the_last_codex_team_still_takes_the_hook_away() {
+        // The roster-wide reconciler must not degrade into "never uninstall":
+        // once no team runs Codex, a launch has to clean the global file up.
+        let mut offenders = Vec::new();
+        for site in LAUNCH_SITES {
+            let host = host_with_a_live_codex_member();
+            let has_codex = has_codex_for(site, &host.teams_dir);
+            std::fs::remove_dir_all(host.teams_dir.join("codex-team"))
+                .expect("disband the Codex team");
+
+            reconcile_codex_hook_for_managed_launch_at(
+                &host.teams_dir,
+                &host.codex_home,
+                has_codex,
+                Some(true),
+                &host.exe,
+            )
+            .unwrap_or_else(|error| panic!("{site}: reconcile before the launch: {error}"));
+            if codex_compact_hook_is_installed_at(&host.codex_home) {
+                offenders.push(site);
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these launch sites left the global hook behind after the last Codex member went away: {offenders:?}"
+        );
+    }
+
+    fn coordination_source() -> String {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/coordination.rs"),
+        )
+        .expect("commands/coordination.rs is readable")
+    }
+
+    /// The body of one top-level `fn <name>`, up to its closing brace in
+    /// column 0.
+    fn function_body<'a>(source: &'a str, name: &str) -> &'a str {
+        let needle = format!("fn {name}(");
+        let start = source
+            .find(&needle)
+            .unwrap_or_else(|| panic!("{name} is defined in commands/coordination.rs"));
+        let rest = &source[start..];
+        let end = rest
+            .find("\n}\n")
+            .unwrap_or_else(|| panic!("{name} has a top-level closing brace"));
+        &rest[..end]
+    }
+
+    #[test]
+    fn every_launch_site_is_wired_to_the_roster_wide_reconciler() {
+        let source = coordination_source();
+
+        let offenders: Vec<&str> = LAUNCH_SITES
+            .into_iter()
+            .filter(|site| {
+                let body = function_body(&source, site);
+                !body.contains("reconcile_codex_before_managed_launch(state.teams_dir(),")
+                    || body.contains("terminal_settings::reconcile_codex_hook(")
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "these launch sites do not reconcile the host-global Codex hook against the whole roster: {offenders:?}"
+        );
+
+        let shared = function_body(&source, "reconcile_codex_before_managed_launch");
+        assert!(
+            shared.contains("terminal_settings::reconcile_codex_hook_for_managed_launch("),
+            "the shared launch helper must call the roster-wide reconciler"
+        );
+    }
 }

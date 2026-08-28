@@ -58,12 +58,8 @@ pub mod session_scanner {
         pub use taurhaus_lib::session_scanner::process::detect_cli_tool;
     }
 
-    pub mod compaction_extractor {
-        pub use taurhaus_lib::session_scanner::compaction_extractor::*;
-    }
-
-    pub mod compaction_watcher {
-        pub use taurhaus_lib::session_scanner::compaction_watcher::*;
+    pub mod transcript_boundary {
+        pub use taurhaus_lib::session_scanner::transcript_boundary::*;
     }
 
     pub mod launch {

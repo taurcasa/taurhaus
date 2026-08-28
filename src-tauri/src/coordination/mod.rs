@@ -7,7 +7,6 @@ pub mod audit;
 pub mod backend;
 pub mod compact_hook;
 pub mod compaction_events;
-pub mod compaction_processor;
 pub mod consumer;
 pub mod delivery;
 pub mod domain;

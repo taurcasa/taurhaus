@@ -226,7 +226,6 @@ function normalizeSettings(raw) {
   const harness = terminal.harness && typeof terminal.harness === 'object'
     ? terminal.harness
     : {}
-  const codexCompaction = harness.codex_compaction ?? harness.codexCompaction
   const agyHooks = harness.agy_hooks ?? harness.agyHooks
   const grokHooks = harness.grok_hooks ?? harness.grokHooks
   const terminalContract = normalizeTerminalContract(
@@ -276,7 +275,6 @@ function normalizeSettings(raw) {
         grok: normalizeToolCommands(cliCommands.grok, terminalContract.cli_command_defaults.grok),
       },
       harness: {
-        codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
         agy_hooks: agyHooks == null ? true : Boolean(agyHooks),
         grok_hooks: grokHooks == null ? true : Boolean(grokHooks),
       },

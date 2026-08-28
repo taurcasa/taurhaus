@@ -5,7 +5,7 @@ use crate::coordination::compact_hook::{
 use crate::coordination::errors::CoordinationError;
 #[cfg(test)]
 use crate::models::CliCommandSettings;
-use crate::models::{CliVersions, CodexCompactionMode, TerminalSettings};
+use crate::models::{CliVersions, TerminalSettings};
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::all;
 
@@ -177,82 +177,40 @@ pub fn load_cli_commands(db: &DbState) -> CliCommandSettings {
     load_terminal_settings(db).cli_commands
 }
 
-pub(crate) fn reconcile_codex_compaction_at(
+pub(crate) fn reconcile_codex_hook_at(
     codex_home: &std::path::Path,
-    mode: CodexCompactionMode,
     has_managed_codex: bool,
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
-    reconcile_codex_compaction_at_with_support(
+    reconcile_codex_hook_at_with_support(
         codex_home,
-        mode,
         has_managed_codex,
         CliVersions::current().codex_compaction_hooks_support(),
         taurhaus_exe,
     )
 }
 
-pub(crate) fn reconcile_codex_compaction_at_with_support(
+pub(crate) fn reconcile_codex_hook_at_with_support(
     codex_home: &std::path::Path,
-    mode: CodexCompactionMode,
     has_managed_codex: bool,
     hooks_supported: Option<bool>,
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
-    match mode {
-        CodexCompactionMode::Hooks if has_managed_codex && hooks_supported == Some(true) => {
-            ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe)
-        }
-        CodexCompactionMode::Hooks if has_managed_codex && hooks_supported == Some(false) => {
-            remove_codex_compact_hook_at(codex_home)
-        }
-        CodexCompactionMode::Hooks => Ok(false),
-        CodexCompactionMode::Transcript => remove_codex_compact_hook_at(codex_home),
+    match (has_managed_codex, hooks_supported) {
+        (true, Some(true)) => ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe),
+        (_, Some(_)) => remove_codex_compact_hook_at(codex_home),
+        (_, None) => Ok(false),
     }
 }
 
-pub(crate) fn reconcile_codex_compaction(
-    mode: CodexCompactionMode,
-    has_managed_codex: bool,
-) -> Result<bool, CoordinationError> {
+pub(crate) fn reconcile_codex_hook(has_managed_codex: bool) -> Result<bool, CoordinationError> {
     let hooks_support = CliVersions::current().codex_compaction_hooks_support();
     let executable = compact_hook_executable()?;
-    let changed = reconcile_codex_compaction_at(
-        &PlatformPaths::codex_dir(),
-        mode,
-        has_managed_codex,
-        &executable,
-    )?;
-    if mode == CodexCompactionMode::Hooks && has_managed_codex && hooks_support == Some(false) {
-        tracing::warn!(
-            codex_version = ?CliVersions::current().codex,
-            "Codex compact hook skipped because the installed CLI predates 0.147"
-        );
-        let mut fields = serde_json::Map::new();
-        fields.insert(
-            "tool".to_string(),
-            serde_json::Value::String("codex".to_string()),
-        );
-        fields.insert(
-            "version".to_string(),
-            CliVersions::current()
-                .codex
-                .clone()
-                .map(serde_json::Value::String)
-                .unwrap_or(serde_json::Value::Null),
-        );
-        fields.insert(
-            "minimum_version".to_string(),
-            serde_json::Value::String("0.147.0".to_string()),
-        );
-        crate::commands::logging::emit_global(
-            "warn",
-            "coordination",
-            "compaction.codex_hook.unsupported",
-            Some("Codex compact hook requires CLI version 0.147.0 or newer".to_string()),
-            fields,
-        );
-    } else if mode == CodexCompactionMode::Hooks && has_managed_codex && hooks_support.is_none() {
+    let changed =
+        reconcile_codex_hook_at(&PlatformPaths::codex_dir(), has_managed_codex, &executable)?;
+    if has_managed_codex && hooks_support == Some(false) {
+        log_codex_hook_unsupported_once();
+    } else if has_managed_codex && hooks_support.is_none() {
         tracing::warn!(
             "Codex compact hook reconciliation skipped because the CLI version could not be resolved"
         );
@@ -283,13 +241,9 @@ pub(crate) fn reconcile_codex_compaction(
             serde_json::Value::String("codex".to_string()),
         );
         fields.insert(
-            "mode".to_string(),
-            serde_json::Value::String(
-                match mode {
-                    CodexCompactionMode::Hooks => "hooks",
-                    CodexCompactionMode::Transcript => "transcript",
-                }
-                .to_string(),
+            "installed".to_string(),
+            serde_json::Value::Bool(
+                crate::coordination::compact_hook::codex_compact_hook_is_installed(),
             ),
         );
         fields.insert("changed".to_string(), serde_json::Value::Bool(true));
@@ -297,11 +251,85 @@ pub(crate) fn reconcile_codex_compaction(
             "info",
             "coordination",
             "compaction.codex_hook.reconciled",
-            Some("Reconciled Codex compaction source".to_string()),
+            Some("Reconciled the managed Codex compact hook".to_string()),
             fields,
         );
     }
     Ok(changed)
+}
+
+pub(crate) fn reconcile_codex_hook_for_managed_launch(
+    teams_dir: &std::path::Path,
+    launch_has_managed_codex: bool,
+) -> Result<bool, CoordinationError> {
+    let host_has_managed_codex =
+        managed_codex_hook_needed_for_launch(teams_dir, launch_has_managed_codex)?;
+    reconcile_codex_hook(host_has_managed_codex)
+}
+
+#[cfg(test)]
+fn reconcile_codex_hook_for_managed_launch_at(
+    teams_dir: &std::path::Path,
+    codex_home: &std::path::Path,
+    launch_has_managed_codex: bool,
+    hooks_supported: Option<bool>,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let host_has_managed_codex =
+        managed_codex_hook_needed_for_launch(teams_dir, launch_has_managed_codex)?;
+    reconcile_codex_hook_at_with_support(
+        codex_home,
+        host_has_managed_codex,
+        hooks_supported,
+        taurhaus_exe,
+    )
+}
+
+/// A managed launch is allowed to add the host's first Codex member before its
+/// team config exists. Every other launch reconciles against the full roster
+/// because the Codex hook lives in one host-global `hooks.json` file.
+fn managed_codex_hook_needed_for_launch(
+    teams_dir: &std::path::Path,
+    launch_has_managed_codex: bool,
+) -> Result<bool, CoordinationError> {
+    Ok(launch_has_managed_codex
+        || crate::coordination::compact_hook::any_managed_codex_member(teams_dir)?)
+}
+
+/// One line per run: startup and every managed launch reconcile the same
+/// unsupported installation, and repeats do not add operational information.
+fn log_codex_hook_unsupported_once() {
+    static LOGGED: std::sync::Once = std::sync::Once::new();
+    LOGGED.call_once(|| {
+        tracing::warn!(
+            codex_version = ?CliVersions::current().codex,
+            "Codex compact hook skipped because the installed CLI predates 0.147"
+        );
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            "tool".to_string(),
+            serde_json::Value::String("codex".to_string()),
+        );
+        fields.insert(
+            "version".to_string(),
+            CliVersions::current()
+                .codex
+                .clone()
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+        fields.insert(
+            "minimum_version".to_string(),
+            serde_json::Value::String("0.147.0".to_string()),
+        );
+        crate::commands::logging::emit_global(
+            "warn",
+            "coordination",
+            "compaction.codex_hook.unsupported",
+            Some("Codex compact hook requires CLI version 0.147.0 or newer".to_string()),
+            fields,
+        );
+    });
 }
 
 pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationError> {

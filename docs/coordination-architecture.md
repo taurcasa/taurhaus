@@ -29,10 +29,10 @@ This document captures the shipped/active coordination subsystem architecture in
 
 - The practical orchestration direction for auto-idle and communication quality now lives in [`architecture/orchestration-practical-auto-idle-and-communication.md`](architecture/orchestration-practical-auto-idle-and-communication.md).
 - The v0.2.0 protocol exploration is archived in [`archive/architecture/orchestration-protocol-design.md`](archive/architecture/orchestration-protocol-design.md) and is not an active implementation target.
-- Taurhaus now owns a broader operational context layer under `~/.claude/teams/{team}/state/`, including per-member operational snapshots, canonical Codex compaction signal logs, and per-member compaction delivery state.
+- Taurhaus now owns a broader operational context layer under `~/.claude/teams/{team}/state/`, including per-member operational snapshots and per-member compaction delivery state.
 - `coordination/stall_detector/` and its `#[path]` shim were deleted. The `state/activity/<member>.json` export now lives in `coordination/activity_export.rs`, which also runs the stale-pane ownership probe and quarantines foreign panes before writing a snapshot. It is not the main reinjection context path.
-- Codex compaction reinjection is no longer poll-based. Two sources exist, selected by the `harness.codex_compaction` setting: `transcript` (default) is extractor -> watcher -> processor -> `MeshInboxStore::append`; `hooks` (opt-in, gated on `CliVersions::codex_compaction_hooks_support()`) routes Codex's own `SessionStart(source=compact)` through a managed `~/.codex/hooks.json` installer into the same bridge. Switching back to `transcript` removes the hook.
-- There is one hook bridge for both tools, `coordination/compact_hook.rs` (it replaced `claude_hooks.rs`): one `CompactHookInput` parser for both payload shapes, the tool inferred from `transcript_path`, one resolver (runtime `session_id`, then normalized `cwd`), and `record_delivery_at(teams_dir, …)` as the only bookkeeping path. It installs runtime-appropriate wrappers (`.sh` for WSL/Linux runtimes, `.cmd` for native Windows runtimes) and logs standalone hook execution into the canonical JSONL sink.
+- Codex compaction reinjection uses its native `SessionStart(source=compact)` hook by default for managed Codex >= 0.147. Startup and terminal-settings reconciliation keep the managed hook installed; unsupported versions log `compaction.codex_hook.unsupported` once and receive no reinjection. The former transcript extractor/watcher/processor, owner selection and setting are retired.
+- There is one hook bridge for Claude, Codex and Grok, `coordination/compact_hook.rs` (it replaced `claude_hooks.rs`): one `CompactHookInput` parser for the payload shapes, the tool inferred from grok's reserved hook environment or otherwise from `transcript_path`, one resolver (runtime `session_id`, then normalized `cwd`), and `record_delivery_at(teams_dir, …)` as the only bookkeeping path. It installs runtime-appropriate wrappers (`.sh` for WSL/Linux runtimes, `.cmd` for native Windows runtimes) and logs standalone hook execution into the canonical JSONL sink.
 
 ## Design Decision Log
 
@@ -97,13 +97,13 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 | Agent Type | Launch Method | Delivery | Wake | Messaging |
 |---|---|---|---|---|
 | Claude Code | Native CLI flags (`--model`, `--effort`, `-n <agent_name>`, `--team-name`, `--agent-name`, `--agent-id`) | `MeshInboxStore::append` | Native inbox poller | Native `SendMessage` tool |
-| Codex | tmux + `mesh daemon`; `-m` + `-c 'model_reasoning_effort="…"'` (+ `--dangerously-bypass-hook-trust` in hooks mode) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+| Codex | tmux + `mesh daemon`; `-m` + `-c 'model_reasoning_effort="…"'` (+ `--dangerously-bypass-hook-trust` when native hooks are supported) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
 | Antigravity (`agy`) | tmux + `mesh daemon`; `--model` + `--effort` (+ `--dangerously-skip-permissions`) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
 | Grok (`grok`) | tmux + `mesh daemon`; `--model` + `--effort` (+ `--always-approve`) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI. Onboarding adds one line: plain Enter queues a message until the running turn ends, Ctrl+Enter interjects immediately |
 
 Launch flags are rendered by `LaunchSpec::render` in `session_scanner/launch.rs`.
 
-**Operator delivery is one writer for every tool.** Taurhaus appends to `teams/<team>/inboxes/<member>.json` through `MeshInboxStore::append` regardless of backend; the orchestrator ensures the member daemon after every inbox append for non-Claude members. `mesh send` / `mesh read` remain agent-originated traffic only. Codex additionally has the opt-in `SessionStart(compact)` hook path described above.
+**Operator delivery is one writer for every tool.** Taurhaus appends to `teams/<team>/inboxes/<member>.json` through `MeshInboxStore::append` regardless of backend; the orchestrator ensures the member daemon after every inbox append for non-Claude members. `mesh send` / `mesh read` remain agent-originated traffic only. Supported managed Codex additionally receives post-compaction context through the default native `SessionStart(compact)` hook.
 
 **Rationale**: Claude Code is the only registered harness with `native_inbox_poller` (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Antigravity and Grok have no local team features either; Grok's ACP/leader surface exists but is deliberately out of scope.
 
@@ -221,7 +221,7 @@ src-tauri/src/
       runtime.rs        # MemberRuntimeStore (JSON, runtime/)
       inbox.rs          # MeshInboxStore — the single inbox writer
       lock.rs           # TargetFileLock (flock + inode re-check)
-      compaction.rs  compaction_signal.rs  operational.rs  active_project.rs
+      compaction.rs  operational.rs  active_project.rs
     health/
       mod.rs  state.rs  transition.rs  policy.rs    # placeholders, see D7
     orchestrator/
@@ -233,7 +233,7 @@ src-tauri/src/
       mod.rs  process.rs  recording.rs  system.rs  tmux.rs
     compact_hook.rs         # Claude + Codex + Grok hook bridge
     agy_hooks_installer.rs  # Antigravity activity hooks (shared config/hooks.json)
-    compaction_processor.rs  compaction_events.rs
+    compaction_events.rs
     activity_export.rs  activity_schema.rs
     delivery.rs             # DeliveryRenderer / onboarding
     member_activation.rs  mesh_cli.rs  operational_context.rs
@@ -251,7 +251,7 @@ The one configuration taurhaus does own is the compact-hook registration, becaus
 | Tool | Managed files | Condition |
 |---|---|---|
 | Claude | `<claude_dir>/settings.json` (`SessionStart` matcher `compact`) + `<claude_dir>/hooks/taurhaus-session-start-compact.*` | whenever any team has a managed Claude member — reconciled at startup and after team mutations |
-| Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | only when `harness.codex_compaction=hooks` (the setting defaults to `transcript`) and Codex ≥ 0.147; removed when the setting flips back |
+| Codex | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/taurhaus-session-start-compact.*` | by default while a managed Codex member exists and Codex >= 0.147; startup and terminal-settings reconciliation repair the taurhaus entry without replacing foreign hooks |
 | Grok | `<GROK_HOME>/hooks/taurhaus.json` (registering both `SessionStart` matcher `compact` and `PostCompact` matcher `manual\|auto`) + `<GROK_HOME>/hooks/taurhaus-session-start-compact.*` | while `harness.grok_hooks` is on (the default) and at least one managed grok member exists; grok registers hooks per home, not per session, so every roster mutation reconciles it, not just startup and a Settings save (`commands/terminal_settings.rs:328-364`). grok's personal hook dir is always trusted, so no trust grant or bypass flag is involved |
 
 Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains foreign hooks — and settings files are rewritten atomically.
@@ -260,9 +260,8 @@ Writes are scoped to the taurhaus hook entry — `remove_source_hook` retains fo
 
 | Path | Channel |
 |---|---|
-| hook path, `HookStdout` — Claude always, Codex in `hooks` mode | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
+| hook path, `HookStdout` — Claude and supported managed Codex | the hook process returns the rendered card as `hookSpecificOutput.additionalContext` on `SessionStart` and the tool folds it into the resumed context. No inbox write (`compact_hook.rs`) |
 | hook path, `MeshInbox` — Grok | grok's session-start source never reports `compact`, so the bridge answers grok's own `PostCompact` event; passive-hook stdout is documented as ignored, so the card is queued in the member's mesh inbox instead of returned. A `PostCompact` from a stdout-answered harness is skipped as `post_compact_signal_only` (`compact_hook.rs:453-456`). grok also loads `~/.claude/settings.json` hooks, so one compaction can reach the bridge twice: the registry sets `compaction_hook_compat_import` and the bridge drops the second within the dedupe window (`compact_hook.rs:468-481`, `compaction.hook.compat_import`) |
-| transcript path — Codex in the default `transcript` mode | the card is appended to the member's inbox as an operator-originated message (`compaction_processor.rs` → `MeshInboxStore::append`) |
 
 Everything else — queued messages, operator notices — is an inbox write. Inbox files stay external and ephemeral.
 
@@ -358,39 +357,33 @@ This means teams are not sourced from SQLite ownership records; visibility is pr
 **Decision**: Session scanning and daemon RPC expose two distinct views:
 
 - `DisplaySession` / `list_display_sessions` for UI consumers
-- `RuntimeSession` / `list_runtime_sessions` for transcript-aware coordination and compaction logic
+- `RuntimeSession` / `list_runtime_sessions` for transcript-aware coordination and native-hook member resolution
 
-`DisplaySession` intentionally strips transcript metadata such as `session_id` and `jsonl_path`. Runtime correlation, task sync, and compaction processing must use `RuntimeSession`.
+`DisplaySession` intentionally strips transcript metadata such as `session_id` and `jsonl_path`. Runtime correlation, task sync, and native-hook member resolution must use `RuntimeSession`.
 
 **Rationale**: This prevents UI-safe data stripping from silently leaking into runtime logic when Windows/daemon and native/local session paths diverge.
 
-### D21: Codex compaction is event-driven and file-backed
+### D21: Codex compaction uses the native hook by default
 
 **Status**: Implemented
 
-**Decision**: Codex compaction delivery now flows through a file-backed event pipeline instead of the old poll-based reinjection path.
-
-- `CompactionSignalExtractor` tails active managed Codex `RuntimeSession` transcripts, persists per-file offsets, collapses paired `compacted` + `context_compacted` boundaries, and appends canonical signal records
-- `CompactionSignalWatcher` watches the low-traffic signal log, replays missed events from durable offsets, and hands each signal to the processor once per watcher state
-- `CompactionSignalProcessor` resolves the managed member from roster/runtime context, loads the operational snapshot, renders a bounded reinjection card, appends it to the mesh inbox, and records the delivery result in per-member compaction state
+**Decision**: Managed Codex >= 0.147 installs and reconciles the native `SessionStart(source=compact)` hook by default. The hook invokes `compact_hook.rs`, which resolves the managed member from runtime context, loads the operational snapshot, renders a bounded reinjection card, returns it as `hookSpecificOutput.additionalContext`, and records the delivery result in per-member compaction state.
 
 **Current delivery semantics**:
-- The legacy poll-based `session_scanner/compaction.rs` module is gone.
-- Delivery guards based on stale deferred state were removed. The processor now checks only current managed-member attachment and pane liveness before delivery.
+- The legacy poller and the later transcript extractor/signal-log/watcher/processor pipeline are gone.
+- There is no daemon/app owner election and no `harness.codex_compaction` setting. Old persisted JSON containing the retired field still loads because unknown fields are ignored.
 - Idempotency is recorded in `MemberCompactionStore` by `session_id` + compaction timestamp.
-- Stale compaction records are persisted as `Stale` results instead of being injected late.
 - Delivery is suppressed when the operational snapshot no longer contains a resumable task (for example, the last task was already `completed` or `deleted`), so finished work does not generate stale resume cards.
-- Mesh inbox corruption now fails closed: corrupt inbox files are quarantined and logged as `mesh.inbox.corrupt`, and append/load return an error instead of silently treating corruption as empty.
-- Hook delivery uses the same resumable-task guard and emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, `grok`, or `compact` when the tool cannot be inferred (`compact_hook.rs:1078-1083`), and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`. Also `compaction.codex_hook.degraded` and `compaction.compact_hook.parse_payload_debug`.
+- Hook delivery emits `compaction.<tool>_hook.<action>` events for transport diagnostics, where `<tool>` is `claude`, `codex`, `grok`, or `compact` when the tool cannot be inferred, and `<action>` is `received`, `resolved`, `delivered`, `skipped`, or `failed`.
+- Codex versions below 0.147 log `compaction.codex_hook.unsupported` once and receive no compaction reinjection.
 
 **End-to-end path**:
-1. `RuntimeSession` discovery identifies active managed Codex transcripts.
-2. `CompactionSignalExtractor` tails those JSONL files and emits canonical signal records into the team compaction signal log.
-3. `CompactionSignalWatcher` watches the signal log, advances durable offsets, and replays missed records after watcher drift or restart.
-4. `CompactionSignalProcessor` resolves the target member, validates current attachment, composes the reinjection card, appends the inbox message, and records the delivery outcome.
-5. Coordination audit surfaces and runtime diagnostics read the resulting signal and delivery state for operator visibility.
+1. Startup or terminal-settings reconciliation installs the managed Codex hook for supported managed members.
+2. Codex automatic compaction emits `SessionStart(source=compact)` and invokes the wrapper appropriate to its runtime (`.sh` on Linux/WSL, `.cmd` on native Windows).
+3. `compact_hook.rs` resolves the target member, validates current attachment and resumable context, composes the reinjection card, and returns it on hook stdout.
+4. Codex folds `hookSpecificOutput.additionalContext` into the resumed context; taurhaus records the terminal result.
 
-**Rationale**: This keeps transcript watching on the hot path, gives restart-safe durable offsets, moves delivery to an observable lower-traffic signal boundary, and avoids the old poller/delivery-guard failure mode.
+**Rationale**: Codex 0.147 made native compaction hooks a stable harness capability. Using that boundary removes duplicate detection and ownership machinery while delivering context on Codex's own resume path.
 
 ### D18: Implementation tasks require a Rust quality gate before completion
 

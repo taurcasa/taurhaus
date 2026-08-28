@@ -105,7 +105,7 @@
         tmux_layout: 'new_window',
         cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
         default_account_ids: {},
-        harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true },
+        harness: { agy_hooks: true, grok_hooks: true },
       },
       terminal_contract: terminalContract,
       dark_mode: dark,
@@ -305,7 +305,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cliDefaults,
-        harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true },
+        harness: { agy_hooks: true, grok_hooks: true },
       }
     }
     if (!settings.terminal.cli_commands) settings.terminal.cli_commands = cliDefaults
@@ -609,7 +609,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { agy_hooks: true, grok_hooks: true } }
                   }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
@@ -638,7 +638,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { agy_hooks: true, grok_hooks: true } }
                   }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
@@ -664,7 +664,7 @@
                     : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
                     const cliDefaults = getTerminalCliDefaults()
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true } };
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { agy_hooks: true, grok_hooks: true } };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
@@ -821,28 +821,7 @@
         <!-- ═══ MESH ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-mesh">
           <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">Mesh</h2>
-          <div class="flex items-center gap-3">
-            <label for="codex-compaction-source" class="text-[13px] {t.textSecondary} w-32">Codex compaction</label>
-            <select
-              id="codex-compaction-source"
-              class="flex-1 px-2 py-1 text-[13px] rounded-md border {inputBg} {fieldFocusRing}"
-              value={settings.terminal?.harness?.codex_compaction ?? 'hooks'}
-              onchange={(e) => {
-                ensureCliCommands()
-                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: true }
-                settings.terminal.harness.codex_compaction = e.target.value
-                saveSettings()
-              }}
-              data-testid="codex-compaction-source"
-            >
-              <option value="hooks">Native hooks</option>
-              <option value="transcript">Transcript fallback</option>
-            </select>
-          </div>
-          <p class="mt-2 text-[11px] {textTertiary}">
-            Native hooks restore working context immediately after Codex compacts a managed session.
-          </p>
-          <div class="mt-4 flex items-start gap-3 border-t {t.keyline} pt-4">
+          <div class="flex items-start gap-3">
             <input
               id="agy-hooks-toggle"
               type="checkbox"
@@ -850,7 +829,7 @@
               checked={settings.terminal?.harness?.agy_hooks ?? true}
               onchange={(e) => {
                 ensureCliCommands()
-                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: true }
+                if (!settings.terminal.harness) settings.terminal.harness = { agy_hooks: true, grok_hooks: true }
                 settings.terminal.harness.agy_hooks = e.target.checked
                 saveSettings()
               }}
@@ -871,7 +850,7 @@
               checked={settings.terminal?.harness?.grok_hooks ?? true}
               onchange={(e) => {
                 ensureCliCommands()
-                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true }
+                if (!settings.terminal.harness) settings.terminal.harness = { agy_hooks: false, grok_hooks: true }
                 settings.terminal.harness.grok_hooks = e.target.checked
                 saveSettings()
               }}
