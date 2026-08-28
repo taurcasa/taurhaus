@@ -180,7 +180,10 @@ describe('sessionIndicator', () => {
     const paths = indicators.map(i => i.icon.path)
     expect(new Set(paths).size).toBe(4)
 
-    expect(indicators[2].icon.viewBox).toBe('0 0 16 16')
+    // Antigravity and Grok carry their own brand geometry, not the 16x16 grid
+    // the hand-drawn placeholders used.
+    expect(indicators[2].icon.viewBox).toBe('0 0 24 24')
+    expect(indicators[3].icon.viewBox).toBe('0 0 1024 1024')
   })
 
   it('toolIndicators carries session reference', () => {
