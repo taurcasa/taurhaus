@@ -252,10 +252,12 @@ fn compatibility_issue(
     }
 }
 
-fn mesh_contract_read_issue(read_error: String) -> MeshCompatibilityIssue {
+fn mesh_contract_read_issue(binary_display: &str, read_error: String) -> MeshCompatibilityIssue {
     compatibility_issue(
         "json_contract_unavailable",
-        "Installed Mesh CLI could not be verified with `mesh version --json`. Install bundled Mesh to continue.".to_string(),
+        format!(
+            "Installed Mesh CLI at {binary_display} could not be verified with `mesh version --json`. Install bundled Mesh to continue."
+        ),
         Some("mesh version --json".to_string()),
         Some(read_error),
     )
@@ -364,35 +366,63 @@ fn mesh_status_from_contract(
     }
 }
 
-fn check_mesh_install_native(
+/// A binary that exists but cannot report a version is not an install.
+///
+/// The 0-byte `~/.local/bin/mesh` of 2026-08-28 existed and was executable, so
+/// reporting it as installed made a silently broken mesh look healthy. Reporting
+/// it as *not* installed makes the next start repair it from the bundle — through
+/// the guarded installer, which refuses to make things worse.
+fn mesh_status_unrunnable(
     bundled_contract: &MeshCompatibilityContract,
-) -> Result<MeshInstallStatus, String> {
-    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    let binary = home.join(".local/bin/mesh");
+    binary_display: &str,
+    read_error: String,
+) -> MeshInstallStatus {
+    MeshInstallStatus {
+        installed: false,
+        version: None,
+        bundled_version: bundled_contract.version.clone(),
+        needs_update: true,
+        bundled_contract: bundled_contract.clone(),
+        installed_contract: None,
+        compatibility_issues: vec![mesh_contract_read_issue(binary_display, read_error)],
+        environment_available: true,
+        error: None,
+    }
+}
 
+fn mesh_status_for_native_binary(
+    bundled_contract: &MeshCompatibilityContract,
+    binary: &Path,
+) -> MeshInstallStatus {
     if !binary.exists() {
-        return Ok(mesh_status_not_installed(bundled_contract, true, None));
+        return mesh_status_not_installed(bundled_contract, true, None);
     }
 
-    match read_mesh_contract_native(&binary) {
+    match read_mesh_contract_native(binary) {
         Ok(installed_contract) => {
             let issues = compare_mesh_contracts(bundled_contract, &installed_contract);
-            Ok(mesh_status_from_contract(
+            mesh_status_from_contract(
                 bundled_contract,
                 Some(installed_contract),
                 issues,
                 true,
                 None,
-            ))
+            )
         }
-        Err(read_error) => Ok(mesh_status_from_contract(
-            bundled_contract,
-            None,
-            vec![mesh_contract_read_issue(read_error)],
-            true,
-            None,
-        )),
+        Err(read_error) => {
+            mesh_status_unrunnable(bundled_contract, &binary.display().to_string(), read_error)
+        }
     }
+}
+
+fn check_mesh_install_native(
+    bundled_contract: &MeshCompatibilityContract,
+) -> Result<MeshInstallStatus, String> {
+    let home = dirs::home_dir().ok_or("Could not determine home directory")?;
+    Ok(mesh_status_for_native_binary(
+        bundled_contract,
+        &home.join(".local/bin/mesh"),
+    ))
 }
 
 fn check_mesh_install_wsl(
@@ -474,12 +504,10 @@ fn check_mesh_install_wsl(
                 None,
             ))
         }
-        Err(read_error) => Ok(mesh_status_from_contract(
+        Err(read_error) => Ok(mesh_status_unrunnable(
             bundled_contract,
-            None,
-            vec![mesh_contract_read_issue(read_error)],
-            true,
-            None,
+            WSL_MESH_BINARY_PATH,
+            read_error,
         )),
     }
 }
@@ -1284,6 +1312,52 @@ exit 0
             error: Some("WSL is not available".to_string()),
         };
 
+        assert!(!mesh_install_required(&status));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The status
+    // check reported an existing-but-unrunnable binary as `installed: true` with no
+    // version, which reads as a healthy install everywhere the flag is trusted.
+    #[test]
+    fn mesh_status_reports_unrunnable_installed_binary_as_not_installed() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let binary = temp.path().join("mesh");
+        write_executable(&binary, "");
+
+        let status = mesh_status_for_native_binary(&bundled_test_contract(), &binary);
+
+        assert!(!status.installed, "an unrunnable mesh is not an install");
+        assert!(status.version.is_none());
+        assert!(status.installed_contract.is_none());
+        assert!(
+            mesh_install_required(&status),
+            "the next start must repair it from the bundle"
+        );
+        let issue = status
+            .compatibility_issues
+            .first()
+            .expect("an unrunnable mesh must be reported as a compatibility issue");
+        assert_eq!(issue.code, "json_contract_unavailable");
+        assert!(
+            issue.message.contains(&binary.display().to_string()),
+            "the issue must name the binary: {}",
+            issue.message
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn mesh_status_reports_a_matching_installed_binary_as_installed() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let binary = temp.path().join("mesh");
+        write_executable(&binary, &mesh_version_script("9.9.9"));
+
+        let status = mesh_status_for_native_binary(&bundled_test_contract(), &binary);
+
+        assert!(status.installed);
+        assert_eq!(status.version.as_deref(), Some("9.9.9"));
+        assert!(status.compatibility_issues.is_empty());
         assert!(!mesh_install_required(&status));
     }
 
