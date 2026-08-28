@@ -733,6 +733,16 @@ describe('Codex compaction via hooks', function () {
     expect(paneId).toBeTruthy()
     managed.paneId = paneId
 
+    // Same as after the first launch: the resume delivery can be left unsent in
+    // the composer, and anything typed next would be appended to it.
+    const paneContents = await capturePane(paneId)
+    if (blockingPrompt(paneContents)) {
+      throw new Error(`Codex is parked on an interactive prompt after resume:\n${paneContents.trimEnd()}`)
+    }
+    const turnsBeforeResumeDelivery = completedTurns()
+    tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
+    await waitForTurnAfter(turnsBeforeResumeDelivery)
+
     writeOperationalSnapshot(managed.teamName, managed.memberName, TAURHAUS_PROJECT_PATH)
 
     const offset = currentLogOffset()
