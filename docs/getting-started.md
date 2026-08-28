@@ -167,7 +167,7 @@ The app scans `~/projects/` by default. You can add more directories later in Se
 
 ## How taurhaus works
 
-taurhaus is a desktop app that watches your project directories and detects when AI CLI tools (Claude Code, Codex, Antigravity CLI, Grok CLI) are running in tmux sessions. It gives you a single view into every project — files, commits, tasks, and active sessions — so you can switch between projects without losing context. A background helper service (the "daemon") handles file watching and session detection, while the app itself stores project metadata in SQLite, indexes content for full-text search, and communicates with the helper service over a local TCP connection.
+taurhaus is a desktop app that watches your project directories and detects when AI CLI tools (Claude Code, Codex, Antigravity CLI, Grok CLI) are running in tmux sessions. It gives you a single view into every project — files, commits, tasks, and active sessions — so you can switch between projects without losing context. The app watches native/local project directories itself (`startup/watchers.rs`) and stores project metadata in SQLite, indexes content for full-text search, and talks to a background helper service (the "daemon") over a local TCP connection. The daemon takes over the work that has to happen on the Linux side: watching WSL project paths when it is connected, and inspecting sessions and accounts there.
 
 ## Keyboard shortcuts
 
