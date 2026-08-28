@@ -165,6 +165,9 @@ Those two arms are the only tool-specific report logic the analyzer has
 Grok has no `--manual-run-id` to pass, so verify it by hand:
 
 - `taurhaus.log.jsonl`: `compaction.grok_hook.received` → `resolved` → `delivered`.
+  `received` names the tool inferred from grok's reserved `GROK_*` hook env
+  (`compact_hook.rs:90-96`); a `compaction.compact_hook.received` there means the
+  inference failed and the run is not testing grok's path.
   A `skipped` with `post_compact_signal_only` means the delivery was routed as
   stdout, and one with `duplicate_compat_import` is the expected suppression of
   the second invocation grok makes through `~/.claude/settings.json`.
