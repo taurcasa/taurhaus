@@ -39,11 +39,10 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
-import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
 import { TAURHAUS_PROJECT_PATH, TAURHAUS_CLAUDE_DIR } from '../helpers/platform.js'
@@ -85,13 +84,14 @@ const codexHome = process.env.CODEX_HOME || ''
 const teamsDir = join(TAURHAUS_CLAUDE_DIR, 'teams')
 const appLogPath = join(dataDir, 'taurhaus.log.jsonl')
 const codexNotifyPath = join(dataDir, 'codex-notify.jsonl')
+/** The wdio session's temp root — every path this lane creates lives under it. */
+const sessionTempRoot = dataDir ? dirname(dataDir) : ''
 
 let mainApp = false
 let laneEnabled = false
 let laneSkipReason = 'Codex compaction prerequisites unavailable'
 let originalSettings = null
 let managed = null
-let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
 let restorePaneEnvironmentOnTeardown = null
 const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
@@ -344,6 +344,30 @@ async function withPaneEnvironment(work) {
 }
 
 /**
+ * Kill the panes this lane put in the shared `taurhaus` tmux session.
+ *
+ * Selection is by working directory, not by "created after we started": the
+ * session belongs to whatever the operator is running, and they do open panes
+ * while a run is in flight. Every pane this lane creates lives inside the wdio
+ * session's temp root, and nothing else does.
+ */
+function killLanePanes() {
+  if (!sessionTempRoot) return
+  const listed = tmuxQuietly(['list-panes', '-a', '-F', '#{pane_id}\t#{pane_current_path}'])
+  if (!listed.ok) {
+    console.log(`[e2e] codex compaction tmux cleanup skipped: ${listed.error}`)
+    return
+  }
+
+  for (const line of listed.output.split('\n')) {
+    const [paneId, path] = line.split('\t')
+    if (!paneId || !path?.startsWith(sessionTempRoot)) continue
+    const killed = tmuxQuietly(['kill-pane', '-t', paneId])
+    console.log(`[e2e] ${killed.ok ? 'killed' : 'failed to kill'} lane pane ${paneId} (${path})`)
+  }
+}
+
+/**
  * Boot the app, tolerating the splash-to-shell navigation racing the query.
  *
  * `waitForAppReady` opens with a bare element lookup, and this lane is a
@@ -360,6 +384,10 @@ async function bootApp(attempts = 3) {
       const message = String(error?.message ?? error)
       if (attempt >= attempts || !/no such frame|unload event|stale element/i.test(message)) throw error
       console.log(`[e2e] app boot query raced the splash transition; retrying (${message.split('\n')[0]})`)
+      // The lost frame sticks to the session, so re-attach to the window before
+      // querying again — otherwise every retry fails the same way.
+      const handles = await browser.getWindowHandles().catch(() => [])
+      if (handles.length > 0) await browser.switchToWindow(handles[0]).catch(() => {})
       await browser.pause(2_000)
     }
   }
@@ -715,8 +743,6 @@ describe('Codex compaction via hooks', function () {
 
   before(async function () {
     this.timeout(600_000)
-    tmuxPaneSnapshot = snapshotTmuxPanes()
-
     await bootApp()
     mainApp = await ensureMainApp()
     if (!mainApp) {
@@ -778,12 +804,7 @@ describe('Codex compaction via hooks', function () {
     }
     createdTeamNames.clear()
 
-    const tmuxCleanup = cleanupNewTmuxPanes(tmuxPaneSnapshot)
-    if (!tmuxCleanup.attempted) {
-      console.log(`[e2e] codex compaction tmux cleanup skipped: ${tmuxCleanup.skippedReason}`)
-    } else if (tmuxCleanup.failed.length > 0) {
-      console.warn(`[e2e] codex compaction tmux cleanup failures: ${JSON.stringify(tmuxCleanup.failed)}`)
-    }
+    killLanePanes()
   })
 
   it('compacts on a manual /compact without reaching the hook bridge', async function () {
