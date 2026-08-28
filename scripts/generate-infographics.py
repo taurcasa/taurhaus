@@ -468,6 +468,12 @@ def decode_image_payload(payload):
 # --------------------------------------------------------------------------- #
 
 
+def png_dimensions(data):
+    """`"WIDTHxHEIGHT"` of encoded image bytes — the geometry, from the pixels."""
+    with Image.open(io.BytesIO(data)) as image:
+        return f"{image.width}x{image.height}"
+
+
 def png_to_jpeg(png_data, max_width, quality):
     with Image.open(io.BytesIO(png_data)) as image:
         image = image.convert("RGB")
@@ -717,15 +723,24 @@ def _generate_one(root, config, image_id, entry, args):
     png_data = decode_image_payload(payload)
     duration = round(time.monotonic() - started, 2)
 
+    # The recipe has to describe the pixels, so the pixels decide it: the size the
+    # API actually returned is what gets recorded, and a response of the wrong
+    # shape is refused before anything is committed.
+    api_size = png_dimensions(png_data)
+    api_ratio = aspect_ratio_for(api_size)
+    if api_ratio != aspect_ratio_for(config.size):
+        raise RuntimeError(
+            f"the API returned a {api_size} image ({api_ratio}), but {config.size} "
+            f"({aspect_ratio_for(config.size)}) was requested — nothing was committed"
+        )
+
     output_path = Path(root) / entry["output_path"]
     if args.keep_png:
         write_atomic(output_path.with_name(f"{output_path.stem}.generated.png"), png_data)
 
     jpeg = png_to_jpeg(png_data, config.max_width, config.jpeg_quality)
     digest = sha256_hex(jpeg)
-
-    with Image.open(io.BytesIO(jpeg)) as image:
-        dimensions = f"{image.width}x{image.height}"
+    dimensions = png_dimensions(jpeg)
 
     # Both outputs are prepared before either is committed: a manifest entry that
     # cannot take the edit must not cost the old image.
@@ -736,8 +751,8 @@ def _generate_one(root, config, image_id, entry, args):
         image_id,
         generation_id=f"gen_{digest[:12]}",
         model=config.model,
-        image_size=config.size,
-        aspect_ratio=aspect_ratio_for(config.size),
+        image_size=api_size,
+        aspect_ratio=api_ratio,
         sha256=digest,
         updated_at=today,
         history_comment=f"regenerated {today} via openai {config.model}",
@@ -748,6 +763,7 @@ def _generate_one(root, config, image_id, entry, args):
         "id": image_id,
         "model": config.model,
         "size": config.size,
+        "api_size": api_size,
         "quality": config.quality,
         "sha256": digest,
         "bytes": len(jpeg),

@@ -42,7 +42,7 @@ gen = _load_script_module()
 FAKE_KEY = "sk-test-not-a-real-key-0000"
 
 
-def png_bytes(width=2400, height=1600):
+def png_bytes(width=2048, height=1152):
     image = Image.new("RGB", (width, height), (12, 46, 52))
     for x in range(0, width, 240):
         for y in range(0, height, 160):
@@ -790,7 +790,9 @@ class RunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = make_repo(tmp)
             with mock.patch.dict(os.environ, {"OPENAI_IMAGE_SIZE": "1536x1024"}):
-                with mock.patch.object(gen.urllib.request, "urlopen", side_effect=fake_urlopen()):
+                with mock.patch.object(
+                    gen.urllib.request, "urlopen", side_effect=fake_urlopen(png=png_bytes(1536, 1024))
+                ):
                     with redirect_stdout(io.StringIO()):
                         code = gen.main(
                             ["--id", "coordination-architecture", "--allow-aspect-change"],
@@ -803,6 +805,54 @@ class RunTests(unittest.TestCase):
             block = entry_blocks(manifest_text)["coordination-architecture"]
             self.assertIn('      image_size: "1536x1024"\n', block)
             self.assertIn('      aspect_ratio: "3:2"\n', block)
+
+    def test_a_response_with_the_wrong_shape_is_refused_before_anything_is_committed(self):
+        # Regression: 8541bf2 measured the produced JPEG (lines 727-728) but recorded
+        # aspect_ratio_for(config.size), so a 3:2 response was committed as a 16:9
+        # recipe with the entry's stale markers cleared off pixels that never had
+        # the shape the manifest promises.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            image_path = root / "docs" / "images" / "coordination-architecture.jpg"
+            before_image = image_path.read_bytes()
+            manifest = root / "docs" / "images" / "infographics.manifest.yaml"
+            before_manifest = manifest.read_text(encoding="utf-8")
+
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.object(
+                gen.urllib.request, "urlopen", side_effect=fake_urlopen(png=png_bytes(2400, 1600))
+            ):
+                with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
+                    code = gen.main(["--id", "coordination-architecture"], repo_root=root)
+
+            printed = out.getvalue() + err.getvalue()
+            self.assertNotEqual(code, 0)
+            self.assertIn("2400x1600", printed)
+            self.assertIn("3:2", printed)
+            self.assertIn("16:9", printed)
+            self.assertEqual(image_path.read_bytes(), before_image)
+            self.assertEqual(manifest.read_text(encoding="utf-8"), before_manifest)
+
+    def test_the_recorded_geometry_is_the_geometry_that_made_the_image(self):
+        # Regression: 8541bf2 recorded the requested size no matter what came back.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            with mock.patch.object(
+                gen.urllib.request, "urlopen", side_effect=fake_urlopen(png=png_bytes(1024, 576))
+            ):
+                with redirect_stdout(io.StringIO()):
+                    code = gen.main(["--id", "coordination-architecture"], repo_root=root)
+            self.assertEqual(code, 0)
+            manifest_text = (root / "docs" / "images" / "infographics.manifest.yaml").read_text(
+                encoding="utf-8"
+            )
+            block = entry_blocks(manifest_text)["coordination-architecture"]
+            self.assertIn('      image_size: "1024x576"\n', block)
+            self.assertIn('      aspect_ratio: "16:9"\n', block)
+            record = json.loads(
+                (root / "docs" / "images" / ".generation-log.jsonl").read_text(encoding="utf-8").strip()
+            )
+            self.assertEqual(record["api_size"], "1024x576")
 
     def test_a_manifest_edit_failure_keeps_the_old_image_and_runs_the_next_entry(self):
         # Regression: 8541bf2 replaced the JPEG before computing the manifest edit and

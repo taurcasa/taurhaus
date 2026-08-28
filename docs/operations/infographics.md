@@ -85,6 +85,11 @@ silently reshaped; `--allow-aspect-change` regenerates it at the configured size
 and rewrites the entry's `aspect_ratio` and `image_size` to the geometry that
 actually made the image, so the recipe still describes the file next to it.
 
+The pixels have the last word: what the API returns is measured before anything
+is written, `image_size` and `aspect_ratio` are recorded from that measurement
+rather than from the request, and a response whose shape is not the requested one
+is refused — the old image and its `stale` markers stay exactly where they are.
+
 By default an entry with a readable `reference_image_paths` entry goes to
 `/images/edits` with the current JPEG attached as a style reference, so the new
 image keeps the established dark-teal look. Everything else goes to
@@ -96,7 +101,8 @@ established dark-teal style."*
 
 - The JPEG at the entry's `output_path`, written atomically (a temp file beside
   the target, then a rename — a killed run never leaves half an image).
-- The entry's `generation_id`, `recipe.model`, `recipe.image_size`, `sha256`,
+- The entry's `generation_id`, `recipe.model`, `recipe.image_size` and
+  `recipe.aspect_ratio` (both measured off the returned image), `sha256`,
   `updated_at`, and a new `history` line. The `stale` markers are removed once
   the image matches the prompt again.
 - One JSON line per image in `docs/images/.generation-log.jsonl` (gitignored):
