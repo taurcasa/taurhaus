@@ -5,7 +5,7 @@
 
 ![Coordination Architecture](images/coordination-architecture.jpg)
 
-> Stale render: the diagram labels `ClaudeNativeBackend` "Planned". The backend is implemented in `backend/claude.rs`; `BackendSelector::m0` routes every tool to `MeshBridgedBackend` today, which is a routing decision, not a missing module.
+> Stale render: the diagram labels `ClaudeNativeBackend` "Planned". It is implemented in `backend/claude.rs` **and routed**. The selector only picks the orchestrator's floor backend (`select_floor`, `backend/selector.rs:43-45` — mesh-bridged today); `state.rs:185-188` installs `ClaudeNativeBackend` as `orchestrator.claude_backend`, and `orchestrator/delivery.rs:71-79` sends every member whose tool has `native_inbox_poller` — Claude — to it, leaving Codex, Antigravity and Grok on the floor backend. See D10 below.
 
 ## Overview
 
