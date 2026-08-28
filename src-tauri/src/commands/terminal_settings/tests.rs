@@ -305,3 +305,59 @@ fn a_roster_that_cannot_be_read_never_uninstalls_the_grok_hook() {
         "an unreadable roster is not proof the last grok member is gone"
     );
 }
+
+#[test]
+fn agy_hooks_reconciliation_follows_the_cli_version_gate() {
+    // Regression: 4e9e2c5 installed the Antigravity hook sink for any CLI
+    // version, but Stop hooks are unreachable before agy 1.1.10.
+    use crate::coordination::agy_hooks_installer::agy_hooks_installed_at;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join(".gemini");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+
+    assert!(!reconcile_agy_hooks_at(&root, true, Some(false), &exe).expect("unsupported agy"));
+    assert!(!agy_hooks_installed_at(&root));
+
+    assert!(!reconcile_agy_hooks_at(&root, true, None, &exe).expect("unknown agy version"));
+    assert!(!agy_hooks_installed_at(&root));
+
+    assert!(reconcile_agy_hooks_at(&root, true, Some(true), &exe).expect("supported agy"));
+    assert!(agy_hooks_installed_at(&root));
+
+    assert!(reconcile_agy_hooks_at(&root, false, Some(true), &exe).expect("setting turned off"));
+    assert!(!agy_hooks_installed_at(&root));
+}
+
+#[test]
+fn an_unsupported_agy_removes_hooks_a_newer_cli_installed() {
+    // Regression: 4e9e2c5 had no gate at all, so a downgrade left a hook that
+    // the running CLI can register but never fire, pinning sessions busy.
+    use crate::coordination::agy_hooks_installer::agy_hooks_installed_at;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join(".gemini");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    reconcile_agy_hooks_at(&root, true, Some(true), &exe).expect("install on a supported agy");
+
+    assert!(reconcile_agy_hooks_at(&root, true, Some(false), &exe).expect("downgraded agy"));
+    assert!(!agy_hooks_installed_at(&root));
+}
+
+#[test]
+fn an_unknown_agy_version_leaves_an_installed_hook_alone() {
+    // Regression: a transient version-probe failure must not uninstall the
+    // hook a live agy session is relying on for its idle edge.
+    use crate::coordination::agy_hooks_installer::agy_hooks_installed_at;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join(".gemini");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+    reconcile_agy_hooks_at(&root, true, Some(true), &exe).expect("install on a supported agy");
+
+    assert!(!reconcile_agy_hooks_at(&root, true, None, &exe).expect("unknown agy version"));
+    assert!(agy_hooks_installed_at(&root));
+}

@@ -198,8 +198,10 @@ mod commands {
             codex_bypass_hook_trust: bool,
         ) {
             cli_commands.codex_bypass_hook_trust = codex_bypass_hook_trust;
-            cli_commands.codex_notify_executable = (has_managed_codex
-                && crate::models::CliVersions::current().codex_notify_supported)
+            // Host CLI version probes shell out to the user's real CLIs, which
+            // no test lane may do; the shim pins the support answer instead.
+            const NOTIFY_SUPPORTED: bool = true;
+            cli_commands.codex_notify_executable = (has_managed_codex && NOTIFY_SUPPORTED)
                 .then(crate::provider::platform_paths::PlatformPaths::daemon_binary_path);
         }
 
