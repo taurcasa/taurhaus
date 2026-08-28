@@ -105,10 +105,6 @@ lint-frontend:
 lint-workflows:
     bun scripts/check-workflow-scripts.mjs
 
-# Install the procedures to user scope (<CLAUDE_CONFIG_DIR>/workflows, default ~/.claude); idempotent, takes --dry-run / --uninstall / --account-dir <dir>.
-install-workflows *ARGS:
-    bun scripts/install-workflows.mjs {{ARGS}}
-
 # Typecheck frontend code
 typecheck:
     bun run typecheck

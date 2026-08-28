@@ -148,23 +148,10 @@ number of a syntax error — bun's parser reports the file only).
 and pins the control flow — the fail-closed rules above, the Codex launcher's quoting and flags, the
 path normalization — without spawning a single agent.
 
-## Installing to user scope
-
-`just install-workflows` copies these files to `<CLAUDE_CONFIG_DIR>/workflows/` (default
-`~/.claude/workflows/`), where Claude Code resolves them from any project on that account. It follows
-the hook-installer discipline for a user config directory: it proves the directory is yours before
-writing, writes each file through a temporary file plus an atomic rename, keeps the permissions a file
-already has, writes through a symlink instead of replacing it, and touches nothing it did not install.
-
-- `just install-workflows --dry-run` — show what would change.
-- `just install-workflows --account-dir ~/.claude-account2` — install for a second account.
-- `just install-workflows --uninstall` — remove the copies that still match this repo; one you edited
-  is left alone and reported `kept-modified`.
-
-Re-run it after pulling a change here: an identical file is reported `unchanged` and never rewritten.
-
 ## Not here yet
 
-The run scanner that turns a run tree into the mesh canvas and a ledger export (W2), and generated
-agent definitions (W3) — see
+User-scope installation is a follow-up: these procedures resolve from this checkout's
+`.claude/workflows/`, and copying them to `<CLAUDE_CONFIG_DIR>/workflows/` so a lead can run them from
+any project is not built. Nor is the run scanner that turns a run tree into the mesh canvas and a
+ledger export (W2), or generated agent definitions (W3) — see
 [`docs/design/workflows-integration-plan.md`](../../docs/design/workflows-integration-plan.md).
