@@ -364,6 +364,134 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
     );
 }
 
+/// The repository root, one level above the Rust crate.
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crate lives inside the repository")
+        .to_path_buf()
+}
+
+#[test]
+fn the_export_agents_recipe_resolves_a_relative_project_against_the_caller() {
+    // Regression: the recipe changed into `src-tauri` before handing PROJECT to
+    // cargo, so `just export-agents .` resolved a relative path inside the Rust
+    // subdirectory instead of the directory the command was typed in. Running
+    // the recipe for real would build the binary a second time, so this
+    // dry-runs it from a foreign directory and then executes the resolution the
+    // script performs before `cargo run` — the step that decides which path the
+    // binary is handed.
+    if Command::new("just").arg("--version").output().is_err() {
+        // `just` is how every lane in this repo is invoked, so its absence means
+        // a bare `cargo test`; the renderer suite should not fail over a missing
+        // development tool.
+        eprintln!("skipping: `just` is not installed, so the recipe cannot be dry-run");
+        return;
+    }
+
+    let root = repo_root();
+    let caller = tempfile::tempdir().expect("caller dir");
+    let project = caller.path().join("my-project");
+    std::fs::create_dir_all(&project).expect("relative project dir");
+
+    let dry_run = Command::new("just")
+        .current_dir(caller.path())
+        .arg("--justfile")
+        .arg(root.join("justfile"))
+        .arg("--working-directory")
+        .arg(&root)
+        .arg("--dry-run")
+        .arg("export-agents")
+        .arg("my-project")
+        .output()
+        .expect("dry-run the export-agents recipe");
+    assert!(
+        dry_run.status.success(),
+        "dry run failed: {}",
+        String::from_utf8_lossy(&dry_run.stderr)
+    );
+    // `just` prints the recipe it would run on stderr.
+    let script = String::from_utf8(dry_run.stderr).expect("utf8 recipe");
+
+    // Everything the recipe does before it hands the path to cargo.
+    let start = script
+        .find("#!")
+        .expect("the recipe is a shell script; nothing resolves PROJECT any more");
+    let launch = script
+        .find("--export-agent-definitions")
+        .expect("the recipe still runs the export CLI");
+    let resolution = &script[start..script[..launch].rfind('\n').expect("a line before cargo")];
+
+    let resolved = Command::new("bash")
+        // Deliberately not the caller's directory: only the script itself may
+        // carry it, which is the whole point of `invocation_directory()`.
+        .current_dir(&root)
+        .arg("-c")
+        .arg(format!("{resolution}\nprintf '%s' \"$project\""))
+        .output()
+        .expect("run the recipe's path resolution");
+    assert!(
+        resolved.status.success(),
+        "the recipe no longer resolves PROJECT into $project: {}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+
+    assert_eq!(
+        std::fs::canonicalize(String::from_utf8(resolved.stdout).expect("utf8 path"))
+            .expect("the resolved path exists"),
+        std::fs::canonicalize(&project).expect("the project directory exists"),
+        "`just export-agents my-project` resolved the path somewhere else"
+    );
+}
+
+#[test]
+fn export_agent_definitions_cli_retires_a_generated_agent_the_catalog_dropped() {
+    // Regression: a re-export left the definition of a renamed, deleted, or
+    // re-homed role in place, so Claude Code kept resolving it. The CLI is the
+    // path `just export-agents` takes, so the removals have to reach its JSON.
+    let data_dir = tempfile::tempdir().expect("renderer data dir");
+    let project = tempfile::tempdir().expect("project dir");
+    let agents = project.path().join(".claude").join("agents");
+    std::fs::create_dir_all(&agents).expect("agents directory");
+    let stale = agents.join("retired-orchestrator.md");
+    std::fs::write(
+        &stale,
+        format!(
+            "---\nname: retired-orchestrator\n---\n\n{}\n",
+            taurhaus_lib::templates::agent_definitions::GENERATED_MARKER
+        ),
+    )
+    .expect("stale generated agent");
+    let hand_written = "---\nname: mine\n---\n\nMy own agent.\n";
+    std::fs::write(agents.join("my-agent.md"), hand_written).expect("user authored agent");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
+        .args([
+            "--export-agent-definitions",
+            project.path().to_str().expect("utf8 project path"),
+        ])
+        .env("TAURHAUS_DATA_DIR", data_dir.path())
+        .output()
+        .expect("run real taurhaus binary");
+    assert!(
+        output.status.success(),
+        "export failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let response: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("export response is JSON");
+    assert_eq!(
+        response["removed"].as_array().expect("removed role ids"),
+        &vec![serde_json::json!("retired-orchestrator")]
+    );
+    assert!(!stale.exists(), "the obsolete generated agent survived");
+    assert_eq!(
+        std::fs::read_to_string(agents.join("my-agent.md")).expect("user authored agent"),
+        hand_written
+    );
+}
+
 #[test]
 fn export_agent_definitions_cli_rejects_a_project_root_that_is_not_a_directory() {
     // Regression: the `export-agents` recipe changed into `src-tauri` before
