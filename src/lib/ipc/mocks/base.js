@@ -99,8 +99,8 @@ export const MOCK_RELATIONSHIPS = [
 /** Browser-mode stand-in for the backend `ModelCatalog` on the terminal contract. */
 export const MOCK_MODEL_CATALOG = {
   claude: [
-    { id: 'fable', label: 'Fable 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
     { id: 'opus', label: 'Opus 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
+    { id: 'fable', label: 'Fable 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
     { id: 'sonnet', label: 'Sonnet', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },
     { id: 'haiku', label: 'Haiku', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },
     { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },

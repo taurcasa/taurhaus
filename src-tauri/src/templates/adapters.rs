@@ -1812,7 +1812,7 @@ Investigate the relevant files before proposing a change.
 
         assert_eq!(imported.template.role_id, "no-frontmatter");
         assert_eq!(imported.template.name, "no-frontmatter");
-        assert_eq!(imported.template.defaults.model, "fable");
+        assert_eq!(imported.template.defaults.model, "opus");
         assert_eq!(
             imported.template.instructions,
             "Follow the existing repository conventions exactly."

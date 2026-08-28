@@ -2186,7 +2186,7 @@ fn role_hydration_cli_mismatch_uses_the_requested_tools_catalog_default() {
     let hydrated = hydrate_initialize_request_role_metadata(&state, request)
         .expect("role hydration should succeed");
 
-    assert_eq!(hydrated.agents[0].model, "fable");
+    assert_eq!(hydrated.agents[0].model, "opus");
 }
 
 // Regression: b345de1 (PR 5c) gave presets a lead pin for model and effort, but

@@ -176,7 +176,7 @@ describe('ModelSelect', () => {
 
   // The browser-mode stand-in is the catalog every mocked and visual flow sees,
   // so it has to carry the same Claude entries the backend keeps (models/mod.rs):
-  // fable and opus lead, and every retired id stays behind them so a persisted
+  // opus and fable lead, and every retired id stays behind them so a persisted
   // role still resolves instead of reading as a custom model.
   it('offers the whole Claude list the shared mock catalog declares', () => {
     render(ModelSelect, {
@@ -184,8 +184,8 @@ describe('ModelSelect', () => {
     })
 
     expect(optionValues(screen.getByTestId('model-select'))).toEqual([
-      'fable',
       'opus',
+      'fable',
       'sonnet',
       'haiku',
       'claude-opus-4-6',
