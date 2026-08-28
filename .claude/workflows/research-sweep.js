@@ -8,26 +8,100 @@ const NAME = 'research-sweep'
 
 // ── lib: shared rules, byte-identical in every script here (workflow scripts cannot import) ──
 const A = args || {}
-const ROOT = A.worktree || A.repo
-if (!ROOT) throw new Error(NAME + ': args.worktree (or args.repo) is required — the absolute path of the checkout to work in')
+
+// One single-quoted shell word. Every path these scripts hand to a shell goes through it, because a
+// WSL checkout is routinely `/mnt/c/Users/Jane Doe/…` and an apostrophe would close the quote.
+function sh(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'"
+}
+
+// A checkout can arrive as a Windows or a \\wsl$ UNC path; the agents work in WSL, so normalize to
+// the POSIX form first (docs/architecture/path-handling-guide.md).
+function posixPath(value, what) {
+  const raw = String(value == null ? '' : value)
+    .trim()
+    .replace(/^["']|["']$/g, '')
+  const unc = /^\\\\wsl(?:\$|\.localhost)\\[^\\]+((?:\\.*)?)$/.exec(raw)
+  let out = (unc ? unc[1] || '\\' : raw).replace(/\\/g, '/')
+  const drive = /^([A-Za-z]):\/(.*)$/.exec(out)
+  if (drive) out = '/mnt/' + drive[1].toLowerCase() + '/' + drive[2]
+  out = out.replace(/\/{2,}/g, '/').replace(/(.)\/+$/, '$1')
+  if (!out.startsWith('/')) throw new Error(NAME + ': ' + what + ' must be an absolute path — got ' + JSON.stringify(value))
+  return out
+}
+
+if (!A.worktree && !A.repo) throw new Error(NAME + ': args.worktree (or args.repo) is required — the absolute path of the checkout to work in')
+const ROOT = posixPath(A.worktree || A.repo, 'args.worktree (or args.repo)')
 const BRANCH = A.branch || ''
 const BASE = A.base || 'main'
 const SPEC = A.spec || ''
-const SCRATCH = A.scratch || '/tmp/taurhaus-workflows'
+const SCRATCH = posixPath(A.scratch || '/tmp/taurhaus-workflows', 'args.scratch')
 const MODEL = 'opus'
 const GATES =
   A.gates ||
   "'just check-quick' and 'just lint', plus 'cd src-tauri && cargo test <touched module paths>' (check-quick does not run the Rust tests); vitest runs from the checkout root"
 
 // Every agent runs on Opus in this repo's model split; effort is inherited unless args.effort pins one.
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+if (A.effort && EFFORTS.indexOf(A.effort) === -1) throw new Error(NAME + ': args.effort must be one of ' + EFFORTS.join(', ') + ' — got ' + JSON.stringify(A.effort))
 function call(o) {
   return A.effort ? { model: MODEL, effort: A.effort, ...o } : { model: MODEL, ...o }
+}
+
+// Codex takes its model as `-m` and its reasoning effort as `-c model_reasoning_effort` (CLAUDE.md,
+// session_scanner/launch.rs). Without args.codexModel nothing is pinned, the CLI's own default runs,
+// and the ledger says so rather than claiming a model nobody requested.
+const CODEX_MODEL = A.codexModel ? String(A.codexModel) : ''
+if (CODEX_MODEL && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(CODEX_MODEL)) throw new Error(NAME + ': args.codexModel must be a bare model slug — got ' + JSON.stringify(A.codexModel))
+const CODEX_FLAGS = (CODEX_MODEL ? ' -m ' + sh(CODEX_MODEL) : '') + (A.effort ? ' -c ' + sh('model_reasoning_effort="' + A.effort + '"') : '')
+const CODEX_ID = 'codex ' + (CODEX_MODEL || 'cli default') + (A.effort ? ' at ' + A.effort : '')
+const MODELS = { opus: MODEL + (A.effort ? ' at ' + A.effort : ''), codex: CODEX_ID }
+
+// Fail closed: a run that cannot show a real cross-family review and a green gate is not a success.
+function fail(why) {
+  log('FAILED CLOSED — ' + why)
+  throw new Error(NAME + ' failed closed: ' + why)
+}
+
+// A lane that returned nothing, or reported itself unavailable, never produced work or a review.
+function laneProblem(result, label) {
+  if (!result) return label + ' returned no result (the agent was skipped or died)'
+  if (result.status && result.status !== 'ok') return label + ' is unavailable: ' + (result.error || 'no error reported')
+  return ''
+}
+
+function reviewProblem(review, label) {
+  const lane = laneProblem(review, label)
+  if (lane) return lane
+  if (!Array.isArray(review.findings)) return label + ' returned no findings array'
+  if (review.verdict !== 'approve' && review.verdict !== 'fix_required') return label + ' returned an invalid verdict: ' + JSON.stringify(review.verdict)
+  return ''
+}
+
+// A gate is green only when it says pass AND every command it ran passed AND it ran something.
+// Its own vocabulary is pass/fail, so it is checked here rather than through laneProblem.
+function gateProblem(gate) {
+  if (!gate) return 'the gate agent returned no result (it was skipped or died)'
+  if (gate.error && gate.status !== 'pass') return 'the gate could not run: ' + gate.error
+  const ran = Array.isArray(gate.commands) ? gate.commands.filter(Boolean) : []
+  if (ran.length === 0) return 'the gate reported no commands run'
+  const failed = ran.filter((c) => c.status !== 'pass' && c.status !== 'skipped')
+  if (failed.length > 0) return 'gate commands failed: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
+  if (gate.status !== 'pass') return 'the gate reported status ' + JSON.stringify(gate.status) + (Array.isArray(gate.failures) && gate.failures.length > 0 ? ': ' + gate.failures.join('; ') : '')
+  return ''
+}
+
+// A reviewer that demands a fix but files no blocker or major still blocks: take it at its word.
+function actionableFrom(findings, verdicts) {
+  const hard = findings.filter((f) => f.severity === 'blocker' || f.severity === 'major')
+  if (hard.length > 0) return hard
+  return verdicts.indexOf('fix_required') === -1 ? [] : findings.filter((f) => f.severity !== 'nit')
 }
 
 function trailers(family) {
   const author =
     family === 'codex'
-      ? 'Co-Authored-By: Codex (gpt-5.6) <noreply@openai.com>'
+      ? 'Co-Authored-By: Codex (' + (CODEX_MODEL || 'gpt-5.6') + ') <noreply@openai.com>'
       : 'Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>'
   return 'Commit with these trailer lines:\n' + (A.sessionUrl ? author + '\nClaude-Session: ' + A.sessionUrl : author)
 }
@@ -56,66 +130,92 @@ const RULES = {
     'SCOPE RULE: judge against the spec\'s minimum deliverable and its "not building" list — missing scaffolding (tests or docs for tooling, dry-run niceties, extra configurability) is at most a minor, and majors are reserved for defects a user would hit.',
   evidence:
     'Do NOT modify any file. Report only findings you verified with file:line evidence; severity blocker/major/minor/nit; verdict fix_required only for blocker/major.',
+  honest:
+    "HONESTY: set status='ok' only for work you actually did and saw succeed. If your lane could not run, return status='unavailable' with the error — never an invented result, an approval you did not reach, or a gate you did not watch pass. The caller fails the run closed on an unavailable lane, and that is the correct outcome.",
 }
 
 // The Codex lane: a thin Opus wrapper drives `codex exec` detached and polls for the EXIT marker,
-// because one Bash call is capped at 10 minutes and Codex runs take longer.
+// because one Bash call is capped at 10 minutes and Codex runs take longer. The command lives in a
+// runner script so nothing is nested inside quotes, and every path is one single-quoted word.
 function codexWrapper(o) {
   const base = SCRATCH + '/codex-' + o.tag
   const out = base + (o.schema ? '.json' : '.out.md')
+  const logFile = base + '.log'
+  const runner = base + '.run.sh'
+  const prompt = base + '.prompt.md'
+  const deadline = o.timeout + 300
+  const exec =
+    'timeout ' +
+    o.timeout +
+    ' codex exec --yolo --skip-git-repo-check' +
+    CODEX_FLAGS +
+    (o.schema ? ' --output-schema ' + sh(base + '.schema.json') : '') +
+    ' -C ' +
+    sh(ROOT) +
+    ' -o ' +
+    sh(out) +
+    ' - < ' +
+    sh(prompt)
+  const runnerBody = [
+    '#!/usr/bin/env bash',
+    'set -u',
+    'cd ' + sh(ROOT) + ' || { echo "EXIT=97" >> ' + sh(logFile) + '; exit 97; }',
+    exec + ' >> ' + sh(logFile) + ' 2>&1',
+    'echo "EXIT=$?" >> ' + sh(logFile),
+  ].join('\n')
+  const resumeCmd =
+    'timeout ' +
+    o.timeout +
+    ' codex exec resume --last --yolo --skip-git-repo-check' +
+    CODEX_FLAGS +
+    ' -o ' +
+    sh(base + '-r<N>.md') +
+    ' ' +
+    sh(
+      'Continue from the current tree: commit any green step that is already complete, then proceed step by step, committing after each; run the gates; commit with the trailers.'
+    )
   return [
-    'You are a thin wrapper around the Codex CLI (gpt-5.6): it does the work, you do not. Do NOT do the task yourself.',
+    'You are a thin wrapper around the Codex CLI (' + CODEX_ID + '): it does the work, you do not. Do NOT do the task yourself.',
     '1) `mkdir -p ' +
-      SCRATCH +
+      sh(SCRATCH) +
       '`; write the TASK below verbatim to ' +
-      base +
-      '.prompt.md' +
-      (o.schema ? ', and this JSON Schema verbatim to ' + base + '.schema.json:\n' + JSON.stringify(o.schema) : '.'),
-    '2) Launch Codex DETACHED: rm -f ' +
-      out +
+      sh(prompt) +
+      (o.schema ? ', this JSON Schema verbatim to ' + sh(base + '.schema.json') + ':\n' + JSON.stringify(o.schema) + '\n' : ', ') +
+      'and this runner verbatim to ' +
+      sh(runner) +
+      ' — copy it byte for byte, the quoting is what makes a path with a space or an apostrophe work:\n' +
+      runnerBody,
+    '2) Launch it DETACHED: `rm -f ' +
+      sh(out) +
       ' ' +
-      base +
-      '.log; cd ' +
-      ROOT +
-      " && (setsid nohup bash -c 'timeout " +
-      o.timeout +
-      ' codex exec --yolo --skip-git-repo-check -C ' +
-      ROOT +
-      (o.schema ? ' --output-schema ' + base + '.schema.json' : '') +
-      ' -o ' +
-      out +
-      ' - < ' +
-      base +
-      '.prompt.md > ' +
-      base +
-      '.log 2>&1; echo EXIT=$? >> ' +
-      base +
-      ".log' >/dev/null 2>&1 < /dev/null & disown)",
-    '3) Poll with Bash calls of at most 9 minutes each: `until grep -q "^EXIT=" ' +
-      base +
-      '.log; do sleep 20; done` — repeat the call until the marker appears; wait rather than abandoning a run that is still going.',
+      sh(logFile) +
+      '; chmod +x ' +
+      sh(runner) +
+      '; setsid nohup bash ' +
+      sh(runner) +
+      ' >/dev/null 2>&1 < /dev/null & disown`',
+    '3) Poll in Bash calls of at most 9 minutes each: `until grep -q "^EXIT=" ' +
+      sh(logFile) +
+      '; do sleep 20; done` — repeat the call until the marker appears; wait rather than abandoning a run that is still going. Bound the total wait at ' +
+      deadline +
+      ' seconds (the deadline): if the marker has not appeared by then, kill the run (`pkill -f ' +
+      sh(runner) +
+      '`) and treat it as a failure in step 5.',
     '4) Read ' +
-      out +
+      sh(out) +
       ' and the tail of ' +
-      base +
-      '.log.' +
+      sh(logFile) +
+      ' — the `EXIT=` line is the exit code and the log header names the model Codex actually ran.' +
       (o.resume
-        ? ' If Codex left uncommitted work or an unfinished implementation (a run killed by the timeout counts), run up to THREE follow-up turns, each: `cd ' +
-          ROOT +
-          ' && timeout ' +
-          o.timeout +
-          ' codex exec resume --last --yolo --skip-git-repo-check -o ' +
-          base +
-          "-r<N>.md 'Continue from the current tree: commit any green step that is already complete, then proceed step by step, committing after each; run the gates; commit with the trailers.'` (`codex exec resume` does not accept -C — run it from " +
-          ROOT +
-          '; same detached + poll pattern). Report every turn and its exit code under deviations, and verify the gate claims yourself (`cd src-tauri && cargo check --all-targets`) before returning.'
+        ? ' If Codex left uncommitted work or an unfinished implementation (a run killed by the timeout counts), run up to THREE follow-up turns, each through the same runner + poll pattern with the same flags: `' +
+          resumeCmd +
+          '` (`codex exec resume` does not accept -C, so the runner\'s `cd` into the checkout is what places it). Report every turn and its exit code under deviations, and verify the gate claims yourself (`cd src-tauri && cargo check --all-targets`) before returning.'
         : ''),
     '5) Return the result as your structured output' +
-      (o.reviewer
-        ? ", with reviewer='" +
-          o.reviewer +
-          "'. If Codex failed or its JSON is invalid, retry steps 2-4 once; if it still fails, return verdict 'approve' with a single 'nit' finding titled 'codex unavailable' carrying the error as evidence."
-        : '.'),
+      (o.reviewer ? ", with reviewer='" + o.reviewer + "'" : '') +
+      ", and model_used set to the model named in the log (or 'unknown'). " +
+      RULES.honest +
+      ' Concretely: a non-zero EXIT, a missing or empty output file, output that does not match the schema, or the step-3 deadline is a failure — retry steps 2-4 once, and if it fails again return status=\'unavailable\' with the exit code and the last 20 log lines in error and no findings.',
     '',
     'TASK FOR CODEX:',
     o.task,
@@ -129,12 +229,16 @@ const RESEARCHERS = Array.isArray(A.researchers) ? A.researchers : []
 if (RESEARCHERS.length === 0) throw new Error(NAME + ': args.researchers must be a non-empty array of {family, prompt, label?, report?}')
 const OUTPUTS = A.outputs || SCRATCH
 
-const COMMON = [RULES.checkout, RULES.readOnly, RULES.safety].join('\n')
+const COMMON = [RULES.checkout, RULES.readOnly, RULES.safety, RULES.honest].join('\n')
 
 const RESEARCH_SCHEMA = {
   type: 'object',
-  required: ['summary', 'report_path', 'key_facts', 'unverified'],
+  required: ['status', 'summary', 'report_path', 'key_facts', 'unverified'],
   properties: {
+    status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
+    error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
+    model_used: { type: 'string', description: 'the model that actually ran this lane' },
+
     summary: { type: 'string', description: 'the answer in a few sentences' },
     report_path: { type: 'string', description: 'the report this researcher wrote' },
     key_facts: { type: 'array', items: { type: 'string' }, description: 'verified facts, each with its file:line or command evidence' },
@@ -183,17 +287,27 @@ const results = await parallel(
         call({ label: label + ':codex', phase: 'Research', schema: RESEARCH_SCHEMA })
       )
     }
-    return agent(researchPrompt(researcher, index) + '\nReturn the structured summary.', call({ label: label + ':opus', phase: 'Research', schema: RESEARCH_SCHEMA }))
+    return agent(
+      researchPrompt(researcher, index) + "\nReturn the structured summary, with status='ok' and model_used='" + MODELS.opus + "'.",
+      call({ label: label + ':opus', phase: 'Research', schema: RESEARCH_SCHEMA })
+    )
   })
 )
 
-const summaries = results.map((result, index) => ({
-  label: RESEARCHERS[index].label || 'researcher-' + (index + 1),
-  family: RESEARCHERS[index].family === 'codex' ? 'codex' : 'opus',
-  expected_report: reportPath(RESEARCHERS[index], index),
-  result: result,
-}))
-const missing = summaries.filter((s) => !s.result)
-if (missing.length > 0) log('No result from: ' + missing.map((s) => s.label).join(', '))
+// A sweep is not fatal when one lane dies — the lead synthesizes what came back — but a lane that
+// produced nothing is reported as such, never folded silently into the summaries.
+const summaries = results.map((result, index) => {
+  const label = RESEARCHERS[index].label || 'researcher-' + (index + 1)
+  return {
+    label: label,
+    family: RESEARCHERS[index].family === 'codex' ? 'codex' : 'opus',
+    model: RESEARCHERS[index].family === 'codex' ? MODELS.codex : MODELS.opus,
+    expected_report: reportPath(RESEARCHERS[index], index),
+    result: result,
+    problem: laneProblem(result, 'researcher ' + label),
+  }
+})
+const failed = summaries.filter((s) => s.problem)
+if (failed.length > 0) log('Produced nothing: ' + failed.map((s) => s.problem).join('; '))
 
-return { question: QUESTION, outputs: OUTPUTS, researchers: summaries }
+return { question: QUESTION, outputs: OUTPUTS, researchers: summaries, failed: failed }
