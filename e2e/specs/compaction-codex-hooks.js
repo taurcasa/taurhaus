@@ -70,6 +70,7 @@ const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
 const teamsDir = join(TAURHAUS_CLAUDE_DIR, 'teams')
 const appLogPath = join(dataDir, 'taurhaus.log.jsonl')
+const codexNotifyPath = join(dataDir, 'codex-notify.jsonl')
 
 let mainApp = false
 let laneEnabled = false
@@ -459,8 +460,9 @@ async function initializeManagedCodexTeam() {
   // lands while Codex is still starting. Anything typed next would be appended
   // to it — `/compact` would go out as prose, not as a command — so submit
   // whatever is there first. An empty composer ignores a bare Enter.
+  const turnsBeforeOnboarding = completedTurns()
   tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
-  await waitForMemberIdle(teamName, memberName)
+  await waitForTurnAfter(turnsBeforeOnboarding)
 
   writeOperationalSnapshot(teamName, memberName, TAURHAUS_PROJECT_PATH)
 
@@ -468,26 +470,39 @@ async function initializeManagedCodexTeam() {
 }
 
 /**
- * Best-effort wait for the member to stop working.
+ * Turns Codex has finished, counted from its own notify sink.
  *
- * `/compact` and the filler prompts are typed into a live TUI: sent mid-turn
- * Codex queues them as input instead of acting on them. Activity comes from the
- * scanner, so this never fails the case — it just stops the lane from typing
- * into a busy pane when the signal is there.
+ * Managed launches point Codex's `notify` at the daemon, which appends one
+ * `agent-turn-complete` record per turn to `<data dir>/codex-notify.jsonl`.
+ * That is the only turn signal this lane can rely on: the session scanner reads
+ * the tool's default home, so under the scratch `CODEX_HOME` it never binds the
+ * member and the roster's `sessionStatus` never moves.
  */
-async function waitForMemberIdle(teamName, memberName, timeoutMs = 120_000) {
+function completedTurns() {
   try {
-    await browser.waitUntil(
-      async () => {
-        const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
-        const member = (status?.members ?? []).find((entry) => entry?.name === memberName)
-        return (member?.sessionStatus ?? member?.session_status) === 'idle'
-      },
-      { timeout: timeoutMs, interval: 2_000, timeoutMsg: 'not idle' }
-    )
+    return readFileSync(codexNotifyPath, 'utf8').split('\n').filter((line) => line.trim()).length
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Best-effort wait for a turn to finish before typing into the pane again.
+ *
+ * `/compact` and the filler prompts go into a live TUI: sent mid-turn they are
+ * appended to whatever is in the composer instead of acting on their own. This
+ * never fails a case — a missing signal only means the lane types anyway.
+ */
+async function waitForTurnAfter(previousTurns, timeoutMs = 90_000) {
+  try {
+    await browser.waitUntil(async () => completedTurns() > previousTurns, {
+      timeout: timeoutMs,
+      interval: 1_000,
+      timeoutMsg: 'no turn completed',
+    })
     return true
   } catch {
-    console.log(`[e2e] ${memberName} never reported idle within ${timeoutMs}ms; sending anyway`)
+    console.log(`[e2e] no Codex turn completed within ${timeoutMs}ms; continuing anyway`)
     return false
   }
 }
@@ -676,8 +691,6 @@ describe('Codex compaction via hooks', function () {
     if (!laneEnabled) return this.skip()
     this.timeout(300_000)
 
-    await waitForMemberIdle(managed.teamName, managed.memberName)
-
     const offset = currentLogOffset()
     sendPaneLine(managed.paneId, '/compact')
 
@@ -728,7 +741,7 @@ describe('Codex compaction via hooks', function () {
 
     while (turns < AUTO_COMPACTION_MAX_TURNS && !hookDelivery(collected, managed.memberName)) {
       turns += 1
-      await waitForMemberIdle(managed.teamName, managed.memberName, 60_000)
+      const turnsBefore = completedTurns()
       const filler = writeFillerFile(turns)
       sendPaneLine(managed.paneId, `Read ${filler} and reply with only the number of list items it contains.`)
 
@@ -741,6 +754,8 @@ describe('Codex compaction via hooks', function () {
         collected = seen.events
       } catch {
         collected = readLog(offset).events
+        // Let the turn land before typing the next prompt into the composer.
+        await waitForTurnAfter(turnsBefore, 30_000)
       }
     }
 
