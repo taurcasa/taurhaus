@@ -926,9 +926,6 @@ impl TerminalPlatformContract {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct HarnessSettings {
-    #[serde(default)]
-    #[serde(alias = "codex_compaction")]
-    pub codex_compaction: CodexCompactionMode,
     /// Antigravity loads hooks only in a trusted workspace, so the sink is on
     /// by default and inert until the member answers the pane's trust prompt.
     #[serde(default = "default_true")]
@@ -948,19 +945,10 @@ const fn default_true() -> bool {
 impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
-            codex_compaction: CodexCompactionMode::Hooks,
             agy_hooks: true,
             grok_hooks: true,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum CodexCompactionMode {
-    #[default]
-    Hooks,
-    Transcript,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -982,8 +970,7 @@ pub struct TerminalSettings {
     #[serde(default)]
     #[serde(alias = "cli_commands")]
     pub cli_commands: CliCommandSettings,
-    /// Harness-native feature selection. Codex hooks are the verified default;
-    /// transcript parsing remains the explicit compatibility fallback.
+    /// Harness-native feature selection.
     #[serde(default)]
     pub harness: HarnessSettings,
     /// Per-tool global defaults. Missing keys use the provider's default dir.
@@ -1290,28 +1277,6 @@ pub struct DiffHunk {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Regression: commit 8cdfcf6 kept the transcript tailer as the default
-    // after Codex 0.147 proved SessionStart(source=compact) hooks reliable.
-    #[test]
-    fn terminal_settings_default_codex_compaction_to_hooks() {
-        let settings = TerminalSettings::default();
-        assert_eq!(
-            settings.harness.codex_compaction,
-            CodexCompactionMode::Hooks
-        );
-
-        let legacy: TerminalSettings = serde_json::from_value(serde_json::json!({
-            "emulator": "manual",
-            "custom_command": "",
-            "tmux_layout": "new_window"
-        }))
-        .expect("legacy settings");
-        assert_eq!(
-            legacy.harness.codex_compaction,
-            CodexCompactionMode::Hooks
-        );
-    }
 
     #[test]
     fn terminal_settings_default_agy_hooks_on() {

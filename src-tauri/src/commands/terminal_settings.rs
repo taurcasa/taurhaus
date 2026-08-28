@@ -5,7 +5,7 @@ use crate::coordination::compact_hook::{
 use crate::coordination::errors::CoordinationError;
 #[cfg(test)]
 use crate::models::CliCommandSettings;
-use crate::models::{CliVersions, CodexCompactionMode, TerminalSettings};
+use crate::models::{CliVersions, TerminalSettings};
 use crate::provider::platform_paths::PlatformPaths;
 use crate::session_scanner::cli_tool::all;
 
@@ -177,55 +177,40 @@ pub fn load_cli_commands(db: &DbState) -> CliCommandSettings {
     load_terminal_settings(db).cli_commands
 }
 
-pub(crate) fn reconcile_codex_compaction_at(
+pub(crate) fn reconcile_codex_hook_at(
     codex_home: &std::path::Path,
-    mode: CodexCompactionMode,
     has_managed_codex: bool,
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
-    reconcile_codex_compaction_at_with_support(
+    reconcile_codex_hook_at_with_support(
         codex_home,
-        mode,
         has_managed_codex,
         CliVersions::current().codex_compaction_hooks_support(),
         taurhaus_exe,
     )
 }
 
-pub(crate) fn reconcile_codex_compaction_at_with_support(
+pub(crate) fn reconcile_codex_hook_at_with_support(
     codex_home: &std::path::Path,
-    mode: CodexCompactionMode,
     has_managed_codex: bool,
     hooks_supported: Option<bool>,
     taurhaus_exe: &std::path::Path,
 ) -> Result<bool, CoordinationError> {
-    match mode {
-        CodexCompactionMode::Hooks if has_managed_codex && hooks_supported == Some(true) => {
-            ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe)
-        }
-        CodexCompactionMode::Hooks if has_managed_codex && hooks_supported == Some(false) => {
-            remove_codex_compact_hook_at(codex_home)
-        }
-        CodexCompactionMode::Hooks => Ok(false),
-        CodexCompactionMode::Transcript => remove_codex_compact_hook_at(codex_home),
+    match (has_managed_codex, hooks_supported) {
+        (true, Some(true)) => ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe),
+        (true, Some(false)) => remove_codex_compact_hook_at(codex_home),
+        _ => Ok(false),
     }
 }
 
-pub(crate) fn reconcile_codex_compaction(
-    mode: CodexCompactionMode,
-    has_managed_codex: bool,
-) -> Result<bool, CoordinationError> {
+pub(crate) fn reconcile_codex_hook(has_managed_codex: bool) -> Result<bool, CoordinationError> {
     let hooks_support = CliVersions::current().codex_compaction_hooks_support();
     let executable = compact_hook_executable()?;
-    let changed = reconcile_codex_compaction_at(
-        &PlatformPaths::codex_dir(),
-        mode,
-        has_managed_codex,
-        &executable,
-    )?;
-    if mode == CodexCompactionMode::Hooks && has_managed_codex && hooks_support == Some(false) {
+    let changed =
+        reconcile_codex_hook_at(&PlatformPaths::codex_dir(), has_managed_codex, &executable)?;
+    if has_managed_codex && hooks_support == Some(false) {
         log_codex_hook_unsupported_once();
-    } else if mode == CodexCompactionMode::Hooks && has_managed_codex && hooks_support.is_none() {
+    } else if has_managed_codex && hooks_support.is_none() {
         tracing::warn!(
             "Codex compact hook reconciliation skipped because the CLI version could not be resolved"
         );
@@ -256,13 +241,9 @@ pub(crate) fn reconcile_codex_compaction(
             serde_json::Value::String("codex".to_string()),
         );
         fields.insert(
-            "mode".to_string(),
-            serde_json::Value::String(
-                match mode {
-                    CodexCompactionMode::Hooks => "hooks",
-                    CodexCompactionMode::Transcript => "transcript",
-                }
-                .to_string(),
+            "installed".to_string(),
+            serde_json::Value::Bool(
+                crate::coordination::compact_hook::codex_compact_hook_is_installed(),
             ),
         );
         fields.insert("changed".to_string(), serde_json::Value::Bool(true));
@@ -270,7 +251,7 @@ pub(crate) fn reconcile_codex_compaction(
             "info",
             "coordination",
             "compaction.codex_hook.reconciled",
-            Some("Reconciled Codex compaction source".to_string()),
+            Some("Reconciled the managed Codex compact hook".to_string()),
             fields,
         );
     }

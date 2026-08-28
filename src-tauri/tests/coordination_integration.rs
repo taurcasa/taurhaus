@@ -13,18 +13,6 @@ mod coordination_shims;
 pub use coordination_shims::provider;
 pub use coordination_shims::{daemon, errors, models, session_scanner, templates, tmux_layout};
 
-pub mod startup {
-    pub mod compaction {
-        pub fn reconcile_compaction_runtime<R: tauri::Runtime>(
-            _app: &tauri::AppHandle<R>,
-            _mode: crate::models::CodexCompactionMode,
-            _reason: &str,
-        ) -> Result<(), crate::coordination::errors::CoordinationError> {
-            Ok(())
-        }
-    }
-}
-
 pub mod terminal {
     use std::sync::{Mutex, OnceLock};
 
@@ -180,7 +168,7 @@ mod commands {
 
     pub mod terminal_settings {
         use crate::coordination::errors::CoordinationError;
-        use crate::models::{CliCommandSettings, CodexCompactionMode, TerminalSettings};
+        use crate::models::{CliCommandSettings, TerminalSettings};
 
         use super::projects::DbState;
 
@@ -205,10 +193,7 @@ mod commands {
                 .then(crate::provider::platform_paths::PlatformPaths::daemon_binary_path);
         }
 
-        pub fn reconcile_codex_compaction(
-            _mode: CodexCompactionMode,
-            _has_managed_codex: bool,
-        ) -> Result<bool, CoordinationError> {
+        pub fn reconcile_codex_hook(_has_managed_codex: bool) -> Result<bool, CoordinationError> {
             Ok(false)
         }
 

@@ -116,7 +116,9 @@ fn run_with_compaction_teams_dir(
     provider: Arc<dyn ProjectProvider>,
     compaction_teams_dir: Option<std::path::PathBuf>,
 ) -> std::io::Result<()> {
-    crate::daemon::compaction::reset_requested_mode(crate::models::CodexCompactionMode::Transcript);
+    crate::daemon::compaction::reset_requested_mode(
+        crate::daemon::compaction::DaemonCompactionMode::Hooks,
+    );
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 

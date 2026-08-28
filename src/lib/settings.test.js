@@ -105,7 +105,7 @@ function mockSettings(overrides = {}) {
     custom_command: '',
     tmux_layout: 'new_window',
     cli_commands: mockCliCommandDefaults(),
-    harness: { codex_compaction: 'hooks', agy_hooks: true, grok_hooks: true },
+    harness: { agy_hooks: true, grok_hooks: true },
     ...(overrides.terminal ?? {}),
   }
 
@@ -400,29 +400,12 @@ describe('Settings component', () => {
 
   // --- Section structure (P14) ---
 
-  it('renders the Mesh section with Codex hooks selected by default', async () => {
+  it('does not expose the retired Codex compaction source setting', async () => {
+    // Regression: commit 6fe0aa3 exposed a transcript fallback after Codex
+    // native hooks became the supported compaction path.
     render(Settings, { props: defaultProps() })
-    await waitFor(() => {
-      // Regression: commit 8cdfcf6 kept transcript compaction selected after
-      // Codex 0.147 proved the native compact hook path reliable.
-      expect(screen.getByTestId('settings-mesh')).toBeTruthy()
-      expect(screen.getByTestId('codex-compaction-source')).toHaveValue('hooks')
-    })
-  })
-
-  it('saves the Codex compaction source from the Mesh section', async () => {
-    render(Settings, { props: defaultProps() })
-    const select = await screen.findByTestId('codex-compaction-source')
-
-    await fireEvent.change(select, { target: { value: 'transcript' } })
-
-    await waitFor(() => {
-      expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
-        terminal: expect.objectContaining({
-          harness: expect.objectContaining({ codex_compaction: 'transcript' }),
-        }),
-      }))
-    })
+    await screen.findByTestId('settings-mesh')
+    expect(screen.queryByTestId('codex-compaction-source')).toBeNull()
   })
 
   it('has Antigravity native activity hooks on by default and persists opting out', async () => {

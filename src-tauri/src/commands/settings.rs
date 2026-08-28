@@ -77,8 +77,6 @@ fn update_settings_with_span(
     let result = (|| -> Result<Settings, String> {
         let updated = update_settings_impl(db, settings)?;
         #[cfg(feature = "mesh-bridged-backend")]
-        reconcile_codex_compaction_setting(app, &updated);
-        #[cfg(feature = "mesh-bridged-backend")]
         reconcile_agy_hooks_setting(&updated);
         #[cfg(feature = "mesh-bridged-backend")]
         reconcile_grok_hooks_setting(app, &updated);
@@ -136,62 +134,6 @@ fn reconcile_grok_hooks_setting(app: &tauri::AppHandle, settings: &Settings) {
             fields,
         );
     }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn reconcile_codex_compaction_setting(app: &tauri::AppHandle, settings: &Settings) {
-    use tauri::Manager;
-
-    let has_managed_codex = match app.try_state::<crate::coordination::state::CoordinationState>() {
-        Some(state) => {
-            match crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir()) {
-                Ok(has_managed_codex) => has_managed_codex,
-                Err(error) => {
-                    emit_codex_compaction_degraded("discover_managed_members", &error.to_string());
-                    false
-                }
-            }
-        }
-        None => false,
-    };
-    if let Err(error) = crate::commands::terminal_settings::reconcile_codex_compaction(
-        settings.terminal.harness.codex_compaction,
-        has_managed_codex,
-    ) {
-        emit_codex_compaction_degraded("reconcile_hook_files", &error.to_string());
-    }
-    if let Err(error) = crate::startup::compaction::reconcile_compaction_runtime(
-        app,
-        settings.terminal.harness.codex_compaction,
-        "settings_updated",
-    ) {
-        emit_codex_compaction_degraded("reconcile_runtime_owner", &error.to_string());
-    }
-}
-
-#[cfg(feature = "mesh-bridged-backend")]
-fn emit_codex_compaction_degraded(stage: &str, error_message: &str) {
-    tracing::warn!(
-        stage,
-        error = error_message,
-        "Codex compaction reconciliation degraded"
-    );
-    let mut fields = serde_json::Map::new();
-    fields.insert(
-        "stage".to_string(),
-        serde_json::Value::String(stage.to_string()),
-    );
-    fields.insert(
-        "error.message".to_string(),
-        serde_json::Value::String(error_message.to_string()),
-    );
-    crate::commands::logging::emit_global(
-        "warn",
-        "coordination",
-        "compaction.codex_hook.degraded",
-        Some("Codex compaction reconciliation fell back safely".to_string()),
-        fields,
-    );
 }
 
 fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, String> {

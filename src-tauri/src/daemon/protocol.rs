@@ -31,7 +31,9 @@ use serde::{Deserialize, Serialize};
 /// app and daemon ship together in 0.6.9 and must use the same wire names.
 /// v12: the third harness wire vocabulary changed from the retired Google CLI
 /// value to Antigravity CLI. Mixed v11 pairs cannot decode each other's tool.
-pub const PROTOCOL_VERSION: u32 = 13;
+/// v13: added the Grok CLI tool value to the shared wire vocabulary.
+/// v14: retired the Codex compaction mode method with the transcript pipeline.
+pub const PROTOCOL_VERSION: u32 = 14;
 
 // ---------------------------------------------------------------------------
 // Envelope types (wire format)
@@ -102,7 +104,6 @@ pub mod method {
     pub const WATCH: &str = "watch";
     pub const UNWATCH: &str = "unwatch";
     pub const SHUTDOWN: &str = "shutdown";
-    pub const SET_CODEX_COMPACTION_MODE: &str = "set_codex_compaction_mode";
     pub const LIST_ACCOUNTS: &str = "list_accounts";
     pub const PROJECT_TRANSCRIPT: &str = "project_transcript";
     pub const REFRESH_USAGE: &str = "refresh_usage";
@@ -181,12 +182,6 @@ pub struct PingResult {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PathParams {
     pub path: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct SetCodexCompactionModeParams {
-    pub mode: crate::models::CodexCompactionMode,
 }
 
 /// `get_project_tasks` params.
@@ -1056,6 +1051,15 @@ mod tests {
     }
 
     #[test]
+    fn protocol_version_excludes_daemons_with_codex_compaction_mode() {
+        // Regression: commit 6fe0aa3 added a daemon method for switching the
+        // transcript owner. Retiring that method changes the paired app/daemon
+        // vocabulary, so protocol 13 peers must be rejected.
+        let last_protocol_with_codex_compaction_mode = 13;
+        assert!(PROTOCOL_VERSION > last_protocol_with_codex_compaction_mode);
+    }
+
+    #[test]
     fn wait_session_updates_result_roundtrips_focus() {
         let result = WaitSessionUpdatesResult {
             version: 7,
@@ -1147,19 +1151,5 @@ mod tests {
         let detached = r#"{"version":1,"display_sessions":[],"runtime_sessions":[],"focus":{"session":null,"window":null,"timestamp":null},"foreground_project_path":null}"#;
         let result: RuntimeSessionSnapshotResult = serde_json::from_str(detached).unwrap();
         assert_eq!(result.focus.expect("detached focus decodes").session, "");
-    }
-
-    #[test]
-    fn codex_compaction_mode_params_roundtrip() {
-        // Regression: 6fe0aa3 made the daemon guess the desktop settings DB path;
-        // mode ownership now crosses the daemon protocol explicitly.
-        let params = SetCodexCompactionModeParams {
-            mode: crate::models::CodexCompactionMode::Transcript,
-        };
-        let json = serde_json::to_string(&params).expect("serialize params");
-        assert_eq!(
-            serde_json::from_str::<SetCodexCompactionModeParams>(&json).expect("decode params"),
-            params
-        );
     }
 }

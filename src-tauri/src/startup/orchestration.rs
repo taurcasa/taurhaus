@@ -93,18 +93,13 @@ pub(super) fn run_startup_orchestration(
 
 #[cfg(feature = "mesh-bridged-backend")]
 fn reconcile_startup_codex_compaction(app: &tauri::AppHandle) -> Result<(), String> {
-    let db = app.state::<crate::commands::projects::DbState>();
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
     let has_managed_codex =
         crate::coordination::compact_hook::any_managed_codex_member(state.teams_dir())
             .map_err(|error| error.to_string())?;
-    crate::commands::terminal_settings::reconcile_codex_compaction(
-        terminal.harness.codex_compaction,
-        has_managed_codex,
-    )
-    .map(|_| ())
-    .map_err(|error| error.to_string())
+    crate::commands::terminal_settings::reconcile_codex_hook(has_managed_codex)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(feature = "mesh-bridged-backend")]

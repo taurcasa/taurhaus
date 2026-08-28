@@ -77,9 +77,6 @@ pub(crate) fn dispatch(
         protocol::method::SHUTDOWN => {
             DaemonResponse::ok(&request.id, serde_json::json!({"ok": true}))
         }
-        protocol::method::SET_CODEX_COMPACTION_MODE => {
-            handle_set_codex_compaction_mode(&request.id, &request.params)
-        }
         protocol::method::LIST_ACCOUNTS => handle_list_accounts(&request.id, &request.params),
         protocol::method::PROJECT_TRANSCRIPT => {
             handle_project_transcript(&request.id, &request.params)
@@ -142,18 +139,6 @@ fn handle_project_transcript(id: &str, params: &serde_json::Value) -> DaemonResp
             .map(|path| path.display().to_string()),
         },
     )
-}
-
-fn handle_set_codex_compaction_mode(id: &str, params: &serde_json::Value) -> DaemonResponse {
-    let params: protocol::SetCodexCompactionModeParams =
-        match serde_json::from_value(params.clone()) {
-            Ok(params) => params,
-            Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
-        };
-    match crate::daemon::compaction::request_mode_and_wait(params.mode) {
-        Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
-        Err(error) => DaemonResponse::err(id, "COMPACTION_MODE_APPLY_FAILED", error),
-    }
 }
 
 pub(crate) fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {

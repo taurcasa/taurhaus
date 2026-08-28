@@ -1,38 +1,6 @@
 use super::*;
 
-use crate::models::CodexCompactionMode;
 use crate::session_scanner::cli_tool::all;
-
-// Regression: 0b87699 had no setting transition that could remove the Codex
-// hook and restore the transcript fallback without touching a real home.
-#[test]
-fn transcript_setting_removes_the_isolated_codex_hook() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let codex_home = tmp.path().join("codex-home");
-    let exe = tmp.path().join("taurhaus-daemon");
-    std::fs::write(&exe, b"daemon").expect("daemon fixture");
-
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("install hook");
-    assert!(codex_home.join("hooks.json").exists());
-
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Transcript,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("remove hook");
-    let hooks = std::fs::read_to_string(codex_home.join("hooks.json")).expect("hooks json");
-    assert!(!hooks.contains("taurhaus-session-start-compact"));
-}
 
 // Regression: 6fe0aa3 installed the Codex compact hook without checking the
 // installed CLI, even though the hook contract starts at Codex 0.147.
@@ -43,22 +11,10 @@ fn unsupported_codex_version_removes_hook_instead_of_installing() {
     let exe = tmp.path().join("taurhaus-daemon");
     std::fs::write(&exe, b"daemon").expect("daemon fixture");
 
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("install supported hook");
-    let changed = reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(false),
-        &exe,
-    )
-    .expect("remove unsupported hook");
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install supported hook");
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, true, Some(false), &exe)
+        .expect("remove unsupported hook");
 
     assert!(changed);
     let hooks = std::fs::read_to_string(codex_home.join("hooks.json")).expect("hooks json");
@@ -74,22 +30,10 @@ fn unknown_codex_version_leaves_existing_hook_untouched() {
     let exe = tmp.path().join("taurhaus-daemon");
     std::fs::write(&exe, b"daemon").expect("daemon fixture");
 
-    reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        Some(true),
-        &exe,
-    )
-    .expect("install supported hook");
-    let changed = reconcile_codex_compaction_at_with_support(
-        &codex_home,
-        CodexCompactionMode::Hooks,
-        true,
-        None,
-        &exe,
-    )
-    .expect("leave hook untouched when the version is unknown");
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install supported hook");
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, true, None, &exe)
+        .expect("leave hook untouched when the version is unknown");
 
     assert!(!changed);
     let hooks = std::fs::read_to_string(codex_home.join("hooks.json")).expect("hooks json");

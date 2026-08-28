@@ -391,6 +391,30 @@ mod tests {
     }
 
     #[test]
+    fn retired_codex_compaction_key_in_0_8_settings_is_ignored() {
+        // Regression: commit 6fe0aa3 persisted a selectable Codex compaction
+        // mode. Removing that product setting must not make a 0.8.x settings
+        // blob unreadable or carry the retired key into the next save.
+        let (conn, _tmp) = test_db();
+        set_setting(
+            &conn,
+            KEY_TERMINAL_HARNESS,
+            r#"{"codex_compaction":"transcript","agy_hooks":false,"grok_hooks":false}"#,
+        )
+        .unwrap();
+
+        let loaded = get_all_settings(&conn).expect("load 0.8.x settings blob");
+        assert!(!loaded.terminal.harness.agy_hooks);
+        assert!(!loaded.terminal.harness.grok_hooks);
+        save_settings(&conn, &loaded).expect("rewrite upgraded settings");
+
+        let persisted = get_setting(&conn, KEY_TERMINAL_HARNESS)
+            .unwrap()
+            .expect("harness settings");
+        assert!(!persisted.contains("codex"), "{persisted}");
+    }
+
+    #[test]
     fn set_and_get_setting() {
         let (conn, _tmp) = test_db();
         set_setting(&conn, "test_key", "test_value").unwrap();
@@ -447,7 +471,7 @@ mod tests {
     fn save_and_load_settings_roundtrip() {
         let (conn, _tmp) = test_db();
 
-        let mut settings = Settings {
+        let settings = Settings {
             scan_directories: vec!["~/projects".to_string(), "~/work".to_string()],
             thresholds: ActivityThresholds {
                 active_days: 5,
@@ -469,10 +493,6 @@ mod tests {
             project_dialog_last_path: "/projects/taurhaus".to_string(),
             terminal_contract: Default::default(),
         };
-        // Regression: 0b87699 had no SQLite-backed Codex compaction source,
-        // so a transcript fallback selection could not survive a restart.
-        settings.terminal.harness.codex_compaction = crate::models::CodexCompactionMode::Transcript;
-
         save_settings(&conn, &settings).unwrap();
         let loaded = get_all_settings(&conn).unwrap();
 
@@ -486,10 +506,7 @@ mod tests {
         assert!(!loaded.daemon.auto_start);
         assert_eq!(loaded.code_theme.light, "one-light");
         assert_eq!(loaded.code_theme.dark, "dracula");
-        assert_eq!(
-            loaded.terminal.harness.codex_compaction,
-            crate::models::CodexCompactionMode::Transcript
-        );
+        assert_eq!(loaded.terminal.harness, settings.terminal.harness);
         assert!(loaded.dark_mode);
         assert_eq!(loaded.project_dialog_last_path, "/projects/taurhaus");
     }

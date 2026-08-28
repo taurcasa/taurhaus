@@ -147,7 +147,7 @@ export const MOCK_SETTINGS = {
         resume: 'grok --always-approve --resume {session_id}',
       },
     },
-    harness: { codex_compaction: 'hooks' },
+    harness: { agy_hooks: true, grok_hooks: true },
   },
   terminal_contract: {
     platform: 'linux',

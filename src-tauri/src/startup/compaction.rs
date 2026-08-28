@@ -136,43 +136,15 @@ pub(crate) fn compaction_owner_after_daemon_bootstrap(daemon_connected: bool) ->
 
 pub(crate) fn initialize(
     app: &mut tauri::App,
-    daemon_configured: bool,
-    daemon_connected: bool,
+    _daemon_configured: bool,
+    _daemon_connected: bool,
 ) -> Result<(), CoordinationError> {
     ensure_managed_state(app.handle());
-    let mode = crate::commands::terminal_settings::load_terminal_settings(
-        &app.state::<crate::commands::projects::DbState>(),
-    )
-    .harness
-    .codex_compaction;
-    if hooks_are_active(mode) {
-        if daemon_connected {
-            notify_daemon_mode(app.handle(), crate::models::CodexCompactionMode::Hooks)?;
-        }
-        select_hooks(app.handle(), "codex_hook_installed");
-        return Ok(());
-    }
-    if mode == crate::models::CodexCompactionMode::Hooks {
+    if !hooks_are_active() {
         emit_inactive_hooks_failure();
     }
-    match configured_compaction_owner(daemon_configured, daemon_connected) {
-        CompactionOwner::App => {
-            initialize_app_owned_fallback(app.handle(), "daemon_not_configured")
-        }
-        CompactionOwner::DaemonPending => {
-            let state = app.state::<CompactionWatcherState>();
-            if state.owner() == CompactionOwner::DaemonPending {
-                emit_compaction_owner_selected("daemon", "pending", "daemon_bootstrap_pending");
-            }
-            Ok(())
-        }
-        CompactionOwner::Daemon => {
-            notify_daemon_mode(app.handle(), crate::models::CodexCompactionMode::Transcript)?;
-            select_daemon(app.handle(), "daemon_connected_at_startup");
-            Ok(())
-        }
-        CompactionOwner::Hooks => unreachable!("hooks are selected before transcript ownership"),
-    }
+    select_hooks(app.handle(), "codex_hook_only");
+    Ok(())
 }
 
 pub(crate) fn initialize_app_owned_fallback<R: tauri::Runtime>(
@@ -180,99 +152,27 @@ pub(crate) fn initialize_app_owned_fallback<R: tauri::Runtime>(
     reason: &str,
 ) -> Result<(), CoordinationError> {
     ensure_managed_state(app);
-    let mode = crate::commands::terminal_settings::load_terminal_settings(
-        &app.state::<crate::commands::projects::DbState>(),
-    )
-    .harness
-    .codex_compaction;
-    if hooks_are_active(mode) {
-        select_hooks(app, "codex_hook_installed");
-        return Ok(());
-    }
-    let state = app.state::<CompactionWatcherState>();
-
-    match state.activate(start_app_owned_runtime) {
-        Ok(()) => {
-            if state.owner() == CompactionOwner::App {
-                emit_compaction_owner_selected("app", "active", reason);
-            }
-            Ok(())
-        }
-        Err(error) => {
-            emit_compaction_owner_failed("app", reason, &error.to_string());
-            Err(error)
-        }
-    }
+    select_hooks(app, reason);
+    Ok(())
 }
 
 pub(crate) fn release_app_owned_compaction<R: tauri::Runtime>(app: &AppHandle<R>, reason: &str) {
     ensure_managed_state(app);
-    let mode = crate::commands::terminal_settings::load_terminal_settings(
-        &app.state::<crate::commands::projects::DbState>(),
-    )
-    .harness
-    .codex_compaction;
-    let effective_mode = if hooks_are_active(mode) {
-        crate::models::CodexCompactionMode::Hooks
-    } else {
-        crate::models::CodexCompactionMode::Transcript
-    };
-    if let Err(error) = notify_daemon_mode(app, effective_mode) {
-        emit_compaction_owner_failed("daemon", reason, &error.to_string());
-        tracing::warn!(reason, error = %error, "failed to reconcile daemon compaction mode");
-        return;
-    }
-    match effective_mode {
-        crate::models::CodexCompactionMode::Hooks => select_hooks(app, reason),
-        crate::models::CodexCompactionMode::Transcript => select_daemon(app, reason),
-    }
+    select_hooks(app, reason);
 }
 
 pub(crate) fn reconcile_compaction_runtime<R: tauri::Runtime>(
     app: &AppHandle<R>,
-    mode: crate::models::CodexCompactionMode,
     reason: &str,
 ) -> Result<(), CoordinationError> {
     ensure_managed_state(app);
-    let effective_mode = if hooks_are_active(mode) {
-        crate::models::CodexCompactionMode::Hooks
-    } else {
-        if mode == crate::models::CodexCompactionMode::Hooks {
-            emit_inactive_hooks_failure();
-        }
-        crate::models::CodexCompactionMode::Transcript
-    };
-
-    let daemon_connected = app
-        .try_state::<crate::ProviderState>()
-        .and_then(|provider| provider.daemon.as_ref().map(|daemon| daemon.is_connected()))
-        .unwrap_or(false);
-    if daemon_connected {
-        notify_daemon_mode(app, effective_mode)?;
-        match effective_mode {
-            crate::models::CodexCompactionMode::Hooks => select_hooks(app, reason),
-            crate::models::CodexCompactionMode::Transcript => select_daemon(app, reason),
-        }
-        return Ok(());
-    }
-
-    match effective_mode {
-        crate::models::CodexCompactionMode::Hooks => {
-            select_hooks(app, reason);
-            Ok(())
-        }
-        crate::models::CodexCompactionMode::Transcript => {
-            initialize_app_owned_fallback(app, reason)
-        }
-    }
+    select_hooks(app, reason);
+    Ok(())
 }
 
-fn hooks_are_active(mode: crate::models::CodexCompactionMode) -> bool {
-    effective_compaction_mode_with_support(
-        mode,
-        crate::coordination::compact_hook::codex_compact_hook_is_installed(),
-        crate::models::CliVersions::current().codex_compaction_hooks_support(),
-    ) == crate::models::CodexCompactionMode::Hooks
+fn hooks_are_active() -> bool {
+    crate::coordination::compact_hook::codex_compact_hook_is_installed()
+        && crate::models::CliVersions::current().codex_compaction_hooks_support() != Some(false)
 }
 
 fn emit_inactive_hooks_failure() {
@@ -281,70 +181,24 @@ fn emit_inactive_hooks_failure() {
     {
         None => (
             "codex_version_unknown",
-            "Codex version could not be resolved and no installed hook was observed; transcript fallback remains active",
+            "Codex version could not be resolved and no installed hook was observed; compaction delivery is disabled",
         ),
         Some(false) => (
             "codex_version_unsupported",
-            "installed Codex CLI predates native hooks; transcript fallback remains active",
+            "installed Codex CLI predates native hooks; compaction delivery is disabled",
         ),
         Some(true) => (
             "codex_hook_not_installed",
-            "configured Codex hook was not observed; transcript fallback remains active",
+            "the managed Codex hook was not observed; compaction delivery is disabled",
         ),
     };
     emit_compaction_owner_failed("hooks", reason, message);
-}
-
-fn effective_compaction_mode(
-    configured: crate::models::CodexCompactionMode,
-    hook_installed: bool,
-) -> crate::models::CodexCompactionMode {
-    if configured == crate::models::CodexCompactionMode::Hooks && hook_installed {
-        crate::models::CodexCompactionMode::Hooks
-    } else {
-        crate::models::CodexCompactionMode::Transcript
-    }
-}
-
-fn effective_compaction_mode_with_support(
-    configured: crate::models::CodexCompactionMode,
-    hook_installed: bool,
-    hooks_supported: Option<bool>,
-) -> crate::models::CodexCompactionMode {
-    if hooks_supported == Some(false) {
-        return crate::models::CodexCompactionMode::Transcript;
-    }
-    effective_compaction_mode(configured, hook_installed)
-}
-
-fn notify_daemon_mode<R: tauri::Runtime>(
-    app: &AppHandle<R>,
-    mode: crate::models::CodexCompactionMode,
-) -> Result<(), CoordinationError> {
-    let Some(provider) = app.try_state::<crate::ProviderState>() else {
-        return Ok(());
-    };
-    let Some(daemon) = provider.daemon.as_ref() else {
-        return Ok(());
-    };
-    if !daemon.is_connected() {
-        return Ok(());
-    }
-    daemon.set_codex_compaction_mode(mode).map_err(|error| {
-        CoordinationError::Backend(format!("failed to set daemon compaction mode: {error}"))
-    })
 }
 
 fn select_hooks<R: tauri::Runtime>(app: &AppHandle<R>, reason: &str) {
     app.state::<CompactionWatcherState>()
         .select_external(CompactionOwner::Hooks);
     emit_compaction_owner_selected("hooks", "active", reason);
-}
-
-fn select_daemon<R: tauri::Runtime>(app: &AppHandle<R>, reason: &str) {
-    app.state::<CompactionWatcherState>()
-        .select_external(CompactionOwner::Daemon);
-    emit_compaction_owner_selected("daemon", "active", reason);
 }
 
 fn ensure_managed_state<R: tauri::Runtime>(app: &AppHandle<R>) {
@@ -761,53 +615,5 @@ mod tests {
                 "every daemon recovery path must revoke the app-owned fallback"
             );
         }
-    }
-
-    #[test]
-    fn hooks_mode_requires_an_observed_installed_hook_before_disabling_transcript() {
-        // Regression: 6fe0aa3 selected hooks from the setting alone, so a missing
-        // or failed hook install silently left no compaction source running.
-        assert_eq!(
-            effective_compaction_mode(crate::models::CodexCompactionMode::Hooks, false),
-            crate::models::CodexCompactionMode::Transcript
-        );
-        assert_eq!(
-            effective_compaction_mode(crate::models::CodexCompactionMode::Hooks, true),
-            crate::models::CodexCompactionMode::Hooks
-        );
-        assert_eq!(
-            effective_compaction_mode(crate::models::CodexCompactionMode::Transcript, true),
-            crate::models::CodexCompactionMode::Transcript
-        );
-    }
-
-    #[test]
-    fn unknown_codex_version_keeps_an_installed_hook_active() {
-        // Regression: c0aa59a collapsed an unresolved Codex version to false in
-        // runtime ownership, demoting a hook that reconciliation deliberately kept.
-        assert_eq!(
-            effective_compaction_mode_with_support(
-                crate::models::CodexCompactionMode::Hooks,
-                true,
-                None,
-            ),
-            crate::models::CodexCompactionMode::Hooks
-        );
-        assert_eq!(
-            effective_compaction_mode_with_support(
-                crate::models::CodexCompactionMode::Hooks,
-                true,
-                Some(false),
-            ),
-            crate::models::CodexCompactionMode::Transcript
-        );
-    }
-
-    #[test]
-    fn settings_mode_changes_reconcile_the_running_compaction_owner() {
-        // Regression: 6fe0aa3 changed only hooks.json on settings updates, leaving
-        // hooks->transcript with no source and transcript->hooks with two sources.
-        let settings_source = include_str!("../commands/settings.rs");
-        assert!(settings_source.contains("reconcile_compaction_runtime"));
     }
 }
