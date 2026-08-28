@@ -345,6 +345,30 @@ async function initializeManagedCodexTeam() {
   return { teamName, memberName, paneId, sessionId }
 }
 
+/**
+ * Print every compaction event seen in a window.
+ *
+ * A failed run of this lane costs real turns to repeat, so a timeout has to
+ * leave enough behind to diagnose without paying for a second one.
+ */
+function dumpCompactionEvents(label, events) {
+  const compaction = selectEvents(events, { eventPrefix: 'compaction.' })
+  console.error(`[e2e] ${label}: ${compaction.length} compaction event(s) seen`)
+  for (const record of compaction) {
+    console.error(
+      `[e2e]   ${record.event} ${JSON.stringify({
+        tool: record.tool ?? null,
+        member_name: record.member_name ?? null,
+        session_id: record.session_id ?? null,
+        source: record.source ?? null,
+        skip_reason: record.skip_reason ?? null,
+        failure_stage: record.failure_stage ?? null,
+        'error.message': record['error.message'] ?? null,
+      })}`
+    )
+  }
+}
+
 /** The bridge's own acceptance evidence for one compaction of `memberName`. */
 function hookDelivery(events, memberName) {
   const delivered = selectEvents(events, {
@@ -488,14 +512,20 @@ describe('Codex compaction via hooks', function () {
     const offset = currentLogOffset()
     sendPaneLine(managed.paneId, '/compact')
 
-    const { events } = await waitForLogEvents(
-      offset,
-      (collected) => hookDelivery(collected, managed.memberName),
-      {
-        timeout: HOOK_DELIVERY_TIMEOUT_MS,
-        timeoutMsg: `No compaction.codex_hook.delivered for ${managed.memberName} within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
-      }
-    )
+    let events
+    try {
+      ;({ events } = await waitForLogEvents(
+        offset,
+        (collected) => hookDelivery(collected, managed.memberName),
+        {
+          timeout: HOOK_DELIVERY_TIMEOUT_MS,
+          timeoutMsg: `No compaction.codex_hook.delivered for ${managed.memberName} within ${HOOK_DELIVERY_TIMEOUT_MS}ms of /compact`,
+        }
+      ))
+    } catch (error) {
+      dumpCompactionEvents('manual /compact timed out', readLog(offset).events)
+      throw error
+    }
 
     reportHookPayload('manual', events, managed.memberName)
     const delivered = assertHookBridgeDelivered(events, managed)
@@ -549,6 +579,7 @@ describe('Codex compaction via hooks', function () {
     }
 
     if (!hookDelivery(collected, managed.memberName)) {
+      dumpCompactionEvents('automatic compaction cap reached', collected)
       throw new Error(
         `Codex did not auto-compact within the ${AUTO_COMPACTION_MAX_TURNS}-turn cap ` +
           `(model_auto_compact_token_limit = ${AUTO_COMPACT_TOKEN_LIMIT}); ` +
