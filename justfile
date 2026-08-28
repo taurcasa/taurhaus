@@ -187,6 +187,7 @@ test-rust-unit: ensure-tauri-resources
 
 # Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
+    cd src-tauri && cargo test --test cli_renderers -- --test-threads=1
     cd src-tauri && cargo test --test coordination_feature_gate -- --test-threads=1
     cd src-tauri && cargo test --test coordination_integration -- --test-threads=1
     cd src-tauri && cargo test --test coordination_module_visibility -- --test-threads=1
