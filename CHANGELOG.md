@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Live Codex compaction lane** — `e2e/specs/compaction-codex-hooks.js` builds a Claude-led team with one managed Codex member under `terminal.harness.codex_compaction = hooks` and drives it to compaction twice: a manual `/compact` typed into its pane, and Codex's own automatic compaction (bounded by lowering `model_auto_compact_token_limit` in a scratch config and capped at six turns). Both cases assert the bridge's acceptance trail and that the transcript tailer emitted nothing for the member. It spends real Codex and Claude subscription turns, so it is excluded from `just test-e2e` and `just test-e2e-full` and runs only as `E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks`, against a scratch `CODEX_HOME` holding only the credentials copied from `~/.codex` — never its sessions or history, and never written back. See [`docs/operations/compaction-testing.md`](docs/operations/compaction-testing.md).
+
 ## [0.8.1] - 2026-08-28
 
 ### Changed
