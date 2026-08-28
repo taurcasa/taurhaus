@@ -284,7 +284,10 @@ Run it from the template browser action **Export as Claude Code agents** — ope
 the browser with **Browse templates** in the mesh team builder — from
 `just export-agents <project>`, or through the `export_agent_definitions` IPC
 command (`exportAgentDefinitions(projectId)` on the frontend). Each returns
-`{ written, skipped }`.
+`{ written, removed, skipped }`, which the browser reports as *Exported 3 ·
+removed 1 obsolete · 2 hand-written agents left untouched*. The recipe resolves
+a relative `<project>` against the directory the command was typed in, and every
+path refuses a project root that is not already a directory.
 
 What lands in the file:
 
@@ -318,6 +321,12 @@ Rules worth knowing:
   file that carries it is rewritten on every export, and anything else at that
   name is left exactly as it is and reported in `skipped` as `user_authored`.
   To change a generated agent, edit the role template and export again.
+- **An export reconciles the directory.** A generated file whose role left the
+  catalog — renamed, deleted, or moved to a harness that does not read agent
+  definitions — is deleted and reported in `removed`, because Claude Code and a
+  workflow's `agentType` would otherwise keep resolving instructions nobody can
+  edit any more. Only marker-carrying `.md` files directly in `.claude/agents`
+  are ever removed; a hand-written agent is never one of them.
 - **A role id has to be an agent name.** Claude Code resolves a subagent by a
   lowercase, hyphen-separated name, and that same id is what a workflow's
   `agentType` asks for. A role id such as `QA_reviewer` is reported in `skipped`

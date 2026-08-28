@@ -161,7 +161,7 @@ All builds use `just` recipes. Never use raw `cargo tauri build`, `bunx tauri bu
 | `just update-mesh-lock VERSION [PROTOCOL] [SCHEMA] [COMMIT]` | Intentional entry point for bumping the mesh lock manifest. |
 | `just bundle-mesh` | Copies mesh into `src-tauri/resources/mesh` and writes `mesh.version` / `mesh.manifest.json`. Lock-verified. |
 | `just install-mesh` | Lock-verified mesh install to `~/.local/bin`. |
-| `just export-agents PROJECT` | Writes the Claude role templates into `<PROJECT>/.claude/agents` via `--export-agent-definitions` on the app binary. Only files carrying the generated marker are replaced; hand-written agents are reported as skipped. |
+| `just export-agents PROJECT` | Writes the Claude role templates into `<PROJECT>/.claude/agents` via `--export-agent-definitions` on the app binary (a relative `PROJECT` resolves against the invocation directory). Only files carrying the generated marker are replaced, and one whose role left the catalog is removed; hand-written agents are reported as skipped. |
 | `just analyze-compaction` | Compaction reinjection pipeline health from current + rotated JSONL logs. |
 | `just test-compaction TOOL TEAM MEMBER` | Triggers a real managed compaction and verifies the hook/transcript + delivery path (also `test-compaction-claude` / `test-compaction-codex`). |
 | `just monitor` | Unified resource monitor (live table by default). |
