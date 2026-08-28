@@ -434,10 +434,13 @@ pub fn handle_compact_hook(
         return Ok(CompactHookResponse::default());
     };
 
-    // `PostCompact` is registered so a compaction is observed even where the
-    // session-start source never reports `compact`, but only `SessionStart`
-    // has a documented `additionalContext` answer, so this one is a signal.
-    if is_post_compact {
+    let delivery = spec(tool).capabilities.compaction_delivery;
+    // `PostCompact` carries the reinjection wherever the session-start source
+    // never reports `compact` — grok's matcher tests the start source
+    // (`startup`, `resume`, …) and compaction restarts nothing. It has no
+    // documented stdout contract though, so a harness that is answered on
+    // stdout can only treat it as a signal.
+    if is_post_compact && delivery != CompactionDelivery::MeshInbox {
         emit_compact_hook_skipped(&payload, None, CompactHookSkipReason::PostCompactSignalOnly);
         return Ok(CompactHookResponse::default());
     }
@@ -557,7 +560,6 @@ pub fn handle_compact_hook(
 
     // A harness that ignores passive-hook stdout has to be handed the card
     // before the delivery is recorded — the hook answer would go nowhere.
-    let delivery = spec(tool).capabilities.compaction_delivery;
     if delivery == CompactionDelivery::MeshInbox {
         if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
             teams_dir,
@@ -1728,6 +1730,19 @@ mod tests {
         .to_string()
     }
 
+    /// grok's own compaction event: `PostCompact`, with a compaction trigger
+    /// where `SessionStart` would carry a start source.
+    fn grok_post_compact_payload(project: &Path, session_id: &str) -> String {
+        json!({
+            "hookEventName": "PostCompact",
+            "sessionId": session_id,
+            "trigger": "auto",
+            "workspaceRoot": project,
+            "transcriptPath": project.join(".grok/sessions/%2Fp/session/updates.jsonl"),
+        })
+        .to_string()
+    }
+
     #[test]
     fn grok_hook_installer_owns_one_always_trusted_file_and_is_removable() {
         // Regression: commit 358a7c9 registered grok without a compaction slice,
@@ -1877,10 +1892,14 @@ mod tests {
         let member = grok_member(&project);
         write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
         write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
-        let payload = grok_payload(&project, "01a04585-2d53-7123");
 
-        handle_compact_hook(&payload, tmp.path()).expect("first invocation");
-        handle_compact_hook(&payload, tmp.path()).expect("second invocation");
+        handle_compact_hook(
+            &grok_post_compact_payload(&project, "01a04585-2d53-7123"),
+            tmp.path(),
+        )
+        .expect("native PostCompact");
+        handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+            .expect("imported Claude SessionStart");
 
         assert_eq!(
             MeshInboxStore::load(tmp.path(), "grok-team", &member.name)
@@ -1892,10 +1911,14 @@ mod tests {
     }
 
     #[test]
-    fn a_grok_post_compact_payload_is_a_signal_rather_than_an_injection() {
-        // Regression: commit 358a7c9 registered no PostCompact hook at all; only
-        // SessionStart has a documented additionalContext answer, so PostCompact
-        // must be observable without pretending it can deliver a card.
+    fn a_native_grok_post_compact_delivers_one_inbox_card() {
+        // Regression: commit c1005ec answered grok's authoritative `PostCompact`
+        // event with a signal-only skip that returned before member resolution,
+        // so a grok home without the imported Claude registration got no
+        // restored context at all. grok's `SessionStart` matcher tests the start
+        // source (`startup`, `resume`, …) and never reports `compact`
+        // (`~/.grok/docs/user-guide/10-hooks.md`), so `PostCompact` is the only
+        // compaction event grok itself fires.
         let tmp = tempfile::tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project dir");
@@ -1904,19 +1927,27 @@ mod tests {
         write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
 
         let response = handle_compact_hook(
-            &json!({
-                "hookEventName": "PostCompact",
-                "sessionId": "01a04585-2d53-7123",
-                "trigger": "auto",
-                "workspaceRoot": &project,
-                "transcriptPath": project.join(".grok/sessions/%2Fp/session/updates.jsonl"),
-            })
-            .to_string(),
+            &grok_post_compact_payload(&project, "01a04585-2d53-7123"),
             tmp.path(),
         )
         .expect("hook should succeed");
 
-        assert!(response.hook_specific_output.is_none());
+        assert_eq!(
+            response,
+            CompactHookResponse::default(),
+            "grok ignores passive-hook stdout, so PostCompact must answer with none"
+        );
+        let inbox =
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name).expect("grok inbox");
+        assert_eq!(inbox.len(), 1, "the card is queued where grok reads it");
+        assert!(inbox[0].text.contains("Current task: #680"));
+        let state = MemberCompactionStore::load(tmp.path(), "grok-team", &member.name)
+            .expect("compaction state")
+            .expect("recorded delivery");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Injected
+        );
     }
 
     #[test]
