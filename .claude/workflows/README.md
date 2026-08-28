@@ -41,7 +41,8 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `spec` | — | absolute path of the spec; agents are told to build its minimum deliverable only |
 | `title` | the spec path | what the change is called in prompts and in the ledger |
 | `implementer` | `opus` | `opus` or `codex` — the other family reviews |
-| `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call |
+| `effort` | inherit | `low`/`medium`/`high`/`xhigh`/`max`, applied to every agent call — and to Codex as `-c model_reasoning_effort` |
+| `codexModel` | the Codex CLI's own default | model slug passed to `codex exec` as `-m`; the ledger records what actually ran, never a guess |
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
 | `gates` | check-quick + lint + targeted cargo tests | the gate commands, when a spec names different ones |
@@ -65,9 +66,9 @@ ledger row can be filled from the run instead of by hand:
 
 ```js
 {
-  ledger: { title, size, implementer, reviewers, rounds, majors, findings, remaining },
+  ledger: { title, size, implementer, models, effort, reviewers, rounds, majors, findings, remaining },
   commits: [...],
-  gate: "…",
+  gate: { status: 'pass', commands: [{command, status, detail}], diff_stat, commits },
 }
 ```
 
@@ -75,15 +76,35 @@ ledger row can be filled from the run instead of by hand:
 `startRound` set to `rounds + 1`. `research-sweep` returns `{question, outputs, researchers}` with one
 structured summary and report path per researcher; the lead synthesizes them.
 
+## Failing closed
+
+A run that cannot show a real cross-family review and a green gate raises instead of returning, because
+a completed ledger with no findings reads as an approval:
+
+- **An absent reviewer is not an approval.** Every lane returns `status`; a lane that could not run
+  returns `status: 'unavailable'` with the error. An unavailable, empty or malformed review — no
+  findings array, a verdict outside `approve`/`fix_required` — fails the run, and a reviewer is
+  recorded in the ledger only after its result validates.
+- **A `fix_required` verdict counts** even when the reviewer filed no blocker or major: its findings
+  become the fix round.
+- **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any failed
+  command, a `status` other than `pass`, or a gate that ran nothing aborts.
+- **What stays open does not fail it.** Findings the loop could not close come back as `remaining` —
+  that is what `fix-round` is for.
+
 ## The model split
 
 - **Opus implements, fixes and sweeps.** Every `agent()` call in these scripts runs on Opus.
 - **The other family reviews.** Whoever implements never reviews: `implementer: "opus"` gets Codex
   reviews, `implementer: "codex"` gets Opus reviews.
-- **Codex runs behind a thin wrapper.** An Opus agent writes the prompt and the output schema to
-  `scratch`, launches `codex exec --yolo … -o` detached, polls for the `EXIT=` marker (one Bash call is
-  capped at 10 minutes), and returns Codex's JSON. The implementer lane may take up to three
-  `codex exec resume --last` turns — `resume` does not accept `-C`, so it runs from the checkout.
+- **Codex runs behind a thin wrapper.** An Opus agent writes the prompt, the output schema and a
+  runner script to `scratch`, launches the runner detached (`codex exec --yolo … -o`), polls for the
+  `EXIT=` marker (one Bash call is capped at 10 minutes) up to a deadline, and returns Codex's JSON.
+  Every path is one single-quoted shell word and the command lives in the runner rather than inside a
+  nested `bash -c '…'`, so a checkout under `/mnt/c/Users/Jane Doe/…` works; a Windows or `\\wsl$` path
+  in `worktree` is normalized first. `-m` carries `codexModel` and `-c model_reasoning_effort` carries
+  `effort`, on the resumed turns too. The implementer lane may take up to three `codex exec resume
+  --last` turns — `resume` does not accept `-C`, so the runner's `cd` is what places it.
 - **Effort is inherited** unless `args.effort` pins one, and then it applies to every call in the run.
 
 ## Sizing policy
@@ -123,8 +144,27 @@ timestamp through `args`, and vary a prompt by index instead of randomising).
 Run it directly with `bun scripts/check-workflow-scripts.mjs` (or `node …`, which adds the line
 number of a syntax error — bun's parser reports the file only).
 
+`scripts/workflow-procedures.test.mjs` goes further: it runs each script against a stubbed Workflow API
+and pins the control flow — the fail-closed rules above, the Codex launcher's quoting and flags, the
+path normalization — without spawning a single agent.
+
+## Installing to user scope
+
+`just install-workflows` copies these files to `<CLAUDE_CONFIG_DIR>/workflows/` (default
+`~/.claude/workflows/`), where Claude Code resolves them from any project on that account. It follows
+the hook-installer discipline for a user config directory: it proves the directory is yours before
+writing, writes each file through a temporary file plus an atomic rename, keeps the permissions a file
+already has, writes through a symlink instead of replacing it, and touches nothing it did not install.
+
+- `just install-workflows --dry-run` — show what would change.
+- `just install-workflows --account-dir ~/.claude-account2` — install for a second account.
+- `just install-workflows --uninstall` — remove the copies that still match this repo; one you edited
+  is left alone and reported `kept-modified`.
+
+Re-run it after pulling a change here: an identical file is reported `unchanged` and never rewritten.
+
 ## Not here yet
 
-User-scope installation (the same scripts under `<CLAUDE_CONFIG_DIR>/workflows/`), the run scanner that
-turns a run tree into the mesh canvas and a ledger export (W2), and generated agent definitions (W3) —
-see [`docs/design/workflows-integration-plan.md`](../../docs/design/workflows-integration-plan.md).
+The run scanner that turns a run tree into the mesh canvas and a ledger export (W2), and generated
+agent definitions (W3) — see
+[`docs/design/workflows-integration-plan.md`](../../docs/design/workflows-integration-plan.md).
