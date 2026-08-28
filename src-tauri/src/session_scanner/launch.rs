@@ -905,7 +905,7 @@ mod tests {
             note,
             LaunchNote::ModelDeprecated { found, replacement }
                 if found == "gpt-5.4"
-                    && replacement.as_deref() == Some("gpt-5.6-terra")
+                    && replacement.as_deref() == Some("gpt-5.6-sol")
                     && note.event_name() == "launch.model.deprecated"
         )));
     }

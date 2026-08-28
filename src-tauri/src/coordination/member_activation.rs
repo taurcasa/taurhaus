@@ -435,7 +435,7 @@ mod tests {
         assert_eq!(context.member.name, "reviewer");
         assert_eq!(context.member.role, MemberRole::Agent);
         assert_eq!(context.member.cli_tool, CliTool::Claude);
-        assert_eq!(context.member.model, "opus");
+        assert_eq!(context.member.model, "fable");
         assert_eq!(context.member.project_path, PathBuf::from("/tmp/review"));
         assert_eq!(
             context.pane_policy,
@@ -498,7 +498,7 @@ mod tests {
 
         hydrate_member_model_fields(&mut member, Some(&role));
 
-        assert_eq!(member.model.as_deref(), Some("opus"));
+        assert_eq!(member.model.as_deref(), Some("fable"));
         let contents = wait_for_log_contents(&log_path, "launch.model.invalid");
         let event = contents
             .lines()
@@ -506,7 +506,7 @@ mod tests {
             .find(|event| event["event"] == "launch.model.invalid" && event["member"] == "reviewer")
             .expect("invalid role model event");
         assert_eq!(event["found"], "gpt-5.4");
-        assert_eq!(event["replacement"], "opus");
+        assert_eq!(event["replacement"], "fable");
     }
 
     // Regression: dd8d1fe treated the static catalog as a closed allowlist,
