@@ -1,6 +1,6 @@
 # Harness Model
 
-How taurhaus relates to the AI CLIs it runs (Claude Code, Codex CLI, Antigravity CLI), what it owns itself, and the rules that keep the two in step. This is the architecture that landed in 0.6.4–0.7.0 (2026-08); the execution record is [`docs/design/harness-realignment-plan.md`](../design/harness-realignment-plan.md).
+How taurhaus relates to the AI CLIs it runs (Claude Code, Codex CLI, Antigravity CLI, Grok CLI), what it owns itself, and the rules that keep the two in step. This is the architecture that landed in 0.6.4–0.7.0 (2026-08); the execution record is [`docs/design/harness-realignment-plan.md`](../design/harness-realignment-plan.md).
 
 ## The constraint that shapes everything
 
@@ -14,19 +14,19 @@ tmux + mesh is the *floor*: as long as a model has any CLI, taurhaus can reach i
 
 Adding a CLI must touch only the slices where that tool differs; the rest of the system consumes capabilities and never branches on tool identity. Each slice has a declared default when a tool provides nothing:
 
-| Slice | Claude Code | Codex CLI | Antigravity CLI (`agy`) | Default (floor) |
-|---|---|---|---|---|
-| Registry entry | data | data | aliases `agy`/`antigravity`; Google-blue accent | required |
-| Process signature | argv pattern | argv pattern | interactive `agy` argv; print/subcommands excluded | tool invisible, logged once |
-| Launch rendering | `--model`, `--effort`, `-n <agent>`, team flags | `-m`, reasoning config, notify + hook-trust flags | `--model`, `--effort`, `--dangerously-skip-permissions`; conversation resume | user's base command verbatim |
-| Session identity | sessions registry | fd-verified rollout binding | `last_conversations.json` + presence lock | `/proc` + tmux pane, no session id |
-| Busy / idle | registry status (authoritative) | turn-complete notify (authoritative) | opt-in hooks sink; process-IO floor otherwise | rchar-rate hysteresis + pane liveness |
-| Message delivery + wake | native inbox poller | inbox + tmux wake | inbox + tmux wake | inbox + tmux wake |
-| Compaction signal | `SessionStart(source=compact)` hook | opt-in hook, transcript tailer fallback | unavailable, `compaction.unsupported` logged once | none, logged once |
-| Transcript parser | JSONL | rollout JSONL | none | none |
-| Account selection | config-dir identities + selector | `auth.json` identities + selector | one implicit OAuth account under the shared Google tooling root | implicit single account |
-| Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable |
-| Stop / teardown | `/exit` | interrupt | `/exit`, wait for presence lock, then kill floor | tmux kill + mesh daemon stop |
+| Slice | Claude Code | Codex CLI | Antigravity CLI (`agy`) | Grok CLI (`grok`) | Default (floor) |
+|---|---|---|---|---|---|
+| Registry entry | data | data | aliases `agy`/`antigravity`; Google-blue accent | alias `grok`; graphite accent | required |
+| Process signature | argv pattern | argv pattern | interactive `agy` argv; print/subcommands excluded | interactive `grok` argv; `-p`/`--single`/`--prompt-file`/`--prompt-json`, `agent` services and management subcommands excluded | tool invisible, logged once |
+| Launch rendering | `--model`, `--effort`, `-n <agent>`, team flags | `-m`, reasoning config, notify + hook-trust flags | `--model`, `--effort`, `--dangerously-skip-permissions`; conversation resume | `--model`, `--effort` (validated per model), `--always-approve`; `--continue` / `--resume <uuid>` | user's base command verbatim |
+| Session identity | sessions registry | fd-verified rollout binding | `last_conversations.json` + presence lock | `active_sessions.json` row bound by pid and cwd | `/proc` + tmux pane, no session id |
+| Busy / idle | registry status (authoritative) | turn-complete notify (authoritative) | opt-in hooks sink; process-IO floor otherwise | `events.jsonl` turn lifecycle (authoritative) | rchar-rate hysteresis + pane liveness |
+| Message delivery + wake | native inbox poller | inbox + tmux wake | inbox + tmux wake | inbox + tmux wake (plain Enter queues, Ctrl+Enter interjects) | inbox + tmux wake |
+| Compaction signal | `SessionStart(source=compact)` hook | opt-in hook, transcript tailer fallback | unavailable, `compaction.unsupported` logged once | own file in the always-trusted `~/.grok/hooks`; `SessionStart(compact)` reinjects, `PostCompact` observes | none, logged once |
+| Transcript parser | JSONL | rollout JSONL | none | none | none |
+| Account selection | config-dir identities + selector | `auth.json` identities + selector | one implicit OAuth account under the shared Google tooling root | `auth.json` identities + `GROK_HOME` | implicit single account |
+| Usage | OAuth usage windows | native 5-hour + weekly windows | native `/usage` command through an isolated provider process | unavailable; no quota endpoint, per-turn cost is in-band | unavailable |
+| Stop / teardown | `/exit` | interrupt | `/exit`, wait for presence lock, then kill floor | `/quit`, wait for the registry row to clear, then kill floor | tmux kill + mesh daemon stop |
 
 The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool identity may fan out; slices with two real implementations are traits (`SessionSource`, `ActivitySource`, `CompactionSignalSource`, `TranscriptParser`), everything else is data. A conformance suite runs every registry entry through every slice, so a new tool is proven by the same tests as the existing ones. The tracked metric is the number of `CliTool::…` branches outside the registry and slice files; it is meant to go down.
 
@@ -38,7 +38,7 @@ The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool
 
 Account selection is a capability slice, not a Claude-only path. A provider discovers tool-owned config directories and identities; the generic core remembers `pinned` and `last_used` choices per project and tool, resolves explicit → session → pin → last-used → global default → base-command selector → default-dir precedence, and renders the registry's selector in `LaunchSpec`. Resumes derive their account from the provider's transcript layout. Tools without a provider stay on the logged single-account floor.
 
-Usage is a second provider slice attached to each detected account as an in-memory snapshot. Providers read native state at request time; taurhaus never logs, persists, refreshes, or otherwise owns a credential. Claude uses `CLAUDE_CONFIG_DIR` and its OAuth usage endpoint. Codex uses `CODEX_HOME`, display-only decoding of the `id_token`, and its native usage windows; API-key accounts remain selectable but explicitly report usage as unavailable. Antigravity exposes one implicit account and obtains its native windows by running `agy -p /usage --output-format json` through the injectable command boundary. The retired Claude status-line bridge is uninstalled once without disturbing foreign status-line commands.
+Usage is a second provider slice attached to each detected account as an in-memory snapshot. Providers read native state at request time; taurhaus never logs, persists, refreshes, or otherwise owns a credential. Claude uses `CLAUDE_CONFIG_DIR` and its OAuth usage endpoint. Codex uses `CODEX_HOME`, display-only decoding of the `id_token`, and its native usage windows; API-key accounts remain selectable but explicitly report usage as unavailable. Antigravity exposes one implicit account and obtains its native windows by running `agy -p /usage --output-format json` through the injectable command boundary. Grok uses `GROK_HOME` and reads only the display names in its `auth.json`; it reports usage as unavailable because grok 1.0.5 publishes no quota endpoint, and the registry carries the sentence the UI shows in a meter's place. The retired Claude status-line bridge is uninstalled once without disturbing foreign status-line commands.
 
 ## App and daemon move together
 
@@ -56,6 +56,7 @@ The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session i
 - One writer per shared file, with mesh's lock discipline (flock + inode re-check, tmp+rename under the lock); unknown fields written by other tools survive every save.
 - A tmux pane is identified by pid + start time, not by pane id; a foreign pane is quarantined, never typed into.
 - Compaction has exactly one owner (the daemon where configured and reachable, the app otherwise); the fallback is revoked on recovery.
+- A harness that imports another vendor's hook registrations (grok reads `~/.claude/settings.json` by default) can invoke one bridge twice for one event; the registry declares that and the bridge deduplicates, so one compaction is one reinjection.
 
 ## How changes are made
 

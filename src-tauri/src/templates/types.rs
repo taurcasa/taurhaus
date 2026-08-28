@@ -1272,8 +1272,8 @@ mod tests {
         );
         assert_eq!(
             presets.len(),
-            4,
-            "expected exactly four built-in team presets"
+            5,
+            "expected exactly five built-in team presets"
         );
         assert!(
             presets.iter().any(|preset| preset.preset_id == "pair"),
@@ -1292,6 +1292,12 @@ mod tests {
                 .iter()
                 .any(|preset| preset.preset_id == "research-team"),
             "expected research-team preset in built-ins"
+        );
+        // Regression: commit 6be3761 surfaced grok everywhere in the UI but
+        // shipped no roster that could actually staff a grok member.
+        assert!(
+            presets.iter().any(|preset| preset.preset_id == "grok-pair"),
+            "expected grok-pair preset in built-ins"
         );
 
         for preset in &presets {

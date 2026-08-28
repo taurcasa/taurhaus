@@ -8,13 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Grok CLI (`grok`) added as a harness** — registry entry, process detection (interactive TUI vs headless drivers, agent services and management subcommands), `--model`/`--effort`/`--always-approve` launch rendering with per-model effort validation, session identity from `active_sessions.json`, authoritative busy/idle from the session's `events.jsonl` turn lifecycle, `/quit` with the registry row as the clean-stop proof, `GROK_HOME` accounts, compaction hooks in grok's always-trusted `~/.grok/hooks` directory, and a graphite UI identity across sidebar, team builder, mesh runtime and Settings. Usage windows are deliberately absent: grok 1.0.5 publishes no quota endpoint and Settings says where usage lives instead.
 - **Antigravity CLI (`agy`) is the Google harness** — registry, process detection, model/effort launch rendering, conversation identity, presence-aware stop, native `/usage` windows, an implicit account, opt-in activity hooks, Google-blue UI treatment, bundled roles, and conformance coverage now ship as one capability-sliced integration.
 
 ### Changed
 
 - **Gemini CLI removed** — Google now refuses that client for individual Code Assist accounts and directs users to Antigravity. Persisted `gemini` tool values deliberately load as an unknown tool; reselect Antigravity explicitly because it is a different binary with different flags, and no compatibility alias is provided.
+- **Daemon protocol 13** — the `grok` tool wire value joins the vocabulary that protocol 12 fixed at three harnesses. The app and the bundled daemon ship together; reinstall the paired daemon with `just install-daemon`, because a protocol 12 daemon would decode `grok` sessions as an unknown tool and is deliberately rejected instead.
 - **Daemon protocol 12** — the Antigravity tool wire value replaces the retired Gemini value. Reinstall the paired daemon with `just install-daemon`; protocol 11 daemons are deliberately rejected instead of failing individual launch and stop requests.
-- Mesh and taureval need separate follow-ups before their own external role/tool contracts can launch `agy`; this PR intentionally does not modify those repositories.
+- Mesh and taureval need separate follow-ups before their own external role/tool contracts can launch `agy` or `grok`; these PRs intentionally do not modify those repositories.
 
 ## [0.7.0] - 2026-08-28
 
