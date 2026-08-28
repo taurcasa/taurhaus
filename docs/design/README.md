@@ -6,6 +6,7 @@ Use this directory as the discovery entrypoint:
 
 - current execution plans and their per-PR ledgers: [`harness-realignment-plan.md`](harness-realignment-plan.md) and [`accounts-and-usage-plan.md`](accounts-and-usage-plan.md)
 - [Model steering and v4 roles](model-steering-v4-plan.md) — findings, v4 wording rules per family, task-class hypotheses, evaluation plan
+- [Workflows in taurhaus](workflows-integration-plan.md) — spike results and the W1–W5 integration plan
 - the multi-model working agreement behind them: [`workflows-and-multi-model-orchestration.md`](workflows-and-multi-model-orchestration.md)
 - raw agent research backing the plans' facts tables: [`research/`](research/)
 - archived design rationale: [`../archive/design/`](../archive/design/)
