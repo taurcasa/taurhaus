@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { checkWorkflowSource, checkWorkflowDir } from './check-workflow-scripts.mjs'
+import { checkWorkflowSource, checkWorkflowDir, detectorWorks } from './check-workflow-scripts.mjs'
 
 const VALID = `export const meta = {
   name: 'demo',
@@ -25,6 +25,13 @@ function titles(problems) {
 describe('workflow script check', () => {
   it('accepts a script with meta first, top-level await and top-level return', () => {
     expect(checkWorkflowSource('demo.js', VALID)).toEqual([])
+  })
+
+  it('confirms the runtime reports syntax errors at compile time', () => {
+    // Regression: bun's vm.Script compiles lazily and reported nothing, so the lint passed a
+    // script with an unclosed paren. The detector now compiles through the Function
+    // constructor, and this guard fails loudly on a runtime that still stays silent.
+    expect(detectorWorks()).toBe(true)
   })
 
   it('reports a syntax error with the offending line', () => {

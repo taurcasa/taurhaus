@@ -38,25 +38,50 @@ function withoutLeadingTrivia(source) {
   }
 }
 
-// Wraps the script so a parser accepts what the Workflow runtime accepts:
-// top-level `await`, top-level `return`, and the single `export const meta`.
-export function wrapForParse(source) {
+const API_GLOBALS = 'agent, parallel, pipeline, phase, log, workflow, args, budget'
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+
+// The script body a parser has to accept: top-level `await`, top-level `return`,
+// and the single `export const meta` (stripped, because a function body has no exports).
+export function parseBody(source) {
   const head = withoutLeadingTrivia(source)
   const trivia = source.slice(0, source.length - head.length)
-  const body = /^export\s+const\s+meta\b/.test(head) ? trivia + head.replace(/^export\s+/, '') : source
-  return `(async function workflowScript(agent, parallel, pipeline, phase, log, workflow, args, budget) {\n${body}\n})`
+  return /^export\s+const\s+meta\b/.test(head) ? trivia + head.replace(/^export\s+/, '') : source
+}
+
+export function wrapForParse(source) {
+  return `(async function workflowScript(${API_GLOBALS}) {\n${parseBody(source)}\n})`
+}
+
+// Best-effort line number: the Function constructor reports none, so re-compile the same
+// source through vm.Script, which locates it under node. Under bun that stays silent and the
+// problem is reported without a line — better than JSC's number, which points at the caller.
+function errorLine(source) {
+  try {
+    new vm.Script(wrapForParse(source), { filename: 'workflow', lineOffset: -1 })
+  } catch (fromVm) {
+    const line = /:(\d+)$/.exec(String(fromVm.stack || '').split('\n')[0])
+    if (line) return Number(line[1])
+  }
+  return null
 }
 
 function syntaxProblem(name, source) {
   try {
-    // Compiles only — vm.Script never runs the script.
-    new vm.Script(wrapForParse(source), { filename: name, lineOffset: -1 })
+    // Compiles the body only — the Function constructor never runs it. vm.Script is not
+    // the detector here: bun compiles its scripts lazily and reports nothing.
+    new AsyncFunction(API_GLOBALS, parseBody(source))
     return null
   } catch (error) {
-    const location = String(error.stack || '').split('\n')[0]
-    const line = /:(\d+)$/.exec(location)
-    return `${name}${line ? `:${line[1]}` : ''} syntax error: ${error.message}`
+    const line = errorLine(source)
+    return `${name}${line ? `:${line}` : ''} syntax error: ${error.message}`
   }
+}
+
+// Guards against a runtime that does not report syntax errors at compile time: without
+// this the lint would pass everything and read as green.
+export function detectorWorks() {
+  return syntaxProblem('probe.js', 'export const meta = { name: "probe", description: "probe" }\nconst broken = (\n') !== null
 }
 
 export function checkWorkflowSource(fileName, source) {
@@ -103,6 +128,10 @@ export function checkWorkflowDir(dir) {
 }
 
 function main() {
+  if (!detectorWorks()) {
+    console.error('workflow script check cannot run: this JS runtime does not report syntax errors at compile time')
+    process.exit(1)
+  }
   const dir = process.argv[2] || DEFAULT_WORKFLOWS_DIR
   const { checked, problems } = checkWorkflowDir(dir)
   if (problems.length > 0) {

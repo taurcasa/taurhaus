@@ -120,6 +120,9 @@ does not match the file name, a missing description, an `import`/`require` (impo
 script), and `Date.now()` / argless `new Date()` / `Math.random()` (they throw at runtime — pass a
 timestamp through `args`, and vary a prompt by index instead of randomising).
 
+Run it directly with `bun scripts/check-workflow-scripts.mjs` (or `node …`, which adds the line
+number of a syntax error — bun's parser reports the file only).
+
 ## Not here yet
 
 User-scope installation (the same scripts under `<CLAUDE_CONFIG_DIR>/workflows/`), the run scanner that
