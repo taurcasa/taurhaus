@@ -46,6 +46,7 @@ check:
     }
     run_frontend_lane() {
         just lint-frontend
+        just lint-workflows
         just typecheck
         just test-frontend
     }
@@ -90,7 +91,7 @@ fmt:
     cd src-tauri && cargo fmt --check
 
 # Lint everything and enforce reproducible frontend structure checks.
-lint: lint-rust lint-frontend
+lint: lint-rust lint-frontend lint-workflows
 
 # Lint Rust code with clippy.
 lint-rust: ensure-tauri-resources
@@ -99,6 +100,10 @@ lint-rust: ensure-tauri-resources
 # Lint frontend code and enforce structural checks.
 lint-frontend:
     bun run lint
+
+# Syntax-check the versioned Workflow procedures in .claude/workflows (parse only, never run).
+lint-workflows:
+    bun scripts/check-workflow-scripts.mjs
 
 # Typecheck frontend code
 typecheck:
