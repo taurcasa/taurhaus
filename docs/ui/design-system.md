@@ -117,7 +117,7 @@ Shell composition:
 
 Tool logos are defined in `src/lib/toolLogos.js` as SVG path data:
 
-- Claude, Codex, Gemini icons with per-icon `viewBox` and `path`.
+- Claude, Codex, Antigravity (`agy`), Grok and `unknown` icons with per-icon `viewBox` and `path`, in both a full (`TOOL_ICONS`) and a sidebar-small variant.
 - Monochrome `fill="currentColor"` rendering so state color classes drive visual state.
 - Shared helper accessors: `getToolIcon(tool)`, `getToolName(tool)`.
 

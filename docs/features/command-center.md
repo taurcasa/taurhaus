@@ -24,7 +24,7 @@ Mode handling:
 - Frontend uses compatibility helpers such as `launchClaudeSession(...)`, which call backend `launch_cli_session`.
 - Backend resolves project path, then resolves command from settings per `(tool, mode)`.
 - Session launches in tmux using selected layout strategy.
-- In the current UI, `Continue` is distinct for Claude, `New <Tool> Session` is available for Claude/Codex/Antigravity, and `Resume <Tool>` is available for Claude/Codex/Antigravity.
+- In the current UI, `Continue` appears only for the harnesses whose continue command launches something a fresh session does not — Claude and Grok. `New <Tool> Session` and `Resume <Tool>` are available for all four harnesses (Claude, Codex, Antigravity, Grok). See `src/lib/Sidebar.svelte`.
 
 ## Per-tool launch commands
 
@@ -35,6 +35,7 @@ Default commands (configurable in Settings):
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
 | Antigravity | `agy --dangerously-skip-permissions --continue` | `agy --dangerously-skip-permissions` | `agy --dangerously-skip-permissions --conversation {session_id}` |
+| Grok | `grok --always-approve --continue` | `grok --always-approve` | `grok --always-approve --resume {session_id}` |
 
 Notes:
 - Commands are editable per tool/mode in `Settings -> Terminal & Sessions / CLI Tools`.

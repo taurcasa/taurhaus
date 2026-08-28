@@ -92,21 +92,22 @@ Members can be "detached" (pane died) but remain on the team. Rebind via process
 
 **Status**: Partial
 
-**Decision**: Claude Code agents use native CLI flags. Codex/Gemini agents use mesh daemon bridge.
+**Decision**: Claude Code agents use native CLI flags. Every other harness — Codex, Antigravity, Grok — uses the mesh daemon bridge. The split is capability-driven, not a per-tool branch: `should_use_mesh_sidecar_for_cli_tool` is `!capabilities.native_inbox_poller` (`coordination/pipelines/helpers.rs:320-322`).
 
 | Agent Type | Launch Method | Delivery | Wake | Messaging |
 |---|---|---|---|---|
 | Claude Code | Native CLI flags (`--model`, `--effort`, `-n <agent_name>`, `--team-name`, `--agent-name`, `--agent-id`) | `MeshInboxStore::append` | Native inbox poller | Native `SendMessage` tool |
 | Codex | tmux + `mesh daemon`; `-m` + `-c 'model_reasoning_effort="…"'` (+ `--dangerously-bypass-hook-trust` in hooks mode) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
-| Gemini | tmux + `mesh daemon`; `-m` (unverified) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+| Antigravity (`agy`) | tmux + `mesh daemon`; `--model` + `--effort` (+ `--dangerously-skip-permissions`) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI |
+| Grok (`grok`) | tmux + `mesh daemon`; `--model` + `--effort` (+ `--always-approve`) | `MeshInboxStore::append` | Member `mesh daemon` | `mesh send` / `mesh read` CLI. Onboarding adds one line: plain Enter queues a message until the running turn ends, Ctrl+Enter interjects immediately |
 
 Launch flags are rendered by `LaunchSpec::render` in `session_scanner/launch.rs`.
 
 **Operator delivery is one writer for every tool.** Taurhaus appends to `teams/<team>/inboxes/<member>.json` through `MeshInboxStore::append` regardless of backend; the orchestrator ensures the member daemon after every inbox append for non-Claude members. `mesh send` / `mesh read` remain agent-originated traffic only. Codex additionally has the opt-in `SessionStart(compact)` hook path described above.
 
-**Rationale**: Claude Code is the only CLI tool with native local team capabilities (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Gemini CLI has no team features.
+**Rationale**: Claude Code is the only registered harness with `native_inbox_poller` (researched 2026-03-01). Codex has a hidden `multi_agent` experimental flag but no public surface. Antigravity and Grok have no local team features either; Grok's ACP/leader surface exists but is deliberately out of scope.
 
-**Which Claude account a team runs on**: team members always launch on the default Claude config dir (`PlatformPaths::claude_dir()`, honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Per-project account selection does not apply to teams; `MeshTeamBuilder` says so in one line when more than one account is registered.
+**Which account a team runs on**: team members always launch on the team's config dir, not on a per-project account. For Claude that is `PlatformPaths::claude_dir()` (honouring a `TAURHAUS_CLAUDE_DIR` override via the `CLAUDE_CONFIG_DIR=` prefix), because inboxes live under the single `PlatformPaths::teams_dir()`. Codex is the one harness that declares `managed_home`, so a managed Codex setup pins `CODEX_HOME` through `cli_commands.account_selector_dirs` (`commands/terminal_settings.rs:101-120`). A launch that names an account anyway is not silently obeyed: it is dropped and logged once per project as `launch.account.ignored_for_team` (warn). `MeshTeamBuilder` says so in one line when more than one account is registered.
 
 **Model and effort**: `Member.model` and `Member.reasoning_effort` are persisted separately, surfaced in live status, and passed to `mesh join --model`. The UI model list comes from `ModelCatalog` on `TerminalPlatformContract`.
 
@@ -183,7 +184,7 @@ struct BackendCapabilities {
 
 **Status**: Implemented
 
-**Decision**: Runtime delivery selects the backend from the target member's configured CLI tool. Claude members use the native inbox-file backend; Codex and Gemini members use the mesh-bridged backend and member daemon. `BackendSelector::m0()` remains only as the compatibility constructor for the default external-agent backend, while the orchestrator and initialization pipeline perform per-member routing.
+**Decision**: Runtime delivery selects the backend from the target member's configured CLI tool. Claude members use the native inbox-file backend; Codex, Antigravity and Grok members use the mesh-bridged backend and member daemon. `BackendSelector::m0()` remains only as the compatibility constructor for the default external-agent backend, while the orchestrator and initialization pipeline perform per-member routing.
 
 ### D11: Channel-based daemon → orchestrator event pipeline
 
@@ -230,7 +231,8 @@ src-tauri/src/
       mod.rs  initialize.rs  members.rs  lifecycle.rs  helpers.rs
     runtime/
       mod.rs  process.rs  recording.rs  system.rs  tmux.rs
-    compact_hook.rs         # Claude + Codex hook bridge
+    compact_hook.rs         # Claude + Codex + Grok hook bridge
+    agy_hooks_installer.rs  # Antigravity opt-in activity hooks
     compaction_processor.rs  compaction_events.rs
     activity_export.rs  activity_schema.rs
     delivery.rs             # DeliveryRenderer / onboarding

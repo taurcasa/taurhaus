@@ -115,9 +115,25 @@ When the active platform does not support custom launch commands, the custom-com
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
 | Antigravity | `agy --dangerously-skip-permissions --continue` | `agy --dangerously-skip-permissions` | `agy --dangerously-skip-permissions --conversation {session_id}` |
+| Grok | `grok --always-approve --continue` | `grok --always-approve` | `grok --always-approve --resume {session_id}` |
 
 Each tool has a "Reset to defaults" button. Commands are editable per-mode (continue, fresh, resume).
-For Antigravity resume commands, `{session_id}` is replaced with the project's last conversation UUID before launch.
+For Antigravity and Grok resume commands, `{session_id}` is replaced with the project's last session id before launch.
+
+These fields are free-form: there is no backend allowlist on the command text.
+
+### Accounts
+
+A per-tool section appears for every harness that has an account selector **and** at least two accounts detected — Claude Code (`CLAUDE_CONFIG_DIR`), Codex (`CODEX_HOME`) and Grok (`GROK_HOME`). Antigravity has one implicit account and never appears here.
+
+| Element | What it shows |
+|---------|---------------|
+| Account radio list | Every detected account of that tool, labelled from its own identity; picking one sets the tool's **global default** (`terminal.default_account_ids[tool]`) |
+| Compact usage meter | The account's weekly buckets, in the titles the tool itself uses |
+| Usage note | For a tool with `usage: false` the registry's sentence stands where a meter would be — Grok's is "Grok shows credits in its own /usage" |
+| Effective default line | The account a launch would land on and **why** (`origin`: request, session, project, last used, global default, base command, signed in, or the default config dir) |
+
+Usage is fetched at request time from the tool's own endpoint or command, kept in memory, and never logged, persisted or refreshed by taurhaus.
 
 ### Search index
 

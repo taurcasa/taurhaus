@@ -10,6 +10,7 @@ These references match the current shipped behavior. Start here for the docs tha
 |--------------|-------|
 | Install and set up taurhaus | [Getting Started](getting-started.md) |
 | Understand the system architecture | [ARCHITECTURE.md](../ARCHITECTURE.md) |
+| Understand how taurhaus relates to the CLIs it runs | [Harness model](architecture/harness-model.md) |
 | Read what the experiment taught | [Project retrospective](RETROSPECTIVE.md) |
 | Understand Mesh runtime and recovery | [Mesh feature guide](features/mesh.md) |
 | Understand current testing lanes | [Testing guide](operations/testing-guide.md) |
@@ -26,7 +27,11 @@ Deep dives into system design and technical decisions.
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](../ARCHITECTURE.md) | System overview — storage, watcher ownership, IPC surface, platform abstraction, logging, and data flow |
+| [Harness model](architecture/harness-model.md) | What taurhaus owns versus what the CLIs own: capability slices per harness, accounts and usage, app/daemon pairing, stability rules |
+| [Data architecture](architecture/data-architecture.md) | Authoritative inventory of live stores, ownership boundaries, and derived state |
 | [Data model](architecture/data-model.md) | SQLite schema, tantivy index, filesystem layout |
+| [Path handling guide](architecture/path-handling-guide.md) | Root authority, normalization, and Windows/WSL/Linux path boundaries |
+| [Compaction pipeline flow](architecture/compaction-pipeline-flow.md) | Hook and transcript reinjection paths, owner selection, per-harness delivery |
 | [IPC reference](architecture/ipc-reference.md) | All Tauri IPC commands — parameters, return types, usage |
 | [Daemon protocol](architecture/daemon-protocol.md) | TCP JSON-line protocol between app and WSL/macOS daemon |
 | [Logging guidelines](architecture/log-level-guidelines.md) | Structured logging policy and event-level guidance |
@@ -66,7 +71,8 @@ Build, test, and release procedures.
 |----------|-------------|
 | [Build and release](operations/build-and-release.md) | Platform builds (Windows, macOS, Linux), release workflow |
 | [Testing guide](operations/testing-guide.md) | Test strategy, test lanes, E2E setup, regression policy |
-| [Visual testing guide](operations/visual-testing-guide.md) | Browser-mode screenshot lane and fixture-host workflow |
+| [Visual testing guide](operations/visual-testing-guide.md) | Browser-mode screenshot lane, `just visual-shot`, and fixture-host workflow |
+| [Compaction testing](operations/compaction-testing.md) | How to trigger a real compaction per harness and verify delivery |
 
 ## Multi-CLI coordination (mesh)
 
@@ -85,6 +91,10 @@ Documentation for the multi-agent team orchestration feature.
 | [Security policy](../SECURITY.md) | Vulnerability reporting and security model |
 | [Risk register](security/risk-register.md) | Accepted baseline risks |
 | [Archive guide](archive/README.md) | Historical audits, design studies, and planning artifacts |
+
+## Design plans
+
+Current execution plans and their per-PR ledgers live under [docs/design](design/README.md); the raw agent research behind their facts tables is in [docs/design/research](design/research/).
 
 ## Archive
 

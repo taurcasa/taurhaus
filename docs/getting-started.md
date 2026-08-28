@@ -10,7 +10,7 @@ Pick your platform to get started:
 
 ## Before You Start
 
-taurhaus is a desktop app that manages AI coding sessions (Claude Code, Codex, Antigravity CLI) across your projects. It runs on **Windows** and **macOS**.
+taurhaus is a desktop app that manages AI coding sessions (Claude Code, Codex, Antigravity CLI, Grok CLI) across your projects. It runs on **Windows** and **macOS**.
 
 | | Windows | macOS |
 |---|---------|-------|
@@ -109,6 +109,9 @@ bun add -g @openai/codex
 **Antigravity CLI** (Google): install the native `agy` binary from the
 [Antigravity CLI project](https://github.com/google-antigravity/antigravity-cli).
 
+**Grok CLI** (xAI): install the native `grok` binary as described in the
+[Grok Build docs](https://docs.x.ai/build/overview).
+
 You need at least one installed for session management features. The app works without any CLI tools — you just won't see live sessions.
 
 ## Shell Configuration
@@ -164,7 +167,7 @@ The app scans `~/projects/` by default. You can add more directories later in Se
 
 ## How taurhaus works
 
-taurhaus is a desktop app that watches your project directories and detects when AI CLI tools (Claude Code, Codex, Antigravity CLI) are running in tmux sessions. It gives you a single view into every project — files, commits, tasks, and active sessions — so you can switch between projects without losing context. A background helper service (the "daemon") handles file watching and session detection, while the app itself stores project metadata in SQLite, indexes content for full-text search, and communicates with the helper service over a local TCP connection.
+taurhaus is a desktop app that watches your project directories and detects when AI CLI tools (Claude Code, Codex, Antigravity CLI, Grok CLI) are running in tmux sessions. It gives you a single view into every project — files, commits, tasks, and active sessions — so you can switch between projects without losing context. A background helper service (the "daemon") handles file watching and session detection, while the app itself stores project metadata in SQLite, indexes content for full-text search, and communicates with the helper service over a local TCP connection.
 
 ## Keyboard shortcuts
 
@@ -208,7 +211,7 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 - **Green glow** = actively working (streaming output)
 - **Amber outline** = idle (waiting for input)
 
-**Launch a session**: Right-click a project and choose the tool-specific menu items. Taurhaus shows `Continue Claude`, `New Claude Session`, `New Codex Session`, `New Antigravity Session`, plus `Resume Claude`, `Resume Codex`, and `Resume Antigravity`.
+**Launch a session**: Right-click a project and choose the tool-specific menu items. Taurhaus shows `Continue Claude` and `Continue Grok`, `New Claude Session`, `New Codex Session`, `New Antigravity Session` and `New Grok Session`, plus `Resume Claude`, `Resume Codex`, `Resume Antigravity` and `Resume Grok`. Where a tool has more than one account signed in, each launch item carries an `Account` submenu with that account's usage.
 
 **Navigate to a session**: Click the tool icon to jump to that session in your terminal. `Open in Terminal` appears when a live session has tmux coordinates; if navigation is attempted without a valid terminal target, taurhaus shows a sidebar notice instead of failing silently.
 
@@ -216,7 +219,7 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 
 ### Mesh View
 
-The Mesh tab lets you set up and manage multi-agent teams. Start from a built-in preset, user template, or blank slate; choose Claude, Codex, or Antigravity lead roles where supported by the selected preset; then launch and monitor the team from the live roster/canvas. See [Mesh view](features/mesh.md) for details.
+The Mesh tab lets you set up and manage multi-agent teams. Start from a built-in preset, user template, or blank slate; choose Claude, Codex, or Antigravity lead roles where supported by the selected preset (Grok ships as an agent role, `grok-developer`, with a `Grok Pair` preset); then launch and monitor the team from the live roster/canvas. See [Mesh view](features/mesh.md) for details.
 
 ### Search
 
@@ -330,7 +333,7 @@ The initial project scan indexes all files for search. This is a one-time operat
 
 #### File watcher limits on Linux/WSL
 
-taurhaus uses Linux file watchers (inotify) to detect changes in your projects. The helper service uses roughly 4-6 watcher instances, and each Mesh team member adds 2 more. The AI tools themselves (Claude Code, Codex, Antigravity) also create their own watchers independently.
+taurhaus uses Linux file watchers (inotify) to detect changes in your projects. The helper service uses roughly 4-6 watcher instances, and each Mesh team member adds 2 more. The AI tools themselves (Claude Code, Codex, Antigravity, Grok) also create their own watchers independently.
 
 The default Linux limit is 128 instances per user. If you run large Mesh teams or many projects, you may hit this limit — taurhaus will log a warning if it happens.
 
