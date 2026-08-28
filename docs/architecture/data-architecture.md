@@ -38,11 +38,11 @@ Current implementation follows these rules:
 3. Current attachment state is durable-but-rebuildable in `teams/<team>/runtime/<member>.json`.
 4. Scanner output is observation, not authority.
 5. Compaction, watcher, and operational snapshot files are derived/supporting state, not roster truth.
-6. Tool transcript files remain external source material owned by Claude/Codex/Gemini, not by Taurhaus.
+6. Tool transcript files remain external source material owned by the CLI that wrote them (Claude Code, Codex, Antigravity, Grok), not by Taurhaus.
 
 ## App and Daemon Protocol Pairing
 
-Version 0.6.9 uses daemon protocol **11**. Generic account discovery, usage refresh, and tool-agnostic transcript lookup changed the contract, so the 0.6.9 app and daemon ship as a pair and reject a mismatched peer instead of attempting partial compatibility.
+The current daemon protocol is **13** (`daemon/protocol.rs`). Protocol 11 (shipped in 0.7.0) replaced the Claude-only account methods with generic account discovery, usage refresh and tool-agnostic transcript lookup; 12 replaced the retired Google tool wire value with `agy`; 13 added `grok`. Each of those changed the contract in both directions, so the app and daemon ship as a pair and reject a mismatched peer instead of attempting partial compatibility.
 
 ## Storage Inventory
 
@@ -91,8 +91,12 @@ There is exactly one teams-dir authority: `PlatformPaths::teams_dir()` = `claude
 | Claude Code | sessions registry | `<CLAUDE_CONFIG_DIR>/sessions/<pid>.json` | Claude Code | observe — **authoritative** session identity and `busy`/`idle`/`waiting`/`shell` state |
 | Claude Code | account config dirs and OAuth usage | `~/.claude`, `~/.claude-*` (`.credentials.json`, `.claude.json`) | Claude Code | observe identities and read a token at request time for the native usage endpoint; taurhaus never writes, persists, logs, or refreshes credentials |
 | Codex | session transcripts | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | Codex | observe/parse |
-| Gemini CLI | chats | `~/.gemini/tmp/<dir-or-hash>/chats/*.json` | Gemini CLI | observe/parse |
-| Gemini CLI | task file | `TODO.md` in project root | Gemini/user | observe/import |
+| Antigravity CLI | conversations | `~/.gemini/antigravity-cli/conversations/*.db` + `cache/last_conversations.json` | Antigravity CLI | observe (identity only; the SQLite transcript is never parsed) |
+| Antigravity CLI | presence locks | `~/.gemini/antigravity-cli/presence/*.lock` | Antigravity CLI | observe (advisory flock) |
+| Antigravity CLI | activity hooks | `<app data>/agy-hooks.jsonl` | taurhaus (opt-in hook sink) | own/append |
+| Grok CLI | live session registry | `<GROK_HOME>/active_sessions.json` | Grok CLI | observe/parse |
+| Grok CLI | turn lifecycle | `<GROK_HOME>/sessions/<encoded-cwd>/<session-id>/events.jsonl` | Grok CLI | observe/tail |
+| Grok CLI | compaction hooks | `<GROK_HOME>/hooks/*.json` | taurhaus (managed installer) | own/write |
 
 These files are not part of Taurhaus master data. They are upstream evidence sources used to derive runtime/session/task state.
 
@@ -179,7 +183,7 @@ The compaction bugs audited on `2026-03-08` happened when transcript ownership w
 - coordination orchestrator logic
 - `runtime/` attachment state
 - operational snapshots
-- compaction hook processing (one bridge, `coordination/compact_hook.rs`, for both Claude and Codex) and the default Codex transcript signal extraction/watching, plus delivery bookkeeping through `record_delivery_at(teams_dir, …)`
+- compaction hook processing (one bridge, `coordination/compact_hook.rs`, for Claude, Codex and Grok) and the default Codex transcript signal extraction/watching, plus delivery bookkeeping through `record_delivery_at(teams_dir, …)`
 - the single inbox writer `MeshInboxStore::append` for every taurhaus-originated message
 - member launch/liveness ownership checks and authoritative `runtime/` pane identity
 - UI projections and diagnostics
@@ -270,7 +274,7 @@ Key point:
 - they do not define membership or session attachment
 - taurhaus performs no tmux injection on this path
 
-**One hook bridge, one owner.** `coordination/compact_hook.rs` serves Claude and Codex from a single payload parser: the tool is inferred from `transcript_path`, the member is resolved by runtime `session_id` first and normalized `cwd` second. `harness.codex_compaction` (a `TerminalSettings` field) defaults to `transcript`; `hooks` is opt-in and only active when Codex ≥ 0.147 and the hook is installed.
+**One hook bridge, one owner.** `coordination/compact_hook.rs` serves Claude, Codex and Grok from a single payload parser: the tool is inferred from the reserved `GROK_*` hook env and otherwise from `transcript_path`, the member is resolved by runtime `session_id` first and normalized `cwd` second. The registry decides where the composed card goes — the hook's stdout for Claude and Codex, the member's mesh inbox for grok. `harness.codex_compaction` (a `TerminalSettings` field) defaults to `transcript`; `hooks` is opt-in and only active when Codex ≥ 0.147 and the hook is installed. Antigravity declares no compaction hook.
 
 Compaction has exactly one owner at a time, logged as `compaction.owner.selected {owner: hooks | daemon | app}`: hooks when active, otherwise the daemon when it is configured and connected, otherwise the app — and the app-owned fallback is released again when the daemon recovers.
 

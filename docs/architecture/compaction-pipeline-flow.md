@@ -33,7 +33,7 @@ Core source files:
 - `src-tauri/src/coordination/stores/compaction_signal.rs`
 - `src-tauri/src/coordination/stores/compaction.rs`
 - `src-tauri/src/coordination/reinjection.rs`
-- `src-tauri/src/coordination/compact_hook.rs` (one hook bridge for Claude and Codex)
+- `src-tauri/src/coordination/compact_hook.rs` (one hook bridge for Claude, Codex and Grok)
 - `src-tauri/src/coordination/compaction_events.rs` (event emitters)
 - `src-tauri/src/startup/compaction.rs` (owner selection)
 - `src-tauri/src/daemon/compaction.rs` (daemon-owned runtime + mode switch)
@@ -53,13 +53,18 @@ Core source files:
 7. Taurhaus composes an `OperationalReinjectionCard`.
 8. Delivery is attempted:
    - Codex in `transcript` mode (default): append the reinjection card to the mesh inbox for that member
-   - Claude, and Codex in `hooks` mode: return the card from the `SessionStart(source=compact)` hook bridge
+   - Claude, and Codex in `hooks` mode: return the card from the hook bridge as `hookSpecificOutput.additionalContext` (registry `compaction_delivery: HookStdout`)
+   - Grok: the hook bridge fires, but the card is appended to the member's mesh inbox (registry `compaction_delivery: MeshInbox`) because grok documents passive-hook stdout as ignored
 9. Delivery state is persisted.
 10. Audit events are emitted to the structured JSONL log.
 
-One bridge serves both tools. `coordination/compact_hook.rs` parses a single `CompactHookInput`, infers the tool from `transcript_path` (Codex rollout vs Claude JSONL), resolves the member by runtime `session_id` and then normalized/canonical `cwd` across all teams (ambiguous matches are skipped), and books the result through `record_delivery_at(teams_dir, tool, …)`. For Codex the compaction timestamp is taken from the transcript tail.
+One bridge serves all three tools. `coordination/compact_hook.rs` parses a single `CompactHookInput`, infers the tool from the reserved `GROK_*` env names grok injects into every hook process and otherwise from `transcript_path` (Codex rollout vs Claude JSONL), resolves the member by runtime `session_id` and then normalized/canonical `cwd` across all teams (ambiguous matches are skipped), and books the result through `record_delivery_at(teams_dir, tool, …)`. For Codex the compaction timestamp is taken from the transcript tail.
 
-Codex uses that path only when `harness.codex_compaction=hooks` — opt-in, default `transcript`, requires Codex ≥ 0.147, and managed launches get `--dangerously-bypass-hook-trust`. Events: `compaction.{claude,codex}_hook.{received,resolved,delivered,skipped,failed}` and `compaction.compact_hook.failed`.
+The accepted hook events differ by delivery. `SessionStart` with `source=compact` is the reinjection event everywhere. `PostCompact` is accepted only for a harness whose registry delivery is `MeshInbox` — grok, whose session-start source never reports `compact`; for a stdout-answered harness a `PostCompact` payload is skipped as `post_compact_signal_only`, because that event has no documented stdout contract. grok also loads `~/.claude/settings.json` hooks, so one compaction can reach the bridge twice; the registry declares `compaction_hook_compat_import` and the bridge deduplicates inside a bounded window, logging `compaction.hook.compat_import` once per run.
+
+Antigravity has no compaction hook (`compaction_hook: false`) and no transcript parser, so an `agy` compaction is not observed.
+
+Codex uses that path only when `harness.codex_compaction=hooks` — opt-in, default `transcript`, requires Codex ≥ 0.147, and managed launches get `--dangerously-bypass-hook-trust`. Grok's hook directory (`<GROK_HOME>/hooks`) is always trusted, so its installer needs no equivalent flag. Events: `compaction.{claude,codex,grok}_hook.{received,resolved,delivered,skipped,failed}`, `compaction.hook.compat_import` and `compaction.compact_hook.failed`.
 
 ## Platform Flow Map
 

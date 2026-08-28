@@ -28,13 +28,27 @@ Registered projects. The `path` column is the canonical identifier for filesyste
 | `hero_preference` | TEXT | | User-selected hero image preference |
 | `cached_branch` | TEXT | | Git branch name (cached, may be NULL if not yet scanned) |
 | `cached_is_dirty` | INTEGER | | Git dirty flag (0/1, cached) |
-| `claude_account_id` | TEXT | | Claude subscription (config dir) this project launches on. NULL = global default account |
+| `claude_account_id` | TEXT | | **Superseded by `project_tool_accounts` in migration 013.** Left in place for schema compatibility; no longer read or written |
 | `created_at` | TEXT | NOT NULL | Registration timestamp |
 | `updated_at` | TEXT | NOT NULL | Last metadata update |
 
 **Activity state** is computed at read time from `last_activity_at` using configurable thresholds (default: Active < 7d, Recent < 30d, Stale < 90d, Dormant >= 90d). Never stored in the database — see `ActivityState::compute()` in `models/mod.rs`.
 
 **Indexes**: `last_activity_at` (sidebar ordering).
+
+### project_tool_accounts
+
+Which account a project uses for a given CLI harness (migration 013). One row per `(project_id, tool)`.
+
+| Column | Type | Constraints | Purpose |
+|--------|------|-------------|---------|
+| `project_id` | TEXT | NOT NULL, PK part, FK -> `projects(id)` ON DELETE CASCADE | Owning project |
+| `tool` | TEXT | NOT NULL, PK part | Harness id: `claude`, `codex`, `grok` (Antigravity has one implicit account and no selector) |
+| `account_id` | TEXT | NOT NULL | Provider-scoped account id |
+| `origin` | TEXT | NOT NULL, `CHECK(origin IN ('pinned','last_used'))` | `pinned` is a deliberate choice (chooser "remember", chip, context-menu submenu); `last_used` is written after a launch resolves and when the scanner binds a live session of that tool to the project. `remember_last_used_account` never overwrites a `pinned` row and only writes when the observed account changed (`db/queries.rs:210-226`) |
+| `updated_at` | TEXT | NOT NULL | Last write |
+
+"Use default" deletes the row rather than storing a sentinel.
 
 ### sessions
 
@@ -64,7 +78,7 @@ Activity statistics recorded by the session scanner. One row per detected CLI se
 |--------|------|-------------|---------|
 | `id` | INTEGER | PK AUTOINCREMENT | Row ID |
 | `project_path` | TEXT | NOT NULL | Project path (not FK — works even for unregistered projects) |
-| `cli_tool` | TEXT | NOT NULL | Tool name: `claude`, `codex`, `gemini` |
+| `cli_tool` | TEXT | NOT NULL | Tool name: `claude`, `codex`, `agy`, `grok`. A retired value (e.g. the pre-18a `gemini`) decodes to `CliTool::Unknown` rather than to another harness. |
 | `started_at` | TEXT | NOT NULL | Session start timestamp |
 | `ended_at` | TEXT | NOT NULL | Session end timestamp |
 | `active_duration_ms` | INTEGER | NOT NULL, default 0 | Time tool was actively working (IO/TCP active) |
@@ -99,7 +113,7 @@ Aggregated tasks from multiple CLI tools. Uses `source_key`-scoped identity for 
 |--------|------|-------------|---------|
 | `row_id` | INTEGER | PK AUTOINCREMENT | Stable row identity for archived history rows |
 | `project_path` | TEXT | NOT NULL | Project path |
-| `source` | TEXT | NOT NULL | Tool: `claude`, `codex`, `gemini` |
+| `source` | TEXT | NOT NULL | Tool: `claude` or `codex` — the two harnesses with a verified task source (`task_scanner/mod.rs`) |
 | `source_key` | TEXT | NOT NULL | Source namespace key (session/team/source bucket) |
 | `source_task_id` | TEXT | NOT NULL | Original ID within the tool |
 | `subject` | TEXT | NOT NULL | Task title |
@@ -150,6 +164,7 @@ Migrations live in `src-tauri/src/db/migrations/` as numbered SQL files. Applied
 | 010 | Session timeline index `sessions (project_id, date DESC)` + archived-task timeline index |
 | 011 | Create `archived_task_session_summaries` keyed by `(project_path, session_key)` — commit/file counts, `sources_json`, `enrichment_warnings` |
 | 012 | Add `projects.claude_account_id` (NULL = global default Claude account) |
+| 013 | Create `project_tool_accounts(project_id, tool, account_id, origin CHECK(origin IN ('pinned','last_used')), updated_at)` — PK `(project_id, tool)`, FK to `projects(id)` ON DELETE CASCADE — and copy every non-NULL `projects.claude_account_id` in as a `('claude', …, 'pinned')` row |
 
 ## tantivy (full-text search)
 
@@ -209,14 +224,15 @@ Each tool stores session and task data differently:
 |------|----------------------|------------|
 | Claude Code | `~/.claude/projects/<slug>/*.jsonl` | `~/.claude/tasks/{session-id}/*.json` |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` | `update_plan` entries within session JSONL |
-| Gemini CLI | `~/.gemini/tmp/<dir-or-hash>/chats/*.json` | `TODO.md` in project root |
+| Antigravity CLI (`agy`) | `~/.gemini/antigravity-cli/conversations/*.db`, with `cache/last_conversations.json` and `presence/*.lock` beside them | none — no task source |
+| Grok CLI (`grok`) | `<GROK_HOME>/sessions/<encoded-cwd>/<session-id>/` (`events.jsonl`, `summary.json`), with `<GROK_HOME>/active_sessions.json` as the live registry | none — no task source |
 
 Claude Code also writes two surfaces taurhaus reads but never modifies:
 
 | Path | Purpose |
 |------|---------|
 | `<CLAUDE_CONFIG_DIR>/sessions/<pid>.json` | Sessions registry — authoritative session identity and `busy`/`idle`/`waiting`/`shell` state |
-| `~/.claude`, `~/.claude-*` (`.credentials.json`, `.claude.json`) | Account config dirs, scanned for the per-project account chooser |
+| `~/.claude`, `~/.claude-*` (`.credentials.json`, `.claude.json`) | Account config dirs, scanned for the per-project account chooser. Codex and Grok have the same shape under `~/.codex*` (`auth.json`) and `~/.grok*` (`auth.json`); Antigravity has one implicit account. |
 
 ### Application data
 

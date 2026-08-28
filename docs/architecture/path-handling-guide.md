@@ -48,7 +48,7 @@ Use Linux-native paths for anything executed inside WSL/Linux or compared as pro
 - daemon binary paths
 - tmux commands (there are no tmux hook payloads any more — the focus hook chain was deleted; focus is a hub-side `tmux list-clients` probe)
 - Codex session JSONL paths
-- Claude/Gemini runtime file paths under Linux/WSL homes
+- CLI runtime file paths under Linux/WSL homes (`~/.claude*`, `~/.codex*`, `~/.gemini/antigravity-cli`, `~/.grok*`)
 - project-path equality checks
 - backend storage keys derived from project identity
 
@@ -139,7 +139,7 @@ These are two different variables and confusing them silently splits state.
 
 `TAURHAUS_CLAUDE_DIR` moves **taurhaus's** Claude root only. Claude Code itself reads `CLAUDE_CONFIG_DIR` and, with that unset, `~/.claude` — whatever taurhaus was pointed at. Three consequences:
 
-1. **Launching.** A managed Claude launch renders a `CLAUDE_CONFIG_DIR=<dir>` prefix only when the resolved account has an explicit config dir — a non-default account or an override. The default account deliberately resolves to `None` and renders no prefix, so Claude inherits its own unset-variable behaviour (`session_scanner/launch.rs`, `session_scanner/claude_accounts.rs`). If the base command already carries the variable, taurhaus keeps it and logs `launch.config_dir.ignored`.
+1. **Launching.** A managed Claude launch renders a `CLAUDE_CONFIG_DIR=<dir>` prefix only when the resolved account has an explicit config dir — a non-default account or an override. The default account deliberately resolves to `None` and renders no prefix, so Claude inherits its own unset-variable behaviour (`session_scanner/launch.rs`, `session_scanner/accounts/claude.rs`). The same rule is data-driven for every harness with an `account_selector` in the registry — `CODEX_HOME` for Codex, `GROK_HOME` for Grok. If the base command already carries the variable, taurhaus keeps it and logs `launch.selector.ignored` (`session_scanner/launch.rs`, `LaunchNote::SelectorIgnored`).
 2. **Reading identity/activity.** Session identity and state are read under the *process's own* `CLAUDE_CONFIG_DIR` (`/proc/<pid>/environ` on Linux, `ps -Eww` on macOS), falling back to `tool_session_root(Claude)`. Never assume the app's root is the session's root.
 3. **The daemon.** It is spawned with `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` forwarded (converted to Linux form for a WSL daemon); `--data-dir` sets `TAURHAUS_DATA_DIR` inside the daemon. Startup logs `daemon.data_root.mismatch` (warn) when the app and daemon roots diverge anyway.
 
