@@ -757,6 +757,16 @@ describe('Sidebar component branches', () => {
     // sidebar launch menu at three tools, so it could not be started at all.
     expect(screen.getByText('New Grok Session')).toBeInTheDocument()
     expect(screen.getByText('Resume Grok')).toBeInTheDocument()
+    // Regression: commit 6be3761 gave Grok Fresh and Resume actions but no
+    // Continue, even though its registry defines a distinct `--continue`
+    // launch, so the sidebar could not reopen the project's last conversation.
+    expect(screen.getByText('Continue Grok')).toBeInTheDocument()
+
+    await fireEvent.mouseDown(screen.getByText('Continue Grok'))
+    await waitFor(() => {
+      expect(launchCliSession).toHaveBeenCalledWith(project.id, 'continue', 'grok', null)
+    })
+    launchCliSession.mockClear()
 
     getSessionForProject.mockImplementation(() => session)
     await fireEvent.contextMenu(screen.getByTestId('project-item'))

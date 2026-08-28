@@ -530,8 +530,10 @@
       allSessions,
     )
 
-    // Continue is only distinct for Claude.
+    // Continue appears only where it launches something a Fresh session does
+    // not: Claude and Grok both reopen the project's last conversation with it.
     items.push(launch('Continue Claude', 'continue', 'claude', CTX_ICON_PLAY))
+    items.push(launch('Continue Grok', 'continue', 'grok', CTX_ICON_PLAY))
 
     // New session remains distinct for all tools.
     items.push({ separator: true })
