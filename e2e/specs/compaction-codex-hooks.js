@@ -47,8 +47,9 @@ const PANE_ENV_KEYS = ['TAURHAUS_DATA_DIR', 'TAURHAUS_CLAUDE_DIR', 'CODEX_HOME']
  * Cost bound for the automatic case. Codex auto-compacts when the thread
  * crosses `model_auto_compact_token_limit`; lowering it to 20k reaches the same
  * code path after a couple of turns instead of paying for a full ~250k-token
- * context window. Each filler file is ~4k tokens, so the threshold is crossed
- * by roughly the third turn and the cap costs at most ~6 turns.
+ * context window. Each filler file is ~40 KB, so a turn that reads one adds
+ * roughly 10k tokens and the threshold is crossed within the first turns; the
+ * cap stops the case at six either way.
  */
 const AUTO_COMPACT_TOKEN_LIMIT = 20_000
 const AUTO_COMPACTION_MAX_TURNS = 6
@@ -433,7 +434,12 @@ function hookDelivery(events, memberName) {
   return delivered.length > 0 ? delivered[delivered.length - 1] : null
 }
 
-function assertHookBridgeDelivered(events, { teamName, memberName }) {
+/**
+ * `exactlyOne` holds for a trigger the lane controls: one `/compact` must
+ * produce one card. Codex's own auto-compaction can fire more than once inside
+ * the window, so that case only requires at least one.
+ */
+function assertHookBridgeDelivered(events, { teamName, memberName }, { exactlyOne = true } = {}) {
   const received = selectEvents(events, { event: 'compaction.codex_hook.received' })
   const resolved = selectEvents(events, {
     event: 'compaction.codex_hook.resolved',
@@ -446,10 +452,15 @@ function assertHookBridgeDelivered(events, { teamName, memberName }) {
 
   expect(received.length).toBeGreaterThan(0)
   expect(resolved.length).toBeGreaterThan(0)
-  expect(delivered).toHaveLength(1)
-  expect(delivered[0].tool).toBe('codex')
-  expect(delivered[0].team_name).toBe(teamName)
-  expect(delivered[0].additional_context_bytes).toBeGreaterThan(0)
+  if (exactlyOne) {
+    expect(delivered).toHaveLength(1)
+  } else {
+    expect(delivered.length).toBeGreaterThan(0)
+  }
+  const last = delivered[delivered.length - 1]
+  expect(last.tool).toBe('codex')
+  expect(last.team_name).toBe(teamName)
+  expect(last.additional_context_bytes).toBeGreaterThan(0)
 
   // The card reached the harness as a recorded injection, not a skip.
   const injected = selectEvents(events, {
@@ -464,7 +475,7 @@ function assertHookBridgeDelivered(events, { teamName, memberName }) {
   expect(selectEvents(events, { event: 'compaction.detected', match: { member_name: memberName } })).toEqual([])
   expect(selectEvents(events, { eventPrefix: 'compaction.extractor.' })).toEqual([])
 
-  return delivered[0]
+  return last
 }
 
 /** What Codex actually put on the wire, printed so a run can be read back. */
@@ -652,7 +663,7 @@ describe('Codex compaction via hooks', function () {
     }
 
     reportHookPayload('automatic', collected, managed.memberName)
-    const delivered = assertHookBridgeDelivered(collected, managed)
+    const delivered = assertHookBridgeDelivered(collected, managed, { exactlyOne: false })
     console.log(
       `[e2e] automatic compaction reached after ${turns} turn(s); card was ` +
         `${delivered.additional_context_bytes} bytes of additionalContext`
