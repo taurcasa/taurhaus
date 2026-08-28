@@ -547,17 +547,30 @@ describe('workflow procedures — fail closed', () => {
       ).rejects.toThrow(/never returned/)
     })
 
-    it(`${script} takes the required commands from args.requiredGates when a spec names other gates`, async () => {
+    it(`${script} adds args.requiredGates on top of the two default gates, which cannot be opted out of`, async () => {
+      const defaults = [{ command: 'just check-quick', status: 'pass' }, { command: 'just lint', status: 'pass' }]
       const custom = argsFor(script, { gates: "'bun run test'", requiredGates: ['bun run test'] })
       await expect(
         run(script, custom, {
-          gate: { status: 'pass', commands: [{ command: 'bun run test', status: 'skipped', detail: 'slow' }], failures: [], diff_stat: '', commits: [] },
+          gate: { status: 'pass', commands: defaults.concat([{ command: 'bun run test', status: 'skipped', detail: 'slow' }]), failures: [], diff_stat: '', commits: [] },
         })
       ).rejects.toThrow(/bun run test/)
+      await expect(
+        run(script, custom, {
+          gate: { status: 'pass', commands: [{ command: 'bun run test', status: 'pass' }], failures: [], diff_stat: '', commits: [] },
+        })
+      ).rejects.toThrow(/just check-quick/)
       const { result } = await run(script, custom, {
-        gate: { status: 'pass', commands: [{ command: 'bun run test', status: 'pass' }], failures: [], diff_stat: '', commits: [] },
+        gate: { status: 'pass', commands: defaults.concat([{ command: 'bun run test', status: 'pass' }]), failures: [], diff_stat: '', commits: [] },
       })
       expect(result.gate.status).toBe('pass')
+
+      // `[]` is not an opt-out: the defaults still have to run.
+      await expect(
+        run(script, argsFor(script, { requiredGates: [] }), {
+          gate: { status: 'pass', commands: [{ command: 'bun run test', status: 'pass' }], failures: [], diff_stat: '', commits: [] },
+        })
+      ).rejects.toThrow(/just check-quick/)
     })
 
     it(`${script} tells the gate agent which commands must actually run`, async () => {

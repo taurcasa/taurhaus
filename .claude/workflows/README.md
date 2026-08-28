@@ -47,7 +47,7 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `stamp` | — | a short token appended to the scratch file names; the names already carry the checkout and the tag, so pass one only to run the same procedure in the same checkout twice in sequence (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
 | `gates` | check-quick + lint + targeted cargo tests | the gate commands, when a spec names different ones |
-| `requiredGates` | `['just check-quick', 'just lint']` | the commands the gate must actually run and pass; matched as substrings of the reported command line, `[]` opts out |
+| `requiredGates` | `['just check-quick', 'just lint']` | further commands the gate must actually run and pass, on top of `just check-quick` and `just lint`, which cannot be opted out of; matched as substrings of the reported command line |
 | `notes` | — | extra instructions appended to the implementer's task |
 | `tag` | the branch | prefix for scratch file names |
 | `size` | per script | recorded in the ledger |

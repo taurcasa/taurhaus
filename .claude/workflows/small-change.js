@@ -47,9 +47,9 @@ const GATES =
 
 // The gate commands that must actually run and pass. Everything else the gate reports is optional and
 // may come back `skipped` with a reason; a required command reported skipped — or never run at all —
-// is a gate that did not happen. A spec naming different gates passes args.requiredGates ([] opts out).
+// is a gate that did not happen. A spec naming further gates adds them via args.requiredGates; the two defaults can never be opted out of.
 if (A.requiredGates != null && !Array.isArray(A.requiredGates)) throw new Error(NAME + ': args.requiredGates must be an array of command substrings — got ' + JSON.stringify(A.requiredGates))
-const REQUIRED_GATES = (A.requiredGates || ['just check-quick', 'just lint']).map(String)
+const REQUIRED_GATES = ['just check-quick', 'just lint'].concat((A.requiredGates || []).map(String).filter((g) => g !== 'just check-quick' && g !== 'just lint'))
 
 // Every agent runs on Opus in this repo's model split; effort is inherited unless args.effort pins one.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
