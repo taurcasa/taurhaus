@@ -33,15 +33,17 @@ just dev-frontend
 Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `just` recipes instead of raw `cargo tauri build`, `bunx tauri build`, or ad hoc cross-compilation commands.
 
 The repo's Python tooling (`just infographics`, `just test-scripts`) needs two
-pinned packages. Install them once into a managed environment:
+packages, PyYAML and Pillow. If your `python3` already has them, there is
+nothing to do — `scripts/with-python.sh` uses it. Otherwise build the managed
+environment once:
 
 ```bash
 just python-deps  # scripts/.venv from scripts/requirements.txt (gitignored)
 ```
 
-`scripts/with-python.sh` picks that environment up for every Python recipe, and
-tells you to run `just python-deps` if the dependencies are missing. Set
-`TAURHAUS_PYTHON` to use an interpreter that already has them instead.
+That needs `python3-venv` on Debian/Ubuntu. The wrapper prefers `scripts/.venv`,
+falls back to `python3`, and names the recipe instead of dying on an import
+error; `TAURHAUS_PYTHON=/path/to/python` overrides the choice.
 
 Nothing in the app needs an API key. One developer tool does: regenerating the
 documentation infographics. Copy `.env.example` to `.env` in the repo root and

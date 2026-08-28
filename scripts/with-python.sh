@@ -35,6 +35,15 @@ Or point TAURHAUS_PYTHON at an interpreter that already has them:
 
     TAURHAUS_PYTHON=/path/to/python just test-scripts
 EOF
+    if [ "$python" = "$venv_python" ]; then
+        cat >&2 <<EOF
+
+scripts/.venv exists but is incomplete — it is shadowing your system
+interpreter. Remove it and build it again:
+
+    rm -rf scripts/.venv && just python-deps
+EOF
+    fi
     exit 1
 fi
 

@@ -14,16 +14,17 @@ manifest entry back with targeted text edits so the manifest's comments survive.
 ## One-time setup
 
 ```bash
-just python-deps          # scripts/.venv with the pinned PyYAML + Pillow
+just python-deps          # only if your python3 lacks PyYAML or Pillow
 cp .env.example .env      # repo root; .env is gitignored
 $EDITOR .env              # fill in OPENAI_API_KEY
 ```
 
-`just python-deps` installs `scripts/requirements.txt` into `scripts/.venv`
-(gitignored). Every Python recipe runs through `scripts/with-python.sh`, which
-prefers that venv, falls back to `python3`, and refuses to start with an
+Every Python recipe runs through `scripts/with-python.sh`, which prefers
+`scripts/.venv`, falls back to `python3`, and refuses to start with an
 actionable message rather than an import traceback when the dependencies are
-missing. `TAURHAUS_PYTHON=/path/to/python` overrides the choice.
+missing. `just python-deps` installs the pinned `scripts/requirements.txt` into
+that gitignored venv (needs `python3-venv` on Debian/Ubuntu, and leaves nothing
+behind if it fails); `TAURHAUS_PYTHON=/path/to/python` overrides the choice.
 
 `.env` is read by this script and nothing else — neither the taurhaus app nor
 the daemon knows the key exists. Real environment variables win over the file,

@@ -147,10 +147,26 @@ monitor *ARGS:
 
 # Install the pinned Python dependencies the repo's scripts need into scripts/.venv.
 # One-time setup; scripts/with-python.sh picks the venv up on its own afterwards.
+# Builds beside the target and moves it in, so a failed run leaves no half-made
+# venv behind — an empty one would shadow a working system interpreter.
 python-deps:
-    python3 -m venv scripts/.venv
-    scripts/.venv/bin/python -m pip install --disable-pip-version-check --quiet -r scripts/requirements.txt
-    @./scripts/with-python.sh -c 'import yaml, PIL; print(f"scripts/.venv ready: PyYAML {yaml.__version__}, Pillow {PIL.__version__}")'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{project}}"
+    if ! python3 -c 'import ensurepip' >/dev/null 2>&1; then
+        echo "error: python3 cannot create virtual environments (no ensurepip)." >&2
+        echo "  Debian/Ubuntu: sudo apt install python3-venv" >&2
+        echo "  Or set TAURHAUS_PYTHON to an interpreter that already has PyYAML and Pillow." >&2
+        exit 1
+    fi
+    staging="scripts/.venv.building"
+    rm -rf "$staging"
+    trap 'rm -rf "$staging"' EXIT
+    python3 -m venv "$staging"
+    "$staging/bin/python" -m pip install --disable-pip-version-check --quiet -r scripts/requirements.txt
+    rm -rf scripts/.venv
+    mv "$staging" scripts/.venv
+    ./scripts/with-python.sh -c 'import yaml, PIL; print(f"scripts/.venv ready: PyYAML {yaml.__version__}, Pillow {PIL.__version__}")'
 
 # Regenerate documentation infographics from the manifest prompts (needs .env).
 # Example: just infographics --id scanner-pipeline
