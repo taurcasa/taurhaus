@@ -98,9 +98,31 @@ function tmuxQuietly(args) {
   }
 }
 
-function sendPaneLine(paneId, text) {
+/** The Codex composer's prompt marker, as the TUI draws it. */
+const COMPOSER_MARKER = '\u203a'
+
+function composerHolds(paneContents, text) {
+  return paneContents.includes(`${COMPOSER_MARKER} ${text}`) || paneContents.includes(`${COMPOSER_MARKER}${text}`)
+}
+
+/**
+ * Type one line into a Codex pane and make sure it was actually submitted.
+ *
+ * A slash command opens the TUI's command popup, and the first Enter only
+ * accepts the completion — the text stays in the composer and a second Enter
+ * sends it. Typing `/compact` and pressing Enter once therefore does nothing at
+ * all, which is how the first live attempt at the manual case timed out. Enter
+ * is re-sent until the composer no longer holds the text.
+ */
+async function sendPaneLine(paneId, text, attempts = 3) {
   tmux(['send-keys', '-t', paneId, '-l', text])
-  tmux(['send-keys', '-t', paneId, 'Enter'])
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await browser.pause(400)
+    tmux(['send-keys', '-t', paneId, 'Enter'])
+    await browser.pause(800)
+    if (!composerHolds(await capturePane(paneId), text)) return true
+  }
+  return false
 }
 
 async function invokeTauri(command, args = undefined) {
@@ -692,7 +714,8 @@ describe('Codex compaction via hooks', function () {
     this.timeout(300_000)
 
     const offset = currentLogOffset()
-    sendPaneLine(managed.paneId, '/compact')
+    const submitted = await sendPaneLine(managed.paneId, '/compact')
+    expect(submitted).toBe(true)
 
     let events
     try {
@@ -753,7 +776,7 @@ describe('Codex compaction via hooks', function () {
       turns += 1
       const turnsBefore = completedTurns()
       const filler = writeFillerFile(turns)
-      sendPaneLine(managed.paneId, `Read ${filler} and reply with only the number of list items it contains.`)
+      await sendPaneLine(managed.paneId, `Read ${filler} and reply with only the number of list items it contains.`)
 
       try {
         const seen = await waitForLogEvents(
