@@ -937,6 +937,7 @@ pub struct HarnessSettings {
     /// grok's personal hook directory is always trusted, so its compaction
     /// bridge is on by default and can be switched off.
     #[serde(default = "default_true")]
+    #[serde(alias = "grok_hooks")]
     pub grok_hooks: bool,
 }
 
@@ -1335,6 +1336,19 @@ mod tests {
         }))
         .expect("opted-out settings");
         assert!(!opted_out.harness.agy_hooks);
+    }
+
+    // Regression: 66ab7ec added the snake_case alias for `agy_hooks` only; the
+    // frontend sends `harness.grok_hooks` in snake_case too, so the Settings
+    // Grok toggle was silently dropped and grok hooks could never be turned off.
+    #[test]
+    fn terminal_settings_grok_hooks_opt_out_reaches_the_backend() {
+        assert!(TerminalSettings::default().harness.grok_hooks);
+        let opted_out: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "harness": {"grok_hooks": false}
+        }))
+        .expect("settings with a snake_case grok_hooks key parse");
+        assert!(!opted_out.harness.grok_hooks);
     }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
