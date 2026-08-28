@@ -66,7 +66,7 @@ import { dirname, join } from 'node:path'
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
-import { DEFAULT_DAEMON_PORT, setDaemonCodexCompactionMode } from '../helpers/daemonCompaction.js'
+import { DEFAULT_DAEMON_PORT, handBackCompactionMode, setDaemonCodexCompactionMode } from '../helpers/daemonCompaction.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { countCompactionBoundaries, pathsContainingMarker, rolloutPaths } from '../helpers/codexRollout.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
@@ -146,6 +146,8 @@ let mainApp = false
 let laneEnabled = false
 let laneSkipReason = 'Codex compaction prerequisites unavailable'
 let originalSettings = null
+/** The compaction mode the daemon was running, while this lane still owes it. */
+let daemonModeOwed = null
 let managed = null
 const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
@@ -528,21 +530,27 @@ function codexCompactionMode(settings) {
 }
 
 /**
- * Hand the daemon back the mode it was running.
+ * Hand the daemon back the mode it was running, without going through the app.
  *
  * `update_settings` pushes the mode to the connected daemon, and on this host
  * that is the operator's own daemon on 17233 — the isolated `TAURHAUS_DATA_DIR`
- * does not insulate it. The settings IPC puts it back on a clean teardown; this
- * is the same restoration for the paths where there is no app left to ask.
+ * does not insulate it. This is the same restoration for the paths where there
+ * is no app left to ask, and for the teardown, where the IPC's own answer says
+ * nothing about whether the daemon took the push (see `handBackCompactionMode`).
+ *
+ * The step is settled only on a daemon that confirmed, so a failed attempt is
+ * still owed and gets one more try from `laneCleanup.run()`.
  */
-function restoreDaemonCompactionMode(mode) {
+function restoreDaemonModeDirectly() {
+  if (!daemonModeOwed) return
   const port = originalSettings?.daemon?.port ?? DEFAULT_DAEMON_PORT
-  const result = setDaemonCodexCompactionMode(mode, { port })
+  const result = setDaemonCodexCompactionMode(daemonModeOwed, { port })
   console.log(
     result.ok
-      ? `[e2e] daemon compaction mode put back to ${mode}`
-      : `[e2e] daemon compaction mode may still be "hooks" — restoring ${mode} failed: ${result.error}`
+      ? `[e2e] daemon compaction mode put back to ${daemonModeOwed}`
+      : `[e2e] daemon compaction mode may still be "hooks" — restoring ${daemonModeOwed} failed: ${result.error}`
   )
+  if (result.ok) laneCleanup.settled(DAEMON_MODE_STEP)
 }
 
 async function setCodexCompactionMode(mode) {
@@ -898,7 +906,8 @@ describe('Codex compaction via hooks', function () {
     // Owed before the flip, not after: a settings update that fails partway
     // through has still told the daemon.
     if (previousMode && previousMode !== 'hooks') {
-      laneCleanup.owe(DAEMON_MODE_STEP, () => restoreDaemonCompactionMode(previousMode))
+      daemonModeOwed = previousMode
+      laneCleanup.owe(DAEMON_MODE_STEP, restoreDaemonModeDirectly)
     }
     await setCodexCompactionMode('hooks')
 
@@ -915,11 +924,14 @@ describe('Codex compaction via hooks', function () {
     this.timeout(120_000)
 
     if (originalSettings) {
-      const restored = await invokeTauriWithTimeout('update_settings', { settings: originalSettings })
-      // The app tells the daemon on its way through this call. A call that
-      // failed or timed out did not, so the direct restoration stays owed.
-      if (restored.ok) laneCleanup.settled(DAEMON_MODE_STEP)
-      else console.warn(`[e2e] settings restore failed (${restored.error}); restoring the daemon mode directly`)
+      // The app tells the daemon on its way through this call — but only logs a
+      // push the daemon refused, and returns the saved settings either way. So
+      // the direct restoration runs regardless, and settles the owed step only
+      // when the daemon itself answered.
+      await handBackCompactionMode({
+        updateSettings: () => invokeTauriWithTimeout('update_settings', { settings: originalSettings }),
+        restoreDaemonMode: restoreDaemonModeDirectly,
+      })
     }
 
     for (const teamName of createdTeamNames) {
@@ -929,8 +941,9 @@ describe('Codex compaction via hooks', function () {
     createdTeamNames.clear()
 
     // Whatever is still owed — the pane environment if the run aborted inside
-    // initialization, the panes disband did not take with it — is the same set
-    // an interrupt would have run, so run it through the same path.
+    // initialization, the panes disband did not take with it, a daemon that did
+    // not answer above — is the same set an interrupt would have run, so run it
+    // through the same path.
     laneCleanup.run()
   })
 

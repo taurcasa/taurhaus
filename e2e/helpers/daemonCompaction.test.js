@@ -1,11 +1,11 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { daemonTokenPath, setDaemonCodexCompactionMode } from './daemonCompaction.js'
+import { daemonTokenPath, handBackCompactionMode, setDaemonCodexCompactionMode } from './daemonCompaction.js'
 
 // The helper blocks the calling thread on purpose — an exit handler cannot
 // await — so the daemon it talks to has to be a real process, not a server on
@@ -159,5 +159,61 @@ describe('daemon Codex compaction mode', () => {
       .toBe('/data/home/taurhaus/daemon.token')
     expect(daemonTokenPath({}, '/home/op'))
       .toBe('/home/op/.local/share/taurhaus/daemon.token')
+  })
+})
+
+describe('handing the compaction mode back on a normal teardown', () => {
+  function silentLogger() {
+    return { log: () => {}, warn: () => {} }
+  }
+
+  // Regression: 8410b57 ("test(e2e): hand the daemon back its compaction mode on
+  // every path out") dropped the direct restoration whenever `update_settings`
+  // came back ok. It is not proof: `commands/settings.rs` reconciles the daemon
+  // inside that command, and a reconciliation that fails is only logged
+  // (`compaction.codex_hook.degraded`) while the command still returns the saved
+  // settings. A shared daemon that had disconnected or refused was therefore
+  // left in hooks mode with the lane's only fallback already settled.
+  it('restores the daemon directly even when the settings IPC reported success', async () => {
+    const restoreDaemonMode = vi.fn()
+
+    await handBackCompactionMode({
+      updateSettings: async () => ({ ok: true, result: {} }),
+      restoreDaemonMode,
+      logger: silentLogger(),
+    })
+
+    expect(restoreDaemonMode).toHaveBeenCalledTimes(1)
+  })
+
+  it('restores the daemon directly when the settings IPC failed, and says so', async () => {
+    const restoreDaemonMode = vi.fn()
+    const logger = silentLogger()
+    logger.warn = vi.fn()
+
+    await handBackCompactionMode({
+      updateSettings: async () => ({ ok: false, error: 'Timed out after 10000ms' }),
+      restoreDaemonMode,
+      logger,
+    })
+
+    expect(restoreDaemonMode).toHaveBeenCalledTimes(1)
+    expect(logger.warn.mock.calls.flat().join(' ')).toContain('Timed out after 10000ms')
+  })
+
+  it('restores the daemon directly when the settings IPC threw', async () => {
+    const restoreDaemonMode = vi.fn()
+
+    const outcome = await handBackCompactionMode({
+      updateSettings: async () => {
+        throw new Error('no such frame')
+      },
+      restoreDaemonMode,
+      logger: silentLogger(),
+    })
+
+    expect(restoreDaemonMode).toHaveBeenCalledTimes(1)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.error).toContain('no such frame')
   })
 })

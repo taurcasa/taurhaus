@@ -94,3 +94,34 @@ export function setDaemonCodexCompactionMode(mode, options = {}) {
   }
   return { ok: true }
 }
+
+/**
+ * Hand the mode back on a normal teardown: the app first, then the daemon.
+ *
+ * `update_settings` returning ok is not evidence the daemon took the mode.
+ * `commands/settings.rs::reconcile_codex_compaction_setting` pushes it to the
+ * connected daemon inside that command and only *logs* a push that failed
+ * (`compaction.codex_hook.degraded`); the command still returns the saved
+ * settings. A daemon that had disconnected or refused would therefore be left
+ * running the lane's mode while the lane counted the restoration done.
+ *
+ * So both run, always. `restoreDaemonMode` is the synchronous, bounded request
+ * an exit handler would have made, and asking a daemon for the mode it is
+ * already in costs one no-op round trip — much less than leaving the operator's
+ * daemon in hooks mode.
+ *
+ * @returns the settings-IPC outcome, for the caller to report.
+ */
+export async function handBackCompactionMode({ updateSettings, restoreDaemonMode, logger = console }) {
+  let restored
+  try {
+    restored = await updateSettings()
+  } catch (error) {
+    restored = { ok: false, error: String(error?.message ?? error) }
+  }
+  if (!restored?.ok) {
+    logger.warn(`[e2e] settings restore failed (${restored?.error ?? 'no result'}); restoring the daemon mode directly`)
+  }
+  restoreDaemonMode()
+  return restored
+}
