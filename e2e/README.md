@@ -2,8 +2,15 @@
 
 Use this sequence whenever running E2E locally.
 
-E2E runs on Linux only. Windows E2E is not supported: the shared app data
-directory and tantivy index corruption make reliable isolation impractical.
+This runbook covers the WebdriverIO + `tauri-driver` lane (`just test-e2e`,
+`test-e2e-full`, `test-e2e-spec`), which runs on Linux only. Windows is not
+supported there: the shared app data directory and tantivy index corruption
+make reliable isolation impractical.
+
+macOS has a separate lane. `just test-macos-e2e` (`justfile:785-790`) syncs the
+tree to the Mac mini and runs `scripts/macos-e2e-test.sh` over SSH — a shell
+smoke suite over the built `.app` bundle, tmux and the CLI harnesses, not a
+WDIO suite. Nothing below applies to it.
 
 ## 1) Ensure daemon is current and running
 
