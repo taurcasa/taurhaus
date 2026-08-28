@@ -1,0 +1,12 @@
+# Dependencies of the repo's Python tooling (scripts/generate-infographics.py and
+# its tests). Everything else these scripts use is in the standard library.
+#
+# Install into a managed environment with `just python-deps`, which creates
+# scripts/.venv (gitignored) and runs `pip install -r` on this file.
+# `scripts/with-python.sh` picks that venv up automatically; set TAURHAUS_PYTHON
+# to use a different interpreter that already has these.
+#
+# Pinned exactly so a regeneration run is reproducible.
+
+PyYAML==6.0.2
+Pillow==12.3.0

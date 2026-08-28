@@ -40,6 +40,7 @@ check:
     echo "Logging full check output to $log_path"
     ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
     just fmt
+    just test-scripts
     run_rust_lane() {
         just lint-rust
         just test-rust
@@ -144,15 +145,22 @@ test-compaction TOOL TEAM MEMBER *ARGS:
 monitor *ARGS:
     python3 scripts/resource-monitor.py {{ARGS}}
 
+# Install the pinned Python dependencies the repo's scripts need into scripts/.venv.
+# One-time setup; scripts/with-python.sh picks the venv up on its own afterwards.
+python-deps:
+    python3 -m venv scripts/.venv
+    scripts/.venv/bin/python -m pip install --disable-pip-version-check --quiet -r scripts/requirements.txt
+    @./scripts/with-python.sh -c 'import yaml, PIL; print(f"scripts/.venv ready: PyYAML {yaml.__version__}, Pillow {PIL.__version__}")'
+
 # Regenerate documentation infographics from the manifest prompts (needs .env).
 # Example: just infographics --id scanner-pipeline
 # Workflow: docs/operations/infographics.md
 infographics *ARGS:
-    python3 scripts/generate-infographics.py {{ARGS}}
+    ./scripts/with-python.sh scripts/generate-infographics.py {{ARGS}}
 
 # Show which infographics would be regenerated, and what the run would cost.
 infographics-dry-run:
-    python3 scripts/generate-infographics.py --dry-run --stale
+    ./scripts/with-python.sh scripts/generate-infographics.py --dry-run --stale
 
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).
 # This is the primary "does everything work?" test command.
@@ -218,8 +226,9 @@ test-frontend:
     bun run test
 
 # Run Python unit tests for the repo scripts (no network, no API keys).
+# Needs the pinned Python dependencies: `just python-deps` once.
 test-scripts:
-    python3 -m unittest discover -s scripts/tests
+    ./scripts/with-python.sh -m unittest discover -s scripts/tests
 
 # Run browser-mode visual screenshot tests only.
 test-visual:

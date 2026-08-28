@@ -12,6 +12,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -191,6 +192,68 @@ class EnvParsingTests(unittest.TestCase):
         self.assertEqual(config.quality, example["OPENAI_IMAGE_QUALITY"])
         self.assertEqual(str(config.max_width), example["TAURHAUS_INFOGRAPHIC_MAX_WIDTH"])
         self.assertEqual(str(config.jpeg_quality), example["TAURHAUS_INFOGRAPHIC_JPEG_QUALITY"])
+
+
+class DependencyTests(unittest.TestCase):
+    """The third-party imports have to be declared and installable, not assumed."""
+
+    REQUIREMENTS = REPO_ROOT / "scripts" / "requirements.txt"
+    WRAPPER = REPO_ROOT / "scripts" / "with-python.sh"
+    # Import name -> distribution that provides it.
+    THIRD_PARTY = {"yaml": "PyYAML", "PIL": "Pillow"}
+
+    def requirement_lines(self):
+        lines = []
+        for raw in self.REQUIREMENTS.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                lines.append(line)
+        return lines
+
+    def test_every_third_party_import_is_pinned_in_requirements(self):
+        # Regression: 8541bf2 imported PyYAML and Pillow with no dependency manifest
+        # anywhere in the repo, so `just test-scripts` died with ModuleNotFoundError
+        # on any machine that happened not to have them.
+        sources = "\n".join(
+            path.read_text(encoding="utf-8") for path in (SCRIPT_PATH, Path(__file__))
+        )
+        pinned = {line.split("==")[0]: line for line in self.requirement_lines() if "==" in line}
+        for module, distribution in self.THIRD_PARTY.items():
+            if not re.search(rf"^\s*(import|from) {module}\b", sources, re.MULTILINE):
+                continue
+            self.assertIn(distribution, pinned, f"{distribution} is imported but not pinned")
+        self.assertEqual(
+            len(pinned), len(self.requirement_lines()), "every requirement must be pinned with =="
+        )
+
+    def test_the_wrapper_refuses_to_run_without_the_dependencies(self):
+        # Regression: 8541bf2 — the recipes called bare python3 and let the failure
+        # surface as an import traceback with no way out of it.
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "python-without-deps"
+            stub.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            stub.chmod(0o755)
+            result = subprocess.run(
+                [str(self.WRAPPER), "-c", "print('ran')"],
+                env={**os.environ, "TAURHAUS_PYTHON": str(stub)},
+                capture_output=True,
+                text=True,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("ran", result.stdout)
+        self.assertIn("just python-deps", result.stderr)
+        for distribution in self.THIRD_PARTY.values():
+            self.assertIn(distribution, result.stderr)
+
+    def test_the_wrapper_runs_the_interpreter_that_has_them(self):
+        result = subprocess.run(
+            [str(self.WRAPPER), "-c", "import yaml, PIL; print('ran')"],
+            env={**os.environ, "TAURHAUS_PYTHON": sys.executable},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ran", result.stdout)
 
 
 class SelectionTests(unittest.TestCase):

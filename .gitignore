@@ -40,6 +40,9 @@ Thumbs.db
 docs/images/.generation-log.jsonl
 docs/images/*.generated.png
 
+# Managed Python environment for the repo scripts (just python-deps)
+scripts/.venv/
+
 # Logs
 *.log
 logs/

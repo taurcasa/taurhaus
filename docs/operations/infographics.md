@@ -14,9 +14,16 @@ manifest entry back with targeted text edits so the manifest's comments survive.
 ## One-time setup
 
 ```bash
+just python-deps          # scripts/.venv with the pinned PyYAML + Pillow
 cp .env.example .env      # repo root; .env is gitignored
 $EDITOR .env              # fill in OPENAI_API_KEY
 ```
+
+`just python-deps` installs `scripts/requirements.txt` into `scripts/.venv`
+(gitignored). Every Python recipe runs through `scripts/with-python.sh`, which
+prefers that venv, falls back to `python3`, and refuses to start with an
+actionable message rather than an import traceback when the dependencies are
+missing. `TAURHAUS_PYTHON=/path/to/python` overrides the choice.
 
 `.env` is read by this script and nothing else — neither the taurhaus app nor
 the daemon knows the key exists. Real environment variables win over the file,
@@ -116,5 +123,5 @@ already correct.
 - `scripts/optimize-doc-image.sh` (ImageMagick) is the older manual path for
   hand-made images. This script does its own conversion with Pillow and does not
   need ImageMagick installed.
-- Tests: `just test-scripts` (`python3 -m unittest discover -s scripts/tests`).
-  They mock `urllib` — the real API is never called from a test.
+- Tests: `just test-scripts` (part of `just test` and `just check`). They mock
+  `urllib` — the real API is never called from a test.

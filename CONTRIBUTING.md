@@ -13,6 +13,7 @@ Thanks for your interest in contributing! This guide covers everything you need 
 | Bun | Latest stable | [bun.sh](https://bun.sh/) |
 | just | Latest | `cargo install just` |
 | tmux | 3.0+ | `sudo apt install tmux` |
+| Python | 3.10+ | `sudo apt install python3 python3-venv` (repo scripts only) |
 
 ### Setup
 
@@ -30,6 +31,17 @@ just dev-frontend
 ```
 
 Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `just` recipes instead of raw `cargo tauri build`, `bunx tauri build`, or ad hoc cross-compilation commands.
+
+The repo's Python tooling (`just infographics`, `just test-scripts`) needs two
+pinned packages. Install them once into a managed environment:
+
+```bash
+just python-deps  # scripts/.venv from scripts/requirements.txt (gitignored)
+```
+
+`scripts/with-python.sh` picks that environment up for every Python recipe, and
+tells you to run `just python-deps` if the dependencies are missing. Set
+`TAURHAUS_PYTHON` to use an interpreter that already has them instead.
 
 Nothing in the app needs an API key. One developer tool does: regenerating the
 documentation infographics. Copy `.env.example` to `.env` in the repo root and
