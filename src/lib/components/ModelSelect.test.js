@@ -45,6 +45,38 @@ const CATALOG = {
   ],
 }
 
+// Mirrors the Claude arm of the backend catalog after the 2026-08-28 team
+// decision (models/mod.rs): fable and opus are current, the retired ids stay
+// so persisted roles still resolve.
+const CLAUDE_CATALOG = {
+  claude: [
+    {
+      id: 'fable',
+      label: 'Fable 5',
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultEffort: null,
+      deprecated: false,
+      replacement: null,
+    },
+    {
+      id: 'opus',
+      label: 'Opus 5',
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultEffort: null,
+      deprecated: false,
+      replacement: null,
+    },
+    {
+      id: 'sonnet',
+      label: 'Sonnet',
+      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultEffort: null,
+      deprecated: true,
+      replacement: 'opus',
+    },
+  ],
+}
+
 function optionValues(select) {
   return Array.from(select.querySelectorAll('option')).map((option) => option.value)
 }
@@ -171,6 +203,18 @@ describe('ModelSelect', () => {
     })
 
     expect(onchange).toHaveBeenCalledWith({ model: 'gpt-5.6-terra', reasoningEffort: 'low' })
+  })
+
+  it('keeps a role pinned to a retired Claude model and points the hint at opus', () => {
+    render(ModelSelect, {
+      props: { tool: 'claude', model: 'sonnet', catalog: CLAUDE_CATALOG },
+    })
+
+    const select = screen.getByTestId('model-select')
+    expect(optionValues(select)).toEqual(['fable', 'opus', 'sonnet'])
+    expect(select).toHaveValue('sonnet')
+    expect(screen.getByRole('option', { name: 'Sonnet → opus' })).toBeInTheDocument()
+    expect(screen.getByTestId('model-select-deprecated')).toHaveTextContent('Deprecated → opus')
   })
 
   it('renders the deprecation hint with its replacement', () => {

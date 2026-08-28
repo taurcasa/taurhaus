@@ -1039,6 +1039,31 @@ mod tests {
     }
 
     #[test]
+    fn claude_render_emits_fable_with_its_effort() {
+        // Fable 5 is the Claude catalog's leading model (models/mod.rs) and the
+        // Claude CLI accepts `--model fable`; the renderer must pass the id
+        // through with the declared effort and add nothing else.
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base: "claude --dangerously-skip-permissions",
+            model: model_spec("fable", Some("high")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "claude --dangerously-skip-permissions --model 'fable' --effort 'high'"
+        );
+        assert_eq!(rendered.notes, vec![]);
+    }
+
+    #[test]
     fn claude_render_notes_and_drops_unknown_effort() {
         let rendered = LaunchSpec {
             tool: CliTool::Claude,
