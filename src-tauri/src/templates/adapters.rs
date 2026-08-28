@@ -1344,9 +1344,24 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
     })
 }
 
-fn yaml_scalar(value: &str) -> String {
-    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{escaped}\"")
+/// One double-quoted YAML scalar. Role text is free-form, so every character
+/// that would otherwise end the scalar or break block indentation is escaped.
+pub(crate) fn yaml_scalar(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            ch if ch.is_control() => escaped.push_str(&format!("\\u{:04x}", ch as u32)),
+            ch => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 #[cfg(test)]
