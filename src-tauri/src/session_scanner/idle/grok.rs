@@ -215,11 +215,27 @@ impl SessionSource for GrokResolver {
     }
 }
 
+/// What `active_sessions.json` says about one pid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RegistryResidence {
+    /// The registry names this pid: the session is still resident.
+    Held,
+    /// The registry was read and does not name it — grok removed the row, which
+    /// is what a clean `/quit` leaves behind.
+    Released,
+    /// The registry could not be read or parsed. grok rewrites the whole file,
+    /// so a read can land on a partial one; that is not proof of anything, and
+    /// least of all of a clean stop.
+    Unknown,
+}
+
 /// Whether this pid still holds a registry row — grok removes it on `/quit`.
-pub(crate) fn session_registry_holds_pid(base_dir: &Path, pid: u32) -> bool {
-    read_active_sessions(base_dir)
-        .into_iter()
-        .any(|row| row.pid == pid)
+pub(crate) fn session_registry_residence(base_dir: &Path, pid: u32) -> RegistryResidence {
+    match read_active_sessions(base_dir) {
+        Some(rows) if rows.iter().any(|row| row.pid == pid) => RegistryResidence::Held,
+        Some(_) => RegistryResidence::Released,
+        None => RegistryResidence::Unknown,
+    }
 }
 
 pub struct GrokEventsActivitySource;
@@ -260,20 +276,32 @@ fn idle_result_for(base_dir: &Path, row: &ActiveSession) -> IdleResult {
     }
 }
 
-fn read_active_sessions(base_dir: &Path) -> Vec<ActiveSession> {
+/// `None` when the registry could not be read or parsed, which is different
+/// from a registry that holds no rows.
+fn read_active_sessions(base_dir: &Path) -> Option<Vec<ActiveSession>> {
     let path = base_dir.join(ACTIVE_SESSIONS_FILE);
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return Vec::new();
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        // grok has not written a registry yet, or removed the last row with it.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(Vec::new()),
+        Err(error) => {
+            tracing::debug!(
+                path = %path.display(),
+                error = %error,
+                "unreadable grok active-session registry"
+            );
+            return None;
+        }
     };
     match serde_json::from_str::<Vec<ActiveSession>>(&raw) {
-        Ok(rows) => rows,
+        Ok(rows) => Some(rows),
         Err(error) => {
             tracing::debug!(
                 path = %path.display(),
                 error = %error,
                 "unparsable grok active-session registry"
             );
-            Vec::new()
+            None
         }
     }
 }
@@ -283,7 +311,7 @@ fn read_active_sessions(base_dir: &Path) -> Vec<ActiveSession> {
 /// has to agree with the process's, and where the platform cannot report a cwd
 /// the row stands rather than being discarded on a guess.
 fn live_session_for_pid(base_dir: &Path, pid: u32, project_path: &str) -> Option<ActiveSession> {
-    let row = read_active_sessions(base_dir)
+    let row = read_active_sessions(base_dir)?
         .into_iter()
         .find(|row| row.pid == pid)?;
     let observed = crate::platform::process_cwd(pid)
@@ -295,16 +323,17 @@ fn live_session_for_pid(base_dir: &Path, pid: u32, project_path: &str) -> Option
 /// The newest live row for a project, used where no pid is known (resume).
 fn live_session_for_project(base_dir: &Path, project_path: &str) -> Option<ActiveSession> {
     let wanted = normalize_project_path(project_path);
-    read_active_sessions(base_dir)
+    read_active_sessions(base_dir)?
         .into_iter()
         .filter(|row| normalize_project_path(&row.cwd) == wanted)
         .find(|row| process_is_live(row.pid))
 }
 
 /// A registry row outlives a `SIGKILL`, so residence is only proof while the
-/// process it names is still there. Platforms that cannot answer do not vote.
+/// process it names is still there. Linux and macOS both answer; Windows runs
+/// the harness inside WSL and cannot inspect it, so there the row stands.
 fn process_is_live(pid: u32) -> bool {
-    crate::platform::process_cwd(pid).is_some() || cfg!(not(target_os = "linux"))
+    crate::platform::process_cwd(pid).is_some() || cfg!(target_os = "windows")
 }
 
 /// `<GROK_HOME>/sessions/<group>/<session-id>/events.jsonl`.
@@ -857,6 +886,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn a_row_naming_a_dead_pid_is_not_live_where_the_platform_can_answer() {
+        // Regression: commit 358a7c9 accepted every registry row as live off
+        // Linux, so macOS trusted the stale rows grok leaves behind after a
+        // SIGKILL even though the Darwin process lookup answers for them.
+        assert!(!process_is_live(999_999_999));
+        assert!(process_is_live(std::process::id()));
+    }
+
+    #[test]
     fn the_registry_row_disappearing_is_the_clean_stop_proof() {
         // Regression: commit 16de5ec stopped a grok pane on the tmux floor
         // alone, so `/quit` was confirmed only by the pane returning to a shell.
@@ -872,9 +911,23 @@ mod tests {
             }]),
         );
 
-        assert!(session_registry_holds_pid(&home, 4242));
+        assert_eq!(
+            session_registry_residence(&home, 4242),
+            RegistryResidence::Held
+        );
 
         write_registry(&home, serde_json::json!([]));
-        assert!(!session_registry_holds_pid(&home, 4242));
+        assert_eq!(
+            session_registry_residence(&home, 4242),
+            RegistryResidence::Released
+        );
+
+        // A registry caught mid-rewrite says nothing, and must never read as a
+        // clean release.
+        fs::write(home.join(ACTIVE_SESSIONS_FILE), r#"[{"session_id":"01a0"#).unwrap();
+        assert_eq!(
+            session_registry_residence(&home, 4242),
+            RegistryResidence::Unknown
+        );
     }
 }

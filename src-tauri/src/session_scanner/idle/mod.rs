@@ -44,12 +44,13 @@ pub(crate) use claude_registry::{ClaudeRegistryActivitySource, ClaudeRegistrySes
 pub use codex::CodexResolver;
 pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
 pub(crate) use grok::newest_session_transcript as grok_newest_session_transcript;
-pub(crate) use grok::session_registry_holds_pid as grok_session_registry_holds_pid;
+pub(crate) use grok::session_registry_residence as grok_session_registry_residence;
 pub(crate) use grok::session_transcript as grok_session_transcript;
 #[cfg(test)]
 pub(crate) use grok::set_base_dir_for_test as set_grok_base_dir_for_test;
 pub use grok::GrokEventsActivitySource;
 pub use grok::GrokResolver;
+pub(crate) use grok::RegistryResidence as GrokRegistryResidence;
 #[cfg(test)]
 pub(crate) use grok::GROK_RESOLVER_TEST_LOCK;
 pub(crate) use grok::SESSION_FILES as GROK_SESSION_FILES;

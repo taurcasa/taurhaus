@@ -201,6 +201,8 @@ pub struct CliToolSpec {
     pub session_extension: &'static str,
     /// Command to gracefully exit the CLI in a terminal.
     pub exit_command: &'static str,
+    /// How long a graceful stop may take before the pane is killed anyway.
+    pub stop_timeout: std::time::Duration,
 }
 
 static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
@@ -262,6 +264,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             projects_subdir: "projects",
             session_extension: "jsonl",
             exit_command: "/exit",
+            stop_timeout: std::time::Duration::from_secs(5),
         },
         CliToolSpec {
             tool: CliTool::Codex,
@@ -323,6 +326,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/exit",
+            stop_timeout: std::time::Duration::from_secs(5),
         },
         CliToolSpec {
             tool: CliTool::Agy,
@@ -407,6 +411,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             projects_subdir: "antigravity-cli/conversations",
             session_extension: "db",
             exit_command: "/exit",
+            stop_timeout: std::time::Duration::from_secs(5),
         },
         CliToolSpec {
             tool: CliTool::Grok,
@@ -518,6 +523,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/quit",
+            stop_timeout: std::time::Duration::from_secs(15),
         },
     ]
 });
@@ -579,6 +585,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     projects_subdir: "",
     session_extension: "",
     exit_command: "/exit",
+    stop_timeout: std::time::Duration::from_secs(5),
 });
 
 /// Get every registered CLI harness.
