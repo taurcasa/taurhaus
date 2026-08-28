@@ -296,10 +296,19 @@ async function withPaneEnvironment(work) {
   }
 }
 
-/** Visible contents of a pane, for logging and for blocking-prompt detection. */
-function capturePane(paneId) {
-  const captured = tmuxQuietly(['capture-pane', '-p', '-J', '-t', paneId])
-  return captured.ok ? captured.output : ''
+/**
+ * Visible contents of a pane, for logging and for blocking-prompt detection.
+ *
+ * A TUI mid-redraw captures as an empty screen, which would read as "no prompt
+ * up" — the opposite of the truth — so this retries briefly for content.
+ */
+async function capturePane(paneId, attempts = 5) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const captured = tmuxQuietly(['capture-pane', '-p', '-J', '-t', paneId])
+    if (captured.ok && captured.output.trim()) return captured.output
+    await browser.pause(500)
+  }
+  return ''
 }
 
 /**
@@ -424,7 +433,7 @@ async function initializeManagedCodexTeam() {
     })
   })
 
-  const paneContents = capturePane(paneId)
+  const paneContents = await capturePane(paneId)
   console.log(`[e2e] ${memberName} pane ${paneId} on launch:\n${paneContents.trimEnd()}`)
   if (blockingPrompt(paneContents)) {
     throw new Error(`Codex is parked on an interactive prompt and will not take a turn:\n${paneContents.trimEnd()}`)
