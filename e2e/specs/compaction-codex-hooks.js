@@ -48,8 +48,14 @@
  * set on the shared `taurhaus` tmux session for the length of the one call that
  * creates panes, and removed again the moment it returns: the session belongs
  * to the operator, and anything they launch in it while the override is up
- * would be pointed at roots this run later deletes. A process-exit handler
- * restores them too, because a killed run never reaches the Mocha teardown.
+ * would be pointed at roots this run later deletes.
+ *
+ * Everything this lane changes outside its own temp root — that tmux session
+ * environment, the panes it opens in the operator's session — is taken on as an
+ * undo with `laneCleanup` the moment the change is made. A run that costs money
+ * and takes minutes is the one an operator interrupts, and an interrupt never
+ * reaches Mocha's `after`: `wdio.conf.js` deletes the session temp root and
+ * exits on the first SIGINT. The undos sit in front of that handler.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -58,6 +64,7 @@ import { dirname, join } from 'node:path'
 
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
+import { createLaneCleanup } from '../helpers/laneCleanup.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { countCompactionBoundaries, pathsContainingMarker, rolloutPaths } from '../helpers/codexRollout.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
@@ -120,12 +127,23 @@ const codexNotifyPath = join(dataDir, 'codex-notify.jsonl')
 /** The wdio session's temp root — every path this lane creates lives under it. */
 const sessionTempRoot = dataDir ? dirname(dataDir) : ''
 
+/**
+ * Undos for host state this lane changes, in front of the handler that exits.
+ *
+ * Installed at module scope so that owing a step is all it takes to be on the
+ * signal path — there is no second wiring step to forget.
+ */
+const laneCleanup = createLaneCleanup()
+laneCleanup.install()
+
+const PANE_ENVIRONMENT_STEP = 'tmux-session-environment'
+const LANE_PANES_STEP = 'lane-tmux-panes'
+
 let mainApp = false
 let laneEnabled = false
 let laneSkipReason = 'Codex compaction prerequisites unavailable'
 let originalSettings = null
 let managed = null
-let restorePaneEnvironmentOnTeardown = null
 const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 
@@ -379,32 +397,16 @@ function applyPaneEnvironment() {
  */
 async function withPaneEnvironment(work) {
   const restore = applyPaneEnvironment()
-  restorePaneEnvironmentOnTeardown = restore
+  // The override outlives the process that set it — tmux keeps it until someone
+  // unsets it — so it is owed back from the moment it goes up.
+  laneCleanup.owe(PANE_ENVIRONMENT_STEP, restore)
   try {
     return await work()
   } finally {
     restore()
-    restorePaneEnvironmentOnTeardown = null
+    laneCleanup.settled(PANE_ENVIRONMENT_STEP)
   }
 }
-
-/**
- * Restore the shared session's environment even when nothing else runs.
- *
- * The Mocha teardown is not a cleanup path a killed run reaches, and this
- * override outlives the process that set it: tmux keeps it until someone unsets
- * it. `wdio.conf.js` turns SIGINT/SIGTERM into `process.exit`, so an `exit`
- * handler covers the signals too; the tmux calls are synchronous, which is what
- * an `exit` handler requires.
- */
-function restorePaneEnvironmentNow() {
-  const restore = restorePaneEnvironmentOnTeardown
-  restorePaneEnvironmentOnTeardown = null
-  restore?.()
-}
-process.on('exit', restorePaneEnvironmentNow)
-process.on('SIGINT', restorePaneEnvironmentNow)
-process.on('SIGTERM', restorePaneEnvironmentNow)
 
 /**
  * Kill the panes this lane put in the shared `taurhaus` tmux session.
@@ -536,6 +538,9 @@ async function initializeManagedCodexTeam() {
   let paneId = null
   let sessionId = null
   createdTeamNames.add(teamName)
+  // Panes appear inside the call below and outlive a killed run, so the undo is
+  // owed before the first one exists rather than after the last one is found.
+  laneCleanup.owe(LANE_PANES_STEP, killLanePanes)
 
   // Only this call creates panes (`pipelines/initialize.rs` launches each member
   // inline and records its pane id before returning), so it is the only thing
@@ -877,11 +882,6 @@ describe('Codex compaction via hooks', function () {
   after(async function () {
     this.timeout(120_000)
 
-    // Safety net: an abort mid-initialization must not leave the operator's
-    // shared tmux session pointing at this run's temp roots.
-    restorePaneEnvironmentOnTeardown?.()
-    restorePaneEnvironmentOnTeardown = null
-
     if (originalSettings) {
       await invokeTauriWithTimeout('update_settings', { settings: originalSettings })
     }
@@ -892,7 +892,10 @@ describe('Codex compaction via hooks', function () {
     }
     createdTeamNames.clear()
 
-    killLanePanes()
+    // Whatever is still owed — the pane environment if the run aborted inside
+    // initialization, the panes disband did not take with it — is the same set
+    // an interrupt would have run, so run it through the same path.
+    laneCleanup.run()
   })
 
   it('delivers the restored-context card after Codex compacts on its own', async function () {
