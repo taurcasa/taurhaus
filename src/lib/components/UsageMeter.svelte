@@ -15,6 +15,14 @@
     return () => clearInterval(timer)
   })
 
+  const SESSION_KEYS = new Set(['session', 'five_hour'])
+
+  function isSessionWindow(window) {
+    return (
+      SESSION_KEYS.has(window.key) || String(window.title ?? '').startsWith('Current session')
+    )
+  }
+
   function live(window) {
     if (!Number.isFinite(Number(window?.used_percentage))) return null
     if (window.resets_at == null) return window
@@ -39,10 +47,14 @@
   const legacy = $derived(!Array.isArray(usage?.windows))
   const windows = $derived(providerWindows.map(live).filter(Boolean))
   // Compact surfaces compare account headroom, so session-only noise is
-  // omitted when provider windows include longer-lived limits.
+  // omitted when provider windows include longer-lived limits. The flag narrows
+  // the list rather than gating it: a provider that flags nothing still has
+  // headroom worth showing, and an empty chip reads as "no subscription".
   const compactWindows = $derived.by(() => {
-    const nonSession = windows.filter((window) => window.key !== 'session')
-    return nonSession.length ? nonSession : windows.slice(-2)
+    const flagged = windows.filter((window) => window.compact === true)
+    if (flagged.length) return flagged
+    const nonSession = windows.filter((window) => !isSessionWindow(window))
+    return nonSession.length ? nonSession : windows.slice(0, 2)
   })
   const shown = $derived(compact ? compactWindows : windows)
   const observedAt = $derived(usage?.observed_at ? Date.parse(usage.observed_at) : Number.NaN)
@@ -62,6 +74,10 @@
 
   function percent(window) {
     return Math.round(Number(window.used_percentage))
+  }
+
+  function compactTitle(window) {
+    return String(window.title).replaceAll(' · ', ' ')
   }
 
   function barWidth(window) {
@@ -111,7 +127,7 @@
 
 {#if shown.length && compact}
   <span class="text-[10px] leading-none tabular-nums {valueTone}" data-tool={tool} data-testid="usage-meter">
-    {shown.map((window) => `${window.title} ${percent(window)}%`).join(' · ')}
+    {shown.map((window) => `${compactTitle(window)} ${percent(window)}%`).join(' · ')}
     {#if statusSuffix()}<span class="{mutedTone}"> · {statusSuffix()}</span>{/if}
   </span>
 {:else if shown.length}

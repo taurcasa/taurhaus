@@ -485,6 +485,11 @@ fn render_team_launch_command(
         .team_config_namespace
         .then(|| configured_default_dir(cli_tool))
         .flatten()
+        .or_else(|| {
+            capabilities
+                .account_selector
+                .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
+        })
         .map(|dir| to_launch_namespace(&dir));
     let rendered = LaunchSpec {
         tool: cli_tool,

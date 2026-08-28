@@ -54,7 +54,7 @@ pub trait UsageProvider: Sync {
     fn fetch(&self, dir: &Path, http: &dyn HttpClient) -> UsageSnapshot;              // reads the credential file itself; classifies errors
 }
 pub struct UsageSnapshot { observed_at: DateTime<Utc>, status: UsageStatus /* Ok | Stale | Unauthorized | Unsupported */, windows: Vec<UsageWindow>, note: Option<String> }
-pub struct UsageWindow { key: String, title: String, used_percentage: f64, resets_at: Option<i64>, severity: Severity /* Normal | Warning | Critical */, is_active: bool }
+pub struct UsageWindow { key: String, title: String, used_percentage: f64, resets_at: Option<i64>, severity: Severity /* Normal | Warning | Critical */, is_active: bool, compact: bool }
 ```
 
 Floor: a tool without `account_selector` has one implicit account (no chooser, no chip, no submenu); without `usage` it has no meter. The registry's `match` is the only place tool identity fans out. `AccountSource` (the existing launch-provenance enum, whose wire strings are logged and shipped) is renamed `AccountOrigin` first — its strings stay.

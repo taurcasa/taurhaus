@@ -4,11 +4,10 @@
 //! registry-provided traits and these normalised wire types.
 
 pub mod claude;
+pub mod codex;
 pub mod legacy_statusline;
 
-use std::collections::HashMap;
-#[cfg(not(test))]
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 #[cfg(not(test))]
 use std::sync::OnceLock;
@@ -64,8 +63,9 @@ impl AccountOrigin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountIdentity {
-    /// Provider-stable account identifier. It is copied to [`Account::id`]
-    /// and intentionally omitted from the nested wire object.
+    /// Provider-preferred account identifier. It is copied to [`Account::id`]
+    /// unless another config dir already emitted it, in which case the scan
+    /// qualifies it with that dir. It is omitted from the nested wire object.
     #[serde(skip)]
     pub id: String,
     pub label: String,
@@ -73,7 +73,13 @@ pub struct AccountIdentity {
     pub organization: Option<String>,
     pub plan: Option<String>,
     pub logged_in: bool,
+    #[serde(default = "default_true")]
+    pub usage_capable: bool,
     pub credential_expires_at: Option<i64>,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 /// One detected account for one CLI tool.
@@ -492,22 +498,43 @@ fn scan_uncached(tool: CliTool) -> AccountScan {
 
     let mut live_selector_values = live_selector_values(tool, provider);
     live_selector_values.push(configured_default.clone());
-    let configured_key = canonical_key(&configured_default);
-    let process_key = canonical_key(&process_default);
+    let result = scan_candidates(
+        tool,
+        provider,
+        provider.candidate_dirs(&scan_home, &live_selector_values),
+        &configured_default,
+        &process_default,
+    );
+    tracing::debug!(tool = %tool, accounts = result.accounts.len(), config_dirs = result.config_dirs.len(), "scanned account config dirs");
+    result
+}
+
+fn scan_candidates(
+    tool: CliTool,
+    provider: &dyn AccountProvider,
+    candidates: Vec<PathBuf>,
+    configured_default: &Path,
+    process_default: &Path,
+) -> AccountScan {
+    let configured_key = canonical_key(configured_default);
+    let process_key = canonical_key(process_default);
     let mut config_dirs = Vec::new();
     let mut accounts = Vec::new();
+    let mut emitted_ids = HashSet::new();
 
-    for dir in provider.candidate_dirs(&scan_home, &live_selector_values) {
+    for dir in candidates {
         let key = canonical_key(&dir);
         if dir.is_dir() {
             config_dirs.push(dir.clone());
         }
-        let Some(identity) = provider.identify(&dir) else {
+        let Some(mut identity) = provider.identify(&dir) else {
             continue;
         };
+        let id = unique_account_id(&identity.id, &dir, &mut emitted_ids);
+        identity.id.clone_from(&id);
         accounts.push(Account {
             tool,
-            id: identity.id.clone(),
+            id,
             dir,
             identity,
             is_default: key == configured_key,
@@ -522,10 +549,29 @@ fn scan_uncached(tool: CliTool) -> AccountScan {
             .cmp(&left.is_default)
             .then_with(|| left.identity.label.cmp(&right.identity.label))
     });
-    tracing::debug!(tool = %tool, accounts = accounts.len(), config_dirs = config_dirs.len(), "scanned account config dirs");
     AccountScan {
         config_dirs,
         accounts,
+    }
+}
+
+fn unique_account_id(provider_id: &str, dir: &Path, emitted: &mut HashSet<String>) -> String {
+    if emitted.insert(provider_id.to_string()) {
+        return provider_id.to_string();
+    }
+
+    let qualified = format!("{provider_id}@{}", canonical_key(dir).display());
+    if emitted.insert(qualified.clone()) {
+        return qualified;
+    }
+
+    let mut suffix = 2;
+    loop {
+        let candidate = format!("{qualified}#{suffix}");
+        if emitted.insert(candidate.clone()) {
+            return candidate;
+        }
+        suffix += 1;
     }
 }
 
@@ -539,7 +585,6 @@ fn live_selector_values(tool: CliTool, provider: &dyn AccountProvider) -> Vec<Pa
         .collect()
 }
 
-#[cfg(not(test))]
 pub(crate) fn canonical_key(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
@@ -1008,6 +1053,8 @@ pub struct UsageWindow {
     pub resets_at: Option<i64>,
     pub severity: Severity,
     pub is_active: bool,
+    #[serde(default)]
+    pub compact: bool,
 }
 
 /// A provider's latest normalised usage observation.
@@ -1122,6 +1169,37 @@ mod tests {
         }
     }
 
+    struct DuplicateIdentityProvider {
+        candidates: Vec<PathBuf>,
+    }
+
+    impl AccountProvider for DuplicateIdentityProvider {
+        fn default_dir(&self, home: &Path) -> PathBuf {
+            home.join("default")
+        }
+
+        fn candidate_dirs(&self, _home: &Path, _live: &[PathBuf]) -> Vec<PathBuf> {
+            self.candidates.clone()
+        }
+
+        fn identify(&self, _dir: &Path) -> Option<AccountIdentity> {
+            Some(AccountIdentity {
+                id: "shared-workspace".to_string(),
+                label: "codex@example.com".to_string(),
+                display_name: None,
+                organization: None,
+                plan: Some("pro".to_string()),
+                logged_in: true,
+                usage_capable: true,
+                credential_expires_at: None,
+            })
+        }
+
+        fn session_dir(&self, _transcript: &Path) -> Option<PathBuf> {
+            None
+        }
+    }
+
     fn account(id: &str, dir: &str, is_default: bool) -> Account {
         Account {
             tool: CliTool::Claude,
@@ -1134,6 +1212,7 @@ mod tests {
                 organization: None,
                 plan: None,
                 logged_in: true,
+                usage_capable: true,
                 credential_expires_at: None,
             },
             is_default,
@@ -1149,6 +1228,32 @@ mod tests {
             account("last", "/accounts/last", false),
             account("explicit", "/accounts/explicit", false),
         ]
+    }
+
+    #[test]
+    fn scan_disambiguates_repeated_provider_identity_ids_by_config_dir() {
+        // Regression: 5680a7a copied Codex's workspace claim into every
+        // Account.id, so two CODEX_HOMEs for the same workspace had only one
+        // frontend-addressable launch choice after duplicate-id normalization.
+        let home = tempfile::TempDir::new().unwrap();
+        let default = home.path().join(".codex");
+        let copied = home.path().join(".codex-work");
+        std::fs::create_dir_all(&default).unwrap();
+        std::fs::create_dir_all(&copied).unwrap();
+        let provider = DuplicateIdentityProvider {
+            candidates: vec![default.clone(), copied],
+        };
+
+        let scan = scan_candidates(
+            CliTool::Codex,
+            &provider,
+            provider.candidate_dirs(home.path(), &[]),
+            &default,
+            &default,
+        );
+
+        assert_eq!(scan.accounts.len(), 2);
+        assert_ne!(scan.accounts[0].id, scan.accounts[1].id);
     }
 
     #[test]
@@ -1469,6 +1574,7 @@ mod tests {
                         organization: None,
                         plan: None,
                         logged_in: true,
+                        usage_capable: true,
                         credential_expires_at: None,
                     },
                     is_default: false,

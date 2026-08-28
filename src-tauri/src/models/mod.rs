@@ -270,6 +270,11 @@ pub struct CliCommandSettings {
     /// unset.
     #[serde(skip)]
     pub codex_notify_executable: Option<std::path::PathBuf>,
+    /// Runtime-only account-selector values for managed team members. The
+    /// coordination boundary resolves these once; pure pipeline rendering
+    /// never probes the ambient process environment.
+    #[serde(skip)]
+    pub account_selector_dirs: HashMap<String, std::path::PathBuf>,
 }
 
 impl Default for CliCommandSettings {
@@ -286,6 +291,7 @@ impl Default for CliCommandSettings {
                 .clone(),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
+            account_selector_dirs: HashMap::new(),
         }
     }
 }

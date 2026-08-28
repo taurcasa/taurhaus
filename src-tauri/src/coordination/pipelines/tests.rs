@@ -24,7 +24,7 @@ use crate::coordination::runtime::{
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
 use crate::models::CliCommandSettings;
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::templates::storage::TemplateStore;
 use crate::templates::types::BehavioralContract;
 
@@ -1422,6 +1422,31 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
             .expect("trusted command");
     assert!(!untrusted.contains("--dangerously-bypass-hook-trust"));
     assert!(trusted.contains("--dangerously-bypass-hook-trust"));
+}
+
+#[test]
+fn managed_codex_team_launch_carries_the_account_selector() {
+    // Regression: 08c3961 registered CODEX_HOME for direct launches but left
+    // coordination sidecars on the process-implicit account directory.
+    let agent = setup_config("builder", "codex", "gpt-5.4", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    let selector = spec(CliTool::Codex)
+        .capabilities
+        .account_selector
+        .expect("Codex selector capability");
+    commands.account_selector_dirs.insert(
+        selector.to_string(),
+        std::path::PathBuf::from("/accounts/codex-work"),
+    );
+
+    let command =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("managed command");
+
+    assert_eq!(
+        command,
+        "CODEX_HOME='/accounts/codex-work' codex --yolo -m 'gpt-5.4'"
+    );
 }
 
 // Regression: 791f6be centralized team launch rendering without a managed

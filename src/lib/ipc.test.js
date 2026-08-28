@@ -577,7 +577,13 @@ describe('ipc module', () => {
             tool: 'claude',
             id: 'account-1',
             dir: '/home/user/.claude',
-            identity: { id: 'account-1', label: 'a@example.com', displayName: 'A', loggedIn: true },
+            identity: {
+              id: 'account-1',
+              label: 'a@example.com',
+              displayName: 'A',
+              loggedIn: true,
+              usageCapable: false,
+            },
             is_default: true,
           },
         ],
@@ -590,6 +596,7 @@ describe('ipc module', () => {
 
       expect(tauriCore.invoke).toHaveBeenCalledWith('list_accounts', { tool: 'claude' })
       expect(result.accounts).toHaveLength(1)
+      expect(result.accounts[0].usage_capable).toBe(false)
       expect(result.source).toBe('daemon')
       expect(result.degraded).toBe(false)
       delete window.__TAURI_INTERNALS__

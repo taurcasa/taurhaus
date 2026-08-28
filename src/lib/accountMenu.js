@@ -72,6 +72,11 @@ function accountLabel(account) {
   )
 }
 
+function accountDirLabel(account) {
+  const dir = String(account?.dir ?? account?.config_dir ?? '').replace(/[\\/]+$/, '')
+  return dir.split(/[\\/]/).pop() ?? ''
+}
+
 /**
  * Labels that tell the rows apart.
  *
@@ -90,8 +95,24 @@ function labelsFor(accounts) {
     const label = accountLabel(account)
     if ((counts.get(label) ?? 0) < 2) return label
     const identity = account?.label || account?.email
-    return identity ? `${label} (${identity})` : label
+    const qualifier = identity && identity !== label ? identity : accountDirLabel(account)
+    return qualifier && qualifier !== label ? `${label} (${qualifier})` : label
   })
+}
+
+function isSessionWindow(window) {
+  const key = String(window?.key ?? '')
+  const title = String(window?.title ?? '')
+  return key === 'session' || key === 'five_hour' || title.startsWith('Current session')
+}
+
+/** Flagged compact windows, else every non-session window, else the first two. */
+export function compactSelection(windows) {
+  const flagged = windows.filter((window) => window?.compact === true)
+  if (flagged.length) return flagged
+  const nonSession = windows.filter((window) => !isSessionWindow(window))
+  if (nonSession.length) return nonSession
+  return windows.slice(0, 2)
 }
 
 /**
@@ -105,8 +126,11 @@ function labelsFor(accounts) {
 export function accountUsageMeta(account, now = Date.now()) {
   const usage = account?.usage
   if (!usage) return ''
+  // `compact` is a preference, not a gate: a provider that flags nothing still
+  // gets its non-session windows, and a snapshot with only a session window
+  // still shows that (same selection as `UsageMeter`).
   const windows = Array.isArray(usage.windows)
-    ? usage.windows.filter((window) => window.key !== 'session')
+    ? compactSelection(usage.windows)
     : [
         usage.five_hour ? { title: '5h', ...usage.five_hour } : null,
         usage.seven_day ? { title: '7d', ...usage.seven_day } : null,
@@ -119,7 +143,10 @@ export function accountUsageMeta(account, now = Date.now()) {
       const resetsAt = Number(window.resets_at)
       return !(Number.isFinite(resetsAt) && resetsAt * 1000 <= now)
     })
-    .map((window) => `${window.title} ${Math.round(Number(window.used_percentage))}%`)
+    .map(
+      (window) =>
+        `${String(window.title).replaceAll(' · ', ' ')} ${Math.round(Number(window.used_percentage))}%`
+    )
     .join(' · ')
 }
 

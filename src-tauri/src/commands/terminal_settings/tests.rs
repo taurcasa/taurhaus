@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::models::CodexCompactionMode;
+use crate::session_scanner::cli_tool::all;
 
 // Regression: 0b87699 had no setting transition that could remove the Codex
 // hook and restore the transcript fallback without touching a real home.
@@ -136,6 +137,27 @@ fn codex_notify_input_requires_managed_launch_and_supported_version() {
         commands.codex_notify_executable.as_deref(),
         Some(daemon.as_path())
     );
+}
+
+#[test]
+fn managed_codex_selector_is_inserted_and_removed_by_registry_capability() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let codex_home = root.path().join("codex-home");
+    let selector = all()
+        .iter()
+        .find(|entry| entry.capabilities.hook_trust && entry.capabilities.notify_sink)
+        .and_then(|entry| entry.capabilities.account_selector)
+        .expect("Codex selector capability");
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_managed_account_selector(&mut commands, true, codex_home.clone());
+    assert_eq!(
+        commands.account_selector_dirs.get(selector),
+        Some(&codex_home)
+    );
+
+    apply_managed_account_selector(&mut commands, false, codex_home);
+    assert!(!commands.account_selector_dirs.contains_key(selector));
 }
 
 // Regression: 61e9a24 rendered a notifier path without checking that the

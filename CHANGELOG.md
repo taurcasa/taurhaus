@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - **Generic accounts and native usage core** — account detection, per-project pins and last-used memory, launch/resume resolution, selector rendering, account UI, and ordered usage windows are tool-agnostic capability slices. Claude is the first provider and reads its OAuth usage endpoint with request-time-only credentials; the 0.6.8 status-line bridge is retired and removed once without changing foreign status-line commands.
+- **Codex accounts and native usage** — Codex config homes are selectable through `CODEX_HOME`, ChatGPT identities come from display-only `id_token` claims, and in-memory `wham/usage` snapshots expose 5-hour and weekly limits per model family. Managed Codex team sidecars carry the same selector; tokens are never logged, persisted, refreshed, or written back.
 
 ### Changed
 

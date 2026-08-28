@@ -182,6 +182,10 @@ where
 }
 
 fn poll(tool: CliTool, force: bool) {
+    poll_with_http(tool, force, &ReqwestHttpClient);
+}
+
+fn poll_with_http(tool: CliTool, force: bool, http: &dyn accounts::HttpClient) {
     let tool_spec = spec(tool);
     let Some(provider) = tool_spec.usage_provider() else {
         return;
@@ -238,7 +242,7 @@ fn poll(tool: CliTool, force: bool) {
             entry.in_flight = true;
         }
 
-        let mut snapshot = provider.fetch(&account.dir, &ReqwestHttpClient);
+        let mut snapshot = provider.fetch(&account.dir, http);
         let live = live_dirs.iter().any(|dir| same_path(dir, &account.dir));
         let mut state = POLLER
             .state
@@ -335,6 +339,76 @@ fn emit_result(tool: CliTool, account_id: &str, snapshot: &UsageSnapshot, failed
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_scanner::accounts::{
+        install_detection_override, AccountIdentity, AccountScan, HttpClient, HttpError,
+        HttpResponse,
+    };
+
+    struct FakeHttp;
+
+    impl HttpClient for FakeHttp {
+        fn get(
+            &self,
+            _url: &str,
+            _headers: &[(&str, &str)],
+            _timeout: Duration,
+        ) -> Result<HttpResponse, HttpError> {
+            Ok(HttpResponse {
+                status: 200,
+                body: include_str!("fixtures/claude-oauth-usage-2.1.247.json").to_string(),
+            })
+        }
+    }
+
+    #[test]
+    fn successful_fetch_attaches_a_snapshot_to_the_detected_account() {
+        // Provider/poller integration coverage: the frontend retirement defect
+        // did not occur in this poller, whose snapshot attachment is unchanged.
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join(".credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"fixture-token","expiresAt":4102444800000}}"#,
+        )
+        .unwrap();
+        let account = Account {
+            tool: CliTool::Claude,
+            id: "first-published-snapshot".to_string(),
+            dir: root.path().to_path_buf(),
+            identity: AccountIdentity {
+                id: "first-published-snapshot".to_string(),
+                label: "fixture@example.com".to_string(),
+                display_name: None,
+                organization: None,
+                plan: None,
+                logged_in: true,
+                usage_capable: true,
+                credential_expires_at: Some(4_102_444_800),
+            },
+            is_default: true,
+            is_process_default: true,
+            usage: None,
+        };
+        let _detection = install_detection_override(
+            CliTool::Claude,
+            AccountScan {
+                config_dirs: vec![root.path().to_path_buf()],
+                accounts: vec![account.clone()],
+            },
+        );
+        POLLER
+            .state
+            .lock()
+            .unwrap()
+            .entries
+            .remove(&(CliTool::Claude, account.id.clone()));
+
+        poll_with_http(CliTool::Claude, true, &FakeHttp);
+        let mut listed = vec![account];
+        attach_usage(CliTool::Claude, &mut listed);
+
+        assert_eq!(listed[0].usage.as_ref().unwrap().status, UsageStatus::Ok);
+        assert_eq!(listed[0].usage.as_ref().unwrap().windows.len(), 3);
+    }
 
     #[test]
     fn failures_back_off_from_one_minute_to_five() {

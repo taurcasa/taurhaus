@@ -240,9 +240,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 catalog: true,
                 session_root: SessionRoot::ToolHome,
                 account_selector: Some("CODEX_HOME"),
-                account_selection: false,
+                account_selection: true,
                 team_config_namespace: false,
-                usage: false,
+                usage: true,
                 notify_sink: true,
                 hook_trust: true,
             },
@@ -482,10 +482,13 @@ impl CliToolSpec {
     ) -> Option<&'static dyn crate::session_scanner::accounts::AccountProvider> {
         static CLAUDE: crate::session_scanner::accounts::claude::ClaudeAccountProvider =
             crate::session_scanner::accounts::claude::ClaudeAccountProvider;
+        static CODEX: crate::session_scanner::accounts::codex::CodexAccountProvider =
+            crate::session_scanner::accounts::codex::CodexAccountProvider;
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
-            CliTool::Codex | CliTool::Gemini => None,
+            CliTool::Codex => Some(&CODEX),
+            CliTool::Gemini => None,
         }
     }
 
@@ -495,10 +498,13 @@ impl CliToolSpec {
     ) -> Option<&'static dyn crate::session_scanner::accounts::UsageProvider> {
         static CLAUDE: crate::session_scanner::accounts::claude::ClaudeUsageProvider =
             crate::session_scanner::accounts::claude::ClaudeUsageProvider;
+        static CODEX: crate::session_scanner::accounts::codex::CodexUsageProvider =
+            crate::session_scanner::accounts::codex::CodexUsageProvider;
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
-            CliTool::Codex | CliTool::Gemini => None,
+            CliTool::Codex => Some(&CODEX),
+            CliTool::Gemini => None,
         }
     }
 

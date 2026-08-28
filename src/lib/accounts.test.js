@@ -163,14 +163,20 @@ describe('claudeAccounts store', () => {
     expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
   })
 
-  it('never asks for a non-Claude tool', async () => {
+  it('asks for a Codex account through the same generic store', async () => {
+    // Regression: 08c3961 left Codex account selection disabled after the
+    // generic chooser state landed, so two CODEX_HOME accounts were ignored.
     listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
-    await refreshAccounts('claude')
+    await refreshAccounts('codex')
 
     await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'codex' })
 
-    expect(claudeAccounts.pending).toBe(null)
-    expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'codex', null)
+    expect(accountState('codex').pending).toMatchObject({
+      projectId: 'p1',
+      mode: 'fresh',
+      tool: 'codex',
+    })
+    expect(launchCliSession).not.toHaveBeenCalled()
   })
 
   it('asks once when two accounts are logged in and the project stored no choice', async () => {
@@ -328,8 +334,9 @@ describe('claudeAccounts store', () => {
     try {
       const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
       const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
-      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
-      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      const unsupported = { ...PRIMARY, usage_capable: false }
+      const previousReport = detected([unsupported, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([unsupported, { ...SECOND, usage: refreshedUsage }])
       listAccounts.mockResolvedValue(previousReport)
       await refreshAccounts('claude')
       listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
@@ -346,16 +353,41 @@ describe('claudeAccounts store', () => {
     }
   })
 
-  it('stops syncing when an account still has no usage', async () => {
-    // Regression: 701cd7c treated a missing usage entry as still pending, so
-    // one account with no snapshot kept list_accounts running at 4 Hz for the
-    // full 30-second deadline even after every observable snapshot advanced.
+  it('publishes an account first usage snapshot after an asynchronous refresh', async () => {
+    // Regression: c71cedb stopped the refresh retry chain for accounts without
+    // an existing observation, so their first successful background fetch was
+    // never read and a newly opened chooser stayed meterless.
+    vi.useFakeTimers()
+    try {
+      const emptyReport = detected([{ ...PRIMARY, usage: null }])
+      const firstUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
+      const firstReport = detected([{ ...PRIMARY, usage: firstUsage }])
+      listAccounts.mockResolvedValue(emptyReport)
+      await refreshAccounts('claude')
+      listAccounts.mockResolvedValueOnce(emptyReport).mockResolvedValue(firstReport)
+
+      await refreshUsage('claude')
+      expect(claudeAccounts.accounts[0].usage).toBeNull()
+
+      await vi.advanceTimersByTimeAsync(250)
+
+      expect(claudeAccounts.accounts[0].usage).toEqual(firstUsage)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  it('skips usage sync for accounts the provider marks unsupported', async () => {
+    // An account without subscription usage must not keep another account's
+    // refresh chain alive after that observable snapshot advances.
     vi.useFakeTimers()
     try {
       const previousUsage = { observed_at: '2026-08-27T12:00:00Z', windows: [] }
       const refreshedUsage = { observed_at: '2026-08-27T12:00:01Z', windows: [] }
-      const previousReport = detected([PRIMARY, { ...SECOND, usage: previousUsage }])
-      const refreshedReport = detected([PRIMARY, { ...SECOND, usage: refreshedUsage }])
+      const unsupported = { ...PRIMARY, usage_capable: false }
+      const previousReport = detected([unsupported, { ...SECOND, usage: previousUsage }])
+      const refreshedReport = detected([unsupported, { ...SECOND, usage: refreshedUsage }])
       listAccounts.mockResolvedValue(previousReport)
       await refreshAccounts('claude')
       listAccounts.mockResolvedValueOnce(previousReport).mockResolvedValue(refreshedReport)
@@ -367,6 +399,25 @@ describe('claudeAccounts store', () => {
       await vi.advanceTimersByTimeAsync(30_000)
 
       expect(listAccounts).toHaveBeenCalledTimes(3)
+    } finally {
+      resetAccountsForTest()
+      vi.useRealTimers()
+    }
+  })
+
+  it('backs off while a usage-capable account waits for its first snapshot', async () => {
+    // Regression: 701cd7c polled list_accounts at 4 Hz for the full refresh
+    // deadline when a usage-capable account had not published a snapshot yet.
+    vi.useFakeTimers()
+    try {
+      const report = detected([{ ...PRIMARY, usage: null }])
+      listAccounts.mockResolvedValue(report)
+      await refreshAccounts('claude')
+
+      await refreshUsage('claude')
+      await vi.advanceTimersByTimeAsync(30_000)
+
+      expect(listAccounts.mock.calls.length).toBeLessThanOrEqual(8)
     } finally {
       resetAccountsForTest()
       vi.useRealTimers()
