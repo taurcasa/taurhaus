@@ -33,7 +33,12 @@ Thumbs.db
 .env
 .env.*
 .env.local
+!.env.example
 .maccreds
+
+# Infographic regeneration byproducts (scripts/generate-infographics.py)
+docs/images/.generation-log.jsonl
+docs/images/*.generated.png
 
 # Logs
 *.log

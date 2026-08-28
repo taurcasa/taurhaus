@@ -31,6 +31,12 @@ just dev-frontend
 
 Build, daemon, mesh, and release workflows are standardized in `justfile`. Use `just` recipes instead of raw `cargo tauri build`, `bunx tauri build`, or ad hoc cross-compilation commands.
 
+Nothing in the app needs an API key. One developer tool does: regenerating the
+documentation infographics. Copy `.env.example` to `.env` in the repo root and
+fill in `OPENAI_API_KEY` when you need it — `.env` is gitignored, and the key is
+read only by `scripts/generate-infographics.py` (`just infographics`), never by
+the app or the daemon. See [Infographic regeneration](docs/operations/infographics.md).
+
 ## Code Standards
 
 ### Svelte 5

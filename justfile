@@ -144,9 +144,19 @@ test-compaction TOOL TEAM MEMBER *ARGS:
 monitor *ARGS:
     python3 scripts/resource-monitor.py {{ARGS}}
 
-# Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit).
+# Regenerate documentation infographics from the manifest prompts (needs .env).
+# Example: just infographics --id scanner-pipeline
+# Workflow: docs/operations/infographics.md
+infographics *ARGS:
+    python3 scripts/generate-infographics.py {{ARGS}}
+
+# Show which infographics would be regenerated, and what the run would cost.
+infographics-dry-run:
+    python3 scripts/generate-infographics.py --dry-run --stale
+
+# Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).
 # This is the primary "does everything work?" test command.
-test: test-rust test-frontend
+test: test-rust test-frontend test-scripts
 
 # Fast feedback lane for local iteration.
 # Runs Rust compile-check only (no Rust test execution) + frontend unit tests.
@@ -206,6 +216,10 @@ test-rust-bisect-orchestrator:
 # Run frontend tests
 test-frontend:
     bun run test
+
+# Run Python unit tests for the repo scripts (no network, no API keys).
+test-scripts:
+    python3 -m unittest discover -s scripts/tests
 
 # Run browser-mode visual screenshot tests only.
 test-visual:

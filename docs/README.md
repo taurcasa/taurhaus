@@ -73,6 +73,7 @@ Build, test, and release procedures.
 | [Testing guide](operations/testing-guide.md) | Test strategy, test lanes, E2E setup, regression policy |
 | [Visual testing guide](operations/visual-testing-guide.md) | Browser-mode screenshot lane, `just visual-shot`, and fixture-host workflow |
 | [Compaction testing](operations/compaction-testing.md) | How to trigger a real compaction per harness and verify delivery |
+| [Infographic regeneration](operations/infographics.md) | `.env` setup and `just infographics` for regenerating the documentation images from the manifest prompts |
 
 ## Multi-CLI coordination (mesh)
 
