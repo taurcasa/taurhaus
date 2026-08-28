@@ -1,98 +1,76 @@
 # Compaction Testing
 
-This document defines the supported ways to trigger compaction on demand for reinjection testing.
+Operational guide for validating post-compaction context delivery through native harness hooks. These lanes use real managed sessions; the Codex E2E lane spends subscription turns and is never part of a normal test suite.
 
-## Supported trigger methods
+## Current support
+
+| Harness | Trigger that reaches taurhaus | Delivery | Minimum/version note |
+|---|---|---|---|
+| Claude Code | `SessionStart(source=compact)` after `/compact` or automatic compaction | `hookSpecificOutput.additionalContext` on hook stdout | Managed hook is always reconciled |
+| Codex CLI | `SessionStart(source=compact)` after **automatic** compaction | `hookSpecificOutput.additionalContext` on hook stdout | Managed hook is default at Codex >= 0.147; older versions log `compaction.codex_hook.unsupported` once and receive no reinjection |
+| Antigravity CLI (`agy`) | None | None | Registry declares `compaction_hook: false` |
+| Grok CLI (`grok`) | `PostCompact`; imported Claude `SessionStart(compact)` is deduplicated | Member mesh inbox | Grok ignores passive-hook stdout |
+
+The Codex transcript extractor, signal log/watcher/processor, owner election and `harness.codex_compaction` setting are retired. Do not look for `compaction.detected`, `compaction.signal_emitted`, `compaction.extractor.*`, or transcript-mode delivery.
+
+## Hook installation and platform behavior
+
+`coordination/compact_hook.rs` owns one bridge for Claude, Codex and Grok. Managed-hook reconciliation preserves foreign registrations and is idempotent. It repairs the wrapper when the taurhaus executable moves.
+
+- Linux and WSL runtimes receive a `.sh` wrapper.
+- Native Windows runtimes receive a `.cmd` wrapper.
+- Codex hooks live under the resolved managed `CODEX_HOME`, not an assumed host home.
+- Startup and terminal-settings reconciliation install the Codex hook whenever a supported managed Codex member exists.
+- A supported managed Codex launch carries the hook-trust bypass required for the managed registration.
+
+The tool is inferred from grok's reserved hook environment and otherwise from the transcript path. Member resolution uses runtime `session_id` first and normalized `cwd` second, including Windows, WSL UNC and Linux path forms.
+
+## Trigger behavior
 
 ### Claude Code
 
-Supported:
+The manual lane sends a filler prompt followed by `/compact`. A successful lifecycle is:
 
-1. Operator-triggered `/compact` inside a real managed Claude pane
-2. Claude Agent SDK slash-command harness using `prompt: "/compact"`
-
-Not supported / not reliable:
-
-- telling a Claude teammate in natural language to "run /compact"
-- assuming a plain model response will execute a built-in slash command on your behalf
-
-Why:
-
-- `/compact` is a built-in Claude command
-- built-in commands are distinct from skills/tools
-- Taurhaus reinjection depends on the documented Claude lifecycle:
-  - `PreCompact`
-  - compaction
-  - `SessionStart(source=compact)`
+1. `PreCompact`
+2. compaction
+3. `SessionStart(source=compact)`
+4. `compaction.claude_hook.received` -> `resolved` -> `delivered`
 
 ### Codex CLI
 
-Supported:
+Only **automatic** Codex compaction validates taurhaus's hook. Before launching the target member, set a low enough `model_auto_compact_token_limit` in that managed Codex home to reach automatic compaction in a bounded number of turns. The manual script deliberately does not mutate Codex configuration.
 
-1. Operator-triggered `/compact` in a real managed Codex pane via tmux/operator input — **for the transcript mode only**, see the version note below
-2. Codex's own automatic compaction, reached by lowering `model_auto_compact_token_limit` — the only trigger that exercises the hook mode
+Measured on Codex 0.149.0 and 0.150.1:
 
-Not supported / not reliable:
+| Trigger | `PreCompact` | `PostCompact` | `SessionStart(source=compact)` | Reaches taurhaus |
+|---|---|---|---|---|
+| automatic | fires | fires | **fires** | yes |
+| manual `/compact` | fires | fires | **does not fire** | no |
 
-- natural-language delegation as a reliable test control path
+A manual `/compact` can create a transcript boundary, but it cannot validate delivery because Codex does not invoke the registered `SessionStart(compact)` hook. This is why the scripted Codex lane uses filler turns and never sends `/compact`.
 
-Why:
+### Grok CLI
 
-- By default Codex compaction is transcript-detectable. Taurhaus reads the session JSONL boundaries:
-  - `type="compacted"`
-  - `event_msg.payload.type="context_compacted"`
-- Codex *does* have first-party hooks, and taurhaus can use them, but that path is **opt-in**: `terminal.harness.codex_compaction` defaults to `transcript`, and `hooks` additionally requires Codex ≥ 0.147 (`CliVersions.codex_compaction_hooks_supported`) plus an installed managed `hooks.json`. Managed launches in hooks mode carry `--dangerously-bypass-hook-trust`. Test whichever mode the setting is actually in.
+There is no `just` lane. In a real managed grok pane, trigger compaction and verify:
 
-#### Which hook a Codex compaction fires (measured, 0.149.0 and 0.150.1)
+- `compaction.grok_hook.received` -> `resolved` -> `delivered` in `taurhaus.log.jsonl`.
+- Exactly one card in the member's mesh inbox, observable with `mesh read`.
+- A second invocation through grok's imported Claude hook is skipped as `duplicate_compat_import`.
 
-taurhaus registers exactly one Codex hook: `SessionStart` with matcher `compact`
-(`compact_hook.rs`, `ensure_settings_hook_entry`). Whether a compaction reaches it
-depends on the trigger. Measured on Linux with Codex 0.149.0 and re-measured on 0.150.1, using a probe home that
-registered `PreCompact`, `PostCompact` and `SessionStart(compact)` together:
-
-| Trigger | `PreCompact` | `PostCompact` | `SessionStart(source=compact)` | Reaches the taurhaus bridge |
-|---------|--------------|---------------|--------------------------------|------------------------------|
-| automatic (`trigger: auto`) | fires | fires | **fires** | yes |
-| manual `/compact` (`trigger: manual`) | fires | fires | **does not fire** | no |
-
-Both `PreCompact` and `PostCompact` carry `session_id`, `turn_id`, `transcript_path`,
-`cwd`, `model` and `trigger`; the `SessionStart` payload carries `source: "compact"` and
-`permission_mode` instead of a trigger, which is why the manual and automatic cases are
-told apart by what the test did rather than by a field.
-
-Consequences for testing:
-
-- A manual `/compact` **cannot** validate the hook mode on either version. It compacts — the
-  transcript boundary appears — but the bridge is never invoked, so there is no
-  `compaction.codex_hook.received` to wait for. `just test-compaction-codex` remains
-  valid for the transcript mode, which is what it asserts.
-- Automatic compaction is the trigger that proves the hook path, and it is what
-  `e2e/specs/compaction-codex-hooks.js` uses for its delivery case.
-
-### Antigravity CLI (`agy`)
-
-Not covered. The registry declares `compaction_hook: false` and no transcript parser for `agy`, so an Antigravity compaction is not observed at all and there is nothing for a test lane to verify.
-
-### Grok CLI (`grok`)
-
-Detected, but with no `just` lane — trigger it by hand in a real managed grok pane.
-
-- The hook fires on grok's own `PostCompact` event; grok's session-start source never reports `compact`.
-- grok's personal hook directory (`<GROK_HOME>/hooks`) is always trusted, so there is no bypass flag to pass.
-- The card is **not** returned on the hook's stdout: grok documents passive-hook stdout as ignored, so the registry routes delivery to the member's mesh inbox (`compaction_delivery: MeshInbox`). Verify with `mesh read`, not with the hook's response.
-- grok also loads `~/.claude/settings.json` hooks, so one compaction can invoke the bridge twice. Exactly one reinjection is expected; a second is a bug, not a duplicate test signal.
+A `post_compact_signal_only` skip means the registry incorrectly routed grok as a stdout-answered harness.
 
 ## Preconditions
 
-Before running a compaction delivery test:
+Before a delivery test:
 
-1. The target member must be live and attached.
-2. The target member must have a resumable operational task context.
-3. The target pane must already be running the intended CLI tool.
+1. The target member is live and attached to the expected managed harness.
+2. The operational snapshot contains a resumable task.
+3. The app and daemon are the paired build; protocol 14 rejects a mismatched peer.
+4. For Codex, the installed CLI is >= 0.147 and any lower automatic-compaction threshold was configured before member launch.
 
-If there is no resumable task context, Taurhaus can intentionally skip delivery. That is correct behavior, not a harness failure.
+No resumable task is an intentional skip, not a transport failure.
 
-## Recipes
+## Scripted recipes
 
 ### Claude
 
@@ -100,19 +78,9 @@ If there is no resumable task context, Taurhaus can intentionally skip delivery.
 just test-compaction-claude taurhaus-team team-lead
 ```
 
-This does the following:
+The recipe resolves the managed member, checks runtime health and resumable context, writes manual-run metadata, sends filler plus `/compact`, and waits for Claude debug evidence and the native-hook event trail.
 
-1. resolves the managed Claude member
-2. checks runtime health + resumable task context
-3. writes a manual-run metadata file
-4. sends a short filler prompt into the pane
-5. sends `/compact`
-6. waits for:
-   - `PreCompact` evidence in Claude debug logs
-   - `SessionStart(source=compact)` evidence in Claude debug logs
-   - Taurhaus hook receipt + delivered event in the app log
-
-Dry-run only:
+Dry run:
 
 ```bash
 just test-compaction-claude taurhaus-team team-lead --dry-run
@@ -124,194 +92,81 @@ just test-compaction-claude taurhaus-team team-lead --dry-run
 just test-compaction-codex taurhaus-team architect
 ```
 
-This does the following:
+The recipe:
 
-1. resolves the managed Codex member
-2. checks runtime health + resumable task context + session JSONL binding
-3. writes a manual-run metadata file
-4. sends a short filler prompt into the pane
-5. sends `/compact`
-6. waits for:
-   - a real transcript compaction boundary
-   - `compaction.detected`
-   - terminal transport outcome (`compaction.injected` expected for a healthy positive case)
-   - `wake_delivery` stage `tmux_injected`
+1. resolves a healthy managed Codex member with resumable context;
+2. creates a temporary `.taurhaus-compaction-filler-<run-id>.md` in the member project;
+3. sends bounded filler turns to trigger automatic compaction;
+4. waits for `compaction.codex_hook.received` and a terminal `delivered`, `skipped`, or `failed` event;
+5. requires `compaction.codex_hook.delivered` and reports `additional_context_bytes`; and
+6. removes the filler file in cleanup if it created it.
 
-Dry-run only:
+If it exhausts the turn limit, confirm `model_auto_compact_token_limit` was configured before this member launched. The script never edits `CODEX_HOME` or sends `/compact`.
+
+Dry run:
 
 ```bash
 just test-compaction-codex taurhaus-team architect --dry-run
 ```
 
-### Generic entry point
+Generic entry points:
 
 ```bash
 just test-compaction claude taurhaus-team team-lead
 just test-compaction codex taurhaus-team architect
 ```
 
-`just test-compaction` accepts `claude` and `codex` only; any other tool exits with `Unsupported tool` (`justfile`, recipe `test-compaction`). Grok has no scripted lane yet.
+`just test-compaction` accepts only `claude` and `codex`.
 
-### Codex hooks, end to end
+## Native-hook analyzer
 
-The two recipes above drive a team you already have. `e2e/specs/compaction-codex-hooks.js`
-builds one instead: it initializes a Claude-led team with a single managed Codex member
-under `terminal.harness.codex_compaction = hooks`, drives it to compaction twice, and
-asserts that the card came back through the hook bridge rather than the transcript
-tailer.
+The scripted lanes write metadata below `teams/<team>/state/compaction/manual-runs/`. Analyze a run with:
+
+```bash
+python3 scripts/analyze-compaction.py \
+  --team taurhaus-team \
+  --member architect \
+  --manual-run-id <run-id>
+```
+
+Or inspect a time window directly:
+
+```bash
+python3 scripts/analyze-compaction.py --last 30m
+```
+
+The analyzer reads only native-hook events:
+
+- `compaction.claude_hook.*`
+- `compaction.codex_hook.*`
+- `compaction.grok_hook.*`
+- `compaction.compact_hook.*` when tool inference failed
+
+It reports counts by tool/action, terminal outcomes, skip/failure reasons and recent events. It does not parse transcripts or old signal files.
+
+## Paid Codex E2E lane
+
+`e2e/specs/compaction-codex-hooks.js` builds a Claude-led team with one managed Codex member and proves default hook delivery. It is Linux-only, spends real Claude and Codex subscription turns, is excluded from `just test-e2e` and `just test-e2e-full`, and must be invoked explicitly:
 
 ```bash
 E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
 ```
 
-It runs on Linux only and spends **real Codex and Claude subscription turns**, so it is
-excluded from both `just test-e2e` and `just test-e2e-full` and never runs as part of a
-suite. It skips itself, with the reason printed, when `codex` is missing or older than
-0.147, when `~/.codex/auth.json` is absent, when `claude` is not on `PATH`, or when mesh
-or tmux are unavailable.
+The lane asserts the retired `codexCompaction` and `codex_compaction` settings are absent, lowers `model_auto_compact_token_limit` in a scratch Codex config **before launch**, triggers bounded automatic compaction, and requires:
 
-What it isolates:
+- `compaction.codex_hook.received` -> `resolved` -> `delivered`;
+- `compaction.injected` with `tool = codex`;
+- no hook failure event; and
+- the card's unique marker in Codex's own rollout transcript, proving Codex consumed the hook response.
 
-- `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` are the wdio session's temp roots, so the
-  team, its inboxes and the JSONL log the assertions read are all throwaway.
-- `CODEX_HOME` is a scratch home holding **only** `auth.json`, copied from the operator's,
-  plus a generated minimal `config.toml` (`e2e/helpers/codexScratchHome.js`). The
-  operator's config is deliberately not copied: it can register things Codex executes,
-  and a configured `notify` would make taurhaus preserve *that* notifier instead of
-  installing its own — which is the only turn signal the lane has. Sessions, history and
-  the Codex databases are never copied, and nothing is written back to `~/.codex` — the
-  managed `hooks.json` and every rollout transcript land in the scratch home.
-- The hook is a separate process Codex spawns, so it resolves the teams dir and the log
-  sink from the pane's environment. The lane sets those roots on the shared `taurhaus`
-  tmux session only for the one call that creates panes, restores them the moment it
-  returns, and restores them again from a `process.on('exit')` handler for a run that is
-  killed before its teardown.
+A second case sends manual `/compact`, requires Codex's own transcript boundary, and asserts that no native-hook event appeared. It pins the measured 0.149/0.150 contract; if Codex later emits `SessionStart(compact)` for manual compaction, the test and this runbook must change together.
 
-It covers both triggers, as two cases in this order:
+Isolation requirements are strict: `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR` and `CODEX_HOME` are scratch roots. The scratch Codex home contains only the authentication material and minimal config needed by the paid lane; operator config, sessions, history and databases are never copied or written back. Unit and integration tests use generated temporary directories and must never read or write `~/.codex` or `~/.claude*`.
 
-1. **automatic** — the case that proves delivery, so it runs first: Mocha bails on the
-   first failure and the delivery proof must not be lost to a failure in the other case.
-2. **manual** — `/compact` typed into the pane. It pins the version note above rather
-   than asserting a delivery that cannot happen: Codex writes a compaction boundary to
-   its own transcript, and no `compaction.codex_hook.*` event is produced at all. The
-   day Codex starts sending `SessionStart` for a manual compaction, that case fails and
-   this note and the lane get updated together.
+## Success and failure interpretation
 
-The case is bounded rather than paid for in full: the scratch `config.toml` gets
-`model_auto_compact_token_limit = 20000` **before the member launches**, so it reads the
-lowered threshold from its first turn and no restart is needed, and the lane then feeds
-it one ~130 KB filler file per turn, capped at **6 turns**. A probe on this host crossed
-the threshold on the first turn. If the cap is reached the case fails saying how many
-compaction boundaries Codex wrote in that window, which separates "Codex never compacted"
-from "Codex compacted without calling the bridge".
+A healthy stdout-delivery run has `received` -> `resolved` -> `delivered` and a positive `additional_context_bytes`. `compaction.injected` records the completed delivery. The card is not in the Claude or Codex member inbox.
 
-It asserts this acceptance trail in `taurhaus.log.jsonl`:
+Expected skips include missing resumable context and duplicate grok compatibility imports. Failures include payload parsing, member resolution, card composition, response serialization and managed-hook execution errors; use the event's `failure_stage` or `skip_reason` rather than inferring from absence.
 
-- `compaction.codex_hook.received` → `resolved` → `delivered` for that member, with
-  `additional_context_bytes` greater than zero,
-- `compaction.injected` for the member with `tool = codex`,
-- no `compaction.codex_hook.failed` / `compaction.compact_hook.failed` — `delivered` is
-  emitted before the response is serialized and written, and a failure at that last step
-  is reported separately (stage `serialize_response`),
-- and **no** `compaction.signal_emitted`, `compaction.detected` or
-  `compaction.extractor.*` for it — in hooks mode the tailer owns nothing.
-
-Those are diagnostics. The acceptance signal is on Codex's side of the boundary: the
-operational snapshot the lane writes carries a marker that exists nowhere else, the
-bridge renders it into the card (`Current task: #<id> — …`), and the case only passes
-once that marker appears in Codex's own rollout transcript — measured on this host, as a
-`developer` message about a second after the hook returns. Without it a broken or
-ignored hook response would leave the paid lane green while the member got no context
-back.
-
-Codex's `SessionStart` payload is printed, so a run shows exactly what the harness put on
-the wire.
-
-The card itself is **not** in the member's mesh inbox: Codex's registry entry is
-`compaction_delivery: HookStdout`, so the bridge hands the card back on the hook's stdout
-as `hookSpecificOutput.additionalContext` and there is nothing queued to read with
-`mesh read`. `additional_context_bytes` on the `delivered` event is the size of what was
-returned.
-
-## Manual-run diagnostics
-
-Only the two scripted lanes write run metadata — `scripts/test-compaction-claude.py`
-and `scripts/test-compaction-codex.py` both call `write_manual_run`
-(`scripts/compaction_test_lib.py:199`). A grok run has no script and therefore no
-metadata file; check it against the log and the inbox instead (see below).
-
-The scripted lanes write metadata under:
-
-```text
-~/.claude/teams/<team>/state/compaction/manual-runs/<run_id>.json
-```
-
-Use the analyzer against a specific run:
-
-```bash
-python3 scripts/analyze-compaction.py --team taurhaus-team --manual-run-id <run_id>
-```
-
-The analyzer will then print targeted run diagnostics, including:
-
-- Claude:
-  - `PreCompact` seen
-  - `SessionStart(compact)` seen
-  - hook success seen
-- Codex:
-  - transcript boundary seen (the analyzer reads only the transcript boundary; in `hooks` mode inspect the `compaction.codex_hook.*` events in `taurhaus.log.jsonl` directly)
-
-Those two arms are the only tool-specific report logic the analyzer has
-(`scripts/analyze-compaction.py:1130-1142`). For either scripted lane it also prints:
-
-- transport delivery outcome
-- wake stage
-- whether the compaction card was surfaced by `mesh read`
-
-### Grok, without a script
-
-Grok has no `--manual-run-id` to pass, so verify it by hand:
-
-- `taurhaus.log.jsonl`: `compaction.grok_hook.received` → `resolved` → `delivered`.
-  `received` names the tool inferred from grok's reserved `GROK_*` hook env
-  (`compact_hook.rs:90-96`); a `compaction.compact_hook.received` there means the
-  inference failed and the run is not testing grok's path.
-  A `skipped` with `post_compact_signal_only` means the delivery was routed as
-  stdout, and one with `duplicate_compat_import` is the expected suppression of
-  the second invocation grok makes through `~/.claude/settings.json`.
-- The member's mesh inbox: the card is queued, never returned on stdout, so
-  confirm it with `mesh read` — exactly one card per compaction.
-
-## What success means
-
-### Claude success
-
-A healthy positive Claude run should show:
-
-- Claude debug log:
-  - `Getting matching hook commands for PreCompact with query: manual`
-  - `Getting matching hook commands for SessionStart with query: compact`
-  - `Hook SessionStart:compact (SessionStart) success`
-- Taurhaus log:
-  - `compaction.claude_hook.received`
-  - `compaction.claude_hook.resolved`
-  - `compaction.claude_hook.delivered`
-
-### Codex success
-
-A healthy positive Codex run should show:
-
-- session JSONL boundary:
-  - `type="compacted"` or `payload.type="context_compacted"`
-- Taurhaus log:
-  - `compaction.detected`
-  - `compaction.injected`
-- mesh protocol telemetry:
-  - `wake_delivery` with stage `tmux_injected`
-
-## Limitations
-
-1. These harnesses prove transport and surfacing boundaries, not perfect model uptake.
-2. Claude testing depends on available debug logs and a real managed session.
-3. Codex testing depends on a valid runtime `session_id` and `jsonl_path` binding.
-4. If the member has no resumable task context, skip behavior is expected and the harness will fail early instead of producing a misleading result.
+These lanes prove trigger, transport and surfacing boundaries. The paid Codex lane additionally proves the returned marker reached Codex's transcript; none can prove how a model semantically uses every restored detail.

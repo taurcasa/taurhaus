@@ -37,12 +37,12 @@ Current implementation follows these rules:
 2. Team membership and role composition are durable facts in `teams/<team>/config.json`.
 3. Current attachment state is durable-but-rebuildable in `teams/<team>/runtime/<member>.json`.
 4. Scanner output is observation, not authority.
-5. Compaction, watcher, and operational snapshot files are derived/supporting state, not roster truth.
+5. Compaction delivery state and operational snapshot files are derived/supporting state, not roster truth.
 6. Tool transcript files remain external source material owned by the CLI that wrote them (Claude Code, Codex, Antigravity, Grok), not by Taurhaus.
 
 ## App and Daemon Protocol Pairing
 
-The current daemon protocol is **13** (`daemon/protocol.rs`). Protocol 11 (shipped in 0.7.0) replaced the Claude-only account methods with generic account discovery, usage refresh and tool-agnostic transcript lookup; 12 replaced the retired Google tool wire value with `agy`; 13 added `grok`. Each of those changed the contract in both directions, so the app and daemon ship as a pair and reject a mismatched peer instead of attempting partial compatibility.
+The current daemon protocol is **14** (`daemon/protocol.rs`). Protocol 11 (shipped in 0.7.0) replaced the Claude-only account methods with generic account discovery, usage refresh and tool-agnostic transcript lookup; 12 replaced the retired Google tool wire value with `agy`; 13 added `grok`; 14 retired the Codex compaction mode from the terminal-settings wire contract. Each changed the contract in both directions, so the app and daemon ship as a pair and reject a mismatched peer instead of attempting partial compatibility.
 
 ## Storage Inventory
 
@@ -61,7 +61,7 @@ The current daemon protocol is **13** (`daemon/protocol.rs`). Protocol 11 (shipp
 | Store | Path | Primary writer | Notes |
 |---|---|---|---|
 | Claude compact hook | `<claude_dir>/settings.json` + `<claude_dir>/hooks/taurhaus-session-start-compact.{sh,cmd}` + `hooks/taurhaus-session-start-compact.executable` | Taurhaus | A taurhaus-authored entry inside a Claude-owned settings file. The `.executable` marker records the app exe path so the wrapper is re-installed when it moves |
-| Codex compact hook | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/…` | Taurhaus | Written **only** when `harness.codex_compaction=hooks` and Codex ≥ 0.147; removed when the setting flips back to `transcript` |
+| Codex compact hook | `<CODEX_HOME>/hooks.json` + `<CODEX_HOME>/hooks/…` | Taurhaus | Installed and reconciled by default for managed Codex >= 0.147; the taurhaus entry is idempotently repaired without replacing foreign hooks |
 
 ### 2. Coordination Shared State Under `~/.claude/teams/`
 
@@ -78,9 +78,6 @@ There is exactly one teams-dir authority: `PlatformPaths::teams_dir()` = `claude
 | Member activity snapshot | `teams/<team>/state/activity/<member>.json` | JSON | Daemon session hub (`coordination/activity_export.rs`), on every activity change or when the 30 s refresh is due | mesh idle monitor | Derived | Schema v1 (`coordination/activity_schema.rs`): `stall_recent_activity`, `stall_no_output`, `stall_no_active_process`, `active_non_shell_process`, `recent_io`, `pane_alive`, `pane_foreign`, `last_output_age_secs`, `activity_confidence`. A focus move is not activity and writes nothing. Skipped for teams with no live pane; degraded scan cycles export nothing |
 | Team-daemon credential | `teams/<team>/state/control_auth/<member>.json` | JSON | mesh | mesh | mesh-owned | Taurhaus reads nothing from the file. Before `mesh team-daemon start` it checks three gates and logs `coordination.team_daemon.skipped` with the first failing `reason`: file present (`missing_lead_control_credential`), lead's `config.json` carries a non-empty `controlAuthTokenHash` (`missing_lead_control_auth_token_hash`), lead is not `isActive: false` (`inactive_lead_control_identity`) |
 | Member compaction state | `teams/<team>/state/compaction/<member>.json` | JSON | Taurhaus | Taurhaus | Derived idempotency/audit state | Last compaction handled + terminal result |
-| Compaction signal log | `teams/<team>/state/compaction/signals/codex-compaction-signals.jsonl` | JSONL | Taurhaus extractor | Taurhaus watcher/processor/diagnostics | Derived canonical signal stream | Normalized Codex compaction records |
-| Compaction extractor state | `teams/<team>/state/compaction/extractor-state.json` | JSON | Taurhaus extractor | Taurhaus diagnostics | Derived processing checkpoint | Tracked transcript offsets + last error by file |
-| Compaction watcher state | `teams/<team>/state/compaction/signal-watcher-state.json` | JSON | Taurhaus watcher | Taurhaus diagnostics | Derived processing checkpoint | Last consumed offset + recovery stats |
 
 ### 3. External Tool Data Taurhaus Observes But Does Not Own
 
@@ -119,7 +116,6 @@ Current implementation answers common questions from different stores:
 | Which tool/project does member `Y` currently attach to? | `teams/<team>/runtime/<member>.json` |
 | What message queue should member `Y` read? | `teams/<team>/inboxes/<member>.json` |
 | What was the last handled compaction for member `Y`? | `teams/<team>/state/compaction/<member>.json` |
-| What compaction signals have been emitted but not yet consumed? | signal log + watcher offset under `state/compaction/` |
 | What is the current task/working set used for post-compaction reinjection? | `teams/<team>/state/operational/<member>.json` |
 | What files/commits/tasks belong to a registered project? | SQLite + search index + filesystem/tool sources |
 
@@ -172,7 +168,7 @@ There are three different concepts that often get conflated:
    - what the current process/session scan sees right now
    - ephemeral, computed at runtime
 
-The compaction bugs audited on `2026-03-08` happened when transcript ownership was inferred from scanner/project heuristics instead of consuming authoritative runtime attachment state directly. Current code fixes that by persisting `cli_tool`, `project_path`, and `jsonl_path` on runtime records and by joining config + runtime through the shared roster view (`get_team_roster_with_attachments()`).
+Native compaction hooks resolve their logical member from authoritative runtime attachment state: `session_id` first, then normalized project path. Runtime records persist `cli_tool`, `project_path`, and `jsonl_path`, and config + runtime join through the shared roster view (`get_team_roster_with_attachments()`).
 
 ## Ownership Boundaries
 
@@ -184,7 +180,7 @@ The compaction bugs audited on `2026-03-08` happened when transcript ownership w
 - coordination orchestrator logic
 - `runtime/` attachment state
 - operational snapshots
-- compaction hook processing (one bridge, `coordination/compact_hook.rs`, for Claude, Codex and Grok) and the default Codex transcript signal extraction/watching, plus delivery bookkeeping through `record_delivery_at(teams_dir, …)`
+- compaction hook processing (one bridge, `coordination/compact_hook.rs`, for Claude, Codex and Grok), managed hook reconciliation, and delivery bookkeeping through `record_delivery_at(teams_dir, …)`
 - the single inbox writer `MeshInboxStore::append` for every taurhaus-originated message
 - member launch/liveness ownership checks and authoritative `runtime/` pane identity
 - UI projections and diagnostics
@@ -208,7 +204,7 @@ These files must remain compatible across Taurhaus and mesh. Taurhaus owns the s
 - `config.json` — taurhaus patches only its own authored keys, under the team lock, tmp+rename. Everything else round-trips through `#[serde(flatten)] extra`.
 - `inboxes/<member>.json` — exactly one taurhaus writer, `MeshInboxStore::append`: a per-target `flock` with an inode re-check (`TargetFileLock`), read-modify-write, then tmp+rename while the lock is still held. `externalRelay` and unknown message keys are preserved via `extra`; a corrupt inbox is quarantined to `<member>.json.corrupt.<ts>` and logged as `mesh.inbox.corrupt` (warn).
 
-All three taurhaus producers route through that writer — operator notices for bridged members, operator notices for Claude members, and compaction cards. Operator-originated traffic is sent as `taurhaus` (`MeshInboxMessage::operator_originated`) and reports `DeliveryMethod::InboxFile` truthfully; no `mesh send` sender-candidate chain remains.
+Taurhaus inbox producers route through that writer — operator notices for bridged members, operator notices for Claude members, and grok compaction cards. Operator-originated traffic is sent as `taurhaus` (`MeshInboxMessage::operator_originated`) and reports `DeliveryMethod::InboxFile` truthfully; no `mesh send` sender-candidate chain remains. Claude and Codex compaction cards return on native hook stdout and do not touch the inbox.
 
 ## Key Data Flows
 
@@ -243,30 +239,29 @@ Key point:
 - scanner results do not replace the roster
 - they inform or repair runtime attachment state
 
-### 3. Codex Compaction Detection
+### 3. Codex Compaction Detection and Reinjection
 
 ```text
-managed runtime attachments
-  -> current transcript set
-  -> compaction extractor tails transcript files
-  -> canonical signal JSONL append
-  -> signal watcher consumes from offset
-  -> compaction processor resolves team/member via roster + runtime attachment
-  -> inject / skip / stale / fail
-  -> update per-member compaction state
+managed Codex >= 0.147
+  -> startup/settings reconciliation installs the managed SessionStart(compact) hook
+  -> Codex automatic compaction invokes the runtime-appropriate wrapper
+  -> compact_hook.rs resolves team/member via runtime attachment
+  -> build reinjection card from operational snapshot + role/config metadata
+  -> return hookSpecificOutput.additionalContext on stdout
+  -> record delivered / skipped / failed in per-member compaction state
 ```
 
 Key point:
-- the canonical trigger stream is the signal log, not the raw Codex transcript
-- the authoritative member binding is still runtime attachment, not transcript path heuristics
+- the native Codex hook is the only detection path; transcripts are not tailed for compaction
+- the authoritative member binding is runtime attachment, not transcript path heuristics
 
 ### 4. Post-Compaction Reinjection
 
 ```text
 operational snapshot + role/config metadata + runtime attachment
   -> build reinjection card
-  -> hook path (`compact_hook.rs`, Claude always, Codex when harness.codex_compaction=hooks)
-     or Codex transcript path -> MeshInboxStore::append -> member mesh daemon wakes the pane
+  -> hook path (`compact_hook.rs`, Claude and supported managed Codex)
+     or Grok hook path -> MeshInboxStore::append -> member mesh daemon wakes the pane
   -> record terminal delivery result via record_delivery_at(teams_dir, tool, ...)
 ```
 
@@ -275,9 +270,7 @@ Key point:
 - they do not define membership or session attachment
 - taurhaus performs no tmux injection on this path
 
-**One hook bridge, one owner.** `coordination/compact_hook.rs` serves Claude, Codex and Grok from a single payload parser: the tool is inferred from the reserved `GROK_*` hook env and otherwise from `transcript_path`, the member is resolved by runtime `session_id` first and normalized `cwd` second. The registry decides where the composed card goes — the hook's stdout for Claude and Codex, the member's mesh inbox for grok. `harness.codex_compaction` (a `TerminalSettings` field) defaults to `transcript`; `hooks` is opt-in and only active when Codex ≥ 0.147 and the hook is installed. Antigravity declares no compaction hook.
-
-Compaction has exactly one owner at a time, logged as `compaction.owner.selected {owner: hooks | daemon | app}`: hooks when active, otherwise the daemon when it is configured and connected, otherwise the app — and the app-owned fallback is released again when the daemon recovers.
+**One hook bridge, one detection path.** `coordination/compact_hook.rs` serves Claude, Codex and Grok from a single payload parser: the tool is inferred from the reserved `GROK_*` hook env and otherwise from `transcript_path`, and the member is resolved by runtime `session_id` first and normalized `cwd` second. The registry decides where the composed card goes — the hook's stdout for Claude and Codex, the member's mesh inbox for grok. Managed Codex hooks are on by default when Codex >= 0.147; older versions log one unsupported event and receive no reinjection. Antigravity declares no compaction hook.
 
 ### 5. Project Metadata and Search
 
