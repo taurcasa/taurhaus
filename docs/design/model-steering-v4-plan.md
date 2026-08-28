@@ -1,6 +1,6 @@
 # Model steering and v4 roles — findings and the evaluation plan
 
-Status: Phase A (evidence) complete 2026-08-28; Phase B/C (measured baseline, v4 authoring, re-run) awaiting the go. Sources: [`research/model-steering-profiles-opus.md`](research/model-steering-profiles-opus.md) and [`research/model-steering-profiles-codex.md`](research/model-steering-profiles-codex.md) (two independent researchers, vendor documentation first, 37+ primary URLs), [`research/model-lower-tiers-profiles.md`](research/model-lower-tiers-profiles.md) (cheaper tiers and subscription-bucket economics), [`research/model-evidence-internal.md`](research/model-evidence-internal.md) (our own 25-PR ledger mined per model family, plus the taureval judge check). Everything marked *inferred* below is the researchers' synthesis, not a vendor statement.
+Status: Phase A (evidence, incl. the effort study) complete 2026-08-28; Phase B/C (measured baseline, v4 authoring, re-run) awaiting the go. Sources: [`research/model-steering-profiles-opus.md`](research/model-steering-profiles-opus.md) and [`research/model-steering-profiles-codex.md`](research/model-steering-profiles-codex.md) (two independent researchers, vendor documentation first, 37+ primary URLs), [`research/model-lower-tiers-profiles.md`](research/model-lower-tiers-profiles.md) (cheaper tiers and subscription-bucket economics), [`research/model-evidence-internal.md`](research/model-evidence-internal.md) (our own 25-PR ledger mined per model family, plus the taureval judge check), [`research/effort-ladder-opus.md`](research/effort-ladder-opus.md) and [`research/effort-ladder-codex.md`](research/effort-ladder-codex.md) (reasoning-effort semantics per model, two independent researchers). Team decision 2026-08-28: Claude runs Fable 5 and Opus 5 only (no Sonnet); Codex runs gpt-5.6-sol, with gpt-5.6-luna only as a small-task lane (terra is not used). Everything marked *inferred* below is the researchers' synthesis, not a vendor statement.
 
 ## Why the roles must change, not just their model ids
 
@@ -19,10 +19,9 @@ Common to all: mission + domain context + hard constraints + one two-sided permi
 |---|---|---|---|
 | **Fable 5** (`fable`) | outcome + *why this lane exists*; non-goals and an assess-vs-implement boundary (it takes useful-but-unrequested actions); progress honesty ("audit each claim against a tool result"); principle-based check-ins with an autonomy reminder; a final-copy contract (long runs end in dense arrow-chain summaries); use subagents freely | step lists, verification reminders, any "show/explain your reasoning" (triggers a reasoning-extraction refusal and a silent fallback), scope-expanding "improve as you go" | start at `high`; lower often beats the previous model's xhigh; xhigh for long unattended runs |
 | **Opus 5** (`opus`) | the complete specification up front, then leave it to run; scope containment ("deliver what was asked, at the scope intended"); **three separate length rules** (conversational verbosity, agentic narration, deliverables on disk) — effort does not shorten output; a delegation-damping clause (it over-delegates); reviewers told "report everything, filter in a separate pass" | "double-check", verification reminders, "be conservative"/severity thresholds in reviewer roles, workarounds for older-model vision limits | implementers `high`; reviewers `medium` (review accuracy holds at low) |
-| **gpt-5.6 sol / terra / luna** (Codex) | Goal / Context / Constraints / **Done When**; the two-sided permission matrix; tool-routing rules; required output shape; concrete writing choices instead of tone adjectives | half the role: repeated rules, process/style text that changes nothing, inert examples, repo conventions (→ `AGENTS.md`), blanket brevity (5.6 is already terser) | keep the v3 baseline then try one level lower; ladder low=renames, medium=features/bugfixes, high=multi-file, xhigh=long agentic/architecture. Terra/luna deltas are *inferred*: give terra more explicit routing, luna a narrow job and a pinned output shape, never below `high` for luna |
+| **gpt-5.6 sol / luna** (Codex) | Goal / Context / Constraints / **Done When**; the two-sided permission matrix; tool-routing rules; required output shape; concrete writing choices instead of tone adjectives | half the role: repeated rules, process/style text that changes nothing, inert examples, repo conventions (→ `AGENTS.md`), blanket brevity (5.6 is already terser) | keep the v3 baseline then try one level lower; ladder low=renames, medium=features/bugfixes, high=multi-file, xhigh=long agentic/architecture. luna deltas are *inferred*: give it a narrow job and a pinned output shape, never below `high` |
 | **gemini-3.7-flash / 3.1-pro** (Antigravity) | direct instructions *after* the data; flat paragraphs, light markup; explicit communication guidance (terse by default); the explore → plan → execute phases with the Implementation Plan as the review gate; named verification commands | chain-of-thought scaffolding, heavy nesting, "ask before X" clauses (approvals belong in `toolPermission`), any sampling parameters | `medium` is Google's recommendation for agentic coding; `high` for review/product judgment; flash-medium/low quality is unpublished — measure before unattended use |
 | **grok-4.6 / 4.5** | evidence-grounding + anti-sycophancy clauses; a context-budget clause (price doubles above 200k prompt tokens); plan mode as the approval gate; `AGENTS.md`-native; specify output shape (no vendor style guidance exists) | stacked verification, "load everything" instructions | `high` default; `xhigh` buys ~1 point for much more latency; 4.5 silently maps xhigh→high |
-| **Sonnet** (`sonnet`) | same shape as Opus 5 with a fuller spec and tighter scope | — | `high`; note it is a slower drain of the *same* weekly bucket, not a separate pool |
 
 ## Which model for which task class — hypotheses to test
 
@@ -31,35 +30,49 @@ Evidence: vendor guidance + our ledger. Ledger signals (25 PRs): Opus reviewers 
 | Task class | Hypothesis (frontier) | Cheaper alternative worth testing | Bucket note |
 |---|---|---|---|
 | Coordination / lead | Fable 5 @ high (most dependable at dispatching and sustaining subagents; Opus 5 over-delegates) | Opus 5 when the Fable bucket is exhausted | Fable is the only true bucket switch on Claude |
-| Multi-file implementation, refactors | Opus 5 @ high (UI/design) · gpt-5.6-sol @ high (backend) | gpt-5.6-terra @ high (−1.2 SWE-Bench Pro, 2–2.5× the messages) · grok-4.6 @ high for throughput lanes | Codex: one bucket, drain rate differs per tier |
+| Multi-file implementation, refactors | Opus 5 @ high (UI/design) · gpt-5.6-sol @ medium→high (backend) | grok-4.6 @ high for throughput lanes | Codex: one bucket; effort, not tier, is the lever now that terra is out |
 | Architecture decisions | Fable 5 @ high; second opinion gpt-5.6-sol @ xhigh | none | — |
-| Adversarial / cross-family review | gpt-5.6-sol @ high (never the implementer's family) | terra @ high | not Grok (sycophancy trend) |
-| Broad code review | Opus 5 @ medium, "report everything" | Sonnet @ high | — |
+| Adversarial / cross-family review | gpt-5.6-sol @ high (never the implementer's family) | — | not Grok (sycophancy trend) |
+| Broad code review | Opus 5 @ medium, "report everything" | — | — |
 | Product / design / UI judgment | gemini-3.7-flash @ high via Antigravity (plan/walkthrough artifacts, browser verification) · Opus 5 | — | Antigravity: Gemini bucket separate from the Claude+GPT bucket |
-| Docs drift, claim verification, mechanical sweeps | gpt-5.6-terra @ medium | gpt-5.6-luna @ high · gemini-3.7-flash @ medium | luna ≈ 25× Sol's messages |
+| Docs drift, claim verification, mechanical sweeps | gpt-5.6-luna @ high (small, narrow jobs) · gemini-3.7-flash @ low→medium | — | luna ≈ 25× Sol's messages |
 | Research digests, log analysis, PR triage | gemini-3.7-flash @ high · luna @ high | — | — |
 | Security audit | Opus 5 / gpt-5.6-sol | none (no cheap tier) | Claude cyber classifiers may refuse; Codex as the alternative |
 | Long unattended runs | Fable 5 @ high (published multiday guardrails) · grok-4.6 @ high | — | — |
 
-Dominated, no role: `gpt-5.5`, `gemini-3.6-flash-*`, `gemini-3.5-flash-*` (worse *and* not cheaper).
+Dominated or excluded, no role: `gpt-5.5`, `gpt-5.6-terra` (team decision: sits between sol and luna without a clear job), `gemini-3.6-flash-*`, `gemini-3.5-flash-*`, Sonnet (team decision).
 
 ## Judges (taureval)
 
-The two Anthropic judges are on `claude-opus-4-6` and `claude-sonnet-4-5` (active but stale; Sonnet 4.5 retires ~2026-09-29); the OpenAI judges are current (`gpt-5.6-sol`, `gpt-5.6-terra`). Before Phase B: `opus` and `sonnet` aliases for the Anthropic judges, keep the same-family exclusion, reconsider the hard-coded `effort: high` per judge. A third judge per family (`fable`, `luna`) is optional.
+The two Anthropic judges are on `claude-opus-4-6` and `claude-sonnet-4-5` (active but stale; Sonnet 4.5 retires ~2026-09-29); the OpenAI judges are current (`gpt-5.6-sol`, `gpt-5.6-terra`). Before Phase B: the Anthropic judges become `opus` (and `fable` when its bucket allows) — no Sonnet; the OpenAI judges stay `gpt-5.6-sol` (terra replaced by `luna` at `high` if a second OpenAI judge is wanted); keep the same-family exclusion; judge effort `medium` (review accuracy holds at lower effort per Anthropic).
+
+## Effort is a per-task variable, not a default
+
+Two independent studies agree on the shape (details and the disagreements in the effort reports):
+
+| Complexity | Fable 5 | Opus 5 | gpt-5.6-sol | gpt-5.6-luna | gemini-3.7-flash | grok-4.6 |
+|---|---|---|---|---|---|---|
+| Mechanical sweeps, lookups | low | low | low | low | low | low |
+| Docs verification, checklist review of a diff | medium | low→medium (accuracy holds low) | low→medium | low→medium | low→medium | medium |
+| Implementation from a complete written spec | high | high | **medium** | high | **medium** | high |
+| Ambiguous debugging, architecture decisions | xhigh | high→xhigh | high→xhigh | switch to sol | high | high→xhigh |
+| Long-horizon autonomous runs (> 30 min) | xhigh | xhigh | xhigh | — | — | high |
+| Coordination / lead | high (one study says xhigh) | high + delegation cap | high→xhigh | — | — | high |
+
+Rules that follow from the vendors: the scale is calibrated per model, so "everyone at high" is four unrelated policies (vendor defaults: Anthropic high, OpenAI medium, Google medium, xAI high); Anthropic's own Opus 5 curve puts `medium` ~2 points below `high` at about half the cost and shows a *medium-first, retry-at-high* policy beating high-only; `max` regressed on their chart — never a default; effort is set at launch per member and held (mid-session changes invalidate caching); as effort goes **up** the role gets shorter and outcome-shaped, as it goes **down** the role gains an explicit checklist; delete self-verification instructions from Opus 5 roles at `high` and above; grok's `xhigh` buys ~1 point for +20 % cost while `medium→high` buys ~3 points. Only an eval can settle: the luna cliff, Gemini flash at medium on our tasks, and whether Claude implementation from a written spec really needs `high`.
 
 ## Phase B — measured baseline (needs the go)
 
-v3 roles **as written**, on the current model per family, dev split, one run per cell; the deliverable is the judge rationales per model, not the scores.
+v3 roles **as written**, on the current model per family, dev split, one run per cell, **at two effort levels each** so the baseline also answers the effort question; the deliverable is the judge rationales per model and effort, not the scores.
 
 | Cell | Role (existing) | Adapter | Model / effort | Cases |
 |---|---|---|---|---|
-| B1 | `v3-developer-claude` | claude-code | `opus` / high | 9 (implementation/dev) |
-| B2 | `v3-developer-codex` | codex-cli | `gpt-5.6-sol` / high | 7 |
-| B3 | `v3-developer-agy` | agy-cli | `gemini-3.7-flash-high` / medium | 9 |
-| B4 | `grok-developer` | grok-cli | `grok-4.6` / high | 7 |
-| B5 (optional) | `v3-developer-codex` | codex-cli | `gpt-5.6-terra` / high | 7 |
+| B1 | `v3-developer-claude` | claude-code | `opus` / medium **and** high | 9 (implementation/dev) × 2 |
+| B2 | `v3-developer-codex` | codex-cli | `gpt-5.6-sol` / medium **and** high | 7 × 2 |
+| B3 | `v3-developer-agy` | agy-cli | `gemini-3.7-flash-high` / medium **and** high | 9 × 2 |
+| B4 | `grok-developer` | grok-cli | `grok-4.6` / medium **and** high | 7 × 2 |
 
-≈ 32–39 interactive agent sessions plus judging. Fable cells (lead/architect) wait until the Fable buckets recover after Aug 30/Sep 1.
+≈ 64 interactive agent sessions plus judging (halve it by running one effort first if the budget is tight; `medium` first, since that is the level under question). Fable cells (lead/architect, `high` vs `xhigh`) wait until the Fable buckets recover after Aug 30/Sep 1.
 
 ## Phase C — v4 and the comparison
 
