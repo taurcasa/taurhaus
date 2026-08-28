@@ -24,7 +24,7 @@ Mode handling:
 - Frontend uses compatibility helpers such as `launchClaudeSession(...)`, which call backend `launch_cli_session`.
 - Backend resolves project path, then resolves command from settings per `(tool, mode)`.
 - Session launches in tmux using selected layout strategy.
-- In the current UI, `Continue` is distinct for Claude, `New <Tool> Session` is available for Claude/Codex/Gemini, and `Resume <Tool>` is available for Claude/Codex/Gemini.
+- In the current UI, `Continue` is distinct for Claude, `New <Tool> Session` is available for Claude/Codex/Antigravity, and `Resume <Tool>` is available for Claude/Codex/Antigravity.
 
 ## Per-tool launch commands
 
@@ -34,7 +34,7 @@ Default commands (configurable in Settings):
 |------|----------|-------|--------|
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
-| Gemini | `gemini --yolo --resume` | `gemini --yolo` | `gemini --yolo --resume` |
+| Antigravity | `agy --continue` | `agy` | `agy --conversation {session_id}` |
 
 Notes:
 - Commands are editable per tool/mode in `Settings -> Terminal & Sessions / CLI Tools`.
@@ -46,7 +46,7 @@ Stopping is pane-targeted (`stop_claude_session(tmux_pane, cli_tool)`), then bac
 
 Current tool behavior:
 - Claude: sends `/exit` to tmux pane
-- Gemini: sends `/exit` to tmux pane
+- Antigravity: sends `/exit` to tmux pane, then waits for the presence lock to clear
 - Codex: sends `Ctrl+C` (key signal)
 
 After exit signal:
@@ -103,8 +103,8 @@ Windows-specific detail:
 
 Right-click project menu exposes command-center actions:
 - `Continue Claude`
-- `New Claude Session`, `New Codex Session`, `New Gemini Session`
-- `Resume Claude`, `Resume Codex`, `Resume Gemini`
+- `New Claude Session`, `New Codex Session`, `New Antigravity Session`
+- `Resume Claude`, `Resume Codex`, `Resume Antigravity`
 - `Open in Terminal` when a live session has tmux metadata
 - Per-running-session Restart/Stop actions
 

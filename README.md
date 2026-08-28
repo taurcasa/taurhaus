@@ -4,7 +4,7 @@
 
 # taurhaus
 
-A desktop app for developers who run Claude Code, Codex, Gemini CLI, and multi-agent Mesh teams across several projects at once.
+A desktop app for developers who run Claude Code, Codex, Antigravity CLI, and multi-agent Mesh teams across several projects at once.
 
 Instead of flipping between terminal tabs to check what's running, what changed, and what broke, taurhaus puts it all in one window — live sessions, project history, task boards, and team coordination.
 
@@ -14,7 +14,7 @@ Instead of flipping between terminal tabs to check what's running, what changed,
 
 ## Why taurhaus
 
-AI-assisted development gets messy fast. One project has a Codex session running, another has Claude mid-refactor, Gemini is cleaning up TODOs somewhere else, and a Mesh team is halfway through a coordinated change. The terminal can handle all of that, but it won't help you keep track of it.
+AI-assisted development gets messy fast. One project has a Codex session running, another has Claude mid-refactor, Antigravity is handling a review somewhere else, and a Mesh team is halfway through a coordinated change. The terminal can handle all of that, but it won't help you keep track of it.
 
 taurhaus is built for exactly that situation:
 
@@ -54,7 +54,7 @@ You can go from a session handoff or commit list straight into syntax-highlighte
 
 Most multi-agent setups today are fire-and-forget. You give a subagent a prompt, it does its work, and when it's done, it's done. You can't talk to it while it's running. Each agent is an isolated job.
 
-Mesh works differently. It uses tmux sessions to keep full CLI tool instances — Claude Code, Codex, Gemini — alive as persistent team members that can send and receive messages while they work. A Claude lead can assign a task to a Codex agent, check on a Gemini reviewer, and coordinate across all of them in real time. The agents aren't disposable workers; they're a team with ongoing context.
+Mesh works differently. It uses tmux sessions to keep full CLI tool instances — Claude Code, Codex, Antigravity — alive as persistent team members that can send and receive messages while they work. A Claude lead can assign a task to a Codex agent, check on an Antigravity reviewer, and coordinate across all of them in real time. The agents aren't disposable workers; they're a team with ongoing context.
 
 Under the hood, Mesh builds on the same file structure that Claude Code already uses for its own task and team management (`~/.claude/tasks/`, `~/.claude/teams/`). That means Claude Code agents on a Mesh team don't need special adapters — they read and write to the same files they'd normally use. The team infrastructure is mostly invisible to each agent's native tooling, which is what makes cross-tool coordination possible without forcing every tool into a new protocol.
 
@@ -110,7 +110,7 @@ Before installing taurhaus, you need:
 2. **At least one supported AI CLI**
    - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
    - [Codex CLI](https://github.com/openai/codex)
-   - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+   - [Antigravity CLI (`agy`)](https://github.com/google-antigravity/antigravity-cli)
 3. **Mesh CLI** if you want multi-agent team orchestration
    - taurhaus can install or update the bundled Mesh binary when supported
 

@@ -28,7 +28,7 @@ Lead roles are no longer Claude-only. Built-in and user presets can now target:
 
 - `claude` lead roles
 - `codex` lead roles
-- `gemini` lead roles
+- `agy` lead roles
 
 The current setup flow is:
 
@@ -100,7 +100,7 @@ Use this as the conceptual template for a role:
 defaults:
   cli_tool: codex
   model: gpt-5.4          # bare slug
-  reasoning_effort: high  # separate field; null for Claude/Gemini roles
+  reasoning_effort: high  # separate field; null when a model has no separate effort
   default_name_pattern: architect-{project}
 
 focus_area: "Architecture decisions and structural review"
@@ -139,7 +139,7 @@ The current template system remains structurally the same, but the role schema n
 
 ### Model and reasoning effort
 
-The canonical on-disk form is a bare model slug plus a separate `reasoning_effort` under `defaults:` — all 38 bundled roles use it (`model: gpt-5.4` / `reasoning_effort: high`; `null` for Claude and Gemini roles). Legacy spellings `"gpt-5.4 high"` and `"gpt-5.4-high"` still load through `ModelSpec::parse_legacy` in composition and request normalization, and `SlotOverrides` — agent slots and `lead_overrides` — take `model` and `reasoning_effort` as separate fields too. Saving from the editor always writes the canonical form.
+The canonical on-disk form is a bare model slug plus a separate `reasoning_effort` under `defaults:` — bundled roles use `model: gpt-5.4` / `reasoning_effort: high` where supported and `null` otherwise. Legacy spellings `"gpt-5.4 high"` and `"gpt-5.4-high"` still load through `ModelSpec::parse_legacy` in composition and request normalization, and `SlotOverrides` — agent slots and `lead_overrides` — take `model` and `reasoning_effort` as separate fields too. Saving from the editor always writes the canonical form.
 
 That means this guide changes both **how to think about roles** and what concrete fields you should author.
 
@@ -242,7 +242,7 @@ Apply sends the final roster in the same initialize shape used by manual setup.
 Current lead-mode rule:
 
 - **Claude leads** may use the existing attach-existing flow.
-- **Codex and Gemini leads** are currently `launch_new` only. If a preset or request tries `attach_existing`, backend validation rejects it with a clear error instead of silently falling back.
+- **Codex and Antigravity leads** are currently `launch_new` only. If a preset or request tries `attach_existing`, backend validation rejects it with a clear error instead of silently falling back.
 
 ## Import, Export, and Provenance
 
@@ -301,7 +301,7 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 Current built-ins ship from `src-tauri/resources/templates/`:
 
 - **Roles (38)**:
-  - legacy and imported-compatible roles such as `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-developer`, and `gemini-ui-specialist`
+  - legacy and imported-compatible roles such as `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-developer`, and `antigravity-ui-specialist`
   - taurhaus-specific roles such as `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, and `taurhaus-designer`
   - v2 and v3 role families such as `v2-lead-claude`, `v2-developer-codex`, `v3-lead-claude`, `v3-architect-codex`, and `v3-product-checker-claude`
   - newer specialist roles: `adversarial-reviewer-claude`, `docs-verifier-codex`, `quick-dev-codex`, `frontend-design-skill-developer`, `claude-design-lead`, `claude-product-checker`, `codex-product-lead`, `codex-qa`, `codex-vertical-slice-developer`

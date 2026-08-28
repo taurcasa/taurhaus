@@ -114,7 +114,7 @@ When the active platform does not support custom launch commands, the custom-com
 |------|----------|-------|--------|
 | Claude | `claude --dangerously-skip-permissions --continue` | `claude --dangerously-skip-permissions` | `claude --dangerously-skip-permissions --resume` |
 | Codex | `codex --yolo` | `codex --yolo` | `codex resume --last --yolo` |
-| Gemini | `gemini --yolo --resume` | `gemini --yolo` | `gemini --yolo --resume` |
+| Antigravity | `agy --continue` | `agy` | `agy --conversation {session_id}` |
 
 Each tool has a "Reset to defaults" button. Commands are editable per-mode (continue, fresh, resume).
 

@@ -1,6 +1,6 @@
 # Task board
 
-The task board aggregates work items from Claude Code, Codex CLI, and Gemini CLI into one per-project view. It provides a Kanban-style active board, task detail enrichment, and a history view grouped by archived sessions.
+The task board aggregates transcript-backed work items from Claude Code and Codex CLI into one per-project view. It provides a Kanban-style active board, task detail enrichment, and a history view grouped by archived sessions.
 
 ## Overview
 
@@ -15,7 +15,7 @@ Frontend layout (`TaskBoard.svelte`) has two sub-tabs:
 
 Task identity is not just `source + task_id`. taurhaus persists tasks with a source-scoped key:
 
-- `source`: `claude`, `codex`, or `gemini`
+- `source`: `claude` or `codex`
 - `source_key`: per-source directory/session identity
 - `source_task_id`: task ID inside that source key
 
@@ -56,21 +56,9 @@ Parsing (`task_scanner/codex.rs`):
 - Reads only tail of large JSONL files (256 KB) and parses the last `update_plan` call.
 - Maps plan step statuses to unified task status and emits synthetic IDs (`codex-0`, `codex-1`, ...).
 
-### Gemini CLI
-
-Source:
-
-- `TODO.md` in the project root
-
-Parsing (`task_scanner/gemini.rs`):
-
-- Parses markdown checkbox lines (`- [ ]`, `- [x]`, `- [X]`).
-- Uses line-number-based IDs (`todo-<line>`).
-- Returns empty list when file missing; enforces 1 MB max file size.
-
 ## Aggregation and normalization
 
-`task_scanner::get_tasks_for_project` orchestrates all three parsers and returns:
+`task_scanner::get_tasks_for_project` orchestrates the registered transcript parsers and returns:
 
 - `tasks: Vec<UnifiedTask>`
 - `errors: Vec<(source, message)>`
@@ -80,7 +68,7 @@ Behavior:
 
 - One source failing does not block other sources.
 - Status values are normalized to `pending`, `in_progress`, `completed`.
-- Source is normalized to `claude`, `codex`, or `gemini`.
+- Source is normalized to `claude` or `codex`.
 - Scan outcome is tri-state per source:
   - `Data(tasks)` means usable source data was read
   - `DefinitivelyEmpty` means source scanned successfully and had no tasks
@@ -115,7 +103,7 @@ Flow:
 
 Card content includes:
 
-- Source icon (Claude/Codex/Gemini)
+- Source icon (Claude/Codex)
 - Subject (+ line-through when completed)
 - Optional description preview
 - Optional dependency/owner metadata
@@ -191,11 +179,10 @@ Result: users return to the same sub-tab/task context when moving between projec
 | `src/lib/SessionHistory.svelte` | Archived-session accordion and lazy commit/file drill-down. |
 | `src/lib/taskHelpers.js` | Shared task status labels/badge style mapping. |
 | `src-tauri/src/commands/tasks.rs` | Task IPC commands, detail/session enrichment, persistence helpers, scanner integration. |
-| `src-tauri/src/task_scanner/mod.rs` | Aggregates Claude/Codex/Gemini scanners with partial-failure handling. |
+| `src-tauri/src/task_scanner/mod.rs` | Aggregates registered transcript scanners with partial-failure handling. |
 | `src-tauri/src/task_scanner/claude.rs` | Claude unified scan-all parser with source-index project classification. |
 | `src-tauri/src/task_scanner/claude_index.rs` | Session/team source-key index used to map Claude task directories to projects. |
 | `src-tauri/src/task_scanner/codex.rs` | Codex `update_plan` JSONL parser + offline session matching. |
-| `src-tauri/src/task_scanner/gemini.rs` | Gemini `TODO.md` checkbox parser. |
 | `src-tauri/src/task_scanner/types.rs` | Unified task DTOs and task board response types. |
 
 ## Related documents

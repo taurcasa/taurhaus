@@ -4,7 +4,7 @@ Session management detects live AI CLI tool sessions, maps them to projects, and
 
 ## Overview
 
-taurhaus automatically detects running AI sessions (Claude Code, Codex, Gemini CLI), shows their status in the sidebar, and preserves session history for later context.
+taurhaus automatically detects running AI sessions (Claude Code, Codex, Antigravity CLI), shows their status in the sidebar, and preserves session history for later context.
 
 When a session is actively working, you see a green indicator. When it's waiting for input, it turns amber. Hover over a project to see session details; click a tool icon to jump to that terminal.
 
@@ -18,7 +18,7 @@ Session management has three layers:
 Supported CLI tools:
 - Claude Code (`claude`)
 - Codex CLI (`codex`)
-- Gemini CLI (`gemini`)
+- Antigravity CLI (`agy`)
 
 Each tool has:
 - its own process signature matcher
@@ -51,8 +51,8 @@ Process inspection uses platform-specific implementations:
 
 | Platform | Process CWD/TTY/IO strategy |
 |------|------------------------------|
-| Linux | `/proc` (`/proc/<pid>/cwd`, `/proc/<pid>/fd/0`, `/proc/<pid>/io`, `/proc/<pid>/net/tcp*`) |
-| macOS | `libproc` + `lsof` fallback (CWD/TTY/socket checks) |
+| Linux | `/proc` (`/proc/<pid>/cwd`, `/proc/<pid>/fd/0`, `/proc/<pid>/io`) |
+| macOS | `libproc` + `lsof` fallback (CWD/TTY checks) |
 | Windows | Native scan is no-op; session detection is handled by WSL daemon path |
 
 ## Per-tool idle/activity detection
@@ -63,13 +63,13 @@ SessionResolver-based file detection:
 |------|---------------------|--------------------|------------|
 | Claude | `~/.claude/projects/<slug>/*.jsonl` + `<session>/subagents/*.jsonl` | 5s mtime | Subagent mtime keeps compaction work marked active |
 | Codex | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` matched by transcript/project metadata | 10s mtime | 7-day lookback supports resumed sessions stored in older date dirs |
-| Gemini | `~/.gemini/tmp/<dir-or-hash>/chats/*.json` | 5s mtime | Supports both newer directory-name layout and older path-hash layout |
+| Antigravity | `last_conversations.json` plus `~/.gemini/antigravity-cli/presence/*.lock` | presence lock | Conversation id is selected by canonical project path; stale locks fall back to process IO |
 
 Path roots for these tool-specific locations are centralized behind backend `PlatformPaths` and shared path-normalization helpers so Windows, WSL, and native lookups use one authority.
 
 Process-level supplemental signals:
 - Claude: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis
-- Gemini: ESTABLISHED TCP socket to remote `:443` indicates active API call
+- Antigravity: `/proc` IO (`rchar` delta threshold) unless the opt-in hooks sink supplies an authoritative state
 - Codex: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis; file mtime is kept as fallback only when the project has a single Codex session
 
 ## Bidirectional hysteresis
@@ -135,7 +135,7 @@ Session History timeline view:
 - Uses transcript-derived time windows when possible:
   - Claude: `~/.claude/projects/<slug>/<session>.jsonl`
   - Codex: matched JSONL in `~/.codex/sessions/YYYY/MM/DD/`
-  - Gemini: matched chat JSON in `~/.gemini/tmp/.../chats/`
+  - Antigravity: no transcript parser; persisted task timestamps are used as the floor
 - Falls back to persisted task timestamps (`first_seen_at`/`updated_at`) when transcript range cannot be resolved.
 - Includes structured per-session warnings (`enrichment_warnings`) in API responses when fallback is used or enrichment partially fails.
 - For team-scoped Claude task groups (where `session_id` is a team name), transcript lookup is skipped intentionally and timestamp fallback is used silently.
@@ -158,7 +158,7 @@ Indicator visibility is conditional:
 |------|---------|
 | `src/lib/sessionStore.svelte.js` | Session snapshot store, event-apply path, mock-mode polling, per-session runtime metrics, activity persistence trigger |
 | `src/lib/sessionIndicator.js` | Tool indicator semantics, active/idle coloring, row tinting |
-| `src/lib/toolLogos.js` | Shared SVG logos + display names for Claude/Codex/Gemini |
+| `src/lib/toolLogos.js` | Shared SVG logos + display names for Claude/Codex/Antigravity |
 | `src/lib/Sidebar.svelte` | Session badges in project list, tmux jump interactions, hover-card entry point |
 | `src/lib/HoverCard.svelte` | Live session detail card + historical activity preview |
 | `src/lib/SessionHistory.svelte` | Archived session timeline with task/commit/file drill-down |
@@ -166,15 +166,15 @@ Indicator visibility is conditional:
 | `src-tauri/src/daemon/session_activity.rs` | Daemon-owned `DisplaySession` hub, adaptive cadence, and long-poll snapshots |
 | `src-tauri/src/provider/platform_paths.rs` | Authoritative platform-sensitive path roots for CLI/session locations |
 | `src-tauri/src/session_scanner/process.rs` | Process discovery and CLI tool detection from `ps` output |
-| `src-tauri/src/session_scanner/proc_io.rs` | Claude/Codex IO activity heuristic + Gemini TCP activity checks |
+| `src-tauri/src/session_scanner/proc_io.rs` | Shared process-IO activity heuristic |
 | `src-tauri/src/session_scanner/idle/mod.rs` | SessionResolver abstraction and shared detection helpers |
 | `src-tauri/src/session_scanner/idle/claude.rs` | Claude session file + subagent mtime logic |
 | `src-tauri/src/session_scanner/idle/codex.rs` | Codex date-tree lookup + CWD matching + 7-day lookback |
-| `src-tauri/src/session_scanner/idle/gemini.rs` | Gemini chats directory/hash resolution + mtime logic |
+| `src-tauri/src/session_scanner/idle/agy.rs` | Antigravity conversation identity + presence-lock resolution |
 | `src-tauri/src/daemon/session_listener.rs` | App-side daemon long-poll client for `wait_session_updates` |
 | `src-tauri/src/daemon_lifecycle.rs` | Session updates bridge (`sessions-updated`) and daemon reconnect flow |
-| `src-tauri/src/platform/linux.rs` | Linux `/proc` process/IO/socket inspection |
-| `src-tauri/src/platform/darwin.rs` | macOS `libproc` + `lsof` process/socket inspection |
+| `src-tauri/src/platform/linux.rs` | Linux `/proc` process/IO inspection |
+| `src-tauri/src/platform/darwin.rs` | macOS `libproc` + `lsof` process inspection |
 | `src-tauri/src/session/parser.rs` | Handoff markdown/frontmatter + sidecar parser |
 | `src-tauri/src/services/session_import.rs` | Handoff import and dedup into sessions table |
 | `src-tauri/src/commands/sessions.rs` | Session summary/list/detail IPC for overview |
