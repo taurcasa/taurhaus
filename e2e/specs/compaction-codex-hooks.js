@@ -322,6 +322,9 @@ async function initializeManagedCodexTeam() {
   let paneId = null
   let sessionId = null
   try {
+    // The pane is required; the captured rollout id is not — the bridge falls
+    // back to matching the payload's cwd against the member's project path, so
+    // a scanner that has not caught up yet must not fail the lane.
     await browser.waitUntil(
       async () => {
         const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
@@ -335,7 +338,10 @@ async function initializeManagedCodexTeam() {
         interval: 2_000,
         timeoutMsg: `Managed Codex member ${memberName} never reported a pane and a captured session`,
       }
-    )
+    ).catch((error) => {
+      if (!paneId) throw error
+      console.log(`[e2e] ${memberName} pane ${paneId} has no captured session id yet; the bridge will match on cwd`)
+    })
   } finally {
     restorePaneEnvironment()
   }
@@ -343,6 +349,31 @@ async function initializeManagedCodexTeam() {
   writeOperationalSnapshot(teamName, memberName, TAURHAUS_PROJECT_PATH)
 
   return { teamName, memberName, paneId, sessionId }
+}
+
+/**
+ * Best-effort wait for the member to stop working.
+ *
+ * `/compact` and the filler prompts are typed into a live TUI: sent mid-turn
+ * Codex queues them as input instead of acting on them. Activity comes from the
+ * scanner, so this never fails the case — it just stops the lane from typing
+ * into a busy pane when the signal is there.
+ */
+async function waitForMemberIdle(teamName, memberName, timeoutMs = 120_000) {
+  try {
+    await browser.waitUntil(
+      async () => {
+        const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
+        const member = (status?.members ?? []).find((entry) => entry?.name === memberName)
+        return (member?.sessionStatus ?? member?.session_status) === 'idle'
+      },
+      { timeout: timeoutMs, interval: 2_000, timeoutMsg: 'not idle' }
+    )
+    return true
+  } catch {
+    console.log(`[e2e] ${memberName} never reported idle within ${timeoutMs}ms; sending anyway`)
+    return false
+  }
 }
 
 /**
@@ -509,6 +540,8 @@ describe('Codex compaction via hooks', function () {
     if (!laneEnabled) return this.skip()
     this.timeout(300_000)
 
+    await waitForMemberIdle(managed.teamName, managed.memberName)
+
     const offset = currentLogOffset()
     sendPaneLine(managed.paneId, '/compact')
 
@@ -563,6 +596,7 @@ describe('Codex compaction via hooks', function () {
 
     while (turns < AUTO_COMPACTION_MAX_TURNS && !hookDelivery(collected, managed.memberName)) {
       turns += 1
+      await waitForMemberIdle(managed.teamName, managed.memberName, 60_000)
       const filler = writeFillerFile(turns)
       sendPaneLine(managed.paneId, `Read ${filler} and reply with only the number of list items it contains.`)
 
