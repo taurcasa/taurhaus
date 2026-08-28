@@ -390,6 +390,32 @@ mod tests {
         }
     }
 
+    fn runtime_session(pid: u32, session_id: &str) -> RuntimeSession {
+        RuntimeSession {
+            pid,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/7".to_string(),
+            args: "codex --yolo".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: Some("0".to_string()),
+            tmux_pane: Some("%7".to_string()),
+            tmux_window_name: Some("taurhaus".to_string()),
+            state: SessionState::Active,
+            session_id: Some(session_id.to_string()),
+            jsonl_path: Some(format!("/tmp/codex/sessions/{session_id}.jsonl")),
+            recent_io: false,
+            last_output_age_secs: Some(1),
+            activity_confidence: ActivityConfidence::High,
+            activity_attribution: ActivityAttribution::Attributed,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+        }
+    }
+
     fn tmux_map(tty: &str) -> HashMap<String, tmux::TmuxPane> {
         HashMap::from([(
             tty.to_string(),
@@ -416,29 +442,7 @@ mod tests {
             .clear();
         set_display_scan_completed_hook(Some(record_completed_session_count));
 
-        let runtime_sessions = vec![RuntimeSession {
-            pid: 42,
-            project_path: "/home/user/projects/taurhaus".to_string(),
-            tty: "/dev/pts/7".to_string(),
-            args: "codex --yolo".to_string(),
-            cli_tool: CliTool::Codex,
-            tmux_session: Some("taurhaus".to_string()),
-            tmux_window: Some("0".to_string()),
-            tmux_pane: Some("%7".to_string()),
-            tmux_window_name: Some("taurhaus".to_string()),
-            state: SessionState::Active,
-            session_id: Some("sess-123".to_string()),
-            jsonl_path: Some("/home/user/.codex/sessions/sess-123.jsonl".to_string()),
-            recent_io: false,
-            last_output_age_secs: Some(1),
-            activity_confidence: ActivityConfidence::High,
-            activity_attribution: ActivityAttribution::Attributed,
-            project_unattributed_active: false,
-            group_kind: SessionGroupKind::Standalone,
-            group_id: None,
-            group_label: None,
-            member_name: None,
-        }];
+        let runtime_sessions = vec![runtime_session(42, "sess-123")];
         let display_sessions = runtime_sessions
             .iter()
             .cloned()
@@ -688,6 +692,8 @@ mod tests {
         let pid = 900_007;
         reported_state(pid, SessionState::Active);
         let no_runtime_sessions: [RuntimeSession; 0] = [];
+        let last_good_runtime_sessions = vec![runtime_session(pid, "last-good-session")];
+        update_runtime_sessions(&last_good_runtime_sessions);
 
         let degraded = finalize_display_scan(
             Vec::new(),
@@ -698,6 +704,10 @@ mod tests {
             },
         );
         assert!(degraded.is_empty());
+        // Regression: 7516a07 deleted the published-session assertion with the
+        // transcript extractor seam even though account and usage resolution
+        // still consume this last-good snapshot.
+        assert_eq!(latest_runtime_sessions(), last_good_runtime_sessions);
         {
             let guard = STATE_TRACKERS
                 .lock()
@@ -712,6 +722,10 @@ mod tests {
             Vec::new(),
             Some(&no_runtime_sessions),
             ScanCompletionMetrics::default(),
+        );
+        assert!(
+            latest_runtime_sessions().is_empty(),
+            "healthy control scan must publish its runtime-session snapshot"
         );
         {
             let guard = STATE_TRACKERS

@@ -40,6 +40,26 @@ fn unknown_codex_version_leaves_existing_hook_untouched() {
     assert!(hooks.contains("taurhaus-session-start-compact"));
 }
 
+#[test]
+fn the_last_codex_member_removes_the_managed_hook() {
+    // Regression: 1615cea collapsed Codex hook reconciliation but left the
+    // no-managed-member arm as a no-op, so disbanding the last Codex team left
+    // taurhaus running from the user's hooks.json on every future session.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let codex_home = tmp.path().join("codex-home");
+    let exe = tmp.path().join("taurhaus-daemon");
+    std::fs::write(&exe, b"daemon").expect("daemon fixture");
+
+    reconcile_codex_hook_at_with_support(&codex_home, true, Some(true), &exe)
+        .expect("install for the first managed Codex member");
+    assert!(crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+
+    let changed = reconcile_codex_hook_at_with_support(&codex_home, false, Some(true), &exe)
+        .expect("remove after the last managed Codex member");
+    assert!(changed);
+    assert!(!crate::coordination::compact_hook::codex_compact_hook_is_installed_at(&codex_home));
+}
+
 // Regression: 791f6be had no version-gated managed notify input, so adding the
 // flag directly to LaunchSpec would also have rewritten unmanaged/user bases.
 #[test]

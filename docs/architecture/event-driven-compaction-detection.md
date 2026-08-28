@@ -1,5 +1,7 @@
 # Event-Driven Compaction Detection
 
+> **Retired design (2026-08, C3).** This proposal describes the deleted Codex transcript extractor/watcher/processor pipeline and is kept only as historical context. Native hooks are now the only compaction owner; use [`docs/operations/compaction-testing.md`](../operations/compaction-testing.md) for the live behavior and diagnostics.
+
 Task: `#729`
 Owner: `architect`
 Date: `2026-03-08`

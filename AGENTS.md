@@ -257,7 +257,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
 - **Harness model**: Four registered CLI harnesses — `claude` (Claude Code), `codex` (Codex CLI), `agy` (Antigravity CLI), `grok` (Grok CLI). Per-tool code lives in capability slices behind `src-tauri/src/session_scanner/cli_tool.rs`; never branch on tool identity outside those slices. See `docs/architecture/harness-model.md`.
 - **IPC**: Fine-grained commands (currently 90 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.
-- **Daemon protocol**: `PROTOCOL_VERSION = 13` in `src-tauri/src/daemon/protocol.rs`; app and daemon must match exactly. 11 made the account methods generic, 12 replaced the retired Google tool value with `agy`, 13 added `grok`.
+- **Daemon protocol**: `PROTOCOL_VERSION = 14` in `src-tauri/src/daemon/protocol.rs`; app and daemon must match exactly. 11 made the account methods generic, 12 replaced the retired Google tool value with `agy`, 13 added `grok`, and 14 retired the Codex compaction mode.
 - **Accounts and usage**: Per-tool providers in `src-tauri/src/session_scanner/accounts/`. Every registered harness has an account provider (`cli_tool.rs`, `account_provider()`) — these are independent capabilities, not one gate. `account_selector`/`account_selection` (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME`) is what enables *switching*: Antigravity declares neither, so its provider describes one implicit account and no chooser, chip or submenu appears. The separate `usage` flag decides whether a *usage* provider exists (Claude, Codex, Antigravity; Grok is `usage: false` and shows the registry's note where a meter would be). Choices live in `project_tool_accounts` (migration 013). Tokens are never logged, persisted, or refreshed by taurhaus.
 - **Git**: libgit2 via `git2` crate. In-process, no CLI dependency.
 - **Markdown**: Frontend rendering with Shiki (VS Code grammars). Raw text over IPC.
@@ -302,9 +302,9 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, team roots, daemon binary, log path, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
 | `src-tauri/src/coordination/claude_hooks.rs` | Claude `SessionStart(source=compact)` bridge, runtime-aware hook installation, and standalone hook logging. |
-| `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
-| `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |
-| `src-tauri/src/session_scanner/compaction_watcher.rs` | Signal-log watcher that feeds compaction processing. |
+| `src-tauri/src/coordination/compact_hook.rs` | Native compaction-hook bridge and managed Codex/Grok hook installers. |
+| `src-tauri/src/coordination/stores/compaction.rs` | Compaction delivery idempotency state and audit bookkeeping. |
+| `src-tauri/src/session_scanner/transcript_boundary.rs` | Bounded transcript-tail parsing used to timestamp Codex native-hook delivery. |
 | `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
 | `docs/coordination-architecture.md` | Coordination subsystem decisions, milestones, and status |
@@ -325,7 +325,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Add/fix a Svelte component | `src/lib/components/` (component file plus matching test in same directory) |
 | Fix file watcher behavior | `src-tauri/src/startup/watchers.rs`, `src-tauri/src/fs/watcher.rs`, `src-tauri/src/event_processor.rs` |
 | Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/idle/`, `src-tauri/src/session_scanner/process.rs` |
-| Fix compaction detection / reinjection | `src-tauri/src/session_scanner/compaction_extractor.rs`, `src-tauri/src/session_scanner/compaction_watcher.rs`, `src-tauri/src/coordination/compaction_processor.rs` |
+| Fix compaction detection / reinjection | `src-tauri/src/coordination/compact_hook.rs`, `src-tauri/src/coordination/stores/compaction.rs`, `src-tauri/src/session_scanner/transcript_boundary.rs`, `src-tauri/src/commands/terminal_settings.rs` |
 | Fix path/root resolution | `src-tauri/src/provider/path.rs`, `src-tauri/src/provider/platform_paths.rs` |
 | Add database query logic | `src-tauri/src/db/`, then `src-tauri/src/models/mod.rs` |
 

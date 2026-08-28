@@ -199,7 +199,8 @@ pub(crate) fn reconcile_codex_hook_at_with_support(
     match (has_managed_codex, hooks_supported) {
         (true, Some(true)) => ensure_codex_compact_hook_installed_at(codex_home, taurhaus_exe),
         (true, Some(false)) => remove_codex_compact_hook_at(codex_home),
-        _ => Ok(false),
+        (false, _) => remove_codex_compact_hook_at(codex_home),
+        (true, None) => Ok(false),
     }
 }
 
