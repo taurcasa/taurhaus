@@ -1,10 +1,9 @@
 /**
  * Live Codex compaction through the hook bridge (Tier 2, Linux, paid).
  *
- * This lane proves on a real host that a managed Codex member running with
- * `terminal.harness.codex_compaction = hooks` gets its restored-context card
- * back through `coordination/compact_hook.rs` — not through the JSONL
- * transcript tailer.
+ * This lane proves on a real host that a managed Codex member gets its
+ * restored-context card back through the default `coordination/compact_hook.rs`
+ * path.
  *
  * Acceptance is what Codex does with the card, not what taurhaus logged about
  * itself: `compaction.codex_hook.delivered` is emitted before the response is
@@ -51,9 +50,8 @@
  * would be pointed at roots this run later deletes.
  *
  * Everything this lane changes outside its own temp root — that tmux session
- * environment, the panes it opens in the operator's session, the compaction
- * mode the settings IPC pushes to the operator's shared daemon — is taken on as
- * an undo with `laneCleanup` the moment the change is made. A run that costs
+ * environment and the panes it opens in the operator's session — is taken on
+ * as an undo with `laneCleanup` the moment the change is made. A run that costs
  * money and takes minutes is the one an operator interrupts, and an interrupt
  * never reaches Mocha's `after`: `wdio.conf.js` deletes the session temp root
  * and exits on the first SIGINT. The undos sit in front of that handler.
@@ -66,7 +64,6 @@ import { dirname, join } from 'node:path'
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
-import { DEFAULT_DAEMON_PORT, handBackCompactionMode, setDaemonCodexCompactionMode } from '../helpers/daemonCompaction.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { countCompactionBoundaries, pathsContainingMarker, rolloutPaths } from '../helpers/codexRollout.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
@@ -140,14 +137,10 @@ laneCleanup.install()
 
 const PANE_ENVIRONMENT_STEP = 'tmux-session-environment'
 const LANE_PANES_STEP = 'lane-tmux-panes'
-const DAEMON_MODE_STEP = 'daemon-compaction-mode'
 
 let mainApp = false
 let laneEnabled = false
 let laneSkipReason = 'Codex compaction prerequisites unavailable'
-let originalSettings = null
-/** The compaction mode the daemon was running, while this lane still owes it. */
-let daemonModeOwed = null
 let managed = null
 const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
@@ -524,41 +517,10 @@ async function pickRoleIds() {
   return { leadRoleId: idOf(lead), agentRoleId: idOf(agent) }
 }
 
-function codexCompactionMode(settings) {
+function expectRetiredCodexCompactionSettingAbsent(settings) {
   const harness = settings?.terminal?.harness ?? {}
-  return harness.codexCompaction ?? harness.codex_compaction ?? null
-}
-
-/**
- * Hand the daemon back the mode it was running, without going through the app.
- *
- * `update_settings` pushes the mode to the connected daemon, and on this host
- * that is the operator's own daemon on 17233 — the isolated `TAURHAUS_DATA_DIR`
- * does not insulate it. This is the same restoration for the paths where there
- * is no app left to ask, and for the teardown, where the IPC's own answer says
- * nothing about whether the daemon took the push (see `handBackCompactionMode`).
- *
- * The step is settled only on a daemon that confirmed, so a failed attempt is
- * still owed and gets one more try from `laneCleanup.run()`.
- */
-function restoreDaemonModeDirectly() {
-  if (!daemonModeOwed) return
-  const port = originalSettings?.daemon?.port ?? DEFAULT_DAEMON_PORT
-  const result = setDaemonCodexCompactionMode(daemonModeOwed, { port })
-  console.log(
-    result.ok
-      ? `[e2e] daemon compaction mode put back to ${daemonModeOwed}`
-      : `[e2e] daemon compaction mode may still be "hooks" — restoring ${daemonModeOwed} failed: ${result.error}`
-  )
-  if (result.ok) laneCleanup.settled(DAEMON_MODE_STEP)
-}
-
-async function setCodexCompactionMode(mode) {
-  const settings = await invokeTauriOrThrow('get_settings')
-  const next = JSON.parse(JSON.stringify(settings))
-  next.terminal = next.terminal ?? {}
-  next.terminal.harness = { ...(next.terminal.harness ?? {}), codexCompaction: mode }
-  await invokeTauriOrThrow('update_settings', { settings: next })
+  expect(Object.hasOwn(harness, 'codexCompaction')).toBe(false)
+  expect(Object.hasOwn(harness, 'codex_compaction')).toBe(false)
 }
 
 /** Initialize a Claude-led team with one managed Codex member and wait for its pane. */
@@ -783,12 +745,6 @@ function assertHookBridgeDelivered(events, { teamName, memberName }, { exactlyOn
   })
   expect(injected.length).toBeGreaterThan(0)
 
-  // …and the transcript tailer stayed out of it: in hooks mode the extractor
-  // and its signal log own nothing for this member.
-  expect(selectEvents(events, { event: 'compaction.signal_emitted', match: { member_name: memberName } })).toEqual([])
-  expect(selectEvents(events, { event: 'compaction.detected', match: { member_name: memberName } })).toEqual([])
-  expect(selectEvents(events, { eventPrefix: 'compaction.extractor.' })).toEqual([])
-
   // Nothing failed on the way out either. `delivered` is emitted before the
   // response is serialized and written, and a failure at that last step is
   // reported separately (`emit_compact_hook_cli_failed`, stage
@@ -901,19 +857,12 @@ describe('Codex compaction via hooks', function () {
     // threshold from its first turn and no restart is needed to apply it.
     setAutoCompactTokenLimit(join(codexHome, 'config.toml'), AUTO_COMPACT_TOKEN_LIMIT)
 
-    originalSettings = await invokeTauriOrThrow('get_settings')
-    const previousMode = codexCompactionMode(originalSettings)
-    // Owed before the flip, not after: a settings update that fails partway
-    // through has still told the daemon.
-    if (previousMode && previousMode !== 'hooks') {
-      daemonModeOwed = previousMode
-      laneCleanup.owe(DAEMON_MODE_STEP, restoreDaemonModeDirectly)
-    }
-    await setCodexCompactionMode('hooks')
+    const settings = await invokeTauriOrThrow('get_settings')
+    expectRetiredCodexCompactionSettingAbsent(settings)
 
     managed = await initializeManagedCodexTeam()
 
-    // The managed hook is what makes this the hook path rather than the tailer.
+    // Managed Codex uses the native hook path by default.
     expect(existsSync(join(codexHome, 'hooks.json'))).toBe(true)
     expect(existsSync(join(codexHome, 'hooks', 'taurhaus-session-start-compact.sh'))).toBe(true)
 
@@ -923,17 +872,6 @@ describe('Codex compaction via hooks', function () {
   after(async function () {
     this.timeout(120_000)
 
-    if (originalSettings) {
-      // The app tells the daemon on its way through this call — but only logs a
-      // push the daemon refused, and returns the saved settings either way. So
-      // the direct restoration runs regardless, and settles the owed step only
-      // when the daemon itself answered.
-      await handBackCompactionMode({
-        updateSettings: () => invokeTauriWithTimeout('update_settings', { settings: originalSettings }),
-        restoreDaemonMode: restoreDaemonModeDirectly,
-      })
-    }
-
     for (const teamName of createdTeamNames) {
       if (!teamName.startsWith('e2e-')) continue
       await invokeTauriWithTimeout('coordination_disband_team', { teamName }, 30_000)
@@ -941,8 +879,8 @@ describe('Codex compaction via hooks', function () {
     createdTeamNames.clear()
 
     // Whatever is still owed — the pane environment if the run aborted inside
-    // initialization, the panes disband did not take with it, a daemon that did
-    // not answer above — is the same set an interrupt would have run, so run it
+    // initialization or the panes disband did not take with it is the same set
+    // an interrupt would have run, so run it
     // through the same path.
     laneCleanup.run()
   })

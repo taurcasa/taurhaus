@@ -92,7 +92,7 @@ describe('selectEvents', () => {
     { event: 'compaction.codex_hook.received', member_name: 'architect', session_id: 's-1' },
     { event: 'compaction.codex_hook.delivered', member_name: 'architect', session_id: 's-1' },
     { event: 'compaction.codex_hook.delivered', member_name: 'other', session_id: 's-2' },
-    { event: 'compaction.signal_emitted', member_name: 'architect' },
+    { event: 'compaction.codex_hook.skipped', member_name: 'architect' },
   ]
 
   it('selects by exact event name', () => {
@@ -100,7 +100,7 @@ describe('selectEvents', () => {
   })
 
   it('selects by event prefix', () => {
-    expect(selectEvents(events, { eventPrefix: 'compaction.codex_hook.' })).toHaveLength(3)
+    expect(selectEvents(events, { eventPrefix: 'compaction.codex_hook.' })).toHaveLength(4)
   })
 
   it('narrows by field equality', () => {
@@ -114,6 +114,6 @@ describe('selectEvents', () => {
   })
 
   it('returns nothing when a matched field is absent', () => {
-    expect(selectEvents(events, { event: 'compaction.signal_emitted', match: { session_id: 's-1' } })).toEqual([])
+    expect(selectEvents(events, { event: 'compaction.codex_hook.skipped', match: { session_id: 's-1' } })).toEqual([])
   })
 })
