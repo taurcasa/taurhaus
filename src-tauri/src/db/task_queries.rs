@@ -704,11 +704,13 @@ mod tests {
         )
         .unwrap();
 
+        // Rows come back ORDER BY source, so the expected sequence is alphabetical:
+        // "agy" sorts ahead of "claude"/"codex" where the retired tool sorted last.
         let tasks = get_tasks_for_project(&conn, "/projects/foo").unwrap();
         assert_eq!(tasks.len(), 3);
-        assert_eq!(tasks[0].source, "claude");
-        assert_eq!(tasks[1].source, "codex");
-        assert_eq!(tasks[2].source, "agy");
+        assert_eq!(tasks[0].source, "agy");
+        assert_eq!(tasks[1].source, "claude");
+        assert_eq!(tasks[2].source, "codex");
     }
 
     #[test]
