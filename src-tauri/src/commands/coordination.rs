@@ -351,17 +351,22 @@ pub fn coordination_create_team(
 
 #[tauri::command]
 pub fn coordination_disband_team(
+    app: AppHandle,
     state: State<'_, CoordinationState>,
     team_name: String,
 ) -> IpcResult<DisbandTeamResponse> {
     let span = IpcCommandSpan::start("coordination_disband_team");
     let result = coordination_disband_team_impl(state.inner(), team_name).ipc();
+    if result.is_ok() {
+        reconcile_global_harness_hooks(&app);
+    }
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
 pub fn coordination_add_member(
+    app: AppHandle,
     state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
@@ -377,18 +382,27 @@ pub fn coordination_add_member(
         project_path,
     )
     .ipc();
+    // The member this persists can be the first grok one on the host, and
+    // grok's hook lives in its home rather than in the team.
+    if result.is_ok() {
+        reconcile_global_harness_hooks(&app);
+    }
     span.finish_result(&result);
     result
 }
 
 #[tauri::command]
 pub fn coordination_remove_member(
+    app: AppHandle,
     state: State<'_, CoordinationState>,
     team_name: String,
     member_name: String,
 ) -> IpcResult<RemoveAgentReport> {
     let span = IpcCommandSpan::start("coordination_remove_member");
     let result = coordination_remove_member_impl(state.inner(), team_name, member_name).ipc();
+    if result.is_ok() {
+        reconcile_global_harness_hooks(&app);
+    }
     span.finish_result(&result);
     result
 }
@@ -786,7 +800,44 @@ fn maybe_ensure_compact_hooks_for_team<T>(
             .map_err(|err| IpcError::internal(sanitize_error(&err.to_string())))?;
     }
 
+    reconcile_global_harness_hooks(app);
+
     result
+}
+
+/// Keep the harness hooks that live outside a team in step with the roster.
+///
+/// grok's hook is one file in its home, so the roster — not this team — decides
+/// whether it belongs there. Every mutation that can add the first grok member
+/// or remove the last one calls this; a failure is logged and the current
+/// installation is left alone rather than failing the mutation the user asked
+/// for.
+fn reconcile_global_harness_hooks(app: &AppHandle) {
+    let (Some(state), Some(db)) = (
+        app.try_state::<CoordinationState>(),
+        app.try_state::<DbState>(),
+    ) else {
+        return;
+    };
+    let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
+    if let Err(error) = crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
+        state.teams_dir(),
+        terminal.harness.grok_hooks,
+    ) {
+        tracing::warn!(error = %error, "Grok compaction hook reconciliation failed after a roster change");
+        let mut fields = Map::new();
+        fields.insert(
+            "error.message".to_string(),
+            Value::String(sanitize_error(&error.to_string())),
+        );
+        taurhaus_lib::logging::emit_global(
+            "warn",
+            "coordination",
+            "compaction.grok_hook.reconcile_failed",
+            Some("Grok compaction hooks remain unreconciled".to_string()),
+            fields,
+        );
+    }
 }
 
 fn emit_initialize_pipeline_result(team_name: &str, result: &IpcResult<InitializeReport>) {

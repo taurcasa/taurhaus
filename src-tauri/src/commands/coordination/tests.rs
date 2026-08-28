@@ -44,6 +44,43 @@ fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     assert!(!helper.contains("reconcile_codex_before_managed_launch"));
 }
 
+#[test]
+fn every_registered_roster_mutation_reconciles_the_global_harness_hooks() {
+    // Regression: commit 86601a2 reconciled grok's one global hook from the
+    // add-agent, remove-member and disband paths but left the registered
+    // `coordination_add_member` mutation alone, so adding the first grok member
+    // through that IPC left grok without its hook until some later trigger.
+    const ROSTER_MUTATIONS: &[&str] = &[
+        "coordination_initialize_team",
+        "coordination_add_agent",
+        "coordination_add_member",
+        "coordination_remove_member",
+        "coordination_disband_team",
+    ];
+    let source = include_str!("../coordination.rs");
+
+    let unreconciled = source
+        .split("#[tauri::command]")
+        .skip(1)
+        .filter_map(|command| {
+            let name = command
+                .split_once("pub fn ")
+                .or_else(|| command.split_once("pub async fn "))
+                .and_then(|(_, rest)| rest.split_once('('))
+                .map(|(name, _)| name)?;
+            let mutates_roster = ROSTER_MUTATIONS.contains(&name);
+            let reconciles = command.contains("reconcile_global_harness_hooks")
+                || command.contains("maybe_ensure_compact_hooks_for_team");
+            (mutates_roster && !reconciles).then_some(name)
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        unreconciled.is_empty(),
+        "roster mutations that never reconcile the global harness hooks: {unreconciled:?}"
+    );
+}
+
 #[derive(Debug, Default)]
 struct MockBinaryLookup {
     available: HashSet<String>,
@@ -1294,6 +1331,41 @@ fn add_member_happy_path_persists_member() {
     .expect("add member");
     let status = coordination_get_team_status_impl(&state, "arch".to_string()).expect("status");
     assert_eq!(status.members, vec!["alice".to_string()]);
+}
+
+#[test]
+fn the_first_grok_member_added_through_this_mutation_earns_the_hook() {
+    // Regression: commit 86601a2 left `coordination_add_member` outside hook
+    // reconciliation, so the grok member it persists was invisible to the hook
+    // installer until an unrelated roster change ran.
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().join("teams"));
+    let grok_home = tmp.path().join("grok-home");
+    let exe = tmp.path().join("taurhaus");
+    std::fs::write(&exe, b"fixture").expect("executable fixture");
+
+    coordination_create_team_impl(&state, "arch".to_string()).expect("create");
+    coordination_add_member_impl(
+        &state,
+        "arch".to_string(),
+        "alice".to_string(),
+        "grok".to_string(),
+        Some("/tmp/arch".to_string()),
+    )
+    .expect("add grok member");
+
+    // What the reconciliation this command now runs sees on that roster.
+    assert!(
+        crate::coordination::compact_hook::any_managed_grok_member(state.teams_dir())
+            .expect("managed grok discovery"),
+        "the member this mutation persists is a managed grok member"
+    );
+    crate::coordination::compact_hook::ensure_grok_compact_hook_installed_at(&grok_home, &exe)
+        .expect("install grok hook");
+    assert!(
+        crate::coordination::compact_hook::grok_compact_hook_is_installed_at(&grok_home),
+        "the first grok member on the roster earns grok's one global hook"
+    );
 }
 
 #[test]

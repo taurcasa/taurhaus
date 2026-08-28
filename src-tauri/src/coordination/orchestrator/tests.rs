@@ -4779,3 +4779,58 @@ fn add_agent_step_ordering_is_stable() {
         ]
     );
 }
+
+#[test]
+fn grok_runtime_identity_is_backfilled_once_its_registry_appears() {
+    // Regression: commit 16de5ec declared `runtime_session_capture: false` for
+    // grok, so a managed member never recorded a session id. grok writes its
+    // `active_sessions.json` row at the first prompt rather than at process
+    // start, so the identity has to be backfilled by liveness — without it the
+    // compaction bridge falls back to matching by cwd, which two grok members
+    // on one project share, and neither of them is reinjected.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "grok-pair";
+    let members = [
+        ("grok-one", "%11", "01a04585-2d53-7123-8000-00000000000a"),
+        ("grok-two", "%12", "01a04585-2d53-7123-8000-00000000000b"),
+    ];
+
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    for (member_name, pane_id, session_id) in members {
+        orchestrator
+            .add_member(
+                team_name,
+                member_with_project(member_name, MemberRole::Agent, CliTool::Grok, "/tmp/shared"),
+            )
+            .expect("add should succeed");
+        let mut record =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+        record.health = HealthState::Healthy;
+        record.pane_id = Some(pane_id.to_string());
+        // The registry row does not exist until the member's first prompt.
+        record.session_id = None;
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+        runtime.set_detected_runtime_session(
+            pane_id,
+            CliTool::Grok,
+            Some(session_id),
+            Some(&format!("/tmp/{session_id}/events.jsonl")),
+        );
+    }
+
+    orchestrator
+        .reconcile_team_liveness(team_name)
+        .expect("reconcile should succeed");
+
+    for (member_name, _, session_id) in members {
+        let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+        assert_eq!(
+            updated.session_id.as_deref(),
+            Some(session_id),
+            "{member_name} keeps its own grok session identity"
+        );
+    }
+}

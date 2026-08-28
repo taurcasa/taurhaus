@@ -9,7 +9,7 @@ import { normalizeTool, resolveRoleModel, resolveRoleReasoningEffort } from './m
  * model, and the backend then applies its own catalog default.
  */
 
-export const EMPTY_MODEL_CATALOG = Object.freeze({ claude: [], codex: [], agy: [] })
+export const EMPTY_MODEL_CATALOG = Object.freeze({ claude: [], codex: [], agy: [], grok: [] })
 
 // Same effort words as the Rust `ModelSpec::parse_legacy` (session_scanner/launch.rs).
 const LEGACY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']

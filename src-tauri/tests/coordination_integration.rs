@@ -209,6 +209,13 @@ mod commands {
         ) -> Result<bool, CoordinationError> {
             Ok(false)
         }
+
+        pub fn reconcile_grok_hooks_for_roster(
+            _teams_dir: &std::path::Path,
+            _enabled: bool,
+        ) -> Result<bool, CoordinationError> {
+            Ok(false)
+        }
     }
 
     pub mod lifecycle {

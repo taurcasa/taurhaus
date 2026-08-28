@@ -111,6 +111,9 @@ export const MOCK_MODEL_CATALOG = {
   agy: [
     { id: 'gemini-3.7-flash-high', label: 'Gemini 3.7 Flash (High)', efforts: [], defaultEffort: null, deprecated: false, replacement: null },
   ],
+  grok: [
+    { id: 'grok-4.6', label: 'Grok 4.6', efforts: ['low', 'medium', 'high', 'xhigh'], defaultEffort: 'high', deprecated: false, replacement: null },
+  ],
 }
 
 export const MOCK_SETTINGS = {
@@ -138,6 +141,11 @@ export const MOCK_SETTINGS = {
         fresh: 'agy --dangerously-skip-permissions',
         resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
       },
+      grok: {
+        continue_cmd: 'grok --always-approve --continue',
+        fresh: 'grok --always-approve',
+        resume: 'grok --always-approve --resume {session_id}',
+      },
     },
     harness: { codex_compaction: 'transcript' },
   },
@@ -161,6 +169,11 @@ export const MOCK_SETTINGS = {
         continue_cmd: 'agy --dangerously-skip-permissions --continue',
         fresh: 'agy --dangerously-skip-permissions',
         resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
+      },
+      grok: {
+        continue_cmd: 'grok --always-approve --continue',
+        fresh: 'grok --always-approve',
+        resume: 'grok --always-approve --resume {session_id}',
       },
     },
   },

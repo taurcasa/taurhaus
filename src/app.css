@@ -24,6 +24,19 @@
   --color-google-blue-800: #185ABC;
   --color-google-blue-900: #174EA6;
 
+  /* Grok accent — graphite, reserved for the grok harness identity. xAI's own
+     mark is monochrome, so the harness reads as a neutral next to Claude's
+     emerald, Codex's sky and Antigravity's blue instead of competing with them. */
+  --color-graphite-50: #F4F4F5;
+  --color-graphite-200: #D8DADE;
+  --color-graphite-300: #B7BAC1;
+  --color-graphite-400: #8A8E97;
+  --color-graphite-500: #5E626C;
+  --color-graphite-600: #4A4D56;
+  --color-graphite-700: #3A3D44;
+  --color-graphite-800: #2A2C32;
+  --color-graphite-900: #1B1D21;
+
   /* Success — Green */
   --color-success-50: #F0FDF4;
   --color-success-300: #86EFAC;

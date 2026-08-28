@@ -21,6 +21,11 @@ function cliCommandDefaults() {
       fresh: 'agy --dangerously-skip-permissions',
       resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
     },
+    grok: {
+      continue_cmd: 'grok --always-approve --continue',
+      fresh: 'grok --always-approve',
+      resume: 'grok --always-approve --resume {session_id}',
+    },
   }
 }
 

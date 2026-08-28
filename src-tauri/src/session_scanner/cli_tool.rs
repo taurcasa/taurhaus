@@ -1,7 +1,8 @@
 //! CLI tool abstraction — detect and configure multiple AI coding tools.
 //!
-//! Supports Claude Code, Codex CLI, and Antigravity CLI. Each tool has its
-//! own process signature, session directory layout, and launch commands.
+//! Supports Claude Code, Codex CLI, Antigravity CLI, and Grok CLI. Each tool
+//! has its own process signature, session directory layout, and launch
+//! commands.
 
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -18,6 +19,7 @@ pub enum CliTool {
     Claude,
     Codex,
     Agy,
+    Grok,
     /// A persisted tool value that this build no longer supports.
     #[serde(other)]
     Unknown,
@@ -100,6 +102,22 @@ pub enum SessionRoot {
     AppManagedClaudeDir,
 }
 
+/// Where a harness actually reads the post-compaction card.
+///
+/// Backend-only: the frontend descriptor never carries it, because nothing in
+/// the UI changes with the delivery channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompactionDelivery {
+    /// The hook answer's `hookSpecificOutput.additionalContext` is read into the
+    /// next turn (Claude Code, Codex).
+    HookStdout,
+    /// The harness documents passive-hook stdout as ignored, so the card is
+    /// queued in the member's mesh inbox instead. grok 1.0.5:
+    /// "For events like `SessionStart` or `PostToolUse`, stdout is ignored"
+    /// (`~/.grok/docs/user-guide/10-hooks.md`, "Passive Hooks").
+    MeshInbox,
+}
+
 /// Capability declarations consumed by tool-agnostic call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
@@ -113,6 +131,11 @@ pub struct CliCapabilities {
     pub runtime_session_capture: bool,
     pub authoritative_idle: bool,
     pub compaction_hook: bool,
+    /// Where the composed card is handed over once the hook has fired.
+    pub compaction_delivery: CompactionDelivery,
+    /// The harness also loads another vendor's hook registrations, so one
+    /// compaction can invoke the bridge more than once.
+    pub compaction_hook_compat_import: bool,
     pub transcript_parser: bool,
     pub transcript_compaction_signals: bool,
     pub catalog: bool,
@@ -121,6 +144,8 @@ pub struct CliCapabilities {
     pub account_selection: bool,
     pub team_config_namespace: bool,
     pub usage: bool,
+    /// Why this harness reports no usage windows, shown where a meter would be.
+    pub usage_note: Option<&'static str>,
     pub notify_sink: bool,
     pub hook_trust: bool,
     /// The app supplies a managed account home for team launches.
@@ -132,11 +157,6 @@ pub struct CliCapabilities {
 pub enum StopStrategy {
     SlashExit,
     Interrupt,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProcessActivitySignal {
-    ReadChars,
 }
 
 /// One registry record for a supported CLI harness.
@@ -163,9 +183,13 @@ pub struct CliToolSpec {
     /// Presence directory next to the transcript directory, when a released
     /// flock is the harness's clean-stop confirmation.
     pub stop_presence_dir: Option<&'static str>,
+    /// The harness clears its own live-session registry on a clean exit, so the
+    /// session source answering "no session" confirms the stop.
+    pub stop_registry_release: bool,
     /// Add the harness-specific exit and mesh inbox hints to onboarding text.
     pub onboarding_exit_hint: bool,
-    pub process_activity_signal: ProcessActivitySignal,
+    /// One extra onboarding sentence about how this harness receives messages.
+    pub onboarding_delivery_hint: Option<&'static str>,
     pub pane_binding: bool,
     pub display_name: &'static str,
     pub settings_label: &'static str,
@@ -177,9 +201,11 @@ pub struct CliToolSpec {
     pub session_extension: &'static str,
     /// Command to gracefully exit the CLI in a terminal.
     pub exit_command: &'static str,
+    /// How long a graceful stop may take before the pane is killed anyway.
+    pub stop_timeout: std::time::Duration,
 }
 
-static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
+static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
     [
         CliToolSpec {
             tool: CliTool::Claude,
@@ -211,6 +237,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 runtime_session_capture: true,
                 authoritative_idle: true,
                 compaction_hook: true,
+                compaction_delivery: CompactionDelivery::HookStdout,
+                compaction_hook_compat_import: false,
                 transcript_parser: true,
                 transcript_compaction_signals: false,
                 catalog: true,
@@ -219,14 +247,16 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 account_selection: true,
                 team_config_namespace: true,
                 usage: true,
+                usage_note: None,
                 notify_sink: false,
                 hook_trust: false,
                 managed_home: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
+            stop_registry_release: false,
             onboarding_exit_hint: false,
-            process_activity_signal: ProcessActivitySignal::ReadChars,
+            onboarding_delivery_hint: None,
             pane_binding: false,
             display_name: "Claude Code",
             settings_label: "Claude Code",
@@ -234,6 +264,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             projects_subdir: "projects",
             session_extension: "jsonl",
             exit_command: "/exit",
+            stop_timeout: std::time::Duration::from_secs(5),
         },
         CliToolSpec {
             tool: CliTool::Codex,
@@ -268,6 +299,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 runtime_session_capture: true,
                 authoritative_idle: true,
                 compaction_hook: true,
+                compaction_delivery: CompactionDelivery::HookStdout,
+                compaction_hook_compat_import: false,
                 transcript_parser: true,
                 transcript_compaction_signals: true,
                 catalog: true,
@@ -276,14 +309,16 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 account_selection: true,
                 team_config_namespace: false,
                 usage: true,
+                usage_note: None,
                 notify_sink: true,
                 hook_trust: true,
                 managed_home: true,
             },
             stop_strategy: StopStrategy::Interrupt,
             stop_presence_dir: None,
+            stop_registry_release: false,
             onboarding_exit_hint: false,
-            process_activity_signal: ProcessActivitySignal::ReadChars,
+            onboarding_delivery_hint: None,
             pane_binding: true,
             display_name: "Codex CLI",
             settings_label: "Codex",
@@ -291,6 +326,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             projects_subdir: "sessions",
             session_extension: "jsonl",
             exit_command: "/exit",
+            stop_timeout: std::time::Duration::from_secs(5),
         },
         CliToolSpec {
             tool: CliTool::Agy,
@@ -348,6 +384,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 runtime_session_capture: false,
                 authoritative_idle: false,
                 compaction_hook: false,
+                compaction_delivery: CompactionDelivery::HookStdout,
+                compaction_hook_compat_import: false,
                 transcript_parser: false,
                 transcript_compaction_signals: false,
                 catalog: true,
@@ -356,14 +394,16 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 account_selection: false,
                 team_config_namespace: false,
                 usage: true,
+                usage_note: None,
                 notify_sink: false,
                 hook_trust: false,
                 managed_home: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: Some("presence"),
+            stop_registry_release: false,
             onboarding_exit_hint: true,
-            process_activity_signal: ProcessActivitySignal::ReadChars,
+            onboarding_delivery_hint: None,
             pane_binding: false,
             display_name: "Antigravity CLI",
             settings_label: "Antigravity CLI",
@@ -371,6 +411,149 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             projects_subdir: "antigravity-cli/conversations",
             session_extension: "db",
             exit_command: "/exit",
+            stop_timeout: std::time::Duration::from_secs(5),
+        },
+        CliToolSpec {
+            tool: CliTool::Grok,
+            name: "grok",
+            aliases: &["grok"],
+            argv_signatures: &["grok"],
+            // A single-prompt source is the only thing that makes grok headless;
+            // a bare positional PROMPT is still the first turn of the TUI. The
+            // four terminating flags print and exit, and their short forms are
+            // the spellings `grok --help` lists.
+            non_session_flags: &[
+                "-p",
+                "--single",
+                "--prompt-file",
+                "--prompt-json",
+                "-h",
+                "--help",
+                "-v",
+                "--version",
+            ],
+            non_session_subcommands: &[
+                "agent",
+                "completions",
+                "dashboard",
+                "doctor",
+                "du",
+                "export",
+                "help",
+                "inspect",
+                "leader",
+                "login",
+                "logout",
+                "mcp",
+                "memory",
+                "models",
+                "plugin",
+                "sessions",
+                "setup",
+                "trace",
+                "update",
+                "version",
+                "worktree",
+                "wrap",
+            ],
+            // Every value-taking global flag `grok --help` lists, aliases
+            // included: an omission makes the parser read the flag's value as
+            // the subcommand, so `grok --rules policy agent leader` would look
+            // like an interactive session.
+            argv_value_flags: &[
+                "--agent",
+                "--agent-profile",
+                "--agents",
+                "--allow",
+                "--allowedTools",
+                "--cwd",
+                "--debug-file",
+                "--deny",
+                "--disallowed-tools",
+                "--disallowedTools",
+                "--effort",
+                "--json-schema",
+                "--leader-socket",
+                "--log-file",
+                "-m",
+                "--max-turns",
+                "--model",
+                "--output-format",
+                "--permission-mode",
+                "-r",
+                "--ref",
+                "--reasoning-effort",
+                "--resume",
+                "--rules",
+                "-s",
+                "--sandbox",
+                "--session-id",
+                "--system-prompt",
+                "--system-prompt-override",
+                "--tools",
+                "-w",
+                "--worktree",
+                "--worktree-ref",
+            ],
+            model_prefixes: &["grok-"],
+            model_markers: &["grok"],
+            default_commands: ToolCommands {
+                continue_cmd: "grok --always-approve --continue".into(),
+                fresh: "grok --always-approve".into(),
+                resume: "grok --always-approve --resume {session_id}".into(),
+            },
+            label: "Grok",
+            accent: "graphite",
+            medallion_accent: "graphite",
+            default_agent_role_id: "grok-developer",
+            capabilities: CliCapabilities {
+                model_flag: Some("--model"),
+                effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                auto_approve_flag: Some("--always-approve"),
+                display_name_flag: None,
+                team_flags: false,
+                native_inbox_poller: false,
+                session_source: true,
+                // grok writes its `active_sessions.json` row at the member's
+                // first prompt, not at process start, so activation usually
+                // finds nothing and liveness backfills the identity later.
+                // Without it, hook routing falls back to the cwd two grok
+                // members on one project share.
+                runtime_session_capture: true,
+                authoritative_idle: true,
+                compaction_hook: true,
+                // grok reads `~/.claude/settings.json` hooks by default, so one
+                // compaction can reach the bridge through two registrations.
+                compaction_delivery: CompactionDelivery::MeshInbox,
+                compaction_hook_compat_import: true,
+                transcript_parser: false,
+                transcript_compaction_signals: false,
+                catalog: true,
+                session_root: SessionRoot::ToolHome,
+                account_selector: Some("GROK_HOME"),
+                account_selection: true,
+                team_config_namespace: false,
+                usage: false,
+                usage_note: Some("Grok shows credits in its own /usage"),
+                notify_sink: false,
+                hook_trust: false,
+                managed_home: false,
+            },
+            stop_strategy: StopStrategy::SlashExit,
+            stop_presence_dir: None,
+            stop_registry_release: true,
+            onboarding_exit_hint: true,
+            onboarding_delivery_hint: Some(
+                "Plain Enter queues a message until the running turn ends; Ctrl+Enter interjects immediately.",
+            ),
+            pane_binding: false,
+            display_name: "Grok CLI",
+            settings_label: "Grok CLI",
+            base_dir_name: ".grok",
+            projects_subdir: "sessions",
+            session_extension: "jsonl",
+            exit_command: "/quit",
+            stop_timeout: std::time::Duration::from_secs(15),
         },
     ]
 });
@@ -405,6 +588,8 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         runtime_session_capture: false,
         authoritative_idle: false,
         compaction_hook: false,
+        compaction_delivery: CompactionDelivery::HookStdout,
+        compaction_hook_compat_import: false,
         transcript_parser: false,
         transcript_compaction_signals: false,
         catalog: false,
@@ -413,14 +598,16 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         account_selection: false,
         team_config_namespace: false,
         usage: false,
+        usage_note: None,
         notify_sink: false,
         hook_trust: false,
         managed_home: false,
     },
     stop_strategy: StopStrategy::Interrupt,
     stop_presence_dir: None,
+    stop_registry_release: false,
     onboarding_exit_hint: false,
-    process_activity_signal: ProcessActivitySignal::ReadChars,
+    onboarding_delivery_hint: None,
     pane_binding: false,
     display_name: "Unknown tool",
     settings_label: "Unknown tool",
@@ -428,6 +615,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     projects_subdir: "",
     session_extension: "",
     exit_command: "/exit",
+    stop_timeout: std::time::Duration::from_secs(5),
 });
 
 /// Get every registered CLI harness.
@@ -466,6 +654,7 @@ pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &To
         CliTool::Claude => &settings.claude,
         CliTool::Codex => &settings.codex,
         CliTool::Agy => &settings.agy,
+        CliTool::Grok => &settings.grok,
         CliTool::Unknown => &EMPTY,
     }
 }
@@ -538,6 +727,7 @@ pub struct CliCapabilityDescriptor {
     pub runtime_session_capture: bool,
     pub authoritative_idle: bool,
     pub compaction_hook: bool,
+    pub compaction_hook_compat_import: bool,
     pub transcript_parser: bool,
     pub transcript_compaction_signals: bool,
     pub catalog: bool,
@@ -546,6 +736,7 @@ pub struct CliCapabilityDescriptor {
     pub account_selection: bool,
     pub team_config_namespace: bool,
     pub usage: bool,
+    pub usage_note: Option<String>,
     pub notify_sink: bool,
     pub hook_trust: bool,
     pub managed_home: bool,
@@ -564,6 +755,7 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
             runtime_session_capture: value.runtime_session_capture,
             authoritative_idle: value.authoritative_idle,
             compaction_hook: value.compaction_hook,
+            compaction_hook_compat_import: value.compaction_hook_compat_import,
             transcript_parser: value.transcript_parser,
             transcript_compaction_signals: value.transcript_compaction_signals,
             catalog: value.catalog,
@@ -572,6 +764,7 @@ impl From<CliCapabilities> for CliCapabilityDescriptor {
             account_selection: value.account_selection,
             team_config_namespace: value.team_config_namespace,
             usage: value.usage,
+            usage_note: value.usage_note.map(str::to_string),
             notify_sink: value.notify_sink,
             hook_trust: value.hook_trust,
             managed_home: value.managed_home,
@@ -611,6 +804,24 @@ impl From<&CliToolSpec> for CliToolDescriptor {
     }
 }
 
+/// Whether one argv token carries `flag`, in each form a clap-style CLI accepts:
+/// the bare flag, `--flag=value`, and — for a short flag — the value attached to
+/// it, as in grok's `-p<PROMPT>`.
+fn flag_matches(token: &str, flag: &str) -> bool {
+    if token == flag {
+        return true;
+    }
+    let Some(rest) = token.strip_prefix(flag) else {
+        return false;
+    };
+    rest.starts_with('=') || (is_short_flag(flag) && !rest.is_empty())
+}
+
+/// A single-dash, single-letter flag, the only form that takes an attached value.
+fn is_short_flag(flag: &str) -> bool {
+    flag.len() == 2 && flag.starts_with('-') && !flag.starts_with("--")
+}
+
 impl CliToolSpec {
     /// Account provider for this tool. Provider rollout follows selector
     /// declaration, so a declared selector may temporarily use the floor.
@@ -623,11 +834,14 @@ impl CliToolSpec {
             crate::session_scanner::accounts::codex::CodexAccountProvider;
         static AGY: crate::session_scanner::accounts::agy::AgyAccountProvider =
             crate::session_scanner::accounts::agy::AgyAccountProvider;
+        static GROK: crate::session_scanner::accounts::grok::GrokAccountProvider =
+            crate::session_scanner::accounts::grok::GrokAccountProvider;
 
         match self.tool {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => Some(&AGY),
+            CliTool::Grok => Some(&GROK),
             CliTool::Unknown => None,
         }
     }
@@ -647,7 +861,22 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => Some(&AGY),
+            CliTool::Grok => None,
             CliTool::Unknown => None,
+        }
+    }
+
+    /// The harness's own transcript layout, where the shared
+    /// `<projects>/<slug>/<id>.<ext>` lookup cannot find its history.
+    pub fn transcript_locator(
+        &self,
+    ) -> Option<&'static dyn crate::session_scanner::accounts::TranscriptLocator> {
+        static GROK: crate::session_scanner::accounts::grok::GrokTranscriptLocator =
+            crate::session_scanner::accounts::grok::GrokTranscriptLocator;
+
+        match self.tool {
+            CliTool::Grok => Some(&GROK),
+            CliTool::Claude | CliTool::Codex | CliTool::Agy | CliTool::Unknown => None,
         }
     }
 
@@ -666,36 +895,75 @@ impl CliToolSpec {
 
     /// Whether a matching executable invocation represents an interactive
     /// terminal session rather than a one-shot driver or utility subcommand.
-    pub fn argv_is_session(&self, args: &str) -> bool {
-        let tokens = args.split_whitespace().collect::<Vec<_>>();
-        if tokens.iter().any(|token| {
-            self.non_session_flags.iter().any(|flag| {
-                token == flag
-                    || token
-                        .strip_prefix(flag)
-                        .is_some_and(|rest| rest.starts_with('='))
-            })
-        }) {
-            return false;
-        }
+    ///
+    /// Reads argv *elements*, the form `/proc/<pid>/cmdline` delivers: options
+    /// only up to the first positional, `--` ends option parsing, and a
+    /// management subcommand counts only as the whole first positional
+    /// element. So `grok "help me"` is one element, not the `help`
+    /// subcommand, and `grok -- "--help explain this"` is a prompt, not
+    /// `--help`.
+    pub fn argv_elements_are_session<S: AsRef<str>>(&self, argv: &[S]) -> bool {
+        self.argv_session_scan(argv, true)
+    }
 
-        let Some(executable_index) = tokens
+    /// `scan_past_prompt` is only safe when `argv` holds real elements: the
+    /// joined fallback cannot tell a COMMAND after the prompt from a word
+    /// inside it, so there the first positional decides.
+    fn argv_session_scan<S: AsRef<str>>(&self, argv: &[S], scan_past_prompt: bool) -> bool {
+        let Some(executable_index) = argv
             .iter()
-            .position(|token| self.matches_argv_token(token))
+            .position(|element| self.matches_argv_token(element.as_ref()))
         else {
             return false;
         };
         let mut index = executable_index + 1;
-        while let Some(token) = tokens.get(index) {
-            if token.starts_with('-') {
+        // Grammar: `<tool> [OPTIONS] [PROMPT] [COMMAND]`. The first positional
+        // is either a utility subcommand (not a session) or the prompt the TUI
+        // opens with; a COMMAND may still follow the prompt (`grok hello
+        // version` exits, `grok hello agent stdio` is a service), so scanning
+        // continues past the prompt until `--` or the end of argv.
+        let mut positionals = 0usize;
+        while let Some(element) = argv.get(index).map(AsRef::as_ref) {
+            // End of options: everything after it is prompt text, never a
+            // subcommand and never a terminating flag.
+            if element == "--" {
+                return true;
+            }
+            if element.starts_with('-') {
+                if self
+                    .non_session_flags
+                    .iter()
+                    .any(|flag| flag_matches(element, flag))
+                {
+                    return false;
+                }
                 let takes_separate_value =
-                    !token.contains('=') && self.argv_value_flags.iter().any(|flag| token == flag);
+                    !element.contains('=') && self.argv_value_flags.contains(&element);
                 index += if takes_separate_value { 2 } else { 1 };
                 continue;
             }
-            return !self.non_session_subcommands.contains(token);
+            if self.non_session_subcommands.contains(&element) {
+                return false;
+            }
+            positionals += 1;
+            if !scan_past_prompt || positionals >= 2 {
+                // Two ordinary positionals: no grammar makes that a
+                // subcommand, so it is prompt text.
+                return true;
+            }
+            index += 1;
         }
         true
+    }
+
+    /// Classify a command line that reached us already joined — the macOS `ps`
+    /// inventory and stored pane command strings have no other form.
+    ///
+    /// The join is lossy: a prompt word is indistinguishable from a separate
+    /// argv element, so `grok "help me"` reads as the `help` subcommand here.
+    /// Prefer `argv_elements_are_session` wherever the elements survive.
+    pub fn argv_is_session(&self, args: &str) -> bool {
+        self.argv_session_scan(&args.split_whitespace().collect::<Vec<_>>(), false)
     }
 
     pub fn session_source(&self) -> &'static dyn crate::session_scanner::idle::SessionSource {
@@ -704,6 +972,8 @@ impl CliToolSpec {
         static CODEX: crate::session_scanner::idle::CodexSessionSource =
             crate::session_scanner::idle::CodexSessionSource;
         static AGY: std::sync::OnceLock<crate::session_scanner::idle::AgyResolver> =
+            std::sync::OnceLock::new();
+        static GROK: std::sync::OnceLock<crate::session_scanner::idle::GrokResolver> =
             std::sync::OnceLock::new();
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
@@ -716,6 +986,7 @@ impl CliToolSpec {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
             CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
+            CliTool::Grok => GROK.get_or_init(crate::session_scanner::idle::GrokResolver::new),
             CliTool::Unknown => &NONE,
         }
     }
@@ -727,6 +998,8 @@ impl CliToolSpec {
             crate::session_scanner::idle::CodexNotifyActivitySource;
         static AGY: crate::session_scanner::idle::AgyHooksActivitySource =
             crate::session_scanner::idle::AgyHooksActivitySource;
+        static GROK: crate::session_scanner::idle::GrokEventsActivitySource =
+            crate::session_scanner::idle::GrokEventsActivitySource;
         static NONE: crate::session_scanner::idle::NoActivitySource =
             crate::session_scanner::idle::NoActivitySource;
 
@@ -734,6 +1007,7 @@ impl CliToolSpec {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
             CliTool::Agy => &AGY,
+            CliTool::Grok => &GROK,
             CliTool::Unknown => &NONE,
         }
     }
@@ -746,6 +1020,8 @@ impl CliToolSpec {
             crate::coordination::compact_hook::ClaudeCompactionSignalSource;
         static CODEX: crate::coordination::compact_hook::CodexCompactionSignalSource =
             crate::coordination::compact_hook::CodexCompactionSignalSource;
+        static GROK: crate::coordination::compact_hook::GrokCompactionSignalSource =
+            crate::coordination::compact_hook::GrokCompactionSignalSource;
 
         if !self.capabilities.compaction_hook {
             if self.tool == CliTool::Agy {
@@ -769,6 +1045,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => None,
+            CliTool::Grok => Some(&GROK),
             CliTool::Unknown => None,
         }
     }
@@ -783,6 +1060,7 @@ impl CliToolSpec {
             CliTool::Claude => Some(&CLAUDE),
             CliTool::Codex => Some(&CODEX),
             CliTool::Agy => None,
+            CliTool::Grok => None,
             CliTool::Unknown => None,
         }
     }
@@ -795,6 +1073,7 @@ impl CliToolSpec {
         static CLAUDE: OnceLock<crate::session_scanner::idle::ClaudeResolver> = OnceLock::new();
         static CODEX: OnceLock<crate::session_scanner::idle::CodexResolver> = OnceLock::new();
         static AGY: OnceLock<crate::session_scanner::idle::AgyResolver> = OnceLock::new();
+        static GROK: OnceLock<crate::session_scanner::idle::GrokResolver> = OnceLock::new();
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
 
@@ -804,6 +1083,7 @@ impl CliToolSpec {
             }
             CliTool::Codex => CODEX.get_or_init(crate::session_scanner::idle::CodexResolver::new),
             CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
+            CliTool::Grok => GROK.get_or_init(crate::session_scanner::idle::GrokResolver::new),
             CliTool::Unknown => &NONE,
         }
     }
@@ -885,6 +1165,193 @@ mod tests {
     }
 
     #[test]
+    fn grok_registry_entry_declares_its_verified_launch_surface() {
+        // Regression: commit bfecae9 fixed the harness set at three CLIs, so a
+        // fourth could only be added by branching outside the capability
+        // slices. Grok's verified argv, flags and defaults are registry data.
+        let grok = all()
+            .iter()
+            .find(|entry| entry.name == "grok")
+            .expect("Grok registry entry");
+        assert_eq!(grok.aliases, ["grok"]);
+        assert_eq!(grok.default_commands.fresh, "grok --always-approve");
+        assert_eq!(
+            grok.default_commands.continue_cmd,
+            "grok --always-approve --continue"
+        );
+        assert_eq!(
+            grok.default_commands.resume,
+            "grok --always-approve --resume {session_id}"
+        );
+        assert_eq!("grok".parse::<CliTool>(), Ok(CliTool::Grok));
+        assert_eq!(CliTool::from_alias("grok"), Ok(CliTool::Grok));
+        assert_eq!(grok.exit_command, "/quit");
+        assert_eq!(grok.base_dir_name, ".grok");
+        assert_eq!(grok.projects_subdir, "sessions");
+
+        let descriptor = serde_json::to_value(CliToolDescriptor::from(grok)).unwrap();
+        assert_eq!(descriptor["id"], "grok");
+        assert_eq!(
+            descriptor["capabilities"]["autoApproveFlag"],
+            "--always-approve"
+        );
+        assert_eq!(descriptor["capabilities"]["modelFlag"], "--model");
+        assert_eq!(
+            descriptor["capabilities"]["effortFlag"],
+            serde_json::json!({ "kind": "argument", "flag": "--effort" })
+        );
+        assert_eq!(descriptor["capabilities"]["usage"], false);
+        assert_eq!(
+            descriptor["capabilities"]["usageNote"],
+            "Grok shows credits in its own /usage"
+        );
+        assert_eq!(
+            descriptor["capabilities"]["compactionHookCompatImport"],
+            true
+        );
+    }
+
+    #[test]
+    fn grok_argv_classification_separates_the_tui_from_headless_and_services() {
+        // Regression: commit bfecae9 left argv classification with no entry for
+        // grok, whose headless drivers, agent services and management commands
+        // would otherwise all register as interactive sessions.
+        let grok = spec(CliTool::Grok);
+        for interactive in [
+            "grok",
+            "/home/user/.local/bin/grok --model grok-4.6 --effort low",
+            "grok --continue",
+            "grok --always-approve",
+            "grok --resume 01a04585-2d53-7123-8000-000000000000",
+            "grok 'reply with the single word OK'",
+            "grok --resume models",
+            "grok --model grok-4.6 'explain this repo'",
+        ] {
+            assert!(grok.argv_is_session(interactive), "{interactive}");
+        }
+
+        for non_session in [
+            "grok -p 'summarise'",
+            "grok --single 'summarise'",
+            "grok --prompt-file prompt.txt",
+            "grok --prompt-json '[]'",
+            "grok agent stdio",
+            "grok agent leader",
+            "grok models",
+            "grok sessions list",
+            "grok update",
+            "grok --model grok-4.6 inspect",
+            // Regression: commit bfecae9 matched a non-session flag only as a
+            // whole token or `--flag=value`, so grok's attached short form
+            // (`-p<PROMPT>`, verified in `grok --help`) read as the TUI.
+            "grok -psummarise",
+            // Regression: commit bfecae9 omitted grok's value-taking policy and
+            // prompt flags, so the parser advanced one token and read their
+            // value as the subcommand — `grok --rules policy agent leader`
+            // classified a leader service as an interactive session.
+            "grok --rules policy agent leader",
+            "grok --allow Bash(ls:*) agent stdio",
+            "grok --allowedTools Bash(ls:*) models",
+            "grok --deny Bash(rm:*) inspect",
+            "grok --disallowed-tools shell sessions list",
+            "grok --sandbox strict doctor",
+            "grok --system-prompt-override terse update",
+            "grok --system-prompt terse version",
+            "grok help",
+            // Regression: commit 16de5ec declared only the bare `help` and
+            // `version` subcommands, so `grok --help` and `grok --version` —
+            // the flag spellings `grok --help` lists, both with short forms —
+            // printed their text and exited while the scanner counted them as
+            // interactive sessions.
+            "grok --help",
+            "grok -h",
+            "grok --version",
+            "grok -v",
+            "grok --model grok-4.6 --help",
+        ] {
+            assert!(!grok.argv_is_session(non_session), "{non_session}");
+        }
+    }
+
+    #[test]
+    fn a_positional_grok_prompt_may_spell_out_a_terminating_flag() {
+        // Regression: commit 54c9103 scanned every argv token for a
+        // terminating flag before parsing argument positions, and commit
+        // 16de5ec then declared a bare positional PROMPT interactive for grok.
+        // Process collection joins argv with single spaces
+        // (`platform::linux::list_processes`), so the words of a prompt are
+        // indistinguishable from separate argv entries: a live TUI started as
+        // `grok "explain the --help flag"` was read as `grok --help` and
+        // disappeared from the session inventory.
+        let grok = spec(CliTool::Grok);
+        for interactive in [
+            "grok explain the --help flag",
+            "grok 'explain the --help flag'",
+            "grok --model grok-4.6 'what does -p do?'",
+            "grok --always-approve 'is --version newer than -v?'",
+        ] {
+            assert!(grok.argv_is_session(interactive), "{interactive}");
+        }
+
+        // A terminating flag in option position still ends the parse.
+        for non_session in [
+            "grok --help",
+            "grok --model grok-4.6 -p summarise",
+            "grok --always-approve --version",
+        ] {
+            assert!(!grok.argv_is_session(non_session), "{non_session}");
+        }
+    }
+
+    #[test]
+    fn grok_classifies_the_argv_elements_a_prompt_arrives_as() {
+        // Regression: commit 54c9103 classified a whitespace-split command
+        // line, so an argv element was indistinguishable from the words inside
+        // it. A live TUI started as `grok "help me"` arrived as the tokens
+        // `grok help me` and was rejected as the `help` management subcommand,
+        // and `grok -- "--help explain this"` was rejected as `grok --help`
+        // because `--` never ended option parsing.
+        let grok = spec(CliTool::Grok);
+        for interactive in [
+            vec!["grok", "help me"],
+            vec!["grok", "-- explain this"],
+            vec!["grok", "--", "--help explain this"],
+            vec!["grok", "--", "help"],
+            vec!["grok", "explain the --help flag"],
+            vec!["grok", "--model", "grok-4.6", "version the changelog"],
+            vec!["grok", "hello there", "--model", "grok-4.6"],
+            vec!["grok", "hello there", "--", "version"],
+        ] {
+            assert!(
+                grok.argv_elements_are_session(&interactive),
+                "{interactive:?}"
+            );
+        }
+
+        // The real management and terminating-flag invocations, whose argv
+        // elements are exactly those tokens, stay out of the inventory.
+        for non_session in [
+            vec!["grok", "help"],
+            vec!["grok", "--help"],
+            vec!["grok", "version"],
+            vec!["grok", "-p", "summarise"],
+            vec!["grok", "--model", "grok-4.6", "inspect"],
+            // Regression: commit 574a9ba stopped scanning at the first
+            // positional, so a COMMAND after the prompt (`grok hello version`
+            // exits, `grok hello agent stdio` is a headless service) and a
+            // terminating flag after it were accepted as interactive sessions.
+            vec!["grok", "hello there", "version"],
+            vec!["grok", "hello there", "agent", "stdio"],
+            vec!["grok", "hello there", "--help"],
+        ] {
+            assert!(
+                !grok.argv_elements_are_session(&non_session),
+                "{non_session:?}"
+            );
+        }
+    }
+
+    #[test]
     fn cli_tool_serializes_lowercase() {
         assert_eq!(
             serde_json::to_string(&CliTool::Claude).unwrap(),
@@ -892,6 +1359,7 @@ mod tests {
         );
         assert_eq!(serde_json::to_string(&CliTool::Codex).unwrap(), "\"codex\"");
         assert_eq!(serde_json::to_string(&CliTool::Agy).unwrap(), "\"agy\"");
+        assert_eq!(serde_json::to_string(&CliTool::Grok).unwrap(), "\"grok\"");
     }
 
     #[test]
@@ -902,6 +1370,8 @@ mod tests {
         assert_eq!(x, CliTool::Codex);
         let a: CliTool = serde_json::from_str("\"agy\"").unwrap();
         assert_eq!(a, CliTool::Agy);
+        let g: CliTool = serde_json::from_str("\"grok\"").unwrap();
+        assert_eq!(g, CliTool::Grok);
         assert_eq!(
             serde_json::from_str::<CliTool>("\"gemini\"").unwrap(),
             CliTool::Unknown
@@ -919,15 +1389,19 @@ mod tests {
 
         let agy = config_for(CliTool::Agy);
         assert_eq!(agy.base_dir_name, ".gemini");
+
+        let grok = config_for(CliTool::Grok);
+        assert_eq!(grok.base_dir_name, ".grok");
     }
 
     #[test]
     fn all_tools_covers_every_variant() {
         let tools = all_tools();
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 4);
         assert!(tools.iter().any(|c| c.tool == CliTool::Claude));
         assert!(tools.iter().any(|c| c.tool == CliTool::Codex));
         assert!(tools.iter().any(|c| c.tool == CliTool::Agy));
+        assert!(tools.iter().any(|c| c.tool == CliTool::Grok));
     }
 
     #[test]
@@ -935,6 +1409,7 @@ mod tests {
         assert_eq!("Claude".parse::<CliTool>().unwrap(), CliTool::Claude);
         assert_eq!("CODEX".parse::<CliTool>().unwrap(), CliTool::Codex);
         assert_eq!("AGY".parse::<CliTool>().unwrap(), CliTool::Agy);
+        assert_eq!("Grok".parse::<CliTool>().unwrap(), CliTool::Grok);
     }
 
     #[test]

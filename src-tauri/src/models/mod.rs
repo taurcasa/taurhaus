@@ -262,6 +262,7 @@ pub struct CliCommandSettings {
     pub claude: ToolCommands,
     pub codex: ToolCommands,
     pub agy: ToolCommands,
+    pub grok: ToolCommands,
     /// Runtime-only launch input. The coordination command resolves managed hook
     /// trust before pipeline rendering; this is never persisted or sent to the UI.
     #[serde(skip)]
@@ -288,6 +289,9 @@ impl Default for CliCommandSettings {
                 .default_commands
                 .clone(),
             agy: crate::session_scanner::cli_tool::spec(CliTool::Agy)
+                .default_commands
+                .clone(),
+            grok: crate::session_scanner::cli_tool::spec(CliTool::Grok)
                 .default_commands
                 .clone(),
             codex_bypass_hook_trust: false,
@@ -491,6 +495,7 @@ pub struct ModelCatalog {
     pub claude: Vec<ModelCatalogEntry>,
     pub codex: Vec<ModelCatalogEntry>,
     pub agy: Vec<ModelCatalogEntry>,
+    pub grok: Vec<ModelCatalogEntry>,
 }
 
 static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
@@ -679,6 +684,24 @@ static MODEL_CATALOG: LazyLock<ModelCatalog> = LazyLock::new(|| ModelCatalog {
             None,
         ),
     ],
+    grok: vec![
+        model_catalog_entry(
+            "grok-4.6",
+            "Grok 4.6",
+            GROK_EFFORTS_THROUGH_XHIGH,
+            Some("high"),
+            false,
+            None,
+        ),
+        model_catalog_entry(
+            "grok-4.5",
+            "Grok 4.5",
+            GROK_EFFORTS_THROUGH_HIGH,
+            Some("high"),
+            false,
+            None,
+        ),
+    ],
 });
 
 const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
@@ -686,6 +709,10 @@ const CODEX_EFFORTS_WITH_ULTRA: &[&str] = &["low", "medium", "high", "xhigh", "m
 const CODEX_EFFORTS_WITH_MAX: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const CODEX_EFFORTS_THROUGH_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
 const AGY_EFFORTS: &[&str] = &["low", "medium", "high"];
+/// `grok models` reports the effort menu per model: `grok-4.6` accepts all four
+/// (default `high`), `grok-4.5` stops at `high`. Both run a 500k context window.
+const GROK_EFFORTS_THROUGH_XHIGH: &[&str] = &["low", "medium", "high", "xhigh"];
+const GROK_EFFORTS_THROUGH_HIGH: &[&str] = &["low", "medium", "high"];
 
 fn model_catalog_entry(
     id: &str,
@@ -723,6 +750,7 @@ impl ModelCatalog {
             CliTool::Claude => &MODEL_CATALOG.claude,
             CliTool::Codex => &MODEL_CATALOG.codex,
             CliTool::Agy => &MODEL_CATALOG.agy,
+            CliTool::Grok => &MODEL_CATALOG.grok,
             CliTool::Unknown => &[],
         }
     }
@@ -765,6 +793,13 @@ impl ModelCatalog {
                 None => CODEX_EFFORTS_WITH_ULTRA.contains(&effort),
             },
             CliTool::Agy => AGY_EFFORTS.contains(&effort),
+            // grok rejects an unsupported effort eagerly and names the set, so
+            // a known entry is validated per model and an unknown (user-added)
+            // model falls back to the widest published vocabulary.
+            CliTool::Grok => match model_id.and_then(|model_id| Self::entry_for(tool, model_id)) {
+                Some(entry) => entry.efforts.iter().any(|allowed| allowed == effort),
+                None => GROK_EFFORTS_THROUGH_XHIGH.contains(&effort),
+            },
             CliTool::Unknown => false,
         }
     }
@@ -775,6 +810,7 @@ impl ModelCatalog {
             .iter()
             .chain(&MODEL_CATALOG.codex)
             .chain(&MODEL_CATALOG.agy)
+            .chain(&MODEL_CATALOG.grok)
             .any(|entry| entry.id == model_id)
     }
 }
@@ -867,6 +903,14 @@ pub struct HarnessSettings {
     /// Antigravity hook loading is trust-gated upstream and remains opt-in.
     #[serde(default)]
     pub agy_hooks: bool,
+    /// grok's personal hook directory is always trusted, so its compaction
+    /// bridge is on by default and can be switched off.
+    #[serde(default = "default_true")]
+    pub grok_hooks: bool,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 impl Default for HarnessSettings {
@@ -874,6 +918,7 @@ impl Default for HarnessSettings {
         Self {
             codex_compaction: CodexCompactionMode::Transcript,
             agy_hooks: false,
+            grok_hooks: true,
         }
     }
 }
@@ -1722,6 +1767,48 @@ mod tests {
                 .id,
             "gemini-3.7-flash-high"
         );
+        assert_eq!(
+            ModelCatalog::default_for(CliTool::Grok)
+                .expect("Grok catalog")
+                .id,
+            "grok-4.6"
+        );
+    }
+
+    #[test]
+    fn grok_catalog_matches_the_verified_1_0_5_models() {
+        // Regression: commit bfecae9 had no grok catalog, so `grok models`'
+        // verified per-model effort menus could not gate a launch and an
+        // unsupported effort would only fail inside the CLI.
+        assert_eq!(ModelCatalog::entries_for(CliTool::Grok).len(), 2);
+        let default = ModelCatalog::entry_for(CliTool::Grok, "grok-4.6").expect("grok-4.6");
+        assert_eq!(default.default_effort.as_deref(), Some("high"));
+        assert_eq!(default.efforts, ["low", "medium", "high", "xhigh"]);
+        let previous = ModelCatalog::entry_for(CliTool::Grok, "grok-4.5").expect("grok-4.5");
+        assert_eq!(previous.efforts, ["low", "medium", "high"]);
+
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Grok,
+            Some("grok-4.6"),
+            "xhigh"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Grok,
+            Some("grok-4.5"),
+            "xhigh"
+        ));
+        // An id the static catalog does not know still renders a published
+        // effort — the catalog is a suggestion list, not an allowlist.
+        assert!(ModelCatalog::supports_effort(
+            CliTool::Grok,
+            Some("grok-5.0"),
+            "xhigh"
+        ));
+        assert!(!ModelCatalog::supports_effort(
+            CliTool::Grok,
+            Some("grok-4.6"),
+            "ultra"
+        ));
     }
 
     #[test]

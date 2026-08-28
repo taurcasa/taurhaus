@@ -299,10 +299,12 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
 ///
 /// Exit strategies differ per tool:
 /// - Claude & Antigravity: `/exit` text command (typed + Enter)
+/// - Grok: `/quit` text command, confirmed by its registry row disappearing
 /// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
     let config = cli_tool::spec(tool);
     let presence_lock = stop_presence_lock(tmux_pane, config);
+    let registry_release = stop_registry_release(tmux_pane, config);
     match config.stop_strategy {
         cli_tool::StopStrategy::Interrupt => {
             // Codex exits on Ctrl+C, not a text command
@@ -315,21 +317,30 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
 
     // Poll for exit, then kill the pane. Background thread so we don't block IPC.
     let pane = tmux_pane.to_string();
+    // The budget is the harness's own: grok runs its `SessionEnd` hooks inside a
+    // documented ten-second exit budget, so the shared five seconds would kill a
+    // shutdown that is going exactly to plan.
+    let timeout_ms = config.stop_timeout.as_millis() as u64;
     std::thread::spawn(move || {
         const POLL_MS: u64 = 200;
-        const TIMEOUT_MS: u64 = 5000;
         let mut elapsed = 0u64;
 
         tracing::info!(pane = %pane, "stop_session: polling for exit");
 
         // Poll until the pane's command becomes a shell (Claude exited)
         // or the pane disappears, or we hit the timeout.
-        while elapsed < TIMEOUT_MS {
+        while elapsed < timeout_ms {
             std::thread::sleep(std::time::Duration::from_millis(POLL_MS));
             elapsed += POLL_MS;
 
             match pane_current_command(&pane) {
-                Some(cmd) if stop_has_completed(Some(&cmd), presence_lock.as_deref()) => {
+                Some(cmd)
+                    if stop_has_completed(
+                        Some(&cmd),
+                        presence_lock.as_deref(),
+                        registry_release.as_ref(),
+                    ) =>
+                {
                     tracing::info!(pane = %pane, cmd = %cmd, elapsed_ms = elapsed, "stop_session: graceful exit confirmed, killing pane");
                     break;
                 }
@@ -344,7 +355,7 @@ pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
             }
         }
 
-        if elapsed >= TIMEOUT_MS {
+        if elapsed >= timeout_ms {
             tracing::warn!(pane = %pane, "stop_session: timeout, killing pane anyway");
         }
 
@@ -373,23 +384,123 @@ fn stop_presence_lock(
     crate::session_scanner::idle::presence_lock_is_held(&path).then_some(path)
 }
 
+/// The grok home and pid whose registry row proves the session is still up.
+///
+/// grok removes the row on `/quit` and leaves it behind on a kill, so its
+/// disappearance is a positive clean-stop signal rather than an inference from
+/// what the pane is running.
+struct StopRegistryRelease {
+    home: std::path::PathBuf,
+    pid: u32,
+}
+
+fn stop_registry_release(
+    pane: &str,
+    config: &crate::session_scanner::cli_tool::CliToolSpec,
+) -> Option<StopRegistryRelease> {
+    if !config.stop_registry_release {
+        return None;
+    }
+    let pane_pid = pane_process_id(pane)?;
+    let candidates = registry_pid_candidates(
+        config.tool,
+        pane_pid,
+        pane_tty(pane).as_deref(),
+        &crate::session_scanner::process::scan_processes().processes,
+    );
+    resolve_registry_release_with(&candidates, &|pid| {
+        crate::platform::process_env_var(pid, "GROK_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(crate::provider::platform_paths::PlatformPaths::grok_dir)
+    })
+}
+
+/// The pids that could own this pane's registry row, harness child first.
+///
+/// Every launch runs inside `exec "$SHELL" -ic '…; exec "$SHELL"'`, so tmux's
+/// `#{pane_pid}` is the shell while the registry row — and any inline
+/// `GROK_HOME=` assignment — belongs to the harness it started. The harness is
+/// the tool process sharing the pane's tty. The pane pid stays as the fallback
+/// for a launch that never got the shell wrapper.
+fn registry_pid_candidates(
+    tool: CliTool,
+    pane_pid: u32,
+    pane_tty: Option<&str>,
+    processes: &[crate::session_scanner::process::ProcessInfo],
+) -> Vec<u32> {
+    let mut candidates: Vec<u32> = pane_tty
+        .map(|tty| {
+            processes
+                .iter()
+                .filter(|process| process.cli_tool == tool && process.tty == tty)
+                .map(|process| process.pid)
+                .collect()
+        })
+        .unwrap_or_default();
+    if !candidates.contains(&pane_pid) {
+        candidates.push(pane_pid);
+    }
+    candidates
+}
+
+fn resolve_registry_release_with(
+    candidates: &[u32],
+    home_for: &dyn Fn(u32) -> std::path::PathBuf,
+) -> Option<StopRegistryRelease> {
+    candidates.iter().find_map(|&pid| {
+        let home = home_for(pid);
+        matches!(
+            crate::session_scanner::idle::grok_session_registry_residence(&home, pid),
+            crate::session_scanner::idle::GrokRegistryResidence::Held
+        )
+        .then_some(StopRegistryRelease { home, pid })
+    })
+}
+
+/// Whether the harness has actually finished, given what proof this stop has.
+///
+/// The proofs are ranked, not combined: a harness that publishes its own
+/// clean-stop signal is believed over the pane, because every launch runs
+/// `exec "$SHELL" -ic '…; exec "$SHELL"'` and a shell can be back on top of the
+/// pane while the harness child is still working. Silence from an authoritative
+/// proof keeps the poll going until the deadline, where the tmux floor takes
+/// over and kills the pane anyway.
 fn stop_has_completed(
     current_command: Option<&str>,
     presence_lock: Option<&std::path::Path>,
+    registry_release: Option<&StopRegistryRelease>,
 ) -> bool {
+    // Only a registry that was read and no longer names the pid proves the
+    // stop; an unreadable one is silence, not release.
+    if let Some(release) = registry_release {
+        return crate::session_scanner::idle::grok_session_registry_residence(
+            &release.home,
+            release.pid,
+        ) == crate::session_scanner::idle::GrokRegistryResidence::Released;
+    }
+    if let Some(path) = presence_lock {
+        return !crate::session_scanner::idle::presence_lock_is_held(path);
+    }
     current_command.is_some_and(is_shell)
-        || presence_lock
-            .is_some_and(|path| !crate::session_scanner::idle::presence_lock_is_held(path))
 }
 
 fn pane_process_id(pane: &str) -> Option<u32> {
+    pane_field(pane, "#{pane_pid}").and_then(|pid| pid.parse().ok())
+}
+
+fn pane_tty(pane: &str) -> Option<String> {
+    pane_field(pane, "#{pane_tty}")
+}
+
+fn pane_field(pane: &str, format: &str) -> Option<String> {
     tmux_command()
-        .args(["display-message", "-p", "-t", pane, "#{pane_pid}"])
+        .args(["display-message", "-p", "-t", pane, format])
         .output()
         .ok()
         .filter(|output| output.status.success())
         .and_then(|output| String::from_utf8(output.stdout).ok())
-        .and_then(|pid| pid.trim().parse().ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 /// Get the current command running in a tmux pane.
@@ -662,6 +773,8 @@ fn run_tmux_send_keys(pane: &str, keys: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    use crate::session_scanner::process::ProcessInfo;
+
     #[test]
     fn agy_stop_waits_for_presence_lock_release() {
         // Regression: commit 9a66d1c treated slash-exit tools as stopped only
@@ -673,9 +786,9 @@ mod tests {
         let path = tmp.path().join("conversation.lock");
         let lock = std::fs::File::create(&path).unwrap();
         lock.lock_exclusive().unwrap();
-        assert!(!stop_has_completed(Some("agy"), Some(&path)));
+        assert!(!stop_has_completed(Some("agy"), Some(&path), None));
         FileExt::unlock(&lock).unwrap();
-        assert!(stop_has_completed(Some("agy"), Some(&path)));
+        assert!(stop_has_completed(Some("agy"), Some(&path), None));
     }
 
     // -----------------------------------------------------------------------
@@ -729,6 +842,225 @@ mod tests {
     // -----------------------------------------------------------------------
     // Antigravity command tests
     // -----------------------------------------------------------------------
+
+    #[test]
+    fn grok_stop_completes_when_its_registry_row_is_released() {
+        // Regression: commit 16de5ec stopped every SlashExit harness on the
+        // tmux floor alone, so `/quit` was only ever confirmed by the pane
+        // returning to a shell — a pane still showing `grok` after a clean exit
+        // was killed on the timeout instead of recognised as finished.
+        let temp = tempfile::TempDir::new().unwrap();
+        let home = temp.path().to_path_buf();
+        std::fs::write(
+            home.join("active_sessions.json"),
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/home/user/projects/grok","opened_at":"2026-08-27T23:22:06.993848110Z"}]"#,
+        )
+        .unwrap();
+        let release = StopRegistryRelease {
+            home: home.clone(),
+            pid: 4242,
+        };
+
+        assert!(!stop_has_completed(Some("grok"), None, Some(&release)));
+
+        std::fs::write(home.join("active_sessions.json"), "[]").unwrap();
+        assert!(stop_has_completed(Some("grok"), None, Some(&release)));
+    }
+
+    #[test]
+    fn the_registry_proof_outranks_the_pane_returning_to_a_shell() {
+        // Regression: commit 358a7c9 ORed grok's registry proof with the tmux
+        // floor, so the poll settled on the first shell the pane reported.
+        // Every launch runs `exec "$SHELL" -ic '…; exec "$SHELL"'`, so a shell
+        // can sit on top of the pane while the grok child still holds its
+        // `active_sessions.json` row — and an unreadable registry passed as a
+        // stop for the same reason. Both killed the pane while the session was
+        // still resident.
+        let temp = tempfile::TempDir::new().unwrap();
+        let home = temp.path().to_path_buf();
+        let registry = home.join("active_sessions.json");
+        std::fs::write(
+            &registry,
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/home/user/projects/grok","opened_at":"2026-08-27T23:22:06.993848110Z"}]"#,
+        )
+        .unwrap();
+        let release = StopRegistryRelease {
+            home: home.clone(),
+            pid: 4242,
+        };
+
+        assert!(
+            !stop_has_completed(Some("bash"), None, Some(&release)),
+            "a pane back at a shell does not release grok's registry row"
+        );
+
+        std::fs::write(
+            &registry,
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/p","#,
+        )
+        .unwrap();
+        assert!(
+            !stop_has_completed(Some("bash"), None, Some(&release)),
+            "an unreadable registry is silence, not a stop"
+        );
+
+        std::fs::write(&registry, "[]").unwrap();
+        assert!(
+            stop_has_completed(Some("bash"), None, Some(&release)),
+            "the released row is the proof, whatever the pane runs"
+        );
+
+        // A harness with no registry proof keeps the tmux floor.
+        assert!(stop_has_completed(Some("bash"), None, None));
+        assert!(!stop_has_completed(Some("grok"), None, None));
+    }
+
+    #[test]
+    fn grok_declares_quit_as_its_exit_command() {
+        assert_eq!(
+            build_launch_command(CliTool::Grok, LaunchMode::Fresh),
+            "grok --always-approve"
+        );
+        assert_eq!(cli_tool::spec(CliTool::Grok).exit_command, "/quit");
+        assert!(cli_tool::spec(CliTool::Grok).stop_registry_release);
+    }
+
+    #[test]
+    fn the_registry_probe_follows_the_pane_shell_to_the_harness_child() {
+        // Regression: commit 358a7c9 probed `active_sessions.json` with tmux's
+        // `#{pane_pid}`. Every launch runs inside `exec "$SHELL" -ic '…'`, so
+        // that pid is the shell: the registry row belongs to its grok child,
+        // and an inline `GROK_HOME=` assignment is only in the child's
+        // environment. The probe found nothing and every stop fell back to the
+        // timeout kill.
+        let pane_tty = "/dev/pts/9";
+        let processes = vec![
+            ProcessInfo {
+                pid: 4242,
+                project_path: "/home/user/projects/grok".to_string(),
+                tty: pane_tty.to_string(),
+                args: "grok --always-approve".to_string(),
+                cli_tool: CliTool::Grok,
+            },
+            ProcessInfo {
+                pid: 5151,
+                project_path: "/home/user/projects/other".to_string(),
+                tty: "/dev/pts/3".to_string(),
+                args: "grok --always-approve".to_string(),
+                cli_tool: CliTool::Grok,
+            },
+        ];
+
+        assert_eq!(
+            registry_pid_candidates(CliTool::Grok, 1111, Some(pane_tty), &processes),
+            vec![4242, 1111],
+            "the harness child on this pane's tty is tried before the pane shell"
+        );
+        assert_eq!(
+            registry_pid_candidates(CliTool::Grok, 1111, None, &processes),
+            vec![1111]
+        );
+    }
+
+    #[test]
+    fn a_prompted_grok_session_still_offers_its_registry_pid() {
+        // Regression: commit 54c9103 classified the joined command line, so a
+        // TUI started as `grok "help me"` never entered the process inventory
+        // at all: no tool process shared the pane's tty, the registry row that
+        // proves a clean `/quit` was never probed, and the stop fell back to
+        // the tmux floor.
+        let argv = ["grok".to_string(), "help me".to_string()];
+        let tool = crate::session_scanner::process::detect_cli_tool_argv(&argv)
+            .expect("a prompted grok TUI is a session");
+        let pane_tty = "/dev/pts/9";
+        let processes = vec![ProcessInfo {
+            pid: 4242,
+            project_path: "/home/user/projects/grok".to_string(),
+            tty: pane_tty.to_string(),
+            args: argv.join(" "),
+            cli_tool: tool,
+        }];
+
+        assert_eq!(
+            registry_pid_candidates(CliTool::Grok, 1111, Some(pane_tty), &processes),
+            vec![4242, 1111],
+            "the prompted grok child is probed before the pane shell"
+        );
+    }
+
+    #[test]
+    fn the_registry_release_binds_the_home_of_the_pid_that_holds_a_row() {
+        // Regression: commit 358a7c9 read the registry of the default grok home
+        // for the pane's shell pid, so a session started under a second
+        // GROK_HOME had no clean-stop proof at all.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let default_home = tmp.path().join(".grok");
+        let work_home = tmp.path().join(".grok-work");
+        std::fs::create_dir_all(&default_home).unwrap();
+        std::fs::create_dir_all(&work_home).unwrap();
+        std::fs::write(default_home.join("active_sessions.json"), "[]").unwrap();
+        std::fs::write(
+            work_home.join("active_sessions.json"),
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/home/user/projects/grok","opened_at":"2026-08-27T23:22:06.993848110Z"}]"#,
+        )
+        .unwrap();
+        let home_for = |pid: u32| {
+            if pid == 4242 {
+                work_home.clone()
+            } else {
+                default_home.clone()
+            }
+        };
+
+        let release = resolve_registry_release_with(&[1111, 4242], &home_for)
+            .expect("the grok child holds the row");
+        assert_eq!(release.pid, 4242);
+        assert_eq!(release.home, work_home);
+        assert!(resolve_registry_release_with(&[1111], &home_for).is_none());
+    }
+
+    #[test]
+    fn a_half_written_registry_is_not_a_clean_stop() {
+        // Regression: commit 358a7c9 read every failed or unparsable registry
+        // read as an empty registry, so a truncated file caught mid-rewrite
+        // looked exactly like the row grok removes on `/quit` and the pane was
+        // killed in the middle of a turn.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let home = tmp.path().to_path_buf();
+        let registry = home.join("active_sessions.json");
+        std::fs::write(
+            &registry,
+            r#"[{"session_id":"01a04585-2d53-7123-8000-9a0f4d0b21ce","pid":4242,"cwd":"/p","#,
+        )
+        .unwrap();
+        let release = StopRegistryRelease {
+            home: home.clone(),
+            pid: 4242,
+        };
+
+        assert!(
+            !stop_has_completed(Some("grok"), None, Some(&release)),
+            "an unreadable registry proves nothing"
+        );
+
+        std::fs::write(&registry, "[]").unwrap();
+        assert!(stop_has_completed(Some("grok"), None, Some(&release)));
+    }
+
+    #[test]
+    fn grok_gets_its_documented_shutdown_budget_before_the_pane_is_killed() {
+        // Regression: commit 358a7c9 gave every harness the shared five-second
+        // stop timeout. grok runs its `SessionEnd` hooks inside a documented
+        // ten-second exit budget, so a correct shutdown was force-killed.
+        assert!(
+            cli_tool::spec(CliTool::Grok).stop_timeout >= std::time::Duration::from_secs(10),
+            "grok's SessionEnd hooks own a ten-second exit budget"
+        );
+        assert_eq!(
+            cli_tool::spec(CliTool::Claude).stop_timeout,
+            std::time::Duration::from_secs(5)
+        );
+    }
 
     #[test]
     fn build_agy_fresh_command() {

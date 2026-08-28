@@ -226,7 +226,6 @@ where
                         authoritative_state.map(|reported| reported.source),
                         process_active,
                         file_active,
-                        tool_spec.process_activity_signal,
                     ),
                 );
             }
@@ -275,19 +274,18 @@ where
 
 /// Name the evidence behind a raw activity decision, for `activity.state.changed`.
 ///
-/// `authoritative` means the tool reported the state itself. Today the only
-/// such source is the Claude sessions registry; PR 13 adds Codex `-c notify`.
+/// `authoritative` means the tool reported the state itself — each harness's
+/// declared `ActivitySource` names its own evidence. Everything else falls back
+/// to the process-IO floor and then to the transcript mtime.
 fn activity_source(
     authoritative_source: Option<&'static str>,
     process_active: bool,
     file_active: bool,
-    process_signal: crate::session_scanner::cli_tool::ProcessActivitySignal,
 ) -> &'static str {
     if let Some(source) = authoritative_source {
         return source;
     }
     if process_active {
-        let _ = process_signal;
         "process_io"
     } else if file_active {
         "transcript"
@@ -568,73 +566,17 @@ mod tests {
 
     #[test]
     fn activity_source_names_the_native_source_when_authoritative() {
-        assert_eq!(
-            activity_source(
-                Some("registry"),
-                false,
-                false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "registry"
-        );
-        assert_eq!(
-            activity_source(
-                Some("registry"),
-                true,
-                false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "registry"
-        );
-        assert_eq!(
-            activity_source(
-                Some("notify"),
-                false,
-                false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "notify"
-        );
+        assert_eq!(activity_source(Some("registry"), false, false,), "registry");
+        assert_eq!(activity_source(Some("registry"), true, false,), "registry");
+        assert_eq!(activity_source(Some("notify"), false, false,), "notify");
     }
 
     #[test]
     fn activity_source_names_the_driving_signal() {
-        assert_eq!(
-            activity_source(
-                None,
-                true,
-                true,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "process_io"
-        );
-        assert_eq!(
-            activity_source(
-                None,
-                true,
-                false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "process_io"
-        );
-        assert_eq!(
-            activity_source(
-                None,
-                false,
-                true,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "transcript"
-        );
-        assert_eq!(
-            activity_source(
-                None,
-                false,
-                false,
-                crate::session_scanner::cli_tool::ProcessActivitySignal::ReadChars,
-            ),
-            "none"
-        );
+        assert_eq!(activity_source(None, true, true,), "process_io");
+        assert_eq!(activity_source(None, true, false,), "process_io");
+        assert_eq!(activity_source(None, false, true,), "transcript");
+        assert_eq!(activity_source(None, false, false,), "none");
     }
 
     #[test]

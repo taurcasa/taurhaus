@@ -234,6 +234,7 @@ const active_multiTool_dark = createScenario({
         createSession({ cli_tool: 'claude', state: 'active', tmux_window: '1', tmux_pane: '%11' }),
         createSession({ cli_tool: 'codex', state: 'active', tmux_window: '2', tmux_pane: '%12' }),
         createSession({ cli_tool: 'agy', state: 'active', tmux_window: '4', tmux_pane: '%14' }),
+        createSession({ cli_tool: 'grok', state: 'idle', tmux_window: '5', tmux_pane: '%15' }),
       ],
     },
     sessionByProject: {
@@ -241,14 +242,27 @@ const active_multiTool_dark = createScenario({
     },
   },
   expected: {
-    labels: ['Multi Tool Runtime', 'Claude: running', 'Codex: running', 'Antigravity: running'],
+    labels: [
+      'Multi Tool Runtime',
+      'Claude: running',
+      'Codex: running',
+      'Antigravity: running',
+      'Grok: idle',
+    ],
     selectedProjectName: 'Multi Tool Runtime',
   },
 })
 
-const antigravity_context_menu = createScenario({
+const launch_context_menu_dark = createScenario({
   ...active_multiTool_dark,
-  name: 'antigravity_context_menu',
+  name: 'launch_context_menu_dark',
+  openContextMenu: true,
+})
+
+const launch_context_menu_light = createScenario({
+  ...active_multiTool_dark,
+  name: 'launch_context_menu_light',
+  theme: 'light',
   openContextMenu: true,
 })
 
@@ -838,7 +852,8 @@ const activity_levels_dark = createScenario({
 })
 
 export const sidebarScenarios = [
-  antigravity_context_menu,
+  launch_context_menu_dark,
+  launch_context_menu_light,
   active_claude_selected_dark,
   active_multiTool_dark,
   activity_levels_dark,

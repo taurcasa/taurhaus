@@ -90,10 +90,15 @@ fn source_without_test_only_items(source: &str) -> String {
 }
 
 fn cli_tool_literal_count(source: &str) -> usize {
-    ["CliTool::Claude", "CliTool::Codex", "CliTool::Agy"]
-        .into_iter()
-        .map(|literal| source.match_indices(literal).count())
-        .sum()
+    [
+        "CliTool::Claude",
+        "CliTool::Codex",
+        "CliTool::Agy",
+        "CliTool::Grok",
+    ]
+    .into_iter()
+    .map(|literal| source.match_indices(literal).count())
+    .sum()
 }
 
 #[test]
@@ -258,7 +263,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/task_scanner/codex.rs",
         "src/templates/adapters.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 66;
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 90;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
@@ -412,9 +417,11 @@ fn generic_account_core_contains_no_tool_identity_literals() {
         "CliTool::Claude",
         "CliTool::Codex",
         "CliTool::Agy",
+        "CliTool::Grok",
         "\"claude\"",
         "\"codex\"",
         "\"agy\"",
+        "\"grok\"",
         "\".credentials.json\"",
     ];
     let violations = GENERIC_ACCOUNT_FILES

@@ -170,6 +170,10 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
         return dark
           ? 'border-google-blue-400/35 bg-google-blue-500/12 text-google-blue-200'
           : 'border-google-blue-300/70 bg-google-blue-50 text-google-blue-800'
+      case 'graphite':
+        return dark
+          ? 'border-graphite-400/35 bg-graphite-500/12 text-graphite-200'
+          : 'border-graphite-300/70 bg-graphite-50 text-graphite-800'
       case 'amber':
         return dark
           ? 'border-amber-400/35 bg-amber-500/12 text-amber-200'
@@ -678,9 +682,9 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
                 disabled={addAgentDraft?.submitting || addAgentDraft?.isLocked}
                 data-testid="mesh-add-agent-tool-select"
               >
-                <option value="claude">Claude</option>
-                <option value="codex">Codex</option>
-                <option value="agy">Antigravity</option>
+                {#each toolOptions as descriptor (descriptor.id)}
+                  <option value={descriptor.id}>{descriptor.label}</option>
+                {/each}
               </select>
               <div class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-500">
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-9"/></svg>

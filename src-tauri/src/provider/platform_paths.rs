@@ -9,6 +9,7 @@ const APP_BUNDLE_ID: &str = "com.taurhaus.dev";
 const DATA_DIR_OVERRIDE_ENV: &str = "TAURHAUS_DATA_DIR";
 const CLAUDE_DIR_OVERRIDE_ENV: &str = "TAURHAUS_CLAUDE_DIR";
 const CODEX_HOME_ENV: &str = "CODEX_HOME";
+const GROK_HOME_ENV: &str = "GROK_HOME";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const HOOKS_DIRNAME: &str = "hooks";
 const DAEMON_BINARY_NAME: &str = "taurhaus-daemon";
@@ -66,6 +67,11 @@ impl PlatformPaths {
     /// Codex home directory (`$CODEX_HOME` or `~/.codex`).
     pub fn codex_dir() -> PathBuf {
         env_path_override(CODEX_HOME_ENV).unwrap_or_else(default_codex_dir)
+    }
+
+    /// Grok home directory (`$GROK_HOME` or `~/.grok`).
+    pub fn grok_dir() -> PathBuf {
+        env_path_override(GROK_HOME_ENV).unwrap_or_else(default_grok_dir)
     }
 
     /// Antigravity's shared Google tooling root (`~/.gemini`).
@@ -161,6 +167,14 @@ fn default_codex_dir() -> PathBuf {
     }
 
     home_dir_or_temp().join(".codex")
+}
+
+fn default_grok_dir() -> PathBuf {
+    if let Some(path) = windows_unc_home_subdir(".grok") {
+        return path;
+    }
+
+    home_dir_or_temp().join(".grok")
 }
 
 fn default_tool_session_root(tool: CliTool) -> PathBuf {

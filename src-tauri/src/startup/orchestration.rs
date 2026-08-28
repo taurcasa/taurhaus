@@ -29,6 +29,10 @@ pub(super) fn run_startup_orchestration(
         tracing::warn!(error = %error, "startup Antigravity hook reconciliation failed");
     }
     #[cfg(feature = "mesh-bridged-backend")]
+    if let Err(error) = reconcile_startup_grok_hooks(app.handle()) {
+        tracing::warn!(error = %error, "startup Grok compaction hook reconciliation failed");
+    }
+    #[cfg(feature = "mesh-bridged-backend")]
     spawn_coordination_self_heal_monitor(app.handle().clone());
 
     let watchers_started_at = Instant::now();
@@ -110,6 +114,19 @@ fn reconcile_startup_agy_hooks(app: &tauri::AppHandle) -> Result<(), String> {
     crate::commands::terminal_settings::reconcile_agy_hooks(terminal.harness.agy_hooks)
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+#[cfg(feature = "mesh-bridged-backend")]
+fn reconcile_startup_grok_hooks(app: &tauri::AppHandle) -> Result<(), String> {
+    let db = app.state::<crate::commands::projects::DbState>();
+    let terminal = crate::commands::terminal_settings::load_terminal_settings(&db);
+    let state = app.state::<crate::coordination::state::CoordinationState>();
+    crate::commands::terminal_settings::reconcile_grok_hooks_for_roster(
+        state.teams_dir(),
+        terminal.harness.grok_hooks,
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
 }
 
 pub(super) fn daemon_watch_bootstrap_enabled(context: &SetupContext) -> bool {

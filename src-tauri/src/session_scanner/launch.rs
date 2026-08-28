@@ -409,6 +409,58 @@ impl LaunchSpec<'_> {
                     }
                 }
             }
+            CliTool::Grok => {
+                if let Some(model) = requested_model {
+                    if let Some(model_flag) = capabilities.model_flag {
+                        if let Some(found) =
+                            first_present_flag(self.base, &[model_flag, "--model", "-m"])
+                        {
+                            notes.push(LaunchNote::ModelIgnored {
+                                found: found.to_string(),
+                            });
+                        } else {
+                            append_flag(&mut command, model_flag, model);
+                        }
+                    } else {
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Model,
+                            found: model.to_string(),
+                        });
+                    }
+                }
+
+                if let Some(effort) = requested_effort {
+                    let effective_model = capabilities
+                        .model_flag
+                        .and_then(|model_flag| {
+                            first_present_flag_value(self.base, &[model_flag, "--model", "-m"])
+                        })
+                        .or_else(|| requested_model.map(str::to_string));
+                    if !ModelCatalog::supports_effort(self.tool, effective_model.as_deref(), effort)
+                    {
+                        notes.push(LaunchNote::EffortIgnored {
+                            found: effort.to_string(),
+                            reason: EffortIgnoreReason::Invalid,
+                        });
+                    } else if let Some(EffortFlag::Argument { flag }) = capabilities.effort_flag {
+                        if let Some(found) =
+                            first_present_flag(self.base, &[flag, "--reasoning-effort"])
+                        {
+                            notes.push(LaunchNote::EffortIgnored {
+                                found: found.to_string(),
+                                reason: EffortIgnoreReason::BaseOverride,
+                            });
+                        } else {
+                            append_flag(&mut command, flag, effort);
+                        }
+                    } else {
+                        notes.push(LaunchNote::CapabilityMissing {
+                            capability: LaunchCapability::Effort,
+                            found: effort.to_string(),
+                        });
+                    }
+                }
+            }
             CliTool::Unknown => {}
         }
 
@@ -1255,6 +1307,91 @@ mod tests {
             vec![LaunchNote::ModelIgnored {
                 found: "--model".to_string()
             }]
+        );
+    }
+
+    #[test]
+    fn grok_render_adds_model_and_effort() {
+        // Regression: commit bfecae9 had no grok launch arm, so a registered
+        // model and reasoning effort were dropped from every grok launch.
+        let rendered = LaunchSpec {
+            tool: CliTool::Grok,
+            mode: LaunchMode::Fresh,
+            base: "grok --always-approve",
+            model: model_spec("grok-4.6", Some("xhigh")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            "grok --always-approve --model 'grok-4.6' --effort 'xhigh'"
+        );
+        assert!(rendered.notes.is_empty());
+    }
+
+    #[test]
+    fn grok_render_validates_effort_against_the_selected_model() {
+        // Regression: commit bfecae9 had no grok catalog, so `xhigh` — which
+        // only grok-4.6 accepts — would have been rendered for grok-4.5 and
+        // rejected eagerly by the CLI instead of noted here.
+        let rendered = LaunchSpec {
+            tool: CliTool::Grok,
+            mode: LaunchMode::Fresh,
+            base: "grok --always-approve",
+            model: model_spec("grok-4.5", Some("xhigh")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "grok --always-approve --model 'grok-4.5'");
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::EffortIgnored {
+                found: "xhigh".to_string(),
+                reason: EffortIgnoreReason::Invalid,
+            }]
+        );
+    }
+
+    #[test]
+    fn grok_render_respects_a_base_that_already_selects_model_or_effort() {
+        // Regression: commit bfecae9 knew none of grok's short and long flag
+        // spellings, so a free-form base using `-m` or `--reasoning-effort`
+        // would have received a second, conflicting selection.
+        let rendered = LaunchSpec {
+            tool: CliTool::Grok,
+            mode: LaunchMode::Fresh,
+            base: "grok -m grok-4.5 --reasoning-effort low",
+            model: model_spec("grok-4.6", Some("high")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        assert_eq!(rendered.command, "grok -m grok-4.5 --reasoning-effort low");
+        assert_eq!(
+            rendered.notes,
+            vec![
+                LaunchNote::ModelIgnored {
+                    found: "-m".to_string(),
+                },
+                LaunchNote::EffortIgnored {
+                    found: "--reasoning-effort".to_string(),
+                    reason: EffortIgnoreReason::BaseOverride,
+                },
+            ]
         );
     }
 

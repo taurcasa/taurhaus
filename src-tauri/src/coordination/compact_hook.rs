@@ -1,4 +1,4 @@
-//! Claude Code and Codex hook bridge for post-compaction operational reinjection.
+//! Claude Code, Codex and Grok hook bridge for post-compaction reinjection.
 
 use std::fs;
 use std::io::Read;
@@ -14,19 +14,33 @@ use crate::coordination::domain::Member;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::reinjection::CompactionReinjectionService;
 use crate::coordination::stores::{
-    record_delivery_at, CompactionDeliveryResult, MemberRuntimeStore,
+    record_delivery_at, CompactionDeliveryResult, MemberCompactionStore, MemberRuntimeStore,
     OperationalContextSnapshotStore, TeamConfigStore,
 };
 use crate::provider::path;
 use crate::provider::platform_paths::PlatformPaths;
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::cli_tool::{spec, CliTool, CompactionDelivery};
 use taurhaus_lib::logging::emit_global;
 
 const TAURHAUS_COMPACT_HOOK_BASENAME: &str = "taurhaus-session-start-compact";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const CODEX_HOOKS_FILENAME: &str = "hooks.json";
+const GROK_HOOKS_FILENAME: &str = "taurhaus.json";
 const SESSION_START_HOOK_EVENT: &str = "SessionStart";
+const POST_COMPACT_HOOK_EVENT: &str = "PostCompact";
+const GROK_COMPACT_TRIGGERS: &str = "manual|auto";
 const COMPACT_SOURCE: &str = "compact";
+/// Env names grok's hook runner injects into every hook process. Their presence
+/// identifies the harness even when the envelope carries no transcript path.
+const GROK_HOOK_EVENT_ENV: &str = "GROK_HOOK_EVENT";
+const GROK_SESSION_ID_ENV: &str = "GROK_SESSION_ID";
+/// grok also loads `~/.claude/settings.json` hooks, so one compaction can reach
+/// this bridge twice. Two invocations for the same session this close together
+/// are the same compaction and must yield one reinjection.
+const COMPAT_IMPORT_DEDUPE_WINDOW: chrono::TimeDelta = chrono::TimeDelta::seconds(5);
+/// Passive grok hooks default to five seconds; the bridge reads team state off
+/// disk, so it asks for the same headroom the Codex hook gets.
+const GROK_HOOK_TIMEOUT_SECS: u64 = 30;
 const HOOK_EXECUTABLE_RECORD_FILENAME: &str = "taurhaus-session-start-compact.executable";
 pub(crate) const CODEX_ADDITIONAL_CONTEXT_LIMIT: u64 = 12_000;
 
@@ -52,16 +66,34 @@ pub struct CompactHookInput {
     transcript_path: Option<PathBuf>,
     #[serde(default, alias = "permissionMode")]
     permission_mode: Option<String>,
+    /// grok's workspace root, which stands in for `cwd` when it is absent.
+    #[serde(default, alias = "workspaceRoot")]
+    workspace_root: Option<PathBuf>,
     #[serde(default)]
     model: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "agentType", alias = "subagentType")]
     agent_type: Option<String>,
 }
 
 impl CompactHookInput {
     pub fn inferred_tool(&self) -> Option<CliTool> {
-        infer_tool_from_transcript_path(self.transcript_path.as_deref())
+        tool_from_hook_environment()
+            .or_else(|| infer_tool_from_transcript_path(self.transcript_path.as_deref()))
     }
+
+    /// The directory the session runs in, however the harness spells it.
+    fn project_dir(&self) -> Option<&Path> {
+        self.cwd.as_deref().or(self.workspace_root.as_deref())
+    }
+}
+
+/// grok's hook runner injects reserved `GROK_*` names into every hook process
+/// (user values are stripped with a warning), which is the only identification
+/// available when its envelope carries no transcript path at all.
+fn tool_from_hook_environment() -> Option<CliTool> {
+    (std::env::var_os(GROK_HOOK_EVENT_ENV).is_some()
+        || std::env::var_os(GROK_SESSION_ID_ENV).is_some())
+    .then_some(CliTool::Grok)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
@@ -87,6 +119,8 @@ struct HookMemberMatch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompactHookSkipReason {
     NonCompactSessionStart,
+    PostCompactSignalOnly,
+    DuplicateCompatImport,
     ToolInferenceUnavailable,
     NoManagedMemberMatch,
     MultipleManagedMembersMatched,
@@ -98,6 +132,8 @@ impl CompactHookSkipReason {
     fn as_str(self) -> &'static str {
         match self {
             Self::NonCompactSessionStart => "non_compact_session_start",
+            Self::PostCompactSignalOnly => "post_compact_signal_only",
+            Self::DuplicateCompatImport => "duplicate_compat_import",
             Self::ToolInferenceUnavailable => "tool_inference_unavailable",
             Self::NoManagedMemberMatch => "no_managed_member_match",
             Self::MultipleManagedMembersMatched => "multiple_managed_members_matched",
@@ -112,6 +148,7 @@ enum CompactHookFailureStage {
     ReadStdin,
     ParsePayload,
     RenderAdditionalContext,
+    DeliverInbox,
     RecordDelivery,
     SerializeResponse,
 }
@@ -122,13 +159,14 @@ impl CompactHookFailureStage {
             Self::ReadStdin => "read_stdin",
             Self::ParsePayload => "parse_payload",
             Self::RenderAdditionalContext => "render_additional_context",
+            Self::DeliverInbox => "deliver_inbox",
             Self::RecordDelivery => "record_delivery",
             Self::SerializeResponse => "serialize_response",
         }
     }
 }
 
-/// Harness-specific hook configuration. Claude and Codex are the two current
+/// Harness-specific hook configuration. Claude, Codex and Grok are the current
 /// installer implementations; their stable payload fields share one parser.
 pub trait CompactionSignalSource: Send + Sync {
     fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError>;
@@ -137,6 +175,16 @@ pub trait CompactionSignalSource: Send + Sync {
 
 fn parse_compact_hook_input(raw: &str) -> Result<CompactHookInput, serde_json::Error> {
     serde_json::from_str(raw)
+}
+
+/// Hooks are *registered* under PascalCase event names everywhere, but the value
+/// a harness puts on the wire differs: Claude and Codex echo the PascalCase
+/// name, while grok spells it in snake_case (`~/.grok/docs/user-guide/10-hooks.md`
+/// documents the stdin envelope as `"hookEventName": "pre_tool_use"`, and injects
+/// the same spelling as `GROK_HOOK_EVENT`). One event, either spelling.
+fn hook_event_is(raw: &str, canonical: &str) -> bool {
+    debug_assert!(!canonical.contains('_'), "canonical names are PascalCase");
+    raw.replace('_', "").eq_ignore_ascii_case(canonical)
 }
 
 pub struct ClaudeCompactionSignalSource;
@@ -174,17 +222,150 @@ impl CompactionSignalSource for CodexCompactionSignalSource {
     }
 }
 
+/// grok's personal hook directory (`~/.grok/hooks/*.json`) is always trusted and
+/// taurhaus owns its own file there, so installation neither edits the user's
+/// config nor needs a folder-trust grant.
+pub struct GrokCompactionSignalSource;
+
+impl CompactionSignalSource for GrokCompactionSignalSource {
+    fn install(&self, config_dir: &Path, taurhaus_exe: &Path) -> Result<bool, CoordinationError> {
+        let runtime = detect_hook_runtime(config_dir);
+        let executable = runtime_path_string(taurhaus_exe, runtime)?;
+        if !hook_executable_exists(config_dir, &executable) {
+            emit_hook_degraded(CliTool::Grok, config_dir, &executable);
+            return self.remove(config_dir);
+        }
+
+        let hooks_dir = config_dir.join("hooks");
+        fs::create_dir_all(&hooks_dir)?;
+        let script_path = hooks_dir.join(platform_hook_filename(runtime));
+        let script_changed = write_hook_script(&script_path, taurhaus_exe, runtime)?;
+        let executable_changed = write_hook_executable_record(&hooks_dir, taurhaus_exe, runtime)?;
+
+        let command = settings_command_for_script(&script_path, runtime)?;
+        let desired = grok_hook_document(&command);
+        let path = hooks_dir.join(GROK_HOOKS_FILENAME);
+        let payload = serde_json::to_vec_pretty(&desired).map_err(|error| {
+            CoordinationError::StoreError(format!(
+                "failed to serialize grok hooks '{}': {error}",
+                path.display()
+            ))
+        })?;
+        let document_changed = fs::read(&path)
+            .map(|current| current != payload)
+            .unwrap_or(true);
+        if document_changed {
+            write_atomic_settings_file(&path, &payload)?;
+        }
+        Ok(script_changed || executable_changed || document_changed)
+    }
+
+    fn remove(&self, config_dir: &Path) -> Result<bool, CoordinationError> {
+        let hooks_dir = config_dir.join("hooks");
+        let mut changed = false;
+        for path in [
+            hooks_dir.join(GROK_HOOKS_FILENAME),
+            hooks_dir.join(platform_hook_filename(detect_hook_runtime(config_dir))),
+            hooks_dir.join(HOOK_EXECUTABLE_RECORD_FILENAME),
+        ] {
+            match fs::remove_file(&path) {
+                Ok(()) => changed = true,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(CoordinationError::Io(error)),
+            }
+        }
+        Ok(changed)
+    }
+}
+
+/// `SessionStart(compact)` is the reinjection path; `PostCompact` is registered
+/// beside it so a grok compaction is still observed on a build whose start
+/// source never reports `compact`.
+fn grok_hook_document(command: &str) -> Value {
+    json!({
+        "hooks": {
+            SESSION_START_HOOK_EVENT: [{
+                "matcher": COMPACT_SOURCE,
+                "hooks": [grok_hook_command(command)],
+            }],
+            POST_COMPACT_HOOK_EVENT: [{
+                "matcher": GROK_COMPACT_TRIGGERS,
+                "hooks": [grok_hook_command(command)],
+            }],
+        }
+    })
+}
+
+fn grok_hook_command(command: &str) -> Value {
+    json!({
+        "type": "command",
+        "command": command,
+        "timeout": GROK_HOOK_TIMEOUT_SECS,
+    })
+}
+
+pub fn ensure_grok_compact_hook_installed_at(
+    grok_home: &Path,
+    taurhaus_exe: &Path,
+) -> Result<bool, CoordinationError> {
+    GrokCompactionSignalSource.install(grok_home, taurhaus_exe)
+}
+
+pub fn remove_grok_compact_hook_at(grok_home: &Path) -> Result<bool, CoordinationError> {
+    GrokCompactionSignalSource.remove(grok_home)
+}
+
+pub fn grok_compact_hook_is_installed_at(grok_home: &Path) -> bool {
+    let hooks_dir = grok_home.join("hooks");
+    let runtime = detect_hook_runtime(grok_home);
+    let Ok(raw) = fs::read_to_string(hooks_dir.join(GROK_HOOKS_FILENAME)) else {
+        return false;
+    };
+    let Ok(document) = serde_json::from_str::<Value>(&raw) else {
+        return false;
+    };
+    let registered = |event: &str| {
+        document
+            .get("hooks")
+            .and_then(|hooks| hooks.get(event))
+            .and_then(Value::as_array)
+            .is_some_and(|entries| {
+                entries.iter().any(|entry| {
+                    entry
+                        .get("hooks")
+                        .and_then(Value::as_array)
+                        .is_some_and(|hooks| hooks.iter().any(is_taurhaus_compact_hook))
+                })
+            })
+    };
+    let script_path = hooks_dir.join(platform_hook_filename(runtime));
+    registered(SESSION_START_HOOK_EVENT)
+        && registered(POST_COMPACT_HOOK_EVENT)
+        && script_path.is_file()
+}
+
 fn emit_codex_hook_degraded(codex_home: &Path, executable: &str) {
+    emit_hook_degraded(CliTool::Codex, codex_home, executable);
+}
+
+fn emit_hook_degraded(tool: CliTool, config_dir: &Path, executable: &str) {
     let mut fields = Map::new();
-    fields.insert("tool".to_string(), Value::String("codex".to_string()));
+    fields.insert("tool".to_string(), Value::String(tool.to_string()));
     fields.insert(
         "reason".to_string(),
         Value::String("hook_executable_missing".to_string()),
     );
     fields.insert(
-        "codex_home".to_string(),
-        Value::String(codex_home.display().to_string()),
+        "config_dir".to_string(),
+        Value::String(config_dir.display().to_string()),
     );
+    if tool == CliTool::Codex {
+        // Shipped field name kept for the existing Codex log consumers.
+        fields.insert(
+            "codex_home".to_string(),
+            Value::String(config_dir.display().to_string()),
+        );
+    }
     fields.insert(
         "executable".to_string(),
         Value::String(executable.to_string()),
@@ -192,8 +373,11 @@ fn emit_codex_hook_degraded(codex_home: &Path, executable: &str) {
     emit_global(
         "warn",
         "coordination",
-        "compaction.codex_hook.degraded",
-        Some("Skipped Codex compaction hook because its executable is unavailable".to_string()),
+        &hook_event_name(Some(tool), "degraded"),
+        Some(format!(
+            "Skipped {} compaction hook because its executable is unavailable",
+            spec(tool).label
+        )),
         fields,
     );
 }
@@ -238,8 +422,10 @@ pub fn handle_compact_hook(
 
     emit_compact_hook_received(&payload, raw.len());
 
-    if payload.hook_event_name != SESSION_START_HOOK_EVENT
-        || payload.source.as_deref() != Some(COMPACT_SOURCE)
+    let is_post_compact = hook_event_is(&payload.hook_event_name, POST_COMPACT_HOOK_EVENT);
+    if !is_post_compact
+        && (!hook_event_is(&payload.hook_event_name, SESSION_START_HOOK_EVENT)
+            || payload.source.as_deref() != Some(COMPACT_SOURCE))
     {
         emit_compact_hook_skipped(
             &payload,
@@ -258,6 +444,17 @@ pub fn handle_compact_hook(
         return Ok(CompactHookResponse::default());
     };
 
+    let delivery = spec(tool).capabilities.compaction_delivery;
+    // `PostCompact` carries the reinjection wherever the session-start source
+    // never reports `compact` — grok's matcher tests the start source
+    // (`startup`, `resume`, …) and compaction restarts nothing. It has no
+    // documented stdout contract though, so a harness that is answered on
+    // stdout can only treat it as a signal.
+    if is_post_compact && delivery != CompactionDelivery::MeshInbox {
+        emit_compact_hook_skipped(&payload, None, CompactHookSkipReason::PostCompactSignalOnly);
+        return Ok(CompactHookResponse::default());
+    }
+
     let matched = match resolve_member_match(teams_dir, tool, &payload)? {
         Ok(matched) => matched,
         Err(reason) => {
@@ -267,6 +464,21 @@ pub fn handle_compact_hook(
     };
 
     emit_compact_hook_resolved(&payload, &matched);
+
+    if crate::session_scanner::cli_tool::spec(tool)
+        .capabilities
+        .compaction_hook_compat_import
+    {
+        emit_compaction_hook_compat_import(tool);
+        if compat_import_duplicate(teams_dir, &matched, &payload.session_id, Utc::now())? {
+            emit_compact_hook_skipped(
+                &payload,
+                Some(&matched),
+                CompactHookSkipReason::DuplicateCompatImport,
+            );
+            return Ok(CompactHookResponse::default());
+        }
+    }
 
     let compaction_timestamp = if tool == CliTool::Codex {
         payload
@@ -356,6 +568,38 @@ pub fn handle_compact_hook(
             ))
         })?;
 
+    // A harness that ignores passive-hook stdout has to be handed the card
+    // before the delivery is recorded — the hook answer would go nowhere.
+    if delivery == CompactionDelivery::MeshInbox {
+        if let Err(error) = CompactionReinjectionService::deliver_to_inbox(
+            teams_dir,
+            &matched.team_name,
+            &matched.member.name,
+            &card,
+            Utc::now(),
+        ) {
+            let _ = record_delivery_at(
+                teams_dir,
+                &matched.team_name,
+                &matched.member.name,
+                tool,
+                &payload.session_id,
+                compaction_timestamp,
+                CompactionDeliveryResult::Failed,
+            );
+            emit_compact_hook_failed(
+                CompactHookFailureStage::DeliverInbox,
+                Some(&payload),
+                Some(&matched),
+                None,
+                None,
+                None,
+                &error.to_string(),
+            );
+            return Err(error);
+        }
+    }
+
     record_delivery_at(
         teams_dir,
         &matched.team_name,
@@ -379,11 +623,14 @@ pub fn handle_compact_hook(
 
     emit_compact_hook_delivered(&payload, &matched, additional_context.len());
 
-    Ok(CompactHookResponse {
-        hook_specific_output: Some(CompactHookSpecificOutput {
-            hook_event_name: SESSION_START_HOOK_EVENT.to_string(),
-            additional_context,
-        }),
+    Ok(match delivery {
+        CompactionDelivery::HookStdout => CompactHookResponse {
+            hook_specific_output: Some(CompactHookSpecificOutput {
+                hook_event_name: SESSION_START_HOOK_EVENT.to_string(),
+                additional_context,
+            }),
+        },
+        CompactionDelivery::MeshInbox => CompactHookResponse::default(),
     })
 }
 
@@ -448,25 +695,46 @@ pub fn team_has_managed_codex_member(
     teams_dir: &Path,
     team_name: &str,
 ) -> Result<bool, CoordinationError> {
+    team_has_managed_member(teams_dir, team_name, CliTool::Codex)
+}
+
+fn team_has_managed_member(
+    teams_dir: &Path,
+    team_name: &str,
+    tool: CliTool,
+) -> Result<bool, CoordinationError> {
     let config = TeamConfigStore::load(teams_dir, team_name)?;
-    Ok(config
-        .members
-        .iter()
-        .any(|member| member.cli_tool == CliTool::Codex))
+    Ok(config.members.iter().any(|member| member.cli_tool == tool))
 }
 
 pub fn any_managed_codex_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    any_managed_member(teams_dir, CliTool::Codex)
+}
+
+pub fn any_managed_grok_member(teams_dir: &Path) -> Result<bool, CoordinationError> {
+    any_managed_member(teams_dir, CliTool::Grok)
+}
+
+/// Whether any team on this host runs a member on `tool`.
+///
+/// A directory under `teams/` that holds no team config is not a team and is
+/// skipped. Every other read failure is reported: the caller uninstalls a
+/// global hook on `false`, and "this roster cannot be read" is not proof the
+/// last member on `tool` is gone.
+fn any_managed_member(teams_dir: &Path, tool: CliTool) -> Result<bool, CoordinationError> {
     for team_name in TeamConfigStore::list(teams_dir)? {
-        match team_has_managed_codex_member(teams_dir, &team_name) {
+        match team_has_managed_member(teams_dir, &team_name, tool) {
             Ok(true) => return Ok(true),
             Ok(false) => {}
-            Err(error) => {
-                tracing::warn!(
+            Err(CoordinationError::NotFound(reason)) => {
+                tracing::debug!(
                     team_name,
-                    error = %error,
-                    "skipping invalid team config during managed Codex discovery"
+                    tool = %tool,
+                    reason,
+                    "skipping a directory without a team config during managed member discovery"
                 );
             }
+            Err(error) => return Err(error),
         }
     }
     Ok(false)
@@ -534,7 +802,7 @@ fn resolve_member_match(
     let cwd_matches = candidates
         .into_iter()
         .filter(|(matched, _)| {
-            cwd_matches_member(payload.cwd.as_deref(), &matched.member.project_path)
+            cwd_matches_member(payload.project_dir(), &matched.member.project_path)
         })
         .map(|(matched, _)| matched)
         .collect::<Vec<_>>();
@@ -543,6 +811,44 @@ fn resolve_member_match(
         0 => Ok(Err(CompactHookSkipReason::NoManagedMemberMatch)),
         _ => Ok(Err(CompactHookSkipReason::MultipleManagedMembersMatched)),
     }
+}
+
+/// One compaction can invoke this bridge through both taurhaus's own grok hook
+/// and the Claude registration grok imports. The delivery already recorded for
+/// this session is the dedupe key; the second invocation is a duplicate.
+fn compat_import_duplicate(
+    teams_dir: &Path,
+    matched: &HookMemberMatch,
+    session_id: &str,
+    now: chrono::DateTime<Utc>,
+) -> Result<bool, CoordinationError> {
+    let Some(state) =
+        MemberCompactionStore::load(teams_dir, &matched.team_name, &matched.member.name)?
+    else {
+        return Ok(false);
+    };
+    Ok(state.last_session_id == session_id
+        && state.last_delivery_result == CompactionDeliveryResult::Injected
+        && now.signed_duration_since(state.last_compaction_timestamp) < COMPAT_IMPORT_DEDUPE_WINDOW)
+}
+
+fn emit_compaction_hook_compat_import(tool: CliTool) {
+    static LOGGED: std::sync::Once = std::sync::Once::new();
+    LOGGED.call_once(|| {
+        let mut fields = Map::new();
+        fields.insert("tool".to_string(), Value::String(tool.to_string()));
+        emit_global(
+            "info",
+            "coordination",
+            "compaction.hook.compat_import",
+            Some(
+                "Harness imports another vendor's hook registrations; duplicate \
+                 compaction invocations are deduplicated"
+                    .to_string(),
+            ),
+            fields,
+        );
+    });
 }
 
 fn infer_tool_from_transcript_path(transcript_path: Option<&Path>) -> Option<CliTool> {
@@ -554,6 +860,9 @@ fn infer_tool_from_transcript_path(transcript_path: Option<&Path>) -> Option<Cli
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
+    if normalized.contains("/.grok/") {
+        return Some(CliTool::Grok);
+    }
     if normalized.contains("/.codex/") || file_name.starts_with("rollout-") {
         return Some(CliTool::Codex);
     }
@@ -736,7 +1045,7 @@ fn base_compact_hook_fields(
         insert_optional_string(&mut fields, "source", payload.source.clone());
         insert_optional_string(&mut fields, "trigger", payload.trigger.clone());
         insert_optional_string(&mut fields, "session_id", Some(payload.session_id.clone()));
-        insert_optional_string(&mut fields, "cwd", payload.cwd.as_deref().map(path_display));
+        insert_optional_string(&mut fields, "cwd", payload.project_dir().map(path_display));
         insert_optional_string(
             &mut fields,
             "transcript_path",
@@ -1257,9 +1566,10 @@ mod tests {
 
     use crate::coordination::domain::{HealthState, MemberRole};
     use crate::coordination::stores::{
-        MemberCompactionStore, MemberRuntimeRecord, OperationalAssignmentFooterSnapshot,
-        OperationalContextSnapshot, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
-        OperationalWorkingSetSnapshot, TeamConfig,
+        MemberCompactionStore, MemberRuntimeRecord, MeshInboxStore,
+        OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+        OperationalOwnershipSnapshot, OperationalTaskSnapshot, OperationalWorkingSetSnapshot,
+        TeamConfig,
     };
     use taurhaus_lib::logging::{install_global_sink, LogFileState};
 
@@ -1414,6 +1724,310 @@ mod tests {
             },
         )
         .expect("save snapshot");
+    }
+
+    fn grok_member(project_path: &Path) -> Member {
+        let mut member = sample_member(project_path);
+        member.cli_tool = CliTool::Grok;
+        member
+    }
+
+    /// grok's own envelope: camelCase keys whose `hookEventName` *value* is
+    /// snake_case, a workspace root instead of a cwd, and a transcript path
+    /// under its home rather than Claude's. Spelling per
+    /// `~/.grok/docs/user-guide/10-hooks.md` ("Input": `"hookEventName":
+    /// "pre_tool_use"`), which is also what the imported Claude registration
+    /// receives — grok sends its own envelope to every hook it runs.
+    fn grok_payload(project: &Path, session_id: &str) -> String {
+        json!({
+            "hookEventName": "session_start",
+            "sessionId": session_id,
+            "source": "compact",
+            "workspaceRoot": project,
+            "transcriptPath": project.join(".grok/sessions/%2Fp/session/updates.jsonl"),
+            "permissionMode": "bypassPermissions",
+            "timestamp": "2026-08-28T12:00:00Z",
+        })
+        .to_string()
+    }
+
+    /// grok's own compaction event on the wire: `post_compact`, with a
+    /// compaction trigger where `session_start` would carry a start source, and
+    /// the common fields every grok event carries.
+    fn grok_post_compact_payload(project: &Path, session_id: &str) -> String {
+        json!({
+            "hookEventName": "post_compact",
+            "sessionId": session_id,
+            "trigger": "auto",
+            "cwd": project,
+            "workspaceRoot": project,
+            "transcriptPath": project.join(".grok/sessions/%2Fp/session/updates.jsonl"),
+            "permissionMode": "default",
+            "timestamp": "2026-08-28T12:00:00Z",
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn grok_hook_installer_owns_one_always_trusted_file_and_is_removable() {
+        // Regression: commit 358a7c9 registered grok without a compaction slice,
+        // so its always-trusted `~/.grok/hooks/*.json` directory went unused and
+        // the only reinjection path left was the Claude import it also loads.
+        let temp = tempfile::tempdir().expect("grok hook root");
+        let home = temp.path().join(".grok");
+        let executable = temp.path().join("taurhaus");
+        fs::write(&executable, b"fixture").expect("fixture executable");
+        let source = spec(CliTool::Grok)
+            .compaction_signal_source()
+            .expect("declared grok compaction source");
+
+        assert!(source.install(&home, &executable).expect("first install"));
+        assert!(!source.install(&home, &executable).expect("idempotent"));
+        assert!(grok_compact_hook_is_installed_at(&home));
+
+        let document: Value = serde_json::from_slice(
+            &fs::read(home.join("hooks").join(GROK_HOOKS_FILENAME)).expect("hook document"),
+        )
+        .expect("hook document parses");
+        assert_eq!(
+            document["hooks"]["SessionStart"][0]["matcher"],
+            COMPACT_SOURCE
+        );
+        assert_eq!(
+            document["hooks"]["PostCompact"][0]["matcher"],
+            "manual|auto"
+        );
+        assert_eq!(
+            document["hooks"]["PostCompact"][0]["hooks"][0]["timeout"],
+            30
+        );
+
+        assert!(source.remove(&home).expect("first removal"));
+        assert!(!source.remove(&home).expect("idempotent removal"));
+        assert!(!grok_compact_hook_is_installed_at(&home));
+    }
+
+    #[test]
+    fn grok_hook_installer_self_repairs_a_missing_executable() {
+        // Regression: commit 358a7c9 had no grok installer; a hook pointing at a
+        // deleted binary must be removed rather than left to fail on every turn.
+        let temp = tempfile::tempdir().expect("grok hook root");
+        let home = temp.path().join(".grok");
+        let executable = temp.path().join("taurhaus");
+        fs::write(&executable, b"fixture").expect("fixture executable");
+        ensure_grok_compact_hook_installed_at(&home, &executable).expect("install");
+        fs::remove_file(&executable).expect("remove executable");
+
+        assert!(ensure_grok_compact_hook_installed_at(&home, &executable).expect("self repair"));
+        assert!(!grok_compact_hook_is_installed_at(&home));
+    }
+
+    #[test]
+    fn grok_camel_case_envelope_is_reinjected_through_its_workspace_root() {
+        // Regression: commit 358a7c9 left the bridge inferring the harness from
+        // a Claude- or Codex-shaped transcript path only, so grok's camelCase
+        // envelope — which carries `workspaceRoot`, not `cwd` — never matched a
+        // managed member.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+
+        handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+            .expect("hook should succeed");
+
+        let inbox =
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name).expect("grok inbox");
+        assert_eq!(inbox.len(), 1);
+        assert!(inbox[0].text.contains("Current task: #680"));
+    }
+
+    #[test]
+    fn a_grok_compaction_is_delivered_through_the_mesh_inbox() {
+        // Regression: commit c1005ec answered a grok compaction with
+        // `hookSpecificOutput.additionalContext` on stdout and recorded the card
+        // as Injected, but grok 1.0.5 documents passive-hook stdout as ignored
+        // ("Passive Hooks", `~/.grok/docs/user-guide/10-hooks.md`), so the
+        // restored context was never handed to the model.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+
+        let response =
+            handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+                .expect("hook should succeed");
+
+        assert_eq!(
+            response,
+            CompactHookResponse::default(),
+            "grok ignores passive-hook stdout, so the bridge must not answer with one"
+        );
+        let inbox =
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name).expect("grok inbox");
+        assert_eq!(inbox.len(), 1, "the card is queued where grok reads it");
+        assert!(inbox[0].text.contains("Current task: #680"));
+        assert_eq!(inbox[0].summary.as_deref(), Some("post_compaction_context"));
+        let state = MemberCompactionStore::load(tmp.path(), "grok-team", &member.name)
+            .expect("compaction state")
+            .expect("recorded delivery");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Injected
+        );
+    }
+
+    #[test]
+    fn a_failed_grok_inbox_append_is_never_recorded_as_injected() {
+        // Regression: commit c1005ec recorded Injected before any delivery
+        // happened, so a card that never reached the member still suppressed the
+        // next compaction through the compat-import dedupe window.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+        // A file where the inbox directory belongs makes the append fail.
+        fs::write(tmp.path().join("grok-team").join("inboxes"), b"not a dir")
+            .expect("block the inbox directory");
+
+        handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+            .expect_err("a blocked inbox is a delivery failure");
+
+        let state = MemberCompactionStore::load(tmp.path(), "grok-team", &member.name)
+            .expect("compaction state")
+            .expect("recorded delivery");
+        assert_eq!(state.last_delivery_result, CompactionDeliveryResult::Failed);
+    }
+
+    #[test]
+    fn one_grok_compaction_yields_one_reinjection_despite_the_claude_import() {
+        // Regression: commit 358a7c9 registered taurhaus's own grok hook while
+        // grok also runs the Claude registration it imports from
+        // `~/.claude/settings.json`, so a single compaction called this bridge
+        // twice and the member received the card twice.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+
+        handle_compact_hook(
+            &grok_post_compact_payload(&project, "01a04585-2d53-7123"),
+            tmp.path(),
+        )
+        .expect("native PostCompact");
+        handle_compact_hook(&grok_payload(&project, "01a04585-2d53-7123"), tmp.path())
+            .expect("imported Claude SessionStart");
+
+        assert_eq!(
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name)
+                .expect("grok inbox")
+                .len(),
+            1,
+            "the imported Claude registration must not reinject the same compaction"
+        );
+    }
+
+    #[test]
+    fn a_native_grok_post_compact_delivers_one_inbox_card() {
+        // Regression: commit c1005ec answered grok's authoritative `PostCompact`
+        // event with a signal-only skip that returned before member resolution,
+        // so a grok home without the imported Claude registration got no
+        // restored context at all. grok's `SessionStart` matcher tests the start
+        // source (`startup`, `resume`, …) and never reports `compact`
+        // (`~/.grok/docs/user-guide/10-hooks.md`), so `PostCompact` is the only
+        // compaction event grok itself fires.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project dir");
+        let member = grok_member(&project);
+        write_team_fixture(tmp.path(), "grok-team", &member, "01a04585-2d53-7123");
+        write_snapshot_fixture(tmp.path(), "grok-team", &member.name);
+
+        let response = handle_compact_hook(
+            &grok_post_compact_payload(&project, "01a04585-2d53-7123"),
+            tmp.path(),
+        )
+        .expect("hook should succeed");
+
+        assert_eq!(
+            response,
+            CompactHookResponse::default(),
+            "grok ignores passive-hook stdout, so PostCompact must answer with none"
+        );
+        let inbox =
+            MeshInboxStore::load(tmp.path(), "grok-team", &member.name).expect("grok inbox");
+        assert_eq!(inbox.len(), 1, "the card is queued where grok reads it");
+        assert!(inbox[0].text.contains("Current task: #680"));
+        let state = MemberCompactionStore::load(tmp.path(), "grok-team", &member.name)
+            .expect("compaction state")
+            .expect("recorded delivery");
+        assert_eq!(
+            state.last_delivery_result,
+            CompactionDeliveryResult::Injected
+        );
+    }
+
+    #[test]
+    fn a_hook_event_is_recognised_in_either_harness_spelling() {
+        // Regression: commit c1005ec compared `hookEventName` byte-for-byte
+        // against the PascalCase names hooks are *registered* under, but grok
+        // puts a snake_case value on the wire
+        // (`~/.grok/docs/user-guide/10-hooks.md` documents `"hookEventName":
+        // "pre_tool_use"`). Every native `post_compact` therefore took the
+        // non-compaction early return before any member was resolved, so a grok
+        // member got no restored context at all.
+        for (raw, canonical, expected) in [
+            ("PostCompact", POST_COMPACT_HOOK_EVENT, true),
+            ("post_compact", POST_COMPACT_HOOK_EVENT, true),
+            ("SessionStart", SESSION_START_HOOK_EVENT, true),
+            ("session_start", SESSION_START_HOOK_EVENT, true),
+            // A neighbouring event must never be read as the compaction one.
+            ("PreCompact", POST_COMPACT_HOOK_EVENT, false),
+            ("pre_compact", POST_COMPACT_HOOK_EVENT, false),
+            ("SessionEnd", SESSION_START_HOOK_EVENT, false),
+            ("session_end", SESSION_START_HOOK_EVENT, false),
+        ] {
+            assert_eq!(
+                hook_event_is(raw, canonical),
+                expected,
+                "'{raw}' against '{canonical}'"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_and_codex_transcript_inference_is_unchanged_by_the_grok_arm() {
+        // Regression: commit 358a7c9 must not let the new `/.grok/` marker or
+        // the camelCase aliases reclassify the two harnesses already bridged.
+        for (path, expected) in [
+            (
+                "/home/user/.claude/projects/-home-user-p/session.jsonl",
+                Some(CliTool::Claude),
+            ),
+            (
+                "/home/user/.codex/sessions/2026/08/28/rollout-session.jsonl",
+                Some(CliTool::Codex),
+            ),
+            (
+                "/home/user/.grok/sessions/%2Fhome%2Fuser/01a04585/updates.jsonl",
+                Some(CliTool::Grok),
+            ),
+            ("/home/user/notes.txt", None),
+        ] {
+            assert_eq!(
+                infer_tool_from_transcript_path(Some(Path::new(path))),
+                expected,
+                "{path}"
+            );
+        }
     }
 
     #[test]

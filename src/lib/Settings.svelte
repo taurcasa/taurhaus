@@ -17,7 +17,8 @@
   import { lightThemes, darkThemes, DEFAULT_LIGHT_THEME, DEFAULT_DARK_THEME } from './shikiThemes.js'
   import { formatUserFacingError } from './format.js'
   import { themeTokens } from './themeTokens.js'
-  import { tools } from './toolRegistry.js'
+  import { tools, toolAccent } from './toolRegistry.js'
+  import { getToolIcon } from './toolLogos.js'
 
   let { dark = false, onClose = () => {}, onSettingsChanged = () => {}, codeThemeLight = DEFAULT_LIGHT_THEME, codeThemeDark = DEFAULT_DARK_THEME, onCodeThemeChanged = () => {} } = $props()
 
@@ -37,6 +38,27 @@
   )
   const fieldFocusRing = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500'
 
+  // Registry accent -> the literal families declared in `app.css`. Tailwind
+  // cannot see an interpolated class name, so each one is spelled out.
+  const ACCENT_TONES = {
+    emerald: { light: 'text-emerald-600', dark: 'text-emerald-300', control: 'accent-emerald-500' },
+    sky: { light: 'text-sky-600', dark: 'text-sky-300', control: 'accent-sky-500' },
+    'google-blue': { light: 'text-google-blue-600', dark: 'text-google-blue-300', control: 'accent-google-blue-500' },
+    graphite: { light: 'text-graphite-600', dark: 'text-graphite-300', control: 'accent-graphite-500' },
+  }
+
+  /** The tool's own mark colour, dark-mode aware. */
+  function toolMarkTone(toolId) {
+    const tone = ACCENT_TONES[toolAccent(toolId)]
+    if (!tone) return textTertiary
+    return dark ? tone.dark : tone.light
+  }
+
+  /** The accent a tool's own form control carries. */
+  function toolControlTone(toolId) {
+    return ACCENT_TONES[toolAccent(toolId)]?.control ?? 'accent-brand-500'
+  }
+
   // Settings state
   let settings = $state(null)
   let loading = $state(true)
@@ -55,24 +77,18 @@
   let scanDirsText = $state('')
   let ignoreText = $state('')
 
+  /** One command triple per registered harness, so adding a tool is data. */
   function cloneCliCommands(source) {
-    return {
-      claude: {
-        continue_cmd: source?.claude?.continue_cmd ?? '',
-        fresh: source?.claude?.fresh ?? '',
-        resume: source?.claude?.resume ?? '',
-      },
-      codex: {
-        continue_cmd: source?.codex?.continue_cmd ?? '',
-        fresh: source?.codex?.fresh ?? '',
-        resume: source?.codex?.resume ?? '',
-      },
-      agy: {
-        continue_cmd: source?.agy?.continue_cmd ?? '',
-        fresh: source?.agy?.fresh ?? '',
-        resume: source?.agy?.resume ?? '',
-      },
-    }
+    return Object.fromEntries(
+      cliTools.map((descriptor) => [
+        descriptor.id,
+        {
+          continue_cmd: source?.[descriptor.id]?.continue_cmd ?? '',
+          fresh: source?.[descriptor.id]?.fresh ?? '',
+          resume: source?.[descriptor.id]?.resume ?? '',
+        },
+      ])
+    )
   }
 
   function createFallbackSettings(platform = 'linux') {
@@ -89,7 +105,7 @@
         tmux_layout: 'new_window',
         cli_commands: cloneCliCommands(terminalContract.cli_command_defaults),
         default_account_ids: {},
-        harness: { codex_compaction: 'hooks', agy_hooks: false },
+        harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
       },
       terminal_contract: terminalContract,
       dark_mode: dark,
@@ -289,7 +305,7 @@
         custom_command: '',
         tmux_layout: 'new_window',
         cli_commands: cliDefaults,
-        harness: { codex_compaction: 'hooks', agy_hooks: false },
+        harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
       }
     }
     if (!settings.terminal.cli_commands) settings.terminal.cli_commands = cliDefaults
@@ -593,7 +609,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true } }
                   }
                   settings.terminal.emulator = e.target.value
                   saveSettings()
@@ -622,7 +638,7 @@
                   const defaultEmulator = getTerminalDefaultEmulator()
                   const cliDefaults = getTerminalCliDefaults()
                   if (!settings.terminal) {
-                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } }
+                    settings.terminal = { emulator: defaultEmulator, custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true } }
                   }
                   settings.terminal.tmux_layout = e.target.value
                   saveSettings()
@@ -648,7 +664,7 @@
                     : "e.g. wezterm.exe cli spawn -- wsl.exe -d {'{distro}'} -- tmux attach -t {'{tmux_session}'}"}
                   onblur={(e) => {
                     const cliDefaults = getTerminalCliDefaults()
-                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false } };
+                    if (!settings.terminal) settings.terminal = { emulator: 'custom', custom_command: '', tmux_layout: 'new_window', cli_commands: cliDefaults, harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true } };
                     settings.terminal.custom_command = e.target.value
                     saveSettings()
                   }}
@@ -669,7 +685,8 @@
         <!-- ═══ CLI TOOLS ═══ -->
         <section class="{cardBg} rounded-lg border {t.keyline} p-4" data-testid="settings-cli-tools">
           <h2 class="text-[11px] font-semibold uppercase tracking-wider {t.labelColor} mb-3">CLI Tools</h2>
-          <p class="text-[13px] {textTertiary} mb-4">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
+          <p class="text-[13px] {textTertiary} mb-2">Shell commands executed in tmux when launching sessions. The project directory is set automatically.</p>
+          <p class="text-[12px] {textTertiary} mb-4">A resume command may carry <code class="font-mono">{'{session_id}'}</code>. taurhaus substitutes the resolved id already quoted, so leave the token bare — quoting it yourself produces a doubly quoted id the CLI cannot resume.</p>
 
           {#each cliTools as descriptor, toolIndex (descriptor.id)}
             {@const tool = descriptor.id}
@@ -737,7 +754,18 @@
                 {@const effective = effectiveDefault(tool)}
                 <div data-testid="settings-accounts-{tool.id}">
                   <div class="mb-2 flex items-center justify-between">
-                    <h3 class="text-[13px] font-semibold {t.textBody}">{tool.label}</h3>
+                    <h3 class="flex items-center gap-2 text-[13px] font-semibold {t.textBody}">
+                      <svg
+                        class="h-[13px] w-[13px] shrink-0 {toolMarkTone(tool.id)}"
+                        viewBox={getToolIcon(tool.id).viewBox}
+                        fill="currentColor"
+                        aria-hidden="true"
+                        data-testid="tool-mark-{tool.id}"
+                      >
+                        <path d={getToolIcon(tool.id).path} />
+                      </svg>
+                      {tool.label}
+                    </h3>
                     <button
                       type="button"
                       class="text-[11px] text-brand-500 hover:underline {buttonFocusRing}"
@@ -776,6 +804,11 @@
                       </label>
                     {/each}
                   </div>
+                  {#if !tool.capabilities.usage && tool.capabilities.usageNote}
+                    <p class="mt-2 text-[11px] {textTertiary}" data-testid="usage-note-{tool.id}">
+                      {tool.capabilities.usageNote}
+                    </p>
+                  {/if}
                   <p class="mt-2 text-[11px] {textTertiary}" data-testid="effective-default-{tool.id}">
                     Effective default: {effective.account ? accountLabel(effective.account) : 'none'} — {effective.origin}
                   </p>
@@ -813,7 +846,7 @@
             <input
               id="agy-hooks-toggle"
               type="checkbox"
-              class="mt-0.5 h-3.5 w-3.5 accent-google-blue-500 {fieldFocusRing}"
+              class="mt-0.5 h-3.5 w-3.5 {toolControlTone('agy')} {fieldFocusRing}"
               checked={settings.terminal?.harness?.agy_hooks ?? false}
               onchange={(e) => {
                 ensureCliCommands()
@@ -827,6 +860,27 @@
               <label for="agy-hooks-toggle" class="text-[13px] {t.textSecondary}">Antigravity activity hooks</label>
               <p class="mt-1 text-[11px] {textTertiary}">
                 Opt in to native busy and idle signals. Antigravity may require workspace trust before loading hooks.
+              </p>
+            </div>
+          </div>
+          <div class="mt-4 flex items-start gap-3 border-t {t.keyline} pt-4">
+            <input
+              id="grok-hooks-toggle"
+              type="checkbox"
+              class="mt-0.5 h-3.5 w-3.5 {toolControlTone('grok')} {fieldFocusRing}"
+              checked={settings.terminal?.harness?.grok_hooks ?? true}
+              onchange={(e) => {
+                ensureCliCommands()
+                if (!settings.terminal.harness) settings.terminal.harness = { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true }
+                settings.terminal.harness.grok_hooks = e.target.checked
+                saveSettings()
+              }}
+              data-testid="grok-hooks-toggle"
+            />
+            <div class="min-w-0">
+              <label for="grok-hooks-toggle" class="text-[13px] {t.textSecondary}">Grok compaction hooks</label>
+              <p class="mt-1 text-[11px] {textTertiary}">
+                Installed for managed Grok members in <code class="font-mono">~/.grok/hooks</code>, which needs no workspace trust. Turn off to leave Grok's hook directory untouched.
               </p>
             </div>
           </div>

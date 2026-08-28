@@ -530,20 +530,24 @@
       allSessions,
     )
 
-    // Continue is only distinct for Claude.
+    // Continue appears only where it launches something a Fresh session does
+    // not: Claude and Grok both reopen the project's last conversation with it.
     items.push(launch('Continue Claude', 'continue', 'claude', CTX_ICON_PLAY))
+    items.push(launch('Continue Grok', 'continue', 'grok', CTX_ICON_PLAY))
 
     // New session remains distinct for all tools.
     items.push({ separator: true })
     items.push(launch('New Claude Session', 'fresh', 'claude', CTX_ICON_PLUS))
     items.push(launch('New Codex Session', 'fresh', 'codex', CTX_ICON_PLUS))
     items.push(launch('New Antigravity Session', 'fresh', 'agy', CTX_ICON_PLUS))
+    items.push(launch('New Grok Session', 'fresh', 'grok', CTX_ICON_PLUS))
 
-    // Resume stays distinct for Claude, Codex, and Antigravity.
+    // Resume stays distinct for every harness that can name a session.
     items.push({ separator: true })
     items.push(launch('Resume Claude', 'resume', 'claude', CTX_ICON_CLOCK))
     items.push(launch('Resume Codex', 'resume', 'codex', CTX_ICON_CLOCK))
     items.push(launch('Resume Antigravity', 'resume', 'agy', CTX_ICON_CLOCK))
+    items.push(launch('Resume Grok', 'resume', 'grok', CTX_ICON_CLOCK))
 
     // Per-tool stop/restart for each running session
     if (liveSessions.length > 0) {

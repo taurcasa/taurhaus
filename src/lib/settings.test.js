@@ -40,6 +40,7 @@ const { accountState, requestLaunch, resetAccountsForTest } = await import('./ac
 const claudeAccounts = accountState('claude')
 
 import Settings from './Settings.svelte'
+import { TOOL_ICONS } from './toolLogos.js'
 
 function mockCliCommandDefaults() {
   return {
@@ -57,6 +58,11 @@ function mockCliCommandDefaults() {
       continue_cmd: 'agy --dangerously-skip-permissions --continue',
       fresh: 'agy --dangerously-skip-permissions',
       resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
+    },
+    grok: {
+      continue_cmd: 'grok --always-approve --continue',
+      fresh: 'grok --always-approve',
+      resume: 'grok --always-approve --resume {session_id}',
     },
   }
 }
@@ -99,7 +105,7 @@ function mockSettings(overrides = {}) {
     custom_command: '',
     tmux_layout: 'new_window',
     cli_commands: mockCliCommandDefaults(),
-    harness: { codex_compaction: 'hooks', agy_hooks: false },
+    harness: { codex_compaction: 'hooks', agy_hooks: false, grok_hooks: true },
     ...(overrides.terminal ?? {}),
   }
 
@@ -190,6 +196,63 @@ describe('Settings component', () => {
     await waitFor(() => expect(screen.getByTestId('settings-accounts-codex')).toBeInTheDocument())
     expect(screen.getByTestId('account-row-codex-codex-1')).toHaveTextContent('Weekly limit 50%')
     expect(refreshAccountsUsage).toHaveBeenCalledWith('codex')
+  })
+
+  it('shows Grok accounts without a meter and says where usage lives', async () => {
+    // Regression: commit c1005ec left grok without an account provider, and a
+    // harness with no usage endpoint must explain the missing meter rather than
+    // leave an empty gap where every other tool shows one.
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(
+        detected(
+          tool === 'grok'
+            ? TWO_ACCOUNTS.map((account, index) => ({ ...account, id: `grok-${index + 1}` }))
+            : []
+        )
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(screen.getByTestId('settings-accounts-grok')).toBeInTheDocument())
+    expect(screen.getByTestId('usage-note-grok')).toHaveTextContent(
+      'Grok shows credits in its own /usage'
+    )
+  })
+
+  it('gives every account section its registry mark, Grok in graphite', async () => {
+    // Regression: commit c1005ec shipped the Grok mark and the graphite accent
+    // in the registry but consumed neither in Settings, so the account section
+    // the plan asks to carry Grok's identity was label text like any other.
+    listAccounts.mockImplementation((tool) =>
+      Promise.resolve(
+        detected(TWO_ACCOUNTS.map((account, index) => ({ ...account, id: `${tool}-${index + 1}` })))
+      )
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const section = await screen.findByTestId('settings-accounts-grok')
+    const mark = section.querySelector('[data-testid="tool-mark-grok"]')
+    expect(mark).not.toBeNull()
+    expect(mark.querySelector('path').getAttribute('d')).toBe(TOOL_ICONS.grok.path)
+    expect(mark.getAttribute('class')).toContain('graphite')
+
+    const codex = await screen.findByTestId('settings-accounts-codex')
+    expect(codex.querySelector('[data-testid="tool-mark-codex"] path').getAttribute('d')).toBe(
+      TOOL_ICONS.codex.path
+    )
+  })
+
+  it('tints the Grok hook control with the graphite accent, not the app brand', async () => {
+    // Regression: commit c1005ec gave the Antigravity toggle its google-blue
+    // accent but left the Grok one on the generic brand colour, so the only
+    // Grok-specific control in Settings carried no harness identity.
+    render(Settings, { props: defaultProps() })
+
+    const toggle = await screen.findByTestId('grok-hooks-toggle')
+    expect(toggle.className).toContain('accent-graphite')
+    expect(toggle.className).not.toContain('accent-brand')
   })
 
   it('hides the accounts card when no tool has multiple accounts', async () => {
@@ -557,6 +620,38 @@ describe('Settings component', () => {
     expect(section).toHaveTextContent('Claude Code')
     expect(section).toHaveTextContent('Codex')
     expect(section).toHaveTextContent('Antigravity CLI')
+  })
+
+  it('explains that the resume session token is substituted already quoted', async () => {
+    // Regression: 987e0ac shell-escaped the `{session_id}` expansion without
+    // saying so anywhere, so a user who quoted the token themselves got a
+    // double-quoted id and an unresumable command with no explanation.
+    render(Settings, { props: defaultProps() })
+
+    const section = await screen.findByTestId('settings-cli-tools')
+    expect(section).toHaveTextContent('{session_id}')
+    expect(section).toHaveTextContent(/already quoted/i)
+  })
+
+  it('keeps Grok compaction hooks on by default and persists the toggle', async () => {
+    // Regression: commit 358a7c9 registered grok without a compaction slice.
+    // Its hook directory is always trusted, so the bridge is on by default —
+    // and a user who does not want taurhaus in `~/.grok` must be able to say so.
+    render(Settings, { props: defaultProps() })
+
+    const toggle = await screen.findByTestId('grok-hooks-toggle')
+    expect(toggle.checked).toBe(true)
+
+    await fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          terminal: expect.objectContaining({
+            harness: expect.objectContaining({ grok_hooks: false }),
+          }),
+        })
+      )
+    )
   })
 
   it('terminal emulator dropdown has Windows Terminal and Custom options', async () => {

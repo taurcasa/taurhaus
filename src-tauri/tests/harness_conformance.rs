@@ -19,7 +19,9 @@ use taurhaus_lib::session_scanner::accounts::{
     CommandError, CommandOutput, HttpClient, HttpError, HttpErrorKind, HttpResponse, ProviderEnv,
     UsageStatus,
 };
-use taurhaus_lib::session_scanner::cli_tool::{all, spec, CliTool, SessionRoot, StopStrategy};
+use taurhaus_lib::session_scanner::cli_tool::{
+    all, spec, CliTool, CompactionDelivery, SessionRoot, StopStrategy,
+};
 use taurhaus_lib::session_scanner::idle::{AgyHooksActivitySource, IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{
     base_command, LaunchCapability, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
@@ -56,6 +58,13 @@ const LAUNCH_GOLDENS: &[LaunchGolden] = &[
         effort: Some("high"),
         bypass_hook_trust: false,
         expected: include_str!("fixtures/launch/agy.golden.txt"),
+    },
+    LaunchGolden {
+        tool: CliTool::Grok,
+        model: "grok-4.6",
+        effort: Some("xhigh"),
+        bypass_hook_trust: false,
+        expected: include_str!("fixtures/launch/grok.golden.txt"),
     },
 ];
 
@@ -219,6 +228,34 @@ fn registry_declares_native_and_floor_capabilities() {
     assert!(codex.capabilities.notify_sink);
     assert_eq!(codex.stop_strategy, StopStrategy::Interrupt);
 
+    let grok = spec(CliTool::Grok);
+    assert_eq!(
+        grok.capabilities.auto_approve_flag,
+        Some("--always-approve")
+    );
+    assert!(grok.capabilities.compaction_hook_compat_import);
+    // grok's registry row appears at the first prompt, so identity is captured
+    // and backfilled rather than skipped — two grok members can share a project.
+    assert!(grok.capabilities.runtime_session_capture);
+    // grok documents passive-hook stdout as ignored, so its card is queued in
+    // the mesh inbox rather than answered on stdout.
+    assert_eq!(
+        grok.capabilities.compaction_delivery,
+        CompactionDelivery::MeshInbox
+    );
+    assert_eq!(
+        claude.capabilities.compaction_delivery,
+        CompactionDelivery::HookStdout
+    );
+    assert_eq!(
+        codex.capabilities.compaction_delivery,
+        CompactionDelivery::HookStdout
+    );
+    assert!(!grok.capabilities.usage);
+    assert!(grok.capabilities.usage_note.is_some());
+    assert_eq!(grok.stop_strategy, StopStrategy::SlashExit);
+    assert_eq!(grok.exit_command, "/quit");
+
     let agy = spec(CliTool::Agy);
     assert!(agy.capabilities.session_source);
     assert!(!agy.capabilities.runtime_session_capture);
@@ -250,6 +287,7 @@ fn account_selectors_are_declared_independently_of_provider_rollout() {
             (CliTool::Claude, Some("CLAUDE_CONFIG_DIR")),
             (CliTool::Codex, Some("CODEX_HOME")),
             (CliTool::Agy, None),
+            (CliTool::Grok, Some("GROK_HOME")),
         ]
     );
 
@@ -271,6 +309,25 @@ fn account_providers_are_registered_behind_the_capability_slice() {
     assert!(spec(CliTool::Claude).account_provider().is_some());
     assert!(spec(CliTool::Codex).account_provider().is_some());
     assert!(spec(CliTool::Agy).account_provider().is_some());
+    assert!(spec(CliTool::Grok).account_provider().is_some());
+}
+
+#[test]
+fn grok_declares_the_slices_it_does_not_have() {
+    // Regression: commit bfecae9 fixed the harness set at three CLIs, so a
+    // fourth could only arrive by branching outside the capability slices. Its
+    // registry entry must be honest about which slices it has not landed yet.
+    let grok = spec(CliTool::Grok);
+    assert!(grok.transcript_parser().is_none());
+    assert!(grok.compaction_signal_source().is_some());
+    assert!(
+        grok.usage_provider().is_none(),
+        "grok publishes no subscription quota endpoint"
+    );
+    assert_eq!(
+        grok.capabilities.usage_note,
+        Some("Grok shows credits in its own /usage")
+    );
 }
 
 fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
@@ -305,6 +362,7 @@ fn write_usage_credentials(tool: CliTool, config_dir: &std::path::Path) {
             )
             .expect("Antigravity credential fixture");
         }
+        CliTool::Grok => unreachable!("Grok declares no usage provider"),
         CliTool::Unknown => panic!("unknown tools do not have usage credentials"),
     }
 }
@@ -458,7 +516,10 @@ fn claude_only_capabilities_are_declared_independently() {
         .filter(|entry| entry.capabilities.account_selection)
         .map(|entry| entry.tool)
         .collect::<Vec<_>>();
-    assert_eq!(account_tools, vec![CliTool::Claude, CliTool::Codex]);
+    assert_eq!(
+        account_tools,
+        vec![CliTool::Claude, CliTool::Codex, CliTool::Grok]
+    );
 
     let team_namespace_tools = all()
         .iter()
@@ -729,6 +790,82 @@ fn undeclared_activity_source_never_claims_authority() {
 }
 
 #[test]
+fn grok_identity_and_activity_answer_from_its_own_files() {
+    // Regression: commit 16de5ec registered grok on the session-source floor,
+    // so its live registry and turn lifecycle had no declared slice at all.
+    let home = tempfile::tempdir().expect("grok conformance home");
+    let project = std::env::current_dir().expect("conformance cwd");
+    let project_path = project.to_string_lossy().into_owned();
+    let session_id = "01a04585-2d53-7123-8000-9a0f4d0b21ce";
+    let pid = std::process::id();
+    fs::write(
+        home.path().join("active_sessions.json"),
+        serde_json::json!([{
+            "session_id": session_id,
+            "pid": pid,
+            "cwd": project_path,
+            "opened_at": "2026-08-27T23:22:06.993848110Z",
+        }])
+        .to_string(),
+    )
+    .expect("grok session registry fixture");
+    let session_dir = home
+        .path()
+        .join("sessions")
+        .join("%2Fconformance")
+        .join(session_id);
+    fs::create_dir_all(&session_dir).expect("grok session dir fixture");
+    fs::write(
+        session_dir.join("summary.json"),
+        serde_json::json!({ "info": { "id": session_id, "cwd": project_path } }).to_string(),
+    )
+    .expect("grok summary fixture");
+    fs::write(
+        session_dir.join("events.jsonl"),
+        "{\"ts\":\"1\",\"type\":\"turn_started\",\"turn_number\":0}\n",
+    )
+    .expect("grok events fixture");
+
+    let resolved = taurhaus_lib::session_scanner::idle::GrokResolver::resolve_at(
+        home.path(),
+        &project_path,
+        pid,
+    );
+    assert_eq!(resolved.session_id.as_deref(), Some(session_id));
+    assert_eq!(
+        resolved.jsonl_path.as_deref(),
+        session_dir.join("events.jsonl").to_str()
+    );
+    assert!(!resolved.authoritative);
+
+    let busy =
+        taurhaus_lib::session_scanner::idle::GrokEventsActivitySource::authoritative_state_at(
+            &resolved,
+        )
+        .expect("grok activity source answers from events.jsonl");
+    assert_eq!(busy.state, SessionState::Active);
+    assert_eq!(busy.source, "grok_events");
+
+    fs::write(
+        session_dir.join("events.jsonl"),
+        "{\"ts\":\"1\",\"type\":\"turn_started\",\"turn_number\":0}\n{\"ts\":\"2\",\"type\":\"turn_ended\",\"outcome\":\"completed\"}\n",
+    )
+    .expect("grok settled events fixture");
+    assert_eq!(
+        taurhaus_lib::session_scanner::idle::GrokEventsActivitySource::authoritative_state_at(
+            &resolved
+        )
+        .expect("settled turn")
+        .state,
+        SessionState::Idle
+    );
+
+    // The registry row is grok's own clean-stop proof.
+    assert_eq!(spec(CliTool::Grok).stop_strategy, StopStrategy::SlashExit);
+    assert!(spec(CliTool::Grok).stop_registry_release);
+}
+
+#[test]
 fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
     // Regression: commit 6fe0aa3 introduced a second hook settings format;
     // installers and payload parsing must stay behind one capability slice.
@@ -745,6 +882,11 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
             CliTool::Codex,
             temp.path()
                 .join("codex/sessions/2026/08/27/rollout-session.jsonl"),
+        ),
+        (
+            CliTool::Grok,
+            temp.path()
+                .join(".grok/sessions/%2Fproject/session/updates.jsonl"),
         ),
     ] {
         let source = spec(tool)
@@ -778,6 +920,21 @@ fn compaction_sources_are_idempotent_removable_and_parse_their_payloads() {
     }
 
     assert!(spec(CliTool::Agy).compaction_signal_source().is_none());
+
+    // grok speaks camelCase keys with snake_case event values, and names its
+    // workspace root rather than a cwd.
+    let grok: taurhaus_lib::coordination::compact_hook::CompactHookInput = serde_json::from_str(
+        &serde_json::json!({
+            "hookEventName": "post_compact",
+            "sessionId": "01a04585-2d53-7123",
+            "trigger": "auto",
+            "workspaceRoot": "/home/user/projects/taurhaus",
+            "transcriptPath": "/home/user/.grok/sessions/%2Fp/01a04585/updates.jsonl",
+        })
+        .to_string(),
+    )
+    .expect("grok camelCase hook payload");
+    assert_eq!(grok.inferred_tool(), Some(CliTool::Grok));
 }
 
 #[test]

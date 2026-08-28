@@ -316,6 +316,53 @@ pub(crate) fn reconcile_agy_hooks(enabled: bool) -> Result<bool, CoordinationErr
     }
 }
 
+/// Reconcile the one global grok hook against the current roster.
+///
+/// grok registers hooks per home, not per session, so the hook has to appear as
+/// soon as the first managed grok member exists and go away once the last one
+/// does — every roster mutation calls this, not just startup and a Settings
+/// save. A discovery failure is reported rather than answered with "no members":
+/// neither an unreadable teams directory nor one team's unreadable config is
+/// proof the last grok member is gone, and uninstalling on either would
+/// silently disable reinjection for a live session.
+pub(crate) fn reconcile_grok_hooks_for_roster(
+    teams_dir: &std::path::Path,
+    enabled: bool,
+) -> Result<bool, CoordinationError> {
+    reconcile_grok_hooks_for_roster_at(
+        teams_dir,
+        &PlatformPaths::grok_dir(),
+        enabled,
+        &compact_hook_executable()?,
+    )
+}
+
+pub(crate) fn reconcile_grok_hooks_for_roster_at(
+    teams_dir: &std::path::Path,
+    grok_home: &std::path::Path,
+    enabled: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    let has_managed_grok = crate::coordination::compact_hook::any_managed_grok_member(teams_dir)?;
+    reconcile_grok_hooks_at(grok_home, enabled, has_managed_grok, taurhaus_exe)
+}
+
+pub(crate) fn reconcile_grok_hooks_at(
+    grok_home: &std::path::Path,
+    enabled: bool,
+    has_managed_grok: bool,
+    taurhaus_exe: &std::path::Path,
+) -> Result<bool, CoordinationError> {
+    if enabled && has_managed_grok {
+        crate::coordination::compact_hook::ensure_grok_compact_hook_installed_at(
+            grok_home,
+            taurhaus_exe,
+        )
+    } else {
+        crate::coordination::compact_hook::remove_grok_compact_hook_at(grok_home)
+    }
+}
+
 fn compact_hook_executable() -> Result<std::path::PathBuf, CoordinationError> {
     if cfg!(target_os = "windows") {
         return Ok(PlatformPaths::daemon_binary_path());

@@ -7,7 +7,7 @@
   import { normalizeTool } from '../meshDefaults.js'
   import { EMPTY_MODEL_CATALOG, defaultEffortFor, defaultModelFor } from '../modelCatalog.js'
   import { themeTokens } from '../themeTokens.js'
-  import { toolLabel as registeredToolLabel } from '../toolRegistry.js'
+  import { toolLabel as registeredToolLabel, tools } from '../toolRegistry.js'
 
   let {
     node = {},
@@ -53,6 +53,7 @@
   })
   const tool = $derived.by(() => String(node?.tool ?? node?.cliTool ?? node?.cli_tool ?? 'claude').trim().toLowerCase())
   const editTool = $derived.by(() => normalizeTool(editDraft?.tool ?? node?.tool ?? node?.cliTool ?? 'claude'))
+  const toolOptions = $derived(tools())
   const toolLabel = $derived.by(() => {
     const currentTool = isEditing ? editTool : tool
     const fallback = isEditing
@@ -579,9 +580,9 @@
                     onchange={(event) => handleToolChange(event.currentTarget.value)}
                     data-testid="mesh-node-detail-tool-input"
                   >
-                    <option value="claude">Claude</option>
-                    <option value="codex">Codex</option>
-                    <option value="agy">Antigravity</option>
+                    {#each toolOptions as descriptor (descriptor.id)}
+                      <option value={descriptor.id}>{descriptor.label}</option>
+                    {/each}
                   </select>
                   <div class="w-[18rem] max-w-full">
                     <ModelSelect

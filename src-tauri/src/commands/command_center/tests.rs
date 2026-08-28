@@ -2438,3 +2438,104 @@ fn team_account_notice_warns_once_per_project() {
     assert!(!first_team_account_notice("project-notice-once"));
     assert!(first_team_account_notice("project-notice-other"));
 }
+
+#[test]
+fn grok_resume_expands_the_session_id_of_the_selected_account_home() {
+    // Regression: commit 358a7c9 expanded `{session_id}` before the launch
+    // account was resolved and read it from the live `active_sessions.json`
+    // registry, which grok clears on `/quit`. A cleanly closed conversation was
+    // unresumable, and a resume onto a second GROK_HOME searched the default
+    // home instead of the one the launch was about to select.
+    let _log_guard = crate::test_support::acquire_global_log_test_guard();
+    let _resolver_guard = crate::session_scanner::idle::GROK_RESOLVER_TEST_LOCK
+        .lock()
+        .unwrap();
+    let temp = TempDir::new().expect("tempdir");
+    let project_path = temp.path().join("project");
+    std::fs::create_dir_all(&project_path).expect("project dir");
+    let project = project_path.to_string_lossy().into_owned();
+    let default_home = temp.path().join(".grok");
+    let work_home = temp.path().join(".grok-work");
+    let default_session = "01a04585-2d53-7123-8000-00000000000a";
+    let work_session = "01a04585-2d53-7123-8000-00000000000b";
+    for (home, session) in [(&default_home, default_session), (&work_home, work_session)] {
+        let dir = home.join("sessions").join("%2Fp").join(session);
+        std::fs::create_dir_all(&dir).expect("grok session dir");
+        std::fs::write(
+            dir.join("summary.json"),
+            serde_json::json!({ "info": { "id": session, "cwd": project } }).to_string(),
+        )
+        .expect("grok summary");
+        std::fs::write(dir.join("events.jsonl"), "{\"type\":\"turn_ended\"}\n")
+            .expect("grok events");
+    }
+    // The live registry is deliberately absent: this is what `/quit` leaves.
+    assert!(!default_home.join("active_sessions.json").exists());
+
+    let _base_dir = crate::session_scanner::idle::set_grok_base_dir_for_test(default_home.clone());
+    let _accounts = install_detection_override(
+        CliTool::Grok,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: vec![default_home.clone(), work_home.clone()],
+            accounts: vec![
+                grok_account("grok-default", &default_home, true),
+                grok_account("grok-work", &work_home, false),
+            ],
+        },
+    );
+    let daemon = launch_stub_daemon();
+    let provider = stub_launch_provider(&daemon);
+    let (db, _db_file) = setup_db_with_project("p-grok-resume", &project);
+    let (log_file, _log_file_path) = setup_log_file();
+
+    launch_cli_session_impl(
+        &db,
+        &provider,
+        &log_file,
+        None,
+        "p-grok-resume".to_string(),
+        LaunchMode::Resume,
+        Some(CliTool::Grok),
+        Some("grok-work".to_string()),
+    )
+    .expect("daemon launch should succeed");
+
+    let request = daemon
+        .last_request
+        .lock()
+        .expect("request slot")
+        .clone()
+        .expect("captured request");
+    assert_eq!(
+        request.params["command_override"],
+        format!(
+            "GROK_HOME='{}' grok --always-approve --resume '{work_session}'",
+            work_home.display()
+        )
+    );
+}
+
+fn grok_account(
+    id: &str,
+    dir: &std::path::Path,
+    is_default: bool,
+) -> crate::session_scanner::accounts::Account {
+    crate::session_scanner::accounts::Account {
+        tool: CliTool::Grok,
+        id: id.to_string(),
+        dir: dir.to_path_buf(),
+        identity: crate::session_scanner::accounts::AccountIdentity {
+            id: id.to_string(),
+            label: format!("{id}@example.com"),
+            display_name: None,
+            organization: None,
+            plan: None,
+            logged_in: true,
+            usage_capable: false,
+            credential_expires_at: None,
+        },
+        is_default,
+        is_process_default: is_default,
+        usage: None,
+    }
+}

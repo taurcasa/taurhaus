@@ -4,6 +4,8 @@
 //! - **Claude Code**: `~/.claude/projects/<slug>/<session-id>.jsonl`
 //! - **Codex CLI**: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
 //! - **Antigravity CLI**: cwd index + flock-held `presence/<conversation>.lock`
+//! - **Grok CLI**: live `active_sessions.json` registry + per-session
+//!   `events.jsonl` turn lifecycle
 //!
 //! The `SessionResolver` trait abstracts per-tool file resolution and
 //! activity detection. The `detect_idle()` entry point dispatches to
@@ -24,6 +26,7 @@ mod agy;
 mod claude;
 mod claude_registry;
 mod codex;
+mod grok;
 
 pub(crate) use agy::presence_lock_is_held;
 #[cfg(test)]
@@ -40,6 +43,17 @@ pub use claude_registry::{
 pub(crate) use claude_registry::{ClaudeRegistryActivitySource, ClaudeRegistrySessionSource};
 pub use codex::CodexResolver;
 pub(crate) use codex::{CodexNotifyActivitySource, CodexSessionSource};
+pub(crate) use grok::newest_session_transcript as grok_newest_session_transcript;
+pub(crate) use grok::session_registry_residence as grok_session_registry_residence;
+pub(crate) use grok::session_transcript as grok_session_transcript;
+#[cfg(test)]
+pub(crate) use grok::set_base_dir_for_test as set_grok_base_dir_for_test;
+pub use grok::GrokEventsActivitySource;
+pub use grok::GrokResolver;
+pub(crate) use grok::RegistryResidence as GrokRegistryResidence;
+#[cfg(test)]
+pub(crate) use grok::GROK_RESOLVER_TEST_LOCK;
+pub(crate) use grok::SESSION_FILES as GROK_SESSION_FILES;
 
 /// Threshold: if any session file mtime is less than this, session is Active.
 /// Used for Claude where proc-level signals supplement the mtime.
@@ -112,6 +126,20 @@ pub trait SessionResolver: Send + Sync {
     /// this without weakening live-session detection.
     fn resume_session_id(&self, project_path: &str) -> Option<String> {
         self.detect_idle(project_path).session_id
+    }
+
+    /// The persisted identity inside the account home this launch will use.
+    ///
+    /// A harness whose whole history is scoped by its account selector has to
+    /// look in the home the command is about to set, not in the default one.
+    /// Harnesses that keep one history ignore the directory.
+    fn resume_session_id_in(
+        &self,
+        project_path: &str,
+        config_dir: Option<&Path>,
+    ) -> Option<String> {
+        let _ = config_dir;
+        self.resume_session_id(project_path)
     }
 }
 
@@ -406,6 +434,7 @@ mod tests {
         let _ = resolver_for(CliTool::Claude);
         let _ = resolver_for(CliTool::Codex);
         let _ = resolver_for(CliTool::Agy);
+        let _ = resolver_for(CliTool::Grok);
     }
 
     // Run with: cargo test -- --ignored session_scanner::idle::tests::live_
