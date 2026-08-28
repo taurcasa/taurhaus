@@ -51,11 +51,12 @@
  * would be pointed at roots this run later deletes.
  *
  * Everything this lane changes outside its own temp root — that tmux session
- * environment, the panes it opens in the operator's session — is taken on as an
- * undo with `laneCleanup` the moment the change is made. A run that costs money
- * and takes minutes is the one an operator interrupts, and an interrupt never
- * reaches Mocha's `after`: `wdio.conf.js` deletes the session temp root and
- * exits on the first SIGINT. The undos sit in front of that handler.
+ * environment, the panes it opens in the operator's session, the compaction
+ * mode the settings IPC pushes to the operator's shared daemon — is taken on as
+ * an undo with `laneCleanup` the moment the change is made. A run that costs
+ * money and takes minutes is the one an operator interrupts, and an interrupt
+ * never reaches Mocha's `after`: `wdio.conf.js` deletes the session temp root
+ * and exits on the first SIGINT. The undos sit in front of that handler.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -65,6 +66,7 @@ import { dirname, join } from 'node:path'
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
+import { DEFAULT_DAEMON_PORT, setDaemonCodexCompactionMode } from '../helpers/daemonCompaction.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { countCompactionBoundaries, pathsContainingMarker, rolloutPaths } from '../helpers/codexRollout.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
@@ -138,6 +140,7 @@ laneCleanup.install()
 
 const PANE_ENVIRONMENT_STEP = 'tmux-session-environment'
 const LANE_PANES_STEP = 'lane-tmux-panes'
+const DAEMON_MODE_STEP = 'daemon-compaction-mode'
 
 let mainApp = false
 let laneEnabled = false
@@ -519,6 +522,29 @@ async function pickRoleIds() {
   return { leadRoleId: idOf(lead), agentRoleId: idOf(agent) }
 }
 
+function codexCompactionMode(settings) {
+  const harness = settings?.terminal?.harness ?? {}
+  return harness.codexCompaction ?? harness.codex_compaction ?? null
+}
+
+/**
+ * Hand the daemon back the mode it was running.
+ *
+ * `update_settings` pushes the mode to the connected daemon, and on this host
+ * that is the operator's own daemon on 17233 — the isolated `TAURHAUS_DATA_DIR`
+ * does not insulate it. The settings IPC puts it back on a clean teardown; this
+ * is the same restoration for the paths where there is no app left to ask.
+ */
+function restoreDaemonCompactionMode(mode) {
+  const port = originalSettings?.daemon?.port ?? DEFAULT_DAEMON_PORT
+  const result = setDaemonCodexCompactionMode(mode, { port })
+  console.log(
+    result.ok
+      ? `[e2e] daemon compaction mode put back to ${mode}`
+      : `[e2e] daemon compaction mode may still be "hooks" — restoring ${mode} failed: ${result.error}`
+  )
+}
+
 async function setCodexCompactionMode(mode) {
   const settings = await invokeTauriOrThrow('get_settings')
   const next = JSON.parse(JSON.stringify(settings))
@@ -868,6 +894,12 @@ describe('Codex compaction via hooks', function () {
     setAutoCompactTokenLimit(join(codexHome, 'config.toml'), AUTO_COMPACT_TOKEN_LIMIT)
 
     originalSettings = await invokeTauriOrThrow('get_settings')
+    const previousMode = codexCompactionMode(originalSettings)
+    // Owed before the flip, not after: a settings update that fails partway
+    // through has still told the daemon.
+    if (previousMode && previousMode !== 'hooks') {
+      laneCleanup.owe(DAEMON_MODE_STEP, () => restoreDaemonCompactionMode(previousMode))
+    }
     await setCodexCompactionMode('hooks')
 
     managed = await initializeManagedCodexTeam()
@@ -883,7 +915,11 @@ describe('Codex compaction via hooks', function () {
     this.timeout(120_000)
 
     if (originalSettings) {
-      await invokeTauriWithTimeout('update_settings', { settings: originalSettings })
+      const restored = await invokeTauriWithTimeout('update_settings', { settings: originalSettings })
+      // The app tells the daemon on its way through this call. A call that
+      // failed or timed out did not, so the direct restoration stays owed.
+      if (restored.ok) laneCleanup.settled(DAEMON_MODE_STEP)
+      else console.warn(`[e2e] settings restore failed (${restored.error}); restoring the daemon mode directly`)
     }
 
     for (const teamName of createdTeamNames) {
