@@ -700,8 +700,10 @@ fn install_mesh_wsl(
     let wsl_source_path = crate::provider::path::to_linux(&bundled_binary_str)
         .unwrap_or_else(|| bundled_binary_str.to_string());
 
+    let stage_id = new_mesh_stage_id();
     let plan = WslMeshInstallPlan {
         source_path: &wsl_source_path,
+        stage_id: &stage_id,
         member_pattern: MESH_MEMBER_DAEMON_PATTERN,
         team_pattern: MESH_TEAM_DAEMON_PATTERN,
     };
@@ -720,11 +722,22 @@ fn install_mesh_wsl(
     )
 }
 
-/// Everything the WSL install script needs from the app side.
+/// Everything the WSL install scripts need from the app side.
 struct WslMeshInstallPlan<'a> {
     source_path: &'a str,
+    /// Names the staged copy, so the swap phase addresses the file the stage phase
+    /// wrote and two concurrent installs cannot stage over each other.
+    stage_id: &'a str,
     member_pattern: &'a str,
     team_pattern: &'a str,
+}
+
+fn new_mesh_stage_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or(0);
+    format!("{}-{nanos}", std::process::id())
 }
 
 fn run_wsl_install_phase(
@@ -750,8 +763,14 @@ fn run_wsl_install_phase(
     .map_err(|e| e.to_string())
 }
 
-/// The WSL install, with the shell out of the decisions: the phase runner only
-/// executes a script, and every judgement about the copied binary is made here.
+/// The WSL install, with the shell out of the decisions.
+///
+/// The stage phase only copies and asks the copy for a version; the app parses that
+/// answer and compares the whole contract against the bundle manifest; only then
+/// does the swap phase stop daemons and replace the installed binary. The script
+/// used to swap first and leave every judgement to the app afterwards, so a
+/// truncated answer — or a valid answer from the wrong mesh — replaced a working
+/// installation before anything could reject it.
 fn install_mesh_wsl_orchestrated<R, F>(
     plan: &WslMeshInstallPlan<'_>,
     bundled_contract: &MeshCompatibilityContract,
@@ -762,9 +781,50 @@ where
     R: FnMut(&str, &[&str]) -> Result<std::process::Output, String>,
     F: FnOnce(bool) -> Result<Option<MeshInstallSelfHealSummary>, String>,
 {
+    let staged = match stage_mesh_copy_in_wsl(plan, bundled_contract, &mut run_phase) {
+        Ok(contract) => contract,
+        Err(error) => {
+            discard_staged_mesh_copy_in_wsl(plan, &mut run_phase);
+            return Err(error);
+        }
+    };
+
     let output = run_phase(
-        install_mesh_wsl_script(),
-        &[plan.source_path, plan.member_pattern, plan.team_pattern],
+        install_mesh_wsl_finish_script(),
+        &[
+            "swap",
+            plan.stage_id,
+            plan.member_pattern,
+            plan.team_pattern,
+        ],
+    )
+    .map_err(|e| format!("Failed to install mesh in WSL: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Failed to install mesh in WSL: {stderr}"));
+    }
+
+    let cycle = parse_mesh_wsl_finish_output(&output.stdout);
+    let self_heal_summary = run_self_heal(cycle.any_daemons_were_running())?;
+
+    Ok(OperationResult::success(
+        format_mesh_install_success_message(&staged.version, self_heal_summary),
+    ))
+}
+
+/// Copies the bundled mesh next to the installed one and proves the copy is the
+/// bundled mesh. Nothing here touches the installed binary or any daemon.
+fn stage_mesh_copy_in_wsl<R>(
+    plan: &WslMeshInstallPlan<'_>,
+    bundled_contract: &MeshCompatibilityContract,
+    run_phase: &mut R,
+) -> Result<MeshCompatibilityContract, String>
+where
+    R: FnMut(&str, &[&str]) -> Result<std::process::Output, String>,
+{
+    let output = run_phase(
+        install_mesh_wsl_stage_script(),
+        &[plan.source_path, plan.stage_id],
     )
     .map_err(|e| format!("Failed to install mesh in WSL: {e}"))?;
 
@@ -773,8 +833,8 @@ where
         return Err(format!("Failed to install mesh in WSL: {stderr}"));
     }
 
-    let result = parse_mesh_wsl_install_output(&output.stdout)?;
-    let issues = compare_mesh_contracts(bundled_contract, &result.contract);
+    let staged_contract = parse_mesh_wsl_stage_output(&output.stdout)?;
+    let issues = compare_mesh_contracts(bundled_contract, &staged_contract);
     if !issues.is_empty() {
         let summary = issues
             .into_iter()
@@ -786,13 +846,20 @@ where
         ));
     }
 
-    let any_daemons_were_running =
-        result.member_daemons_were_running || result.team_daemons_were_running;
-    let self_heal_summary = run_self_heal(any_daemons_were_running)?;
+    Ok(staged_contract)
+}
 
-    Ok(OperationResult::success(
-        format_mesh_install_success_message(&result.contract.version, self_heal_summary),
-    ))
+/// Best-effort removal of a staged copy the app has decided not to install. The
+/// scripts clean up after themselves; this covers the rejections the app makes
+/// between the two phases, when the staged copy is deliberately still there.
+fn discard_staged_mesh_copy_in_wsl<R>(plan: &WslMeshInstallPlan<'_>, run_phase: &mut R)
+where
+    R: FnMut(&str, &[&str]) -> Result<std::process::Output, String>,
+{
+    let _ = run_phase(
+        install_mesh_wsl_finish_script(),
+        &["abort", plan.stage_id, "", ""],
+    );
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -853,23 +920,32 @@ fn run_mesh_install_self_heal(
     Ok(MeshInstallSelfHealSummary::default())
 }
 
-#[derive(Debug)]
-struct WslMeshInstallResult {
-    contract: MeshCompatibilityContract,
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct WslMeshDaemonCycle {
     member_daemons_were_running: bool,
     team_daemons_were_running: bool,
 }
 
-fn install_mesh_wsl_script() -> &'static str {
+impl WslMeshDaemonCycle {
+    fn any_daemons_were_running(&self) -> bool {
+        self.member_daemons_were_running || self.team_daemons_were_running
+    }
+}
+
+/// Stage phase: copy the bundled mesh beside the installed one and ask the copy for
+/// its version. It never touches the installed binary and never stops a daemon, so
+/// a failure here — including a timeout that kills the phase — costs nothing beyond
+/// the staged copy, which the exit trap removes.
+fn install_mesh_wsl_stage_script() -> &'static str {
     r#"set -eu
 source_path="$1"
-member_pattern="$2"
-team_pattern="$3"
+stage_id="$2"
 target_dir="$HOME/.local/bin"
-target_path="$target_dir/mesh"
-temp_path="$target_dir/.mesh.new.$$"
-member_daemons_were_running=0
-team_daemons_were_running=0
+temp_path="$target_dir/.mesh.new.$stage_id"
+
+discard_staged_copy() { rm -f "$temp_path"; }
+trap discard_staged_copy EXIT
+trap 'discard_staged_copy; exit 1' HUP INT TERM
 
 if [ ! -s "$source_path" ]; then
   echo "bundled mesh is empty: $source_path" >&2
@@ -877,7 +953,7 @@ if [ ! -s "$source_path" ]; then
 fi
 
 mkdir -p "$target_dir"
-
+rm -f "$temp_path"
 cp "$source_path" "$temp_path"
 chmod +x "$temp_path"
 
@@ -888,11 +964,49 @@ fi
 case "$version_json" in
   *'"version"'*) ;;
   *)
-    rm -f "$temp_path"
     echo "copied mesh did not report a version: $source_path" >&2
     exit 1
     ;;
 esac
+
+trap - EXIT HUP INT TERM
+printf '%s%s\n' "${WSL_INSTALL_VERSION_JSON_MARKER:-__TAURHAUS_MESH_VERSION_JSON__=}" "$version_json"
+"#
+}
+
+/// Swap phase: cycle the mesh daemons and move the staged copy onto the installed
+/// path. It runs only after the app has parsed the staged copy's version JSON and
+/// matched the whole contract against the bundle manifest; `abort` discards the
+/// staged copy when that verification rejected it.
+fn install_mesh_wsl_finish_script() -> &'static str {
+    r#"set -eu
+mode="$1"
+stage_id="$2"
+member_pattern="${3:-}"
+team_pattern="${4:-}"
+target_dir="$HOME/.local/bin"
+target_path="$target_dir/mesh"
+temp_path="$target_dir/.mesh.new.$stage_id"
+member_daemons_were_running=0
+team_daemons_were_running=0
+
+discard_staged_copy() { rm -f "$temp_path"; }
+trap discard_staged_copy EXIT
+trap 'discard_staged_copy; exit 1' HUP INT TERM
+
+if [ "$mode" != "swap" ]; then
+  exit 0
+fi
+
+if [ -z "$member_pattern" ] || [ -z "$team_pattern" ]; then
+  echo "mesh install swap called without daemon patterns" >&2
+  exit 1
+fi
+
+if [ ! -s "$temp_path" ]; then
+  echo "verified mesh copy is missing at $temp_path" >&2
+  exit 1
+fi
 
 if pgrep -f "$member_pattern" >/dev/null 2>&1; then
   member_daemons_were_running=1
@@ -929,45 +1043,42 @@ if pgrep -f "$team_pattern" >/dev/null 2>&1; then
 fi
 
 mv -f "$temp_path" "$target_path"
-printf '%s%s\n' "${WSL_INSTALL_VERSION_JSON_MARKER:-__TAURHAUS_MESH_VERSION_JSON__=}" "$version_json"
+trap - EXIT HUP INT TERM
 printf '%s%s\n' "${WSL_INSTALL_MEMBER_DAEMON_MARKER:-__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=}" "$member_daemons_were_running"
 printf '%s%s\n' "${WSL_INSTALL_TEAM_DAEMON_MARKER:-__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=}" "$team_daemons_were_running"
 "#
 }
 
-fn parse_mesh_wsl_install_output(stdout: &[u8]) -> Result<WslMeshInstallResult, String> {
+fn parse_mesh_wsl_stage_output(stdout: &[u8]) -> Result<MeshCompatibilityContract, String> {
     let text = String::from_utf8_lossy(stdout);
-    let mut version_json = None;
-    let mut member_daemons_were_running = false;
-    let mut team_daemons_were_running = false;
+    let version_json = text
+        .lines()
+        .map(str::trim)
+        .find_map(|line| line.strip_prefix(WSL_INSTALL_VERSION_JSON_MARKER))
+        .ok_or_else(|| {
+            "WSL install staged a mesh copy but no mesh compatibility JSON was returned for verification"
+                .to_string()
+        })?;
 
-    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        if let Some(raw) = line.strip_prefix(WSL_INSTALL_VERSION_JSON_MARKER) {
-            version_json = Some(raw.to_string());
-            continue;
-        }
+    parse_mesh_contract_json(version_json.as_bytes())
+        .map_err(|e| format!("the copied mesh returned invalid version JSON: {e}"))
+}
+
+fn parse_mesh_wsl_finish_output(stdout: &[u8]) -> WslMeshDaemonCycle {
+    let text = String::from_utf8_lossy(stdout);
+    let mut cycle = WslMeshDaemonCycle::default();
+
+    for line in text.lines().map(str::trim) {
         if let Some(raw) = line.strip_prefix(WSL_INSTALL_MEMBER_DAEMON_MARKER) {
-            member_daemons_were_running = raw == "1";
+            cycle.member_daemons_were_running = raw == "1";
             continue;
         }
         if let Some(raw) = line.strip_prefix(WSL_INSTALL_TEAM_DAEMON_MARKER) {
-            team_daemons_were_running = raw == "1";
-            continue;
+            cycle.team_daemons_were_running = raw == "1";
         }
     }
 
-    let version_json = version_json.ok_or_else(|| {
-        "WSL install completed but no mesh compatibility JSON was returned for verification"
-            .to_string()
-    })?;
-    let contract = parse_mesh_contract_json(version_json.as_bytes())
-        .map_err(|e| format!("WSL install completed but mesh version JSON was invalid: {e}"))?;
-
-    Ok(WslMeshInstallResult {
-        contract,
-        member_daemons_were_running,
-        team_daemons_were_running,
-    })
+    cycle
 }
 
 #[cfg(test)]
@@ -997,6 +1108,34 @@ fi
 exit 0
 "#
         )
+    }
+
+    /// A mesh that answers `version --json` with a contract of the caller's choosing.
+    #[cfg(not(target_os = "windows"))]
+    fn mesh_contract_script(version: &str, protocol: u32, schema: u32) -> String {
+        format!(
+            r#"#!/bin/sh
+if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
+  echo '{{"version":"{version}","protocol_version":{protocol},"schema_version":{schema},"git_commit":"new"}}'
+  exit 0
+fi
+exit 0
+"#
+        )
+    }
+
+    /// A mesh whose version output is truncated: it carries the `"version"` key the
+    /// install script looks for, but it is not JSON.
+    #[cfg(not(target_os = "windows"))]
+    fn mesh_malformed_version_script() -> String {
+        r#"#!/bin/sh
+if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
+  printf '%s' '{"version":"9.9.9","protocol_version":1'
+  exit 0
+fi
+exit 0
+"#
+        .to_string()
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1069,6 +1208,11 @@ exit 0
             .stdin(std::process::Stdio::null())
             .spawn()
             .expect("spawn fake daemon")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn is_running(child: &mut std::process::Child) -> bool {
+        child.try_wait().expect("try_wait").is_none()
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1159,49 +1303,81 @@ exit 0
     }
 
     #[test]
-    fn parse_mesh_wsl_install_output_reads_contract_and_daemon_markers() {
-        let raw = b"__TAURHAUS_MESH_VERSION_JSON__={\"version\":\"0.5.3\",\"protocol_version\":1,\"schema_version\":1,\"git_commit\":\"abc123\"}\n__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=1\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n";
-        let result = parse_mesh_wsl_install_output(raw).expect("parsed");
-        assert_eq!(result.contract.version, "0.5.3");
-        assert!(result.member_daemons_were_running);
-        assert!(!result.team_daemons_were_running);
+    fn parse_mesh_wsl_stage_output_reads_the_staged_contract() {
+        let raw = b"__TAURHAUS_MESH_VERSION_JSON__={\"version\":\"0.5.3\",\"protocol_version\":1,\"schema_version\":1,\"git_commit\":\"abc123\"}\n";
+        let contract = parse_mesh_wsl_stage_output(raw).expect("parsed");
+        assert_eq!(contract.version, "0.5.3");
     }
 
     #[test]
-    fn parse_mesh_wsl_install_output_requires_version_json_line() {
-        let err = parse_mesh_wsl_install_output(
-            b"__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=0\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n",
-        )
-        .expect_err("missing version JSON should fail");
+    fn parse_mesh_wsl_stage_output_requires_version_json_line() {
+        let err = parse_mesh_wsl_stage_output(b"nothing to see here\n")
+            .expect_err("missing version JSON should fail");
         assert!(err.contains("no mesh compatibility JSON"));
     }
 
     #[test]
-    fn install_mesh_wsl_script_uses_atomic_swap_and_emits_daemon_cycle_markers() {
-        let script = install_mesh_wsl_script();
-        assert!(script.contains("temp_path=\"$target_dir/.mesh.new.$$\""));
-        assert!(script.contains("mv -f \"$temp_path\" \"$target_path\""));
-        assert!(script.contains("pgrep -f \"$member_pattern\""));
-        assert!(script.contains("pgrep -f \"$team_pattern\""));
-        assert!(script.contains("member_pattern=\"$2\""));
-        assert!(script.contains("team_pattern=\"$3\""));
+    fn parse_mesh_wsl_stage_output_rejects_malformed_version_json() {
+        let err = parse_mesh_wsl_stage_output(
+            b"__TAURHAUS_MESH_VERSION_JSON__={\"version\":\"0.5.3\",\"protocol_version\":1\n",
+        )
+        .expect_err("malformed version JSON should fail");
+        assert!(
+            err.contains("invalid version JSON"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn parse_mesh_wsl_finish_output_reads_daemon_markers() {
+        let cycle = parse_mesh_wsl_finish_output(
+            b"__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=1\n__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=0\n",
+        );
+        assert!(cycle.member_daemons_were_running);
+        assert!(!cycle.team_daemons_were_running);
+        assert!(cycle.any_daemons_were_running());
+    }
+
+    #[test]
+    fn install_mesh_wsl_stage_script_only_stages_and_verifies() {
+        let stage = install_mesh_wsl_stage_script();
+        assert!(stage.contains("temp_path=\"$target_dir/.mesh.new.$stage_id\""));
+        // The copy must prove it runs, and the staged copy must survive for the swap.
+        assert!(stage.contains("\"$temp_path\" version --json"));
+        assert!(stage.contains(WSL_INSTALL_VERSION_JSON_MARKER));
+        // Nothing destructive may live in the stage phase.
+        assert!(
+            !stage.contains("mv -f"),
+            "the stage phase must not replace the installed binary"
+        );
+        assert!(
+            !stage.contains("pgrep"),
+            "the stage phase must not touch running daemons"
+        );
+        // Every exit that is not the successful one removes the staged copy.
+        assert!(stage.contains("discard_staged_copy() { rm -f \"$temp_path\"; }"));
+        assert!(stage.contains("trap discard_staged_copy EXIT"));
+        assert!(stage.contains("trap 'discard_staged_copy; exit 1' HUP INT TERM"));
+        assert!(stage.contains("trap - EXIT HUP INT TERM"));
+    }
+
+    #[test]
+    fn install_mesh_wsl_finish_script_swaps_and_emits_daemon_cycle_markers() {
+        let finish = install_mesh_wsl_finish_script();
+        assert!(finish.contains("temp_path=\"$target_dir/.mesh.new.$stage_id\""));
+        assert!(finish.contains("mv -f \"$temp_path\" \"$target_path\""));
+        assert!(finish.contains("pgrep -f \"$member_pattern\""));
+        assert!(finish.contains("pgrep -f \"$team_pattern\""));
+        assert!(finish.contains("kill -TERM $member_pids || true"));
+        assert!(finish.contains("kill -TERM $team_pids || true"));
+        assert!(finish.contains(WSL_INSTALL_MEMBER_DAEMON_MARKER));
+        assert!(finish.contains(WSL_INSTALL_TEAM_DAEMON_MARKER));
+        // An empty pattern would match every process on the host.
+        assert!(finish.contains("if [ -z \"$member_pattern\" ] || [ -z \"$team_pattern\" ]; then"));
+        assert!(finish.contains("discard_staged_copy() { rm -f \"$temp_path\"; }"));
+        assert!(finish.contains("trap discard_staged_copy EXIT"));
         assert!(MESH_MEMBER_DAEMON_PATTERN.contains("[[:space:]]daemon([[:space:]]|$).*--pane"));
         assert!(MESH_TEAM_DAEMON_PATTERN.contains("team-daemon([[:space:]]|$).*start"));
-        assert!(script.contains("kill -TERM $member_pids || true"));
-        assert!(script.contains("kill -TERM $team_pids || true"));
-        assert!(script.contains(WSL_INSTALL_VERSION_JSON_MARKER));
-        assert!(script.contains(WSL_INSTALL_MEMBER_DAEMON_MARKER));
-        assert!(script.contains(WSL_INSTALL_TEAM_DAEMON_MARKER));
-        // The copy must prove it runs before it is allowed to replace the live binary.
-        assert!(script.contains("\"$temp_path\" version --json"));
-        assert!(script.contains("rm -f \"$temp_path\""));
-        let verify_at = script
-            .find("\"$temp_path\" version --json")
-            .expect("verification step");
-        let swap_at = script
-            .find("mv -f \"$temp_path\" \"$target_path\"")
-            .expect("swap step");
-        assert!(verify_at < swap_at, "verification must precede the swap");
     }
 
     #[test]
@@ -1296,6 +1472,7 @@ exit 0
 
         let plan = WslMeshInstallPlan {
             source_path: source_mesh.to_str().expect("source path"),
+            stage_id: &token,
             member_pattern: &member_pattern,
             team_pattern: &team_pattern,
         };
@@ -1364,6 +1541,140 @@ exit 0
             "the team daemon pattern must match a `mesh team-daemon start` command line"
         );
 
+        stop_fake_daemon(team);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident, review
+    // follow-up. The WSL script only checked that the copy's output contained the
+    // literal `"version"`, then stopped every mesh daemon and swapped the binary;
+    // the JSON was parsed, and the contract compared, back in the app afterwards. A
+    // truncated answer therefore replaced a working mesh before anyone could say so.
+    #[test]
+    fn install_mesh_wsl_keeps_installed_binary_when_the_copy_reports_malformed_json() {
+        if !bash_is_available() {
+            eprintln!("skipping WSL malformed-JSON guard test: bash is unavailable");
+            return;
+        }
+
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let bin_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+        let installed_mesh = bin_dir.join("mesh");
+        write_executable(&installed_mesh, &mesh_version_script("9.9.9"));
+        let before = std::fs::read(&installed_mesh).expect("read installed mesh");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, &mesh_malformed_version_script());
+
+        let token = unique_daemon_token();
+        let (member_pattern, team_pattern) = scoped_daemon_patterns(&token);
+        let mut member = spawn_fake_daemon(&format!(
+            "mesh daemon --pane %9 --team alpha --name dev --marker {token}"
+        ));
+        let mut team = spawn_fake_daemon(&format!(
+            "mesh team-daemon start --team alpha --name lead --marker {token}"
+        ));
+        std::thread::sleep(Duration::from_millis(150));
+
+        let plan = WslMeshInstallPlan {
+            source_path: source_mesh.to_str().expect("source path"),
+            stage_id: &token,
+            member_pattern: &member_pattern,
+            team_pattern: &team_pattern,
+        };
+        let err = install_mesh_wsl_orchestrated(
+            &plan,
+            &bundled_test_contract(),
+            |script, args| run_local_install_phase(temp_home.path(), script, args),
+            |_| panic!("self-heal must not run when the install is rejected"),
+        )
+        .expect_err("a copy whose version output is not JSON must be rejected");
+
+        assert!(err.contains("JSON"), "unexpected error: {err}");
+        assert_eq!(
+            std::fs::read(&installed_mesh).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert!(
+            is_running(&mut member),
+            "no daemon may be stopped for an install that is rejected"
+        );
+        assert!(
+            is_running(&mut team),
+            "no daemon may be stopped for an install that is rejected"
+        );
+        assert_eq!(leftover_temp_copies(&bin_dir), 0);
+
+        stop_fake_daemon(member);
+        stop_fake_daemon(team);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident, review
+    // follow-up. A copy that answers with a *valid* contract for a different mesh
+    // was compared against the bundle manifest only after the swap, so the wrong
+    // mesh was already installed by the time the mismatch was reported.
+    #[test]
+    fn install_mesh_wsl_keeps_installed_binary_when_the_copy_reports_a_mismatched_contract() {
+        if !bash_is_available() {
+            eprintln!("skipping WSL contract-mismatch guard test: bash is unavailable");
+            return;
+        }
+
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let bin_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+        let installed_mesh = bin_dir.join("mesh");
+        write_executable(&installed_mesh, &mesh_version_script("9.9.9"));
+        let before = std::fs::read(&installed_mesh).expect("read installed mesh");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, &mesh_contract_script("0.0.1", 2, 3));
+
+        let token = unique_daemon_token();
+        let (member_pattern, team_pattern) = scoped_daemon_patterns(&token);
+        let mut member = spawn_fake_daemon(&format!(
+            "mesh daemon --pane %9 --team alpha --name dev --marker {token}"
+        ));
+        let mut team = spawn_fake_daemon(&format!(
+            "mesh team-daemon start --team alpha --name lead --marker {token}"
+        ));
+        std::thread::sleep(Duration::from_millis(150));
+
+        let plan = WslMeshInstallPlan {
+            source_path: source_mesh.to_str().expect("source path"),
+            stage_id: &token,
+            member_pattern: &member_pattern,
+            team_pattern: &team_pattern,
+        };
+        let err = install_mesh_wsl_orchestrated(
+            &plan,
+            &bundled_test_contract(),
+            |script, args| run_local_install_phase(temp_home.path(), script, args),
+            |_| panic!("self-heal must not run when the install is rejected"),
+        )
+        .expect_err("a copy whose contract differs from the bundle must be rejected");
+
+        assert!(err.contains("does not match"), "unexpected error: {err}");
+        assert!(err.contains("0.0.1") && err.contains("9.9.9"), "{err}");
+        assert_eq!(
+            std::fs::read(&installed_mesh).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert!(
+            is_running(&mut member),
+            "no daemon may be stopped for an install that is rejected"
+        );
+        assert!(
+            is_running(&mut team),
+            "no daemon may be stopped for an install that is rejected"
+        );
+        assert_eq!(leftover_temp_copies(&bin_dir), 0);
+
+        stop_fake_daemon(member);
         stop_fake_daemon(team);
     }
 
@@ -1660,6 +1971,7 @@ exit 0
         let (member_pattern, team_pattern) = scoped_daemon_patterns(&token);
         let plan = WslMeshInstallPlan {
             source_path: source_mesh.to_str().expect("source path"),
+            stage_id: &token,
             member_pattern: &member_pattern,
             team_pattern: &team_pattern,
         };
