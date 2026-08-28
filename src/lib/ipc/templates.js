@@ -116,6 +116,23 @@ export async function exportRoleToFile(roleId, targetFormat) {
   }
 }
 
+/**
+ * Write the Claude role templates into the project's `.claude/agents`
+ * directory, where Claude Code resolves a subagent by name.
+ */
+export async function exportAgentDefinitions(projectId) {
+  const result = await invokeOrMock('export_agent_definitions', { projectId }, () => ({
+    // Browser mode has no project on disk, so nothing is written there.
+    written: [],
+    skipped: [],
+  }))
+
+  return {
+    written: Array.isArray(result?.written) ? result.written : [],
+    skipped: Array.isArray(result?.skipped) ? result.skipped : [],
+  }
+}
+
 export async function listTeamPresets() {
   const presets = await invokeOrMock('templates_list_presets_full', undefined, () =>
     MOCK_TEAM_PRESETS.map(teamPresetSummary)

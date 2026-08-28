@@ -13,6 +13,7 @@
     open = false,
     dark = false,
     modelCatalog = null,
+    projectId = '',
     onClose = () => {},
     onSelectPreset = () => {},
     onSelectRole = () => {},
@@ -41,6 +42,7 @@
 
   const controller = createTemplateBrowserController({
     getOpen: () => open,
+    getProjectId: () => projectId,
   })
 </script>
 
@@ -120,6 +122,11 @@
           onExportRole={(role, format) => {
             void controller.handleRoleExport(role, format)
           }}
+          onExportAgentDefinitions={() => {
+            void controller.exportAgentDefinitionsForProject()
+          }}
+          canExportAgentDefinitions={controller.canExportAgentDefinitions}
+          exportingAgentDefinitions={controller.exportingAgentDefinitions}
           onOpenEditRoleEditor={(role) => {
             void controller.openEditRoleEditor(role)
           }}

@@ -1,6 +1,7 @@
 import {
   deleteRoleTemplate,
   deleteTeamPreset,
+  exportAgentDefinitions,
   exportRoleToFile,
   getRoleTemplate,
   getTeamPreset,
@@ -119,7 +120,7 @@ async function pickRoleImportFile() {
   return typeof selection === 'string' ? selection : null
 }
 
-export function createTemplateBrowserController({ getOpen }) {
+export function createTemplateBrowserController({ getOpen, getProjectId = () => '' }) {
   let loading = $state(false)
   let errorMessage = $state('')
   let roleTemplates = $state([])
@@ -144,6 +145,7 @@ export function createTemplateBrowserController({ getOpen }) {
   let deletePresetId = $state('')
   let deletePresetName = $state('')
   let exportingRoleId = $state('')
+  let exportingAgentDefinitions = $state(false)
   let exportNotice = $state('')
   let catalogLoadSequence = 0
   let exportNoticeTimer = null
@@ -397,6 +399,33 @@ export function createTemplateBrowserController({ getOpen }) {
       errorMessage = error?.message || 'Failed to export role.'
     } finally {
       exportingRoleId = ''
+    }
+  }
+
+  async function exportAgentDefinitionsForProject() {
+    const projectId = getProjectId()
+    if (!projectId || exportingAgentDefinitions) return
+
+    exportingAgentDefinitions = true
+    errorMessage = ''
+
+    try {
+      const result = await exportAgentDefinitions(projectId)
+      const written = result?.written?.length ?? 0
+      const skipped = result?.skipped?.length ?? 0
+      const parts = [
+        `Exported ${written} agent ${written === 1 ? 'definition' : 'definitions'} to .claude/agents`,
+      ]
+      if (skipped > 0) {
+        parts.push(
+          `${skipped} hand-written ${skipped === 1 ? 'agent' : 'agents'} left untouched`
+        )
+      }
+      showExportNotice(parts.join(' \u00b7 '))
+    } catch (error) {
+      errorMessage = formatUiError(error, 'Failed to export the agent definitions.')
+    } finally {
+      exportingAgentDefinitions = false
     }
   }
 
@@ -664,6 +693,12 @@ export function createTemplateBrowserController({ getOpen }) {
     get exportingRoleId() {
       return exportingRoleId
     },
+    get exportingAgentDefinitions() {
+      return exportingAgentDefinitions
+    },
+    get canExportAgentDefinitions() {
+      return Boolean(getProjectId())
+    },
     get exportNotice() {
       return exportNotice
     },
@@ -682,6 +717,7 @@ export function createTemplateBrowserController({ getOpen }) {
     cancelRoleDelete,
     confirmRoleDelete,
     handleRoleExport,
+    exportAgentDefinitionsForProject,
     closePresetEditor,
     openCreatePresetEditor,
     openPresetEditorForMutation,
