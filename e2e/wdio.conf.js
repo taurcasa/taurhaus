@@ -31,8 +31,9 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
+import { createCodexScratchHome } from './helpers/codexScratchHome.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -221,6 +222,40 @@ The runtime mode keeps agents connected.
   runGitOrThrow(repoPath, ['commit', '-q', '-m', 'docs: add changelog for git history coverage'], 'Failed to create third e2e fixture commit')
 }
 
+// The one spec that drives a real Codex subscription. It runs against a scratch
+// CODEX_HOME rather than the operator's own, so the app process — which installs
+// the managed hook and renders the member's `CODEX_HOME='…'` launch prefix — has
+// to be started with that root already in its environment.
+const CODEX_SCRATCH_SPEC = 'compaction-codex-hooks.js'
+let previousCodexHome = null
+let codexHomeOverridden = false
+
+function prepareCodexScratchHome(specs, scratchHome) {
+  const wanted = (specs ?? []).some((spec) => resolve(spec).endsWith(CODEX_SCRATCH_SPEC))
+  if (!wanted) return
+
+  const sourceHome = process.env.E2E_CODEX_SOURCE_HOME || resolve(homedir(), '.codex')
+  const { copied, missing } = createCodexScratchHome(sourceHome, scratchHome)
+  previousCodexHome = process.env.CODEX_HOME ?? null
+  codexHomeOverridden = true
+  process.env.CODEX_HOME = scratchHome
+  console.log(
+    `[e2e] Codex scratch home ${scratchHome} from ${sourceHome}` +
+      ` (copied: ${copied.join(', ') || 'none'}${missing.length ? `; missing: ${missing.join(', ')}` : ''})`
+  )
+}
+
+function restoreCodexHome() {
+  if (!codexHomeOverridden) return
+  if (previousCodexHome === null) {
+    delete process.env.CODEX_HOME
+  } else {
+    process.env.CODEX_HOME = previousCodexHome
+  }
+  previousCodexHome = null
+  codexHomeOverridden = false
+}
+
 async function isWebDriverProtocolReady(host, port, timeoutMs = 500) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -327,6 +362,7 @@ function cleanupSessionTempRoot() {
 function cleanupAllE2eArtifacts() {
   cleanupTauriDriver()
   cleanupSessionTempRoot()
+  restoreCodexHome()
 }
 
 let cleanupHandlersRegistered = false
@@ -494,7 +530,7 @@ export const config = {
    * Start tauri-driver before each worker session.
    * With batched groups, this runs once per group (5 times for the full suite).
    */
-  async beforeSession() {
+  async beforeSession(_config, _capabilities, specs) {
     // Guard against stale processes from aborted runs before starting a new worker.
     cleanupAllE2eArtifacts()
 
@@ -525,6 +561,7 @@ export const config = {
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
     process.env.TAURHAUS_DATA_DIR = tauriDataDir
     process.env.TAURHAUS_CLAUDE_DIR = tauriClaudeDir
+    prepareCodexScratchHome(specs, `${sessionTempRoot}/codex-home`)
 
     tauriDriver = spawn(
       localTauriDriverPath,
