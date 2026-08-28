@@ -16,6 +16,7 @@ const RESERVED_COMPACTION_STATE_BASENAMES: &[&str] = &["extractor-state", "signa
 #[serde(rename_all = "snake_case")]
 pub enum CompactionDeliveryResult {
     Injected,
+    #[serde(alias = "stale")]
     Skipped,
     Failed,
 }
