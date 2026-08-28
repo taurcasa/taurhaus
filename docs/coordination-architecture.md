@@ -232,7 +232,7 @@ src-tauri/src/
     runtime/
       mod.rs  process.rs  recording.rs  system.rs  tmux.rs
     compact_hook.rs         # Claude + Codex + Grok hook bridge
-    agy_hooks_installer.rs  # Antigravity opt-in activity hooks
+    agy_hooks_installer.rs  # Antigravity activity hooks (shared config/hooks.json)
     compaction_processor.rs  compaction_events.rs
     activity_export.rs  activity_schema.rs
     delivery.rs             # DeliveryRenderer / onboarding

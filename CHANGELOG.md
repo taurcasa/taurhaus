@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Antigravity activity hooks are on by default** — agy 1.1.22 was observed firing `PreInvocation` and `Stop` for interactive sessions once the workspace is trusted, so the busy/idle sink no longer has to be opted into. It stays inert until the member answers the folder-trust prompt on first launch, which Antigravity onboarding now spells out, and it is gated on agy 1.1.10 or newer because `Stop` never fires below that. An agy version that cannot be resolved leaves an installed hook alone rather than uninstalling it, and the gated outcome is logged once per run as `agy.hooks.degraded`.
+
+### Fixed
+
+- **Antigravity hooks are written to the shared `~/.gemini/config/hooks.json`** — agy 1.0.8 moved user-level hooks there and its migration symlinks the old `antigravity-cli/hooks.json` onto it. taurhaus now merges its single entry into the shared file by hook name (anything else in the file is preserved), follows a symlinked target instead of replacing it with a private regular file, and clears any entry left behind in the legacy path. The `Stop` payload's `terminationReason` is kept as an open string — only `NO_TOOL_CALL` has ever been observed, and an unseen value must never drop an idle edge. `harness.agy_hooks` also gained the snake_case alias its siblings have; without it the setting the frontend sends was silently discarded.
+
 ## [0.8.1] - 2026-08-28
 
 ### Changed
