@@ -26,7 +26,7 @@ so `OPENAI_IMAGE_QUALITY=low just infographics` works for a cheap trial run.
 |-----|---------|-------|
 | `OPENAI_API_KEY` | — | Required. Never printed, never logged. |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-2` | Image model. |
-| `OPENAI_IMAGE_SIZE` | `1536x1024` | `1024x1024`, `1536x1024`, `1024x1536`, `2048x1152`, `1152x2048`. |
+| `OPENAI_IMAGE_SIZE` | `2048x1152` | `1024x1024`, `1536x1024`, `1024x1536`, `2048x1152`, `1152x2048`. |
 | `OPENAI_IMAGE_QUALITY` | `high` | `low`, `medium`, `high`. Cost scales with this. |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Point at a compatible gateway. |
 | `TAURHAUS_INFOGRAPHIC_MAX_WIDTH` | `1600` | Committed JPEGs are downscaled to this width. |
@@ -55,7 +55,17 @@ Useful flags:
 | `--all` | Every entry. Entries whose prompt was never reconstructed are skipped and listed. |
 | `--no-reference` | Do not attach the current image; generate from the prompt alone. |
 | `--keep-png` | Keep the raw API PNG beside the JPEG as `<name>.generated.png` (gitignored). |
+| `--allow-aspect-change` | Reshape entries whose `aspect_ratio` the configured size contradicts. |
 | `--price-usd <amount>` | Price the estimate against the current rate card. |
+
+## Geometry
+
+Every entry declares an `aspect_ratio`, and `2048x1152` — exact 16:9 — is the
+shape they all ask for. An entry whose declared ratio contradicts
+`OPENAI_IMAGE_SIZE` is skipped with the mismatch spelled out rather than
+silently reshaped; `--allow-aspect-change` regenerates it at the configured size
+and rewrites the entry's `aspect_ratio` and `image_size` to the geometry that
+actually made the image, so the recipe still describes the file next to it.
 
 By default an entry with a readable `reference_image_paths` entry goes to
 `/images/edits` with the current JPEG attached as a style reference, so the new

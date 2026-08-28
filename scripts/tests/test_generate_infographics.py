@@ -139,6 +139,28 @@ class EnvParsingTests(unittest.TestCase):
         self.assertEqual(config.size, "2048x1152")
         self.assertGreater(gen.price_for(config, None), 0)
 
+    def test_the_default_size_is_the_shape_the_manifest_declares(self):
+        # Regression: 8541bf2 shipped DEFAULT_SIZE = "1536x1024" (3:2) while every
+        # manifest entry declares aspect_ratio "16:9", so the documented default run
+        # would have reshaped all eight stale infographics.
+        config = gen.resolve_config({"OPENAI_API_KEY": FAKE_KEY}, {})
+        self.assertEqual(config.size, "2048x1152")
+        self.assertEqual(gen.aspect_ratio_for(config.size), "16:9")
+
+    def test_every_stale_entry_resolves_to_its_declared_ratio_by_default(self):
+        # Regression: 8541bf2 — the default geometry has to satisfy the manifest.
+        config = gen.resolve_config({"OPENAI_API_KEY": FAKE_KEY}, {})
+        stale = gen.select_entries(gen.load_manifest(REPO_ROOT), "stale", [])
+        self.assertTrue(stale)
+        for image_id, entry in stale:
+            self.assertEqual(entry["recipe"]["aspect_ratio"], gen.aspect_ratio_for(config.size), image_id)
+
+    def test_a_ratio_is_reduced_from_the_pixel_size(self):
+        self.assertEqual(gen.aspect_ratio_for("2048x1152"), "16:9")
+        self.assertEqual(gen.aspect_ratio_for("1536x1024"), "3:2")
+        self.assertEqual(gen.aspect_ratio_for("1024x1024"), "1:1")
+        self.assertEqual(gen.aspect_ratio_for("1152x2048"), "9:16")
+
     def test_rejects_an_unsupported_size_and_quality(self):
         with self.assertRaises(gen.ConfigError):
             gen.resolve_config({"OPENAI_API_KEY": FAKE_KEY, "OPENAI_IMAGE_SIZE": "4096x4096"}, {})
@@ -304,7 +326,8 @@ class ManifestEditTests(unittest.TestCase):
             "coordination-architecture",
             generation_id="gen_abc123abc123",
             model="gpt-image-2",
-            image_size="1536x1024",
+            image_size="2048x1152",
+            aspect_ratio="16:9",
             sha256="abc123abc123" + "0" * 52,
             updated_at="2026-08-28",
             history_comment="regenerated 2026-08-28 via openai gpt-image-2",
@@ -344,9 +367,29 @@ class ManifestEditTests(unittest.TestCase):
         block = self.after["coordination-architecture"]
         self.assertIn("    generation_id: gen_abc123abc123\n", block)
         self.assertIn("      model: gpt-image-2\n", block)
-        self.assertIn('      image_size: "1536x1024"\n', block)
+        self.assertIn('      image_size: "2048x1152"\n', block)
+        self.assertIn('      aspect_ratio: "16:9"\n', block)
         self.assertIn("    sha256: abc123abc123" + "0" * 52 + "\n", block)
         self.assertIn('    updated_at: "2026-08-28"\n', block)
+
+    def test_the_recorded_ratio_follows_the_geometry_that_made_the_image(self):
+        # Regression: 8541bf2 rewrote image_size but left aspect_ratio alone, so a
+        # 3:2 render kept a 16:9 recipe — a recipe that no longer makes the image.
+        updated = gen.update_manifest_text(
+            self.original,
+            "coordination-architecture",
+            generation_id="gen_abc123abc123",
+            model="gpt-image-2",
+            image_size="1536x1024",
+            aspect_ratio="3:2",
+            sha256="a" * 64,
+            updated_at="2026-08-28",
+            history_comment="regenerated 2026-08-28 via openai gpt-image-2",
+        )
+        block = entry_blocks(updated)["coordination-architecture"]
+        self.assertIn('      image_size: "1536x1024"\n', block)
+        self.assertIn('      aspect_ratio: "3:2"\n', block)
+        self.assertNotIn('aspect_ratio: "16:9"', block)
 
     def test_history_gains_the_new_generation(self):
         block = self.after["coordination-architecture"]
@@ -362,7 +405,8 @@ class ManifestEditTests(unittest.TestCase):
             "daemon-protocol",
             generation_id="gen_ffffffffffff",
             model="gpt-image-2",
-            image_size="1536x1024",
+            image_size="2048x1152",
+            aspect_ratio="16:9",
             sha256="f" * 64,
             updated_at="2026-08-28",
             history_comment="regenerated 2026-08-28 via openai gpt-image-2",
@@ -381,7 +425,8 @@ class ManifestEditTests(unittest.TestCase):
         self.assertNotIn("stale", entry)
         self.assertEqual(entry["generation_id"], "gen_abc123abc123")
         self.assertEqual(entry["recipe"]["model"], "gpt-image-2")
-        self.assertEqual(entry["recipe"]["image_size"], "1536x1024")
+        self.assertEqual(entry["recipe"]["image_size"], "2048x1152")
+        self.assertEqual(entry["recipe"]["aspect_ratio"], "16:9")
         self.assertEqual(entry["updated_at"], "2026-08-28")
         self.assertEqual(len(entry["history"]), 2)
 
@@ -399,7 +444,7 @@ class DryRunTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("coordination-architecture", output)
             self.assertIn("gpt-image-2", output)
-            self.assertIn("1536x1024", output)
+            self.assertIn("2048x1152", output)
             self.assertIn("high", output)
             self.assertIn("reference", output)
             self.assertIn("$", output)
@@ -457,7 +502,7 @@ class RunTests(unittest.TestCase):
             record = json.loads(log_path.read_text(encoding="utf-8").strip())
             self.assertEqual(record["id"], "coordination-architecture")
             self.assertEqual(record["model"], "gpt-image-2")
-            self.assertEqual(record["size"], "1536x1024")
+            self.assertEqual(record["size"], "2048x1152")
             self.assertEqual(record["quality"], "high")
             self.assertEqual(record["sha256"], digest)
             self.assertIn("duration_s", record)
@@ -514,6 +559,48 @@ class RunTests(unittest.TestCase):
             blocks = entry_blocks(manifest_text)
             self.assertIn("stale: true", blocks["coordination-architecture"])
             self.assertNotIn("stale: true", blocks["data-model"])
+
+    def test_a_size_that_contradicts_the_manifest_ratio_is_refused(self):
+        # Regression: 8541bf2 — a 3:2 size against a 16:9 entry silently reshaped
+        # the image and left the entry claiming 16:9.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            image_path = root / "docs" / "images" / "coordination-architecture.jpg"
+            before_image = image_path.read_bytes()
+            manifest = root / "docs" / "images" / "infographics.manifest.yaml"
+            before_manifest = manifest.read_text(encoding="utf-8")
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.dict(os.environ, {"OPENAI_IMAGE_SIZE": "1536x1024"}):
+                with mock.patch.object(
+                    gen.urllib.request, "urlopen", side_effect=AssertionError("network")
+                ):
+                    with redirect_stdout(out), mock.patch.object(sys, "stderr", err):
+                        code = gen.main(["--id", "coordination-architecture"], repo_root=root)
+            printed = out.getvalue() + err.getvalue()
+            self.assertNotEqual(code, 0)
+            self.assertIn("16:9", printed)
+            self.assertIn("3:2", printed)
+            self.assertIn("--allow-aspect-change", printed)
+            self.assertEqual(image_path.read_bytes(), before_image)
+            self.assertEqual(manifest.read_text(encoding="utf-8"), before_manifest)
+
+    def test_allow_aspect_change_records_the_geometry_it_actually_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            with mock.patch.dict(os.environ, {"OPENAI_IMAGE_SIZE": "1536x1024"}):
+                with mock.patch.object(gen.urllib.request, "urlopen", return_value=fake_response()):
+                    with redirect_stdout(io.StringIO()):
+                        code = gen.main(
+                            ["--id", "coordination-architecture", "--allow-aspect-change"],
+                            repo_root=root,
+                        )
+            self.assertEqual(code, 0)
+            manifest_text = (root / "docs" / "images" / "infographics.manifest.yaml").read_text(
+                encoding="utf-8"
+            )
+            block = entry_blocks(manifest_text)["coordination-architecture"]
+            self.assertIn('      image_size: "1536x1024"\n', block)
+            self.assertIn('      aspect_ratio: "3:2"\n', block)
 
     def test_a_missing_api_key_fails_before_any_request(self):
         with tempfile.TemporaryDirectory() as tmp:

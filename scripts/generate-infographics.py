@@ -33,6 +33,7 @@ import binascii
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -55,7 +56,10 @@ LOG_RELATIVE = Path("docs/images/.generation-log.jsonl")
 PROMPT_PREFIX = "Regenerate this documentation infographic; keep the established dark-teal style."
 
 DEFAULT_MODEL = "gpt-image-2"
-DEFAULT_SIZE = "1536x1024"
+# Every manifest entry declares `aspect_ratio: "16:9"`, so the default geometry is
+# the true 16:9 size. A size with a different shape is refused per entry unless
+# --allow-aspect-change says the shape is meant to change.
+DEFAULT_SIZE = "2048x1152"
 DEFAULT_QUALITY = "high"
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MAX_WIDTH = 1600
@@ -252,6 +256,22 @@ def reference_image_for(root, entry):
         path = Path(root) / relative
         if path.is_file() and os.access(path, os.R_OK):
             return path
+    return None
+
+
+def aspect_ratio_for(size):
+    """`"2048x1152"` -> `"16:9"` — the manifest's `aspect_ratio` spelling."""
+    width, _, height = size.partition("x")
+    width, height = int(width), int(height)
+    divisor = math.gcd(width, height)
+    return f"{width // divisor}:{height // divisor}"
+
+
+def aspect_mismatch(entry, size):
+    """The entry's declared ratio when `size` would change the image's shape."""
+    declared = (entry.get("recipe") or {}).get("aspect_ratio")
+    if declared and declared != aspect_ratio_for(size):
+        return declared
     return None
 
 
@@ -509,6 +529,7 @@ def update_manifest_text(
     generation_id,
     model,
     image_size,
+    aspect_ratio,
     sha256,
     updated_at,
     history_comment,
@@ -522,6 +543,7 @@ def update_manifest_text(
     _replace_field(block, r"^    generation_id:", f"    generation_id: {generation_id}\n", image_id)
     _replace_field(block, r"^      model:", f"      model: {model}\n", image_id)
     _replace_field(block, r"^      image_size:", f'      image_size: "{image_size}"\n', image_id)
+    _replace_field(block, r"^      aspect_ratio:", f'      aspect_ratio: "{aspect_ratio}"\n', image_id)
     _replace_field(block, r"^    sha256:", f"    sha256: {sha256}\n", image_id)
     _replace_field(block, r"^    updated_at:", f'    updated_at: "{updated_at}"\n', image_id)
     _append_history(block, image_id, generation_id, history_comment)
@@ -548,6 +570,11 @@ def parse_args(argv):
     parser.add_argument("--dry-run", action="store_true", help="print the plan and the cost estimate")
     parser.add_argument("--no-reference", action="store_true", help="never attach the current image")
     parser.add_argument("--keep-png", action="store_true", help="keep the raw PNG beside the JPEG")
+    parser.add_argument(
+        "--allow-aspect-change",
+        action="store_true",
+        help="reshape entries whose declared aspect_ratio the configured size contradicts",
+    )
     parser.add_argument(
         "--price-usd", type=float, default=None, metavar="USD", help="override the assumed per-image price"
     )
@@ -615,6 +642,7 @@ def _generate_one(root, config, image_id, entry, args):
             generation_id=f"gen_{digest[:12]}",
             model=config.model,
             image_size=config.size,
+            aspect_ratio=aspect_ratio_for(config.size),
             sha256=digest,
             updated_at=today,
             history_comment=f"regenerated {today} via openai {config.model}",
@@ -659,18 +687,29 @@ def main(argv=None, repo_root=None):
     except SelectionError as error:
         return _fail(str(error))
 
+    requested_ratio = aspect_ratio_for(config.size)
     selected, skipped = [], []
     for image_id, entry in candidates:
-        if has_usable_prompt(entry):
-            selected.append((image_id, entry))
-        else:
+        declared = None if args.allow_aspect_change else aspect_mismatch(entry, config.size)
+        if not has_usable_prompt(entry):
             skipped.append((image_id, "the manifest has no prompt for this image"))
+        elif declared:
+            skipped.append(
+                (
+                    image_id,
+                    f"the entry is {declared} but OPENAI_IMAGE_SIZE={config.size} is "
+                    f"{requested_ratio} (use a {declared} size, or --allow-aspect-change "
+                    "to reshape the image and the recipe together)",
+                )
+            )
+        else:
+            selected.append((image_id, entry))
 
     if not selected:
         print("Nothing to regenerate.")
         for image_id, reason in skipped:
             print(f"  {image_id} skipped — {reason}")
-        return 1 if skipped and mode == "id" else 0
+        return 1 if skipped else 0
 
     if args.dry_run:
         _print_plan(selected, skipped, config, price_for(config, args.price_usd), not args.no_reference, root)
