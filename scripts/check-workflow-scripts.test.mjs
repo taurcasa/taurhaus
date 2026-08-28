@@ -1,0 +1,96 @@
+// @vitest-environment node
+import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { checkWorkflowSource, checkWorkflowDir } from './check-workflow-scripts.mjs'
+
+const VALID = `export const meta = {
+  name: 'demo',
+  description: 'Demo workflow',
+  phases: [{ title: 'Work' }],
+}
+
+const A = args || {}
+phase('Work')
+const out = await agent('do the thing', { label: 'work', phase: 'Work', model: 'opus' })
+log('done')
+return { out }
+`
+
+function titles(problems) {
+  return problems.join('\n')
+}
+
+describe('workflow script check', () => {
+  it('accepts a script with meta first, top-level await and top-level return', () => {
+    expect(checkWorkflowSource('demo.js', VALID)).toEqual([])
+  })
+
+  it('reports a syntax error with the offending line', () => {
+    const broken = VALID.replace("log('done')", "log('done'")
+    const problems = checkWorkflowSource('demo.js', broken)
+    expect(problems.length).toBe(1)
+    expect(titles(problems)).toMatch(/syntax/i)
+    expect(titles(problems)).toMatch(/demo\.js:1[0-9]/)
+  })
+
+  it('requires export const meta as the first statement', () => {
+    const late = `const SP = '/tmp/x'\n${VALID}`
+    expect(titles(checkWorkflowSource('demo.js', late))).toMatch(/export const meta/)
+  })
+
+  it('allows leading comments before export const meta', () => {
+    expect(checkWorkflowSource('demo.js', `// a note\n/* block */\n${VALID}`)).toEqual([])
+  })
+
+  it('requires meta.name to match the file name', () => {
+    const renamed = VALID.replace("name: 'demo'", "name: 'other'")
+    expect(titles(checkWorkflowSource('demo.js', renamed))).toMatch(/meta\.name 'other'.*'demo'/)
+  })
+
+  it('requires a description', () => {
+    const bare = VALID.replace("  description: 'Demo workflow',\n", '')
+    expect(titles(checkWorkflowSource('demo.js', bare))).toMatch(/description/)
+  })
+
+  it('rejects imports and require calls (workflow scripts cannot import)', () => {
+    expect(titles(checkWorkflowSource('demo.js', VALID.replace('const A =', "import fs from 'node:fs'\nconst A =")))).toMatch(
+      /import/
+    )
+    expect(titles(checkWorkflowSource('demo.js', VALID.replace('const A =', "const fs = require('node:fs')\nconst A =")))).toMatch(
+      /require/
+    )
+  })
+
+  it('rejects Date.now(), argless new Date() and Math.random()', () => {
+    expect(titles(checkWorkflowSource('demo.js', VALID.replace('const A =', 'const t = Date.now()\nconst A =')))).toMatch(
+      /Date\.now/
+    )
+    expect(titles(checkWorkflowSource('demo.js', VALID.replace('const A =', 'const t = new Date()\nconst A =')))).toMatch(
+      /new Date/
+    )
+    expect(titles(checkWorkflowSource('demo.js', VALID.replace('const A =', 'const r = Math.random()\nconst A =')))).toMatch(
+      /Math\.random/
+    )
+    expect(checkWorkflowSource('demo.js', VALID.replace('const A =', 'const t = new Date(args.now)\nconst A ='))).toEqual([])
+  })
+
+  it('checks every .js file in a directory and reports the count', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-check-'))
+    fs.writeFileSync(path.join(dir, 'demo.js'), VALID)
+    fs.writeFileSync(path.join(dir, 'other.js'), VALID.replace("name: 'demo'", "name: 'other'"))
+    fs.writeFileSync(path.join(dir, 'README.md'), '# not a script')
+    const result = checkWorkflowDir(dir)
+    expect(result.checked).toBe(2)
+    expect(result.problems).toEqual([])
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('fails when the directory is missing or holds no scripts', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-check-'))
+    expect(titles(checkWorkflowDir(path.join(dir, 'nope')).problems)).toMatch(/not found/)
+    expect(titles(checkWorkflowDir(dir).problems)).toMatch(/no workflow scripts/)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+})
