@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Bundled mesh 0.2.21** — mesh recognises `agy` and `grok` member CLIs (Gemini CLI removed, no alias), carries per-CLI submission behaviour (grok: `ACTION REQUIRED:` notices interject with `C-i`, everything else queues on Enter; claude/codex/agy sequences unchanged), and its USAGE guide covers launch flags and `/exit` / `/quit` stops for the four harnesses.
+
 ## [0.8.1] - 2026-08-28
 
 ### Changed
