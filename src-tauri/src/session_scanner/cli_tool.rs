@@ -895,16 +895,13 @@ impl CliToolSpec {
 
     /// Whether a matching executable invocation represents an interactive
     /// terminal session rather than a one-shot driver or utility subcommand.
+    /// Options are read only up to the first positional argument. Process
+    /// collection joins argv with single spaces, so the words of a positional
+    /// prompt arrive as bare tokens: scanning the whole line for a terminating
+    /// flag would read `grok "explain the --help flag"` as `grok --help` and
+    /// hide a live session.
     pub fn argv_is_session(&self, args: &str) -> bool {
         let tokens = args.split_whitespace().collect::<Vec<_>>();
-        if tokens.iter().any(|token| {
-            self.non_session_flags
-                .iter()
-                .any(|flag| flag_matches(token, flag))
-        }) {
-            return false;
-        }
-
         let Some(executable_index) = tokens
             .iter()
             .position(|token| self.matches_argv_token(token))
@@ -914,11 +911,20 @@ impl CliToolSpec {
         let mut index = executable_index + 1;
         while let Some(token) = tokens.get(index) {
             if token.starts_with('-') {
+                if self
+                    .non_session_flags
+                    .iter()
+                    .any(|flag| flag_matches(token, flag))
+                {
+                    return false;
+                }
                 let takes_separate_value =
                     !token.contains('=') && self.argv_value_flags.iter().any(|flag| token == flag);
                 index += if takes_separate_value { 2 } else { 1 };
                 continue;
             }
+            // The first positional decides: a utility subcommand is not a
+            // session, and anything else is the prompt the TUI opens with.
             return !self.non_session_subcommands.contains(token);
         }
         true
@@ -1226,6 +1232,36 @@ mod tests {
             "grok --version",
             "grok -v",
             "grok --model grok-4.6 --help",
+        ] {
+            assert!(!grok.argv_is_session(non_session), "{non_session}");
+        }
+    }
+
+    #[test]
+    fn a_positional_grok_prompt_may_spell_out_a_terminating_flag() {
+        // Regression: commit 54c9103 scanned every argv token for a
+        // terminating flag before parsing argument positions, and commit
+        // 16de5ec then declared a bare positional PROMPT interactive for grok.
+        // Process collection joins argv with single spaces
+        // (`platform::linux::list_processes`), so the words of a prompt are
+        // indistinguishable from separate argv entries: a live TUI started as
+        // `grok "explain the --help flag"` was read as `grok --help` and
+        // disappeared from the session inventory.
+        let grok = spec(CliTool::Grok);
+        for interactive in [
+            "grok explain the --help flag",
+            "grok 'explain the --help flag'",
+            "grok --model grok-4.6 'what does -p do?'",
+            "grok --always-approve 'is --version newer than -v?'",
+        ] {
+            assert!(grok.argv_is_session(interactive), "{interactive}");
+        }
+
+        // A terminating flag in option position still ends the parse.
+        for non_session in [
+            "grok --help",
+            "grok --model grok-4.6 -p summarise",
+            "grok --always-approve --version",
         ] {
             assert!(!grok.argv_is_session(non_session), "{non_session}");
         }

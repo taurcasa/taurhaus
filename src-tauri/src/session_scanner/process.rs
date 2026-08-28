@@ -1518,6 +1518,33 @@ mod tests {
     }
 
     #[test]
+    fn detect_grok_keeps_a_session_whose_prompt_reads_like_a_flag() {
+        // Regression: commit 54c9103 scanned every argv token for a
+        // terminating flag before argument positions were parsed. Process
+        // collection joins argv with single spaces (`list_processes` reads
+        // `/proc/<pid>/cmdline` and joins the NUL-separated entries), so the
+        // words of grok's positional PROMPT arrive as bare tokens and a prompt
+        // that mentions `--help` or `-p` hid a live TUI from the inventory.
+        // The boundary loss is inherent to the collection format: only the
+        // option/positional split can tell a flag from a prompt word.
+        for interactive in [
+            "grok explain the --help flag",
+            "grok tell me what -p does",
+            "/home/user/.local/bin/grok --model grok-4.6 remove the --version banner",
+        ] {
+            assert_eq!(
+                detect_cli_tool(interactive),
+                Some(CliTool::Grok),
+                "{interactive}"
+            );
+        }
+
+        for non_session in ["grok --help explain the flag", "grok -p explain the flag"] {
+            assert_eq!(detect_cli_tool(non_session), None, "{non_session}");
+        }
+    }
+
+    #[test]
     fn detect_non_cli_processes() {
         assert_eq!(detect_cli_tool("vim"), None);
         assert_eq!(detect_cli_tool("bash"), None);
