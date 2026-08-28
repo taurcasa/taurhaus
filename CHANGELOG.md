@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **`v3-developer-agy` role** — the Antigravity counterpart of the V3 vertical-slice developer, same contract and gates, running `gemini-3.7-flash-high` at high effort.
+
 ### Changed
 
 - **Antigravity activity hooks are on by default** — agy 1.1.22 was observed firing `PreInvocation` and `Stop` for interactive sessions once the workspace is trusted, so the busy/idle sink no longer has to be opted into. It stays inert until the member answers the folder-trust prompt on first launch, which Antigravity onboarding now spells out, and it is gated on agy 1.1.10 or newer because `Stop` never fires below that. An agy version that cannot be resolved leaves an installed hook alone rather than uninstalling it, and the gated outcome is logged once per run as `agy.hooks.degraded`.
