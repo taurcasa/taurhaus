@@ -929,8 +929,10 @@ pub struct HarnessSettings {
     #[serde(default)]
     #[serde(alias = "codex_compaction")]
     pub codex_compaction: CodexCompactionMode,
-    /// Antigravity hook loading is trust-gated upstream and remains opt-in.
-    #[serde(default)]
+    /// Antigravity loads hooks only in a trusted workspace, so the sink is on
+    /// by default and inert until the member answers the pane's trust prompt.
+    #[serde(default = "default_true")]
+    #[serde(alias = "agy_hooks")]
     pub agy_hooks: bool,
     /// grok's personal hook directory is always trusted, so its compaction
     /// bridge is on by default and can be switched off.
@@ -946,7 +948,7 @@ impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
             codex_compaction: CodexCompactionMode::Transcript,
-            agy_hooks: false,
+            agy_hooks: true,
             grok_hooks: true,
         }
     }
@@ -1311,10 +1313,28 @@ mod tests {
     }
 
     #[test]
-    fn terminal_settings_default_agy_hooks_off() {
-        // Regression: commit 6fe0aa3 enabled verified Codex hooks by policy;
-        // agy's workspace-trust loading is unverified and must stay opt-in.
-        assert!(!TerminalSettings::default().harness.agy_hooks);
+    fn terminal_settings_default_agy_hooks_on() {
+        // Regression: commit 4e9e2c5 defaulted the Antigravity hooks off
+        // because their trust-gated loading was unverified; agy 1.1.22 was
+        // then observed firing PreInvocation and Stop under workspace trust.
+        assert!(TerminalSettings::default().harness.agy_hooks);
+
+        let legacy: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window"
+        }))
+        .expect("legacy settings");
+        assert!(legacy.harness.agy_hooks);
+
+        let opted_out: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window",
+            "harness": {"agy_hooks": false}
+        }))
+        .expect("opted-out settings");
+        assert!(!opted_out.harness.agy_hooks);
     }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;

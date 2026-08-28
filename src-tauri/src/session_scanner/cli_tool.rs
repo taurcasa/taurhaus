@@ -188,7 +188,8 @@ pub struct CliToolSpec {
     pub stop_registry_release: bool,
     /// Add the harness-specific exit and mesh inbox hints to onboarding text.
     pub onboarding_exit_hint: bool,
-    /// One extra onboarding sentence about how this harness receives messages.
+    /// Extra onboarding sentences about this harness's runtime quirks — how it
+    /// receives messages, or what the member has to answer once in the pane.
     pub onboarding_delivery_hint: Option<&'static str>,
     pub pane_binding: bool,
     pub display_name: &'static str,
@@ -403,7 +404,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             stop_presence_dir: Some("presence"),
             stop_registry_release: false,
             onboarding_exit_hint: true,
-            onboarding_delivery_hint: None,
+            onboarding_delivery_hint: Some(
+                "Answer Antigravity's trust prompt for this folder on first launch: activity hooks load only in a trusted workspace. Pick the option that persists the folder so the answer survives the next session.",
+            ),
             pane_binding: false,
             display_name: "Antigravity CLI",
             settings_label: "Antigravity CLI",

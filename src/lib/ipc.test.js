@@ -876,6 +876,11 @@ describe('ipc module', () => {
       expect(result.thresholds).toHaveProperty('active_days')
       expect(result).toHaveProperty('project_dialog_last_path')
       expect(result.terminal.harness.codex_compaction).toBe('transcript')
+      // Regression: 4e9e2c5 defaulted the Antigravity activity hooks off while
+      // their trust-gated loading was unverified; settings that predate the
+      // harness block must now normalize to on, like grok's.
+      expect(result.terminal.harness.agy_hooks).toBe(true)
+      expect(result.terminal.harness.grok_hooks).toBe(true)
     })
   })
 

@@ -277,7 +277,7 @@ function normalizeSettings(raw) {
       },
       harness: {
         codex_compaction: codexCompaction === 'hooks' ? 'hooks' : 'transcript',
-        agy_hooks: Boolean(agyHooks),
+        agy_hooks: agyHooks == null ? true : Boolean(agyHooks),
         grok_hooks: grokHooks == null ? true : Boolean(grokHooks),
       },
       claude_default_account_id:

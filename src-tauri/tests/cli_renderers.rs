@@ -280,6 +280,10 @@ fn render_onboarding_cli_uses_the_agy_variant() {
 
     assert!(actual.contains("~/.claude/teams/taureval-golden/inboxes/agent-under-test.json"));
     assert!(actual.contains("enter /exit"));
+    // Regression: agy loads hooks only in a trusted workspace, so an onboarded
+    // member who never answers the trust prompt reports no activity at all.
+    assert!(actual.contains("trust"));
+    assert!(actual.contains("first launch"));
 }
 
 #[test]
