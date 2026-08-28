@@ -94,7 +94,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 |---|---|---|---|---|---|
 | 17a | Opus 5 | Codex ×2 | 4 (3 fix rounds; the last major — team-delegated Continue/Resume silently ignoring the pick — fixed by the orchestrator's pass) | 13 (round 1: 5 of 7 reported, both reviewers raising the pin-on-pick and the duplicate-label crash; round 2: 4; round 3: 3; round 4: 1) | #34 |
 | 17b | Codex gpt-5.6 | Opus ×2 | 5 (4 fix rounds; final approve with one minor carried into 17c) | 12 incl. 1 blocker (round 1: 7 — duplicate `weekly_scoped` keys crashing the meter, fire-and-forget usage, `retire_once` on the startup path, SQLite in the scanner hot path, dead session label, superseded code kept; round 2: 4 — daemon DB ownership across drvfs, refresh RPC past the daemon timeout, unknown-project throttle, second TLS stack; round 3: 1 — usage-sync retry flood) | #35 |
-| 17c | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
+| 17c | Codex gpt-5.6 | Opus ×2 | 3 (2 fix rounds; final approve with two minors fixed by the orchestrator's pass) | 2 (round 1 adversarial: `identify()` invented a logged-in "API key" account from any parseable `auth.json`; duplicate account ids from the `id_token` workspace claim crashed keyed lists) | #38 (merged with a red lint gate by orchestrator error — unused import fixed forward on `main`) |
 | ~~17d~~ | — | — | cancelled | — | — |
 | 18a | Codex gpt-5.6 | Opus ×2 | tbd | tbd | tbd |
 | 18b | Opus 5 | Codex ×2 | tbd | tbd | tbd |

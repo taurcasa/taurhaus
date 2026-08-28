@@ -469,7 +469,6 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
-    use base64::Engine as _;
     use serde_json::{json, Value};
     use tempfile::TempDir;
 
