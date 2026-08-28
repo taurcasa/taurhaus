@@ -46,6 +46,7 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
 | `gates` | check-quick + lint + targeted cargo tests | the gate commands, when a spec names different ones |
+| `requiredGates` | `['just check-quick', 'just lint']` | the commands the gate must actually run and pass; matched as substrings of the reported command line, `[]` opts out |
 | `notes` | — | extra instructions appended to the implementer's task |
 | `tag` | the branch | prefix for scratch file names |
 | `size` | per script | recorded in the ledger |
@@ -89,6 +90,9 @@ a completed ledger with no findings reads as an approval:
   become the fix round.
 - **A red gate fails the run.** The gate returns one entry per command with its pass/fail; any failed
   command, a `status` other than `pass`, or a gate that ran nothing aborts.
+- **A skipped required gate is not a pass.** `just check-quick` and `just lint` (or whatever
+  `requiredGates` names) must appear among the commands that passed. One reported `skipped`, or never
+  run at all, fails the run — an optional command may still be skipped with its reason in `detail`.
 - **What stays open does not fail it.** Findings the loop could not close come back as `remaining` —
   that is what `fix-round` is for.
 

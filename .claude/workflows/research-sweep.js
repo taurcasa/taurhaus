@@ -41,6 +41,12 @@ const GATES =
   A.gates ||
   "'just check-quick' and 'just lint', plus 'cd src-tauri && cargo test <touched module paths>' (check-quick does not run the Rust tests); vitest runs from the checkout root"
 
+// The gate commands that must actually run and pass. Everything else the gate reports is optional and
+// may come back `skipped` with a reason; a required command reported skipped — or never run at all —
+// is a gate that did not happen. A spec naming different gates passes args.requiredGates ([] opts out).
+if (A.requiredGates != null && !Array.isArray(A.requiredGates)) throw new Error(NAME + ': args.requiredGates must be an array of command substrings — got ' + JSON.stringify(A.requiredGates))
+const REQUIRED_GATES = (A.requiredGates || ['just check-quick', 'just lint']).map(String)
+
 // Every agent runs on Opus in this repo's model split; effort is inherited unless args.effort pins one.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 if (A.effort && EFFORTS.indexOf(A.effort) === -1) throw new Error(NAME + ': args.effort must be one of ' + EFFORTS.join(', ') + ' — got ' + JSON.stringify(A.effort))
@@ -78,8 +84,10 @@ function reviewProblem(review, label) {
   return ''
 }
 
-// A gate is green only when it says pass AND every command it ran passed AND it ran something.
-// Its own vocabulary is pass/fail, so it is checked here rather than through laneProblem.
+// A gate is green only when it says pass AND every command it ran passed AND it ran something AND
+// every required command is among the ones that passed. A skipped `just check-quick` is not a pass:
+// the run would otherwise complete green over a lane nobody executed. Its own vocabulary is pass/fail,
+// so it is checked here rather than through laneProblem.
 function gateProblem(gate) {
   if (!gate) return 'the gate agent returned no result (it was skipped or died)'
   if (gate.error && gate.status !== 'pass') return 'the gate could not run: ' + gate.error
@@ -87,6 +95,19 @@ function gateProblem(gate) {
   if (ran.length === 0) return 'the gate reported no commands run'
   const failed = ran.filter((c) => c.status !== 'pass' && c.status !== 'skipped')
   if (failed.length > 0) return 'gate commands failed: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
+  const matches = (c, required) => String(c.command == null ? '' : c.command).indexOf(required) !== -1
+  const missing = REQUIRED_GATES.filter((required) => !ran.some((c) => c.status === 'pass' && matches(c, required)))
+  if (missing.length > 0) {
+    return (
+      'required gate commands did not run and pass: ' +
+      missing
+        .map((required) => {
+          const seen = ran.filter((c) => matches(c, required))
+          return required + ' (' + (seen.length > 0 ? seen.map((c) => c.status).join('/') : 'never run') + ')'
+        })
+        .join(', ')
+    )
+  }
   if (gate.status !== 'pass') return 'the gate reported status ' + JSON.stringify(gate.status) + (Array.isArray(gate.failures) && gate.failures.length > 0 ? ': ' + gate.failures.join('; ') : '')
   return ''
 }
@@ -120,6 +141,14 @@ const RULES = {
   tdd:
     'TDD: write the test first, run it to observe red, then implement and observe green. A regression test carries a "// Regression:" comment naming the commit that broke it.',
   gates: 'GATES: ' + GATES + '.',
+  gateResult:
+    'Return the structured result: one entry in `commands` for every gate command you ran, each with its exact command line and its pass/fail, and `status` = pass only when every one of them passed.' +
+    (REQUIRED_GATES.length > 0
+      ? ' These are required and must actually run: ' +
+        REQUIRED_GATES.join(', ') +
+        ' — a required command reported `skipped` fails the run, so run it, or report it `fail` with the reason it could not run.'
+      : '') +
+    ' Mark a command `skipped` only when it is optional and did not apply, with the reason in `detail`.',
   safety:
     'SAFETY: tests never read or write the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok and never invoke a real CLI; no load or stress runs; kill anything you start (trap/finally) and never kill a process you did not start; never print tokens or secrets.',
   readOnly:

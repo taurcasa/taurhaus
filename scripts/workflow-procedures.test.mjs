@@ -197,6 +197,71 @@ describe('workflow procedures — fail closed', () => {
       await expect(run(script, argsFor(script), { gate: { status: 'pass', commands: [], failures: [], diff_stat: '', commits: [] } })).rejects.toThrow(/gate/i)
     })
 
+    // Regression: a gate that reports `status: 'pass'` while a required command was skipped is not a
+    // gate. Before this, gateProblem excluded every `skipped` command from the failure set, so a run
+    // could complete green with `just check-quick` never executed.
+    it(`${script} fails when a required gate command is skipped`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: {
+            status: 'pass',
+            commands: [
+              { command: 'just check-quick', status: 'skipped', detail: 'no Rust file changed' },
+              { command: 'just lint', status: 'pass' },
+            ],
+            failures: [],
+            diff_stat: '',
+            commits: [],
+          },
+        })
+      ).rejects.toThrow(/required gate/i)
+    })
+
+    it(`${script} fails when a required gate command never ran at all`, async () => {
+      await expect(
+        run(script, argsFor(script), {
+          gate: { status: 'pass', commands: [{ command: 'bunx vitest run src/lib', status: 'pass' }], failures: [], diff_stat: '', commits: [] },
+        })
+      ).rejects.toThrow(/required gate/i)
+    })
+
+    it(`${script} still passes when an optional command is skipped with a reason`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        gate: {
+          status: 'pass',
+          commands: [
+            { command: 'just check-quick', status: 'pass' },
+            { command: 'just lint', status: 'pass' },
+            { command: 'cd src-tauri && cargo test coordination', status: 'skipped', detail: 'no Rust file changed' },
+          ],
+          failures: [],
+          diff_stat: '',
+          commits: [],
+        },
+      })
+      expect(result.gate.status).toBe('pass')
+    })
+
+    it(`${script} takes the required commands from args.requiredGates when a spec names other gates`, async () => {
+      const custom = argsFor(script, { gates: "'bun run test'", requiredGates: ['bun run test'] })
+      await expect(
+        run(script, custom, {
+          gate: { status: 'pass', commands: [{ command: 'bun run test', status: 'skipped', detail: 'slow' }], failures: [], diff_stat: '', commits: [] },
+        })
+      ).rejects.toThrow(/bun run test/)
+      const { result } = await run(script, custom, {
+        gate: { status: 'pass', commands: [{ command: 'bun run test', status: 'pass' }], failures: [], diff_stat: '', commits: [] },
+      })
+      expect(result.gate.status).toBe('pass')
+    })
+
+    it(`${script} tells the gate agent which commands must actually run`, async () => {
+      const { calls } = await run(script, argsFor(script))
+      const gate = calls.find((c) => c.label.startsWith('gate:'))
+      expect(gate.prompt).toMatch(/required and must actually run/i)
+      expect(gate.prompt).toContain('just check-quick')
+    })
+
     it(`${script} asks the gate for a structured result`, async () => {
       const { calls } = await run(script, argsFor(script))
       const gate = calls.find((c) => c.label.startsWith('gate:'))
