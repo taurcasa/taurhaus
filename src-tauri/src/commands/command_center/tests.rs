@@ -914,9 +914,9 @@ fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
             LaunchMode::Resume,
             "codex resume --last --yolo",
         ),
-        (CliTool::Agy, LaunchMode::Continue, "gemini --yolo --resume"),
-        (CliTool::Agy, LaunchMode::Fresh, "gemini --yolo"),
-        (CliTool::Agy, LaunchMode::Resume, "gemini --yolo --resume"),
+        (CliTool::Agy, LaunchMode::Continue, "agy --continue"),
+        (CliTool::Agy, LaunchMode::Fresh, "agy"),
+        (CliTool::Agy, LaunchMode::Resume, "agy --continue"),
     ] {
         assert_eq!(base_command(&cmds, tool, mode), expected);
     }
@@ -1893,7 +1893,7 @@ fn record_session_activity_persists_lowercase_cli_tool_from_enum() {
             row.get(0)
         })
         .expect("query cli_tool");
-    assert_eq!(stored_tool, "gemini");
+    assert_eq!(stored_tool, "agy");
 }
 
 #[test]

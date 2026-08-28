@@ -578,7 +578,6 @@ fn transcript_time_range(
         let range = match source.as_str() {
             "claude" => crate::claude_code::resolver::session_time_range(path, session_id),
             "codex" => crate::task_scanner::codex::session_time_range(path, session_id),
-            "gemini" => crate::task_scanner::gemini::session_time_range(path, session_id),
             _ => None,
         };
         if let Some(r) = range {

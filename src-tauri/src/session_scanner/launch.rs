@@ -25,6 +25,23 @@ impl ModelSpec {
             return ModelSpec::default();
         }
 
+        // Antigravity publishes Google model IDs with an effort word baked
+        // into the canonical slug. Those are model IDs, not the legacy
+        // `model-effort` spelling this migration parser accepts.
+        if trimmed.starts_with("gemini-")
+            && ["-flash-", "-pro-"]
+                .iter()
+                .any(|marker| trimmed.contains(marker))
+            && ["-low", "-medium", "-high"]
+                .iter()
+                .any(|suffix| trimmed.ends_with(suffix))
+        {
+            return ModelSpec {
+                model: Some(trimmed.to_string()),
+                reasoning_effort: None,
+            };
+        }
+
         let split = trimmed
             .char_indices()
             .rev()
@@ -624,7 +641,14 @@ mod tests {
 
     #[test]
     fn parse_legacy_keeps_model_only() {
-        for raw in ["claude-opus-4-6", "gpt-5.6-terra"] {
+        // Regression: 9a66d1c treated every trailing effort word as the old
+        // combined field and truncated Antigravity's canonical model IDs.
+        for raw in [
+            "claude-opus-4-6",
+            "gpt-5.6-terra",
+            "gemini-3.7-flash-high",
+            "gemini-3.1-pro-low",
+        ] {
             assert_eq!(ModelSpec::parse_legacy(raw), model_spec(raw, None));
         }
     }
@@ -1158,7 +1182,7 @@ mod tests {
     #[test]
     fn agy_render_adds_model_effort_and_auto_approve() {
         // Regression: commit 4cd067a registered agy with its verified flags but
-        // left the old Gemini renderer dropping effort and auto-approval.
+        // left the retired Google harness renderer dropping effort and auto-approval.
         let rendered = LaunchSpec {
             tool: CliTool::Agy,
             mode: LaunchMode::Fresh,

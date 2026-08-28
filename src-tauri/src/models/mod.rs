@@ -1519,7 +1519,7 @@ mod tests {
         assert_eq!(cmds.codex.continue_cmd, "codex --yolo");
         assert_eq!(cmds.codex.fresh, "codex --yolo");
         assert_eq!(cmds.codex.resume, "codex resume --last --yolo");
-        // Gemini
+        // Antigravity
         assert_eq!(cmds.agy.continue_cmd, "agy --continue");
         assert_eq!(cmds.agy.fresh, "agy");
         assert_eq!(cmds.agy.resume, "agy --conversation {session_id}");
@@ -1541,7 +1541,7 @@ mod tests {
         let value = serde_json::json!({
             "claude": {"continueCmd": "claude custom-c", "fresh": "claude custom", "resume": "claude custom-r"},
             "codex": {"continueCmd": "codex custom-c", "fresh": "codex custom", "resume": "codex custom-r"},
-            "gemini": {"continueCmd": "gemini old-c", "fresh": "gemini old", "resume": "gemini old-r"}
+            "gemini": {"continueCmd": "retired old-c", "fresh": "retired old", "resume": "retired old-r"}
         });
 
         let loaded: CliCommandSettings = serde_json::from_value(value).unwrap();
@@ -1709,7 +1709,7 @@ mod tests {
 
     #[test]
     fn agy_catalog_matches_the_verified_1_1_22_models() {
-        // Regression: commit 5680a7a retained Gemini CLI's single stale model
+        // Regression: commit 5680a7a retained Antigravity CLI's single stale model
         // after Google's supported harness changed to Antigravity CLI 1.1.22.
         assert_eq!(ModelCatalog::entries_for(CliTool::Agy).len(), 14);
         assert!(ModelCatalog::entry_for(CliTool::Agy, "claude-opus-4-6-thinking").is_some());

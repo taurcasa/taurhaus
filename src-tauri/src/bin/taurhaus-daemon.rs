@@ -203,7 +203,7 @@ fn maybe_run_agy_hook_mode() -> bool {
         .with_writer(std::io::stderr)
         .init();
     let _log_state = LogFileState::new(PlatformPaths::log_path())
-        .inspect(|state| install_global_sink(state))
+        .inspect(install_global_sink)
         .map_err(|error| tracing::warn!(error = %error, "Antigravity hook log sink unavailable"))
         .ok();
     let Some(event) = std::env::args()

@@ -298,7 +298,7 @@ fn split_pane(target_pane: &str, shell_cmd: &str) -> Result<String, String> {
 /// window, tmux automatically closes the window too.
 ///
 /// Exit strategies differ per tool:
-/// - Claude & Gemini: `/exit` text command (typed + Enter)
+/// - Claude & Antigravity: `/exit` text command (typed + Enter)
 /// - Codex: Ctrl+C (key signal, no text)
 pub fn stop_session(tmux_pane: &str, tool: CliTool) -> Result<(), String> {
     let config = cli_tool::spec(tool);
@@ -555,7 +555,6 @@ fn propagate_env_to_tmux() {
     const PROPAGATE_VARS: &[&str] = &[
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "GEMINI_API_KEY",
         "NODE_EXTRA_CA_CERTS",
         "PATH",
         "TAURHAUS_DATA_DIR",
@@ -733,14 +732,17 @@ mod tests {
 
     #[test]
     fn build_agy_fresh_command() {
-        assert_eq!(build_launch_command(CliTool::Agy, LaunchMode::Fresh), "agy");
+        assert_eq!(
+            build_launch_command(CliTool::Agy, LaunchMode::Fresh),
+            "agy --dangerously-skip-permissions"
+        );
     }
 
     #[test]
     fn build_agy_resume_command() {
         assert_eq!(
             build_launch_command(CliTool::Agy, LaunchMode::Resume),
-            "agy --conversation {session_id}"
+            "agy --conversation {session_id} --dangerously-skip-permissions"
         );
     }
 

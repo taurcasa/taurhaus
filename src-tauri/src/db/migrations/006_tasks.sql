@@ -1,5 +1,5 @@
 -- Persistent task storage for compound task board.
--- Tasks are imported from Claude Code, Codex, and Gemini session data
+-- Tasks are imported from supported harness session data
 -- and persisted so they survive session cleanup.
 
 CREATE TABLE tasks (

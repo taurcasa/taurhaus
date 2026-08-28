@@ -1336,11 +1336,11 @@ fn start_member_daemon_if_required_replaces_stale_pid_for_resume_policy() {
 #[test]
 fn build_cli_launch_command_uses_configured_fresh_command() {
     let mut cmds = crate::models::CliCommandSettings::default();
-    cmds.agy.fresh = "gemini --yolo --sandbox read-only".to_string();
+    cmds.agy.fresh = "agy --sandbox read-only".to_string();
     let agent = AgentSetupConfig {
         name: "reviewer".to_string(),
-        cli_tool: "gemini".to_string(),
-        model: "gemini-2.5-pro".to_string(),
+        cli_tool: "agy".to_string(),
+        model: "gemini-3.7-flash-high".to_string(),
         project_id: "/tmp/project".to_string(),
         description: None,
         role_id: None,
@@ -1365,7 +1365,7 @@ fn build_cli_launch_command_uses_configured_fresh_command() {
     assert_eq!(
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
             .expect("command"),
-        "gemini --yolo --sandbox read-only -m 'gemini-2.5-pro'"
+        "agy --sandbox read-only --dangerously-skip-permissions --model 'gemini-3.7-flash-high'"
     );
 }
 

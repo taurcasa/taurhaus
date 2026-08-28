@@ -286,35 +286,6 @@ pub fn collect_socket_inodes(pid: u32) -> Vec<u64> {
     inodes
 }
 
-/// Check if the process has ESTABLISHED TCP connections to port 443.
-///
-/// Reads `/proc/{pid}/net/tcp` and `/proc/{pid}/net/tcp6`, matches
-/// ESTABLISHED state (01) with remote port 443 (01BB), and cross-references
-/// with the process's socket inodes.
-pub fn has_established_443(pid: u32, socket_inodes: &[u64]) -> bool {
-    if socket_inodes.is_empty() {
-        return false;
-    }
-
-    for tcp_file in [
-        format!("/proc/{pid}/net/tcp"),
-        format!("/proc/{pid}/net/tcp6"),
-    ] {
-        let content = match fs::read_to_string(&tcp_file) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        for line in content.lines().skip(1) {
-            if is_established_443_line(line, socket_inodes) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
 /// Find the first process that owns a LISTEN socket on the given TCP port.
 pub fn listening_process_on_port(port: u16) -> Option<u32> {
     let target_inodes = collect_listening_socket_inodes(port);
@@ -374,33 +345,6 @@ fn collect_listening_socket_inodes(port: u16) -> Vec<u64> {
     inodes.sort_unstable();
     inodes.dedup();
     inodes
-}
-
-/// Parse a single line from /proc/net/tcp to check if it's an ESTABLISHED
-/// connection to port 443 owned by one of our socket inodes.
-fn is_established_443_line(line: &str, socket_inodes: &[u64]) -> bool {
-    let fields: Vec<&str> = line.split_whitespace().collect();
-    if fields.len() < 10 {
-        return false;
-    }
-
-    // Field 3: state (01 = ESTABLISHED)
-    if fields[3] != "01" {
-        return false;
-    }
-
-    // Field 2: remote address (hex:hex). Port is after the colon.
-    let remote = fields[2];
-    if !remote.ends_with(":01BB") {
-        return false;
-    }
-
-    // Field 9: inode
-    if let Ok(inode) = fields[9].parse::<u64>() {
-        socket_inodes.contains(&inode)
-    } else {
-        false
-    }
 }
 
 /// Check if a file watcher error indicates the system watch limit was hit.
@@ -625,40 +569,5 @@ mod tests {
 
         let pid = listening_process_on_port(port).expect("pid for listening socket");
         assert_eq!(pid, std::process::id());
-    }
-
-    #[test]
-    fn is_established_443_line_parses_correctly() {
-        // Simulated /proc/net/tcp line (ESTABLISHED, remote port 443, inode 12345)
-        let line = "  0: 0100007F:C350 0100007F:01BB 01 00000000:00000000 00:00000000 00000000  1000    0 12345 1 0000000000000000 100 0 0 10 0";
-        let inodes = vec![12345];
-        assert!(is_established_443_line(line, &inodes));
-    }
-
-    #[test]
-    fn is_established_443_line_rejects_wrong_port() {
-        let line = "  0: 0100007F:C350 0100007F:0050 01 00000000:00000000 00:00000000 00000000  1000    0 12345 1 0000000000000000 100 0 0 10 0";
-        let inodes = vec![12345];
-        assert!(!is_established_443_line(line, &inodes));
-    }
-
-    #[test]
-    fn is_established_443_line_rejects_wrong_state() {
-        // State 06 = TIME_WAIT
-        let line = "  0: 0100007F:C350 0100007F:01BB 06 00000000:00000000 00:00000000 00000000  1000    0 12345 1 0000000000000000 100 0 0 10 0";
-        let inodes = vec![12345];
-        assert!(!is_established_443_line(line, &inodes));
-    }
-
-    #[test]
-    fn is_established_443_line_rejects_wrong_inode() {
-        let line = "  0: 0100007F:C350 0100007F:01BB 01 00000000:00000000 00:00000000 00000000  1000    0 99999 1 0000000000000000 100 0 0 10 0";
-        let inodes = vec![12345];
-        assert!(!is_established_443_line(line, &inodes));
-    }
-
-    #[test]
-    fn has_established_443_returns_false_for_empty_inodes() {
-        assert!(!has_established_443(1, &[]));
     }
 }

@@ -1,20 +1,13 @@
 //! Process activity tracker — detects whether a CLI tool process is doing
 //! meaningful work using `/proc` signals.
 //!
-//! Two detection strategies, matched to each tool's behavior:
+//! Per-process read activity is tracked with consecutive-poll hysteresis.
 //!
 //! **Claude Code** — consecutive-poll hysteresis via `/proc/PID/io`.
 //! Claude writes almost continuously during streaming/thinking, producing
 //! sustained rchar deltas of 900+ bytes/500ms. Two consecutive above-threshold
 //! polls reliably confirm activity while filtering single-sample spikes from
 //! focus events or tmux switching.
-//!
-//! **Gemini** — TCP socket presence via `/proc/PID/fd` + `/proc/PID/net/tcp`.
-//! Gemini creates HTTPS connections to its API endpoint on demand and closes
-//! them when idle at the prompt. Any ESTABLISHED TCP connection to remote
-//! port 443 owned by the process means an API call is in flight. This gives
-//! instant active detection (connection opens) AND instant idle detection
-//! (connection closes) with no decay timers or tradeoffs.
 //!
 //! **Codex** — per-PID IO hysteresis + project file mtime fallback.
 //! Codex maintains HTTP keep-alive connections to :443 indefinitely after
@@ -24,10 +17,6 @@
 //! mtime (from `idle.rs`) remains a fallback for single-session projects.
 //!
 //! Empirically confirmed (Feb 2026):
-//! - Gemini idle at prompt: 0 ESTABLISHED connections to :443
-//! - Gemini working (API call): 1+ ESTABLISHED connections to :443
-//! - Codex idle at prompt: 1 ESTABLISHED connection (HTTP keep-alive, persistent)
-//! - Codex working (API call): 1-2+ connections (indistinguishable from idle at count=1)
 //! - Claude idle: 0-240 bytes/500ms keepalive in rchar
 //! - Claude thinking: 900+ bytes/500ms sustained in rchar
 
@@ -39,7 +28,7 @@ use std::time::{Duration, Instant};
 ///
 /// Calibrated as the original 500 bytes per 500 ms poll: 2x margin above
 /// Claude's idle noise (0-240 bytes/500ms) and far below the smallest
-/// Codex/Gemini bursts (7K+). Expressed as a rate because the scanner cadence
+/// normal harness bursts (7K+). Expressed as a rate because the scanner cadence
 /// is not fixed — it flips between 500 ms and 1500 ms
 /// (`daemon::session_activity::{ACTIVE_SCAN_INTERVAL, IDLE_SCAN_INTERVAL}`).
 const ACTIVE_IO_RATE_BYTES_PER_SEC: u64 = 1_000;
@@ -148,23 +137,6 @@ pub fn is_process_active_hysteresis(pid: u32) -> bool {
             confirmed
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// TCP socket detection (Codex/Gemini)
-// ---------------------------------------------------------------------------
-
-/// Check if a process has active HTTPS connections (TCP to remote port 443).
-///
-/// This is the primary activity signal for Gemini. These tools create TCP
-/// connections to their API endpoints on demand and close them when idle at
-/// the prompt. Any ESTABLISHED connection to port 443 means an API call
-/// is in flight.
-///
-/// Delegates to platform-specific socket inspection APIs.
-pub fn has_api_connections(pid: u32) -> bool {
-    let socket_inodes = crate::platform::collect_socket_inodes(pid);
-    crate::platform::has_established_443(pid, &socket_inodes)
 }
 
 /// Remove stale PIDs from the IO tracker that are no longer in the active set.
@@ -299,23 +271,6 @@ mod tests {
             1_580,
             start + Duration::from_millis(1000)
         ));
-    }
-
-    // -- has_api_connections --
-    // (Socket inode parsing and TCP line parsing tests are in platform::linux::tests)
-
-    #[test]
-    fn has_api_connections_nonexistent_pid() {
-        assert!(!has_api_connections(999_999_999));
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn has_api_connections_current_process_no_https() {
-        // The test runner shouldn't have any HTTPS connections to :443.
-        // Linux-only: on macOS, lsof may pick up transient system connections
-        // (TLS trust evaluation, DNS-over-HTTPS) belonging to the process.
-        assert!(!has_api_connections(std::process::id()));
     }
 
     // -- retain_pids --

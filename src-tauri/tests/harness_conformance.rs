@@ -240,7 +240,7 @@ fn registry_declares_native_and_floor_capabilities() {
 fn account_selectors_are_declared_independently_of_provider_rollout() {
     // Regression: commit 07fc8f3 overloaded `config_dir_env` as both launch
     // data and an account-provider predicate, preventing floor-only provider
-    // rollout for Codex and Gemini.
+    // rollout for Codex and other harnesses.
     assert_eq!(
         all()
             .iter()

@@ -2137,7 +2137,7 @@ mod tests {
       "name": "cwd-fallback",
       "role": "agent",
       "cwd": "/tmp/cwd-only",
-      "cli_tool": "gemini"
+      "cli_tool": "agy"
     }
   ]
 }"#;

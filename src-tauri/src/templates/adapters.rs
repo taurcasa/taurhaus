@@ -1028,7 +1028,7 @@ fn parse_constraints_section(body: &str) -> (Option<RoleConstraints>, Option<Cli
                 };
                 saw_field = true;
             }
-            // Canonical names only (`claude`/`codex`/`gemini`): the exporter
+            // Canonical harness names only: the exporter
             // writes those, and internal aliases such as `mesh` must not start
             // parsing from hand-authored markdown.
             "required lead tool" => {

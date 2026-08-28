@@ -140,7 +140,7 @@ fn make_request(
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
-                cli_tool: "gemini".to_string(),
+                cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
                 project_id: reviewer_project.to_string(),
                 description: None,
@@ -427,7 +427,7 @@ int main(int argc, char **argv) {{
     assert!(rendered_log.contains("--model 'opus'"));
     assert!(rendered_log.contains("codex --yolo -m 'gpt-5.3'"));
     assert!(!rendered_log.contains("gpt-5.3-codex"));
-    assert!(log.contains("gemini --yolo"));
+    assert!(log.contains("agy"));
     assert!(
         !log.contains("tmux:send-keys"),
         "fresh launches should be attached to pane creation, not injected later"

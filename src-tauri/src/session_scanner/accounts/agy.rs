@@ -245,9 +245,11 @@ mod tests {
         }
     }
 
+    type CommandCall = (Vec<String>, PathBuf, Duration, Vec<(String, String)>);
+
     #[derive(Default)]
     struct FakeEnv {
-        calls: Mutex<Vec<(Vec<String>, PathBuf, Duration, Vec<(String, String)>)>>,
+        calls: Mutex<Vec<CommandCall>>,
         output: Mutex<Option<Result<CommandOutput, CommandError>>>,
     }
 

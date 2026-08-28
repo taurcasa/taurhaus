@@ -1184,8 +1184,8 @@ mod tests {
         assert!(
             roles
                 .iter()
-                .any(|role| role.role_id == "gemini-orchestrator"),
-            "expected gemini-orchestrator role template in built-ins"
+                .any(|role| role.role_id == "antigravity-orchestrator"),
+            "expected antigravity-orchestrator role template in built-ins"
         );
         assert!(
             roles

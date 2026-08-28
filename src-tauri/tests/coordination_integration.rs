@@ -363,7 +363,7 @@ fn make_request(team_name: &str) -> InitializeTeamRequest {
             },
             AgentSetupConfig {
                 name: "reviewer".to_string(),
-                cli_tool: "gemini".to_string(),
+                cli_tool: "agy".to_string(),
                 model: "pro".to_string(),
                 project_id: "proj-api".to_string(),
                 description: None,

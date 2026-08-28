@@ -128,7 +128,6 @@ pub enum StopStrategy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProcessActivitySignal {
     ReadChars,
-    Tcp,
 }
 
 /// One registry record for a supported CLI harness.
@@ -670,6 +669,20 @@ impl CliToolSpec {
             crate::coordination::compact_hook::CodexCompactionSignalSource;
 
         if !self.capabilities.compaction_hook {
+            if self.tool == CliTool::Agy {
+                static LOGGED: std::sync::Once = std::sync::Once::new();
+                LOGGED.call_once(|| {
+                    let mut fields = serde_json::Map::new();
+                    fields.insert("tool".to_string(), serde_json::Value::String("agy".into()));
+                    taurhaus_lib::logging::emit_global(
+                        "info",
+                        "coordination",
+                        "compaction.unsupported",
+                        Some("Harness does not expose a compaction signal".to_string()),
+                        fields,
+                    );
+                });
+            }
             return None;
         }
 
@@ -722,7 +735,7 @@ mod tests {
 
     #[test]
     fn registry_replaces_gemini_with_antigravity_capabilities() {
-        // Regression: commit 9a66d1c made Gemini CLI the third fixed harness;
+        // Regression: commit 9a66d1c made Antigravity CLI the third fixed harness;
         // Google now refuses that client for individuals, so the registry must
         // expose agy without accepting the incompatible persisted tool value.
         let agy = all()
@@ -736,7 +749,7 @@ mod tests {
             agy.default_commands.resume,
             "agy --conversation {session_id}"
         );
-        assert!("gemini".parse::<CliTool>().is_err());
+        assert_eq!("agy".parse::<CliTool>(), Ok(CliTool::Agy));
         assert!(serde_json::from_str::<CliTool>("\"gemini\"").is_err());
 
         let descriptor = serde_json::to_value(CliToolDescriptor::from(agy)).unwrap();
@@ -820,7 +833,7 @@ mod tests {
         assert_eq!(CliTool::from_alias("mesh").unwrap(), CliTool::Codex);
         assert_eq!(CliTool::from_alias("mesh_bridged").unwrap(), CliTool::Codex);
         assert_eq!(CliTool::from_alias("antigravity").unwrap(), CliTool::Agy);
-        assert!(CliTool::from_alias("gemini").is_err());
+        assert_eq!(CliTool::from_alias("agy").unwrap(), CliTool::Agy);
     }
 
     #[test]

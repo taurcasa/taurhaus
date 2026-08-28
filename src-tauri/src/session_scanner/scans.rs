@@ -44,7 +44,6 @@ static LAST_GOOD_SNAPSHOT: Mutex<LastGoodSnapshot> = Mutex::new(LastGoodSnapshot
 /// - **JSONL mtime**: main transcript modified < 5s ago (tool use, streaming)
 /// - **Subagent mtime**: subagent file modified < 5s ago (compaction)
 /// - **Proc IO** (Claude): rchar delta > 500 bytes for 2+ consecutive polls
-/// - **TCP sockets** (Gemini only): ESTABLISHED connection to remote port 443
 /// - **Codex (single session/project)**: session file mtime OR proc IO hysteresis
 /// - **Codex (multi session/project)**: proc IO hysteresis only (to avoid
 ///   broadcasting one session's file activity to all Codex sessions)

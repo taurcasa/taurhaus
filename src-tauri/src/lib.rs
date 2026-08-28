@@ -95,7 +95,7 @@ pub struct SearchState(pub Mutex<search::indexer::SearchIndex>);
 #[cfg(target_os = "macos")]
 fn inherit_macos_shell_env() {
     // Print key env vars as key=value lines, one per line.
-    let env_cmd = r#"echo "PATH=$PATH"; echo "NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS"; echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"; echo "OPENAI_API_KEY=$OPENAI_API_KEY"; echo "GEMINI_API_KEY=$GEMINI_API_KEY""#;
+    let env_cmd = r#"echo "PATH=$PATH"; echo "NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS"; echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"; echo "OPENAI_API_KEY=$OPENAI_API_KEY""#;
     if let Ok(output) = std::process::Command::new("/bin/zsh")
         .args(["-lc", env_cmd])
         .output()
