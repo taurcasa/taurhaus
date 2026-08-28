@@ -291,6 +291,14 @@ impl LaunchSpec<'_> {
                                 found: model_flag.to_string(),
                             });
                         } else {
+                            if let Some(entry) = ModelCatalog::entry_for(self.tool, model)
+                                .filter(|entry| entry.deprecated)
+                            {
+                                notes.push(LaunchNote::ModelDeprecated {
+                                    found: model.to_string(),
+                                    replacement: entry.replacement.clone(),
+                                });
+                            }
                             append_flag(&mut command, model_flag, model);
                         }
                     } else {
@@ -1061,6 +1069,40 @@ mod tests {
             "claude --dangerously-skip-permissions --model 'fable' --effort 'high'"
         );
         assert_eq!(rendered.notes, vec![]);
+    }
+
+    // Regression: 036681e retired `sonnet`, `haiku`, `claude-opus-4-6` and
+    // `claude-sonnet-4-5` in the Claude catalog and documented that persisted
+    // selections log `launch.model.deprecated`, but only the Codex arm looked
+    // the entry up, so every retired Claude model launched silently.
+    #[test]
+    fn claude_render_notes_deprecated_catalog_model() {
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base: "claude --dangerously-skip-permissions",
+            model: model_spec("sonnet", Some("high")),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: None,
+            selector: None,
+            team: None,
+        }
+        .render();
+
+        // The note is advisory: the selected model still launches unchanged.
+        assert_eq!(
+            rendered.command,
+            "claude --dangerously-skip-permissions --model 'sonnet' --effort 'high'"
+        );
+        assert_eq!(
+            rendered.notes,
+            vec![LaunchNote::ModelDeprecated {
+                found: "sonnet".to_string(),
+                replacement: Some("opus".to_string()),
+            }]
+        );
+        assert_eq!(rendered.notes[0].event_name(), "launch.model.deprecated");
     }
 
     #[test]
