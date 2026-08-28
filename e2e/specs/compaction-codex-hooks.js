@@ -58,6 +58,13 @@ const AUTO_COMPACTION_FILLER_LINES = 320
 const HOOK_DELIVERY_TIMEOUT_MS = 150_000
 const AUTO_TURN_TIMEOUT_MS = 90_000
 const TEAM_READY_TIMEOUT_MS = 180_000
+/**
+ * Grace for the scanner to bind the member's rollout id. It is short on
+ * purpose: the session source reads the tool's default home
+ * (`~/.codex/sessions`), not `$CODEX_HOME`, so under this lane's scratch home
+ * the id never arrives and the bridge matches on cwd instead.
+ */
+const SESSION_CAPTURE_GRACE_MS = 20_000
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -390,25 +397,30 @@ async function initializeManagedCodexTeam() {
       throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
     }
 
-    // The pane is required; the captured rollout id is not — the bridge falls
-    // back to matching the payload's cwd against the member's project path, so
-    // a scanner that has not caught up yet must not fail the lane.
     await browser.waitUntil(
       async () => {
         const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
         const member = (status?.members ?? []).find((entry) => entry?.name === memberName)
         paneId = member?.paneId ?? member?.pane_id ?? null
-        sessionId = readRuntimeRecord(teamName, memberName)?.session_id ?? null
-        return Boolean(paneId) && Boolean(sessionId)
+        return Boolean(paneId)
       },
       {
         timeout: TEAM_READY_TIMEOUT_MS,
         interval: 2_000,
-        timeoutMsg: `Managed Codex member ${memberName} never reported a pane and a captured session`,
+        timeoutMsg: `Managed Codex member ${memberName} never reported a pane`,
       }
-    ).catch((error) => {
-      if (!paneId) throw error
-      console.log(`[e2e] ${memberName} pane ${paneId} has no captured session id yet; the bridge will match on cwd`)
+    )
+
+    // The rollout id is a nicety, not a requirement: the bridge falls back to
+    // matching the payload's cwd against the member's project path.
+    await browser.waitUntil(
+      async () => {
+        sessionId = readRuntimeRecord(teamName, memberName)?.session_id ?? null
+        return Boolean(sessionId)
+      },
+      { timeout: SESSION_CAPTURE_GRACE_MS, interval: 2_000, timeoutMsg: 'no rollout id' }
+    ).catch(() => {
+      console.log(`[e2e] ${memberName} has no captured rollout id; the bridge will match on cwd`)
     })
   })
 
