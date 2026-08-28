@@ -13,7 +13,8 @@
 #
 # `stale: true` means the prompt below is current but the .jpg on disk is not:
 # the image still shows a superseded architecture and the pages that embed it say
-# so. `sha256` always describes the file on disk, stale or not.
+# so. A non-null `sha256` describes the file on disk, stale or not; entries whose
+# image predates the manifest carry `sha256: null` and are not checksummed.
 
 schema_version: 1
 
@@ -81,9 +82,11 @@ images:
     stale_since: "2026-08-28"
     stale_reason: |
       Labels ClaudeNativeBackend "Planned". The backend is implemented
-      (src-tauri/src/coordination/backend/claude.rs); BackendSelector::m0 forces
-      MeshBridged for every tool today (selector.rs:16-40), which is a routing
-      decision, not a missing module.
+      (src-tauri/src/coordination/backend/claude.rs) *and routed*: the selector
+      only picks the orchestrator's floor backend (select_floor, selector.rs:43-45,
+      MeshBridged today), while state.rs:185-188 installs ClaudeNativeBackend as
+      orchestrator.claude_backend and delivery.rs:71-79 routes every member whose
+      tool has native_inbox_poller — Claude — to it.
     generation_id: gen_db88afd20f33
     recipe:
       model: gemini-3-pro-image-preview
@@ -106,12 +109,15 @@ images:
 
         SECOND ROW (below, left to right):
         - "pipelines/ (initialize / members / lifecycle / helpers)" box
-        - Arrow right to "BackendSelector" box, annotated "M0: force_mesh routes every tool to
-          MeshBridged"
+        - Arrow right to "BackendSelector" box, annotated "select_floor: MeshBridged is the
+          orchestrator's default backend"
         - Arrow right to "CoordinationBackend trait" box
         - Below CoordinationBackend: two SOLID boxes side by side - "MeshBridgedBackend
-          (active route)" and "ClaudeNativeBackend (implemented, not routed)". Neither box is
-          dashed and neither says "Planned".
+          (default route)" and "ClaudeNativeBackend (per-member route)". Neither box is dashed
+          and neither says "Planned".
+        - A small routing diamond above the two boxes, labelled "member tool has
+          native_inbox_poller?": "yes" arrow to ClaudeNativeBackend (Claude), "no" arrow to
+          MeshBridgedBackend (Codex, Antigravity, Grok).
 
         RIGHT COLUMN (connected to CoordinationOrchestrator):
         - "TeamConfigStore (config.json)" box
@@ -149,9 +155,11 @@ images:
     stale: true
     stale_since: "2026-08-28"
     stale_reason: |
-      Says 22 methods and uses superseded method names. The catalog is 28 methods
-      plus 3 push events at protocol version 13
-      (src-tauri/src/daemon/protocol.rs:34, :90-128, :131-135).
+      Says 22 methods and uses superseded method names. The catalog is 27 callable
+      methods plus 3 push events at protocol version 13 — 28 method constants, of
+      which list_directory has no handler
+      (src-tauri/src/daemon/protocol.rs:34, :90-128, :131-135;
+      daemon/handlers.rs:34-90 dispatches 27).
     generation_id: null
     recipe:
       model: gemini-3-pro-image-preview
@@ -173,9 +181,9 @@ images:
         MIDDLE - two facing panels with a request arrow (app -> daemon) and a response arrow
         (daemon -> app), plus a third one-way arrow for push events.
 
-        LEFT PANEL "Methods (28)", in labelled groups:
+        LEFT PANEL "Methods (27)", in labelled groups:
           Core: ping, shutdown, watch, unwatch
-          Files: file_tree, read_file, read_readme, read_asset, list_directory
+          Files: file_tree, read_file, read_readme, read_asset
           Git: git_status, git_log, git_latest_commit_time, git_commits_in_range,
                git_commit_files, git_commit_diff
           Sessions: scan_sessions, list_runtime_sessions, list_display_sessions,
@@ -187,6 +195,9 @@ images:
 
         RIGHT PANEL "Push events (3)":
           file_changed, git_changed, session_file_created
+
+        Small aside beside the LEFT PANEL: "list_directory is a method constant with no
+        handler - it is not callable and is not one of the 27."
 
         BOTTOM BAND - version pairing: "The app and the bundled daemon ship together. A
         mismatched pair is rejected outright: 11 added the generic account methods, 12 replaced
@@ -529,9 +540,11 @@ images:
     stale: true
     stale_since: "2026-08-28"
     stale_reason: |
-      Shows the retired Gemini TCP heuristic and omits agy and grok.
+      Shows the retired Gemini TCP heuristic, omits agy and grok, and omits
+      Claude's authoritative sessions registry (idle/claude_registry.rs), whose
+      states skip rchar and hysteresis.
       Current per-tool decision: docs/features/session-management.md:71-78 and
-      src-tauri/src/session_scanner/classification.rs:158-207.
+      src-tauri/src/session_scanner/classification.rs:150-206.
     generation_id: null
     recipe:
       model: gemini-3-pro-image-preview
@@ -548,8 +561,11 @@ images:
         FOUR COLUMNS, one per registered harness.
 
         Column "Claude Code":
-          "Transcript mtime < 5s?" diamond -> "file active"
-          "/proc rchar delta" -> "IO hysteresis (2 consecutive polls)"
+          "<CLAUDE_CONFIG_DIR>/sessions/<pid>.json has a status?" diamond
+            yes -> "authoritative: busy / idle / waiting as the session reports it,
+                    procStart PID-reuse guard; rchar and hysteresis skipped"
+            no  -> "Transcript mtime < 5s?" -> "file active",
+                   "/proc rchar delta" -> "IO hysteresis (2 consecutive polls)"
           merge -> "Active / Idle"
 
         Column "Codex":
@@ -603,7 +619,8 @@ images:
     stale: true
     stale_since: "2026-08-28"
     stale_reason: |
-      Shows the retired Gemini TCP heuristic and omits agy and grok.
+      Shows the retired Gemini TCP heuristic, omits agy and grok, and omits
+      Claude's authoritative sessions registry (idle/claude_registry.rs).
       Current cadence and hysteresis: docs/features/session-management.md:71-90.
     generation_id: null
     recipe:
@@ -627,12 +644,15 @@ images:
            "argv signatures from the tool registry".
 
         3. "Resolve session" box: four small stacked labels, one per harness -
-           "Claude: project jsonl + subagents", "Codex: dated rollout jsonl",
+           "Claude: sessions/<pid>.json registry, project jsonl + subagents as fallback",
+           "Codex: dated rollout jsonl",
            "Antigravity: conversations cache + presence lock",
            "Grok: active_sessions.json + events.jsonl".
 
         4. "Supplemental process signal" box:
-           "Claude / Codex: /proc rchar delta with consecutive-poll hysteresis",
+           "Claude: skipped while the sessions registry reports a status, otherwise
+            /proc rchar delta with consecutive-poll hysteresis",
+           "Codex: /proc rchar delta with consecutive-poll hysteresis",
            "Antigravity: rchar unless the opt-in hooks sink is authoritative",
            "Grok: skipped while events.jsonl yields a lifecycle state, otherwise rchar".
 
@@ -671,7 +691,9 @@ images:
     stale: true
     stale_since: "2026-08-28"
     stale_reason: |
-      Shows the retired Gemini TCP-port heuristic and omits agy and grok.
+      Shows the retired Gemini TCP-port heuristic, omits agy and grok, and omits
+      Claude's authoritative <CLAUDE_CONFIG_DIR>/sessions/<pid>.json registry
+      (idle/claude_registry.rs:1-20).
       Current per-tool sources: docs/features/session-management.md:60-78.
     generation_id: null
     recipe:
@@ -693,8 +715,10 @@ images:
         MIDDLE, four parallel lanes, one per registered harness:
 
         Lane "Claude Code":
-          "~/.claude/projects/<slug>/*.jsonl" and "<session>/subagents/*.jsonl"
-          "5s mtime threshold"
+          "<CLAUDE_CONFIG_DIR>/sessions/<pid>.json  (authoritative: sessionId, cwd,
+           tmux, status; procStart PID-reuse guard)"
+          "fallback: ~/.claude/projects/<slug>/*.jsonl and <session>/subagents/*.jsonl"
+          "5s mtime threshold on the fallback"
 
         Lane "Codex":
           "~/.codex/sessions/YYYY/MM/DD/*.jsonl"

@@ -337,7 +337,7 @@ The app uses the same authenticated JSON-line protocol on both platforms; only t
 
 **Version history:** v11 replaced the Claude-only account methods with generic `list_accounts` / `project_transcript` and added `refresh_usage`; v12 replaced the retired Google tool value with `agy`; v13 added `grok`.
 
-**Commands (app → daemon, 28 methods):**
+**Commands (app → daemon, 27 callable methods — 28 constants, one of them unhandled):**
 - `ping`, `shutdown`, `watch`, `unwatch`, `scan_sessions`
 - `git_status`, `git_log`, `git_latest_commit_time`, `git_commits_in_range`, `git_commit_files`, `git_commit_diff`
 - `file_tree`, `read_file`, `read_readme`, `read_asset`, `list_directory` (a method constant with no handler — not callable)
