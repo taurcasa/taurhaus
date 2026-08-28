@@ -406,8 +406,14 @@ async function initializeManagedCodexTeam() {
       throw new Error(`Team initialization failed at ${report.failedStep}: ${report.message}`)
     }
 
+    // The member's runtime record is the pane authority — it is what taurhaus
+    // itself sends keys to. The live roster is only a fallback: it reports a
+    // pane id from reconciliation, which stayed null for this member for three
+    // minutes on the first live run while the pane was up the whole time.
     await browser.waitUntil(
       async () => {
+        paneId = readRuntimeRecord(teamName, memberName)?.pane_id ?? null
+        if (paneId) return true
         const status = await invokeTauriOrThrow('coordination_get_live_team_status', { teamName })
         const member = (status?.members ?? []).find((entry) => entry?.name === memberName)
         paneId = member?.paneId ?? member?.pane_id ?? null
