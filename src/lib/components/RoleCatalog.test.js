@@ -65,6 +65,18 @@ describe('RoleCatalog', () => {
     expect(screen.queryByText('runtime')).not.toBeInTheDocument()
   })
 
+  it('renders a persisted unknown tool as unknown instead of Claude', () => {
+    // Regression: commit 91f4d3f7 routed unrecognised registry values through
+    // the Claude fallback, hiding that an upgraded role needs tool reselection.
+    renderCatalog({
+      filteredRoleTemplates: [sampleRole({ cliTool: 'unknown' })],
+    })
+
+    const badge = screen.getByTestId('role-tool-badge-mesh-expert')
+    expect(badge).toHaveTextContent('Unknown tool')
+    expect(badge).not.toHaveTextContent('Claude')
+  })
+
   it('renders the import button and forwards clicks', async () => {
     const onImportRole = vi.fn()
     renderCatalog({ onImportRole })

@@ -10,4 +10,12 @@ describe('Antigravity tool visuals', () => {
     expect(getToolIcon('agy')).not.toBe(TOOL_ICONS.claude)
     expect(getToolName('agy')).toBe('Antigravity')
   })
+
+  it('uses a neutral mark and label for an unknown persisted tool', () => {
+    // Regression: commit 91f4d3f7 made unknown registry values visually
+    // indistinguishable from Claude after a persisted-tool migration.
+    expect(getToolIcon('unknown')).toBe(TOOL_ICONS.unknown)
+    expect(getToolIcon('unknown')).not.toBe(TOOL_ICONS.claude)
+    expect(getToolName('unknown')).toBe('Unknown tool')
+  })
 })

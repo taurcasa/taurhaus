@@ -54,9 +54,9 @@ function mockCliCommandDefaults() {
       resume: 'codex resume --last --yolo',
     },
     agy: {
-      continue_cmd: 'agy --continue',
-      fresh: 'agy',
-      resume: 'agy --conversation {session_id}',
+      continue_cmd: 'agy --dangerously-skip-permissions --continue',
+      fresh: 'agy --dangerously-skip-permissions',
+      resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
     },
   }
 }
@@ -329,7 +329,9 @@ describe('Settings component', () => {
       expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
       // Regression: 4cd067a changed the registry while the Settings fallback
       // still rendered commands for the retired Google CLI.
-      expect(screen.getByTestId('cli-agy-fresh').placeholder).toBe('agy')
+      expect(screen.getByTestId('cli-agy-fresh').placeholder).toBe(
+        'agy --dangerously-skip-permissions'
+      )
     })
   })
 

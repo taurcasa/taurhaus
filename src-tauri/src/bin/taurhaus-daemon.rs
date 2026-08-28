@@ -220,7 +220,8 @@ fn maybe_run_agy_hook_mode() -> bool {
     if let Err(error) = std::io::stdin().read_to_string(&mut payload) {
         tracing::warn!(error = %error, "Antigravity hook stdin read failed");
         eprintln!("failed to read Antigravity hook payload: {error}");
-        std::process::exit(1);
+        println!("{{}}");
+        return true;
     }
     let path = PlatformPaths::agy_hooks_path();
     let outcome = match taurhaus_lib::daemon::agy_hooks::append_event_at(
@@ -233,7 +234,8 @@ fn maybe_run_agy_hook_mode() -> bool {
         Err(error) => {
             tracing::warn!(error, path = %path.display(), "Antigravity hook append failed");
             eprintln!("{error}");
-            std::process::exit(1);
+            println!("{{}}");
+            return true;
         }
     };
     let mut fields = serde_json::Map::new();

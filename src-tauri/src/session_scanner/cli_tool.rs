@@ -329,9 +329,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             model_prefixes: &[],
             model_markers: &[],
             default_commands: ToolCommands {
-                continue_cmd: "agy --continue".into(),
-                fresh: "agy".into(),
-                resume: "agy --conversation {session_id}".into(),
+                continue_cmd: "agy --dangerously-skip-permissions --continue".into(),
+                fresh: "agy --dangerously-skip-permissions".into(),
+                resume: "agy --dangerously-skip-permissions --conversation {session_id}".into(),
             },
             label: "Antigravity",
             accent: "google-blue",
@@ -827,11 +827,17 @@ mod tests {
             .find(|entry| entry.name == "agy")
             .expect("Antigravity registry entry");
         assert_eq!(agy.aliases, ["agy", "antigravity"]);
-        assert_eq!(agy.default_commands.fresh, "agy");
-        assert_eq!(agy.default_commands.continue_cmd, "agy --continue");
+        assert_eq!(
+            agy.default_commands.fresh,
+            "agy --dangerously-skip-permissions"
+        );
+        assert_eq!(
+            agy.default_commands.continue_cmd,
+            "agy --dangerously-skip-permissions --continue"
+        );
         assert_eq!(
             agy.default_commands.resume,
-            "agy --conversation {session_id}"
+            "agy --dangerously-skip-permissions --conversation {session_id}"
         );
         assert_eq!("agy".parse::<CliTool>(), Ok(CliTool::Agy));
         assert_eq!(
@@ -845,6 +851,23 @@ mod tests {
             "--dangerously-skip-permissions"
         );
         assert_eq!(descriptor["capabilities"]["managedHome"], false);
+    }
+
+    #[test]
+    fn agy_default_commands_keep_unattended_permission_bypass() {
+        // Regression: commit 0e35895 stopped force-injecting agy's permission
+        // bypass but left every registry default bare, so unattended team
+        // members stalled or silently soft-denied their first tool call.
+        let commands = &spec(CliTool::Agy).default_commands;
+        assert_eq!(commands.fresh, "agy --dangerously-skip-permissions");
+        assert_eq!(
+            commands.continue_cmd,
+            "agy --dangerously-skip-permissions --continue"
+        );
+        assert_eq!(
+            commands.resume,
+            "agy --dangerously-skip-permissions --conversation {session_id}"
+        );
     }
 
     #[test]

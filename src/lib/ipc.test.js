@@ -735,7 +735,11 @@ describe('ipc module', () => {
           cliCommands: {
             claude: { continueCmd: 'claude --continue', fresh: 'claude', resume: 'claude --resume' },
             codex: { continueCmd: 'codex resume --last --yolo', fresh: 'codex --yolo', resume: 'codex resume --yolo' },
-            agy: { continueCmd: 'agy --continue', fresh: 'agy', resume: 'agy --conversation {session_id}' },
+            agy: {
+              continueCmd: 'agy --dangerously-skip-permissions --continue',
+              fresh: 'agy --dangerously-skip-permissions',
+              resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
+            },
           },
         },
         terminalContract: {
@@ -754,9 +758,9 @@ describe('ipc module', () => {
               resume: 'codex resume --last --yolo',
             },
             agy: {
-              continueCmd: 'agy --continue',
-              fresh: 'agy',
-              resume: 'agy --conversation {session_id}',
+              continueCmd: 'agy --dangerously-skip-permissions --continue',
+              fresh: 'agy --dangerously-skip-permissions',
+              resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
             },
           },
           modelCatalog: {
@@ -841,9 +845,9 @@ describe('ipc module', () => {
               resume: 'codex resume --last --yolo',
             },
             agy: {
-              continueCmd: 'agy --continue',
-              fresh: 'agy',
-              resume: 'agy --conversation {session_id}',
+              continueCmd: 'agy --dangerously-skip-permissions --continue',
+              fresh: 'agy --dangerously-skip-permissions',
+              resume: 'agy --dangerously-skip-permissions --conversation {session_id}',
             },
           },
         },

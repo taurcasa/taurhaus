@@ -1531,9 +1531,15 @@ mod tests {
         assert_eq!(cmds.codex.fresh, "codex --yolo");
         assert_eq!(cmds.codex.resume, "codex resume --last --yolo");
         // Antigravity
-        assert_eq!(cmds.agy.continue_cmd, "agy --continue");
-        assert_eq!(cmds.agy.fresh, "agy");
-        assert_eq!(cmds.agy.resume, "agy --conversation {session_id}");
+        assert_eq!(
+            cmds.agy.continue_cmd,
+            "agy --dangerously-skip-permissions --continue"
+        );
+        assert_eq!(cmds.agy.fresh, "agy --dangerously-skip-permissions");
+        assert_eq!(
+            cmds.agy.resume,
+            "agy --dangerously-skip-permissions --conversation {session_id}"
+        );
     }
 
     #[test]

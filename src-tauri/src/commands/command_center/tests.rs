@@ -914,9 +914,21 @@ fn configured_base_command_defaults_are_non_empty_and_match_expected_values() {
             LaunchMode::Resume,
             "codex resume --last --yolo",
         ),
-        (CliTool::Agy, LaunchMode::Continue, "agy --continue"),
-        (CliTool::Agy, LaunchMode::Fresh, "agy"),
-        (CliTool::Agy, LaunchMode::Resume, "agy --continue"),
+        (
+            CliTool::Agy,
+            LaunchMode::Continue,
+            "agy --dangerously-skip-permissions --continue",
+        ),
+        (
+            CliTool::Agy,
+            LaunchMode::Fresh,
+            "agy --dangerously-skip-permissions",
+        ),
+        (
+            CliTool::Agy,
+            LaunchMode::Resume,
+            "agy --dangerously-skip-permissions --conversation {session_id}",
+        ),
     ] {
         assert_eq!(base_command(&cmds, tool, mode), expected);
     }

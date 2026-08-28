@@ -26,6 +26,10 @@ export const TOOL_ICONS = {
     viewBox: '0 0 16 16',
     path: 'M8 1.15l2.15 2.16L8 5.46 5.85 3.31 8 1.15zm0 9.39l2.15 2.15L8 14.85l-2.15-2.16L8 10.54zM2.64 4.18c.28-.36.79-.42 1.15-.14.35.28.42.79.14 1.15A4.5 4.5 0 003 8a4.5 4.5 0 00.93 2.81.82.82 0 01-1.29 1.01A6.13 6.13 0 011.36 8c0-1.43.49-2.77 1.28-3.82zm10.72 0A6.13 6.13 0 0114.64 8c0 1.43-.49 2.77-1.28 3.82a.82.82 0 01-1.29-1.01A4.5 4.5 0 0013 8a4.5 4.5 0 00-.93-2.81.82.82 0 011.29-1.01z',
   },
+  unknown: {
+    viewBox: '0 0 16 16',
+    path: 'M5.7 5.15A2.45 2.45 0 018.12 3c1.5 0 2.68.96 2.68 2.35 0 1.12-.62 1.76-1.55 2.36-.75.49-.95.78-.95 1.44v.3H6.86v-.41c0-1.05.43-1.68 1.4-2.3.72-.46 1.03-.8 1.03-1.3 0-.61-.49-1.03-1.22-1.03-.7 0-1.2.4-1.35 1.08L5.7 5.15zM7.6 10.9c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z',
+  },
 }
 
 /** Simplified small variants tuned for dense 12-13px sidebar rendering. */
@@ -42,17 +46,26 @@ const TOOL_SIDEBAR_SMALL_ICONS = {
     viewBox: '0 0 16 16',
     path: 'M8 1.2l1.9 1.9L8 5 6.1 3.1 8 1.2zm0 9.8l1.9 1.9L8 14.8l-1.9-1.9L8 11zM2.8 4.3a.75.75 0 011.05-.13.75.75 0 01.13 1.05A4.5 4.5 0 003.1 8c0 1.05.35 2.01.88 2.78a.75.75 0 01-1.18.92A5.95 5.95 0 011.6 8c0-1.4.47-2.69 1.2-3.7zm10.4 0A5.95 5.95 0 0114.4 8c0 1.4-.47 2.69-1.2 3.7a.75.75 0 01-1.18-.92A4.5 4.5 0 0012.9 8c0-1.05-.35-2.01-.88-2.78a.75.75 0 011.18-.92z',
   },
+  unknown: {
+    viewBox: '0 0 16 16',
+    path: 'M5.7 5.15A2.45 2.45 0 018.12 3c1.5 0 2.68.96 2.68 2.35 0 1.12-.62 1.76-1.55 2.36-.75.49-.95.78-.95 1.44v.3H6.86v-.41c0-1.05.43-1.68 1.4-2.3.72-.46 1.03-.8 1.03-1.3 0-.61-.49-1.03-1.22-1.03-.7 0-1.2.4-1.35 1.08L5.7 5.15zM7.6 10.9c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z',
+  },
 }
 
-/** Get icon data for a tool key, with claude fallback. */
+/** Get icon data for a tool key, with a neutral unknown-tool fallback. */
 export function getToolIcon(tool, variant = 'default') {
+  const missing = tool == null || String(tool).trim() === ''
   if (variant === 'sidebarSmall') {
-    return TOOL_SIDEBAR_SMALL_ICONS[tool] || TOOL_SIDEBAR_SMALL_ICONS.claude
+    return (
+      TOOL_SIDEBAR_SMALL_ICONS[tool] ||
+      (missing ? TOOL_SIDEBAR_SMALL_ICONS.claude : TOOL_SIDEBAR_SMALL_ICONS.unknown)
+    )
   }
-  return TOOL_ICONS[tool] || TOOL_ICONS.claude
+  return TOOL_ICONS[tool] || (missing ? TOOL_ICONS.claude : TOOL_ICONS.unknown)
 }
 
-/** Get display name for a tool key, with claude fallback. */
+/** Get display name for a tool key, with an explicit unknown-tool fallback. */
 export function getToolName(tool) {
-  return toolLabel(tool, 'Claude')
+  if (tool == null || String(tool).trim() === '') return 'Claude'
+  return toolLabel(tool, 'Unknown tool')
 }
