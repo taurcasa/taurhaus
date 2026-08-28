@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 import ModelSelect from './ModelSelect.svelte'
+import { MOCK_MODEL_CATALOG } from '../ipc/mocks/base.js'
 
 const CATALOG = {
   claude: [
@@ -41,38 +42,6 @@ const CATALOG = {
       defaultEffort: null,
       deprecated: false,
       replacement: null,
-    },
-  ],
-}
-
-// Mirrors the Claude arm of the backend catalog after the 2026-08-28 team
-// decision (models/mod.rs): fable and opus are current, the retired ids stay
-// so persisted roles still resolve.
-const CLAUDE_CATALOG = {
-  claude: [
-    {
-      id: 'fable',
-      label: 'Fable 5',
-      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-      defaultEffort: null,
-      deprecated: false,
-      replacement: null,
-    },
-    {
-      id: 'opus',
-      label: 'Opus 5',
-      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-      defaultEffort: null,
-      deprecated: false,
-      replacement: null,
-    },
-    {
-      id: 'sonnet',
-      label: 'Sonnet',
-      efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-      defaultEffort: null,
-      deprecated: true,
-      replacement: 'opus',
     },
   ],
 }
@@ -205,15 +174,37 @@ describe('ModelSelect', () => {
     expect(onchange).toHaveBeenCalledWith({ model: 'gpt-5.6-terra', reasoningEffort: 'low' })
   })
 
-  it('keeps a role pinned to a retired Claude model and points the hint at opus', () => {
+  // The browser-mode stand-in is the catalog every mocked and visual flow sees,
+  // so it has to carry the same Claude entries the backend keeps (models/mod.rs):
+  // fable and opus lead, and every retired id stays behind them so a persisted
+  // role still resolves instead of reading as a custom model.
+  it('offers the whole Claude list the shared mock catalog declares', () => {
     render(ModelSelect, {
-      props: { tool: 'claude', model: 'sonnet', catalog: CLAUDE_CATALOG },
+      props: { tool: 'claude', model: 'fable', catalog: MOCK_MODEL_CATALOG },
     })
 
-    const select = screen.getByTestId('model-select')
-    expect(optionValues(select)).toEqual(['fable', 'opus', 'sonnet'])
-    expect(select).toHaveValue('sonnet')
-    expect(screen.getByRole('option', { name: 'Sonnet → opus' })).toBeInTheDocument()
+    expect(optionValues(screen.getByTestId('model-select'))).toEqual([
+      'fable',
+      'opus',
+      'sonnet',
+      'haiku',
+      'claude-opus-4-6',
+      'claude-sonnet-4-5',
+    ])
+  })
+
+  it.each([
+    ['sonnet', 'Sonnet'],
+    ['haiku', 'Haiku'],
+    ['claude-opus-4-6', 'Claude Opus 4.6'],
+    ['claude-sonnet-4-5', 'Claude Sonnet 4.5'],
+  ])('keeps a role pinned to %s and points the hint at opus', (model, label) => {
+    render(ModelSelect, {
+      props: { tool: 'claude', model, catalog: MOCK_MODEL_CATALOG },
+    })
+
+    expect(screen.getByTestId('model-select')).toHaveValue(model)
+    expect(screen.getByRole('option', { name: `${label} → opus` })).toBeInTheDocument()
     expect(screen.getByTestId('model-select-deprecated')).toHaveTextContent('Deprecated → opus')
   })
 

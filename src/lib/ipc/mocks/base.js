@@ -102,7 +102,9 @@ export const MOCK_MODEL_CATALOG = {
     { id: 'fable', label: 'Fable 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
     { id: 'opus', label: 'Opus 5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: false, replacement: null },
     { id: 'sonnet', label: 'Sonnet', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },
+    { id: 'haiku', label: 'Haiku', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },
     { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },
+    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: null, deprecated: true, replacement: 'opus' },
   ],
   codex: [
     { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low', deprecated: false, replacement: null },
