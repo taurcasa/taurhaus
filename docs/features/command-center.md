@@ -103,12 +103,13 @@ Windows-specific detail:
 
 ## Context-menu integration
 
-Right-click project menu exposes command-center actions:
-- `Continue Claude`
-- `New Claude Session`, `New Codex Session`, `New Antigravity Session`
-- `Resume Claude`, `Resume Codex`, `Resume Antigravity`
+Right-click project menu exposes command-center actions (`Sidebar.svelte:521-568`):
+- `Continue Claude`, `Continue Grok` — only the harnesses whose continue command differs from a fresh start
+- `New Claude Session`, `New Codex Session`, `New Antigravity Session`, `New Grok Session`
+- `Resume Claude`, `Resume Codex`, `Resume Antigravity`, `Resume Grok`
 - `Open in Terminal` when a live session has tmux metadata
 - Per-running-session Restart/Stop actions
+- An account submenu on a launch item of a tool that has an account selector **and** at least two signed-in accounts, plus a `<Tool> account` submenu that pins or clears the project's choice
 
 Interaction model:
 - Stop action includes confirmation timeout

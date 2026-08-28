@@ -72,7 +72,7 @@ Process-level supplemental signals:
 - Claude: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis
 - Antigravity: `/proc` IO (`rchar` delta threshold) unless the opt-in hooks sink supplies an authoritative state
 - Codex: `/proc` IO (`rchar` delta threshold) with consecutive-poll hysteresis; file mtime is kept as fallback only when the project has a single Codex session
-- Grok: none needed — `events.jsonl` is authoritative (`authoritative_idle: true`), so the rchar heuristic and hysteresis are skipped
+- Grok: `events.jsonl` is authoritative (`authoritative_idle: true`), and the rchar heuristic and hysteresis are skipped **for that poll only when it yields a lifecycle state**. A missing, unreadable, empty or unrecognised `events.jsonl` returns no state (`idle/grok.rs:474-478`), and classification then falls back to `/proc` IO with hysteresis like the other tools (`classification.rs:173-178`, `:200-207`)
 
 ## Bidirectional hysteresis
 

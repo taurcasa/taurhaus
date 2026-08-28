@@ -126,7 +126,7 @@ Core actions:
   - Resume (`Resume ...`)
 - `Open in Terminal` (when live session metadata is available)
 - Per-running-session actions: `Restart <Tool>`, `Stop <Tool>` (confirm step)
-- An `Account` submenu on every launch item of a tool with an account selector (Claude, Codex, Grok), plus a `<Tool> account` submenu that pins or clears the project's choice
+- An `Account` submenu on a launch item of a tool with an account selector (Claude, Codex, Grok) **and at least two signed-in accounts** — `accountSubmenuApplies` (`src/lib/accountMenu.js:59-63`) requires both, so a host with one account keeps the plain launch item — plus a `<Tool> account` submenu that pins or clears the project's choice
 - `Remove from taurhaus` (confirm step)
 
 Safety/confirmation behavior:

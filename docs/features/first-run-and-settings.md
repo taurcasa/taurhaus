@@ -131,9 +131,9 @@ A per-tool section appears for every harness that has an account selector **and*
 | Account radio list | Every detected account of that tool, labelled from its own identity; picking one sets the tool's **global default** (`terminal.default_account_ids[tool]`) |
 | Compact usage meter | The account's weekly buckets, in the titles the tool itself uses |
 | Usage note | For a tool with `usage: false` the registry's sentence stands where a meter would be — Grok's is "Grok shows credits in its own /usage" |
-| Effective default line | The account a launch would land on and **why** (`origin`: request, session, project, last used, global default, base command, signed in, or the default config dir) |
+| Effective default line | The account a launch would land on and **why**. Settings computes this line itself (`Settings.svelte:196-211`) and reports one of three origins: `default` (the global default set here), `from your launch command "<command>"` (a CLI command that already sets the selector), or `default config directory`. The fuller launch-time resolution — request, session, pin, last used, global default, base command, default dir — lives in `accounts.svelte.js:89-121` and drives launches, not this line |
 
-Usage is fetched at request time from the tool's own endpoint or command, kept in memory, and never logged, persisted or refreshed by taurhaus.
+Usage snapshots are fetched at request time from the tool's own endpoint or command and kept in memory only; Settings refreshes them on open (`Settings.svelte:157`) and the daemon's `usage_poller` refreshes them on its own schedule. Credentials and tokens are what taurhaus never logs, persists or refreshes — an expired or rejected credential shows as "sign in again" until the CLI itself refreshes it.
 
 ### Search index
 
