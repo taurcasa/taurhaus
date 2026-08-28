@@ -151,7 +151,7 @@ The analyzer will then print targeted run diagnostics, including:
   - `SessionStart(compact)` seen
   - hook success seen
 - Codex:
-  - transcript boundary seen (or, in `hooks` mode, the hook events)
+  - transcript boundary seen (the analyzer reads only the transcript boundary; in `hooks` mode inspect the `compaction.codex_hook.*` events in `taurhaus.log.jsonl` directly)
 
 Those two arms are the only tool-specific report logic the analyzer has
 (`scripts/analyze-compaction.py:1130-1142`). For either scripted lane it also prints:

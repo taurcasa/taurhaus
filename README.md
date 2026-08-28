@@ -22,7 +22,7 @@ taurhaus is built for exactly that situation:
 - **Get back up to speed** — README previews, recent commits, task history, session handoffs, and full-text search across everything.
 - **Run Mesh teams** — set up multi-agent teams, watch them work, add or remove members on the fly, and recover when things go sideways.
 - **Tune discovery and launch behavior** — configure which directories to scan, what to ignore, and how terminals launch — your settings actually control how the app behaves, not just what it displays.
-- **Pick the model and the account** — choose a model and reasoning effort per role or member from a catalog-driven picker, and pick which account a tool runs on per project, with each CLI's own usage windows shown next to it.
+- **Pick the model and the account** — choose a model and reasoning effort per role or member from a catalog-driven picker, and pick which account a tool runs on per project where the CLI supports several (Claude Code, Codex, Grok — Antigravity is single-account), with usage windows shown next to it where the CLI exposes them (Claude Code, Codex, Antigravity — Grok publishes none).
 
 ## Core workflows
 

@@ -226,6 +226,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 ## Architecture Summary
 
 - **Harness model**: Claude Code hosts Claude, the other CLIs host theirs; taurhaus coordinates from outside (tmux + mesh floor) and uses harness-native capabilities where they exist. Four harnesses are registered — `claude`, `codex`, `agy` (Antigravity CLI), `grok` (Grok CLI) — plus an `Unknown` variant that a retired persisted value decodes to. Per-tool code lives in capability slices behind `src-tauri/src/session_scanner/cli_tool.rs`; never branch on tool identity outside those slices. See `docs/architecture/harness-model.md`.
+- **Accounts and usage**: per-tool providers (`src-tauri/src/session_scanner/accounts/`), project memory `pinned`/`last_used` (`project_tool_accounts`), resolution explicit → session → pin → last used → global default → base-command selector → default dir; usage windows come from the daemon poller (`src-tauri/src/daemon/usage_poller.rs`) via the tool's own endpoint or command, credentials read at request time only — never logged, persisted or refreshed.
 - **Storage**: SQLite (metadata, sessions, relationships) + tantivy (full-text search) + filesystem (source of truth for content)
 - **Data location**: Tauri `app_data_dir()` by default; `TAURHAUS_DATA_DIR` can override for test/dev isolation
 - **IPC**: Fine-grained commands (currently 90 in `src-tauri/src/lib.rs` generate_handler). One per operation; frontend fans out in parallel.

@@ -43,7 +43,7 @@ Which account a project uses for a given CLI harness (migration 013). One row pe
 | Column | Type | Constraints | Purpose |
 |--------|------|-------------|---------|
 | `project_id` | TEXT | NOT NULL, PK part, FK -> `projects(id)` ON DELETE CASCADE | Owning project |
-| `tool` | TEXT | NOT NULL, PK part | Harness id: `claude`, `codex`, `grok` (Antigravity has one implicit account and no selector) |
+| `tool` | TEXT | NOT NULL, PK part | Harness id: `claude`, `codex`, `agy`, `grok`. Antigravity has no selector or pin UI, but a signed-in launch still records a `last_used` row for its implicit account |
 | `account_id` | TEXT | NOT NULL | Provider-scoped account id |
 | `origin` | TEXT | NOT NULL, `CHECK(origin IN ('pinned','last_used'))` | `pinned` is a deliberate choice (chooser "remember", chip, context-menu submenu); `last_used` is written after a launch resolves and when the scanner binds a live session of that tool to the project. `remember_last_used_account` never overwrites a `pinned` row and only writes when the observed account changed (`db/queries.rs:210-226`) |
 | `updated_at` | TEXT | NOT NULL | Last write |

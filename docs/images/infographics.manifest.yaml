@@ -637,10 +637,10 @@ images:
 
         LEFT TO RIGHT chain:
 
-        1. "Poll" box: "500ms while activity changes or any session is active",
+        1. "Poll" box: "500ms while activity changes, any session is active, or a tmux client is focused",
            "1500ms after 30 stable all-idle cycles".
 
-        2. "Enumerate processes" box: "/proc (Linux/WSL2)", "libproc + lsof (macOS)",
+        2. "Enumerate processes" box: "/proc (Linux/WSL2)", "ps -eo pid,tty,args (macOS; libproc/lsof only enrich cwd, IO, tty)",
            "argv signatures from the tool registry".
 
         3. "Resolve session" box: four small stacked labels, one per harness -
@@ -709,7 +709,7 @@ images:
         Dark teal gradient background. Teal/cyan rounded boxes, white text, clean arrows.
         Professional software architecture diagram style.
 
-        LEFT: "Process scan" box - "/proc on Linux/WSL2, libproc + lsof on macOS", below it
+        LEFT: "Process scan" box - "/proc on Linux/WSL2, ps -eo pid,tty,args on macOS (libproc/lsof only enrich cwd, IO, tty)", below it
         "argv signature match against the tool registry".
 
         MIDDLE, four parallel lanes, one per registered harness:

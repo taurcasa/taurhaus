@@ -1,6 +1,6 @@
 # Harness Model
 
-How taurhaus relates to the AI CLIs it runs (Claude Code, Codex CLI, Antigravity CLI, Grok CLI), what it owns itself, and the rules that keep the two in step. This is the architecture that landed in 0.6.4–0.7.0 (2026-08); the execution record is [`docs/design/harness-realignment-plan.md`](../design/harness-realignment-plan.md).
+How taurhaus relates to the AI CLIs it runs (Claude Code, Codex CLI, Antigravity CLI, Grok CLI), what it owns itself, and the rules that keep the two in step. This is the architecture that landed in 0.6.4–0.8.0 (2026-08); the execution records are [`harness-realignment-plan.md`](../design/harness-realignment-plan.md) (slices, stability) and [`accounts-and-usage-plan.md`](../design/accounts-and-usage-plan.md) (accounts, usage, the Antigravity and Grok integrations), with the per-CLI research reports under [`research/`](../design/research/).
 
 ## The constraint that shapes everything
 
@@ -59,6 +59,13 @@ The daemon (WSL2 on Windows, native elsewhere) owns process inventory, session i
 - A harness that imports another vendor's hook registrations (grok reads `~/.claude/settings.json` by default) can invoke one bridge twice for one event; the registry declares that and the bridge deduplicates, so one compaction is one reinjection.
 - The hook that observes a compaction is not always the channel that can deliver the card: the registry names the delivery per harness (`additionalContext` on the hook's stdout for Claude Code and Codex, the member's mesh inbox for grok, whose passive-hook stdout is documented as ignored), and the delivery is recorded only once it has actually happened.
 
+## Retired
+
+- **Gemini CLI** (0.8.0): Gemini Code Assist for individuals refuses the client ("migrate to the Antigravity suite"), so the registry entry, launch arm, TCP idle heuristic, task scanner, catalog entries and role templates are gone. Persisted `gemini` tool values load as an unknown tool instead of aborting the record that carries them — a role catalog or team config from 0.7.x still opens; re-pick Antigravity where a member needs it. There is deliberately no alias: `agy` is a different binary with different flags and directories.
+- **Claude status-line bridge** (0.7.0): the 0.6.8 wrapper around `settings.json`'s `statusLine` could never carry the per-model buckets and edited user config; the OAuth usage endpoint replaced it, and the bridge is uninstalled once, restoring the original status line byte-for-byte.
+- **Gemini CLI account/usage provider** (never shipped): the fixture-driven `retrieveUserQuota` provider planned as 17d was cancelled with the CLI.
+- The eight architecture infographics under `docs/images/` still show the three-tool era; their prompts in `infographics.manifest.yaml` are current and they are marked `stale` until regenerated.
+
 ## How changes are made
 
-Each change is a small PR with red-first regression tests naming the breaking commit, implemented by one model family and reviewed by the other (Opus ↔ Codex), with the review loop repeated until no majors remain; the orchestrator writes specs for design-heavy work and makes the merge call. The per-PR ledger in the realignment plan records implementer, reviewers, rounds and what the reviewers found.
+Each change is a small PR with red-first regression tests naming the breaking commit, implemented by one model family and reviewed by the other (Opus ↔ Codex) through two lenses — conformance to the spec, and an operational checklist (upgrade of persisted data, protocol bumps on wire vocabulary, Windows/WSL paths, user-config edit discipline, concurrency, honest tests, hygiene) — with the fix → re-review loop repeated until no majors remain. Implementers commit after every green step and never edit the ledger; the orchestrator writes the spec (reviewed by the other family first when it edits user config or persisted formats), fills the ledger at merge, and merges only on the check's conclusion. Each new CLI starts with two independent research reports (`docs/design/research/`), verified live on a host that has it; the plans' facts tables cite them.

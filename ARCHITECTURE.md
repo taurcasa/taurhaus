@@ -449,7 +449,11 @@ bun run dev:visual
 | Tool extensibility | Capability slices behind one registry | Adding a CLI touches only where it differs |
 | Model + effort | Separate fields end to end, validated per tool | Effort used to be dropped silently; now logged, never silent |
 | App ↔ daemon | Exact protocol match on every connect; additive by default | A half-working pair is worse than a refused one; releases ship both |
-| Claude accounts | `CLAUDE_CONFIG_DIR` per project, derived from the transcript on resume | Session history lives inside the config dir |
+| Accounts | Per-tool `AccountProvider`; project memory follows the account used last (pin → last used → global default → base-command selector → default dir) | Several subscriptions per host are normal; the account a project used last is the right default, and history lives in the account's dir |
+| Usage | Per-tool `UsageProvider` on the tool's own endpoint or command; credentials read at request time, never logged, persisted or refreshed | Shows what the CLI's own `/usage`/`/status` shows; the credential stays the tool's |
+| Google harness | Antigravity CLI (`agy`) replaces Gemini CLI | Google refuses the old client for individuals; `agy` has print/stream modes, hooks and a free `/usage` command |
+| Fourth harness | Grok CLI (`grok`) | A live session registry, an `events.jsonl` turn lifecycle and a hook system make it the most observable CLI we run |
+| Process inventory | argv element boundaries preserved on Linux | A prompt word must never be mistaken for a subcommand (`grok "help me"` vs `grok help`) |
 | Degraded scans | Inert — last good snapshot stands | Treating a failed read as "no sessions" caused the blackouts |
 
 ## Further Reading
