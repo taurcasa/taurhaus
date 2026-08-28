@@ -161,7 +161,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         .collect::<Vec<_>>();
     paths.sort();
 
-    assert_eq!(paths.len(), 39, "bundled role count changed");
+    assert_eq!(paths.len(), 40, "bundled role count changed");
 
     let mut high_effort_roles = Vec::new();
     for path in paths {
@@ -193,13 +193,16 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         }
     }
 
-    assert_eq!(high_effort_roles.len(), 15);
+    assert_eq!(high_effort_roles.len(), 16);
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "quick-dev-codex"));
     assert!(high_effort_roles
         .iter()
         .any(|role| role == "grok-developer"));
+    assert!(high_effort_roles
+        .iter()
+        .any(|role| role == "v3-developer-agy"));
 }
 
 #[test]

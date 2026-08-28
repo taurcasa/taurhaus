@@ -125,7 +125,7 @@ The frontend runs inside Tauri's embedded WebView — not a browser. All data co
 | `coordination/` | Multi-CLI team orchestration (behind `mesh-bridged-backend` feature flag) |
 | `coordination/runtime/` | Split runtime surface for system, tmux, process, and recording concerns |
 | `coordination/compact_hook.rs` | One compaction hook bridge for Claude, Codex and Grok (tool inferred from grok's reserved `GROK_*` hook env, else from the transcript path), plus the managed Codex `hooks.json` and Grok `~/.grok/hooks` installers |
-| `coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's opt-in activity hooks (`agy.hooks.degraded`) |
+| `coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's activity hooks — merged into the shared `~/.gemini/config/hooks.json` (`agy.hooks.degraded`) |
 | `startup/` | Startup sequence orchestration (DB init, daemon connect, watcher/index bootstrap, task/session hydration) |
 | `startup/setup.rs`, `startup/telemetry.rs`, `startup/orchestration.rs` | Split startup path resolution, startup logging, and orchestration phases |
 | `startup/compaction.rs`, `startup/harness.rs` | Compaction owner selection (daemon vs app) and startup harness sequencing |
@@ -267,7 +267,7 @@ Two session views exist on purpose:
 |------|-----------|-----------------|
 | Claude Code | Sessions registry `<CLAUDE_CONFIG_DIR>/sessions/<pid>.json` (authoritative), read under the process's own `CLAUDE_CONFIG_DIR` with a `procStart` PID-reuse guard | Registry status (`busy`/`idle`/`waiting`); rchar rate is the fallback heuristic |
 | Codex | Rollout transcript bound with fd proof | `codex-notify.jsonl` idle edge when `codex_notify_supported`; transcript mtime as the heuristic |
-| Antigravity CLI (`agy`) | Conversation id from `~/.gemini/antigravity-cli/cache/last_conversations.json`, confirmed by the presence lock in `~/.gemini/antigravity-cli/presence/` (`idle/agy.rs`) | Opt-in `agy-hooks.jsonl` sink (`daemon/agy_hooks.rs`), bounded to a 5-minute record age; process-IO hysteresis otherwise (`authoritative_idle: false`) |
+| Antigravity CLI (`agy`) | Conversation id from `~/.gemini/antigravity-cli/cache/last_conversations.json`, confirmed by the presence lock in `~/.gemini/antigravity-cli/presence/` (`idle/agy.rs`) | `agy-hooks.jsonl` sink (`daemon/agy_hooks.rs`), on by default above agy 1.1.10 and bounded to a 5-minute record age; process-IO hysteresis otherwise (`authoritative_idle: false`) |
 | Grok CLI (`grok`) | `<GROK_HOME>/active_sessions.json` row bound by pid and cwd — written at the first prompt, removed on `/quit` (`idle/grok.rs`) | `<GROK_HOME>/sessions/<encoded-cwd>/<session-id>/events.jsonl` turn lifecycle: busy unless the newest lifecycle line is `turn_ended` (authoritative) |
 
 Authoritative states skip the rchar heuristic and 2-poll bidirectional hysteresis; heuristic states still use hysteresis to prevent flickering. Tool processes without a controlling terminal (e.g. detached `codex exec`) are dropped before classification and are never sessions.

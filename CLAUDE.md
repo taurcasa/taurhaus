@@ -293,7 +293,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/session_scanner/cli_tool.rs` | The harness registry: one `CliToolSpec` per tool (argv signatures, default commands, capabilities, accents, stop strategy). The only place tool identity may fan out. |
 | `src-tauri/src/session_scanner/accounts/` | Tool-agnostic account/usage contracts (`mod.rs`) plus the per-tool providers `claude.rs`, `codex.rs`, `agy.rs`, `grok.rs`, and `legacy_statusline.rs` (one-shot uninstall of the 0.6.8 status-line bridge). |
 | `src-tauri/src/daemon/usage_poller.rs` | Per-(tool, account) usage polling with backoff, in-flight guards, and `usage.fetched`/`usage.failed`. |
-| `src-tauri/src/daemon/agy_hooks.rs` | Bounded `agy-hooks.jsonl` sink for Antigravity's opt-in busy/idle hooks. |
+| `src-tauri/src/daemon/agy_hooks.rs` | Bounded `agy-hooks.jsonl` sink for Antigravity's busy/idle hooks. |
 | `src-tauri/src/session_scanner/idle/claude_registry.rs` | Reads Claude Code's sessions registry (`<CLAUDE_CONFIG_DIR>/sessions/<pid>.json`) as authoritative identity/activity. |
 | `src-tauri/src/session_scanner/idle/agy.rs` | Antigravity conversation identity from `cache/last_conversations.json` + the presence lock; hook-fed activity with a 5-minute recency bound. |
 | `src-tauri/src/session_scanner/idle/grok.rs` | Grok identity from `<GROK_HOME>/active_sessions.json` and authoritative activity from the session's `events.jsonl` turn lifecycle. |
@@ -307,7 +307,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/provider/platform_paths.rs` | Central authority for app data, `teams_dir()`, daemon binary, log path, `codex_notify_path()`, and Claude hook paths. |
 | `src-tauri/src/coordination/pipelines/` | Coordination domain pipelines (`initialize`, `members`, `lifecycle`, `helpers`). |
 | `src-tauri/src/coordination/compact_hook.rs` | One hook bridge for Claude Code, Codex and Grok (tool inferred from grok's reserved `GROK_*` hook env, else from the transcript path), with idempotent/removable Codex `hooks.json` and Grok `~/.grok/hooks` installers. Invoked via `--compact-hook`. |
-| `src-tauri/src/coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's opt-in activity hooks (`agy.hooks.degraded`). |
+| `src-tauri/src/coordination/agy_hooks_installer.rs` | Managed installer for Antigravity's activity hooks in the shared `~/.gemini/config/hooks.json` (`agy.hooks.degraded`). |
 | `src-tauri/src/coordination/compaction_events.rs` | Transcript-pipeline compaction events: owner selection, signal lifecycle, extractor/watcher health. Hook-execution events are built in `compact_hook.rs`. |
 | `src-tauri/src/coordination/compaction_processor.rs` | Canonical compaction delivery resolution from signal records to inbox delivery. |
 | `src-tauri/src/session_scanner/compaction_extractor.rs` | Event-driven Codex transcript tailer that emits compaction signals. |

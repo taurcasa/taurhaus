@@ -771,9 +771,11 @@ describe('ipc module', () => {
           cliVersions: {
             codex: '0.149.0',
             claude: '2.1.246',
+            agy: '1.1.22',
             codexCompactionHooksSupported: true,
             codexNotifySupported: true,
             codexQueueWakeSupported: true,
+            agyHooksSupported: true,
           },
         },
       })
@@ -805,12 +807,16 @@ describe('ipc module', () => {
       })
       // Regression: 2cf41db exposed no per-tool version gate through the
       // platform contract, so native capability support could not be audited.
+      // Regression: 4e9e2c5 shipped the Antigravity hook sink without a
+      // version gate, so the contract could not report why it stays off.
       expect(result.terminal_contract.cli_versions).toEqual({
         codex: '0.149.0',
         claude: '2.1.246',
+        agy: '1.1.22',
         codex_compaction_hooks_supported: true,
         codex_notify_supported: true,
         codex_queue_wake_supported: true,
+        agy_hooks_supported: true,
       })
       // Regression: a574720 exposed the retired status-line usage capability
       // on the frontend terminal contract after the bridge itself was removed.
@@ -870,6 +876,11 @@ describe('ipc module', () => {
       expect(result.thresholds).toHaveProperty('active_days')
       expect(result).toHaveProperty('project_dialog_last_path')
       expect(result.terminal.harness.codex_compaction).toBe('transcript')
+      // Regression: 4e9e2c5 defaulted the Antigravity activity hooks off while
+      // their trust-gated loading was unverified; settings that predate the
+      // harness block must now normalize to on, like grok's.
+      expect(result.terminal.harness.agy_hooks).toBe(true)
+      expect(result.terminal.harness.grok_hooks).toBe(true)
     })
   })
 

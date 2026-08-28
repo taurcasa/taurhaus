@@ -318,6 +318,9 @@ pub enum AppPlatform {
 const CODEX_NATIVE_HOOKS_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_NATIVE_NOTIFY_MIN_VERSION: (u32, u32, u32) = (0, 147, 0);
 const CODEX_QUEUE_WAKE_MIN_VERSION: (u32, u32, u32) = (0, 149, 0);
+/// agy 1.1.1 reloads hooks when the workspace is trusted mid-session and
+/// 1.1.10 is the first release whose `Stop` hook fires at all.
+const AGY_ACTIVITY_HOOKS_MIN_VERSION: (u32, u32, u32) = (1, 1, 10);
 const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -325,9 +328,11 @@ const CLI_VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct CliVersions {
     pub codex: Option<String>,
     pub claude: Option<String>,
+    pub agy: Option<String>,
     pub codex_compaction_hooks_supported: bool,
     pub codex_notify_supported: bool,
     pub codex_queue_wake_supported: bool,
+    pub agy_hooks_supported: bool,
 }
 
 static CLI_VERSIONS: LazyLock<CliVersions> = LazyLock::new(CliVersions::probe);
@@ -340,13 +345,16 @@ impl CliVersions {
     fn probe() -> Self {
         let codex = probe_cli_version("codex");
         let claude = probe_cli_version("claude");
-        let versions = Self::from_versions(codex, claude);
+        let agy = probe_cli_version("agy");
+        let versions = Self::from_versions(codex, claude, agy);
         tracing::info!(
             codex = ?versions.codex,
             claude = ?versions.claude,
+            agy = ?versions.agy,
             codex_compaction_hooks_supported = versions.codex_compaction_hooks_supported,
             codex_notify_supported = versions.codex_notify_supported,
             codex_queue_wake_supported = versions.codex_queue_wake_supported,
+            agy_hooks_supported = versions.agy_hooks_supported,
             "CLI versions detected for native harness capability gates"
         );
         versions
@@ -358,33 +366,54 @@ impl CliVersions {
             .map(|_| self.codex_compaction_hooks_supported)
     }
 
+    /// `None` when the agy version could not be resolved at all, which is not
+    /// proof of an unsupported CLI and must not uninstall a working hook.
+    pub fn agy_hooks_support(&self) -> Option<bool> {
+        self.agy.as_ref().map(|_| self.agy_hooks_supported)
+    }
+
     #[cfg(test)]
-    fn from_outputs(codex: Option<&str>, claude: Option<&str>) -> Self {
+    fn from_outputs(codex: Option<&str>, claude: Option<&str>, agy: Option<&str>) -> Self {
         Self::from_versions(
             codex.and_then(parse_cli_version),
             claude.and_then(parse_cli_version),
+            agy.and_then(parse_cli_version),
         )
     }
 
     fn from_versions(
         codex: Option<((u32, u32, u32), String)>,
         claude: Option<((u32, u32, u32), String)>,
+        agy: Option<((u32, u32, u32), String)>,
     ) -> Self {
         let codex_parsed = codex.as_ref().map(|(version, _)| *version);
+        let agy_parsed = agy.as_ref().map(|(version, _)| *version);
         Self {
             codex: codex.map(|(_, normalized)| normalized),
             claude: claude.map(|(_, normalized)| normalized),
+            agy: agy.map(|(_, normalized)| normalized),
             codex_compaction_hooks_supported: codex_parsed
                 .is_some_and(|version| version >= CODEX_NATIVE_HOOKS_MIN_VERSION),
             codex_notify_supported: codex_parsed
                 .is_some_and(|version| version >= CODEX_NATIVE_NOTIFY_MIN_VERSION),
             codex_queue_wake_supported: codex_parsed
                 .is_some_and(|version| version >= CODEX_QUEUE_WAKE_MIN_VERSION),
+            agy_hooks_supported: agy_parsed
+                .is_some_and(|version| version >= AGY_ACTIVITY_HOOKS_MIN_VERSION),
         }
     }
 }
 
+/// Version probes shell out to the user's real CLIs. No test lane may do that,
+/// and an isolated lane can opt out with `TAURHAUS_SKIP_CLI_VERSION_PROBES`.
+fn cli_version_probes_disabled() -> bool {
+    cfg!(test) || std::env::var_os("TAURHAUS_SKIP_CLI_VERSION_PROBES").is_some()
+}
+
 fn probe_cli_version(program: &str) -> Option<((u32, u32, u32), String)> {
+    if cli_version_probes_disabled() {
+        return None;
+    }
     let mut command = cli_version_command(program);
     let argv = std::iter::once(command.get_program())
         .chain(command.get_args())
@@ -900,12 +929,15 @@ pub struct HarnessSettings {
     #[serde(default)]
     #[serde(alias = "codex_compaction")]
     pub codex_compaction: CodexCompactionMode,
-    /// Antigravity hook loading is trust-gated upstream and remains opt-in.
-    #[serde(default)]
+    /// Antigravity loads hooks only in a trusted workspace, so the sink is on
+    /// by default and inert until the member answers the pane's trust prompt.
+    #[serde(default = "default_true")]
+    #[serde(alias = "agy_hooks")]
     pub agy_hooks: bool,
     /// grok's personal hook directory is always trusted, so its compaction
     /// bridge is on by default and can be switched off.
     #[serde(default = "default_true")]
+    #[serde(alias = "grok_hooks")]
     pub grok_hooks: bool,
 }
 
@@ -917,7 +949,7 @@ impl Default for HarnessSettings {
     fn default() -> Self {
         Self {
             codex_compaction: CodexCompactionMode::Transcript,
-            agy_hooks: false,
+            agy_hooks: true,
             grok_hooks: true,
         }
     }
@@ -1282,10 +1314,44 @@ mod tests {
     }
 
     #[test]
-    fn terminal_settings_default_agy_hooks_off() {
-        // Regression: commit 6fe0aa3 enabled verified Codex hooks by policy;
-        // agy's workspace-trust loading is unverified and must stay opt-in.
-        assert!(!TerminalSettings::default().harness.agy_hooks);
+    fn terminal_settings_default_agy_hooks_on() {
+        // Regression: commit 4e9e2c5 defaulted the Antigravity hooks off
+        // because their trust-gated loading was unverified; agy 1.1.22 was
+        // then observed firing PreInvocation and Stop under workspace trust.
+        assert!(TerminalSettings::default().harness.agy_hooks);
+
+        let legacy: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window"
+        }))
+        .expect("legacy settings");
+        assert!(legacy.harness.agy_hooks);
+
+        let opted_out: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window",
+            "harness": {"agy_hooks": false}
+        }))
+        .expect("opted-out settings");
+        assert!(!opted_out.harness.agy_hooks);
+    }
+
+    // Regression: 66ab7ec added the snake_case alias for `agy_hooks` only; the
+    // frontend sends `harness.grok_hooks` in snake_case too, so the Settings
+    // Grok toggle was silently dropped and grok hooks could never be turned off.
+    #[test]
+    fn terminal_settings_grok_hooks_opt_out_reaches_the_backend() {
+        assert!(TerminalSettings::default().harness.grok_hooks);
+        let opted_out: TerminalSettings = serde_json::from_value(serde_json::json!({
+            "emulator": "manual",
+            "custom_command": "",
+            "tmux_layout": "new_window",
+            "harness": {"grok_hooks": false}
+        }))
+        .expect("settings with a snake_case grok_hooks key parse");
+        assert!(!opted_out.harness.grok_hooks);
     }
     use chrono::TimeZone;
     use pretty_assertions::assert_eq;
@@ -1630,8 +1696,11 @@ mod tests {
     // CLI versions, so 6fe0aa3 could install Codex hooks on unsupported CLIs.
     #[test]
     fn cli_versions_gate_codex_native_capabilities() {
-        let before_hooks =
-            CliVersions::from_outputs(Some("codex-cli 0.146.9"), Some("2.1.246 (Claude Code)"));
+        let before_hooks = CliVersions::from_outputs(
+            Some("codex-cli 0.146.9"),
+            Some("2.1.246 (Claude Code)"),
+            None,
+        );
         assert_eq!(before_hooks.codex.as_deref(), Some("0.146.9"));
         assert_eq!(before_hooks.claude.as_deref(), Some("2.1.246"));
         assert!(!before_hooks.codex_compaction_hooks_supported);
@@ -1639,13 +1708,32 @@ mod tests {
         assert!(!before_hooks.codex_queue_wake_supported);
 
         let hooks_and_notify =
-            CliVersions::from_outputs(Some("codex-cli 0.147.0"), Some("claude 2.1.238"));
+            CliVersions::from_outputs(Some("codex-cli 0.147.0"), Some("claude 2.1.238"), None);
         assert!(hooks_and_notify.codex_compaction_hooks_supported);
         assert!(hooks_and_notify.codex_notify_supported);
         assert!(!hooks_and_notify.codex_queue_wake_supported);
 
-        let queue = CliVersions::from_outputs(Some("codex-cli 0.149.0"), None);
+        let queue = CliVersions::from_outputs(Some("codex-cli 0.149.0"), None, None);
         assert!(queue.codex_queue_wake_supported);
+    }
+
+    // Regression: 4e9e2c5 shipped the Antigravity hook sink with no CLI gate,
+    // so a pre-1.1.10 agy that never reaches a Stop hook still got it installed.
+    #[test]
+    fn cli_versions_gate_agy_activity_hooks() {
+        let before = CliVersions::from_outputs(None, None, Some("agy version 1.1.9"));
+        assert_eq!(before.agy.as_deref(), Some("1.1.9"));
+        assert!(!before.agy_hooks_supported);
+        assert_eq!(before.agy_hooks_support(), Some(false));
+
+        let supported = CliVersions::from_outputs(None, None, Some("1.1.10"));
+        assert_eq!(supported.agy.as_deref(), Some("1.1.10"));
+        assert!(supported.agy_hooks_supported);
+        assert_eq!(supported.agy_hooks_support(), Some(true));
+
+        let unknown = CliVersions::from_outputs(None, None, None);
+        assert_eq!(unknown.agy, None);
+        assert_eq!(unknown.agy_hooks_support(), None);
     }
 
     // Regression: c0aa59a used a non-interactive login shell for the version
@@ -1691,9 +1779,11 @@ mod tests {
             CliVersions {
                 codex: None,
                 claude: None,
+                agy: None,
                 codex_compaction_hooks_supported: false,
                 codex_notify_supported: false,
                 codex_queue_wake_supported: false,
+                agy_hooks_supported: false,
             }
         );
     }
