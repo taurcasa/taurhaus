@@ -1,6 +1,6 @@
 # Accounts and usage across CLIs — architecture and execution plan
 
-Status: approved design, execution 2026-08-27 → (PRs 17a–17e, release 0.6.9). Companion to [`harness-realignment-plan.md`](harness-realignment-plan.md) and [`../architecture/harness-model.md`](../architecture/harness-model.md).
+Status: approved design, executed 2026-08-27 → 2026-08-28 (PRs 17a–17c, 18a, 18b, 19). 17d was cancelled and 17e was folded into the 0.7.0 release. Shipped in **0.7.0** (accounts and usage, daemon protocol 11) and **0.8.0** (the Antigravity and Grok harnesses, daemon protocol 12 then 13). Companion to [`harness-realignment-plan.md`](harness-realignment-plan.md) and [`../architecture/harness-model.md`](../architecture/harness-model.md).
 
 ## Goal
 
@@ -9,23 +9,25 @@ One flow for every CLI taurhaus launches:
 1. **Detect** the accounts a tool is signed into (one config dir per account).
 2. **Choose** the account per project — remembered per project, defaulting to the one the project used last, with a visible global default — and per launch from the sidebar's right-click menu, without a modal in the way.
 3. **Resume** on the account that owns the session's history.
-4. **Show usage** per account the way the tool's own status screen shows it (Claude Code `/usage`: session · week all models · week Fable; Codex `/status`: 5h · weekly, per model family; Gemini `/stats`: per-model quota).
+4. **Show usage** per account the way the tool's own status screen shows it (Claude Code `/usage`: session · week all models · week Fable; Codex `/status`: 5h · weekly, per model family; Antigravity `/usage`: weekly and 5-hour buckets per model group). A tool with no quota surface reports usage as unavailable and the registry carries the sentence the UI shows in a meter's place — Grok is the current case.
 
 Adding a tool touches only its account/usage slice. Everything else — pins, resolution, launch rendering, resume derivation, chooser, chip, meter, context menu, settings — is tool-agnostic and data-driven from the registry.
 
-## Verified facts (2026-08-27)
+## Verified facts (2026-08-27 for Claude/Codex, 2026-08-28 for Antigravity/Grok)
 
-| | Claude Code 2.1.247 | Codex CLI 0.149.0 | Gemini CLI 0.57.0 (from source; not installed here) |
-|---|---|---|---|
-| Selector (env var, per process) | `CLAUDE_CONFIG_DIR` | `CODEX_HOME` (must exist; canonicalised) | `GEMINI_CLI_HOME` (config dir is `<home>/.gemini`) |
-| Credential file (key names only) | `.credentials.json` → `claudeAiOauth.{accessToken, expiresAt, subscriptionType, rateLimitTier}` | `auth.json` → `auth_mode`, `tokens.{access_token (JWT), id_token (JWT), refresh_token, account_id}`; expiry = access JWT `exp` | `.gemini/oauth_creds.json` → `{access_token, refresh_token, id_token, expiry_date}` (plaintext unless `GEMINI_FORCE_ENCRYPTED_FILE_STORAGE`) |
-| Identity | `.claude.json` → `oauthAccount.{accountUuid, emailAddress, displayName, organizationName, seatTier}` | `id_token` claims: `email`, `https://api.openai.com/auth.{chatgpt_plan_type, chatgpt_account_id}` | `.gemini/google_accounts.json` → `{active, old[]}`; `settings.json` → `security.auth.selectedType` |
-| Usage endpoint | `GET https://api.anthropic.com/api/oauth/usage` — `Authorization: Bearer`, `anthropic-beta: oauth-2025-04-20` | `GET https://chatgpt.com/backend-api/wham/usage` — `Authorization: Bearer`, `ChatGPT-Account-ID: <tokens.account_id>` | `POST https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` — `Authorization: Bearer`, body `{"project": "<id>"}` (project id from `GOOGLE_CLOUD_PROJECT` or `loadCodeAssist`) |
-| Response → windows | `limits[]`: `session`, `weekly_all`, `weekly_scoped` (`scope.model.display_name`, e.g. "Fable"); `percent`, `resets_at` ISO, `severity` | `rate_limit.{primary,secondary}_window` + `additional_rate_limits[]` (`limit_name`, `metered_feature`, same window shape); window kind from `limit_window_seconds` (18000 = 5h, 604800 = weekly), never from primary/secondary | `buckets[]`: `remainingFraction`, `resetTime`, `modelId` (`remainingAmount` omitted when full) |
-| External read triggers refresh? | No (GET with stored token; Claude Code refreshes on its own runs) | No (verified: `auth.json` unchanged after GET); 401 → no reactive refresh in 0.149 | No (plain POST); CLI rewrites creds on its own refresh |
-| No-subscription mode | API key → no `rate_limits` | API key → rate limits refused | API key / Vertex → no Code Assist quota |
+The Gemini CLI column that stood here is gone: Google refused that client for individual Code Assist accounts, 17d was cancelled, and the Google harness became the Antigravity CLI in 18a. The Antigravity and Grok columns are the shipped providers (`session_scanner/accounts/agy.rs`, `accounts/grok.rs`), cross-checked against `docs/design/research/agy-report-{codex,opus}.md` and `grok-report-{codex,opus}.md`.
 
-Fixtures (real, redacted): `scratchpad/oauth-usage-response.json` (Claude), `scratchpad/codex-usage-response.json` (Codex); Gemini shape from source only.
+| | Claude Code 2.1.247 | Codex CLI 0.149.0 | Antigravity CLI 1.1.22 (`agy`) | Grok CLI 1.0.5 (`grok`) |
+|---|---|---|---|---|
+| Selector (env var, per process) | `CLAUDE_CONFIG_DIR` | `CODEX_HOME` (must exist; canonicalised) | **none** — one implicit account under the shared Google tooling root `~/.gemini`; `candidate_dirs` returns only the default dir | `GROK_HOME` — isolates credentials, config, sessions, the live registry and the leader socket |
+| Credential file (key names only) | `.credentials.json` → `claudeAiOauth.{accessToken, expiresAt, subscriptionType, rateLimitTier}` | `auth.json` → `auth_mode`, `tokens.{access_token (JWT), id_token (JWT), refresh_token, account_id}`; expiry = access JWT `exp` | `<root>/antigravity-cli/antigravity-oauth-token` when present, else the shared `<root>/oauth_creds.json`; presence alone decides `logged_in` | `auth.json` (0600), a map keyed `<oidc_issuer>::<client_id>` → `{key, email, first_name, last_name, user_id, principal_id, expires_at}`; no credential value is read |
+| Identity | `.claude.json` → `oauthAccount.{accountUuid, emailAddress, displayName, organizationName, seatTier}` | `id_token` claims: `email`, `https://api.openai.com/auth.{chatgpt_plan_type, chatgpt_account_id}` | `<root>/google_accounts.json` → `active` (the id *and* the label; no display name, org or plan) | the single `auth.json` record: `user_id` as the id, `email` as the label, `first_name`/`last_name` as the display name, `expires_at` as the expiry. A store holding several records is read as **no** account, because grok's own selection rule is unverified |
+| Usage source | `GET https://api.anthropic.com/api/oauth/usage` — `Authorization: Bearer`, `anthropic-beta: oauth-2025-04-20` | `GET https://chatgpt.com/backend-api/wham/usage` — `Authorization: Bearer`, `ChatGPT-Account-ID: <tokens.account_id>` | **not HTTP**: `agy -p /usage --output-format json`, run in `<root>/antigravity-cli` with `AGY_CLI_DISABLE_AUTO_UPDATE=true` and a 10 s timeout, through the injectable command boundary (a test asserts the provider never reaches for HTTP) | **none** — no subscription quota endpoint; `/usage` is TUI-only and `grok usage` does not exist. `usage: false` in the registry, with the note "Grok shows credits in its own /usage" |
+| Response → windows | `limits[]`: `session`, `weekly_all`, `weekly_scoped` (`scope.model.display_name`, e.g. "Fable"); `percent`, `resets_at` ISO, `severity` | `rate_limit.{primary,secondary}_window` + `additional_rate_limits[]` (`limit_name`, `metered_feature`, same window shape); window kind from `limit_window_seconds` (18000 = 5h, 604800 = weekly), never from primary/secondary | `command.data.groups[].buckets[]` → four fixed keys in provider order: `gemini-weekly`, `gemini-5h`, `3p-weekly`, `3p-5h`, titled *Gemini Models · Weekly/5h* and *Claude and GPT models · Weekly/5h*. `remaining_fraction` is inverted into `used_percentage`; the 5-hour pair is the compact form; an absent group keeps the windows that are there | — |
+| External read triggers refresh? | No (GET with stored token; Claude Code refreshes on its own runs) | No (verified: `auth.json` unchanged after GET); 401 → no reactive refresh in 0.149 | No — a `-p` invocation is a headless print run and is not a session | — |
+| No-subscription mode | API key → no `rate_limits` | API key → rate limits refused | a signed-out root reports `Unauthorized`; a sign-in diagnostic on a failed run is classified as `Unauthorized`, anything else as `Stale` | per-turn cost and tokens arrive in-band, not as a window |
+
+Fixtures (real, redacted, in the repo — not the scratchpad): `src-tauri/src/daemon/fixtures/claude-oauth-usage-2.1.247.json`, `codex-wham-usage-0.149.json`, `agy-usage-1.1.22.json`. The Codex turn-complete fixture lives beside its consumer at `src-tauri/src/session_scanner/idle/fixtures/codex-agent-turn-complete-0.149.0.json`.
 
 ## Principles
 
@@ -45,7 +47,7 @@ impl CliToolSpec {
 }
 
 pub trait AccountProvider: Sync {
-    fn default_dir(&self, home: &Path) -> PathBuf;                                  // ~/.claude, ~/.codex, ~ (Gemini: the HOME override)
+    fn default_dir(&self, home: &Path) -> PathBuf;                                  // ~/.claude, ~/.codex, ~/.gemini (agy), ~/.grok
     fn candidate_dirs(&self, home: &Path, live_selector_values: &[PathBuf]) -> Vec<PathBuf>;   // default + siblings (`<default>-*`) + live processes' selector values, canonical, deduped
     fn identify(&self, dir: &Path) -> Option<AccountIdentity>;                       // id, label(email), display_name, org, plan, logged_in, credential_expires_at
     fn session_dir(&self, transcript: &Path) -> Option<PathBuf>;                     // resume derivation; None = unknown
@@ -61,7 +63,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 ## Generic core
 
-- **Detection**: `accounts::detect(tool) -> Vec<Account { tool, id, dir, identity, is_default }>`, cached 60 s per tool; daemon method `list_accounts { tool }` (the Claude-only methods are removed; **protocol 11**, app + daemon ship together in 0.6.9). Unsupported vs unavailable stay distinguishable (empty + `degraded:false` vs `degraded:true`).
+- **Detection**: `accounts::detect(tool) -> Vec<Account { tool, id, dir, identity, is_default }>`, cached 60 s per tool; daemon method `list_accounts { tool }` (the Claude-only methods are removed; **protocol 11**, app + daemon shipped together in 0.7.0; 18a and 18b took the vocabulary to 12 and 13). Unsupported vs unavailable stay distinguishable (empty + `degraded:false` vs `degraded:true`).
 - **Project memory**: side table `project_tool_accounts(project_id, tool, account_id, origin TEXT CHECK(origin IN ('pinned','last_used')), updated_at)`; migration 013 copies `projects.claude_account_id` as `('claude', id, 'pinned')` (column left in place, no longer read). `last_used` is upserted on every taurhaus launch (after resolution) and whenever the scanner binds a live session of that tool to a project (selector value read from the process environment, as the Claude registry already does) — throttled, only on change. `pinned` is written by the chooser's "remember", the chip, and the context-menu `Account` submenu; "Use default" deletes the row.
 - **Resolution** (`resolve_launch_account`, tool-agnostic): explicit pick → session's dir (resume/continue with a known transcript) → `pinned` → `last_used` → global default (`settings.default_account_ids[tool]`) → selector already inside the user's base command (e.g. `claude2`) → tool default dir. The result carries `origin` so the UI can say *why* ("last used here", "from your launch command", "default dir"). Missing/logged-out targets fall back with `launch.account.fallback`.
 - **Launch rendering**: `LaunchSpec.account_dir` rendered as `<SELECTOR>='<dir>' <command>` for any tool with a selector (hoisted out of the Claude arm, data-driven); base wins if it already sets the variable (`LaunchNote::SelectorIgnored`); goldens per tool.
@@ -72,7 +74,8 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 
 - **Claude**: `AccountProvider` = today's `claude_accounts.rs` moved behind the trait; `UsageProvider` = OAuth usage endpoint; windows from `limits[]` in Claude Code's order and titles (`Current session`, `Current week (all models)`, `Current week (Sonnet only)` on plans that report it, `Current week (<display_name>)` per `weekly_scoped`); severity from `severity`; `note` from a promo/notice field if the payload carries one.
 - **Codex**: candidates `~/.codex`, `~/.codex-*`, live `CODEX_HOME`s; identity from the `id_token` payload (base64url JSON, unverified — display only), `auth_mode == "chatgpt"` ⇒ usage-capable, API-key mode ⇒ account without usage; `session_dir` from the rollout path (`<home>/sessions/…`); usage from `wham/usage`: windows `codex` primary/secondary (titled like the TUI: `5h limit`, `Weekly limit`, kind from `limit_window_seconds`) then one pair per `additional_rate_limits[]` titled `<limit_name> · 5h/weekly`; `credits`/`spend_control` → `note`. Expiry from the access JWT `exp`.
-- **Gemini CLI** — superseded (2026-08-28): Gemini Code Assist for individuals rejects the client; the Google harness is now the Antigravity CLI (`agy`, PR 18a), whose account/usage provider is specified from that lane's research. The `GEMINI_CLI_HOME` registry data from 17b is removed with the Gemini entry in 18a.
+- ~~**Gemini CLI**~~ — superseded (2026-08-28): Gemini Code Assist for individuals rejects the client; the Google harness is the Antigravity CLI. The `GEMINI_CLI_HOME` registry data from 17b was removed with the Gemini entry in 18a.
+- **Antigravity CLI** (`agy`, PR 18a, shipped): no selector, so `candidate_dirs` returns only `~/.gemini` and there is exactly one implicit account — no chooser, no submenus, no pin. `AccountProvider::identify` reads `google_accounts.json` → `active` for both the id and the label, and treats the presence of `antigravity-cli/antigravity-oauth-token` (or the shared `oauth_creds.json`) as signed in; `session_dir` returns `None`, so a resume derives no account. `UsageProvider` is the one command-backed provider: `agy -p /usage --output-format json` through the injectable command boundary, mapped to the four fixed buckets above.
 - **Grok CLI** (`grok`, PR 18b): `GROK_HOME` selects a whole account — credentials, config, sessions, the live registry and the leader socket. `AccountProvider` reads the single record in `auth.json` (a map keyed `<oidc_issuer>::<client_id>`) for display names only: `email` as the label, `first_name`/`last_name` as the display name, `user_id` as the id, `expires_at` as the credential expiry; a record without a `key`, an expired one, or a store that has grown several records is not a launchable account. **No `UsageProvider`**: grok 1.0.5 exposes no subscription quota endpoint (`/usage` is TUI-only, `grok usage` does not exist) and reports cost and tokens per turn in-band, so `usage: false` and the registry carries the sentence Settings shows where a meter would be. Per-session context use is a later addition, not a window.
 
 ## PRs (lanes as always: one family implements, the other reviews; Fable writes the spec and makes the merge call)
@@ -86,7 +89,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 | 18a | **Antigravity CLI (`agy`) integration, Gemini CLI removed everywhere**: registry entry + every capability slice (process signature, launch flags incl. `--dangerously-skip-permissions` as the auto-approve, model/effort, continue/resume-by-conversation, identity, busy/idle, delivery + wake, compaction signal, transcript parser, stop), account/usage provider, frontend descriptor/logo/accent, goldens + conformance; Gemini CLI deleted from registry, launch arm + golden, idle heuristic, catalog, adapters, frontend, fixtures | Codex / Opus ×2 (research: Opus + Codex independently, 2026-08-28) |
 | 18b | **Grok CLI (`grok`) integration** (new tool): same slice set as 18a — `--always-approve` auto-approve, `--model`/`--effort` with per-model validation, `--continue`/`--resume {session_id}`, `active_sessions.json` identity, `events.jsonl` activity, `/quit` stop, `GROK_HOME` accounts (no usage provider: no quota endpoint), compaction hooks with grok's camelCase envelope and a dedupe for the Claude registration it imports, Grok icon + graphite accent in the sidebar context menu, chips, mesh nodes, team builder and settings. ACP/leader delivery and usage windows are deliberately out of scope | Opus / Codex ×2 (research: Opus + Codex independently, 2026-08-28) |
 | 19 | **Docs sweep**: every Gemini CLI reference removed or rewritten for `agy`, Grok added, accounts/usage documented (README, ARCHITECTURE, CLAUDE.md, CONTRIBUTING, `docs/**`, testing/visual guides, CHANGELOG, taureval role notes); Opus drift sweep, Codex claim verification, Fable narrative (harness-model slice table Google/xAI columns) | Opus + Codex / Fable |
-| 17e | Release 0.6.9 (app + daemon, protocol 11) after 19 | Fable |
+| ~~17e~~ | **Folded into the 0.7.0 release** (app + daemon, protocol 11), shipped 2026-08-28 before 18a/18b. 18a and 18b carried protocol 12 and 13; the release that ships them is 0.8.0, after 19 | Fable |
 
 ## Ledger
 
@@ -98,8 +101,7 @@ Floor: a tool without `account_selector` has one implicit account (no chooser, n
 | ~~17d~~ | — | — | cancelled | — | — |
 | 18a | Codex gpt-5.6 (3 turns) | Opus ×2 | 4 (3 fix rounds) | 10 incl. 1 blocker (persisted `gemini` values aborting whole records on upgrade; protocol vocabulary without a bump; no recency bound on hook-fed activity; forced then missing `--dangerously-skip-permissions`; `{session_id}` never substituted; Windows hooks path; catalog id truncation; hook sink re-parsed per poll) | #39 |
 | 18b | Opus 5 | Codex ×2 | 7 (3 fix rounds + 2 fix-only rounds + orchestrator fix) | 12 (compaction event value mismatch across two rounds; hook reconciliation on roster changes; resume under alternate `GROK_HOME`/after exit; runtime identity disabled; stop proof precedence; argv boundaries lost by the Linux inventory; trailing COMMAND after the prompt) | #40 |
-
-| 19 | Opus 5 + Fable | Codex | tbd | tbd | tbd |
+| 19 | Opus 5 (Lane A drift sweep) + Fable (Lane C narrative) | Codex (Lane B claim verification) | tbd | tbd | tbd |
 
 ## 17a findings
 
