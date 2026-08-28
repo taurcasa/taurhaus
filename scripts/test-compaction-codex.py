@@ -141,8 +141,8 @@ def main() -> int:
                     lambda: find_any_log_event(
                         log_path,
                         events=TERMINAL_EVENTS,
-                        team_name=target.team_name,
-                        member_name=target.member_name,
+                        team_name=None,
+                        member_name=None,
                         session_id=target.runtime_session_id,
                         since=trigger_at,
                     ),
@@ -167,8 +167,8 @@ def main() -> int:
             lambda: find_any_log_event(
                 log_path,
                 events=["compaction.codex_hook.received"],
-                team_name=target.team_name,
-                member_name=target.member_name,
+                team_name=None,
+                member_name=None,
                 session_id=target.runtime_session_id,
                 since=trigger_at,
             ),

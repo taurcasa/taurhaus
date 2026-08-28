@@ -26,6 +26,14 @@ describe('Codex compaction defaults', () => {
     expect(recipeSource).not.toContain('compaction.detected')
   })
 
+  it('matches Codex hook outcomes by session before member resolution', () => {
+    // Regression: 076c3bf filtered Codex received and terminal hook events by
+    // team/member even though unresolved events do not carry those fields,
+    // causing successful runs to time out and skipped runs to burn all turns.
+    expect(recipeSource.match(/team_name=None/g)).toHaveLength(2)
+    expect(recipeSource.match(/member_name=None/g)).toHaveLength(2)
+  })
+
   it('keeps the analyzer vocabulary limited to native hook events', () => {
     // Regression: commit 27770fbd taught the analyzer to treat extractor and
     // watcher events as the canonical compaction trail.
@@ -34,13 +42,15 @@ describe('Codex compaction defaults', () => {
   })
 
   it('reports only native hook records from an isolated log', () => {
+    // Regression: 076c3bf gave the received fixture resolved member fields,
+    // hiding that --team/--member discarded the hook's first checkpoint.
     const root = mkdtempSync(join(tmpdir(), 'taurhaus-hook-analyzer-'))
     const logPath = join(root, 'taurhaus.log.jsonl')
     try {
       writeFileSync(logPath, [
-        '{"ts":"2026-08-28T10:00:00Z","event":"compaction.codex_hook.received","tool":"codex","team_name":"alpha","member_name":"builder"}',
+        '{"ts":"2026-08-28T10:00:00Z","event":"compaction.codex_hook.received","tool":"codex","session_id":"session-1"}',
         '{"ts":"2026-08-28T10:00:01Z","event":"compaction.injected","tool":"codex","team_name":"alpha","member_name":"builder"}',
-        '{"ts":"2026-08-28T10:00:02Z","event":"compaction.codex_hook.delivered","tool":"codex","team_name":"alpha","member_name":"builder","additional_context_bytes":42}',
+        '{"ts":"2026-08-28T10:00:02Z","event":"compaction.codex_hook.delivered","tool":"codex","team_name":"alpha","member_name":"builder","session_id":"session-1","additional_context_bytes":42}',
       ].join('\n'))
 
       const output = execFileSync('python3', [

@@ -195,9 +195,9 @@ def main() -> int:
             timestamp = event_timestamp(record)
             if since is not None and (timestamp is None or timestamp < since):
                 continue
-            if team and record.get("team_name") != team:
+            if team and record.get("team_name") not in (None, team):
                 continue
-            if member and record.get("member_name") != member:
+            if member and record.get("member_name") not in (None, member):
                 continue
             records.append(record)
 
