@@ -1133,11 +1133,11 @@ mod tests {
     }
 
     #[test]
-    fn gemini_render_adds_model_and_notes_unsupported_effort() {
+    fn agy_render_adds_model_before_effort_support_lands() {
         let rendered = LaunchSpec {
             tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
-            base: "gemini --yolo",
+            base: "agy",
             model: model_spec("gemini-3.1-pro", Some("high")),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
@@ -1147,7 +1147,7 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, "gemini --yolo -m 'gemini-3.1-pro'");
+        assert_eq!(rendered.command, "agy --model 'gemini-3.1-pro'");
         assert!(matches!(
             rendered.notes.as_slice(),
             [LaunchNote::EffortIgnored {
@@ -1157,14 +1157,14 @@ mod tests {
         ));
     }
 
-    // Regression: 791f6be checked only Gemini's short model flag, so a
+    // Regression: 791f6be checked only the third harness's short model flag, so a
     // free-form base using --model received a second model selection.
     #[test]
-    fn gemini_render_respects_long_model_flag_and_notes_it() {
+    fn agy_render_respects_model_flag_and_notes_it() {
         let rendered = LaunchSpec {
             tool: CliTool::Agy,
             mode: LaunchMode::Fresh,
-            base: "gemini --yolo --model gemini-2.5-pro",
+            base: "agy --model gemini-3.1-pro-low",
             model: model_spec("gemini-3.1-pro", None),
             codex_bypass_hook_trust: false,
             codex_notify_executable: None,
@@ -1174,7 +1174,7 @@ mod tests {
         }
         .render();
 
-        assert_eq!(rendered.command, "gemini --yolo --model gemini-2.5-pro");
+        assert_eq!(rendered.command, "agy --model gemini-3.1-pro-low");
         assert_eq!(
             rendered.notes,
             vec![LaunchNote::ModelIgnored {

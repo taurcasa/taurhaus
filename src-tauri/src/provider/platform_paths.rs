@@ -335,7 +335,7 @@ mod tests {
         std::env::set_var("HOME", home.path());
 
         let codex = PlatformPaths::tool_session_root(CliTool::Codex);
-        let gemini = PlatformPaths::tool_session_root(CliTool::Agy);
+        let agy = PlatformPaths::tool_session_root(CliTool::Agy);
 
         match original_home {
             Some(value) => std::env::set_var("HOME", value),
@@ -343,7 +343,12 @@ mod tests {
         }
 
         assert_eq!(codex, home.path().join(".codex").join("sessions"));
-        assert_eq!(gemini, home.path().join(".gemini").join("tmp"));
+        assert_eq!(
+            agy,
+            home.path()
+                .join(".gemini")
+                .join("antigravity-cli/conversations")
+        );
     }
 
     #[test]

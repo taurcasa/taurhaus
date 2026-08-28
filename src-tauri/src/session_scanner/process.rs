@@ -685,20 +685,20 @@ fn ps_tty_is_a_terminal(column: &str) -> bool {
 /// Matches:
 /// - **Codex**: `codex`, `/path/to/codex`
 /// - **Claude**: `claude`, `/path/to/claude`, `node .../claude`, `node .../@anthropic-ai/claude-code/...`
-/// - **Gemini**: `gemini`, `/path/to/gemini`, `node .../@google/gemini-cli/...`
+/// - **Antigravity**: `agy`, `/path/to/agy` (interactive argv only)
 ///
 /// Excludes:
 /// - `grep claude`, `ps -eo ...`, `claude-something-else`, `vim claude.md`, etc.
 pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
     let first = args.split_whitespace().next().unwrap_or("");
 
-    if let Some(tool) = tool_for_argv_token(first) {
-        return Some(tool);
+    if let Some(entry) = spec_for_argv_token(first) {
+        return entry.argv_is_session(args).then_some(entry.tool);
     }
 
     // Node-launched tools: `node /path/to/tool` or `/path/to/node /path/to/tool`.
     // Newer Node invocations can include runtime flags before the script path
-    // (e.g. `node --no-warnings=DEP0040 /run/.../gemini --yolo`).
+    // (e.g. `node --no-warnings=DEP0040 /run/.../codex --yolo`).
     if first == "node" || first.ends_with("/node") {
         let tokens: Vec<&str> = args.split_whitespace().skip(1).collect();
 
@@ -720,11 +720,16 @@ pub fn detect_cli_tool(args: &str) -> Option<CliTool> {
     None
 }
 
-fn tool_for_argv_token(token: &str) -> Option<CliTool> {
+fn spec_for_argv_token(
+    token: &str,
+) -> Option<&'static crate::session_scanner::cli_tool::CliToolSpec> {
     crate::session_scanner::cli_tool::all()
         .iter()
         .find(|entry| entry.matches_argv_token(token))
-        .map(|entry| entry.tool)
+}
+
+fn tool_for_argv_token(token: &str) -> Option<CliTool> {
+    spec_for_argv_token(token).map(|entry| entry.tool)
 }
 
 /// Read process CWD and TTY via platform-specific APIs.
@@ -1443,42 +1448,37 @@ mod tests {
     }
 
     #[test]
-    fn detect_gemini_processes() {
-        assert_eq!(
-            detect_cli_tool("node /path/@google/gemini-cli/dist/cli.mjs"),
-            Some(CliTool::Agy)
-        );
-        assert_eq!(
-            detect_cli_tool("/usr/bin/node /home/user/.nvm/versions/node/v22.5.0/lib/node_modules/@google/gemini-cli/dist/cli.mjs --sandbox"),
-            Some(CliTool::Agy)
-        );
-        assert_eq!(detect_cli_tool("gemini --sandbox"), Some(CliTool::Agy));
-        assert_eq!(detect_cli_tool("gemini --yolo"), Some(CliTool::Agy));
-        assert_eq!(
-            detect_cli_tool("/usr/local/bin/gemini --resume"),
-            Some(CliTool::Agy)
-        );
-        // Real fnm shim path (observed from live ps output)
-        assert_eq!(
-            detect_cli_tool(
-                "node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"
-            ),
-            Some(CliTool::Agy)
-        );
-        // Real node-launched via full path (observed from live ps output)
-        assert_eq!(
-            detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node /run/user/1000/fnm_multishells/587826_1771710305315/bin/gemini --yolo"),
-            Some(CliTool::Agy)
-        );
-        // Newer observed launch includes node runtime flags before script path.
-        assert_eq!(
-            detect_cli_tool("node --no-warnings=DEP0040 /run/user/1000/fnm_multishells/764222_1772661944031/bin/gemini --yolo"),
-            Some(CliTool::Agy)
-        );
-        assert_eq!(
-            detect_cli_tool("/home/testuser/.local/share/fnm/node-versions/v22.19.0/installation/bin/node --no-warnings=DEP0040 /run/user/1000/fnm_multishells/764222_1772661944031/bin/gemini --yolo"),
-            Some(CliTool::Agy)
-        );
+    fn detect_agy_interactive_processes_only() {
+        // Regression: commit 9a66d1c treated every matching harness process as
+        // an interactive session; agy's print drivers and subcommands have the
+        // same executable and must never enter the session inventory.
+        for interactive in [
+            "agy",
+            "/home/user/.local/bin/agy --model gemini-3.7-flash-high",
+            "agy --continue",
+            "agy --conversation 7f71fcb0-8a57-4f01-a3fd-a6f43cf70869",
+            "agy -i initial-prompt",
+            "agy --prompt-interactive=initial-prompt",
+        ] {
+            assert_eq!(
+                detect_cli_tool(interactive),
+                Some(CliTool::Agy),
+                "{interactive}"
+            );
+        }
+
+        for non_session in [
+            "agy -p /usage --output-format json",
+            "agy --print=hello",
+            "agy --prompt hello",
+            "agy --input-format stream-json --output-format stream-json",
+            "agy models",
+            "agy plugin list",
+            "agy --model gemini-3.7-flash-high agents",
+            "agy update",
+        ] {
+            assert_eq!(detect_cli_tool(non_session), None, "{non_session}");
+        }
     }
 
     #[test]
@@ -1503,7 +1503,7 @@ mod tests {
   PID TTY      COMMAND
  1000 s001     claude --continue
  2000 s002     codex --full-auto
- 3000 s003     node /path/@google/gemini-cli/dist/cli.mjs
+ 3000 s003     agy --continue
  4000 s004     bash
  5000 s005     vim";
         let result = parse_ps_output(output);
@@ -1518,12 +1518,7 @@ mod tests {
         );
         assert_eq!(
             result[2],
-            InventoryEntry::new(
-                3000,
-                "node /path/@google/gemini-cli/dist/cli.mjs",
-                CliTool::Agy,
-                true
-            )
+            InventoryEntry::new(3000, "agy --continue", CliTool::Agy, true)
         );
     }
 }

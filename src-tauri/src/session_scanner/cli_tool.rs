@@ -137,6 +137,12 @@ pub struct CliToolSpec {
     pub name: &'static str,
     pub aliases: &'static [&'static str],
     pub argv_signatures: &'static [&'static str],
+    /// Flags that identify a non-interactive invocation of this executable.
+    pub non_session_flags: &'static [&'static str],
+    /// First positional commands that are utilities rather than sessions.
+    pub non_session_subcommands: &'static [&'static str],
+    /// Global flags whose following argv token is a value, not a subcommand.
+    pub argv_value_flags: &'static [&'static str],
     pub model_prefixes: &'static [&'static str],
     pub model_markers: &'static [&'static str],
     pub default_commands: ToolCommands,
@@ -146,6 +152,9 @@ pub struct CliToolSpec {
     pub default_agent_role_id: &'static str,
     pub capabilities: CliCapabilities,
     pub stop_strategy: StopStrategy,
+    /// Presence directory next to the transcript directory, when a released
+    /// flock is the harness's clean-stop confirmation.
+    pub stop_presence_dir: Option<&'static str>,
     pub process_activity_signal: ProcessActivitySignal,
     pub pane_binding: bool,
     pub display_name: &'static str,
@@ -167,6 +176,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             name: "claude",
             aliases: &["claude", "claude_native"],
             argv_signatures: &["claude", "@anthropic-ai/claude-code"],
+            non_session_flags: &[],
+            non_session_subcommands: &[],
+            argv_value_flags: &[],
             model_prefixes: &["claude-"],
             model_markers: &["claude"],
             default_commands: ToolCommands {
@@ -202,6 +214,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 managed_home: false,
             },
             stop_strategy: StopStrategy::SlashExit,
+            stop_presence_dir: None,
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Claude Code",
@@ -216,6 +229,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             name: "codex",
             aliases: &["codex", "mesh", "mesh_bridged"],
             argv_signatures: &["codex", "@openai/codex"],
+            non_session_flags: &[],
+            non_session_subcommands: &[],
+            argv_value_flags: &[],
             model_prefixes: &["gpt-"],
             model_markers: &[],
             default_commands: ToolCommands {
@@ -254,6 +270,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 managed_home: true,
             },
             stop_strategy: StopStrategy::Interrupt,
+            stop_presence_dir: None,
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: true,
             display_name: "Codex CLI",
@@ -268,6 +285,35 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
             name: "agy",
             aliases: &["agy", "antigravity"],
             argv_signatures: &["agy"],
+            non_session_flags: &["-p", "--print", "--prompt", "--input-format"],
+            non_session_subcommands: &[
+                "agent",
+                "agents",
+                "changelog",
+                "help",
+                "install",
+                "mcp",
+                "mic-serve",
+                "models",
+                "plugin",
+                "plugins",
+                "update",
+            ],
+            argv_value_flags: &[
+                "--add-dir",
+                "--agent",
+                "--conversation",
+                "--effort",
+                "-i",
+                "--prompt-interactive",
+                "--json-schema",
+                "--log-file",
+                "--mode",
+                "--model",
+                "--output-format",
+                "--print-timeout",
+                "--project",
+            ],
             model_prefixes: &[],
             model_markers: &[],
             default_commands: ToolCommands {
@@ -303,6 +349,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 3]> = LazyLock::new(|| {
                 managed_home: false,
             },
             stop_strategy: StopStrategy::SlashExit,
+            stop_presence_dir: Some("presence"),
             process_activity_signal: ProcessActivitySignal::ReadChars,
             pane_binding: false,
             display_name: "Antigravity CLI",
@@ -534,12 +581,46 @@ impl CliToolSpec {
         })
     }
 
+    /// Whether a matching executable invocation represents an interactive
+    /// terminal session rather than a one-shot driver or utility subcommand.
+    pub fn argv_is_session(&self, args: &str) -> bool {
+        let tokens = args.split_whitespace().collect::<Vec<_>>();
+        if tokens.iter().any(|token| {
+            self.non_session_flags.iter().any(|flag| {
+                token == flag
+                    || token
+                        .strip_prefix(flag)
+                        .is_some_and(|rest| rest.starts_with('='))
+            })
+        }) {
+            return false;
+        }
+
+        let Some(executable_index) = tokens
+            .iter()
+            .position(|token| self.matches_argv_token(token))
+        else {
+            return false;
+        };
+        let mut index = executable_index + 1;
+        while let Some(token) = tokens.get(index) {
+            if token.starts_with('-') {
+                let takes_separate_value =
+                    !token.contains('=') && self.argv_value_flags.iter().any(|flag| token == flag);
+                index += if takes_separate_value { 2 } else { 1 };
+                continue;
+            }
+            return !self.non_session_subcommands.contains(token);
+        }
+        true
+    }
+
     pub fn session_source(&self) -> &'static dyn crate::session_scanner::idle::SessionSource {
         static CLAUDE: crate::session_scanner::idle::ClaudeRegistrySessionSource =
             crate::session_scanner::idle::ClaudeRegistrySessionSource;
         static CODEX: crate::session_scanner::idle::CodexSessionSource =
             crate::session_scanner::idle::CodexSessionSource;
-        static GEMINI: std::sync::OnceLock<crate::session_scanner::idle::GeminiResolver> =
+        static AGY: std::sync::OnceLock<crate::session_scanner::idle::AgyResolver> =
             std::sync::OnceLock::new();
         static NONE: crate::session_scanner::idle::NoSessionSource =
             crate::session_scanner::idle::NoSessionSource;
@@ -551,7 +632,7 @@ impl CliToolSpec {
         match self.tool {
             CliTool::Claude => &CLAUDE,
             CliTool::Codex => &CODEX,
-            CliTool::Agy => GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new),
+            CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
         }
     }
 
@@ -610,14 +691,14 @@ impl CliToolSpec {
 
         static CLAUDE: OnceLock<crate::session_scanner::idle::ClaudeResolver> = OnceLock::new();
         static CODEX: OnceLock<crate::session_scanner::idle::CodexResolver> = OnceLock::new();
-        static GEMINI: OnceLock<crate::session_scanner::idle::GeminiResolver> = OnceLock::new();
+        static AGY: OnceLock<crate::session_scanner::idle::AgyResolver> = OnceLock::new();
 
         match self.tool {
             CliTool::Claude => {
                 CLAUDE.get_or_init(crate::session_scanner::idle::ClaudeResolver::new)
             }
             CliTool::Codex => CODEX.get_or_init(crate::session_scanner::idle::CodexResolver::new),
-            CliTool::Agy => GEMINI.get_or_init(crate::session_scanner::idle::GeminiResolver::new),
+            CliTool::Agy => AGY.get_or_init(crate::session_scanner::idle::AgyResolver::new),
         }
     }
 }
