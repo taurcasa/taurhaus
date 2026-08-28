@@ -508,25 +508,73 @@ where
     let target_path = target_dir.join("mesh");
     let temp_path = target_dir.join(".mesh.new");
 
+    ensure_bundled_mesh_source_usable(bundled_binary)?;
+
     std::fs::create_dir_all(target_dir)
         .map_err(|e| format!("Failed to create ~/.local/bin: {e}"))?;
     std::fs::copy(bundled_binary, &temp_path).map_err(|e| format!("Failed to copy mesh: {e}"))?;
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&temp_path, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("Failed to set executable permission: {e}"))?;
-    }
+    let installed_contract = match prepare_and_verify_mesh_copy(&temp_path, bundled_contract) {
+        Ok(contract) => contract,
+        Err(error) => {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(error);
+        }
+    };
 
     std::fs::rename(&temp_path, &target_path)
         .map_err(|e| format!("Failed to install mesh binary: {e}"))?;
+
+    let self_heal_summary = run_self_heal()?;
+    Ok(OperationResult::success(
+        format_mesh_install_success_message(&installed_contract.version, self_heal_summary),
+    ))
+}
+
+/// Reject a bundled mesh that cannot possibly be a working binary before the
+/// installer touches the live one. A debug `target/debug/resources/mesh` can be
+/// mid-copy while another cargo process rebuilds the same checkout, which is how
+/// a 0-byte file reached `~/.local/bin/mesh`.
+fn ensure_bundled_mesh_source_usable(bundled_binary: &Path) -> Result<(), String> {
+    let metadata = std::fs::metadata(bundled_binary).map_err(|e| {
+        format!(
+            "Failed to read bundled mesh at {}: {e}",
+            bundled_binary.display()
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "bundled mesh is not a regular file at {}",
+            bundled_binary.display()
+        ));
+    }
+    if metadata.len() == 0 {
+        return Err(format!(
+            "bundled mesh is empty at {}",
+            bundled_binary.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Make the copy runnable and prove it is the bundled mesh *before* it is allowed
+/// to replace the installed binary. Every failure here leaves the live binary alone.
+fn prepare_and_verify_mesh_copy(
+    temp_path: &Path,
+    bundled_contract: &MeshCompatibilityContract,
+) -> Result<MeshCompatibilityContract, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(temp_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set executable permission: {e}"))?;
+    }
 
     #[cfg(target_os = "macos")]
     {
         let sign = std::process::Command::new("codesign")
             .args(["--force", "--sign", "-"])
-            .arg(&target_path)
+            .arg(temp_path)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
@@ -543,38 +591,40 @@ where
         }
     }
 
-    let mut verify = std::process::Command::new(&target_path);
-    verify
-        .args(["version", "--json"])
-        .stdin(std::process::Stdio::null());
-    let verify = crate::process_utils::run_command_with_timeout(
-        &mut verify,
-        INSTALL_STATUS_TIMEOUT,
-        "mesh version --json",
-    );
+    let copied_contract = read_mesh_contract_native(temp_path)
+        .map_err(|e| format!("copied mesh did not report a version: {e}"))?;
 
-    match verify {
-        Ok(output) => {
-            let installed_contract = read_mesh_contract_from_output("mesh version --json", output)
-                .map_err(|e| format!("Mesh was copied but verification failed: {e}"))?;
-            let issues = compare_mesh_contracts(bundled_contract, &installed_contract);
-            if !issues.is_empty() {
-                let summary = issues
-                    .into_iter()
-                    .map(|issue| issue.message)
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                return Err(format!(
-                    "Mesh was copied but compatibility verification failed: {summary}"
-                ));
-            }
-            let self_heal_summary = run_self_heal()?;
-            Ok(OperationResult::success(
-                format_mesh_install_success_message(&installed_contract.version, self_heal_summary),
-            ))
-        }
-        Err(e) => Err(format!("Mesh was copied but verification failed: {e}")),
+    if copied_contract.version != bundled_contract.version
+        || copied_contract.protocol_version != bundled_contract.protocol_version
+        || copied_contract.schema_version != bundled_contract.schema_version
+    {
+        return Err(format!(
+            "copied mesh reports {}, bundle manifest says {}",
+            describe_mesh_contract(&copied_contract),
+            describe_mesh_contract(bundled_contract)
+        ));
     }
+
+    let issues = compare_mesh_contracts(bundled_contract, &copied_contract);
+    if !issues.is_empty() {
+        let summary = issues
+            .into_iter()
+            .map(|issue| issue.message)
+            .collect::<Vec<_>>()
+            .join(" ");
+        return Err(format!(
+            "Mesh was copied but compatibility verification failed: {summary}"
+        ));
+    }
+
+    Ok(copied_contract)
+}
+
+fn describe_mesh_contract(contract: &MeshCompatibilityContract) -> String {
+    format!(
+        "version {} (protocol {}, schema {})",
+        contract.version, contract.protocol_version, contract.schema_version
+    )
 }
 
 fn install_mesh_wsl(
@@ -713,7 +763,28 @@ team_pattern='[m]esh([[:space:]]|$).*team-daemon([[:space:]]|$).*start([[:space:
 member_daemons_were_running=0
 team_daemons_were_running=0
 
+if [ ! -s "$source_path" ]; then
+  echo "bundled mesh is empty: $source_path" >&2
+  exit 1
+fi
+
 mkdir -p "$target_dir"
+
+cp "$source_path" "$temp_path"
+chmod +x "$temp_path"
+
+version_json=""
+if raw_version_json="$("$temp_path" version --json 2>/dev/null)"; then
+  version_json="$(printf '%s' "$raw_version_json" | tr -d '\r\n')"
+fi
+case "$version_json" in
+  *'"version"'*) ;;
+  *)
+    rm -f "$temp_path"
+    echo "copied mesh did not report a version: $source_path" >&2
+    exit 1
+    ;;
+esac
 
 if pgrep -f "$member_pattern" >/dev/null 2>&1; then
   member_daemons_were_running=1
@@ -749,10 +820,7 @@ if pgrep -f "$team_pattern" >/dev/null 2>&1; then
   fi
 fi
 
-cp "$source_path" "$temp_path"
-chmod +x "$temp_path"
 mv -f "$temp_path" "$target_path"
-version_json="$("$target_path" version --json | tr -d '\r\n')"
 printf '%s%s\n' "${WSL_INSTALL_VERSION_JSON_MARKER:-__TAURHAUS_MESH_VERSION_JSON__=}" "$version_json"
 printf '%s%s\n' "${WSL_INSTALL_MEMBER_DAEMON_MARKER:-__TAURHAUS_MESH_MEMBER_DAEMONS_WERE_RUNNING__=}" "$member_daemons_were_running"
 printf '%s%s\n' "${WSL_INSTALL_TEAM_DAEMON_MARKER:-__TAURHAUS_MESH_TEAM_DAEMONS_WERE_RUNNING__=}" "$team_daemons_were_running"
@@ -808,6 +876,38 @@ mod tests {
         let mut permissions = std::fs::metadata(path).expect("metadata").permissions();
         permissions.set_mode(0o755);
         std::fs::set_permissions(path, permissions).expect("chmod");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn mesh_version_script(version: &str) -> String {
+        format!(
+            r#"#!/bin/sh
+if [ "$1" = "version" ] && [ "$2" = "--json" ]; then
+  echo '{{"version":"{version}","protocol_version":1,"schema_version":1,"git_commit":"new"}}'
+  exit 0
+fi
+exit 0
+"#
+        )
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn bundled_test_contract() -> MeshCompatibilityContract {
+        MeshCompatibilityContract {
+            version: "9.9.9".to_string(),
+            protocol_version: 1,
+            schema_version: 1,
+            git_commit: Some("new".to_string()),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn leftover_temp_copies(dir: &Path) -> usize {
+        std::fs::read_dir(dir)
+            .expect("read target dir")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with(".mesh.new"))
+            .count()
     }
 
     #[test]
@@ -902,7 +1002,16 @@ mod tests {
         assert!(script.contains(WSL_INSTALL_VERSION_JSON_MARKER));
         assert!(script.contains(WSL_INSTALL_MEMBER_DAEMON_MARKER));
         assert!(script.contains(WSL_INSTALL_TEAM_DAEMON_MARKER));
-        assert!(script.contains("\"$target_path\" version --json"));
+        // The copy must prove it runs before it is allowed to replace the live binary.
+        assert!(script.contains("\"$temp_path\" version --json"));
+        assert!(script.contains("rm -f \"$temp_path\""));
+        let verify_at = script
+            .find("\"$temp_path\" version --json")
+            .expect("verification step");
+        let swap_at = script
+            .find("mv -f \"$temp_path\" \"$target_path\"")
+            .expect("swap step");
+        assert!(verify_at < swap_at, "verification must precede the swap");
     }
 
     #[test]
@@ -1176,5 +1285,165 @@ exit 0
         };
 
         assert!(!mesh_install_required(&status));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — `~/.local/bin/mesh` became a 0-byte file (mode 0755).
+    // An empty file "runs" as an empty shell script, so `mesh join` / `mesh send` /
+    // `mesh daemon` exited 0 doing nothing and every managed member silently lost
+    // delivery. The installer had copied a mid-rebuild `resources/mesh` over the live
+    // binary without ever checking the bundled source was non-empty.
+    #[test]
+    fn install_mesh_native_rejects_empty_bundled_source_and_keeps_installed_binary() {
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let target_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&target_dir).expect("bin dir");
+        let target_path = target_dir.join("mesh");
+        write_executable(&target_path, &mesh_version_script("9.9.9"));
+        let before = std::fs::read(&target_path).expect("read installed mesh");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, "");
+
+        let err =
+            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
+                panic!("self-heal must not run when the install is rejected")
+            })
+            .expect_err("an empty bundled mesh must be rejected");
+
+        assert!(
+            err.contains("bundled mesh is empty"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            std::fs::read(&target_path).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert_eq!(leftover_temp_copies(&target_dir), 0);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The native
+    // installer renamed the copy over the live binary and only then ran
+    // `mesh version --json`, so a copy that cannot report a version had already
+    // replaced a working mesh by the time verification failed.
+    #[test]
+    fn install_mesh_native_keeps_installed_binary_when_copy_reports_no_version() {
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let target_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&target_dir).expect("bin dir");
+        let target_path = target_dir.join("mesh");
+        write_executable(&target_path, &mesh_version_script("9.9.9"));
+        let before = std::fs::read(&target_path).expect("read installed mesh");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, "#!/bin/sh\nexit 0\n");
+
+        let err =
+            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
+                panic!("self-heal must not run when the install is rejected")
+            })
+            .expect_err("a mesh copy that reports no version must be rejected");
+
+        assert!(
+            err.contains("copied mesh did not report a version"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            std::fs::read(&target_path).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert_eq!(leftover_temp_copies(&target_dir), 0);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. A copy whose
+    // contract does not match the bundle manifest must not reach the target either;
+    // before the guard the mismatch was only reported after the swap.
+    #[test]
+    fn install_mesh_native_keeps_installed_binary_when_copy_reports_wrong_version() {
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let target_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&target_dir).expect("bin dir");
+        let target_path = target_dir.join("mesh");
+        write_executable(&target_path, &mesh_version_script("9.9.9"));
+        let before = std::fs::read(&target_path).expect("read installed mesh");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, &mesh_version_script("0.0.1"));
+
+        let err =
+            install_mesh_native_at(&target_dir, &source_mesh, &bundled_test_contract(), || {
+                panic!("self-heal must not run when the install is rejected")
+            })
+            .expect_err("a mesh copy with the wrong version must be rejected");
+
+        assert!(
+            err.contains("copied mesh reports") && err.contains("bundle manifest says"),
+            "unexpected error: {err}"
+        );
+        assert!(err.contains("0.0.1") && err.contains("9.9.9"), "{err}");
+        assert_eq!(
+            std::fs::read(&target_path).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert_eq!(leftover_temp_copies(&target_dir), 0);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident. The WSL
+    // install script did `cp`, `chmod`, `mv -f` and only THEN `version --json`, so a
+    // broken copy replaced a working mesh before anything proved it runs.
+    #[test]
+    fn install_mesh_wsl_script_keeps_installed_binary_when_copy_reports_no_version() {
+        if Command::new("bash")
+            .args(["-c", "exit 0"])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .is_err()
+        {
+            eprintln!("skipping install_mesh_wsl_script guard test: bash is unavailable");
+            return;
+        }
+
+        let temp_home = tempfile::TempDir::new().expect("tempdir");
+        let bin_dir = temp_home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+        let installed_mesh = bin_dir.join("mesh");
+        write_executable(&installed_mesh, &mesh_version_script("0.1.0"));
+        let before = std::fs::read(&installed_mesh).expect("read installed mesh");
+
+        let source_mesh = temp_home.path().join("mesh-new");
+        write_executable(&source_mesh, "#!/bin/sh\nexit 0\n");
+
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg(install_mesh_wsl_script())
+            .arg("taurhaus-install")
+            .arg(&source_mesh)
+            .env("HOME", temp_home.path())
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run install script");
+
+        assert!(
+            !output.status.success(),
+            "install script must fail closed, stdout: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("copied mesh did not report a version"),
+            "unexpected stderr: {stderr}"
+        );
+        assert_eq!(
+            std::fs::read(&installed_mesh).expect("read installed mesh"),
+            before,
+            "the working installed binary must be left byte-identical"
+        );
+        assert_eq!(leftover_temp_copies(&bin_dir), 0);
     }
 }
