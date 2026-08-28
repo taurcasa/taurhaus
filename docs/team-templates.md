@@ -317,16 +317,19 @@ Rules worth knowing:
 - **Only harnesses that read agent definitions are exported.** That is a registry
   capability (`agent_definitions`), and today only Claude Code declares it, so a
   Codex, Antigravity, or Grok role is skipped without a file.
-- **Generated files are owned by taurhaus.** The marker line is the contract: a
-  file that carries it is rewritten on every export, and anything else at that
-  name is left exactly as it is and reported in `skipped` as `user_authored`.
-  To change a generated agent, edit the role template and export again.
+- **Generated files are owned by taurhaus.** The marker line is the contract,
+  and only in the header position above — on its own line, right after the
+  frontmatter block. A file in that shape is rewritten on every export, and
+  anything else at that name is left exactly as it is and reported in `skipped`
+  as `user_authored`, including a hand-written agent that quotes the marker
+  sentence somewhere in its body. To change a generated agent, edit the role
+  template and export again.
 - **An export reconciles the directory.** A generated file whose role left the
   catalog — renamed, deleted, or moved to a harness that does not read agent
   definitions — is deleted and reported in `removed`, because Claude Code and a
   workflow's `agentType` would otherwise keep resolving instructions nobody can
-  edit any more. Only marker-carrying `.md` files directly in `.claude/agents`
-  are ever removed; a hand-written agent is never one of them.
+  edit any more. Only `.md` files that carry the generated header directly in
+  `.claude/agents` are ever removed; a hand-written agent is never one of them.
 - **A role id has to be an agent name.** Claude Code resolves a subagent by a
   lowercase, hyphen-separated name, and that same id is what a workflow's
   `agentType` asks for. A role id such as `QA_reviewer` is reported in `skipped`
