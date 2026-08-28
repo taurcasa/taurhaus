@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-28
+
 ### Changed
 
 - **Infographics regenerated** — the eight architecture diagrams are rendered again from their manifest prompts (`gpt-image-2`, via `just infographics` reading `OPENAI_API_KEY` from `.env`); the stale-render callouts are gone. Grok and Antigravity use their real brand marks (thesvg.org, MIT; trademarks of xAI and Google).
