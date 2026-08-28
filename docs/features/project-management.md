@@ -110,7 +110,7 @@ The Overview tab shows a consolidated project snapshot in this order:
 
 Overview header actions:
 - Launch new session per tool (Claude, Codex, Antigravity, Grok)
-- An account chip per tool that has more than one account to choose between, showing the effective account, why it was chosen, and its usage meters
+- An account chip per tool that has more than one account to choose between, showing the effective account, why it was chosen, and its usage meters where a usage snapshot exists (`AccountChip.svelte:215,250`). Grok is `usage: false`, so its chip and menu show identities only
 - Open terminal for active tmux session
 - Display branch, dirty indicator, and current activity state
 
@@ -121,7 +121,7 @@ Right-clicking a project in the sidebar opens a per-project context menu.
 Core actions:
 - `Copy Path`
 - Launch tool sessions by mode:
-  - Continue (`Continue Claude`, `Continue Grok` — only the harnesses whose continue command differs from a fresh start)
+  - Continue (`Continue Claude` and `Continue Grok` — the two entries the menu hard-codes, `Sidebar.svelte:536-537`. Antigravity's continue command also differs from its fresh one (`agy … --continue`, `cli_tool.rs:367-370`) but is deliberately not exposed here yet)
   - Fresh (`New ... Session`)
   - Resume (`Resume ...`)
 - `Open in Terminal` (when live session metadata is available)

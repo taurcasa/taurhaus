@@ -211,7 +211,7 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 - **Green glow** = actively working (streaming output)
 - **Amber outline** = idle (waiting for input)
 
-**Launch a session**: Right-click a project and choose the tool-specific menu items. Taurhaus shows `Continue Claude` and `Continue Grok`, `New Claude Session`, `New Codex Session`, `New Antigravity Session` and `New Grok Session`, plus `Resume Claude`, `Resume Codex`, `Resume Antigravity` and `Resume Grok`. Where a tool has more than one account signed in, each launch item carries an `Account` submenu with that account's usage.
+**Launch a session**: Right-click a project and choose the tool-specific menu items. Taurhaus shows `Continue Claude` and `Continue Grok`, `New Claude Session`, `New Codex Session`, `New Antigravity Session` and `New Grok Session`, plus `Resume Claude`, `Resume Codex`, `Resume Antigravity` and `Resume Grok`. Where a tool has more than one account signed in, each launch item carries an `Account` submenu listing those accounts, with usage where the tool reports it — Grok is `usage: false`, and any account without a usage snapshot shows no meter.
 
 **Navigate to a session**: Click the tool icon to jump to that session in your terminal. `Open in Terminal` appears when a live session has tmux coordinates; if navigation is attempted without a valid terminal target, taurhaus shows a sidebar notice instead of failing silently.
 
