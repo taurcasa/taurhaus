@@ -328,7 +328,7 @@ describe('Settings component', () => {
       expect(screen.getByTestId('terminal-linux-note')).toBeTruthy()
       expect(screen.queryByTestId('terminal-custom-cmd')).toBeNull()
       // Regression: 4cd067a changed the registry while the Settings fallback
-      // still rendered Gemini commands.
+      // still rendered commands for the retired Google CLI.
       expect(screen.getByTestId('cli-agy-fresh').placeholder).toBe('agy')
     })
   })

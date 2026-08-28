@@ -311,7 +311,7 @@ describe('MeshTeamBuilder', () => {
     expect(screen.getByTestId('mesh-builder-role-lead-claude')).toBeInTheDocument()
     expect(screen.getByTestId('mesh-builder-role-agent-antigravity')).toBeInTheDocument()
 
-    // Regression: 9a66d1c made the third tool filter a Gemini-only branch.
+    // Regression: 9a66d1c made the third tool filter a retired-CLI-only branch.
     await fireEvent.click(screen.getByTestId('mesh-builder-filter-tool-agy'))
     expect(screen.getByTestId('mesh-builder-role-agent-antigravity')).toBeInTheDocument()
   })
