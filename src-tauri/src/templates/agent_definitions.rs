@@ -90,11 +90,20 @@ pub fn agents_dir(project_dir: &Path) -> PathBuf {
 /// Write one agent definition per role the harness registry says reads them.
 ///
 /// Only a generated file is ever replaced: a definition a person wrote by hand
-/// is reported as skipped and left exactly as it is.
+/// is reported as skipped and left exactly as it is. The project root has to
+/// exist already — an export never brings a directory tree into being, so a
+/// mistyped or wrongly-resolved path is refused instead of silently populated.
 pub fn export_agent_definitions(
     roles: &[RoleTemplate],
     project_dir: &Path,
 ) -> Result<AgentDefinitionExport, TemplateStoreError> {
+    if !project_dir.is_dir() {
+        return Err(TemplateStoreError::Validation(format!(
+            "not a project directory: {}",
+            project_dir.display()
+        )));
+    }
+
     let dir = agents_dir(project_dir);
     let mut export = AgentDefinitionExport::default();
 
@@ -349,6 +358,33 @@ mod tests {
         );
         assert!(!project.path().join("escaped.md").exists());
         assert!(!agents_dir(project.path()).exists());
+    }
+
+    #[test]
+    fn a_project_root_that_is_not_a_directory_is_refused_instead_of_created() {
+        // Regression: `just export-agents .` resolved the relative path under
+        // `src-tauri`, and `write_atomic_file` created every missing parent, so
+        // an export could silently land in a directory nobody asked for.
+        let parent = tempfile::tempdir().expect("parent dir");
+        let missing = parent.path().join("not-a-project");
+        let file = parent.path().join("not-a-directory");
+        std::fs::write(&file, "regular file").expect("regular file");
+
+        for root in [&missing, &file] {
+            let error = export_agent_definitions(&[claude_role()], root)
+                .expect_err("a project root that is not a directory is refused");
+            assert!(
+                matches!(error, TemplateStoreError::Validation(_)),
+                "unexpected error for {}: {error:?}",
+                root.display()
+            );
+        }
+
+        assert!(!missing.exists(), "the export created the project root");
+        assert_eq!(
+            std::fs::read_to_string(&file).expect("untouched file"),
+            "regular file"
+        );
     }
 
     #[test]

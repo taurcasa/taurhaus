@@ -363,3 +363,30 @@ fn export_agent_definitions_cli_writes_generated_claude_agents_only() {
         hand_written
     );
 }
+
+#[test]
+fn export_agent_definitions_cli_rejects_a_project_root_that_is_not_a_directory() {
+    // Regression: the `export-agents` recipe changed into `src-tauri` before
+    // handing the path to cargo, so `just export-agents .` wrote agents into
+    // the Rust subdirectory, and a mistyped relative path was created on the
+    // way instead of refused.
+    let data_dir = tempfile::tempdir().expect("renderer data dir");
+    let parent = tempfile::tempdir().expect("parent dir");
+    let missing = parent.path().join("not-a-project");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_taurhaus"))
+        .args([
+            "--export-agent-definitions",
+            missing.to_str().expect("utf8 project path"),
+        ])
+        .env("TAURHAUS_DATA_DIR", data_dir.path())
+        .output()
+        .expect("run real taurhaus binary");
+
+    assert!(
+        !output.status.success(),
+        "export unexpectedly succeeded: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(!missing.exists(), "the export created the project root");
+}

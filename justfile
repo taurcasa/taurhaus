@@ -159,7 +159,13 @@ infographics-dry-run:
 # Only generated files are replaced; a hand-written agent is reported as skipped.
 # Example: just export-agents ~/projects/taurhaus
 export-agents PROJECT: ensure-tauri-resources
-    cd src-tauri && cargo run --bin taurhaus -- --export-agent-definitions "{{PROJECT}}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Resolve PROJECT against the directory the command was typed in, before
+    # cargo runs from src-tauri — otherwise a relative path lands in the Rust
+    # subdirectory. A path that is not an existing directory fails here.
+    project="$(cd "{{invocation_directory()}}" && cd "{{PROJECT}}" && pwd)"
+    cd src-tauri && cargo run --bin taurhaus -- --export-agent-definitions "$project"
 
 # Run all non-E2E tests (Rust unit + Rust integration/system + frontend unit + script unit).
 # This is the primary "does everything work?" test command.
