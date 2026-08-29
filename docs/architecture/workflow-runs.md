@@ -96,7 +96,11 @@ records why.
 and places `{ left, top, width, height }` from a `{ rowCount, runCount, collapsed }`
 descriptor, and the component fills exactly that rectangle. Because a tree hangs
 below its node, the layout also pushes whatever sits beneath a node down by that
-node's tree clearance — otherwise the lead's tree would cover the agent row.
+node's tree clearance — otherwise the lead's tree would cover the agent row. A
+tree is also capped at its column pitch less a gutter, so two neighbouring nodes
+that both carry one cannot overlap; the readable minimum still wins on a canvas
+too narrow to honour that cap. Within that width a finished run's one-liner drops
+the word "tokens" so the duration survives, and its tooltip spells the unit out.
 
 **What the UI will not invent.** A live agent has no label and no phase, so it
 renders under no phase row and shows its prompt preview instead of a name. A
