@@ -10,16 +10,29 @@ pub(super) fn stop_cli_session_impl(
     tmux_pane: String,
     cli_tool: Option<CliTool>,
 ) -> Result<(), String> {
-    let tool = cli_tool.unwrap_or_default();
+    let outcome = stop_cli_session_only(log_file, provider, &tmux_pane, cli_tool);
 
     // Stopping a managed member is the moment the operator's own saved effort
     // default has to come back: mesh's `/effort` rewrote it for the assignment,
-    // and nothing else would put it right. Runs before the pane goes away, so
-    // the member that owns it can still be identified.
-    crate::coordination::effort_default::restore_effort_default_for_pane(
+    // and nothing else would put it right. Only a stop that actually succeeded
+    // earns it: a session still running would rewrite the level again, and the
+    // record a later stop needs would already be gone. The member is found from
+    // its runtime record, which outlives the pane.
+    crate::coordination::effort_default::restore_effort_default_for_stopped_pane(
         &crate::provider::platform_paths::PlatformPaths::teams_dir(),
         &tmux_pane,
+        &outcome,
     );
+    outcome
+}
+
+fn stop_cli_session_only(
+    log_file: &LogFileState,
+    provider: &ProviderState,
+    tmux_pane: &str,
+    cli_tool: Option<CliTool>,
+) -> Result<(), String> {
+    let tool = cli_tool.unwrap_or_default();
 
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
@@ -29,7 +42,7 @@ pub(super) fn stop_cli_session_impl(
                 id,
                 daemon_method,
                 protocol::StopSessionParams {
-                    tmux_pane: tmux_pane.clone(),
+                    tmux_pane: tmux_pane.to_string(),
                     cli_tool: tool,
                 },
             );
@@ -46,7 +59,10 @@ pub(super) fn stop_cli_session_impl(
                 "daemon_method".to_string(),
                 Value::String(daemon_method.to_string()),
             );
-            request_fields.insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+            request_fields.insert(
+                "tmux_pane".to_string(),
+                Value::String(tmux_pane.to_string()),
+            );
             request_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
             log_file.emit(
                 "info",
@@ -70,8 +86,10 @@ pub(super) fn stop_cli_session_impl(
                         "daemon_method".to_string(),
                         Value::String(daemon_method.to_string()),
                     );
-                    success_fields
-                        .insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+                    success_fields.insert(
+                        "tmux_pane".to_string(),
+                        Value::String(tmux_pane.to_string()),
+                    );
                     success_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
                     log_file.emit(
                         "info",
@@ -100,7 +118,10 @@ pub(super) fn stop_cli_session_impl(
                         "daemon_method".to_string(),
                         Value::String(daemon_method.to_string()),
                     );
-                    fail_fields.insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+                    fail_fields.insert(
+                        "tmux_pane".to_string(),
+                        Value::String(tmux_pane.to_string()),
+                    );
                     fail_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
                     fail_fields.insert("error".to_string(), Value::String(msg.clone()));
                     log_file.emit(
@@ -126,8 +147,10 @@ pub(super) fn stop_cli_session_impl(
                         "daemon_method".to_string(),
                         Value::String(daemon_method.to_string()),
                     );
-                    unreachable_fields
-                        .insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+                    unreachable_fields.insert(
+                        "tmux_pane".to_string(),
+                        Value::String(tmux_pane.to_string()),
+                    );
                     unreachable_fields
                         .insert("tool".to_string(), Value::String(format!("{tool:?}")));
                     unreachable_fields.insert("error".to_string(), Value::String(e.to_string()));
@@ -149,7 +172,10 @@ pub(super) fn stop_cli_session_impl(
         "caller".to_string(),
         Value::String("command_center.stop".to_string()),
     );
-    fallback_fields.insert("tmux_pane".to_string(), Value::String(tmux_pane.clone()));
+    fallback_fields.insert(
+        "tmux_pane".to_string(),
+        Value::String(tmux_pane.to_string()),
+    );
     fallback_fields.insert("tool".to_string(), Value::String(format!("{tool:?}")));
     log_file.emit(
         "info",
@@ -158,7 +184,7 @@ pub(super) fn stop_cli_session_impl(
         Some("Falling back to local tmux stop".to_string()),
         fallback_fields,
     );
-    crate::session_scanner::control::stop_session(&tmux_pane, tool)
+    crate::session_scanner::control::stop_session(tmux_pane, tool)
         .map_err(|e| format!("Failed to stop session: {e}"))
 }
 

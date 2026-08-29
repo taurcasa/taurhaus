@@ -218,6 +218,28 @@ fn harness_written_level(
 ///
 /// The Stop control knows only the pane it is stopping, so the member is found
 /// by it. An unmanaged pane matches nothing and nothing is written.
+/// Put a pane's recorded default back, but only once its stop has succeeded.
+///
+/// Restoring first and stopping second gives the operator's value back to a
+/// session that is still running and still able to rewrite it, and a stop that
+/// then fails has already discarded the record a later stop would need. Taking
+/// the stop's own outcome makes that ordering impossible to get wrong: the
+/// value cannot be read before the stop has produced one.
+pub fn restore_effort_default_for_stopped_pane(
+    teams_dir: &Path,
+    pane_id: &str,
+    stop_outcome: &Result<(), String>,
+) {
+    if stop_outcome.is_err() {
+        tracing::debug!(
+            pane_id = %pane_id,
+            "keeping the recorded effort default: the session was not stopped"
+        );
+        return;
+    }
+    restore_effort_default_for_pane(teams_dir, pane_id);
+}
+
 pub fn restore_effort_default_for_pane(teams_dir: &Path, pane_id: &str) {
     let Ok(team_names) = crate::coordination::stores::TeamConfigStore::list(teams_dir) else {
         return;
@@ -863,6 +885,73 @@ mod tests {
             settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
             "low"
         );
+    }
+
+    // Regression: 53b2e63 restored the operator's own default from the Stop
+    // command before the stop request was issued, and the restore cleared the
+    // record for every outcome but an unreadable settings file. A stop that
+    // then failed left the session live and still able to rewrite the level,
+    // with nothing left for a later stop to put back.
+    #[test]
+    fn a_stop_that_failed_keeps_the_recorded_default() {
+        let teams = TempDir::new().expect("teams dir");
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+        seed_member_with_recorded_default(teams.path(), "%42", recorded);
+
+        restore_effort_default_for_stopped_pane(
+            teams.path(),
+            "%42",
+            &Err("Failed to stop session".to_string()),
+        );
+
+        assert_eq!(
+            settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
+            "high",
+            "a session that is still running keeps the level it is running at"
+        );
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            teams.path(),
+            "effort-team",
+            "lead-dev",
+        )
+        .expect("runtime record");
+        assert!(
+            record.effort_default.is_some(),
+            "the operator's own value is still there for a later stop to put back"
+        );
+    }
+
+    #[test]
+    fn a_stop_that_succeeded_restores_and_forgets() {
+        let teams = TempDir::new().expect("teams dir");
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+        seed_member_with_recorded_default(teams.path(), "%42", recorded);
+
+        restore_effort_default_for_stopped_pane(teams.path(), "%42", &Ok(()));
+
+        assert_eq!(
+            settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
+            "low"
+        );
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            teams.path(),
+            "effort-team",
+            "lead-dev",
+        )
+        .expect("runtime record");
+        assert!(record.effort_default.is_none());
     }
 
     #[test]

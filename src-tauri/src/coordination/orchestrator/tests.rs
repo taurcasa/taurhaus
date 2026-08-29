@@ -4839,3 +4839,128 @@ fn grok_runtime_identity_is_backfilled_once_its_registry_appears() {
         );
     }
 }
+
+/// Seed a team whose one member has the operator's own effort default on
+/// record and a level the harness has demonstrably written since.
+fn seed_member_with_effort_default(
+    teams_dir: &std::path::Path,
+    settings_path: std::path::PathBuf,
+) -> (CoordinationOrchestrator, Arc<PaneOwnershipRuntime>, String) {
+    let runtime = Arc::new(PaneOwnershipRuntime::new(false));
+    let fake = Arc::new(FakeBackend::default());
+    let mut orchestrator =
+        CoordinationOrchestrator::new_with_runtime(teams_dir.to_path_buf(), fake, runtime.clone());
+    let team_name = "architecture-final".to_string();
+    orchestrator
+        .create_team(&team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(&team_name, sample_member("lead-dev", CliTool::Claude))
+        .expect("add member");
+
+    let mut record =
+        MemberRuntimeStore::load(teams_dir, &team_name, "lead-dev").expect("runtime exists");
+    record.pane_id = Some("%9".to_string());
+    record.cli_tool = Some(CliTool::Claude);
+    record.launch_effort = Some("medium".to_string());
+    record.applied_effort = Some("high".to_string());
+    record.effort_default = Some(crate::coordination::effort_default::RecordedEffortDefault {
+        settings_path,
+        model: "opus".to_string(),
+        level: Some("low".to_string()),
+    });
+    MemberRuntimeStore::save(teams_dir, &team_name, "lead-dev", &record).expect("runtime saved");
+
+    (orchestrator, runtime, team_name)
+}
+
+fn effort_level_in(settings_path: &std::path::Path) -> String {
+    let raw = std::fs::read_to_string(settings_path).expect("read settings");
+    let value: serde_json::Value = serde_json::from_str(&raw).expect("settings json");
+    value["modelSettings"]["opus"]["effortLevel"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+// Regression: 53b2e63 restored the operator's own effort default at the top of
+// the member teardown, before anything tried to terminate the pane. A pane
+// teardown that was then skipped or failed left a live session still able to
+// rewrite the level, with the record a later stop would need already cleared.
+#[test]
+fn a_teardown_that_could_not_kill_the_pane_keeps_the_recorded_default() {
+    let tmp = TempDir::new().expect("tempdir");
+    let settings_dir = TempDir::new().expect("settings dir");
+    let settings_path = settings_dir.path().join("settings.json");
+    std::fs::write(
+        &settings_path,
+        r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+    )
+    .expect("harness write");
+
+    let (orchestrator, _runtime, team_name) =
+        seed_member_with_effort_default(tmp.path(), settings_path.clone());
+    let record = MemberRuntimeStore::load(tmp.path(), &team_name, "lead-dev").expect("runtime");
+
+    let diagnostics = orchestrator.teardown_member_resources_best_effort(
+        &team_name,
+        "lead-dev",
+        Some(std::path::Path::new("/tmp/project")),
+        Some(&record),
+    );
+
+    assert!(
+        diagnostics
+            .steps
+            .iter()
+            .any(|step| step.step == "kill_pane" && !step.success),
+        "the pane was not terminated: {:?}",
+        diagnostics.steps
+    );
+    assert_eq!(
+        effort_level_in(&settings_path),
+        "high",
+        "a session still running keeps the level it is running at"
+    );
+    let after = MemberRuntimeStore::load(tmp.path(), &team_name, "lead-dev").expect("runtime");
+    assert!(
+        after.effort_default.is_some(),
+        "the operator's own value is still there for a later teardown to put back"
+    );
+}
+
+#[test]
+fn a_teardown_that_killed_the_pane_puts_the_users_level_back() {
+    let tmp = TempDir::new().expect("tempdir");
+    let settings_dir = TempDir::new().expect("settings dir");
+    let settings_path = settings_dir.path().join("settings.json");
+    std::fs::write(
+        &settings_path,
+        r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+    )
+    .expect("harness write");
+
+    let (mut orchestrator, _runtime, team_name) =
+        seed_member_with_effort_default(tmp.path(), settings_path.clone());
+    orchestrator.runtime = Arc::new(PaneOwnershipRuntime::new(true));
+    let record = MemberRuntimeStore::load(tmp.path(), &team_name, "lead-dev").expect("runtime");
+
+    let diagnostics = orchestrator.teardown_member_resources_best_effort(
+        &team_name,
+        "lead-dev",
+        Some(std::path::Path::new("/tmp/project")),
+        Some(&record),
+    );
+
+    assert!(
+        diagnostics
+            .steps
+            .iter()
+            .any(|step| step.step == "kill_pane" && step.success),
+        "the pane was terminated: {:?}",
+        diagnostics.steps
+    );
+    assert_eq!(effort_level_in(&settings_path), "low");
+    let after = MemberRuntimeStore::load(tmp.path(), &team_name, "lead-dev").expect("runtime");
+    assert!(after.effort_default.is_none());
+}
