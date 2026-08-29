@@ -1,9 +1,17 @@
 <script>
   import { activityLevel } from '../activitySignal.js'
+  import { runTreeDescriptor, workflowSessionId } from '../workflowRuns.js'
+  import {
+    isWorkflowRunCollapsed,
+    toggleWorkflowRun,
+    watchWorkflowSession,
+    workflowSessionRuns,
+  } from '../workflowRunStore.svelte.js'
   import MeshConnection from './MeshConnection.svelte'
   import { computeMeshLayout } from './meshLayout.js'
   import MeshNode from './MeshNode.svelte'
   import MeshNodeRoleCard from './MeshNodeRoleCard.svelte'
+  import WorkflowRunTree from './WorkflowRunTree.svelte'
 
   let {
     lead = null,
@@ -314,6 +322,73 @@
     })
   })
 
+  /**
+   * The workflow runs one node shows.
+   *
+   * A caller can hand a node its runs directly (`workflowRuns`) — that is how a
+   * fixture draws a tree without a backend. Otherwise the runs come from the
+   * shared store, which follows the node's Claude session while this canvas is
+   * mounted. A node with neither shows no tree and costs nothing.
+   */
+  function nodeWorkflow(member) {
+    const supplied = Array.isArray(member?.workflowRuns) ? member.workflowRuns : null
+    if (supplied) {
+      return { sessionId: '', runs: supplied, collapsedRunIds: [] }
+    }
+
+    const sessionId = workflowSessionId(member)
+    if (!sessionId) return { sessionId: '', runs: [], collapsedRunIds: [] }
+
+    const runs = workflowSessionRuns(sessionId).runs
+    return {
+      sessionId,
+      runs,
+      collapsedRunIds: runs
+        .map((run) => String(run?.run_id ?? run?.runId ?? ''))
+        .filter((runId) => runId && isWorkflowRunCollapsed(sessionId, runId)),
+    }
+  }
+
+  const workflowByNodeId = $derived.by(() => {
+    const byNodeId = new Map()
+    for (const member of [normalizedLead, ...normalizedAgents]) {
+      if (!member) continue
+      byNodeId.set(String(member.id), nodeWorkflow(member))
+    }
+    return byNodeId
+  })
+
+  const watchedSessionIds = $derived.by(() => {
+    const ids = []
+    for (const workflow of workflowByNodeId.values()) {
+      if (workflow.sessionId && !ids.includes(workflow.sessionId)) ids.push(workflow.sessionId)
+    }
+    return ids
+  })
+
+  // One subscription per session on the canvas, released when it leaves. The
+  // store owns the single poll timer; nodes never get one of their own.
+  $effect(() => {
+    const stops = watchedSessionIds.map((sessionId) => watchWorkflowSession(sessionId))
+    return () => {
+      for (const stop of stops) stop()
+    }
+  })
+
+  function withRunTree(member) {
+    const workflow = workflowByNodeId.get(String(member.id))
+    return {
+      ...member,
+      runTree: runTreeDescriptor(workflow?.runs, workflow?.collapsedRunIds),
+    }
+  }
+
+  function handleToggleRun(nodeId, runId) {
+    const workflow = workflowByNodeId.get(String(nodeId))
+    if (!workflow?.sessionId) return
+    toggleWorkflowRun(workflow.sessionId, runId)
+  }
+
   const layout = $derived.by(() => {
     const leadData = normalizedLead
     if (!leadData) return { lead: null, agents: [], connections: [], addNode: null }
@@ -322,8 +397,8 @@
       width: containerWidth || 600,
       height: Math.max(460, containerHeight || 0),
       mode: normalizedMode,
-      lead: leadData,
-      agents: normalizedAgents,
+      lead: withRunTree(leadData),
+      agents: normalizedAgents.map(withRunTree),
     })
 
     return {
@@ -366,6 +441,11 @@
     let maxY = current.lead.position.y + 72
     for (const agent of current.agents) {
       maxY = Math.max(maxY, agent.position.y + 64)
+    }
+
+    for (const node of [current.lead, ...current.agents]) {
+      if (!node.runTree) continue
+      maxY = Math.max(maxY, node.runTree.top + node.runTree.height)
     }
 
     if (current.addNode) {
@@ -539,6 +619,18 @@
           onHoverStart={() => scheduleHoverCard(agent.id)}
           onHoverEnd={dismissHoverCard}
         />
+      {/each}
+
+      {#each [layout.lead, ...layout.agents] as node (`run-tree-${node.id}`)}
+        {#if node.runTree}
+          <WorkflowRunTree
+            box={node.runTree}
+            runs={workflowByNodeId.get(String(node.id))?.runs ?? []}
+            collapsedRunIds={workflowByNodeId.get(String(node.id))?.collapsedRunIds ?? []}
+            {dark}
+            onToggleRun={(runId) => handleToggleRun(node.id, runId)}
+          />
+        {/if}
       {/each}
 
       {#if layout.addNode}

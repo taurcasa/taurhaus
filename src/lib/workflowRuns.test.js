@@ -5,6 +5,7 @@ import {
   formatRunDuration,
   formatTokens,
   runListRow,
+  runTreeDescriptor,
   runTreeModel,
   workflowSessionId,
 } from './workflowRuns.js'
@@ -251,5 +252,28 @@ describe('runListRow', () => {
   it('labels an unrecognised status without guessing', () => {
     const row = runListRow({ run_id: 'wf_3', name: 'x', status: 'unknown', started_at: 1 })
     expect(row.statusLabel).toBe('Unknown')
+  })
+})
+
+describe('runTreeDescriptor', () => {
+  it('is null for a node with no runs', () => {
+    expect(runTreeDescriptor([])).toBeNull()
+    expect(runTreeDescriptor(null)).toBeNull()
+    expect(runTreeDescriptor([{}])).toBeNull()
+  })
+
+  it('counts the rows of every expanded live run and one header per run', () => {
+    const descriptor = runTreeDescriptor([
+      run({ agents: [agent({ agent_id: 'a' }), agent({ agent_id: 'b' })] }),
+      run({ run_id: 'wf_2', status: 'completed', agents: [] }),
+    ])
+
+    expect(descriptor).toEqual({ rowCount: 2, runCount: 2, collapsed: false })
+  })
+
+  it('drops the rows of a run the viewer collapsed', () => {
+    const descriptor = runTreeDescriptor([run()], ['wf_1'])
+
+    expect(descriptor).toEqual({ rowCount: 0, runCount: 1, collapsed: true })
   })
 })

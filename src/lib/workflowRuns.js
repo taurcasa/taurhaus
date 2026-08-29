@@ -229,3 +229,20 @@ export function runListRow(summary) {
     startedAt: count(summary?.started_at) ?? 0,
   }
 }
+
+/**
+ * The descriptor `meshLayout` sizes a node's run tree from: how many rows the
+ * expanded runs want in total, and how many run headers stack above them. A
+ * node with no runs gets `null` and the layout places no box.
+ */
+export function runTreeDescriptor(runs, collapsedRunIds = []) {
+  const collapsed = new Set((Array.isArray(collapsedRunIds) ? collapsedRunIds : []).map(String))
+  const models = (Array.isArray(runs) ? runs : []).map(runTreeModel).filter(Boolean)
+  if (models.length === 0) return null
+
+  const rowCount = models.reduce(
+    (total, model) => total + (model.isLive && !collapsed.has(model.runId) ? model.rowCount : 0),
+    0
+  )
+  return { rowCount, runCount: models.length, collapsed: rowCount === 0 }
+}
