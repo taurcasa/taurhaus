@@ -456,3 +456,24 @@ describe('meshLayout makes room for run trees', () => {
     ])
   })
 })
+
+describe('meshLayout keeps neighbouring run trees apart', () => {
+  it('never overlaps the tree boxes of two adjacent nodes', () => {
+    const layout = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(3).map((agent) => ({ ...agent, runTree: { rowCount: 4 } })),
+    })
+
+    const boxes = layout.agents
+      .map((agent) => agent.runTree)
+      .sort((left, right) => left.left - right.left)
+
+    for (let index = 1; index < boxes.length; index += 1) {
+      const previous = boxes[index - 1]
+      expect(boxes[index].left).toBeGreaterThanOrEqual(previous.left + previous.width)
+    }
+  })
+})

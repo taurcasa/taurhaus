@@ -70,9 +70,9 @@ describe('WorkflowRunTree', () => {
   it('heads each run with its name and totals', () => {
     renderTree()
 
-    expect(screen.getByTestId('workflow-run-header')).toHaveTextContent(
-      'feature-pr · 1/3 done · 8.4k tokens'
-    )
+    const header = screen.getByTestId('workflow-run-header')
+    expect(header).toHaveTextContent('feature-pr · 1/3 done · 8.4k')
+    expect(header.title).toBe('feature-pr · 1/3 done · 8.4k tokens')
   })
 
   it('expands a live run into its phase and agent rows', () => {
@@ -108,9 +108,9 @@ describe('WorkflowRunTree', () => {
   it('collapses a finished run to one line', () => {
     renderTree({ runs: [finishedRun()] })
 
-    expect(screen.getByTestId('workflow-run-header')).toHaveTextContent(
-      'docs-sweep · 2/2 done · 12.4k tokens · 2m 18s'
-    )
+    const header = screen.getByTestId('workflow-run-header')
+    expect(header).toHaveTextContent('docs-sweep · 2/2 done · 12.4k · 2m 18s')
+    expect(header.title).toBe('docs-sweep · 2/2 done · 12.4k tokens · 2m 18s')
     expect(screen.queryAllByTestId('workflow-run-agent')).toHaveLength(0)
   })
 

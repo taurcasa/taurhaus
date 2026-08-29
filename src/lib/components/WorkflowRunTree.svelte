@@ -61,7 +61,7 @@
         data-status={model.status}
         data-expanded={model.expanded}
         aria-expanded={model.expanded}
-        title={model.summary}
+        title={model.detail}
         onclick={() => onToggleRun(model.runId)}
       >
         <span class="workflow-run-dot" aria-hidden="true"></span>

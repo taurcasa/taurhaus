@@ -162,7 +162,16 @@ function groupAgents(run, agents) {
   return groups
 }
 
-function runSummaryLine(run, status) {
+/**
+ * The run's one-line summary, twice: `summary` is what the canvas renders and
+ * `detail` is its tooltip.
+ *
+ * They differ in one word. A node's tree is only as wide as its column, and
+ * "tokens" is the least load-bearing word on the line — dropping it is what
+ * lets a finished run keep its duration instead of an ellipsis. The tooltip
+ * spells the unit out, so nothing is actually lost.
+ */
+function runSummaryLines(run, status) {
   const name = text(run?.name) || text(run?.run_id)
   const parts = [name]
 
@@ -171,13 +180,21 @@ function runSummaryLine(run, status) {
   if (agents !== null && done !== null) parts.push(`${done}/${agents} done`)
 
   const tokens = formatTokens(run?.totals?.tokens)
-  if (tokens) parts.push(`${tokens} tokens`)
+  const compact = tokens ? [...parts, tokens] : parts
+  const detailed = tokens ? [...parts, `${tokens} tokens`] : parts
 
   const duration = formatRunDuration(run)
-  if (duration) parts.push(duration)
+  if (duration) {
+    compact.push(duration)
+    detailed.push(duration)
+  }
 
-  if (status === 'failed' && parts.length === 1) parts.push('failed')
-  return parts.join(' · ')
+  if (status === 'failed' && compact.length === 1) {
+    compact.push('failed')
+    detailed.push('failed')
+  }
+
+  return { summary: compact.join(' · '), detail: detailed.join(' · ') }
 }
 
 /**
@@ -205,7 +222,7 @@ export function runTreeModel(run) {
     isLive,
     groups,
     rowCount,
-    summary: runSummaryLine(run, status),
+    ...runSummaryLines(run, status),
   }
 }
 

@@ -188,7 +188,10 @@ describe('runTreeModel', () => {
     }))
 
     expect(model.isLive).toBe(false)
-    expect(model.summary).toBe('feature-pr · 3/3 done · 12.4k tokens · 2m 18s')
+    // The rendered line drops the word "tokens" so the duration survives the
+    // node's column width; the tooltip keeps the unit.
+    expect(model.summary).toBe('feature-pr · 3/3 done · 12.4k · 2m 18s')
+    expect(model.detail).toBe('feature-pr · 3/3 done · 12.4k tokens · 2m 18s')
     expect(model.rowCount).toBe(0)
   })
 

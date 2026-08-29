@@ -81,11 +81,18 @@ export const RUN_TREE_METRICS = Object.freeze({
   /** One phase title or one agent. */
   rowHeight: 16,
   minWidth: 152,
-  /** What an expanded tree asks for, so agent rows are readable. */
-  expandedWidth: 216,
+  /**
+   * What a tree asks for when the row can afford it. Collapsed and expanded
+   * ask for the same width: an agent row needs it to carry a label, a model and
+   * a tool, and a finished run's one-liner needs it to keep its tokens and
+   * duration instead of an ellipsis.
+   */
+  preferredWidth: 216,
   maxWidth: 272,
   /** Breathing room kept between the box and the canvas edge when it fits. */
   margin: 8,
+  /** Clear space left between the trees of two neighbouring nodes. */
+  columnGutter: 6,
 })
 
 function positiveInteger(value, fallback) {
@@ -133,19 +140,28 @@ function runTreeClearance(members) {
   return clearance
 }
 
-/** Place one node's run tree, or `null` when the node carries no run. */
-function runTreeBox(node, canvasWidth) {
+/**
+ * Place one node's run tree, or `null` when the node carries no run.
+ *
+ * `columnLimit` is the widest a tree may grow without reaching into the next
+ * node's column — two neighbours that both carry a tree must not overlap. The
+ * lead is alone in its row and passes none. The readable minimum still wins on
+ * a canvas too narrow to honour the limit: a box nobody can read is worse than
+ * two that touch.
+ */
+function runTreeBox(node, canvasWidth, columnLimit = Number.POSITIVE_INFINITY) {
   const shape = runTreeShape(node?.runTree)
   if (!shape) return null
 
-  // A collapsed tree is one line and sits flush with its node; an expanded one
-  // asks for enough width to read a label, a model and a tool on one row.
   const available = Math.max(RUN_TREE_METRICS.minWidth, canvasWidth - RUN_TREE_METRICS.margin * 2)
-  const preferred = shape.collapsed ? RUN_TREE_METRICS.minWidth : RUN_TREE_METRICS.expandedWidth
-  const width = clamp(
-    Math.max(Number(node.width) || 0, preferred),
+  const ceiling = Math.max(
     RUN_TREE_METRICS.minWidth,
-    Math.min(RUN_TREE_METRICS.maxWidth, available)
+    Math.min(RUN_TREE_METRICS.maxWidth, available, columnLimit)
+  )
+  const width = clamp(
+    Math.max(Number(node.width) || 0, RUN_TREE_METRICS.preferredWidth),
+    RUN_TREE_METRICS.minWidth,
+    ceiling
   )
 
   return {
@@ -288,7 +304,10 @@ function computeMeshBoxes(topology, input) {
     width,
     height,
     lead: { ...lead, runTree: runTreeBox(lead, width) },
-    agents: positionedAgents.map((agent) => ({ ...agent, runTree: runTreeBox(agent, width) })),
+    agents: positionedAgents.map((agent) => ({
+      ...agent,
+      runTree: runTreeBox(agent, width, nodeWidth + gap - RUN_TREE_METRICS.columnGutter),
+    })),
     addNode,
     nodeWidth,
     gap,
