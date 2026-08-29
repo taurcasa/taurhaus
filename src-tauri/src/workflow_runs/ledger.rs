@@ -61,3 +61,62 @@ fn markdown_cell(value: &str) -> String {
         .join(" ")
         .replace('|', "\\|")
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+
+    use super::*;
+    use crate::workflow_runs::{WorkflowRunStatus, WorkflowRunTotals};
+
+    fn run_with_result(result: Value) -> WorkflowRun {
+        WorkflowRun {
+            run_id: "wf_live-123".to_string(),
+            name: "feature-pr".to_string(),
+            description: String::new(),
+            phases: Vec::new(),
+            status: WorkflowRunStatus::Completed,
+            started_at: 0,
+            finished_at: Some(1),
+            agents: Vec::new(),
+            totals: WorkflowRunTotals {
+                agents: 0,
+                done: 0,
+                tokens: Some(0),
+                tool_calls: Some(0),
+                duration_ms: Some(1),
+            },
+            result: Some(result),
+            script_path: PathBuf::new(),
+        }
+    }
+
+    #[test]
+    fn ledger_row_renders_only_the_procedure_return_shape() {
+        let mut run = run_with_result(json!({
+            "ledger": {
+                "title": "W2a | scanner",
+                "size": "feature",
+                "implementer": "Codex",
+                "reviewers": ["Opus conformance", "Opus operational"],
+                "rounds": 2,
+                "majors": 1,
+                "findings": [],
+                "remaining": []
+            },
+            "commits": ["abc123"],
+            "gate": {"status":"pass"}
+        }));
+
+        assert_eq!(
+            ledger_row(&run).as_deref(),
+            Some("| W2a \\| scanner | Codex | Opus conformance, Opus operational | 2 | 1 | tbd |")
+        );
+
+        run.result = Some(json!("plain workflow result"));
+        assert_eq!(ledger_row(&run), None);
+    }
+}

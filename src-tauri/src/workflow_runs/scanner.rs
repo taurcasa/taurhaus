@@ -864,3 +864,221 @@ fn preview(value: &str) -> String {
         .take(PROMPT_PREVIEW_CHARS)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs::{self, File, FileTimes};
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime};
+
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    const RUN_ID: &str = "wf_live-123";
+
+    struct Fixture {
+        _temp: TempDir,
+        session_dir: PathBuf,
+    }
+
+    fn write(path: &Path, contents: &str) {
+        fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
+        fs::write(path, contents).expect("write fixture");
+    }
+
+    fn set_modified(path: &Path, modified: SystemTime) {
+        File::options()
+            .write(true)
+            .open(path)
+            .expect("open fixture")
+            .set_times(FileTimes::new().set_modified(modified))
+            .expect("set fixture mtime");
+    }
+
+    fn live_fixture() -> Fixture {
+        let temp = TempDir::new().expect("tempdir");
+        let session_dir = temp.path().join("session-123");
+        let run_dir = session_dir.join("subagents/workflows").join(RUN_ID);
+        write(
+            &session_dir
+                .join("workflows/scripts")
+                .join(format!("feature-pr-{RUN_ID}.js")),
+            "export const meta = { name: 'feature-pr', description: 'Run it', phases: [{ title: 'Implement' }, { title: 'Review' }] }",
+        );
+        write(
+            &run_dir.join("journal.jsonl"),
+            &format!(
+                "{}\nnot-json\n{}\n{}\n",
+                json!({"type":"started","agentId":"one"}),
+                json!({"type":"started","agentId":"two"}),
+                json!({"type":"result","agentId":"one","result":"done"}),
+            ),
+        );
+        write(
+            &run_dir.join("agent-one.jsonl"),
+            &format!(
+                "{}\n{}\n{{\"type\":\"assistant\"",
+                json!({"message":{"role":"user","content":"Implement safely"}}),
+                json!({"message":{"id":"one","role":"assistant","model":"opus","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","name":"Read"}]}}),
+            ),
+        );
+        write(
+            &run_dir.join("agent-two.jsonl"),
+            &format!(
+                "{}\n{}\n",
+                json!({"message":{"role":"user","content":[{"type":"text","text":"Review carefully"}]}}),
+                json!({"message":{"id":"two","role":"assistant","model":"sonnet","usage":{"input_tokens":4,"output_tokens":3},"content":[{"type":"tool_use","name":"Grep"}]}}),
+            ),
+        );
+        Fixture {
+            _temp: temp,
+            session_dir,
+        }
+    }
+
+    fn completed_summary(status: &str) -> Value {
+        json!({
+            "runId": RUN_ID,
+            "status": status,
+            "result": {"ok": true},
+            "agentCount": 2,
+            "durationMs": 2400,
+            "totalTokens": 91,
+            "totalToolCalls": 4,
+            "workflowName": "feature-pr",
+            "phases": [{"title":"Implement"},{"title":"Review"}],
+            "startTime": 1_700_000_000_000_i64,
+            "timestamp": "2023-11-14T22:13:22.400Z",
+            "workflowProgress": [{
+                "type":"workflow_agent",
+                "agentId":"one",
+                "label":"implementer",
+                "phaseTitle":"Implement",
+                "model":"opus",
+                "state":"done",
+                "lastToolName":"Read",
+                "lastProgressAt":1_700_000_001_000_i64,
+                "tokens":60,
+                "toolCalls":3,
+                "promptPreview":"Implement safely",
+                "resultPreview":"done"
+            }]
+        })
+    }
+
+    #[test]
+    fn live_run_is_reconstructed_from_script_journal_and_bounded_transcript_reads() {
+        let fixture = live_fixture();
+        let runs = scan_session_runs(&fixture.session_dir);
+
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.name, "feature-pr");
+        assert_eq!(run.description, "Run it");
+        assert_eq!(run.phases, ["Implement", "Review"]);
+        assert_eq!(run.status, WorkflowRunStatus::Live);
+        assert_eq!(run.totals.agents, 2);
+        assert_eq!(run.totals.done, 1);
+        assert_eq!(run.totals.tokens, Some(22));
+        assert_eq!(run.totals.tool_calls, Some(2));
+        assert_eq!(run.agents[0].label, None);
+        assert_eq!(run.agents[0].phase, None);
+        assert_eq!(run.agents[0].prompt_preview, "Implement safely");
+        assert_eq!(run.agents[0].last_tool.as_deref(), Some("Read"));
+        assert_eq!(run.agents[0].result_preview, Some(json!("done")));
+        assert_eq!(run.agents[1].state, WorkflowAgentState::Running);
+    }
+
+    #[test]
+    fn completed_summary_is_authoritative_for_agents_totals_and_result() {
+        let fixture = live_fixture();
+        write(
+            &fixture
+                .session_dir
+                .join("workflows")
+                .join(format!("{RUN_ID}.json")),
+            &completed_summary("completed").to_string(),
+        );
+
+        let run = read_run(&fixture.session_dir, RUN_ID).expect("completed run");
+        assert_eq!(run.status, WorkflowRunStatus::Completed);
+        assert_eq!(run.totals.tokens, Some(91));
+        assert_eq!(run.totals.tool_calls, Some(4));
+        assert_eq!(run.totals.duration_ms, Some(2400));
+        assert_eq!(run.agents[0].label.as_deref(), Some("implementer"));
+        assert_eq!(run.agents[0].phase.as_deref(), Some("Implement"));
+        assert_eq!(run.result, Some(json!({"ok": true})));
+    }
+
+    #[test]
+    fn failed_and_unknown_summary_statuses_are_preserved() {
+        for (raw, expected) in [
+            ("failed", WorkflowRunStatus::Failed),
+            ("cancelled", WorkflowRunStatus::Unknown),
+        ] {
+            let fixture = live_fixture();
+            write(
+                &fixture
+                    .session_dir
+                    .join("workflows")
+                    .join(format!("{RUN_ID}.json")),
+                &completed_summary(raw).to_string(),
+            );
+            assert_eq!(
+                read_run(&fixture.session_dir, RUN_ID)
+                    .expect("summary run")
+                    .status,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn empty_workflow_directory_and_invalid_run_ids_are_fail_soft() {
+        let temp = TempDir::new().expect("tempdir");
+        fs::create_dir_all(temp.path().join("subagents/workflows")).expect("workflow root");
+        assert!(scan_session_runs(temp.path()).is_empty());
+        assert_eq!(read_run(temp.path(), "../escape"), None);
+    }
+
+    #[test]
+    fn workflow_activity_requires_a_live_transcript_write_within_sixty_seconds() {
+        let fixture = live_fixture();
+        let written_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let run_dir = fixture.session_dir.join("subagents/workflows").join(RUN_ID);
+        for entry in fs::read_dir(run_dir).expect("run dir") {
+            let path = entry.expect("run entry").path();
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("agent-") && name.ends_with(".jsonl"))
+            {
+                set_modified(&path, written_at);
+            }
+        }
+
+        let recent = workflow_activity(&fixture.session_dir, written_at + Duration::from_secs(60))
+            .expect("inside window");
+        assert_eq!(recent.live_runs, 1);
+        assert_eq!(recent.last_write_at, 1_700_000_000_000);
+        assert_eq!(
+            workflow_activity(&fixture.session_dir, written_at + Duration::from_secs(61)),
+            None
+        );
+
+        write(
+            &fixture
+                .session_dir
+                .join("workflows")
+                .join(format!("{RUN_ID}.json")),
+            &completed_summary("completed").to_string(),
+        );
+        assert_eq!(
+            workflow_activity(&fixture.session_dir, written_at + Duration::from_secs(1)),
+            None
+        );
+    }
+}
