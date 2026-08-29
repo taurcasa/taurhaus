@@ -94,6 +94,7 @@ Unified structured logging pipeline:
 - `src-tauri/src/daemon/usage_poller.rs` (`usage.fetched` debug, `usage.failed` warn — never tokens, never a URL with a query string)
 - `src-tauri/src/session_scanner/accounts/mod.rs` (`account.provider.floor`) and `accounts/legacy_statusline.rs` (`claude.usage.legacy_bridge.removed`)
 - `src-tauri/src/coordination/agy_hooks_installer.rs` (`agy.hooks.degraded`)
+- `src-tauri/src/session_scanner/idle/agy.rs` (`agy.identity.resolved` with `source: index|hooks`, emitted once per change)
 - `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.unsupported/version_unknown/reconciled`); `compaction.codex_hook.degraded` also comes from `coordination/compact_hook.rs` and `commands/coordination.rs`
 - `src-tauri/src/bin/taurhaus-daemon.rs` (`codex.notify.appended`)
 - `src-tauri/src/startup/daemon.rs` (`startup.daemon_protocol.checked`)
@@ -299,7 +300,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/daemon/usage_poller.rs` | Per-(tool, account) usage polling with backoff, in-flight guards, and `usage.fetched`/`usage.failed`. |
 | `src-tauri/src/daemon/agy_hooks.rs` | Bounded `agy-hooks.jsonl` sink for Antigravity's busy/idle hooks. |
 | `src-tauri/src/session_scanner/idle/claude_registry.rs` | Reads Claude Code's sessions registry (`<CLAUDE_CONFIG_DIR>/sessions/<pid>.json`) as authoritative identity/activity. |
-| `src-tauri/src/session_scanner/idle/agy.rs` | Antigravity conversation identity from `cache/last_conversations.json` + the presence lock; hook-fed activity with a 5-minute recency bound. |
+| `src-tauri/src/session_scanner/idle/agy.rs` | Antigravity conversation identity from `cache/last_conversations.json` + the presence lock, falling back to the hook sink's `workspace` (newest record for the cwd whose presence lock is held) while agy has not indexed the cwd yet; hook-fed activity with a 5-minute recency bound. |
 | `src-tauri/src/session_scanner/idle/grok.rs` | Grok identity from `<GROK_HOME>/active_sessions.json` and authoritative activity from the session's `events.jsonl` turn lifecycle. |
 | `src-tauri/src/daemon/codex_notify.rs` | `taurhaus-daemon codex-notify <JSON>` subcommand; appends Codex turn-complete payloads to `<app_data>/codex-notify.jsonl` for the native idle edge. |
 | `src-tauri/src/daemon/session_activity.rs` | Daemon session-activity hub: versioned snapshot, tmux focus, degradation cursor. |
