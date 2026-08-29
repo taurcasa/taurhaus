@@ -41,6 +41,36 @@ struct PendingEffort {
 /// clears the count, so a member that comes back can reach the level later.
 const MAX_EFFORT_RESUME_ATTEMPTS: u32 = 3;
 
+/// The launch settings an effort relaunch renders from, or `None` when no
+/// command it could render carries `level`.
+///
+/// A base that pins nothing is used as it stands — the renderer appends the
+/// requested level itself. A base that pins one has that value replaced, and
+/// the result is read back before the caller stops anything.
+fn effort_launch_commands(
+    cli_commands: &CliCommandSettings,
+    tool: CliTool,
+    level: &str,
+) -> Option<CliCommandSettings> {
+    let base = crate::session_scanner::launch::base_command(
+        cli_commands,
+        tool,
+        crate::daemon::protocol::LaunchMode::Resume,
+    );
+    if !task_effort::base_pins_effort(tool, base) {
+        return Some(cli_commands.clone());
+    }
+    let rewritten = task_effort::base_with_effort(tool, base, level)?;
+    if !task_effort::pinned_base_effort(tool, &rewritten)
+        .is_some_and(|pinned| pinned.eq_ignore_ascii_case(level))
+    {
+        return None;
+    }
+    let mut commands = cli_commands.clone();
+    commands.get_mut(tool)?.resume = rewritten;
+    Some(commands)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeTeamDaemonOwnership {
     Wrapper,
@@ -199,32 +229,32 @@ impl CoordinationOrchestrator {
             let Some(pending) = self.pending_member_effort(team_name, member) else {
                 continue;
             };
-            // A base command that pins the effort keeps its own value: the
-            // relaunch would take the member down and bring it back at the
-            // same level, and recording the requested one would report a
-            // switch that never happened.
-            let base = crate::session_scanner::launch::base_command(
-                cli_commands,
-                member.cli_tool,
-                crate::daemon::protocol::LaunchMode::Resume,
-            );
-            if task_effort::base_pins_effort(member.cli_tool, base) {
-                self.record_failed_effort_attempt(
-                    team_name,
-                    &member.name,
-                    &pending.level,
-                    pending.failed_attempts + 1,
-                );
-                task_effort::emit_effort_resume(
-                    "effort.resume.failed",
-                    team_name,
-                    &member.name,
-                    &pending.level,
-                    pending.previous.as_deref(),
-                    Some("configured launch command pins the effort"),
-                );
-                continue;
-            }
+            // The renderer keeps an effort the operator's own base already
+            // pins and drops the requested one, so a base that pins gets the
+            // assignment's level written into it. Whatever the relaunch will
+            // render from is checked here, before anything is stopped: a
+            // member is only taken down for a command that carries the level.
+            let launch_commands =
+                match effort_launch_commands(cli_commands, member.cli_tool, &pending.level) {
+                    Some(commands) => commands,
+                    None => {
+                        self.record_failed_effort_attempt(
+                            team_name,
+                            &member.name,
+                            &pending.level,
+                            pending.failed_attempts + 1,
+                        );
+                        task_effort::emit_effort_resume(
+                            "effort.resume.failed",
+                            team_name,
+                            &member.name,
+                            &pending.level,
+                            pending.previous.as_deref(),
+                            Some("configured launch command cannot carry the effort"),
+                        );
+                        continue;
+                    }
+                };
             task_effort::emit_effort_resume(
                 "effort.resume.started",
                 team_name,
@@ -242,7 +272,7 @@ impl CoordinationOrchestrator {
             };
             let outcome = self.resume_member_with_cli_commands_and_layout(
                 &request,
-                cli_commands,
+                &launch_commands,
                 tmux_layout,
             );
             let failure = match &outcome {

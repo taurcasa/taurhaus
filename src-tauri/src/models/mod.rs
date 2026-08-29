@@ -305,6 +305,10 @@ impl CliCommandSettings {
     pub fn get(&self, tool: CliTool) -> &ToolCommands {
         crate::session_scanner::cli_tool::command_settings_for(self, tool)
     }
+
+    pub fn get_mut(&mut self, tool: CliTool) -> Option<&mut ToolCommands> {
+        crate::session_scanner::cli_tool::command_settings_for_mut(self, tool)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

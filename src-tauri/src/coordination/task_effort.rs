@@ -79,14 +79,77 @@ pub fn relaunches_for_effort(tool: CliTool) -> bool {
 /// Whether the operator's own base command already pins the effort.
 ///
 /// The launch renderer leaves a configured base alone: an effort the base
-/// already carries is kept and the requested one is dropped with a note. A
-/// relaunch on such a base cannot put an assignment's level into force, so the
-/// pass must not stop a working member for it.
+/// already carries is kept and the requested one is dropped with a note. So a
+/// relaunch that has to put an assignment's level into force rewrites the
+/// pinned value rather than appending beside it.
 pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
-    match spec(tool).capabilities.effort_flag {
-        Some(EffortFlag::Argument { flag }) => command_contains_flag(base, flag),
-        Some(EffortFlag::Config { key, .. }) => command_contains_flag(base, key),
-        None => false,
+    effort_key(tool).is_some_and(|key| command_contains_flag(base, key))
+}
+
+/// The same base command with the effort it pins replaced by `level`.
+///
+/// `None` when the base pins nothing to replace — the renderer appends the
+/// requested level itself — and when the pin names no value token the rewrite
+/// could take over, which is the one shape a relaunch cannot make carry the
+/// level.
+pub fn base_with_effort(tool: CliTool, base: &str, level: &str) -> Option<String> {
+    let key = effort_key(tool)?;
+    let quoted = matches!(
+        spec(tool).capabilities.effort_flag,
+        Some(EffortFlag::Config { .. })
+    );
+    let mut tokens: Vec<String> = base.split_whitespace().map(ToString::to_string).collect();
+    let value = if quoted {
+        format!("\"{level}\"")
+    } else {
+        level.to_string()
+    };
+
+    let mut rewrote = false;
+    for index in 0..tokens.len() {
+        let bare = tokens[index].trim_start_matches(['\'', '"']).to_string();
+        if bare.starts_with(&format!("{key}=")) {
+            tokens[index] = format!("{key}={value}");
+            rewrote = true;
+        } else if bare == key {
+            // `--effort high`: the level is the token after the flag.
+            if index + 1 >= tokens.len() {
+                return None;
+            }
+            tokens[index + 1] = value.clone();
+            rewrote = true;
+        }
+    }
+
+    rewrote.then(|| tokens.join(" "))
+}
+
+/// The level a base command pins, read back the way the harness would.
+///
+/// The relaunch checks its own rewrite with this before it stops anything: a
+/// member is only taken down for a command that demonstrably carries the level.
+pub fn pinned_base_effort(tool: CliTool, base: &str) -> Option<String> {
+    let key = effort_key(tool)?;
+    let tokens: Vec<&str> = base.split_whitespace().collect();
+    for (index, token) in tokens.iter().enumerate() {
+        let bare = token.trim_matches(['\'', '"']);
+        if let Some(value) = bare.strip_prefix(&format!("{key}=")) {
+            return trimmed(Some(value.trim_matches(['\'', '"'])));
+        }
+        if bare == key {
+            return tokens
+                .get(index + 1)
+                .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+        }
+    }
+    None
+}
+
+/// The token a harness's base command pins its effort with.
+fn effort_key(tool: CliTool) -> Option<&'static str> {
+    match spec(tool).capabilities.effort_flag? {
+        EffortFlag::Argument { flag } => Some(flag),
+        EffortFlag::Config { key, .. } => Some(key),
     }
 }
 
@@ -365,6 +428,72 @@ mod tests {
         let tool = resume_with_flag_tool();
         assert_eq!(resume_effort_target(tool, None, Some("medium")), None);
         assert_eq!(resume_effort_target(tool, Some("  "), None), None);
+    }
+
+    #[test]
+    fn a_pinned_config_value_is_replaced_by_the_requested_level() {
+        let tool = resume_with_flag_tool();
+        let base = "codex resume --last -c model_reasoning_effort=\"low\" --yolo";
+
+        assert!(base_pins_effort(tool, base));
+        assert_eq!(pinned_base_effort(tool, base).as_deref(), Some("low"));
+
+        let rewritten = base_with_effort(tool, base, "high").expect("the pin is rewritable");
+        assert_eq!(
+            rewritten,
+            "codex resume --last -c model_reasoning_effort=\"high\" --yolo"
+        );
+        assert_eq!(
+            pinned_base_effort(tool, &rewritten).as_deref(),
+            Some("high")
+        );
+    }
+
+    #[test]
+    fn a_base_that_pins_nothing_has_nothing_to_rewrite() {
+        let tool = resume_with_flag_tool();
+        assert_eq!(
+            base_with_effort(tool, "codex resume --last --yolo", "high"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_pin_with_no_value_token_cannot_be_rewritten() {
+        // The renderer would keep this pin and drop the requested level, so
+        // the relaunch has no way to put the assignment's level into force.
+        let tool = resume_with_flag_tool();
+        assert!(base_pins_effort(
+            tool,
+            "codex resume -c model_reasoning_effort"
+        ));
+        assert_eq!(
+            base_with_effort(tool, "codex resume -c model_reasoning_effort", "high"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_pinned_argument_flag_is_replaced_in_either_shape() {
+        let tool = crate::session_scanner::cli_tool::all()
+            .iter()
+            .find(|entry| {
+                matches!(
+                    entry.capabilities.effort_flag,
+                    Some(EffortFlag::Argument { .. })
+                )
+            })
+            .expect("one harness pins effort with a plain argument")
+            .tool;
+
+        assert_eq!(
+            base_with_effort(tool, "claude --effort low --yolo", "high").as_deref(),
+            Some("claude --effort high --yolo")
+        );
+        assert_eq!(
+            base_with_effort(tool, "claude --effort=low", "high").as_deref(),
+            Some("claude --effort=high")
+        );
     }
 
     fn resume_with_flag_tool() -> CliTool {

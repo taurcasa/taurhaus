@@ -724,6 +724,21 @@ pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &To
     }
 }
 
+/// Mutable sibling of [`command_settings_for`], for the one caller that has to
+/// rewrite a configured base before it renders a launch from it.
+pub fn command_settings_for_mut(
+    settings: &mut CliCommandSettings,
+    tool: CliTool,
+) -> Option<&mut ToolCommands> {
+    match tool {
+        CliTool::Claude => Some(&mut settings.claude),
+        CliTool::Codex => Some(&mut settings.codex),
+        CliTool::Agy => Some(&mut settings.agy),
+        CliTool::Grok => Some(&mut settings.grok),
+        CliTool::Unknown => None,
+    }
+}
+
 pub fn bridged_default() -> CliTool {
     all()
         .iter()

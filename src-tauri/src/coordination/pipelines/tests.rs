@@ -4173,17 +4173,58 @@ fn an_operator_stopped_member_is_not_restarted_by_the_effort_pass() {
     assert_eq!(record.health, HealthState::SessionDead);
 }
 
-// Regression: 2529309 recorded the requested level as `applied_effort` from
-// the activation context, but the renderer refuses to append an effort the
-// operator's own base command already pins. The member was stopped, came back
-// at the pinned level, and was reported as switched — with no retry left.
+// Regression: d055165 skipped the relaunch outright when the configured
+// resume base already pinned `model_reasoning_effort`, so the member stayed
+// at the operator's configured level and the lead's assignment never took
+// effect. The override belongs in the command the relaunch renders.
 #[test]
-fn a_base_command_that_pins_the_effort_is_not_relaunched_for_one() {
+fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let mut cli_commands = CliCommandSettings::default();
     cli_commands.codex.resume =
         "codex resume --last -c model_reasoning_effort=\"low\" --yolo".to_string();
+    let mut orchestrator = seed_running_codex_member(&tmp, runtime.clone(), &cli_commands);
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .rfind(|keys| keys.contains("codex"))
+        .expect("a codex launch was sent to the pane");
+    assert!(
+        launch.contains("model_reasoning_effort=\\\"high\\\"")
+            || launch.contains("model_reasoning_effort=\"high\""),
+        "the pinned value is replaced by the assignment's level, got: {launch}"
+    );
+    assert!(
+        !launch.contains("model_reasoning_effort=\\\"low\\\"")
+            && !launch.contains("model_reasoning_effort=\"low\""),
+        "the level the assignment replaced must not survive, got: {launch}"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+// The other half of the same rule: a pin the rewrite cannot read leaves the
+// command unable to carry the level, and stopping a working member for a
+// switch that cannot land buys nothing.
+#[test]
+fn a_pin_the_rewrite_cannot_read_leaves_the_member_running() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut cli_commands = CliCommandSettings::default();
+    // A trailing bare key: there is no value token to replace.
+    cli_commands.codex.resume = "codex resume --last --yolo -c model_reasoning_effort".to_string();
     let mut orchestrator = seed_running_codex_member(&tmp, runtime.clone(), &cli_commands);
     append_assignment(&tmp, "builder", "high", "the migration is irreversible");
 
@@ -4199,13 +4240,8 @@ fn a_base_command_that_pins_the_effort_is_not_relaunched_for_one() {
     assert_eq!(
         codex_launch_attempts(&runtime),
         before,
-        "stopping a working member for a level the command cannot carry buys nothing"
+        "the member is not stopped for a command that cannot carry the level"
     );
     let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
-    assert_eq!(
-        record.applied_effort.as_deref(),
-        Some("low"),
-        "the session is running at the level the base pins, not the requested one"
-    );
     assert_eq!(record.health, HealthState::Healthy);
 }
