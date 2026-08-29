@@ -242,6 +242,11 @@ where
                     (ActivityConfidence::Low, ActivityAttribution::None, false)
                 };
 
+            let workflow_activity = crate::workflow_runs::activity_for_transcript(
+                proc.cli_tool,
+                idle_result.jsonl_path.as_deref(),
+                std::time::SystemTime::now(),
+            );
             RuntimeSession {
                 pid: proc.pid,
                 project_path: proc.project_path,
@@ -264,6 +269,7 @@ where
                 group_id: None,
                 group_label: None,
                 member_name: None,
+                workflow_activity,
             }
         })
         .collect();
@@ -373,6 +379,7 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: None,
         }
     }
 

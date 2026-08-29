@@ -97,6 +97,9 @@ pub struct DisplaySession {
     /// Managed team member name associated with this session.
     #[serde(default)]
     pub member_name: Option<String>,
+    /// Recent writes from live workflow subagents attached to this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
 }
 
 /// A detected CLI tool session with runtime transcript metadata preserved.
@@ -132,6 +135,9 @@ pub struct RuntimeSession {
     pub group_label: Option<String>,
     #[serde(default)]
     pub member_name: Option<String>,
+    /// Recent writes from live workflow subagents attached to this session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
 }
 
 impl From<RuntimeSession> for DisplaySession {
@@ -156,6 +162,7 @@ impl From<RuntimeSession> for DisplaySession {
             group_id: session.group_id,
             group_label: session.group_label,
             member_name: session.member_name,
+            workflow_activity: session.workflow_activity,
         }
     }
 }
@@ -202,6 +209,10 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: Some(crate::workflow_runs::WorkflowActivity {
+                live_runs: 2,
+                last_write_at: 1_800_000_000_000,
+            }),
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -214,6 +225,11 @@ mod tests {
         assert_eq!(json["activity_confidence"], "high");
         assert_eq!(json["activity_attribution"], "attributed");
         assert_eq!(json["group_kind"], "standalone");
+        assert_eq!(json["workflow_activity"]["live_runs"], 2);
+        assert_eq!(
+            json["workflow_activity"]["last_write_at"],
+            1_800_000_000_000_i64
+        );
     }
 
     #[test]
@@ -238,6 +254,7 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: None,
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -271,6 +288,10 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: Some(crate::workflow_runs::WorkflowActivity {
+                live_runs: 1,
+                last_write_at: 1_800_000_000_000,
+            }),
         };
 
         let display = DisplaySession::from(runtime);
@@ -280,5 +301,6 @@ mod tests {
         assert_eq!(display.tmux_pane.as_deref(), Some("%7"));
         assert!(json.get("session_id").is_none());
         assert!(json.get("jsonl_path").is_none());
+        assert_eq!(json["workflow_activity"]["live_runs"], 1);
     }
 }

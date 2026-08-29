@@ -86,8 +86,9 @@ struct HubState {
 /// The activity half of the hub's change signature.
 ///
 /// Confidence and attribution are part of it because the app presents them
-/// (`src/lib/activitySignal.js`); `recent_io` and `last_output_age_secs` are
-/// deliberately excluded — they flip per poll and would defeat change-gating.
+/// (`src/lib/activitySignal.js`); `recent_io`, `last_output_age_secs`, and raw
+/// workflow write times are deliberately excluded — they flip per poll and
+/// would defeat change-gating.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SessionEventSignature {
     pid: u32,
@@ -102,6 +103,7 @@ struct SessionEventSignature {
     activity_confidence: ActivityConfidence,
     activity_attribution: ActivityAttribution,
     project_unattributed_active: bool,
+    workflow_live_runs: Option<u32>,
 }
 
 fn event_signature(session: &DisplaySession) -> SessionEventSignature {
@@ -118,6 +120,10 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
         activity_confidence: session.activity_confidence,
         activity_attribution: session.activity_attribution,
         project_unattributed_active: session.project_unattributed_active,
+        workflow_live_runs: session
+            .workflow_activity
+            .as_ref()
+            .map(|activity| activity.live_runs),
     }
 }
 
@@ -545,6 +551,7 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: None,
         }
     }
 
@@ -1045,6 +1052,34 @@ mod tests {
         next[0].last_output_age_secs = Some(7);
 
         assert!(!activity_changed(&previous, &next));
+    }
+
+    // Regression: e2c4041 put the raw workflow transcript mtime in the hub
+    // signature, so each subagent append woke the long poll and re-ran the
+    // per-member activity export at the 500 ms scan cadence.
+    #[test]
+    fn a_workflow_write_with_the_same_live_run_count_is_not_a_change() {
+        let mut previous = vec![session_with_state(SessionState::Active)];
+        previous[0].workflow_activity = Some(crate::workflow_runs::WorkflowActivity {
+            live_runs: 2,
+            last_write_at: 1_800_000_000_100,
+        });
+        let mut next = previous.clone();
+        next[0].workflow_activity = Some(crate::workflow_runs::WorkflowActivity {
+            live_runs: 2,
+            last_write_at: 1_800_000_000_900,
+        });
+
+        assert!(!activity_changed(&previous, &next));
+
+        next[0].workflow_activity = Some(crate::workflow_runs::WorkflowActivity {
+            live_runs: 3,
+            last_write_at: 1_800_000_000_900,
+        });
+        assert!(activity_changed(&previous, &next));
+
+        next[0].workflow_activity = None;
+        assert!(activity_changed(&previous, &next));
     }
 
     // Regression: commits a53ad31 and f9c1e89. Focus travelled through tmux

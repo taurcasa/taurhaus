@@ -366,6 +366,11 @@ fn build_runtime_session_with_idle(
     idle_result: idle::IdleResult,
     recent_io: bool,
 ) -> RuntimeSession {
+    let workflow_activity = crate::workflow_runs::activity_for_transcript(
+        proc.cli_tool,
+        idle_result.jsonl_path.as_deref(),
+        std::time::SystemTime::now(),
+    );
     RuntimeSession {
         pid: proc.pid,
         project_path: proc.project_path,
@@ -388,6 +393,7 @@ fn build_runtime_session_with_idle(
         group_id: None,
         group_label: None,
         member_name: None,
+        workflow_activity,
     }
 }
 
@@ -404,6 +410,47 @@ mod tests {
     use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
     use std::sync::MutexGuard;
     use tempfile::TempDir;
+
+    #[test]
+    fn runtime_session_carries_recent_workflow_activity_from_its_session_directory() {
+        let temp = TempDir::new().expect("tempdir");
+        let transcript = temp.path().join("project/session-123.jsonl");
+        std::fs::create_dir_all(transcript.parent().expect("transcript parent"))
+            .expect("transcript parent");
+        std::fs::write(&transcript, "{}\n").expect("parent transcript");
+        let agent = temp
+            .path()
+            .join("project/session-123/subagents/workflows/wf_test/agent-a1.jsonl");
+        std::fs::create_dir_all(agent.parent().expect("agent parent")).expect("agent parent");
+        std::fs::write(agent, "{}\n").expect("agent transcript");
+
+        let session = build_runtime_session_with_idle(
+            process::ProcessInfo {
+                pid: 42,
+                project_path: "/tmp/project".to_string(),
+                tty: "/dev/pts/1".to_string(),
+                args: "claude".to_string(),
+                cli_tool: CliTool::Claude,
+            },
+            None,
+            idle::IdleResult {
+                state: SessionState::Idle,
+                session_id: Some("session-123".to_string()),
+                jsonl_path: Some(transcript.display().to_string()),
+                last_output_age_secs: None,
+                authoritative: true,
+            },
+            false,
+        );
+
+        assert_eq!(
+            session
+                .workflow_activity
+                .expect("workflow activity")
+                .live_runs,
+            1
+        );
+    }
 
     #[test]
     fn scan_sessions_combines_all_sources() {

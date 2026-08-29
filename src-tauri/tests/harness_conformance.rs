@@ -218,6 +218,7 @@ fn registry_declares_native_and_floor_capabilities() {
     );
     assert!(claude.capabilities.usage);
     assert!(claude.capabilities.native_inbox_poller);
+    assert!(claude.capabilities.workflow_runs);
     assert_eq!(claude.stop_strategy, StopStrategy::SlashExit);
 
     let codex = spec(CliTool::Codex);
@@ -263,6 +264,11 @@ fn registry_declares_native_and_floor_capabilities() {
     assert!(!agy.capabilities.transcript_parser);
     assert!(!agy.capabilities.catalog || agy.capabilities.model_flag.is_some());
     assert_eq!(agy.stop_strategy, StopStrategy::SlashExit);
+
+    assert!(all()
+        .iter()
+        .filter(|entry| entry.capabilities.workflow_runs)
+        .all(|entry| entry.tool == CliTool::Claude));
 
     for entry in all() {
         assert!(

@@ -198,6 +198,7 @@ fn active_session_for(path: &str) -> DisplaySession {
         group_id: None,
         group_label: None,
         member_name: None,
+        workflow_activity: None,
     }
 }
 
@@ -1642,6 +1643,7 @@ fn exited_claude_session(
         group_id: None,
         group_label: None,
         member_name: None,
+        workflow_activity: None,
     }
 }
 
