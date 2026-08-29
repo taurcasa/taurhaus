@@ -183,7 +183,10 @@ pub(crate) fn ensure_bundled_daemon_installed(
     install_bundled_daemon(app, provider.wsl_distro.as_deref()).map(Some)
 }
 
-fn read_daemon_install_status(wsl_distro: Option<&str>) -> Result<DaemonInstallStatus, String> {
+/// The installed-vs-bundled daemon snapshot the install and repair paths share.
+pub(crate) fn read_daemon_install_status(
+    wsl_distro: Option<&str>,
+) -> Result<DaemonInstallStatus, String> {
     if crate::daemon::launcher::is_native_daemon() {
         check_daemon_install_native()
     } else {
@@ -381,7 +384,8 @@ pub fn install_daemon(app: tauri::AppHandle) -> IpcResult<OperationResult> {
     result
 }
 
-fn install_bundled_daemon(
+/// Copy the daemon binary the app ships with over whatever is installed.
+pub(crate) fn install_bundled_daemon(
     app: &tauri::AppHandle,
     wsl_distro: Option<&str>,
 ) -> Result<OperationResult, String> {
