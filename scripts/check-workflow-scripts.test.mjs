@@ -101,3 +101,20 @@ describe('workflow script check', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 })
+
+// Regression: the five procedures shipped schema literals without
+// `additionalProperties: false`; the first Codex review lane run through
+// feature-pr failed closed at the API boundary (invalid_json_schema) before
+// reading a file.
+describe('strict schema literals', () => {
+  const base = "export const meta = { name: 'demo', description: 'x' }\n"
+  it('reports a schema object without additionalProperties: false', () => {
+    const open = base + "const FINDINGS_SCHEMA = {\n  type: 'object',\n  required: ['a'],\n  properties: { a: { type: 'object', properties: {} } },\n}\nreturn FINDINGS_SCHEMA\n"
+    const problems = checkWorkflowSource('demo.js', open)
+    expect(problems.some((p) => p.includes('FINDINGS_SCHEMA') && p.includes('additionalProperties'))).toBe(true)
+  })
+  it('accepts a schema whose objects all close themselves', () => {
+    const closed = base + "const FINDINGS_SCHEMA = {\n  type: 'object',\n  additionalProperties: false,\n  required: ['a'],\n  properties: { a: { type: 'object', additionalProperties: false, properties: {} } },\n}\nreturn FINDINGS_SCHEMA\n"
+    expect(checkWorkflowSource('demo.js', closed).filter((p) => p.includes('additionalProperties'))).toEqual([])
+  })
+})

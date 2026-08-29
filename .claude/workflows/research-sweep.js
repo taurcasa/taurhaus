@@ -411,7 +411,8 @@ const COMMON = [RULES.checkout, RULES.readOnly, RULES.safety, RULES.honest].join
 
 const RESEARCH_SCHEMA = {
   type: 'object',
-  required: ['status', 'summary', 'report_path', 'key_facts', 'unverified'],
+  additionalProperties: false,
+  required: ['status', 'error', 'model_used', 'summary', 'report_path', 'key_facts', 'unverified', 'recommendation'],
   properties: {
     status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
     error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
