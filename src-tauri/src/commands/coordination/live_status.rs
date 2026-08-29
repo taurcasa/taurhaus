@@ -444,7 +444,9 @@ fn member_workflow_activity(
     member: &TeamMemberView,
 ) -> Option<crate::workflow_runs::WorkflowActivity> {
     crate::workflow_runs::activity_for_transcript(
-        member.attached_cli_tool.unwrap_or(member.configured_cli_tool),
+        member
+            .attached_cli_tool
+            .unwrap_or(member.configured_cli_tool),
         member.jsonl_path.as_deref().and_then(Path::to_str),
         SystemTime::now(),
     )
