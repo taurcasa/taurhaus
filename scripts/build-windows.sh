@@ -27,7 +27,10 @@ STEP_SECONDS=()
 
 run_step "check_windows_prereqs" just check-windows-build-prereqs
 run_step "build_daemon" just build-daemon
-run_step "install_daemon" just _install-daemon-from-build
+# The daemon is NOT installed here: the app and daemon must match PROTOCOL_VERSION
+# exactly, and installing the new daemon before the new app is installed leaves
+# the running app rejecting it on every reconnect. `just install-windows` installs
+# both together.
 run_step "bundle_daemon" just _bundle-daemon-from-build
 run_step "bundle_mesh" just bundle-mesh
 run_step "sync_windows" just sync-windows

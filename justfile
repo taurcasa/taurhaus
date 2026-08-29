@@ -681,6 +681,9 @@ install-windows:
         exit 1
     fi
     sh -c 'exec powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1" -InstallerPath "$2" -BuiltExePath "$3" < /dev/null' sh "$PS_SCRIPT" "$WIN_INSTALLER" "$WIN_BUILT_EXE"
+    # The app is installed; now the WSL daemon it bundles, restarted with the
+    # captured env/args, so app and daemon match PROTOCOL_VERSION from here on.
+    just _install-daemon-from-build
 
 # ── macOS Build (via SSH to remote Mac mini) ─────────────────────────────────
 
