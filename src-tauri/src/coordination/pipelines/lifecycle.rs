@@ -285,6 +285,9 @@ impl CoordinationOrchestrator {
             .map(str::trim)
             .filter(|level| !level.is_empty())
             .map(str::to_ascii_lowercase);
+        // A launch that commits is the member reaching a level, so whatever
+        // budget an earlier failed effort switch spent is spent no longer.
+        runtime.effort_resume_failure = None;
         // A harness whose runtime effort command also rewrites the user's saved
         // default gets that value captured once, before its first managed
         // launch, so a teardown can put the operator's own level back. Captured

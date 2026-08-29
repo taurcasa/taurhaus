@@ -17,7 +17,7 @@ use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
 };
 use crate::coordination::stores::{
-    MemberRuntimeRecord, MemberRuntimeStore, MeshInboxStore, TeamConfigStore,
+    EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeStore, MeshInboxStore, TeamConfigStore,
 };
 use crate::coordination::task_effort;
 use crate::coordination::validation::{
@@ -30,7 +30,16 @@ use crate::session_scanner::cli_tool::CliTool;
 struct PendingEffort {
     level: String,
     previous: Option<String>,
+    /// Failures already spent on this level, from the runtime record.
+    failed_attempts: u32,
 }
+
+/// How often one requested level is retried before the pass leaves it alone.
+///
+/// A relaunch stops the member before it launches, so a level that keeps
+/// failing must not stop it again on every pass. Any launch that commits
+/// clears the count, so a member that comes back can reach the level later.
+const MAX_EFFORT_RESUME_ATTEMPTS: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeTeamDaemonOwnership {
@@ -229,7 +238,15 @@ impl CoordinationOrchestrator {
                     );
                 }
                 Some(reason) => {
-                    self.record_applied_effort_best_effort(team_name, &member.name, &pending.level);
+                    // The level never took effect and the member is stopped:
+                    // recording it as applied would report success and
+                    // suppress every later retry. Count the attempt instead.
+                    self.record_failed_effort_attempt(
+                        team_name,
+                        &member.name,
+                        &pending.level,
+                        pending.failed_attempts + 1,
+                    );
                     task_effort::emit_effort_resume(
                         "effort.resume.failed",
                         team_name,
@@ -257,9 +274,18 @@ impl CoordinationOrchestrator {
             Some(&assigned.level),
             runtime.applied_effort.as_deref(),
         )?;
+        let failed_attempts = runtime
+            .effort_resume_failure
+            .as_ref()
+            .filter(|failure| failure.level.eq_ignore_ascii_case(&level))
+            .map_or(0, |failure| failure.attempts);
+        if failed_attempts >= MAX_EFFORT_RESUME_ATTEMPTS {
+            return None;
+        }
         Some(PendingEffort {
             level,
             previous: runtime.applied_effort,
+            failed_attempts,
         })
     }
 
@@ -296,17 +322,26 @@ impl CoordinationOrchestrator {
         }
     }
 
-    fn record_applied_effort_best_effort(&self, team_name: &str, member_name: &str, level: &str) {
+    fn record_failed_effort_attempt(
+        &self,
+        team_name: &str,
+        member_name: &str,
+        level: &str,
+        attempts: u32,
+    ) {
         if let Err(err) =
             MemberRuntimeStore::update(&self.teams_dir, team_name, member_name, |record| {
-                record.applied_effort = Some(level.to_string());
+                record.effort_resume_failure = Some(EffortResumeFailure {
+                    level: level.to_string(),
+                    attempts,
+                });
             })
         {
             tracing::warn!(
                 team = %team_name,
                 member = %member_name,
                 error = %err,
-                "failed to record the effort level after a failed resume"
+                "failed to record the attempt count after a failed effort resume"
             );
         }
     }

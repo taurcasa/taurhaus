@@ -60,6 +60,23 @@ pub struct MemberRuntimeRecord {
     /// runtime effort command overwrote it. Put back when the member stops.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_default: Option<RecordedEffortDefault>,
+    /// Relaunches that tried and failed to reach one assignment's effort.
+    ///
+    /// A failed relaunch leaves `applied_effort` at the level the session was
+    /// actually running, so the switch stays pending and is tried again; this
+    /// is what keeps that retry bounded. Cleared by any launch that commits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_resume_failure: Option<EffortResumeFailure>,
+}
+
+/// How often a member has failed to reach one requested effort level.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffortResumeFailure {
+    /// The level that could not be reached.
+    pub level: String,
+    /// Attempts spent on it since the last launch that committed.
+    pub attempts: u32,
 }
 
 /// Stateless filesystem-backed store for member runtime documents.
@@ -377,6 +394,8 @@ fn parse_runtime_record(
         applied_effort: Option<String>,
         #[serde(default)]
         effort_default: Option<RecordedEffortDefault>,
+        #[serde(default, alias = "effortResumeFailure")]
+        effort_resume_failure: Option<EffortResumeFailure>,
     }
 
     let wire: RuntimeRecordWire = serde_json::from_str(raw).map_err(|err| {
@@ -405,6 +424,7 @@ fn parse_runtime_record(
             .map(|level| level.trim().to_string())
             .filter(|level| !level.is_empty()),
         effort_default: wire.effort_default,
+        effort_resume_failure: wire.effort_resume_failure,
     })
 }
 
@@ -642,6 +662,7 @@ mod tests {
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
             applied_effort: None,
             effort_default: None,
+            effort_resume_failure: None,
         }
     }
 
@@ -975,6 +996,7 @@ mod tests {
             last_seen_at: None,
             applied_effort: None,
             effort_default: None,
+            effort_resume_failure: None,
         };
 
         MemberRuntimeStore::save(teams_dir, team_name, "no-heartbeat", &no_timestamps)

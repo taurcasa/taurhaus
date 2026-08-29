@@ -138,7 +138,8 @@ mod tests {
     // bundled lead roles instructed a command the bundled binary rejects.
     #[test]
     fn the_bundled_mesh_carries_the_assignment_effort_flags() {
-        let lock = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/mesh.lock.json");
+        let lock =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/mesh.lock.json");
         let raw = std::fs::read_to_string(&lock).expect("bundled mesh lock manifest");
         let pinned: Value = serde_json::from_str(&raw).expect("lock manifest is json");
         let version = pinned["version"].as_str().expect("pinned mesh version");

@@ -1685,6 +1685,7 @@ mod tests {
                 last_seen_at: None,
                 applied_effort: None,
                 effort_default: None,
+                effort_resume_failure: None,
             },
         )
         .expect("save runtime");
@@ -2490,6 +2491,7 @@ mod tests {
                     last_seen_at: None,
                     applied_effort: None,
                     effort_default: None,
+                    effort_resume_failure: None,
                 },
             )
             .expect("save runtime");

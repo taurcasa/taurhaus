@@ -24,4 +24,4 @@ pub use operational::{
     OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
     OperationalWorkingSetSnapshot,
 };
-pub use runtime::{MemberRuntimeRecord, MemberRuntimeStore};
+pub use runtime::{EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeStore};

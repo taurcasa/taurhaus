@@ -742,6 +742,7 @@ mod tests {
                 last_seen_at: Some(ts("2026-03-07T13:31:05+00:00")),
                 applied_effort: None,
                 effort_default: None,
+                effort_resume_failure: None,
             },
         )
         .expect("runtime saved");

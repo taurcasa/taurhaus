@@ -3749,6 +3749,127 @@ fn a_second_pass_over_the_same_assignment_does_not_relaunch_again() {
     );
 }
 
+fn codex_launch_attempts(runtime: &RecordingCoordinationRuntime) -> usize {
+    runtime
+        .calls()
+        .into_iter()
+        .filter(|call| matches!(call, RuntimeCall::SendKeys { keys, .. } if keys.contains("codex")))
+        .count()
+}
+
+// Regression: 2529309 recorded the requested level as `applied_effort` on the
+// failure branch too. The member was already stopped, the level had never
+// taken effect, and every later pass compared requested against applied and
+// saw nothing pending — so the stopped member was never brought back.
+#[test]
+fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    runtime.set_send_keys_failures("%21", usize::MAX, "launch failed");
+    for index in 1..=8 {
+        runtime.set_send_keys_failures(&format!("test-pane-{index}"), usize::MAX, "launch failed");
+    }
+
+    let before = codex_launch_attempts(&runtime);
+    let first = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("first pass");
+    assert!(first.is_empty(), "the relaunch failed, so nothing resumed");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "a level that never took effect is not what the session is running at"
+    );
+
+    let after_first = codex_launch_attempts(&runtime);
+    assert!(after_first > before, "the first pass attempted a launch");
+
+    orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("second pass");
+    let after_second = codex_launch_attempts(&runtime);
+    assert!(
+        after_second > after_first,
+        "a transient failure has to stay retryable"
+    );
+
+    // Bounded: the budget stops a stopped member being restarted forever.
+    for _ in 0..4 {
+        orchestrator
+            .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+            .expect("later pass");
+    }
+    let after_budget = codex_launch_attempts(&runtime);
+    orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("pass past the budget");
+    assert_eq!(
+        codex_launch_attempts(&runtime),
+        after_budget,
+        "a level that keeps failing must not restart the pane on every pass"
+    );
+}
+
+// Regression: the same failure branch left a member that later came back
+// unable to reach a level it had failed once, because the budget was never
+// cleared by a successful launch.
+#[test]
+fn a_successful_launch_clears_the_failed_effort_budget() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    runtime.set_send_keys_failures("%21", usize::MAX, "launch failed");
+    for index in 1..=8 {
+        runtime.set_send_keys_failures(&format!("test-pane-{index}"), usize::MAX, "launch failed");
+    }
+    orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("failing pass");
+
+    for index in 1..=16 {
+        runtime.set_send_keys_failures(&format!("test-pane-{index}"), 0, "");
+    }
+    runtime.set_send_keys_failures("%21", 0, "");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("recovered pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+    assert_eq!(record.effort_resume_failure, None);
+}
+
 #[test]
 fn a_slash_command_harness_is_never_relaunched_for_effort() {
     // mesh types `/effort` into a Claude pane before it delivers the notice;

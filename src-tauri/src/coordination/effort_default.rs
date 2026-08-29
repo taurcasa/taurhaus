@@ -562,6 +562,7 @@ mod tests {
             last_seen_at: None,
             applied_effort: Some("high".to_string()),
             effort_default: Some(recorded),
+            effort_resume_failure: None,
         };
         MemberRuntimeStore::save(teams_dir, "effort-team", "lead-dev", &record)
             .expect("save runtime");
