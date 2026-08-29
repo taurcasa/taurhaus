@@ -37,7 +37,10 @@
  * the last write by a live workflow subagent, so a frozen copy ages out of the
  * window by itself instead of staying "recent" forever — and it is the only
  * evidence there is for a headless workflow parent, which Claude's session
- * registry never marks busy (`docs/architecture/workflow-runs.md`).
+ * registry never marks busy (`docs/architecture/workflow-runs.md`). It is also
+ * change-gated, unlike the two above: the hub versions it as a 20-second
+ * bucket, a third of the window below, so a run that keeps writing keeps
+ * arriving without waking the poll on every append.
  */
 
 /** Every level this module can return, strongest first. */

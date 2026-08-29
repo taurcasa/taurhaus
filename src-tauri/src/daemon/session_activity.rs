@@ -21,6 +21,16 @@ const ACTIVE_SCAN_INTERVAL: Duration = Duration::from_millis(500);
 const IDLE_SCAN_INTERVAL: Duration = Duration::from_millis(1500);
 const IDLE_STABLE_CYCLES_THRESHOLD: u32 = 30;
 const ACTIVITY_EXPORT_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+/// How coarsely a workflow subagent's write time enters the change signature.
+///
+/// The raw millisecond time cannot: a subagent appends constantly, and every
+/// append would wake the long poll and re-export member activity at the scan
+/// cadence. But the app ages a write out of a 60-second window on its own, so a
+/// run whose live-run count holds steady for longer than that would go quiet on
+/// screen while it is still working. A bucket well inside the window is the
+/// middle: at most one event per bucket per session, and the app never holds a
+/// write time more than one bucket older than the truth.
+const WORKFLOW_WRITE_BUCKET_MS: i64 = 20_000;
 
 /// Upper bound for long-poll wait time.
 const MAX_WAIT: Duration = Duration::from_secs(30);
@@ -86,9 +96,10 @@ struct HubState {
 /// The activity half of the hub's change signature.
 ///
 /// Confidence and attribution are part of it because the app presents them
-/// (`src/lib/activitySignal.js`); `recent_io`, `last_output_age_secs`, and raw
-/// workflow write times are deliberately excluded — they flip per poll and
-/// would defeat change-gating.
+/// (`src/lib/activitySignal.js`); `recent_io` and `last_output_age_secs` are
+/// deliberately excluded — they flip per poll and would defeat change-gating.
+/// The workflow write time enters only as a coarse bucket
+/// (`WORKFLOW_WRITE_BUCKET_MS`), which is neither.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SessionEventSignature {
     pid: u32,
@@ -104,6 +115,7 @@ struct SessionEventSignature {
     activity_attribution: ActivityAttribution,
     project_unattributed_active: bool,
     workflow_live_runs: Option<u32>,
+    workflow_write_bucket: Option<i64>,
 }
 
 fn event_signature(session: &DisplaySession) -> SessionEventSignature {
@@ -124,6 +136,10 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
             .workflow_activity
             .as_ref()
             .map(|activity| activity.live_runs),
+        workflow_write_bucket: session
+            .workflow_activity
+            .as_ref()
+            .map(|activity| activity.last_write_at.div_euclid(WORKFLOW_WRITE_BUCKET_MS)),
     }
 }
 
@@ -1080,6 +1096,28 @@ mod tests {
         assert!(activity_changed(&previous, &next));
 
         next[0].workflow_activity = None;
+        assert!(activity_changed(&previous, &next));
+    }
+
+    // Regression: 1663e40 taught the app to age a workflow write out after 60 s,
+    // but the hub versioned only the live-run count — so a run that held one
+    // live run for longer than a minute delivered its first write time and no
+    // later one, and the badge, the hover card row and the `working` dot all
+    // went quiet while its agents were still writing.
+    #[test]
+    fn a_workflow_still_writing_past_the_activity_window_reaches_the_app_again() {
+        let mut previous = vec![session_with_state(SessionState::Active)];
+        previous[0].workflow_activity = Some(crate::workflow_runs::WorkflowActivity {
+            live_runs: 1,
+            last_write_at: 1_800_000_000_000,
+        });
+        let mut next = previous.clone();
+        // Ninety seconds on, the same single run, still appending.
+        next[0].workflow_activity = Some(crate::workflow_runs::WorkflowActivity {
+            live_runs: 1,
+            last_write_at: 1_800_000_090_000,
+        });
+
         assert!(activity_changed(&previous, &next));
     }
 
