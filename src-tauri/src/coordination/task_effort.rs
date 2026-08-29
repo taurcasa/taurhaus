@@ -9,6 +9,8 @@
 //! surfaces and owns the one path mesh cannot take: relaunching a
 //! [`RuntimeEffort::ResumeWithFlag`] member with the effort flag.
 
+use chrono::{DateTime, Utc};
+
 use crate::coordination::stores::MeshInboxMessage;
 use crate::session_scanner::cli_tool::{spec, CliTool, RuntimeEffort};
 
@@ -45,6 +47,29 @@ pub fn message_effort(message: &MeshInboxMessage) -> Option<AssignmentEffort> {
 /// must not clear the level the member is working under.
 pub fn latest_assignment_effort(messages: &[MeshInboxMessage]) -> Option<AssignmentEffort> {
     messages.iter().rev().find_map(message_effort)
+}
+
+/// The newest assignment effort delivered since `since`.
+///
+/// A relaunch takes a member's session down, so it may only answer an
+/// assignment the running session has not already been through. An older
+/// record carries no applied level, and an inbox keeps every assignment ever
+/// delivered: without this an upgrade — or an operator restarting a member by
+/// hand — would take the pane straight back down for work that is long done.
+/// The timestamp mesh wrote is the only thing that separates the two.
+pub fn assignment_effort_since(
+    messages: &[MeshInboxMessage],
+    since: DateTime<Utc>,
+) -> Option<AssignmentEffort> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| message_effort(message).is_some())
+        .filter(|message| {
+            DateTime::parse_from_rfc3339(&message.timestamp)
+                .is_ok_and(|delivered| delivered.with_timezone(&Utc) >= since)
+        })
+        .and_then(message_effort)
 }
 
 /// The effort level a member must be relaunched to reach, if any.
@@ -123,7 +148,7 @@ fn trimmed(value: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{TimeZone, Utc};
+    use chrono::TimeZone;
     use serde_json::{json, Value};
 
     use super::*;

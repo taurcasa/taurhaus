@@ -267,8 +267,15 @@ impl CoordinationOrchestrator {
         // No runtime record means no session to switch: relaunching here would
         // start a member the operator never launched.
         let runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name).ok()?;
+        // A relaunch answers an assignment the running session has not been
+        // through. A record that never recorded an attach never ran, so there
+        // is no session for a stale assignment to take down and every
+        // assignment still counts.
+        let attached_at = runtime
+            .attached_at
+            .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
         let messages = MeshInboxStore::load(&self.teams_dir, team_name, &member.name).ok()?;
-        let assigned = task_effort::latest_assignment_effort(&messages)?;
+        let assigned = task_effort::assignment_effort_since(&messages, attached_at)?;
         let level = task_effort::resume_effort_target(
             member.cli_tool,
             Some(&assigned.level),

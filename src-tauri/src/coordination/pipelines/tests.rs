@@ -3870,6 +3870,118 @@ fn a_successful_launch_clears_the_failed_effort_budget() {
     assert_eq!(record.effort_resume_failure, None);
 }
 
+fn append_assignment_at(
+    tmp: &TempDir,
+    member_name: &str,
+    level: &str,
+    why: &str,
+    at: chrono::DateTime<Utc>,
+) {
+    let mut message = crate::coordination::stores::MeshInboxMessage::new(
+        "team-lead",
+        format!("Effort: {level} — {why}\nStart on the migration."),
+        None,
+        at,
+    );
+    message
+        .extra
+        .insert("effort".to_string(), serde_json::json!(level));
+    message
+        .extra
+        .insert("effortWhy".to_string(), serde_json::json!(why));
+    crate::coordination::stores::MeshInboxStore::append(
+        tmp.path(),
+        "effort-team",
+        member_name,
+        &message,
+    )
+    .expect("append assignment");
+}
+
+// Regression: 2529309 compared the newest effort in the inbox against the
+// runtime record with no regard for when either was written. An older record
+// carries no applied effort, so upgrading — or restarting a member by hand —
+// took the pane straight back down for an assignment the running session had
+// already been through.
+#[test]
+fn an_assignment_older_than_the_running_session_does_not_relaunch_it() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    append_assignment_at(
+        &tmp,
+        "builder",
+        "high",
+        "the migration is irreversible",
+        Utc::now() - chrono::Duration::hours(6),
+    );
+
+    // The member is launched now, well after that assignment was delivered.
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    // What an upgraded record looks like: a live session, nothing recorded.
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
+        record.applied_effort = None;
+    })
+    .expect("clear applied effort");
+    let before = codex_launch_attempts(&runtime);
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert!(resumed.is_empty(), "nothing new was assigned to act on");
+    assert_eq!(
+        codex_launch_attempts(&runtime),
+        before,
+        "a session that already started under that assignment must not be taken down"
+    );
+}
+
+// The other side of the same rule: an assignment that arrives while the member
+// is running is exactly what the pass exists for.
+#[test]
+fn an_assignment_delivered_to_a_running_member_still_relaunches_it() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+
+    append_assignment_at(
+        &tmp,
+        "builder",
+        "high",
+        "the migration is irreversible",
+        Utc::now() + chrono::Duration::seconds(1),
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert_eq!(resumed, vec!["builder".to_string()]);
+}
+
 // Regression: 45cd190 captured the operator's Claude effort default from the
 // process default directory rather than the one the launch actually selects,
 // so a member on a chosen account had another account's level recorded — and
