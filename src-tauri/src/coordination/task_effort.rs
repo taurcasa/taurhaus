@@ -128,6 +128,33 @@ mod tests {
 
     use super::*;
 
+    /// The first mesh release whose `task assign` carries `--effort` and
+    /// `--why`. Everything in this module reads a pair only that release
+    /// writes.
+    const ASSIGNMENT_EFFORT_MESH_VERSION: (u32, u32, u32) = (0, 2, 22);
+
+    // Regression: the W5b read-back shipped on top of bundled mesh 0.2.21,
+    // whose `mesh task assign` has neither `--effort` nor `--why`, so the two
+    // bundled lead roles instructed a command the bundled binary rejects.
+    #[test]
+    fn the_bundled_mesh_carries_the_assignment_effort_flags() {
+        let lock = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/mesh.lock.json");
+        let raw = std::fs::read_to_string(&lock).expect("bundled mesh lock manifest");
+        let pinned: Value = serde_json::from_str(&raw).expect("lock manifest is json");
+        let version = pinned["version"].as_str().expect("pinned mesh version");
+        let parts: Vec<u32> = version
+            .split('.')
+            .map(|part| part.parse().expect("numeric mesh version part"))
+            .collect();
+        let pinned = (parts[0], parts[1], parts[2]);
+
+        assert!(
+            pinned >= ASSIGNMENT_EFFORT_MESH_VERSION,
+            "bundled mesh {version} predates the assignment effort contract \
+             ({ASSIGNMENT_EFFORT_MESH_VERSION:?}); `mesh task assign --effort/--why` would fail"
+        );
+    }
+
     fn message(from: &str, text: &str, effort: Option<(&str, Option<&str>)>) -> MeshInboxMessage {
         let now = Utc.with_ymd_and_hms(2026, 8, 29, 9, 0, 0).unwrap();
         let mut message = MeshInboxMessage::new(from, text.to_string(), None, now);
