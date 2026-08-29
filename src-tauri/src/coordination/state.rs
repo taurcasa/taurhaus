@@ -188,11 +188,17 @@ impl CoordinationState {
                 }
             }
 
-            // The lead's per-assignment effort reaches most harnesses through
-            // mesh's own `/effort`; the one that has no such command is
-            // relaunched here. It rides this pass rather than a timer of its
-            // own, and it is a no-op for every member already at its level.
-            match orchestrator.apply_pending_task_effort(&team_name, cli_commands, tmux_layout) {
+            // Retries only. A Codex effort switch is started by the task event
+            // that made the assignment visible (`apply_task_effort_for_project`);
+            // this sweep exists so one that failed there — a pane that would
+            // not come down, a launch that did not land — is picked up again
+            // rather than left pending until the next assignment.
+            match orchestrator.apply_pending_task_effort(
+                &team_name,
+                cli_commands,
+                tmux_layout,
+                crate::coordination::task_effort::EffortPassScope::RetryPending,
+            ) {
                 Ok(members) => summary.members_effort_resumed += members.len(),
                 Err(err) => {
                     summary.team_errors += 1;
@@ -206,6 +212,73 @@ impl CoordinationState {
         }
 
         Ok(summary)
+    }
+
+    /// Put a pending assignment effort into force for every member working in
+    /// `project_path`, and report how many were switched.
+    ///
+    /// Called from the task scan that just persisted the project's tasks and
+    /// rewrote the operational snapshots from them — the moment an assignment
+    /// mesh wrote becomes visible to taurhaus, and the earliest a Codex member
+    /// can be moved to the level it carries. `cli_commands` and `tmux_layout`
+    /// are the operator's own launch settings, resolved by the caller at the
+    /// command boundary the way every other managed launch resolves them: a
+    /// relaunch must land on the same account and the same configured command
+    /// as the launch it replaces.
+    pub fn apply_task_effort_for_project(
+        &self,
+        project_path: &str,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+    ) -> Result<usize, CoordinationError> {
+        let teams = self.teams_working_in_project(project_path)?;
+        if teams.is_empty() {
+            return Ok(0);
+        }
+        self.with_orchestrator(|orchestrator| {
+            let mut switched = 0;
+            for team_name in teams {
+                match orchestrator.apply_pending_task_effort(
+                    &team_name,
+                    cli_commands,
+                    tmux_layout,
+                    crate::coordination::task_effort::EffortPassScope::TaskChanged,
+                ) {
+                    Ok(members) => switched += members.len(),
+                    Err(err) => tracing::warn!(
+                        team = %team_name,
+                        error = %err,
+                        "task-arrival effort pass failed"
+                    ),
+                }
+            }
+            Ok(switched)
+        })
+    }
+
+    /// Teams with at least one member whose project is `project_path`.
+    ///
+    /// The task scan runs per project, so this is what keeps a change in one
+    /// project from sweeping every team on the host.
+    pub fn teams_working_in_project(
+        &self,
+        project_path: &str,
+    ) -> Result<Vec<String>, CoordinationError> {
+        let wanted = crate::provider::path::normalize_project_path(project_path);
+        let mut teams = Vec::new();
+        for team_name in TeamConfigStore::list(&self.teams_dir)? {
+            let Ok(config) = TeamConfigStore::load(&self.teams_dir, &team_name) else {
+                continue;
+            };
+            if config.members.iter().any(|member| {
+                crate::provider::path::normalize_project_path(
+                    &member.project_path.to_string_lossy(),
+                ) == wanted
+            }) {
+                teams.push(team_name);
+            }
+        }
+        Ok(teams)
     }
 
     fn build_orchestrator(&self) -> Result<CoordinationOrchestrator, CoordinationError> {
@@ -1017,11 +1090,11 @@ mod tests {
     }
 
     #[test]
-    fn the_background_pass_puts_a_pending_assignment_effort_into_force() {
+    fn a_task_change_puts_a_pending_assignment_effort_into_force() {
         // The lead's per-assignment effort reaches a Claude, Antigravity or
-        // Grok member through mesh's own `/effort`; Codex has no such command,
-        // so the only path is the one taurhaus owns, and this pass is where it
-        // runs. No new timer: it rides the self-heal pass that already exists.
+        // Grok member through mesh's own `/effort`, before the notice. Codex
+        // has no such command, so taurhaus resumes it — from the task scan that
+        // made the assignment visible, which is the earliest taurhaus can act.
         let tmp = TempDir::new().expect("tempdir");
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
         runtime.set_detected_runtime_session(
@@ -1064,21 +1137,28 @@ mod tests {
             "builder",
             |record| {
                 record.pane_id = Some("%31".to_string());
-                record.health = HealthState::SessionDead;
+                record.health = HealthState::Healthy;
                 record.applied_effort = Some("low".to_string());
+                record.session_id = Some("session-effort".to_string());
             },
         )
         .expect("seed runtime");
+        runtime.set_pane_exists("%31", true);
+        runtime.set_pane_dead("%31", false);
 
         assign_task(tmp.path(), "effort-team", "builder", "high");
 
         state.orchestrator.lock().expect("state mutex").take();
 
-        let summary = state
-            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
-            .expect("background pass succeeds");
+        let resumed = state
+            .apply_task_effort_for_project(
+                "/tmp/app",
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+            )
+            .expect("task-arrival pass succeeds");
 
-        assert_eq!(summary.members_effort_resumed, 1);
+        assert_eq!(resumed, 1);
         let record = crate::coordination::stores::MemberRuntimeStore::load(
             tmp.path(),
             "effort-team",
@@ -1088,11 +1168,89 @@ mod tests {
         assert_eq!(record.applied_effort.as_deref(), Some("high"));
     }
 
+    // Regression: 2529309 started every effort switch from the 30 s self-heal
+    // pass, so a Codex member could read a whole assignment at its previous
+    // level before the timer came round. The switch belongs on the task event
+    // that made the assignment visible; the timer only retries one that failed.
+    #[test]
+    fn the_background_pass_starts_no_switch_of_its_own() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_detected_runtime_session(
+            "%31",
+            CliTool::Codex,
+            Some("session-effort"),
+            Some("/tmp/effort.jsonl"),
+        );
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("effort-team", None)?;
+                orch.add_member(
+                    "effort-team",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                let mut builder =
+                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                builder.reasoning_effort = Some("low".to_string());
+                orch.add_member("effort-team", builder)?;
+                Ok(())
+            })
+            .expect("seed team");
+        write_lead_credential(tmp.path(), "effort-team");
+
+        crate::coordination::stores::MemberRuntimeStore::update(
+            tmp.path(),
+            "effort-team",
+            "builder",
+            |record| {
+                record.pane_id = Some("%31".to_string());
+                record.health = HealthState::Healthy;
+                record.applied_effort = Some("low".to_string());
+                record.session_id = Some("session-effort".to_string());
+            },
+        )
+        .expect("seed runtime");
+        runtime.set_pane_exists("%31", true);
+        runtime.set_pane_dead("%31", false);
+
+        assign_task(tmp.path(), "effort-team", "builder", "high");
+
+        state.orchestrator.lock().expect("state mutex").take();
+
+        let summary = state
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .expect("background pass succeeds");
+
+        assert_eq!(
+            summary.members_effort_resumed, 0,
+            "a switch nothing has attempted yet is the task event's to start"
+        );
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            tmp.path(),
+            "effort-team",
+            "builder",
+        )
+        .expect("runtime record");
+        assert_eq!(record.applied_effort.as_deref(), Some("low"));
+    }
+
     // Regression: 2529309 ran the effort relaunch with
     // `CliCommandSettings::default()`, so a member launched on a selected
     // account came back on the tool's default one, under the stock command.
     #[test]
-    fn the_background_pass_relaunches_on_the_operators_own_launch_settings() {
+    fn an_effort_relaunch_uses_the_operators_own_launch_settings() {
         let tmp = TempDir::new().expect("tempdir");
         let codex_home = TempDir::new().expect("codex home");
         let runtime = Arc::new(RecordingCoordinationRuntime::default());
@@ -1136,12 +1294,14 @@ mod tests {
             "builder",
             |record| {
                 record.pane_id = Some("%31".to_string());
-                record.health = HealthState::SessionDead;
+                record.health = HealthState::Healthy;
                 record.applied_effort = Some("low".to_string());
                 record.session_id = Some("session-effort".to_string());
             },
         )
         .expect("seed runtime");
+        runtime.set_pane_exists("%31", true);
+        runtime.set_pane_dead("%31", false);
 
         assign_task(tmp.path(), "effort-team", "builder", "high");
 
@@ -1151,11 +1311,11 @@ mod tests {
         cli_commands
             .account_selector_dirs
             .insert("CODEX_HOME".to_string(), codex_home.path().to_path_buf());
-        let summary = state
-            .run_background_self_heal_pass(&cli_commands, DEFAULT_TMUX_LAYOUT)
-            .expect("background pass succeeds");
+        let resumed = state
+            .apply_task_effort_for_project("/tmp/app", &cli_commands, DEFAULT_TMUX_LAYOUT)
+            .expect("task-arrival pass succeeds");
 
-        assert_eq!(summary.members_effort_resumed, 1);
+        assert_eq!(resumed, 1);
         let launch = runtime
             .calls()
             .into_iter()
@@ -1168,7 +1328,7 @@ mod tests {
         assert!(
             launch.contains("CODEX_HOME=")
                 && launch.contains(&codex_home.path().display().to_string()),
-            "the background relaunch must keep the operator's account, got: {launch}"
+            "the effort relaunch must keep the operator's account, got: {launch}"
         );
     }
 

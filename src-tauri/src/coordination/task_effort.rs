@@ -43,6 +43,21 @@ pub fn active_task_effort(snapshot: &OperationalContextSnapshot) -> Option<Assig
     })
 }
 
+/// What a run of the effort pass is allowed to start.
+///
+/// A relaunch takes a session down, so the pass that starts one has to be the
+/// event that made the assignment visible — not a timer, which would let a
+/// member work at the wrong level for a whole interval and then stop it
+/// mid-turn. The timer's job is only to pick up a switch that already tried and
+/// failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortPassScope {
+    /// A task event: start any switch the member owes.
+    TaskChanged,
+    /// A background sweep: retry only a switch already recorded as failed.
+    RetryPending,
+}
+
 /// Whether this harness changes effort by being relaunched.
 ///
 /// The only runtime effort path taurhaus owns. A `SlashCommand` harness takes

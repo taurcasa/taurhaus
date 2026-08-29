@@ -648,6 +648,10 @@ fn sync_project_tasks_for_projects(
                     "task_count": task_count,
                 }),
             );
+            crate::commands::coordination::apply_task_effort_after_task_change(
+                app,
+                &normalized_path,
+            );
         }
     }
 

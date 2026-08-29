@@ -212,6 +212,10 @@ impl CoordinationOrchestrator {
     /// grammar — by stopping the member and resuming its own conversation with
     /// the effort flag. Returns the members whose level it put into force.
     ///
+    /// `scope` decides what may be started here: a task event starts any switch
+    /// the member owes, a background sweep only retries one already recorded as
+    /// failed.
+    ///
     /// **Best-effort by design, and behind the notice.** mesh owns both the
     /// assignment record and the inbox, and nothing on taurhaus's side gates
     /// either, so a Codex member can read its assignment at its previous effort
@@ -225,6 +229,7 @@ impl CoordinationOrchestrator {
         team_name: &str,
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
+        scope: task_effort::EffortPassScope,
     ) -> Result<Vec<String>, CoordinationError> {
         validate_team_name(team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
@@ -234,7 +239,7 @@ impl CoordinationOrchestrator {
             if !task_effort::relaunches_for_effort(member.cli_tool) {
                 continue;
             }
-            let Some(pending) = self.pending_member_effort(team_name, member) else {
+            let Some(pending) = self.pending_member_effort(team_name, member, scope) else {
                 continue;
             };
             // The renderer keeps an effort the operator's own base already
@@ -384,7 +389,12 @@ impl CoordinationOrchestrator {
     }
 
     /// The effort taurhaus must put into force for a member, if any.
-    fn pending_member_effort(&self, team_name: &str, member: &Member) -> Option<PendingEffort> {
+    fn pending_member_effort(
+        &self,
+        team_name: &str,
+        member: &Member,
+        scope: task_effort::EffortPassScope,
+    ) -> Option<PendingEffort> {
         // No runtime record means no session to switch: relaunching here would
         // start a member the operator never launched.
         let runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name).ok()?;
@@ -411,6 +421,12 @@ impl CoordinationOrchestrator {
             .filter(|failure| failure.level.eq_ignore_ascii_case(&level))
             .map_or(0, |failure| failure.attempts);
         if failed_attempts >= MAX_EFFORT_RESUME_ATTEMPTS {
+            return None;
+        }
+        // A background sweep never starts a switch of its own: it would take a
+        // pane down long after the member read the assignment, and mid-turn.
+        // It exists to pick up one that already tried and failed.
+        if scope == task_effort::EffortPassScope::RetryPending && failed_attempts == 0 {
             return None;
         }
         // The relaunch resumes the member's own conversation. Without a session

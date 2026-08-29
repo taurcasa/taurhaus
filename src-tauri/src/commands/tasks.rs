@@ -311,6 +311,10 @@ fn schedule_project_task_refresh(
                         "task_count": task_count,
                     }),
                 );
+                crate::commands::coordination::apply_task_effort_after_task_change(
+                    &app_handle,
+                    &project_key,
+                );
             }
             Ok(None) => {}
             Err(error) => {

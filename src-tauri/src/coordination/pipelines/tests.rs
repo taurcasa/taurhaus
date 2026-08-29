@@ -23,6 +23,7 @@ use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::task_effort::EffortPassScope;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::templates::storage::TemplateStore;
@@ -3721,7 +3722,12 @@ fn a_codex_member_is_relaunched_with_the_assignment_effort() {
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
     assert_eq!(resumed, vec!["builder".to_string()]);
 
@@ -3792,7 +3798,12 @@ fn a_resume_carries_the_effort_of_an_assignment_made_while_the_member_was_down()
     );
 
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
     assert!(
         resumed.is_empty(),
@@ -3825,7 +3836,12 @@ fn taurhaus_never_types_an_effort_command_into_a_members_pane() {
         assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
         let handled = orchestrator
-            .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+            )
             .expect("effort pass");
 
         assert!(
@@ -3901,7 +3917,12 @@ fn a_codex_effort_relaunch_resumes_the_members_own_session() {
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     orchestrator
-        .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &cli_commands,
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     let launch = runtime
@@ -3952,10 +3973,20 @@ fn a_second_pass_over_the_same_assignment_does_not_relaunch_again() {
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let first = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("first pass");
     let second = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("second pass");
 
     assert_eq!(first, vec!["builder".to_string()]);
@@ -4002,7 +4033,12 @@ fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
 
     let before = codex_launch_attempts(&runtime);
     let first = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("first pass");
     assert!(first.is_empty(), "the relaunch failed, so nothing resumed");
 
@@ -4017,7 +4053,12 @@ fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
     assert!(after_first > before, "the first pass attempted a launch");
 
     orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("second pass");
     let after_second = codex_launch_attempts(&runtime);
     assert!(
@@ -4028,12 +4069,22 @@ fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
     // Bounded: the budget stops a stopped member being restarted forever.
     for _ in 0..4 {
         orchestrator
-            .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+            .apply_pending_task_effort(
+                "effort-team",
+                &CliCommandSettings::default(),
+                "new_window",
+                EffortPassScope::TaskChanged,
+            )
             .expect("later pass");
     }
     let after_budget = codex_launch_attempts(&runtime);
     orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("pass past the budget");
     assert_eq!(
         codex_launch_attempts(&runtime),
@@ -4068,7 +4119,12 @@ fn a_successful_launch_clears_the_failed_effort_budget() {
         runtime.set_send_keys_failures(&format!("test-pane-{index}"), usize::MAX, "launch failed");
     }
     orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("failing pass");
 
     for index in 1..=16 {
@@ -4077,7 +4133,12 @@ fn a_successful_launch_clears_the_failed_effort_budget() {
     runtime.set_send_keys_failures("%21", 0, "");
 
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("recovered pass");
 
     assert_eq!(resumed, vec!["builder".to_string()]);
@@ -4102,7 +4163,12 @@ fn a_finished_assignment_leaves_the_running_pane_alone() {
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert!(resumed.is_empty(), "nothing is assigned to act on");
@@ -4124,7 +4190,12 @@ fn an_assignment_on_the_members_active_task_relaunches_it() {
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert_eq!(resumed, vec!["builder".to_string()]);
@@ -4174,7 +4245,12 @@ fn a_member_that_never_started_is_left_alone() {
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert!(resumed.is_empty());
@@ -4219,7 +4295,12 @@ fn an_effort_switch_without_a_session_id_leaves_the_running_pane_alone() {
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert!(resumed.is_empty(), "the switch has to be deferred");
@@ -4262,7 +4343,12 @@ fn a_stop_that_failed_aborts_the_effort_resume() {
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert!(resumed.is_empty(), "a stop that failed is not a switch");
@@ -4302,7 +4388,12 @@ fn an_operator_stopped_member_is_not_restarted_by_the_effort_pass() {
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert!(resumed.is_empty(), "a stopped member stays stopped");
@@ -4330,7 +4421,12 @@ fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() 
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &cli_commands,
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert_eq!(resumed, vec!["builder".to_string()]);
@@ -4372,7 +4468,12 @@ fn a_pin_the_rewrite_cannot_read_leaves_the_member_running() {
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator
-        .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
+        .apply_pending_task_effort(
+            "effort-team",
+            &cli_commands,
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
         .expect("effort pass");
 
     assert!(
