@@ -219,7 +219,7 @@ Tool indicator icons appear next to project names in the sidebar when CLI sessio
 
 ### Mesh View
 
-The Mesh tab lets you set up and manage multi-agent teams. Start from a built-in preset, user template, or blank slate; choose Claude, Codex, or Antigravity lead roles where supported by the selected preset (Grok ships as an agent role, `grok-developer`, with a `Grok Pair` preset); then launch and monitor the team from the live roster/canvas. See [Mesh view](features/mesh.md) for details.
+The Mesh tab lets you set up and manage multi-agent teams. Start from a built-in preset, user template, or blank slate; choose Claude, Codex, or Antigravity lead roles where supported by the selected preset (Grok ships as an agent role, `v4-developer-grok`, with a `Grok Pair` preset); then launch and monitor the team from the live roster/canvas. See [Mesh view](features/mesh.md) for details.
 
 ### Search
 

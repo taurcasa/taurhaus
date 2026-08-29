@@ -9,7 +9,7 @@ version: "1.0.0"
 lead_role_id: v3-lead-claude
 
 agent_slots:
-  - role_id: grok-developer
+  - role_id: v4-developer-grok
     count: 1
     project_binding: lead_project
     overrides:

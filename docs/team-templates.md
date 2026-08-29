@@ -378,16 +378,22 @@ For isolated test runs, the app data root can be overridden with `TAURHAUS_DATA_
 
 Current built-ins ship from `src-tauri/resources/templates/`:
 
-- **Roles (38)**:
+- **Roles (44)**:
   - legacy and imported-compatible roles such as `claude-orchestrator`, `claude-researcher`, `claude-reviewer`, `codex-developer`, and `antigravity-ui-specialist`
   - taurhaus-specific roles such as `taurhaus-lead-claude`, `taurhaus-lead-codex`, `taurhaus-architect`, `taurhaus-developer`, and `taurhaus-designer`
   - v2 and v3 role families such as `v2-lead-claude`, `v2-developer-codex`, `v3-lead-claude`, `v3-architect-codex`, and `v3-product-checker-claude`
+  - the v4 developer family — `v4-developer-claude`, `v4-developer-codex`, `v4-developer-agy`, `v4-developer-grok` — which is what the built-in presets staff
   - newer specialist roles: `adversarial-reviewer-claude`, `docs-verifier-codex`, `quick-dev-codex`, `frontend-design-skill-developer`, `claude-design-lead`, `claude-product-checker`, `codex-product-lead`, `codex-qa`, `codex-vertical-slice-developer`
-- **Presets (4)**:
-  - `pair`
-  - `dev-team`
-  - `full-team`
-  - `research-team`
+- **Presets (5)**:
+  - `pair` — lead plus `quick-dev-codex`
+  - `dev-team` — lead plus two `v4-developer-codex`
+  - `full-team` — lead plus `v3-architect-codex` and two `v4-developer-codex`
+  - `research-team` — lead plus `claude-researcher` and one `v4-developer-codex`
+  - `grok-pair` — lead plus one `v4-developer-grok`
+
+No preset pins model or effort on a developer slot; both come from the role, which
+defaults to medium. The v3 developer roles stay in the catalog for one more release,
+but no built-in preset staffs them any more.
 
 These built-ins are most useful when you read them as lane definitions:
 
