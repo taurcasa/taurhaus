@@ -254,6 +254,45 @@ mod tests {
     }
 
     #[test]
+    fn an_assignment_delivered_before_the_session_started_is_not_current() {
+        let attached = Utc.with_ymd_and_hms(2026, 8, 29, 12, 0, 0).unwrap();
+        let mut old = message("lead", "first", Some(("high", Some("irreversible"))));
+        old.timestamp = Utc
+            .with_ymd_and_hms(2026, 8, 29, 9, 0, 0)
+            .unwrap()
+            .to_rfc3339();
+
+        assert_eq!(assignment_effort_since(&[old.clone()], attached), None);
+
+        let mut fresh = old;
+        fresh.timestamp = Utc
+            .with_ymd_and_hms(2026, 8, 29, 12, 30, 0)
+            .unwrap()
+            .to_rfc3339();
+        assert_eq!(
+            assignment_effort_since(&[fresh], attached)
+                .expect("a fresh assignment counts")
+                .level,
+            "high"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_timestamp_is_not_treated_as_current() {
+        // A record taurhaus cannot date is not a reason to take a pane down.
+        let mut message = message("lead", "first", Some(("high", None)));
+        message.timestamp = "not a timestamp".to_string();
+
+        assert_eq!(
+            assignment_effort_since(
+                &[message],
+                Utc.with_ymd_and_hms(2026, 8, 29, 12, 0, 0).unwrap()
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn an_empty_inbox_carries_no_effort() {
         assert_eq!(latest_assignment_effort(&[]), None);
     }
