@@ -166,8 +166,16 @@
     const liveSessionIds = liveSessionKey ? liveSessionKey.split('\u0000') : []
 
     if (restart) {
+      // Everything the old project's search had reached goes with it, the
+      // control included: a different project has not been searched at all yet,
+      // and a stale *Search older sessions* would ask its predecessor's
+      // sessions.
       runs = []
+      candidateIds = []
       askedCount = 0
+      askedSessions = 0
+      candidateSessions = 0
+      sessionsTruncated = false
       selected = null
       detail = null
       ledgerRow = null
