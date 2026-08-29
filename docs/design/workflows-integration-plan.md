@@ -31,8 +31,8 @@ Order: W1 + W3 (parallel, small) → W2 → W5 (with the v4 lead roles) → W4.
 | W2a (backend) | Codex | Opus conformance + operational | 2 | 2 → 0 (the raw workflow write time in the activity signature would have turned the 30 s export into a 500 ms one — caught by the operational lens) | #55 |
 | W2b (UI) | Opus | Codex conformance + operational | 4 | 4 → 4 → 5 → 2 (last two closed by the orchestrator: the daemon workflow hint survives the roster join on Windows; live-run phase attribution accepted as a documented limitation) | #57 |
 | W5a (mesh) | Codex | Opus one lens | 2 | 3 → 2 → 0 (pane-ownership guard, orphaned task on a rejected create; fixed by a follow-up agent) | mesh 0.2.22, bundled in #65 |
-| W5b (taurhaus) | Opus | Codex two lenses | tbd | tbd | tbd |
-| W4 | tbd | tbd | tbd | tbd | tbd |
+| W5b (taurhaus) | Opus | Codex conformance + operational | 6 | 28 → reshaped by the orchestrator in round 5 (duplicated `/effort` path and settings automation removed) → 1 accepted (unlocked WSL-UNC runtime writes on Windows, follow-up) | #68 |
+| W4 | design: [`w4-managed-stages-design.md`](w4-managed-stages-design.md) (2026-08-29); experiments 3–5 gate implementation | tbd | tbd | tbd | tbd |
 
 ## Follow-ups from W1–W2
 
