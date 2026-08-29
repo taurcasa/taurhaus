@@ -12,7 +12,8 @@
 use chrono::{DateTime, Utc};
 
 use crate::coordination::stores::MeshInboxMessage;
-use crate::session_scanner::cli_tool::{spec, CliTool, RuntimeEffort};
+use crate::session_scanner::cli_tool::{spec, CliTool, EffortFlag, RuntimeEffort};
+use crate::session_scanner::launch::command_contains_flag;
 
 /// The effort a lead attached to an assignment, with the reason for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +73,28 @@ pub fn assignment_effort_since(
         .and_then(message_effort)
 }
 
+/// Whether this harness changes effort by being relaunched.
+///
+/// Checked before anything reads an inbox: every other harness takes the level
+/// through its own prompt, and the pass has nothing to do for it.
+pub fn relaunches_for_effort(tool: CliTool) -> bool {
+    spec(tool).capabilities.runtime_effort == RuntimeEffort::ResumeWithFlag
+}
+
+/// Whether the operator's own base command already pins the effort.
+///
+/// The launch renderer leaves a configured base alone: an effort the base
+/// already carries is kept and the requested one is dropped with a note. A
+/// relaunch on such a base cannot put an assignment's level into force, so the
+/// pass must not stop a working member for it.
+pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
+    match spec(tool).capabilities.effort_flag {
+        Some(EffortFlag::Argument { flag }) => command_contains_flag(base, flag),
+        Some(EffortFlag::Config { key, .. }) => command_contains_flag(base, key),
+        None => false,
+    }
+}
+
 /// The effort level a member must be relaunched to reach, if any.
 ///
 /// `None` for every harness that takes the level through its own prompt, for a
@@ -83,7 +106,7 @@ pub fn resume_effort_target(
     requested: Option<&str>,
     applied: Option<&str>,
 ) -> Option<String> {
-    if spec(tool).capabilities.runtime_effort != RuntimeEffort::ResumeWithFlag {
+    if !relaunches_for_effort(tool) {
         return None;
     }
     let requested = trimmed(requested)?;

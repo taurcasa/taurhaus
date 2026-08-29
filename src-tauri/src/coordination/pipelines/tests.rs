@@ -4088,3 +4088,124 @@ fn a_member_that_never_started_is_left_alone() {
 
     assert!(resumed.is_empty());
 }
+
+fn seed_running_codex_member(
+    tmp: &TempDir,
+    runtime: Arc<RecordingCoordinationRuntime>,
+    cli_commands: &CliCommandSettings,
+) -> CoordinationOrchestrator {
+    let mut orchestrator = effort_team(tmp, runtime, CliTool::Codex, Some("low"));
+    mark_member_offline(tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            cli_commands,
+        )
+        .expect("seed resume");
+    orchestrator
+}
+
+// Regression: 6128bd1 pointed the relaunch at the member's own conversation
+// but left a record with no session id eligible for the pass. The member was
+// stopped anyway, the resume rendered `LaunchMode::Fresh`, and an effort
+// switch threw away the conversation the assignment was building on.
+#[test]
+fn an_effort_switch_without_a_session_id_leaves_the_running_pane_alone() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    // What an older record — or a session capture that never landed — leaves.
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
+        record.session_id = None;
+    })
+    .expect("clear session id");
+
+    let before = codex_launch_attempts(&runtime);
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert!(resumed.is_empty(), "the switch has to be deferred");
+    assert_eq!(
+        codex_launch_attempts(&runtime),
+        before,
+        "an effort switch must never start a fresh conversation"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.health,
+        HealthState::Healthy,
+        "the member keeps running at its previous level"
+    );
+}
+
+// Regression: 2529309 accepted any runtime record, so an assignment that
+// arrived after the operator stopped a member started the member again from a
+// background pass the operator never asked for.
+#[test]
+fn an_operator_stopped_member_is_not_restarted_by_the_effort_pass() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    // The operator's own Stop.
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    let before = codex_launch_attempts(&runtime);
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert!(resumed.is_empty(), "a stopped member stays stopped");
+    assert_eq!(
+        codex_launch_attempts(&runtime),
+        before,
+        "an assignment is not a reason to start a member the operator stopped"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.health, HealthState::SessionDead);
+}
+
+// Regression: 2529309 recorded the requested level as `applied_effort` from
+// the activation context, but the renderer refuses to append an effort the
+// operator's own base command already pins. The member was stopped, came back
+// at the pinned level, and was reported as switched — with no retry left.
+#[test]
+fn a_base_command_that_pins_the_effort_is_not_relaunched_for_one() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands.codex.resume =
+        "codex resume --last -c model_reasoning_effort=\"low\" --yolo".to_string();
+    let mut orchestrator = seed_running_codex_member(&tmp, runtime.clone(), &cli_commands);
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let before = codex_launch_attempts(&runtime);
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
+        .expect("effort pass");
+
+    assert!(
+        resumed.is_empty(),
+        "a relaunch that cannot carry the level is not a switch"
+    );
+    assert_eq!(
+        codex_launch_attempts(&runtime),
+        before,
+        "stopping a working member for a level the command cannot carry buys nothing"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the session is running at the level the base pins, not the requested one"
+    );
+    assert_eq!(record.health, HealthState::Healthy);
+}

@@ -199,6 +199,32 @@ impl CoordinationOrchestrator {
             let Some(pending) = self.pending_member_effort(team_name, member) else {
                 continue;
             };
+            // A base command that pins the effort keeps its own value: the
+            // relaunch would take the member down and bring it back at the
+            // same level, and recording the requested one would report a
+            // switch that never happened.
+            let base = crate::session_scanner::launch::base_command(
+                cli_commands,
+                member.cli_tool,
+                crate::daemon::protocol::LaunchMode::Resume,
+            );
+            if task_effort::base_pins_effort(member.cli_tool, base) {
+                self.record_failed_effort_attempt(
+                    team_name,
+                    &member.name,
+                    &pending.level,
+                    pending.failed_attempts + 1,
+                );
+                task_effort::emit_effort_resume(
+                    "effort.resume.failed",
+                    team_name,
+                    &member.name,
+                    &pending.level,
+                    pending.previous.as_deref(),
+                    Some("configured launch command pins the effort"),
+                );
+                continue;
+            }
             task_effort::emit_effort_resume(
                 "effort.resume.started",
                 team_name,
@@ -264,9 +290,38 @@ impl CoordinationOrchestrator {
 
     /// The effort a member must be relaunched to reach, if any.
     fn pending_member_effort(&self, team_name: &str, member: &Member) -> Option<PendingEffort> {
+        // Every other harness takes the level through its own prompt. Asking
+        // the registry first keeps the pass off their inboxes entirely.
+        if !task_effort::relaunches_for_effort(member.cli_tool) {
+            return None;
+        }
         // No runtime record means no session to switch: relaunching here would
         // start a member the operator never launched.
         let runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name).ok()?;
+        // Only a live member is switched. A member that is down is either one
+        // the operator stopped — an assignment is no reason to start it again
+        // — or one this pass itself stopped for a switch that failed, which the
+        // failure record names and which stays retryable.
+        if runtime.health == HealthState::SessionDead && runtime.effort_resume_failure.is_none() {
+            return None;
+        }
+        // The relaunch resumes the member's own conversation. Without a
+        // session id the resume pipeline would render a fresh launch, so an
+        // effort switch would throw away the context the assignment builds on:
+        // leave the pane running at its level instead.
+        if runtime
+            .session_id
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+        {
+            tracing::debug!(
+                team = %team_name,
+                member = %member.name,
+                "deferring an effort switch for a member with no recorded session"
+            );
+            return None;
+        }
         // A relaunch answers an assignment the running session has not been
         // through. A record that never recorded an attach never ran, so there
         // is no session for a stale assignment to take down and every
