@@ -234,9 +234,12 @@
 {/if}
 
 <style>
+  /* Fixed widths so every run name starts on one left edge and the agent rows
+     under it start on another, whatever the status word is. */
   .workflow-run-status {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     height: 16px;
     padding-inline: 6px;
     border-radius: 999px;
@@ -247,6 +250,14 @@
     text-transform: uppercase;
     line-height: 1;
     white-space: nowrap;
+  }
+
+  .workflow-run-status[data-status] {
+    min-width: 70px;
+  }
+
+  .workflow-run-status[data-state] {
+    min-width: 52px;
   }
 
   .workflow-run-status[data-status='live'],
