@@ -50,6 +50,8 @@ pub mod platform;
 
 pub mod templates;
 
+pub mod workflow_runs;
+
 pub mod test_support;
 
 use std::io::{Read, Write};
