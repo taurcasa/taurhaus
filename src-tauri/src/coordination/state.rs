@@ -15,6 +15,7 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::orchestrator::{CoordinationOrchestrator, TeamSelfHealResult};
 use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntime};
 use crate::coordination::stores::TeamConfigStore;
+use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
 #[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
@@ -31,7 +32,13 @@ pub struct BackgroundSelfHealPassResult {
     pub teams_reconciled: usize,
     pub team_daemons_ensured: usize,
     pub team_errors: usize,
+    /// Members relaunched to reach the effort their assignment carries.
+    pub members_effort_resumed: usize,
 }
+
+/// Layout the background pass relaunches a member into: the same default
+/// every operator-driven resume uses.
+const DEFAULT_TMUX_LAYOUT: &str = "new_window";
 
 /// App-managed coordination state that lazily initializes the orchestrator.
 pub struct CoordinationState {
@@ -167,6 +174,26 @@ impl CoordinationState {
                         team = %team_name,
                         error = %err,
                         "background coordination self-heal failed"
+                    );
+                }
+            }
+
+            // The lead's per-assignment effort reaches most harnesses through
+            // mesh's own `/effort`; the one that has no such command is
+            // relaunched here. It rides this pass rather than a timer of its
+            // own, and it is a no-op for every member already at its level.
+            match orchestrator.apply_pending_task_effort(
+                &team_name,
+                &CliCommandSettings::default(),
+                DEFAULT_TMUX_LAYOUT,
+            ) {
+                Ok(members) => summary.members_effort_resumed += members.len(),
+                Err(err) => {
+                    summary.team_errors += 1;
+                    tracing::warn!(
+                        team = %team_name,
+                        error = %err,
+                        "background task-effort pass failed"
                     );
                 }
             }
@@ -944,6 +971,93 @@ mod tests {
                 operator_name,
             } if team_name == "architecture-final" && operator_name == "team-lead"
         )));
+    }
+
+    #[test]
+    fn the_background_pass_puts_a_pending_assignment_effort_into_force() {
+        // The lead's per-assignment effort reaches a Claude, Antigravity or
+        // Grok member through mesh's own `/effort`; Codex has no such command,
+        // so the only path is the one taurhaus owns, and this pass is where it
+        // runs. No new timer: it rides the self-heal pass that already exists.
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_detected_runtime_session(
+            "%31",
+            CliTool::Codex,
+            Some("session-effort"),
+            Some("/tmp/effort.jsonl"),
+        );
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("effort-team", None)?;
+                orch.add_member(
+                    "effort-team",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                let mut builder =
+                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                builder.reasoning_effort = Some("low".to_string());
+                orch.add_member("effort-team", builder)?;
+                Ok(())
+            })
+            .expect("seed team");
+        write_lead_credential(tmp.path(), "effort-team");
+
+        crate::coordination::stores::MemberRuntimeStore::update(
+            tmp.path(),
+            "effort-team",
+            "builder",
+            |record| {
+                record.pane_id = Some("%31".to_string());
+                record.health = HealthState::SessionDead;
+                record.applied_effort = Some("low".to_string());
+            },
+        )
+        .expect("seed runtime");
+
+        let mut message = crate::coordination::stores::MeshInboxMessage::new(
+            "team-lead",
+            "Effort: high — the migration is irreversible".to_string(),
+            None,
+            Utc::now(),
+        );
+        message
+            .extra
+            .insert("effort".to_string(), serde_json::json!("high"));
+        crate::coordination::stores::MeshInboxStore::append(
+            tmp.path(),
+            "effort-team",
+            "builder",
+            &message,
+        )
+        .expect("append assignment");
+
+        state.orchestrator.lock().expect("state mutex").take();
+
+        let summary = state
+            .run_background_self_heal_pass()
+            .expect("background pass succeeds");
+
+        assert_eq!(summary.members_effort_resumed, 1);
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            tmp.path(),
+            "effort-team",
+            "builder",
+        )
+        .expect("runtime record");
+        assert_eq!(record.applied_effort.as_deref(), Some("high"));
     }
 
     #[test]

@@ -723,6 +723,7 @@ fn shared_stage_session_capture_persists_runtime_identity_across_wrappers() {
             &ResumeMemberRequest {
                 team_name: "resume-team".to_string(),
                 member_name: "builder".to_string(),
+                reasoning_effort_override: None,
             },
             &cli_commands,
         )
@@ -990,6 +991,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
             &ResumeMemberRequest {
                 team_name: "resume-team".to_string(),
                 member_name: "researcher".to_string(),
+                reasoning_effort_override: None,
             },
             &CliCommandSettings::default(),
         )
@@ -1046,6 +1048,7 @@ fn shared_stage_mesh_join_and_daemon_rules_match_expected_wrapper_differences() 
             &ResumeMemberRequest {
                 team_name: "resume-sidecar".to_string(),
                 member_name: "builder".to_string(),
+                reasoning_effort_override: None,
             },
             &CliCommandSettings::default(),
         )
@@ -1156,6 +1159,7 @@ fn shared_stage_onboarding_and_runtime_commit_policies_assert_wrapper_difference
     let resume_request = ResumeMemberRequest {
         team_name: "parity-team".to_string(),
         member_name: "resume-builder".to_string(),
+        reasoning_effort_override: None,
     };
     let (resume_member, _runtime_record, lead_name) = orchestrator
         .load_resume_member_state(&resume_request)
@@ -2349,6 +2353,7 @@ fn load_resume_member_state_preserves_role_template_context() {
     let request = ResumeMemberRequest {
         team_name: "architecture-final".to_string(),
         member_name: "builder".to_string(),
+        reasoning_effort_override: None,
     };
 
     let (loaded_member, _runtime_record, lead_name) = orchestrator
@@ -2433,6 +2438,7 @@ fn resume_external_placeholder_hydrates_the_role_model() {
             &ResumeMemberRequest {
                 team_name: "external-placeholder".to_string(),
                 member_name: "builder".to_string(),
+                reasoning_effort_override: None,
             },
             &CliCommandSettings::default(),
         )
@@ -2495,6 +2501,7 @@ fn resume_hydrates_user_role_from_app_data_template_root() {
         .load_resume_member_state(&ResumeMemberRequest {
             team_name: "user-root".to_string(),
             member_name: "builder".to_string(),
+            reasoning_effort_override: None,
         })
         .expect("load resume state");
 
@@ -2531,6 +2538,7 @@ fn resume_falls_back_when_user_role_is_corrupt() {
         .load_resume_member_state(&ResumeMemberRequest {
             team_name: "corrupt-role".to_string(),
             member_name: "builder".to_string(),
+            reasoning_effort_override: None,
         })
         .expect("corrupt role should degrade to catalog defaults");
 
@@ -2846,6 +2854,7 @@ fn resume_onboarding_entry_uses_immediate_policy() {
     let request = ResumeMemberRequest {
         team_name: "architecture-final".to_string(),
         member_name: "researcher".to_string(),
+        reasoning_effort_override: None,
     };
     let (member, _runtime, lead_name) = orchestrator
         .load_resume_member_state(&request)
@@ -2901,6 +2910,7 @@ fn resume_onboarding_delivers_immediately_per_member() {
             &ResumeMemberRequest {
                 team_name: "architecture-final".to_string(),
                 member_name: "team-lead".to_string(),
+                reasoning_effort_override: None,
             },
             &CliCommandSettings::default(),
         )
@@ -2915,6 +2925,7 @@ fn resume_onboarding_delivers_immediately_per_member() {
             &ResumeMemberRequest {
                 team_name: "architecture-final".to_string(),
                 member_name: "builder".to_string(),
+                reasoning_effort_override: None,
             },
             &CliCommandSettings::default(),
         )
@@ -3490,4 +3501,211 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
         .expect("add-agent onboarding entry");
 
     assert_eq!(entry.policy, MemberActivationDeliveryPolicy::Immediate);
+}
+
+// ---------------------------------------------------------------------------
+// Task-level effort: the resume path taurhaus owns for Codex
+// ---------------------------------------------------------------------------
+
+fn effort_team(
+    tmp: &TempDir,
+    runtime: Arc<RecordingCoordinationRuntime>,
+    cli_tool: CliTool,
+    launch_effort: Option<&str>,
+) -> CoordinationOrchestrator {
+    runtime.set_detected_runtime_session(
+        "%21",
+        cli_tool,
+        Some("session-effort"),
+        Some("/tmp/effort.jsonl"),
+    );
+    runtime.set_pane_identity("%21", Some(2021), Some(1_755_000_021));
+    let mut orchestrator = new_orchestrator(tmp, Arc::new(FakeBackend::default()), runtime);
+    orchestrator
+        .create_team("effort-team", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "effort-team",
+            member(
+                "team-lead",
+                MemberRole::Lead,
+                CliTool::Claude,
+                "/tmp/lead-project",
+            ),
+        )
+        .expect("add lead");
+    let mut builder = member("builder", MemberRole::Agent, cli_tool, "/tmp/builder");
+    builder.reasoning_effort = launch_effort.map(ToString::to_string);
+    orchestrator
+        .add_member("effort-team", builder)
+        .expect("add builder");
+    orchestrator
+}
+
+fn append_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
+    let mut message = crate::coordination::stores::MeshInboxMessage::new(
+        "team-lead",
+        format!("Effort: {level} — {why}\nStart on the migration."),
+        None,
+        Utc::now(),
+    );
+    message
+        .extra
+        .insert("effort".to_string(), serde_json::json!(level));
+    message
+        .extra
+        .insert("effortWhy".to_string(), serde_json::json!(why));
+    crate::coordination::stores::MeshInboxStore::append(
+        tmp.path(),
+        "effort-team",
+        member_name,
+        &message,
+    )
+    .expect("append assignment");
+}
+
+#[test]
+fn a_launch_records_the_effort_the_session_actually_runs_at() {
+    // mesh reads this before it types `/effort`, so it has to start from the
+    // level the launch put into effect rather than from nothing.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("Low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.applied_effort.as_deref(), Some("low"));
+}
+
+#[test]
+fn a_codex_member_is_relaunched_with_the_assignment_effort() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+    assert_eq!(resumed, vec!["builder".to_string()]);
+
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .filter(|keys| keys.contains("codex"))
+        .next_back()
+        .expect("a codex launch was sent to the pane");
+    assert!(
+        launch.contains("model_reasoning_effort=\\\"high\\\"")
+            || launch.contains("model_reasoning_effort=\"high\""),
+        "codex resume must carry the assignment effort, got: {launch}"
+    );
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(record.applied_effort.as_deref(), Some("high"));
+}
+
+#[test]
+fn a_second_pass_over_the_same_assignment_does_not_relaunch_again() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let first = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("first pass");
+    let second = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("second pass");
+
+    assert_eq!(first, vec!["builder".to_string()]);
+    assert!(
+        second.is_empty(),
+        "the member is already at the assigned level"
+    );
+}
+
+#[test]
+fn a_slash_command_harness_is_never_relaunched_for_effort() {
+    // mesh types `/effort` into a Claude pane before it delivers the notice;
+    // a taurhaus resume on top of that would kill a session for nothing.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Claude, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("seed resume");
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert!(resumed.is_empty());
+}
+
+#[test]
+fn a_member_that_never_started_is_left_alone() {
+    // No runtime record means no session to switch; a resume here would start
+    // a member the operator never launched.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("low"));
+    MemberRuntimeStore::delete(tmp.path(), "effort-team", "builder").expect("delete runtime");
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert!(resumed.is_empty());
 }

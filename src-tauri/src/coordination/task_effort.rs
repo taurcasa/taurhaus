@@ -71,6 +71,49 @@ pub fn resume_effort_target(
     Some(requested.to_ascii_lowercase())
 }
 
+/// Report that a member is being relaunched to reach an assignment's effort.
+pub fn emit_effort_resume(
+    event_name: &str,
+    team_name: &str,
+    member_name: &str,
+    level: &str,
+    previous: Option<&str>,
+    failure: Option<&str>,
+) {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "team_name".to_string(),
+        serde_json::Value::String(team_name.to_string()),
+    );
+    fields.insert(
+        "member_name".to_string(),
+        serde_json::Value::String(member_name.to_string()),
+    );
+    fields.insert(
+        "effort".to_string(),
+        serde_json::Value::String(level.to_string()),
+    );
+    fields.insert(
+        "previous_effort".to_string(),
+        previous
+            .map(|level| serde_json::Value::String(level.to_string()))
+            .unwrap_or(serde_json::Value::Null),
+    );
+    if let Some(failure) = failure {
+        fields.insert(
+            "fail_reason".to_string(),
+            serde_json::Value::String(failure.to_string()),
+        );
+    }
+    taurhaus_lib::logging::emit_global(
+        if failure.is_some() { "warn" } else { "info" },
+        "coordination",
+        event_name,
+        Some("Task-level effort resume".to_string()),
+        fields,
+    );
+}
+
 fn trimmed(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)

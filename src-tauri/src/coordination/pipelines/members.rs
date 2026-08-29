@@ -16,12 +16,21 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
 };
-use crate::coordination::stores::{MemberRuntimeRecord, MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::{
+    MemberRuntimeRecord, MemberRuntimeStore, MeshInboxStore, TeamConfigStore,
+};
+use crate::coordination::task_effort;
 use crate::coordination::validation::{
     validate_member_name, validate_non_empty, validate_team_name,
 };
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
+
+/// One member's pending effort switch.
+struct PendingEffort {
+    level: String,
+    previous: Option<String>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeTeamDaemonOwnership {
@@ -76,6 +85,7 @@ impl CoordinationOrchestrator {
         let request = ResumeMemberRequest {
             team_name: team_name.to_string(),
             member_name: member_name.to_string(),
+            reasoning_effort_override: None,
         };
         self.resume_member_with_cli_commands_and_layout(
             &request,
@@ -152,6 +162,153 @@ impl CoordinationOrchestrator {
             team_daemon_ownership,
         )
         .run_resume()
+    }
+
+    /// Put every pending assignment effort into force for this team.
+    ///
+    /// mesh applies the level itself wherever the harness takes `/effort` in
+    /// its own prompt; this pass covers the harness that does not, by
+    /// relaunching the member with the effort flag. Returns the members it
+    /// relaunched.
+    ///
+    /// Best-effort, the same stance mesh takes on its side: a member that
+    /// cannot be switched keeps running at its previous level and still has the
+    /// notice, which carries the line. The requested level is recorded either
+    /// way so a failure is reported once instead of relaunching the pane on
+    /// every pass.
+    pub fn apply_pending_task_effort(
+        &mut self,
+        team_name: &str,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+    ) -> Result<Vec<String>, CoordinationError> {
+        validate_team_name(team_name)?;
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let mut resumed = Vec::new();
+
+        for member in &config.members {
+            let Some(pending) = self.pending_member_effort(team_name, member) else {
+                continue;
+            };
+            task_effort::emit_effort_resume(
+                "effort.resume.started",
+                team_name,
+                &member.name,
+                &pending.level,
+                pending.previous.as_deref(),
+                None,
+            );
+
+            self.stop_member_for_effort_resume(team_name, member);
+            let request = ResumeMemberRequest {
+                team_name: team_name.to_string(),
+                member_name: member.name.clone(),
+                reasoning_effort_override: Some(pending.level.clone()),
+            };
+            let outcome = self.resume_member_with_cli_commands_and_layout(
+                &request,
+                cli_commands,
+                tmux_layout,
+            );
+            let failure = match &outcome {
+                Ok(report) if report.resumed => None,
+                Ok(report) => Some(report.message.clone()),
+                Err(err) => Some(err.to_string()),
+            };
+
+            match failure {
+                None => {
+                    resumed.push(member.name.clone());
+                    task_effort::emit_effort_resume(
+                        "effort.resume.completed",
+                        team_name,
+                        &member.name,
+                        &pending.level,
+                        pending.previous.as_deref(),
+                        None,
+                    );
+                }
+                Some(reason) => {
+                    self.record_applied_effort_best_effort(team_name, &member.name, &pending.level);
+                    task_effort::emit_effort_resume(
+                        "effort.resume.failed",
+                        team_name,
+                        &member.name,
+                        &pending.level,
+                        pending.previous.as_deref(),
+                        Some(&reason),
+                    );
+                }
+            }
+        }
+
+        Ok(resumed)
+    }
+
+    /// The effort a member must be relaunched to reach, if any.
+    fn pending_member_effort(&self, team_name: &str, member: &Member) -> Option<PendingEffort> {
+        // No runtime record means no session to switch: relaunching here would
+        // start a member the operator never launched.
+        let runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name).ok()?;
+        let messages = MeshInboxStore::load(&self.teams_dir, team_name, &member.name).ok()?;
+        let assigned = task_effort::latest_assignment_effort(&messages)?;
+        let level = task_effort::resume_effort_target(
+            member.cli_tool,
+            Some(&assigned.level),
+            runtime.applied_effort.as_deref(),
+        )?;
+        Some(PendingEffort {
+            level,
+            previous: runtime.applied_effort,
+        })
+    }
+
+    /// Take a live member's session down so the resume pipeline can relaunch it.
+    ///
+    /// The pipeline relaunches only a member whose session is gone — the same
+    /// rule the operator's Stop-then-Resume follows — and a harness with no
+    /// runtime effort command has no other way to reach the level the lead
+    /// asked for. `effort.resume.started` is emitted before this runs, so the
+    /// stop is never silent. A member already offline is left as it is.
+    fn stop_member_for_effort_resume(&mut self, team_name: &str, member: &Member) {
+        let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name) {
+            Ok(runtime) if runtime.health != HealthState::SessionDead => runtime,
+            _ => return,
+        };
+        self.teardown_member_resources_best_effort(
+            team_name,
+            &member.name,
+            Some(member.project_path.as_path()),
+            Some(&runtime),
+        );
+        if let Err(err) =
+            MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
+                record.health = HealthState::SessionDead;
+                record.daemon_pid = None;
+            })
+        {
+            tracing::warn!(
+                team = %team_name,
+                member = %member.name,
+                error = %err,
+                "failed to mark a member offline before its effort resume"
+            );
+        }
+    }
+
+    fn record_applied_effort_best_effort(&self, team_name: &str, member_name: &str, level: &str) {
+        if let Err(err) =
+            MemberRuntimeStore::update(&self.teams_dir, team_name, member_name, |record| {
+                record.applied_effort = Some(level.to_string());
+            })
+        {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                error = %err,
+                "failed to record the effort level after a failed resume"
+            );
+        }
     }
 
     fn validate_add_agent_request(
@@ -564,8 +721,16 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         let request = self.resume_request();
         let (member, runtime_record, lead_name) =
             self.orchestrator.load_resume_member_state(request)?;
-        let activation_context =
+        let mut activation_context =
             MemberActivationContext::for_resume_member(&request.team_name, &lead_name, &member);
+        if let Some(level) = request
+            .reasoning_effort_override
+            .as_deref()
+            .map(str::trim)
+            .filter(|level| !level.is_empty())
+        {
+            activation_context.member.reasoning_effort = Some(level.to_ascii_lowercase());
+        }
         Ok(PreparedMemberActivation {
             member,
             activation_context,

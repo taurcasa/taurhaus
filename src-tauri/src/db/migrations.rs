@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 /// Embedded SQL migration files.  Each entry is `(version, name, sql)`.
 /// New migrations are appended — never modify existing ones.
-const MIGRATIONS: &[(i64, &str, &str)] = &[
+pub(crate) const MIGRATIONS: &[(i64, &str, &str)] = &[
     (1, "initial", include_str!("migrations/001_initial.sql")),
     (
         2,
