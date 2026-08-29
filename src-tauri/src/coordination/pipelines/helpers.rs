@@ -222,6 +222,7 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         attached_at: None,
         last_seen_at: None,
         applied_effort: None,
+        launch_effort: None,
         effort_default: None,
         effort_resume_failure: None,
     }

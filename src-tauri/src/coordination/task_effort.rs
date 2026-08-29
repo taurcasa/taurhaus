@@ -41,16 +41,11 @@ pub fn message_effort(message: &MeshInboxMessage) -> Option<AssignmentEffort> {
     })
 }
 
-/// The newest assignment effort in a member's inbox.
+/// The newest assignment effort delivered since `since`.
 ///
 /// mesh appends, so the last message carrying an effort is the current
-/// assignment. Messages after it — a nudge, a question — carry no effort and
+/// assignment; messages after it — a nudge, a question — carry no effort and
 /// must not clear the level the member is working under.
-pub fn latest_assignment_effort(messages: &[MeshInboxMessage]) -> Option<AssignmentEffort> {
-    messages.iter().rev().find_map(message_effort)
-}
-
-/// The newest assignment effort delivered since `since`.
 ///
 /// A relaunch takes a member's session down, so it may only answer an
 /// assignment the running session has not already been through. An older
@@ -271,7 +266,8 @@ mod tests {
             message("lead", "any progress?", None),
         ];
 
-        let effort = latest_assignment_effort(&messages).expect("latest assignment");
+        let effort = assignment_effort_since(&messages, DateTime::<Utc>::MIN_UTC)
+            .expect("latest assignment");
         assert_eq!(effort.level, "high");
         assert_eq!(effort.why.as_deref(), Some("irreversible"));
     }
@@ -317,7 +313,7 @@ mod tests {
 
     #[test]
     fn an_empty_inbox_carries_no_effort() {
-        assert_eq!(latest_assignment_effort(&[]), None);
+        assert_eq!(assignment_effort_since(&[], DateTime::<Utc>::MIN_UTC), None);
     }
 
     #[test]

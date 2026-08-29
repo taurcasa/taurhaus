@@ -285,6 +285,10 @@ impl CoordinationOrchestrator {
             .map(str::trim)
             .filter(|level| !level.is_empty())
             .map(str::to_ascii_lowercase);
+        // Kept beside it as taurhaus's own baseline: only a later divergence
+        // proves the harness was asked to change the level, which is what a
+        // settings restore needs before it writes over the operator's value.
+        runtime.launch_effort = runtime.applied_effort.clone();
         // A launch that commits is the member reaching a level, so whatever
         // budget an earlier failed effort switch spent is spent no longer.
         runtime.effort_resume_failure = None;
@@ -374,6 +378,10 @@ impl CoordinationOrchestrator {
             match MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
                 if record.effort_default.is_none() {
                     record.effort_default = Some(captured.clone());
+                    // No launch of this build put the level there, so the level
+                    // in force now is the baseline: a restore waits for the
+                    // harness to move it before it writes anything.
+                    record.launch_effort = record.applied_effort.clone();
                 }
             }) {
                 Ok(_) => recorded += 1,

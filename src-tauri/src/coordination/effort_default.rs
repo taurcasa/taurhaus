@@ -165,7 +165,7 @@ pub fn restore_member_effort_default(teams_dir: &Path, team_name: &str, member_n
     // A restore that could not read or write the file has not run at all.
     // Forgetting the record here would leave the harness's level in the
     // operator's settings with nothing left to put back.
-    let written = harness_written_level(teams_dir, team_name, member_name, &record);
+    let written = harness_written_level(&record);
     if restore(sink, recorded, written.as_deref()) == RestoreOutcome::Unavailable {
         return;
     }
@@ -186,24 +186,32 @@ pub fn restore_member_effort_default(teams_dir: &Path, team_name: &str, member_n
     }
 }
 
-/// The level taurhaus knows the harness was last asked to run at.
+/// The level taurhaus knows the harness was actually asked to run at.
 ///
-/// mesh types the assignment's level into the pane, so the newest assignment
-/// in the member's inbox is the value that reached the settings file. The
-/// launch effort stands in where no assignment carried one — and is `None` for
-/// every member launched without a declared effort, which is why a restore
-/// with neither leaves the file alone.
+/// The only evidence taurhaus has is the level in force in the member's own
+/// runtime record diverging from the one taurhaus itself launched at: mesh
+/// writes `appliedEffort` there before it types `/effort` into the pane, and
+/// nothing else moves that field. An assignment is not evidence — mesh sends
+/// no command at all when the assignment matches the level already in force —
+/// so the inbox is never consulted, and a member still running at the level
+/// taurhaus launched it at yields no proof and no write.
 fn harness_written_level(
-    teams_dir: &Path,
-    team_name: &str,
-    member_name: &str,
     record: &crate::coordination::stores::MemberRuntimeRecord,
 ) -> Option<String> {
-    crate::coordination::stores::MeshInboxStore::load(teams_dir, team_name, member_name)
-        .ok()
-        .and_then(|messages| crate::coordination::task_effort::latest_assignment_effort(&messages))
-        .map(|effort| effort.level)
-        .or_else(|| record.applied_effort.clone())
+    let applied = record
+        .applied_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|level| !level.is_empty())?;
+    let launched = record
+        .launch_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|level| !level.is_empty());
+    if launched.is_some_and(|level| level.eq_ignore_ascii_case(applied)) {
+        return None;
+    }
+    Some(applied.to_string())
 }
 
 /// Same, for the member that owns `pane_id`.
@@ -576,11 +584,14 @@ mod tests {
         pane_id: &str,
         recorded: RecordedEffortDefault,
     ) {
+        // What a member launched with no declared level looks like once mesh
+        // has typed `/effort high` into its pane and recorded the level.
         seed_member_with_recorded_default_and_effort(
             teams_dir,
             pane_id,
             recorded,
             Some("high".to_string()),
+            None,
         )
     }
 
@@ -589,6 +600,7 @@ mod tests {
         pane_id: &str,
         recorded: RecordedEffortDefault,
         applied_effort: Option<String>,
+        launch_effort: Option<String>,
     ) {
         use crate::coordination::domain::{HealthState, Member, MemberRole};
         use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
@@ -650,6 +662,7 @@ mod tests {
             attached_at: None,
             last_seen_at: None,
             applied_effort,
+            launch_effort,
             effort_default: Some(recorded),
             effort_resume_failure: None,
         };
@@ -916,15 +929,28 @@ mod tests {
         );
     }
 
-    // The other side of the same rule: mesh types the assignment's level, so
-    // the newest assignment in the member's inbox is the proof — the launch
-    // effort is not, and is `None` for every member that declares none.
+    // Regression: d0f1ff8 took the newest effort-bearing message in a member's
+    // inbox as proof that mesh had rewritten the operator's settings. An inbox
+    // record proves only that an assignment exists: mesh skips `/effort`
+    // entirely when the assignment matches the level the member already runs
+    // at, and its pane delivery can fail. A member launched at `high` whose
+    // assignment is also `high` never gets the command — and an operator who
+    // then set their own default to `high` had it replaced with the captured
+    // `low` when the member stopped.
     #[test]
-    fn the_level_mesh_typed_is_proof_enough_to_put_the_users_back() {
+    fn an_assignment_mesh_never_had_to_type_is_not_proof_of_a_harness_write() {
         let teams = TempDir::new().expect("teams dir");
         let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
         let recorded = record(SINK, dir.path(), "opus").expect("recorded");
-        seed_member_with_recorded_default_and_effort(teams.path(), "%42", recorded, None);
+        // Launched at `high`, and still at `high`: taurhaus put that level
+        // there itself, so nothing has asked the harness to change it.
+        seed_member_with_recorded_default_and_effort(
+            teams.path(),
+            "%42",
+            recorded,
+            Some("high".to_string()),
+            Some("high".to_string()),
+        );
         crate::coordination::stores::MeshInboxStore::append(
             teams.path(),
             "effort-team",
@@ -932,6 +958,38 @@ mod tests {
             &assignment_message("high"),
         )
         .expect("append assignment");
+        // The operator's own change, made while the team ran.
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("user write");
+
+        restore_member_effort_default(teams.path(), "effort-team", "lead-dev");
+
+        assert_eq!(
+            settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
+            "high",
+            "an assignment is not evidence that anything was written"
+        );
+    }
+
+    // The other side of the same rule: mesh records the level in the member's
+    // runtime record before it types `/effort`, so a level in force that
+    // taurhaus did not launch at is the proof — and here the member was
+    // launched declaring none at all.
+    #[test]
+    fn a_level_taurhaus_never_launched_at_is_proof_enough_to_put_the_users_back() {
+        let teams = TempDir::new().expect("teams dir");
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        seed_member_with_recorded_default_and_effort(
+            teams.path(),
+            "%42",
+            recorded,
+            Some("high".to_string()),
+            None,
+        );
         // What `/effort high` left in the operator's own settings.
         fs::write(
             dir.path().join("settings.json"),

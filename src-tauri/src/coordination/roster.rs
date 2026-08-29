@@ -121,6 +121,7 @@ impl TeamMemberView {
             attached_at: self.attached_at,
             last_seen_at: self.last_seen_at,
             applied_effort: None,
+            launch_effort: None,
             effort_default: None,
             effort_resume_failure: None,
         })
@@ -308,6 +309,7 @@ fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntime
         attached_at: None,
         last_seen_at: None,
         applied_effort: None,
+        launch_effort: None,
         effort_default: None,
         effort_resume_failure: None,
     }
@@ -398,6 +400,7 @@ mod tests {
                 attached_at: Some(ts("2026-03-08T21:01:00Z")),
                 last_seen_at: Some(ts("2026-03-08T21:02:00Z")),
                 applied_effort: None,
+                launch_effort: None,
                 effort_default: None,
                 effort_resume_failure: None,
             },
