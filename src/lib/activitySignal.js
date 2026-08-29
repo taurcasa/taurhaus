@@ -31,6 +31,13 @@
  * be worse than flicker, because a frozen "3 seconds ago" stays inside any
  * recency window forever. Confidence comes from `activity_confidence`, which
  * the daemon does version.
+ *
+ * `workflow_activity` is the one recency field this module does read, because
+ * it is not the same kind of value. It is an absolute wall-clock timestamp of
+ * the last write by a live workflow subagent, so a frozen copy ages out of the
+ * window by itself instead of staying "recent" forever — and it is the only
+ * evidence there is for a headless workflow parent, which Claude's session
+ * registry never marks busy (`docs/architecture/workflow-runs.md`).
  */
 
 /** Every level this module can return, strongest first. */
@@ -99,6 +106,42 @@ function isStalePresence(record) {
   return record?._presenceStale === true || record?._presenceStatus === 'stale'
 }
 
+/**
+ * How long a workflow subagent write keeps a session presented as working.
+ * The backend counts a run as live under the same 60 s bound
+ * (`workflow_runs::workflow_activity`), so both ends age a run out together.
+ */
+const WORKFLOW_WRITE_WINDOW_MS = 60_000
+/** A write this fresh is direct evidence of the current turn. */
+const WORKFLOW_WRITE_HIGH_MS = 20_000
+/** Older than this and the run may already be between agents. */
+const WORKFLOW_WRITE_MEDIUM_MS = 45_000
+
+function finiteNumber(value) {
+  const parsed = typeof value === 'number' ? value : Number.NaN
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/**
+ * Age of the newest write by a live workflow subagent attached to this record,
+ * or `null` when there is no live run, no usable timestamp, or the write has
+ * aged out of the window.
+ */
+function workflowWriteAge(record) {
+  const activity = record?.workflow_activity ?? record?.workflowActivity
+  if (!activity || typeof activity !== 'object') return null
+
+  const liveRuns = finiteNumber(activity.live_runs ?? activity.liveRuns)
+  if (liveRuns === null || liveRuns <= 0) return null
+
+  const lastWriteAt = finiteNumber(activity.last_write_at ?? activity.lastWriteAt)
+  if (lastWriteAt === null) return null
+
+  const age = Date.now() - lastWriteAt
+  if (age > WORKFLOW_WRITE_WINDOW_MS) return null
+  return Math.max(0, age)
+}
+
 function signal(level, source, confidence, label = LEVEL_LABELS[level]) {
   return { level, label, confidence, source }
 }
@@ -125,6 +168,17 @@ export function activitySignal(record) {
   if (isStalePresence(record)) return signal('uncertain', 'stale', 'low')
   if (base === 'uncertain') return signal('uncertain', 'status', 'low')
   if (isUnattributed(record)) return signal('uncertain', 'project', 'low')
+
+  // A workflow subagent wrote to its transcript moments ago. That is work,
+  // whatever the harness reports for the parent — a headless workflow parent
+  // reads idle for the whole run. Confidence is the write's own recency.
+  const writeAge = workflowWriteAge(record)
+  if (writeAge !== null) {
+    const confidence = writeAge <= WORKFLOW_WRITE_HIGH_MS
+      ? 'high'
+      : (writeAge <= WORKFLOW_WRITE_MEDIUM_MS ? 'medium' : 'low')
+    return signal('working', 'workflow', confidence)
+  }
 
   const attributed = attribution(record) === 'attributed'
   const source = attributed ? 'session' : 'status'
