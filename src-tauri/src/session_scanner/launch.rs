@@ -507,7 +507,10 @@ pub fn base_command(commands: &CliCommandSettings, tool: CliTool, mode: LaunchMo
     }
 }
 
-pub(crate) fn command_contains_flag(command: &str, flag: &str) -> bool {
+/// Whether a configured base command already carries `flag`, on its own or as
+/// `flag=value`. The renderer keeps such a value and drops the requested one,
+/// so callers deciding whether a launch can carry an override ask this.
+pub fn command_contains_flag(command: &str, flag: &str) -> bool {
     command.split_whitespace().any(|token| {
         let token = token.trim_start_matches(['\'', '"']);
         token == flag
