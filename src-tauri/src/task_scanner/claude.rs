@@ -106,6 +106,23 @@ struct RawClaudeTask {
     blocked_by: Vec<String>,
     #[serde(default)]
     owner: Option<String>,
+    /// Assignment metadata `mesh task assign` writes; the effort and its reason
+    /// live here.
+    #[serde(default)]
+    metadata: Option<serde_json::Value>,
+}
+
+/// One trimmed, non-empty string metadata value, under any of `keys`.
+fn metadata_string(metadata: Option<&serde_json::Value>, keys: &[&str]) -> Option<String> {
+    let metadata = metadata?;
+    keys.iter().find_map(|key| {
+        metadata
+            .get(*key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    })
 }
 
 /// Get tasks for a project from Claude Code's task storage.
@@ -386,6 +403,9 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
     };
 
     let task_source_key = source_key.unwrap_or_else(|| "legacy-claude".to_string());
+    let effort =
+        metadata_string(raw.metadata.as_ref(), &["effort"]).map(|level| level.to_ascii_lowercase());
+    let effort_why = metadata_string(raw.metadata.as_ref(), &["effort_why", "effortWhy"]);
     Ok(Some(UnifiedTask {
         id: raw.id,
         source_key: task_source_key.clone(),
@@ -403,6 +423,8 @@ fn parse_task_file(path: &Path, source_key: Option<String>) -> Result<Option<Uni
         archived_at: None,
         last_status: None,
         archived_reason: None,
+        effort,
+        effort_why,
     }))
 }
 
@@ -426,6 +448,78 @@ mod tests {
             .and_then(|n| n.to_str())
             .unwrap_or("test-source");
         parse_task_directory(dir, source_key).tasks
+    }
+
+    #[test]
+    fn a_task_carries_the_effort_the_lead_assigned_it() {
+        // `mesh task assign` requires an effort and a reason and writes both
+        // into the task record's metadata, so the board can show what the lead
+        // asked for without reading the assignment notice.
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("architecture-final");
+        fs::create_dir_all(&task_dir).unwrap();
+
+        write_task(
+            &task_dir,
+            "7.json",
+            r#"{
+                "id": "7",
+                "subject": "Migrate the account store",
+                "status": "in_progress",
+                "owner": "frontend-dev",
+                "metadata": {
+                    "effort": "high",
+                    "effort_why": "the migration is irreversible",
+                    "first_step": "read the migration"
+                }
+            }"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert_eq!(tasks[0].effort.as_deref(), Some("high"));
+        assert_eq!(
+            tasks[0].effort_why.as_deref(),
+            Some("the migration is irreversible")
+        );
+    }
+
+    #[test]
+    fn a_task_with_no_assignment_metadata_carries_no_effort() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("architecture-final");
+        fs::create_dir_all(&task_dir).unwrap();
+
+        write_task(
+            &task_dir,
+            "8.json",
+            r#"{"id": "8", "subject": "Unassigned idea", "status": "pending"}"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert_eq!(tasks[0].effort, None);
+        assert_eq!(tasks[0].effort_why, None);
+    }
+
+    #[test]
+    fn a_camel_case_reason_reads_the_same_as_the_snake_case_one() {
+        let tmp = TempDir::new().unwrap();
+        let task_dir = tmp.path().join("architecture-final");
+        fs::create_dir_all(&task_dir).unwrap();
+
+        write_task(
+            &task_dir,
+            "9.json",
+            r#"{
+                "id": "9",
+                "subject": "Tidy the lane",
+                "status": "pending",
+                "metadata": { "effort": " Medium ", "effortWhy": "routine lane work" }
+            }"#,
+        );
+
+        let tasks = parse_task_directory_for_test(&task_dir);
+        assert_eq!(tasks[0].effort.as_deref(), Some("medium"));
+        assert_eq!(tasks[0].effort_why.as_deref(), Some("routine lane work"));
     }
 
     #[test]

@@ -321,6 +321,8 @@ pub(crate) fn persisted_to_unified(
         archived_at: t.archived_at,
         last_status: t.last_status,
         archived_reason: t.archived_reason,
+        effort: t.effort,
+        effort_why: t.effort_why,
     }
 }
 
@@ -675,6 +677,8 @@ mod tests {
             archived_at: Some(updated_at.to_string()),
             last_status: Some("completed".to_string()),
             archived_reason: Some("completed_and_removed".to_string()),
+            effort: None,
+            effort_why: None,
         }
     }
 
@@ -779,6 +783,29 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_board_reads_the_assignment_effort_off_the_persisted_task() {
+        // The lead's per-assignment effort is a different number from the one
+        // the session launched with, so the card has to carry it explicitly.
+        let mut persisted = make_archived_task(
+            "claude",
+            "session-1",
+            Some("session-1"),
+            "2026-08-29T09:00:00Z",
+            "2026-08-29T09:30:00Z",
+        );
+        persisted.effort = Some("high".to_string());
+        persisted.effort_why = Some("the migration is irreversible".to_string());
+
+        let unified = persisted_to_unified(persisted);
+
+        assert_eq!(unified.effort.as_deref(), Some("high"));
+        assert_eq!(
+            unified.effort_why.as_deref(),
+            Some("the migration is irreversible")
+        );
+    }
+
     fn insert_task(
         db: &DbState,
         project_path: &str,
@@ -806,6 +833,8 @@ mod tests {
             archived_at: None,
             last_status: Some(status.to_string()),
             archived_reason: None,
+            effort: None,
+            effort_why: None,
         };
 
         let conn = db.0.lock().expect("db lock");

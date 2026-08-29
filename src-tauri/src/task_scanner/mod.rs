@@ -156,6 +156,8 @@ mod tests {
                 archived_at: None,
                 last_status: None,
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             }],
             errors: vec![],
             source_outcomes: vec![],

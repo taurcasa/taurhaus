@@ -746,6 +746,8 @@ mod tests {
             archived_at: None,
             last_status: Some(status.to_string()),
             archived_reason: None,
+            effort: None,
+            effort_why: None,
         }
     }
 

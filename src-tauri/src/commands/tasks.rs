@@ -498,6 +498,8 @@ mod tests {
             archived_at: None,
             last_status: Some("in_progress".to_string()),
             archived_reason: None,
+            effort: None,
+            effort_why: None,
         };
 
         let conn = db.0.lock().expect("db lock");

@@ -66,6 +66,16 @@ pub struct ScannedTask {
     /// Reason code for archival.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archived_reason: Option<String>,
+    /// Reasoning effort the lead attached when assigning this task.
+    ///
+    /// Written by `mesh task assign` into the task record's metadata. Absent
+    /// for a task no lead assigned, and for every source that has no
+    /// assignment contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Why the lead chose that level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_why: Option<String>,
 }
 
 /// Backward-compatible alias used by existing command/frontend code.

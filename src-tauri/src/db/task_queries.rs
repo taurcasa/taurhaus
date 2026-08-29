@@ -22,6 +22,10 @@ pub struct PersistedTask {
     pub archived_at: Option<String>,
     pub last_status: Option<String>,
     pub archived_reason: Option<String>,
+    /// Reasoning effort the lead attached when assigning this task.
+    pub effort: Option<String>,
+    /// Why the lead chose that level.
+    pub effort_why: Option<String>,
 }
 
 /// A persisted archived session summary row, used to keep History loads off the
@@ -84,9 +88,9 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
         "INSERT INTO tasks (
             project_path, source, source_key, source_task_id, subject, description, active_form, status,
             blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at,
-            last_status, archived_reason
+            last_status, archived_reason, effort, effort_why
         )
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, NULL, ?16, NULL)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, NULL, ?16, NULL, ?17, ?18)
          ON CONFLICT (project_path, source, source_key, source_task_id) WHERE archived_at IS NULL DO UPDATE SET
             subject = excluded.subject,
             description = excluded.description,
@@ -109,12 +113,16 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
                   OR tasks.blocked_by != excluded.blocked_by
                   OR tasks.owner IS NOT excluded.owner
                   OR tasks.session_id IS NOT excluded.session_id
+                  OR tasks.effort IS NOT excluded.effort
+                  OR tasks.effort_why IS NOT excluded.effort_why
                 THEN excluded.updated_at
                 ELSE tasks.updated_at
             END,
             archived_at = NULL,
             last_status = excluded.status,
-            archived_reason = NULL",
+            archived_reason = NULL,
+            effort = excluded.effort,
+            effort_why = excluded.effort_why",
         params![
             task.project_path,
             task.source,
@@ -132,6 +140,8 @@ pub fn upsert_task(conn: &Connection, task: &PersistedTask) -> Result<(), rusqli
             task.state_changed_at,
             task.updated_at,
             task.last_status,
+            task.effort,
+            task.effort_why,
         ],
     )?;
     Ok(())
@@ -152,7 +162,7 @@ pub fn get_tasks_for_project(
     project_path: &str,
 ) -> Result<Vec<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason, effort, effort_why
          FROM tasks
          WHERE project_path = ?1 AND archived_at IS NULL
          ORDER BY source, source_key, source_task_id",
@@ -199,6 +209,8 @@ pub fn get_tasks_for_project(
                 archived_at: row.get(15)?,
                 last_status: row.get(16)?,
                 archived_reason: row.get(17)?,
+                effort: row.get(18)?,
+                effort_why: row.get(19)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -232,7 +244,7 @@ pub fn get_task_for_project_by_identity(
     source_task_id: &str,
 ) -> Result<Option<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason, effort, effort_why
          FROM tasks
          WHERE project_path = ?1 AND source = ?2 AND source_key = ?3 AND source_task_id = ?4 AND archived_at IS NULL
          LIMIT 1",
@@ -282,6 +294,8 @@ pub fn get_task_for_project_by_identity(
         archived_at: row.get(15)?,
         last_status: row.get(16)?,
         archived_reason: row.get(17)?,
+        effort: row.get(18)?,
+        effort_why: row.get(19)?,
     }))
 }
 
@@ -294,7 +308,7 @@ pub fn get_archived_task_for_project_by_identity(
     source_task_id: &str,
 ) -> Result<Option<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason, effort, effort_why
          FROM tasks
          WHERE project_path = ?1 AND source = ?2 AND source_key = ?3 AND source_task_id = ?4 AND archived_at IS NOT NULL
          ORDER BY archived_at DESC
@@ -345,6 +359,8 @@ pub fn get_archived_task_for_project_by_identity(
         archived_at: row.get(15)?,
         last_status: row.get(16)?,
         archived_reason: row.get(17)?,
+        effort: row.get(18)?,
+        effort_why: row.get(19)?,
     }))
 }
 
@@ -419,7 +435,7 @@ pub fn get_archived_tasks_for_project(
     project_path: &str,
 ) -> Result<Vec<PersistedTask>, rusqlite::Error> {
     let mut stmt = conn.prepare(
-        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason
+        "SELECT project_path, source, source_key, source_task_id, subject, description, active_form, status, blocks, blocked_by, owner, session_id, first_seen_at, state_changed_at, updated_at, archived_at, last_status, archived_reason, effort, effort_why
          FROM tasks
          WHERE project_path = ?1 AND archived_at IS NOT NULL
          ORDER BY session_id, source, source_key, source_task_id",
@@ -466,6 +482,8 @@ pub fn get_archived_tasks_for_project(
                 archived_at: row.get(15)?,
                 last_status: row.get(16)?,
                 archived_reason: row.get(17)?,
+                effort: row.get(18)?,
+                effort_why: row.get(19)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -618,7 +636,49 @@ mod tests {
             archived_at: None,
             last_status: Some(status.to_string()),
             archived_reason: None,
+            effort: None,
+            effort_why: None,
         }
+    }
+
+    #[test]
+    fn an_assignment_effort_survives_the_round_trip_and_a_later_update() {
+        let (conn, _tmp) = test_db();
+        let mut task = make_task("claude", "7", "Migrate the account store", "pending");
+        task.effort = Some("high".to_string());
+        task.effort_why = Some("the migration is irreversible".to_string());
+        upsert_task(&conn, &task).unwrap();
+
+        let stored = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(stored[0].effort.as_deref(), Some("high"));
+        assert_eq!(
+            stored[0].effort_why.as_deref(),
+            Some("the migration is irreversible")
+        );
+
+        let mut reassigned = task.clone();
+        reassigned.status = "in_progress".to_string();
+        reassigned.effort = Some("medium".to_string());
+        reassigned.effort_why = Some("the risky half is done".to_string());
+        upsert_task(&conn, &reassigned).unwrap();
+
+        let stored = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].effort.as_deref(), Some("medium"));
+        assert_eq!(
+            stored[0].effort_why.as_deref(),
+            Some("the risky half is done")
+        );
+    }
+
+    #[test]
+    fn a_task_from_a_source_without_assignments_stores_no_effort() {
+        let (conn, _tmp) = test_db();
+        upsert_task(&conn, &make_task("codex", "1", "Local todo", "pending")).unwrap();
+
+        let stored = get_tasks_for_project(&conn, "/projects/foo").unwrap();
+        assert_eq!(stored[0].effort, None);
+        assert_eq!(stored[0].effort_why, None);
     }
 
     fn default_source_key(source: &str) -> String {

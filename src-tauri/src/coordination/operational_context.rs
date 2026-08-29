@@ -384,6 +384,8 @@ mod tests {
                 archived_at: None,
                 last_status: Some("in_progress".to_string()),
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             },
         )
         .expect("upsert task");
@@ -545,6 +547,8 @@ mod tests {
                 archived_at: None,
                 last_status: Some("completed".to_string()),
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             },
         )
         .expect("upsert task");
@@ -593,6 +597,8 @@ mod tests {
                 archived_at: None,
                 last_status: Some("in_progress".to_string()),
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             },
         )
         .expect("upsert task");
