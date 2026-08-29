@@ -67,4 +67,6 @@ Results and rationale themes: [`research/phase-b-baseline.md`](research/phase-b-
 
 ## Phase C — v4 and the comparison
 
+Status 2026-08-29: the four v4 developer roles are authored (`src-tauri/resources/templates/roles/v4-developer-{claude,codex,agy,grok}.yaml`, Codex-reviewed for contradictions and permission-matrix completeness); the taureval judge rubric v2 (decision scored, quoted copy only) and the `fable` judge (after the bucket reset) precede the re-run.
+
 For each B cell, author the v4 variant by the rules above (Fable writes; Codex reviews the spec for contradictions and permission-matrix completeness — the reviewer lens the vendors themselves recommend), re-run the same cases, report v3→v4 deltas per cell and per criterion. Then lead/architect cells on Fable 5 / gpt-5.6-sol @ xhigh, and one cheaper-tier probe per task class where the table names one. Winners feed the role defaults, presets and `docs/architecture/harness-model.md`; the `fable` alias is in the model catalog (PR #49) so judgment roles can declare it; `opus` stays the catalog default a member falls back to.

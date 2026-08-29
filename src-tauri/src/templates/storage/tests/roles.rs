@@ -161,7 +161,7 @@ fn bundled_roles_use_canonical_model_and_reasoning_effort() {
         .collect::<Vec<_>>();
     paths.sort();
 
-    assert_eq!(paths.len(), 40, "bundled role count changed");
+    assert_eq!(paths.len(), 44, "bundled role count changed");
 
     let mut high_effort_roles = Vec::new();
     for path in paths {
