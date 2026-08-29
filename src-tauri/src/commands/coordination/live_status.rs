@@ -460,6 +460,7 @@ fn live_agent_status_from_roster(
             .map(session_status_from_health)
             .unwrap_or(SessionStatus::Offline),
         pane_id: member.pane_id,
+        session_id: member.session_id,
     }
 }
 
@@ -492,6 +493,7 @@ fn fast_agent_snapshot_from_roster(
             .map(session_status_from_health)
             .unwrap_or(SessionStatus::Offline),
         pane_id: member.pane_id,
+        session_id: member.session_id,
     }
 }
 

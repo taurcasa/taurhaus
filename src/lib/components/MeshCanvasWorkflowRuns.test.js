@@ -10,6 +10,8 @@ vi.mock('../ipc.js', () => ({
 const { getWorkflowRun, listWorkflowRuns } = await import('../ipc.js')
 const { resetWorkflowRunsForTest } = await import('../workflowRunStore.svelte.js')
 const MeshCanvas = (await import('./MeshCanvas.svelte')).default
+const { normalizeLiveTeamStatus } = await import('../ipc/coordinationResponses.js')
+const { buildTeamConfigFromRuntimeStatus } = await import('./meshTabUtils.js')
 
 let previousResizeObserver
 
@@ -170,5 +172,66 @@ describe('MeshCanvas workflow runs', () => {
     const treeBottom = Number.parseFloat(tree.style.top) + Number.parseFloat(tree.style.height)
 
     expect(minHeight).toBeGreaterThanOrEqual(treeBottom)
+  })
+})
+
+// The canvas is only as good as the payload that reaches it. Every other test
+// here hands MeshCanvas a node object directly; this one starts from the shape
+// `get_live_team_status` actually serializes and runs it through the same two
+// normalizers the runtime view uses, so a field dropped in either of them fails
+// here instead of shipping.
+//
+// Regression: 9e15e4e read the run tree's session from the node, but nothing on
+// the live-team path put one there.
+describe('MeshCanvas workflow runs from a live-team payload', () => {
+  beforeEach(() => {
+    resetWorkflowRunsForTest()
+    listWorkflowRuns.mockReset()
+    getWorkflowRun.mockReset()
+    listWorkflowRuns.mockResolvedValue([run()])
+    getWorkflowRun.mockResolvedValue(run())
+  })
+
+  afterEach(() => {
+    resetWorkflowRunsForTest()
+  })
+
+  it('loads the runs of a member the backend reported as attached', async () => {
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      leadName: 'team-lead',
+      runtimeSnapshotFreshness: 'fresh',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          reasoningEffort: null,
+          roleId: null,
+          roleName: null,
+          focusArea: null,
+          contextSummary: null,
+          behaviorSummary: null,
+          projectId: '/home/user/projects/taurhaus',
+          isCrossProject: false,
+          projectLabel: '',
+          description: 'orchestrates work',
+          sessionStatus: 'active',
+          paneId: '%1',
+          sessionId: 'sess-lead',
+        },
+      ],
+    })
+    const config = buildTeamConfigFromRuntimeStatus(status, '/home/user/projects/taurhaus')
+
+    render(MeshCanvas, {
+      props: { lead: config.lead, agents: config.agents, mode: 'runtime' },
+    })
+
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledWith('sess-lead'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-agent')).toHaveTextContent('implementer')
+    })
   })
 })

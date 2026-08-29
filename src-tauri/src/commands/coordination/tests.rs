@@ -2768,6 +2768,7 @@ fn live_team_status_round_trip() {
                 description: Some("orchestrates work".to_string()),
                 session_status: SessionStatus::Active,
                 pane_id: Some("%1".to_string()),
+                session_id: Some("sess-lead".to_string()),
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2786,6 +2787,7 @@ fn live_team_status_round_trip() {
                 description: None,
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
+                session_id: None,
             },
         ],
     };
@@ -2822,6 +2824,7 @@ fn project_mesh_snapshot_round_trip() {
                 description: Some("UI implementation".to_string()),
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
+                session_id: Some("sess-frontend".to_string()),
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3266,4 +3269,80 @@ fn add_agent_onboarding_routes_through_deliver_message_audit_trail() {
         "expected delivery_attempted audit event for Claude onboarding, got: {:?}",
         event_types
     );
+}
+
+#[test]
+fn live_team_status_carries_the_member_runtime_session_id() {
+    // Regression: 9e15e4e keyed the mesh canvas run tree on a node's Claude
+    // session, but LiveAgentStatus never serialized the session the runtime
+    // record already held, so no runtime node could ask for its workflow runs.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("member runtime");
+    record.session_id = Some("sess-frontend".to_string());
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn project_mesh_snapshot_carries_the_member_runtime_session_id() {
+    // Regression: the fast snapshot fed the same canvas and dropped the same
+    // field, so the cold-start roster could not load runs either (9e15e4e).
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("member runtime");
+    record.session_id = Some("sess-frontend".to_string());
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    let member = snapshot
+        .team_status
+        .expect("team status")
+        .members
+        .into_iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
 }

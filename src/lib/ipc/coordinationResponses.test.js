@@ -66,3 +66,42 @@ describe('coordinationResponses agent snapshots', () => {
     )
   })
 })
+
+describe('coordinationResponses session identity', () => {
+  // Regression: 9e15e4e gave mesh nodes a run tree keyed on the member's Claude
+  // session, but the live-team normalizer dropped `session_id`, so a real
+  // runtime node never had one and never loaded a run.
+  it('carries the runtime session id in both spellings', () => {
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      leadName: 'team-lead',
+      members: [
+        { name: 'team-lead', role: 'lead', cliTool: 'claude', sessionId: 'sess-lead' },
+        { name: 'dev-1', role: 'member', cli_tool: 'codex', session_id: 'sess-dev' },
+      ],
+    })
+
+    expect(status.members.map((member) => member.sessionId)).toEqual(['sess-lead', 'sess-dev'])
+  })
+
+  it('reports no session for a member that is not attached', () => {
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      members: [{ name: 'dev-1', role: 'member', cliTool: 'codex' }],
+    })
+
+    expect(status.members[0].sessionId).toBeNull()
+  })
+
+  it('keeps the session id on the project mesh snapshot members', () => {
+    const snapshot = normalizeProjectMeshSnapshot({
+      team_name: 'taurhaus-team',
+      team_status: {
+        lead_name: 'team-lead',
+        members: [{ name: 'dev-1', role: 'member', cli_tool: 'codex', session_id: 'sess-dev' }],
+      },
+    })
+
+    expect(snapshot.teamStatus.members[0].sessionId).toBe('sess-dev')
+  })
+})

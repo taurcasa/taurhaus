@@ -212,6 +212,11 @@ pub struct LiveAgentStatus {
     pub description: Option<String>,
     pub session_status: SessionStatus,
     pub pane_id: Option<String>,
+    /// Claude session the member's runtime record is attached to, when it has
+    /// one. Additive and defaulted: a member with no runtime attachment, and an
+    /// older payload that predates the field, both decode as `None`.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// Live-team payload for the frontend mesh roster.
@@ -252,6 +257,9 @@ pub struct FastAgentSnapshot {
     pub description: Option<String>,
     pub session_status: SessionStatus,
     pub pane_id: Option<String>,
+    /// See `LiveAgentStatus::session_id`.
+    #[serde(default)]
+    pub session_id: Option<String>,
 }
 
 /// Fast team snapshot built from persisted config + runtime only.

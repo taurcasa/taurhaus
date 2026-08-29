@@ -159,6 +159,9 @@ function normalizeCoordinationMember(value) {
     behaviorSummary: value.behaviorSummary ?? value.behavior_summary ?? null,
     sessionStatus: value.sessionStatus ?? value.session_status ?? 'offline',
     paneId: value.paneId ?? value.pane_id ?? null,
+    // The Claude session behind the member, when the backend attached one. The
+    // mesh canvas keys a node's workflow runs on it.
+    sessionId: value.sessionId ?? value.session_id ?? null,
     isCrossProject: Boolean(value.isCrossProject ?? value.is_cross_project),
     projectLabel: String(value.projectLabel ?? value.project_label ?? '').trim(),
   }

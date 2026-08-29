@@ -2516,6 +2516,7 @@ describe('ipc module', () => {
               description: 'Own orchestration',
               sessionStatus: 'active',
               paneId: '%1',
+              sessionId: null,
             },
           ],
         },
