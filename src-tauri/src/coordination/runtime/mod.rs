@@ -663,6 +663,7 @@ mod tests {
             delivery_lease: None,
             attached_at: None,
             last_seen_at: None,
+            applied_effort: None,
         }
     }
 

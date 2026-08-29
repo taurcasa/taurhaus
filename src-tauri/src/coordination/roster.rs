@@ -120,6 +120,7 @@ impl TeamMemberView {
             delivery_lease: self.delivery_lease.clone(),
             attached_at: self.attached_at,
             last_seen_at: self.last_seen_at,
+            applied_effort: None,
         })
     }
 
@@ -304,6 +305,7 @@ fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntime
         delivery_lease: None,
         attached_at: None,
         last_seen_at: None,
+        applied_effort: None,
     }
 }
 
@@ -391,6 +393,7 @@ mod tests {
                 delivery_lease: None,
                 attached_at: Some(ts("2026-03-08T21:01:00Z")),
                 last_seen_at: Some(ts("2026-03-08T21:02:00Z")),
+                applied_effort: None,
             },
         )
         .expect("save runtime");

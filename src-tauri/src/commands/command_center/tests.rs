@@ -294,6 +294,7 @@ fn save_member_runtime(teams_dir: &Path, team_name: &str, member_name: &str, pan
             delivery_lease: None,
             attached_at: Some(chrono::Utc::now()),
             last_seen_at: Some(chrono::Utc::now()),
+            applied_effort: None,
         },
     )
     .expect("save runtime record");
@@ -2100,6 +2101,7 @@ fn generic_resume_delegates_to_coordination_for_unique_team_member_match() {
             delivery_lease: None,
             attached_at: Some(chrono::Utc::now()),
             last_seen_at: Some(chrono::Utc::now()),
+            applied_effort: None,
         },
     );
 
@@ -2354,6 +2356,7 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
             delivery_lease: None,
             attached_at: Some(chrono::Utc::now()),
             last_seen_at: Some(chrono::Utc::now()),
+            applied_effort: None,
         },
     );
 
@@ -2423,6 +2426,7 @@ fn delegated_resume_without_a_requested_account_reports_nothing() {
             delivery_lease: None,
             attached_at: Some(chrono::Utc::now()),
             last_seen_at: Some(chrono::Utc::now()),
+            applied_effort: None,
         },
     );
 

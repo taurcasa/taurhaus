@@ -43,6 +43,18 @@ pub struct MemberRuntimeRecord {
     pub delivery_lease: Option<DeliveryLease>,
     pub attached_at: Option<DateTime<Utc>>,
     pub last_seen_at: Option<DateTime<Utc>>,
+    /// Reasoning effort currently in force for the running session.
+    ///
+    /// Shared with mesh, which reads and writes it under `appliedEffort`
+    /// before it types `/effort` into the pane, so the key spelling is part of
+    /// the contract. Seeded by the launch effort so a member is never asked to
+    /// switch to the level it already runs at.
+    #[serde(
+        default,
+        rename = "appliedEffort",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub applied_effort: Option<String>,
 }
 
 /// Stateless filesystem-backed store for member runtime documents.
@@ -356,6 +368,8 @@ fn parse_runtime_record(
         attached_at: Option<DateTime<Utc>>,
         #[serde(default)]
         last_seen_at: Option<DateTime<Utc>>,
+        #[serde(default, alias = "appliedEffort")]
+        applied_effort: Option<String>,
     }
 
     let wire: RuntimeRecordWire = serde_json::from_str(raw).map_err(|err| {
@@ -379,6 +393,10 @@ fn parse_runtime_record(
         delivery_lease: wire.delivery_lease,
         attached_at: wire.attached_at,
         last_seen_at: wire.last_seen_at,
+        applied_effort: wire
+            .applied_effort
+            .map(|level| level.trim().to_string())
+            .filter(|level| !level.is_empty()),
     })
 }
 
@@ -614,7 +632,74 @@ mod tests {
             }),
             attached_at: Some(ts("2026-03-01T21:00:10Z")),
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
+            applied_effort: None,
         }
+    }
+
+    #[test]
+    fn applied_effort_round_trips_through_the_key_mesh_reads() {
+        // mesh writes `appliedEffort` into this record before it types
+        // `/effort` into the pane, and reads it back to decide whether the next
+        // assignment needs the command at all. A save from taurhaus that drops
+        // the key makes mesh restate the level on every assignment — and, for
+        // Claude Code, rewrite the user's saved default each time.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        let mut record = sample_record(member_name);
+        record.applied_effort = Some("high".to_string());
+
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &record)
+            .expect("save should succeed");
+
+        let raw = fs::read_to_string(
+            teams_dir
+                .join(team_name)
+                .join("runtime")
+                .join(format!("{member_name}.json")),
+        )
+        .expect("runtime record on disk");
+        let value: Value = serde_json::from_str(&raw).expect("runtime record is json");
+        assert_eq!(
+            value.get("appliedEffort").and_then(Value::as_str),
+            Some("high"),
+            "mesh reads the level under `appliedEffort`"
+        );
+
+        let loaded = MemberRuntimeStore::load(teams_dir, team_name, member_name)
+            .expect("load should succeed");
+        assert_eq!(loaded.applied_effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn a_record_written_by_mesh_keeps_its_applied_effort() {
+        // mesh's own write is a read-modify-write of the raw JSON, so the key
+        // arrives without any of taurhaus's own fields being restated.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("save should succeed");
+
+        let path = teams_dir
+            .join(team_name)
+            .join("runtime")
+            .join(format!("{member_name}.json"));
+        let mut value: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("record")).expect("json");
+        value["appliedEffort"] = Value::String("medium".to_string());
+        fs::write(&path, serde_json::to_string(&value).expect("json")).expect("write");
+
+        let loaded = MemberRuntimeStore::load(teams_dir, team_name, member_name)
+            .expect("load should succeed");
+        assert_eq!(loaded.applied_effort.as_deref(), Some("medium"));
     }
 
     #[test]
@@ -879,6 +964,7 @@ mod tests {
             delivery_lease: None,
             attached_at: None,
             last_seen_at: None,
+            applied_effort: None,
         };
 
         MemberRuntimeStore::save(teams_dir, team_name, "no-heartbeat", &no_timestamps)
