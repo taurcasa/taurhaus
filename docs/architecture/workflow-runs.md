@@ -101,7 +101,7 @@ good runs on screen and records why.
 | Mesh canvas (`WorkflowRunTree.svelte`) | Phase rows and agent rows (label, model, state, last tool, tokens) for a live run; one line for a finished one | The node's session, watched while the canvas is mounted; or `workflowRuns` handed to the node by a caller |
 | Sidebar row | A run-count badge, hovering to give the count and the newest write's age | `workflow_activity` alone — no IPC |
 | Hover card | The run's name and what it is on: the phase of the running agent where one is known, otherwise that agent's own label or prompt preview — a live run has no phase to name until its summary is written | The hovered project's session — named by `workflow_session_id` — watched only while the card is up |
-| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over every session the project can name — running now first, then its open tasks and `get_archived_sessions` merged into one order by the newest timestamp each record carries — a page of 24 at a time, asking the next page while a page comes back empty (up to 96 sessions), and the header says when it stopped short |
+| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, *Copy ledger row*, and *Search older sessions* | `list_workflow_runs` over every session the project can name — running now first, then its open tasks and `get_archived_sessions` merged into one order by the newest timestamp each record carries — a page of 24 at a time, asking the next page while a page comes back empty and stopping on the first page that produced a run or at 96 sessions, whichever comes first; the header says where it stopped and the control carries the same search on from there |
 
 A mesh node reads its session from the member's own runtime record, which
 `LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`,
@@ -115,7 +115,16 @@ The Overview panel reloads when the set of sessions changes *or* when the
 activity hint's live-run count moves: a run starts and ends inside a session
 that is already listed, and the count is the one field that moves on that
 transition — the hub versions it, so it moves once per run rather than once per
-agent write. A reload for that reason keeps the rows and the open run in place.
+agent write. A reload for that reason keeps the rows and the open run in place,
+and re-asks as far back as the reader had already opened the history up, so a
+run that started somewhere else cannot collapse the search back to one page.
+
+The 96-session budget bounds what one load costs, never what a reader can reach:
+*Search older sessions* resumes the same paged search from where it stopped, one
+budget per press, and leaves when the project has no session left to name. It is
+the one case where the section shows itself with no runs in it — a project whose
+first workflow is older than the first search would otherwise have no history and
+no way to ask for it.
 
 **Geometry.** The tree is a sized child box: `meshLayout.js` owns `RUN_TREE_METRICS`
 and places `{ left, top, width, height }` from a `{ rowCount, runCount, collapsed }`

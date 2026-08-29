@@ -433,4 +433,62 @@ describe('WorkflowRunsPanel session coverage', () => {
       `newest ${asked.length} sessions`
     )
   })
+
+  // Regression: f1563d9 stopped the search at the first page that produced a
+  // run, so the workflows of every older session were unreachable — the panel
+  // said it had stopped short and offered no way to go on.
+  it('reaches a run older than the page the search stopped on', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: Array.from({ length: 40 }, (_unused, index) => ({
+        session_id: `sess-${index}`,
+        ended_at: new Date(Date.UTC(2026, 2, 1, 10, 0, 0) - index * 60_000).toISOString(),
+      })),
+      errors: [],
+    })
+    listWorkflowRuns.mockImplementation((sessionId) => {
+      if (sessionId === 'sess-3') return Promise.resolve([COMPLETED])
+      if (sessionId === 'sess-30') return Promise.resolve([OLDER])
+      return Promise.resolve([])
+    })
+
+    renderPanel({ sessions: [] })
+
+    await waitFor(() => expect(screen.getAllByTestId('workflow-run-row')).toHaveLength(1))
+    expect(listWorkflowRuns).not.toHaveBeenCalledWith('sess-30')
+
+    await fireEvent.click(screen.getByTestId('workflow-load-more'))
+
+    await waitFor(() => expect(screen.getAllByTestId('workflow-run-row')).toHaveLength(2))
+    expect(listWorkflowRuns).toHaveBeenCalledWith('sess-30')
+    expect(screen.queryByTestId('workflow-load-more')).not.toBeInTheDocument()
+  })
+
+  // Regression: f1563d9 gave the empty-page search a 96-session budget and hid
+  // the section when it came back with nothing, so a project whose first
+  // workflow was older than that had no history and no way to ask for it.
+  it('offers the search past the cap when nothing was found yet', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: Array.from({ length: 120 }, (_unused, index) => ({
+        session_id: `sess-${index}`,
+        ended_at: new Date(Date.UTC(2026, 2, 1, 10, 0, 0) - index * 60_000).toISOString(),
+      })),
+      errors: [],
+    })
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-100' ? [COMPLETED] : [])
+    )
+
+    renderPanel({ sessions: [] })
+
+    await waitFor(() => expect(screen.getByTestId('workflow-load-more')).toBeInTheDocument())
+    expect(screen.queryByTestId('workflow-run-row')).not.toBeInTheDocument()
+    expect(screen.getByTestId('overview-workflow-runs')).toHaveTextContent('newest 96 sessions')
+
+    await fireEvent.click(screen.getByTestId('workflow-load-more'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    })
+    expect(listWorkflowRuns).toHaveBeenCalledWith('sess-100')
+  })
 })

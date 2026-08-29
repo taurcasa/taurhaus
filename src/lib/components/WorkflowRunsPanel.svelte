@@ -10,8 +10,13 @@
    * dropped from the merge rather than emptying the list — the other sessions'
    * runs are still true.
    *
-   * The section hides itself when nothing came back, the way the sibling
-   * Sessions and Relationships sections do.
+   * One search is bounded — a long-lived project has hundreds of sessions and
+   * almost none of them ran a workflow — so what it did not reach is reachable
+   * by asking: *Search older sessions* carries the same search on from where it
+   * stopped, until every session the project can name has been asked.
+   *
+   * The section hides itself when nothing came back and there is nothing left
+   * to ask, the way the sibling Sessions and Relationships sections do.
    */
   import {
     getArchivedSessions,
@@ -39,23 +44,32 @@
    */
   const SESSION_PAGE = 24
   /**
-   * How far back a project view will keep looking when it has found nothing.
+   * How far one search keeps looking before it hands the rest to the reader.
    *
    * A page that comes back empty is not an answer, it is the absence of one: a
    * project whose only workflow ran thirty sessions ago would otherwise show no
-   * history and offer no way to reach it. So an empty page asks the next one,
-   * and a page with runs in it stops — the rest is older than what is already
-   * on screen, and the header says the list was cut.
+   * history. So an empty page asks the next one, and a page with runs in it
+   * stops — the rest is older than what is already on screen. Both stops are
+   * where *Search older sessions* picks the same search back up, so the budget
+   * bounds what one load costs, never what the reader can reach.
    */
   const MAX_SESSIONS = SESSION_PAGE * 4
 
   let runs = $state([])
   let askedSessions = $state(0)
+  let candidateSessions = $state(0)
   let sessionsTruncated = $state(false)
+  let loadingMore = $state(false)
   let selected = $state(null)
   let detail = $state(null)
   let ledgerRow = $state(null)
   let copied = $state(false)
+
+  // The search's own bookkeeping, deliberately outside `$state`: the load
+  // effect writes how far it got, and must never re-run because it read it
+  // back. The rendered copies above are written from these.
+  let candidateIds = []
+  let askedCount = 0
 
   const t = $derived(themeTokens(dark))
   // A session snapshot hands this panel a fresh array on every daemon update.
@@ -81,6 +95,12 @@
       .join('\u0000')
   )
   const rows = $derived(runs.map((run) => ({ ...runListRow(run), sessionId: run.sessionId })))
+  const moreSessions = $derived(candidateSessions > askedSessions)
+  const countLabel = $derived(
+    rows.length > 0 ? `${rows.length} run${rows.length !== 1 ? 's' : ''}` : 'No runs'
+  )
+  const searchedLabel = $derived(sessionsTruncated ? ` · newest ${askedSessions} sessions` : '')
+  const loadMoreLabel = $derived(loadingMore ? 'Searching…' : 'Search older sessions')
   const detailAgents = $derived(Array.isArray(detail?.agents) ? detail.agents : [])
   const copyLabel = $derived(copied ? 'Copied' : 'Copy ledger row')
   const copyTitle = $derived(
@@ -97,6 +117,38 @@
   let loadedKey = ''
   let loadedRunKey = ''
   let loadToken = 0
+
+  /**
+   * Ask candidate sessions for their runs, one page at a time, newest first.
+   *
+   * `floor` is how far the search must go whatever it finds — a reload re-asks
+   * everything the reader had already opened up, so their older runs do not
+   * vanish when a run starts. `limit` is where it stops and leaves the rest to
+   * the control. `null` means a newer load won the session and this answer is
+   * no longer wanted.
+   */
+  async function askSessions(candidates, { start, floor, limit, token }) {
+    const found = []
+    let asked = start
+    while (asked < candidates.length && asked < limit && (asked < floor || found.length === 0)) {
+      const page = candidates.slice(asked, asked + SESSION_PAGE)
+      const answers = await Promise.allSettled(page.map((sessionId) => listWorkflowRuns(sessionId)))
+      if (token !== loadToken) return null
+      asked += page.length
+
+      for (const [index, answer] of answers.entries()) {
+        if (answer.status !== 'fulfilled' || !Array.isArray(answer.value)) continue
+        for (const run of answer.value) {
+          found.push({ ...run, sessionId: page[index] })
+        }
+      }
+    }
+    return { asked, found }
+  }
+
+  function newestRunFirst(left, right) {
+    return (right?.started_at ?? 0) - (left?.started_at ?? 0)
+  }
 
   $effect(() => {
     const id = String(projectId || '')
@@ -115,6 +167,7 @@
 
     if (restart) {
       runs = []
+      askedCount = 0
       selected = null
       detail = null
       ledgerRow = null
@@ -138,35 +191,56 @@
       }
       if (token !== loadToken) return
 
-      const candidates = orderWorkflowSessionIds(
+      candidateIds = orderWorkflowSessionIds(
         liveSessionIds.map((sessionId) => ({ session_id: sessionId })),
         taskSessions,
         archivedSessions
       )
 
-      const merged = []
-      let asked = 0
-      while (asked < candidates.length && asked < MAX_SESSIONS && merged.length === 0) {
-        const page = candidates.slice(asked, asked + SESSION_PAGE)
-        const answers = await Promise.allSettled(
-          page.map((sessionId) => listWorkflowRuns(sessionId))
-        )
-        if (token !== loadToken) return
-        asked += page.length
+      const floor = restart ? 0 : askedCount
+      const result = await askSessions(candidateIds, {
+        start: 0,
+        floor,
+        limit: Math.max(MAX_SESSIONS, floor),
+        token,
+      })
+      if (!result) return
 
-        for (const [index, answer] of answers.entries()) {
-          if (answer.status !== 'fulfilled' || !Array.isArray(answer.value)) continue
-          for (const run of answer.value) {
-            merged.push({ ...run, sessionId: page[index] })
-          }
-        }
-      }
-
-      askedSessions = asked
-      sessionsTruncated = candidates.length > asked
-      runs = merged.sort((left, right) => (right?.started_at ?? 0) - (left?.started_at ?? 0))
+      askedCount = result.asked
+      askedSessions = result.asked
+      candidateSessions = candidateIds.length
+      sessionsTruncated = candidateIds.length > result.asked
+      runs = result.found.sort(newestRunFirst)
     })()
   })
+
+  /**
+   * Carry the same search on from where it stopped. Everything already on
+   * screen stays; one more budget of sessions is asked, and the control
+   * disappears when there is no session left to ask.
+   */
+  async function loadMore() {
+    if (loadingMore || askedCount >= candidateIds.length) return
+    const token = loadToken
+    loadingMore = true
+    try {
+      const result = await askSessions(candidateIds, {
+        start: askedCount,
+        floor: 0,
+        limit: askedCount + MAX_SESSIONS,
+        token,
+      })
+      if (!result || token !== loadToken) return
+
+      askedCount = result.asked
+      askedSessions = result.asked
+      candidateSessions = candidateIds.length
+      sessionsTruncated = candidateIds.length > result.asked
+      runs = [...runs, ...result.found].sort(newestRunFirst)
+    } finally {
+      loadingMore = false
+    }
+  }
 
   async function selectRun(row) {
     if (selected === row.runId) {
@@ -204,7 +278,7 @@
   }
 </script>
 
-{#if rows.length > 0}
+{#if rows.length > 0 || moreSessions}
   <section
     class="py-5 border-b {t.keyline}"
     class:is-dark={dark}
@@ -212,11 +286,7 @@
   >
     <div class="flex items-center justify-between mb-3">
       <span class="text-[11px] {t.textTertiary}">Workflow runs</span>
-      <span class="text-[11px] {t.textTertiary}">
-        {rows.length} run{rows.length !== 1 ? 's' : ''}{sessionsTruncated
-          ? ` · newest ${askedSessions} sessions`
-          : ''}
-      </span>
+      <span class="text-[11px] {t.textTertiary}">{countLabel}{searchedLabel}</span>
     </div>
 
     <div>
@@ -302,6 +372,17 @@
         {/if}
       {/each}
     </div>
+
+    {#if moreSessions}
+      <button
+        type="button"
+        class="mt-2 text-[11px] {t.textTertiary} hover:underline disabled:no-underline disabled:opacity-40 disabled:cursor-not-allowed"
+        data-testid="workflow-load-more"
+        disabled={loadingMore}
+        title="Ask the next older sessions this project can name"
+        onclick={loadMore}
+      >{loadMoreLabel}</button>
+    {/if}
   </section>
 {/if}
 
