@@ -71,6 +71,14 @@ pub struct MemberActivationContext {
     pub delivery_policy: MemberActivationDeliveryPolicy,
     pub roster_policy: MemberActivationRosterPolicy,
     pub runtime_commit_policy: MemberActivationRuntimeCommitPolicy,
+    /// Conversation this activation must land in, rather than a fresh one.
+    ///
+    /// Set only where taurhaus relaunches a session it owns for a reason of
+    /// its own — the task-effort pass, which is the one harness path that
+    /// cannot change effort in the running prompt. An operator-driven resume
+    /// leaves it unset and keeps starting fresh: members share a project, and a
+    /// checkpoint-based resume would pick up another member's conversation.
+    pub resume_session_id: Option<String>,
 }
 
 impl MemberActivationContext {
@@ -91,6 +99,7 @@ impl MemberActivationContext {
             delivery_policy: MemberActivationDeliveryPolicy::DeferredBarrier,
             roster_policy: MemberActivationRosterPolicy::Preseeded,
             runtime_commit_policy: MemberActivationRuntimeCommitPolicy::Staged,
+            resume_session_id: None,
         })
     }
 
@@ -110,6 +119,7 @@ impl MemberActivationContext {
             delivery_policy: MemberActivationDeliveryPolicy::Immediate,
             roster_policy: MemberActivationRosterPolicy::CreateMember,
             runtime_commit_policy: MemberActivationRuntimeCommitPolicy::FinalizeAtEnd,
+            resume_session_id: None,
         })
     }
 
@@ -139,6 +149,7 @@ impl MemberActivationContext {
             delivery_policy: MemberActivationDeliveryPolicy::Immediate,
             roster_policy: MemberActivationRosterPolicy::ExistingMember,
             runtime_commit_policy: MemberActivationRuntimeCommitPolicy::FinalizeAtEnd,
+            resume_session_id: None,
         }
     }
 }

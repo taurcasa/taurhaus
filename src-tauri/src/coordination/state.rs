@@ -36,8 +36,9 @@ pub struct BackgroundSelfHealPassResult {
     pub members_effort_resumed: usize,
 }
 
-/// Layout the background pass relaunches a member into: the same default
-/// every operator-driven resume uses.
+/// Layout the background pass relaunches a member into when the caller has no
+/// configured one: the same default every operator-driven resume uses.
+#[cfg(test)]
 const DEFAULT_TMUX_LAYOUT: &str = "new_window";
 
 /// App-managed coordination state that lazily initializes the orchestrator.
@@ -157,8 +158,17 @@ impl CoordinationState {
         self.with_orchestrator(|orchestrator| orchestrator.trigger_team_self_heal(team_name))
     }
 
+    /// One background pass over every team.
+    ///
+    /// `cli_commands` and `tmux_layout` are the operator's own launch settings,
+    /// resolved by the caller at the command boundary the way every other
+    /// managed launch resolves them: a relaunch this pass performs must land on
+    /// the same account and the same configured command as the launch it
+    /// replaces.
     pub fn run_background_self_heal_pass(
         &self,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
@@ -182,11 +192,7 @@ impl CoordinationState {
             // mesh's own `/effort`; the one that has no such command is
             // relaunched here. It rides this pass rather than a timer of its
             // own, and it is a no-op for every member already at its level.
-            match orchestrator.apply_pending_task_effort(
-                &team_name,
-                &CliCommandSettings::default(),
-                DEFAULT_TMUX_LAYOUT,
-            ) {
+            match orchestrator.apply_pending_task_effort(&team_name, cli_commands, tmux_layout) {
                 Ok(members) => summary.members_effort_resumed += members.len(),
                 Err(err) => {
                     summary.team_errors += 1;
@@ -1047,7 +1053,7 @@ mod tests {
         state.orchestrator.lock().expect("state mutex").take();
 
         let summary = state
-            .run_background_self_heal_pass()
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
             .expect("background pass succeeds");
 
         assert_eq!(summary.members_effort_resumed, 1);
@@ -1058,6 +1064,105 @@ mod tests {
         )
         .expect("runtime record");
         assert_eq!(record.applied_effort.as_deref(), Some("high"));
+    }
+
+    // Regression: 2529309 ran the effort relaunch with
+    // `CliCommandSettings::default()`, so a member launched on a selected
+    // account came back on the tool's default one, under the stock command.
+    #[test]
+    fn the_background_pass_relaunches_on_the_operators_own_launch_settings() {
+        let tmp = TempDir::new().expect("tempdir");
+        let codex_home = TempDir::new().expect("codex home");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        runtime.set_detected_runtime_session(
+            "%31",
+            CliTool::Codex,
+            Some("session-effort"),
+            Some("/tmp/effort.jsonl"),
+        );
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("effort-team", None)?;
+                orch.add_member(
+                    "effort-team",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                let mut builder =
+                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app");
+                builder.reasoning_effort = Some("low".to_string());
+                orch.add_member("effort-team", builder)?;
+                Ok(())
+            })
+            .expect("seed team");
+        write_lead_credential(tmp.path(), "effort-team");
+
+        crate::coordination::stores::MemberRuntimeStore::update(
+            tmp.path(),
+            "effort-team",
+            "builder",
+            |record| {
+                record.pane_id = Some("%31".to_string());
+                record.health = HealthState::SessionDead;
+                record.applied_effort = Some("low".to_string());
+                record.session_id = Some("session-effort".to_string());
+            },
+        )
+        .expect("seed runtime");
+
+        let mut message = crate::coordination::stores::MeshInboxMessage::new(
+            "team-lead",
+            "Effort: high — the migration is irreversible".to_string(),
+            None,
+            Utc::now(),
+        );
+        message
+            .extra
+            .insert("effort".to_string(), serde_json::json!("high"));
+        crate::coordination::stores::MeshInboxStore::append(
+            tmp.path(),
+            "effort-team",
+            "builder",
+            &message,
+        )
+        .expect("append assignment");
+
+        state.orchestrator.lock().expect("state mutex").take();
+
+        let mut cli_commands = CliCommandSettings::default();
+        cli_commands
+            .account_selector_dirs
+            .insert("CODEX_HOME".to_string(), codex_home.path().to_path_buf());
+        let summary = state
+            .run_background_self_heal_pass(&cli_commands, DEFAULT_TMUX_LAYOUT)
+            .expect("background pass succeeds");
+
+        assert_eq!(summary.members_effort_resumed, 1);
+        let launch = runtime
+            .calls()
+            .into_iter()
+            .filter_map(|call| match call {
+                RuntimeCall::SendKeys { keys, .. } => Some(keys),
+                _ => None,
+            })
+            .rfind(|keys| keys.contains("codex"))
+            .expect("a codex launch was sent to the pane");
+        assert!(
+            launch.contains("CODEX_HOME=")
+                && launch.contains(&codex_home.path().display().to_string()),
+            "the background relaunch must keep the operator's account, got: {launch}"
+        );
     }
 
     #[test]
@@ -1100,7 +1205,7 @@ mod tests {
         state.orchestrator.lock().expect("state mutex").take();
 
         let summary = state
-            .run_background_self_heal_pass()
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
             .expect("background pass succeeds");
 
         assert_eq!(summary.teams_scanned, 1);
@@ -1182,7 +1287,7 @@ mod tests {
         runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
 
         let summary = state
-            .run_background_self_heal_pass()
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
             .expect("background pass succeeds");
 
         assert_eq!(summary.teams_scanned, 1);
@@ -1270,7 +1375,7 @@ mod tests {
         runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
 
         let summary = state
-            .run_background_self_heal_pass()
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
             .expect("self-heal succeeds");
         assert_eq!(summary.teams_reconciled, 1);
         assert_eq!(summary.team_daemons_ensured, 1);
@@ -1367,10 +1472,10 @@ mod tests {
         runtime.set_team_daemon_current_mesh_binary("architecture-final", false);
 
         let first = state
-            .run_background_self_heal_pass()
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
             .expect("first self-heal pass");
         let second = state
-            .run_background_self_heal_pass()
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
             .expect("second self-heal pass");
 
         assert_eq!(first.teams_scanned, 1);

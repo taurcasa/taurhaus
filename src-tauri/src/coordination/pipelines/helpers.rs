@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -22,7 +23,8 @@ use crate::session_scanner::accounts::{configured_default_dir, to_launch_namespa
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
-    base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+    base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
+    TeamContext,
 };
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
@@ -240,6 +242,7 @@ pub(super) fn build_cli_launch_command(
         &agent.name,
         role,
         cli_commands.codex_bypass_hook_trust,
+        None,
     )
 }
 
@@ -448,7 +451,46 @@ pub(super) fn build_member_activation_launch_command(
         &context.member.name,
         context.member.role,
         cli_commands.codex_bypass_hook_trust,
+        context.resume_session_id.as_deref(),
     )
+}
+
+/// The token a configured resume command uses for "whatever ran last".
+const RESUME_LAST_FLAG: &str = "--last";
+/// The token the Settings resume command uses for an explicit conversation.
+const RESUME_SESSION_PLACEHOLDER: &str = "{session_id}";
+
+/// Point a configured resume command at one named conversation.
+///
+/// A member's pane is not the only one on its account: `--last` resumes
+/// whichever conversation the account touched most recently, which on a shared
+/// `CODEX_HOME` is somebody else's. The placeholder wins where the operator
+/// wrote one, `--last` is replaced where they did not, and a base that names
+/// neither is appended to — a resume verb with no conversation would open the
+/// interactive picker and the pane would sit there.
+pub(super) fn resume_base_for_session(base: &str, session_id: &str) -> String {
+    let escaped = shell_escape(session_id);
+    if base.contains(RESUME_SESSION_PLACEHOLDER) {
+        return base.replace(RESUME_SESSION_PLACEHOLDER, &escaped);
+    }
+    let mut replaced = false;
+    let rewritten = base
+        .split_whitespace()
+        .map(|token| {
+            if token == RESUME_LAST_FLAG && !replaced {
+                replaced = true;
+                escaped.clone()
+            } else {
+                token.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if replaced {
+        rewritten
+    } else {
+        format!("{} {escaped}", base.trim_end())
+    }
 }
 
 // Runtime-only Codex inputs on `CliCommandSettings` keep command rendering
@@ -464,14 +506,24 @@ fn render_team_launch_command(
     agent_name: &str,
     role: MemberRole,
     codex_bypass_hook_trust: bool,
+    resume_session_id: Option<&str>,
 ) -> Result<String, CoordinationError> {
-    let base = base_command(cli_commands, cli_tool, LaunchMode::Fresh);
+    let mode = if resume_session_id.is_some() {
+        LaunchMode::Resume
+    } else {
+        LaunchMode::Fresh
+    };
+    let base = base_command(cli_commands, cli_tool, mode);
     if base.trim().is_empty() {
         return Err(CoordinationError::Validation(format!(
             "configured launch command is empty for '{}'",
             cli_tool
         )));
     }
+    let base = match resume_session_id {
+        Some(session_id) => Cow::Owned(resume_base_for_session(base, session_id)),
+        None => Cow::Borrowed(base),
+    };
 
     let mut model = ModelSpec::parse_legacy(model);
     if reasoning_effort.is_some() {
@@ -495,8 +547,8 @@ fn render_team_launch_command(
         .map(|dir| to_launch_namespace(&dir));
     let rendered = LaunchSpec {
         tool: cli_tool,
-        mode: LaunchMode::Fresh,
-        base,
+        mode,
+        base: base.as_ref(),
         model: model.clone(),
         codex_bypass_hook_trust: capabilities.hook_trust && codex_bypass_hook_trust,
         codex_notify_executable: if capabilities.notify_sink {

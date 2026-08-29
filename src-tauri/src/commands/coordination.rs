@@ -53,6 +53,27 @@ use state_sync::*;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
+/// The launch settings a background pass relaunches a member with.
+///
+/// The same resolution an operator-driven resume performs, minus the hook
+/// write: a pass that runs on a timer reads whether the managed Codex hook is
+/// installed rather than reconciling it. Without this the effort relaunch used
+/// stock defaults and moved the member off the account it was launched on.
+pub(crate) fn background_launch_settings(
+    db: &DbState,
+    teams_dir: &std::path::Path,
+) -> (CliCommandSettings, String) {
+    let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
+    let has_managed_codex =
+        crate::coordination::compact_hook::any_managed_codex_member(teams_dir).unwrap_or(false);
+    crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+        &mut cli_commands,
+        has_managed_codex,
+        has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
+    );
+    (cli_commands, tmux_layout)
+}
+
 fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     #[cfg(test)]
     {

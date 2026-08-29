@@ -730,6 +730,16 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             .filter(|level| !level.is_empty())
         {
             activation_context.member.reasoning_effort = Some(level.to_ascii_lowercase());
+            // An effort switch is taurhaus's own relaunch of a session the
+            // member was already working in. Starting fresh would drop the
+            // context the assignment builds on, so the relaunch resumes the
+            // conversation the runtime record names.
+            activation_context.resume_session_id = runtime_record
+                .session_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|session_id| !session_id.is_empty())
+                .map(ToString::to_string);
         }
         Ok(PreparedMemberActivation {
             member,

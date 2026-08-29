@@ -528,7 +528,7 @@ fn command_contains_codex_config(command: &str, key: &str) -> bool {
     })
 }
 
-pub(crate) fn shell_escape(value: &str) -> String {
+pub fn shell_escape(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 

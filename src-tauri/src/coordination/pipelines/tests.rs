@@ -3634,6 +3634,90 @@ fn a_codex_member_is_relaunched_with_the_assignment_effort() {
 }
 
 #[test]
+fn a_resume_base_is_pointed_at_the_named_conversation() {
+    use super::helpers::resume_base_for_session;
+
+    assert_eq!(
+        resume_base_for_session("codex resume --last --yolo", "abc-123"),
+        "codex resume 'abc-123' --yolo",
+        "--last resumes whoever touched the account last, not this member"
+    );
+    assert_eq!(
+        resume_base_for_session("codex resume {session_id} --yolo", "abc-123"),
+        "codex resume 'abc-123' --yolo",
+        "an operator's own placeholder wins"
+    );
+    assert_eq!(
+        resume_base_for_session("codex resume", "abc-123"),
+        "codex resume 'abc-123'",
+        "a resume verb with no conversation would open the interactive picker"
+    );
+}
+
+// Regression: 2529309 routed the Codex effort switch through the generic resume
+// pipeline, which always renders `LaunchMode::Fresh`. The member lost its
+// conversation, its persisted session id never reached the command, and the
+// settings the operator launched it with were replaced by defaults.
+#[test]
+fn a_codex_effort_relaunch_resumes_the_members_own_session() {
+    let tmp = TempDir::new().expect("tempdir");
+    let codex_home = TempDir::new().expect("codex home");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands
+        .account_selector_dirs
+        .insert("CODEX_HOME".to_string(), codex_home.path().to_path_buf());
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &cli_commands,
+        )
+        .expect("seed resume");
+    let seeded = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(seeded.session_id.as_deref(), Some("session-effort"));
+
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    orchestrator
+        .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
+        .expect("effort pass");
+
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .rfind(|keys| keys.contains("codex"))
+        .expect("a codex launch was sent to the pane");
+
+    assert!(
+        launch.contains("codex resume") && launch.contains("session-effort"),
+        "the effort relaunch must resume the member's own conversation, got: {launch}"
+    );
+    assert!(
+        !launch.contains("--last"),
+        "resuming by id must not fall back to whatever conversation ran last, got: {launch}"
+    );
+    assert!(
+        launch.contains("model_reasoning_effort=\\\"high\\\"")
+            || launch.contains("model_reasoning_effort=\"high\""),
+        "the resume must carry the assignment effort, got: {launch}"
+    );
+    assert!(
+        launch.contains("CODEX_HOME=") && launch.contains(&codex_home.path().display().to_string()),
+        "the relaunch must keep the account the member was launched on, got: {launch}"
+    );
+}
+
+#[test]
 fn a_second_pass_over_the_same_assignment_does_not_relaunch_again() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
