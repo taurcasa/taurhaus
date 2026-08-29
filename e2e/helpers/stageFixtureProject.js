@@ -20,7 +20,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** The command the stage is asked to validate its own work with. */
-export const FIXTURE_TEST_COMMAND = 'bun test'
+const FIXTURE_TEST_COMMAND = 'bun test'
 
 /**
  * The fixture's own committer identity.

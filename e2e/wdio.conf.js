@@ -29,10 +29,12 @@
  *   just test-e2e-spec search-workflow   (single spec in its own session)
  *   E2E_SKIP_BUILD=1 bunx wdio run e2e/wdio.conf.js  (skip build)
  *
- * None of those run a paid lane. `compaction-codex-hooks` spends real Codex and
- * Claude subscription turns and is only ever started by name:
+ * None of those run a paid lane. `compaction-codex-hooks` and
+ * `managed-stage-codex` spend real subscription turns and are only ever started
+ * by name:
  *
  *   E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks
+ *   E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex
  */
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -41,7 +43,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
-import { CODEX_SCRATCH_SPEC, buildSpecList } from './specList.js'
+import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
@@ -194,7 +196,7 @@ The runtime mode keeps agents connected.
   runGitOrThrow(repoPath, ['commit', '-q', '-m', 'docs: add changelog for git history coverage'], 'Failed to create third e2e fixture commit')
 }
 
-// The one spec that drives a real Codex subscription. It runs against a scratch
+// The specs that drive a real Codex subscription. They run against a scratch
 // CODEX_HOME rather than the operator's own, so the app process — which installs
 // the managed hook and renders the member's `CODEX_HOME='…'` launch prefix — has
 // to be started with that root already in its environment.
@@ -202,7 +204,9 @@ let previousCodexHome = null
 let codexHomeOverridden = false
 
 function prepareCodexScratchHome(specs, scratchHome) {
-  const wanted = (specs ?? []).some((spec) => resolve(spec).endsWith(CODEX_SCRATCH_SPEC))
+  const wanted = (specs ?? []).some((spec) =>
+    CODEX_SCRATCH_SPECS.some((name) => resolve(spec).endsWith(name))
+  )
   if (!wanted) return
 
   const sourceHome = process.env.E2E_CODEX_SOURCE_HOME || resolve(homedir(), '.codex')

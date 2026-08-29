@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** Run one mesh command against an explicit Claude root; throws on failure. */
-export function runMesh(claudeDir, args, { timeout = 60_000 } = {}) {
+function runMesh(claudeDir, args, { timeout = 60_000 } = {}) {
   return execFileSync('mesh', ['--claude-dir', claudeDir, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
