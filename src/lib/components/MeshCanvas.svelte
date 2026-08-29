@@ -602,6 +602,7 @@
         behaviorSummary={layout.lead.behaviorSummary}
         tool={layout.lead.tool}
         model={layout.lead.model}
+        reasoningEffort={layout.lead.reasoningEffort}
         taskEffort={layout.lead.taskEffort}
         taskEffortWhy={layout.lead.taskEffortWhy}
         status={layout.lead.status}
@@ -627,6 +628,7 @@
           behaviorSummary={agent.behaviorSummary}
           tool={agent.tool}
           model={agent.model}
+          reasoningEffort={agent.reasoningEffort}
           taskEffort={agent.taskEffort}
           taskEffortWhy={agent.taskEffortWhy}
           status={agent.status}

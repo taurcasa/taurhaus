@@ -13,6 +13,7 @@
     behaviorSummary = '',
     tool = 'claude',
     model = '',
+    reasoningEffort = '',
     taskEffort = '',
     taskEffortWhy = '',
     status = 'offline',
@@ -37,8 +38,14 @@
   const safeProjectLabel = $derived(String(projectLabel || '').trim())
   const showProjectChip = $derived(Boolean(isCrossProject) && safeProjectLabel.length > 0)
 
-  // The effort the lead attached to the current assignment, which is a
-  // different number from the effort the session was launched at.
+  // The effort this session was launched at, shown next to the one the lead
+  // attached to the current assignment so the two can be read against each
+  // other: a task asking for more than the session runs at is the interesting
+  // case.
+  const safeLaunchEffort = $derived(String(reasoningEffort || '').trim())
+  const showLaunchEffort = $derived(safeLaunchEffort.length > 0)
+  const launchEffortTitle = $derived(`Launch effort: ${safeLaunchEffort}`)
+
   const safeTaskEffort = $derived(String(taskEffort || '').trim())
   const safeTaskEffortWhy = $derived(String(taskEffortWhy || '').trim())
   const showTaskEffort = $derived(safeTaskEffort.length > 0)
@@ -123,14 +130,24 @@
       <span class="mesh-node-status" style={`background-color: ${statusColor};`}></span>
     </span>
 
-    {#if hasModel || showTaskEffort || showProjectChip}
+    {#if hasModel || showLaunchEffort || showTaskEffort || showProjectChip}
       <span
         class="mesh-node-meta-row"
-        class:chip-only={!hasModel && (showTaskEffort || showProjectChip)}
+        class:chip-only={!hasModel && (showLaunchEffort || showTaskEffort || showProjectChip)}
         data-testid={`mesh-node-meta-row-${normalizedRole}`}
       >
         {#if hasModel}
           <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
+        {/if}
+
+        {#if showLaunchEffort}
+          <span
+            class="mesh-node-launch-effort"
+            data-testid={`mesh-node-launch-effort-${normalizedRole}`}
+            title={launchEffortTitle}
+          >
+            {safeLaunchEffort}
+          </span>
         {/if}
 
         {#if showTaskEffort}
@@ -323,6 +340,15 @@
 
   .mesh-node-meta-row.chip-only {
     justify-content: flex-end;
+  }
+
+  /* The launch effort is context for the assignment effort beside it, so it
+     stays plain text where the assignment level wears the chip. */
+  .mesh-node-launch-effort {
+    flex: 0 0 auto;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    opacity: 0.6;
   }
 
   .mesh-node-task-effort {

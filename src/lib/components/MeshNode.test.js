@@ -104,6 +104,29 @@ describe('MeshNode', () => {
     )
   })
 
+  it('shows the launch effort beside the assignment effort so the two can be compared', () => {
+    render(MeshNode, {
+      props: {
+        role: 'agent',
+        model: 'gpt-5.6-terra',
+        reasoningEffort: 'medium',
+        taskEffort: 'high',
+        taskEffortWhy: 'the migration is irreversible',
+      },
+    })
+
+    const launch = screen.getByTestId('mesh-node-launch-effort-agent')
+    expect(launch).toHaveTextContent('medium')
+    expect(launch).toHaveAttribute('title', 'Launch effort: medium')
+    expect(screen.getByTestId('mesh-node-task-effort-agent')).toHaveTextContent('high')
+  })
+
+  it('shows no launch effort chip for a member launched without one', () => {
+    render(MeshNode, { props: { role: 'agent', model: 'gpt-5.6-terra', taskEffort: 'high' } })
+
+    expect(screen.queryByTestId('mesh-node-launch-effort-agent')).toBeNull()
+  })
+
   it('shows no effort chip for a member with no assignment effort', () => {
     render(MeshNode, { props: { role: 'agent', model: 'gpt-5.6-terra' } })
 
