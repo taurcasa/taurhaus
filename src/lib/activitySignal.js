@@ -123,11 +123,14 @@ function finiteNumber(value) {
 }
 
 /**
- * Age of the newest write by a live workflow subagent attached to this record,
- * or `null` when there is no live run, no usable timestamp, or the write has
- * aged out of the window.
+ * Age in milliseconds of the newest write by a live workflow subagent attached
+ * to this record, or `null` when there is no live run, no usable timestamp, or
+ * the write has aged out of the window.
+ *
+ * Exported because the sidebar badge and the hover card have to agree with the
+ * activity dot about which sessions are running a workflow right now.
  */
-function workflowWriteAge(record) {
+export function workflowWriteAgeMs(record) {
   const activity = record?.workflow_activity ?? record?.workflowActivity
   if (!activity || typeof activity !== 'object') return null
 
@@ -172,7 +175,7 @@ export function activitySignal(record) {
   // A workflow subagent wrote to its transcript moments ago. That is work,
   // whatever the harness reports for the parent — a headless workflow parent
   // reads idle for the whole run. Confidence is the write's own recency.
-  const writeAge = workflowWriteAge(record)
+  const writeAge = workflowWriteAgeMs(record)
   if (writeAge !== null) {
     const confidence = writeAge <= WORKFLOW_WRITE_HIGH_MS
       ? 'high'

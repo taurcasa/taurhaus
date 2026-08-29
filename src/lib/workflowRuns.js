@@ -14,6 +14,8 @@
  * on every re-render.
  */
 
+import { workflowWriteAgeMs } from './activitySignal.js'
+
 const LABEL_MAX_LENGTH = 48
 
 const STATUS_LABELS = {
@@ -245,4 +247,49 @@ export function runTreeDescriptor(runs, collapsedRunIds = []) {
     0
   )
   return { rowCount, runCount: models.length, collapsed: rowCount === 0 }
+}
+
+/** "3s ago" / "2m ago" for the age of the newest agent write. */
+export function formatWriteAge(ms) {
+  const age = count(ms)
+  if (age === null || age < 0) return ''
+  if (age < 60_000) return `${Math.round(age / 1000)}s ago`
+  return `${Math.round(age / 60_000)}m ago`
+}
+
+/**
+ * The sidebar badge for a project's live workflow runs.
+ *
+ * Counted from the same evidence the activity dot uses, so a row cannot show a
+ * run badge and a quiet dot at the same time. The activity hint carries a count
+ * and a write time and no run name — the name lives on the hover card and the
+ * canvas tree, where a run has actually been read.
+ */
+export function workflowBadge(sessions) {
+  let liveRuns = 0
+  let newestWriteAge = null
+
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    const age = workflowWriteAgeMs(session)
+    if (age === null) continue
+    const activity = session?.workflow_activity ?? session?.workflowActivity
+    liveRuns += Math.max(0, count(activity?.live_runs ?? activity?.liveRuns) ?? 0)
+    newestWriteAge = newestWriteAge === null ? age : Math.min(newestWriteAge, age)
+  }
+
+  if (liveRuns <= 0) {
+    return { visible: false, count: 0, label: '', ariaLabel: '', title: '' }
+  }
+
+  const runWord = liveRuns === 1 ? 'workflow run' : 'workflow runs'
+  const writeAge = formatWriteAge(newestWriteAge)
+  return {
+    visible: true,
+    count: liveRuns,
+    label: String(liveRuns),
+    ariaLabel: `${liveRuns} ${runWord} live`,
+    title: writeAge
+      ? `${liveRuns} ${runWord} live · last agent write ${writeAge}`
+      : `${liveRuns} ${runWord} live`,
+  }
 }

@@ -408,6 +408,25 @@ body {
   border-color: rgba(96, 165, 250, 0.28);
 }
 
+/* Command Center — sidebar workflow run badge.
+   A project whose session is running Claude Code workflows right now. Quiet
+   teal so it reads as one more piece of row metadata, not an alert. */
+.sidebar-workflow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 14px;
+  padding-inline: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  background: rgba(45, 212, 191, 0.12);
+  color: var(--color-brand-400);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes session-pill-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }

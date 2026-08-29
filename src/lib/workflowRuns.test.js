@@ -7,6 +7,7 @@ import {
   runListRow,
   runTreeDescriptor,
   runTreeModel,
+  workflowBadge,
   workflowSessionId,
 } from './workflowRuns.js'
 
@@ -275,5 +276,44 @@ describe('runTreeDescriptor', () => {
     const descriptor = runTreeDescriptor([run()], ['wf_1'])
 
     expect(descriptor).toEqual({ rowCount: 0, runCount: 1, collapsed: true })
+  })
+})
+
+describe('workflowBadge', () => {
+  function session(overrides = {}) {
+    return {
+      state: 'idle',
+      workflow_activity: { live_runs: 1, last_write_at: Date.now() - 3000 },
+      ...overrides,
+    }
+  }
+
+  it('is hidden for a project with no workflow activity', () => {
+    expect(workflowBadge([{ state: 'active' }]).visible).toBe(false)
+    expect(workflowBadge([]).visible).toBe(false)
+    expect(workflowBadge(null).visible).toBe(false)
+  })
+
+  it('counts the live runs across the sessions of one project', () => {
+    const badge = workflowBadge([
+      session(),
+      session({ workflow_activity: { live_runs: 2, last_write_at: Date.now() - 1000 } }),
+    ])
+
+    expect(badge.visible).toBe(true)
+    expect(badge.count).toBe(3)
+    expect(badge.label).toBe('3')
+    expect(badge.ariaLabel).toBe('3 workflow runs live')
+  })
+
+  it('says how long ago the newest agent write was', () => {
+    expect(workflowBadge([session()]).title).toBe('1 workflow run live · last agent write 3s ago')
+  })
+
+  it('ignores a run whose last write aged out of the window', () => {
+    expect(
+      workflowBadge([session({ workflow_activity: { live_runs: 1, last_write_at: Date.now() - 61_000 } })])
+        .visible
+    ).toBe(false)
   })
 })
