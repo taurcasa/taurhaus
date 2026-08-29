@@ -322,6 +322,38 @@ describe('workflowBadge', () => {
   })
 })
 
+// W2a returns a live agent with `label: null` and `phase: null` — the journal
+// carries neither and the scanner refuses to infer them from script call sites
+// (docs/architecture/workflow-runs.md). These pin what the UI does with that
+// exact shape, so the phase-attributed cases above cannot be mistaken for what
+// a live run actually looks like today.
+describe('a live run shaped the way the scanner returns one', () => {
+  const live = run({
+    agents: [
+      agent({ agent_id: 'a', state: 'done', prompt_preview: 'Implement the feature' }),
+      agent({ agent_id: 'b', state: 'running', prompt_preview: 'Review the branch' }),
+    ],
+  })
+
+  it('renders every agent under no phase row at all', () => {
+    const model = runTreeModel(live)
+
+    expect(model.groups).toHaveLength(1)
+    expect(model.groups[0].title).toBeNull()
+    expect(model.groups[0].agents.map((row) => row.label)).toEqual([
+      'Implement the feature',
+      'Review the branch',
+    ])
+    // Two agent rows and no phase row: a declared phase with nothing attributed
+    // to it is not drawn, so the box is sized for what is actually on screen.
+    expect(model.rowCount).toBe(2)
+  })
+
+  it('names the running agent when there is no phase to name', () => {
+    expect(currentWorkflowStep(live)).toBe('Review the branch')
+  })
+})
+
 describe('currentWorkflowStep', () => {
   it('names the phase the running agent is in', () => {
     expect(currentWorkflowStep(run({
