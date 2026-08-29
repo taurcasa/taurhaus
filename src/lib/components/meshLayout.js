@@ -63,6 +63,64 @@ function fitHorizontalLayout(rowCount, availableWidth, preferredNodeWidth, prefe
   }
 }
 
+/**
+ * Geometry of the workflow run tree that hangs under a node.
+ *
+ * The tree is a sized child box the layout engine places, so the renderer never
+ * does arithmetic of its own: it is handed a rectangle and fills it. The row
+ * heights live here too, because the box height is `header + rows` and both
+ * ends must agree on what a row is worth.
+ */
+export const RUN_TREE_METRICS = Object.freeze({
+  /** Vertical distance from the node's bottom edge to the top of the box. */
+  gap: 10,
+  paddingX: 8,
+  paddingY: 6,
+  /** The run name / status line, always rendered. */
+  headerHeight: 18,
+  /** One phase title or one agent. */
+  rowHeight: 16,
+  minWidth: 152,
+  maxWidth: 240,
+  /** Breathing room kept between the box and the canvas edge when it fits. */
+  margin: 8,
+})
+
+/**
+ * Place one node's run tree, or `null` when the node carries no run.
+ *
+ * The descriptor is `{ rowCount, collapsed }` — how many phase and agent rows
+ * the run wants and whether it has collapsed to its summary line. A run with no
+ * rows is collapsed by definition: there is nothing to expand.
+ */
+function runTreeBox(node, canvasWidth) {
+  const descriptor = node?.runTree
+  if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) return null
+
+  const requestedRows = Math.round(Number(descriptor.rowCount))
+  const rowCount = Number.isFinite(requestedRows) ? Math.max(0, requestedRows) : 0
+  const collapsed = descriptor.collapsed === true || rowCount === 0
+
+  const available = Math.max(RUN_TREE_METRICS.minWidth, canvasWidth - RUN_TREE_METRICS.margin * 2)
+  const width = clamp(
+    Math.max(Number(node.width) || 0, RUN_TREE_METRICS.minWidth),
+    RUN_TREE_METRICS.minWidth,
+    Math.min(RUN_TREE_METRICS.maxWidth, available)
+  )
+  const height = RUN_TREE_METRICS.paddingY * 2
+    + RUN_TREE_METRICS.headerHeight
+    + (collapsed ? 0 : rowCount * RUN_TREE_METRICS.rowHeight)
+
+  return {
+    left: clamp(node.x - width / 2, 0, Math.max(0, canvasWidth - width)),
+    top: node.y + node.height / 2 + RUN_TREE_METRICS.gap,
+    width,
+    height,
+    rowCount: collapsed ? 0 : rowCount,
+    collapsed,
+  }
+}
+
 function buildRowBoxes(items, y, width, nodeWidth, gap, row) {
   if (!items.length) return []
   const totalWidth = items.length * nodeWidth + (items.length - 1) * gap
@@ -180,8 +238,8 @@ function computeMeshBoxes(topology, input) {
   return {
     width,
     height,
-    lead,
-    agents: positionedAgents,
+    lead: { ...lead, runTree: runTreeBox(lead, width) },
+    agents: positionedAgents.map((agent) => ({ ...agent, runTree: runTreeBox(agent, width) })),
     addNode,
     nodeWidth,
     gap,
