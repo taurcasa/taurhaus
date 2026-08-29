@@ -100,7 +100,7 @@ good runs on screen and records why.
 |---|---|---|
 | Mesh canvas (`WorkflowRunTree.svelte`) | Phase rows and agent rows (label, model, state, last tool, tokens) for a live run; one line for a finished one | The node's session, watched while the canvas is mounted; or `workflowRuns` handed to the node by a caller |
 | Sidebar row | A run-count badge, hovering to give the count and the newest write's age | `workflow_activity` alone — no IPC |
-| Hover card | The run's name and the phase its running agent is in | The hovered project's session — named by `workflow_session_id` — watched only while the card is up |
+| Hover card | The run's name and what it is on: the phase of the running agent where one is known, otherwise that agent's own label or prompt preview — a live run has no phase to name until its summary is written | The hovered project's session — named by `workflow_session_id` — watched only while the card is up |
 | Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over every session the project can name — running now first, then its open tasks and `get_archived_sessions` merged into one order by the newest timestamp each record carries — a page of 24 at a time, asking the next page while a page comes back empty (up to 96 sessions), and the header says when it stopped short |
 
 A mesh node reads its session from the member's own runtime record, which
@@ -127,8 +127,15 @@ that both carry one cannot overlap; the readable minimum still wins on a canvas
 too narrow to honour that cap. Within that width a finished run's one-liner drops
 the word "tokens" so the duration survives, and its tooltip spells the unit out.
 
-**What the UI will not invent.** A live agent has no label and no phase, so it
-renders under no phase row and shows its prompt preview instead of a name. A
+**What the UI will not invent.** A live agent has no label and no phase — Claude
+writes `label` and `phaseTitle` only into the completed summary's
+`workflowProgress`, and the run directory it writes while the run is going
+(`journal.jsonl`, `agent-*.jsonl`, `agent-*.meta.json`) carries neither. So a
+live agent renders under no phase row and shows its prompt preview instead of a
+name, and the current step names the running agent rather than a phase; the
+phase rows appear for the same run once its summary exists. Attributing a live
+agent to a declared phase by position in the script would be a guess, and the
+scanner does not make it (`scanner.rs` `live_run`). A
 token total the scanner declined to count exactly renders as nothing rather than
 a partial number. The activity hint carries no run name, so the sidebar badge
 says only how many runs are live; the name appears where a run has actually been
