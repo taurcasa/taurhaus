@@ -227,10 +227,7 @@ fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
         _ => None,
     };
 
-    let needs_update = match &version {
-        Some(v) => semver_less_than(v, BUNDLED_VERSION),
-        None => true,
-    };
+    let needs_update = daemon_needs_update(version.as_deref(), BUNDLED_VERSION);
 
     Ok(DaemonInstallStatus {
         installed: true,
@@ -358,10 +355,7 @@ fn check_daemon_install_wsl(
         _ => None,
     };
 
-    let needs_update = match &version {
-        Some(v) => semver_less_than(v, BUNDLED_VERSION),
-        None => true,
-    };
+    let needs_update = daemon_needs_update(version.as_deref(), BUNDLED_VERSION);
 
     Ok(DaemonInstallStatus {
         installed: true,
@@ -639,30 +633,22 @@ fn parse_wsl_install_output(stdout: &[u8]) -> Result<WslInstallResult, String> {
     })
 }
 
-/// Simple semver less-than comparison.
+/// Whether the installed daemon has to be replaced by the bundled one.
 ///
-/// Compares major.minor.patch numerically. Returns true if `a` < `b`.
-/// Falls back to string comparison if parsing fails.
-fn semver_less_than(a: &str, b: &str) -> bool {
-    let parse = |s: &str| -> Option<(u32, u32, u32)> {
-        let parts: Vec<&str> = s.split('.').collect();
-        if parts.len() != 3 {
-            return None;
-        }
-        Some((
-            parts[0].parse().ok()?,
-            parts[1].parse().ok()?,
-            parts[2].parse().ok()?,
-        ))
-    };
-
-    match (parse(a), parse(b)) {
-        (Some(a), Some(b)) => a < b,
-        _ => a < b, // String comparison as fallback
+/// Not "is it older" — "is it a different build". The app pins an exact daemon
+/// protocol (`daemon::protocol::PROTOCOL_VERSION`) and every connect path drops
+/// a daemon that answers with anything else, so a *newer* installed daemon is
+/// exactly as unusable as an older one: it accepts TCP, fails the version gate,
+/// and the app reconnects into the same mismatch forever. A daemon whose version
+/// could not be read is replaced too — an unreadable build is not a paired one.
+pub(crate) fn daemon_needs_update(installed_version: Option<&str>, bundled_version: &str) -> bool {
+    match installed_version {
+        Some(installed) => installed.trim() != bundled_version.trim(),
+        None => true,
     }
 }
 
-fn daemon_install_required(status: &DaemonInstallStatus) -> bool {
+pub(crate) fn daemon_install_required(status: &DaemonInstallStatus) -> bool {
     status.wsl_available && (!status.installed || status.needs_update)
 }
 
@@ -671,6 +657,17 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
     use std::time::{Duration, Instant};
+
+    fn install_status_for(installed: Option<&str>, bundled: &str) -> DaemonInstallStatus {
+        DaemonInstallStatus {
+            installed: installed.is_some(),
+            version: installed.map(str::to_string),
+            bundled_version: bundled.to_string(),
+            needs_update: daemon_needs_update(installed, bundled),
+            wsl_available: true,
+            error: None,
+        }
+    }
 
     fn canonical_linux_path(path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy();
@@ -690,31 +687,6 @@ mod tests {
             drop(streams);
         });
         (addr.to_string(), accept_thread)
-    }
-
-    #[test]
-    fn semver_comparison() {
-        assert!(semver_less_than("0.3.1", "0.3.2"));
-        assert!(semver_less_than("0.2.9", "0.3.0"));
-        assert!(semver_less_than("0.3.2", "1.0.0"));
-        assert!(!semver_less_than("0.3.2", "0.3.2"));
-        assert!(!semver_less_than("0.3.3", "0.3.2"));
-        assert!(!semver_less_than("1.0.0", "0.9.9"));
-    }
-
-    #[test]
-    fn semver_comparison_prerelease_and_malformed_edges() {
-        // Falls back to string comparison when strict x.y.z parsing fails.
-        assert!(!semver_less_than("0.3.2-alpha", "0.3.2"));
-        assert!(semver_less_than("0.3.2", "0.3.2-alpha"));
-
-        assert!(!semver_less_than("abc", "abc"));
-        assert!(semver_less_than("abc", "abd"));
-        assert!(semver_less_than("", "0.0.0"));
-        assert!(!semver_less_than("", ""));
-        assert!(semver_less_than("1.2", "1.2.3"));
-        assert!(semver_less_than("1.2.3.4", "2.0.0"));
-        assert!(!semver_less_than("1.2.3", "1.2.3"));
     }
 
     #[test]
@@ -837,17 +809,44 @@ mod tests {
     }
 
     #[test]
-    fn daemon_install_required_when_binary_is_outdated() {
-        let status = DaemonInstallStatus {
-            installed: true,
-            version: Some("0.5.9".to_string()),
-            bundled_version: "0.5.10".to_string(),
-            needs_update: true,
-            wsl_available: true,
-            error: None,
-        };
+    fn daemon_needs_update_compares_in_both_directions() {
+        // Regression: commit 43b6743 gated the startup auto-install on
+        // `semver_less_than(installed, BUNDLED_VERSION)`, so a daemon *newer*
+        // than the app was never replaced. The app pins an exact protocol
+        // version, so a newer daemon is exactly as unusable as an older one.
+        // Seen live 2026-08-29: WSL daemon 0.8.2 against Windows app 0.8.1.
+        assert!(daemon_needs_update(Some("0.5.9"), "0.5.10"));
+        assert!(daemon_needs_update(Some("0.8.2"), "0.8.1"));
+        assert!(!daemon_needs_update(Some("0.8.1"), "0.8.1"));
+        assert!(!daemon_needs_update(Some("  0.8.1  "), "0.8.1"));
+        assert!(daemon_needs_update(None, "0.8.1"));
+    }
 
-        assert!(daemon_install_required(&status));
+    #[test]
+    fn daemon_install_required_when_binary_is_outdated() {
+        assert!(daemon_install_required(&install_status_for(
+            Some("0.5.9"),
+            "0.5.10"
+        )));
+    }
+
+    #[test]
+    fn daemon_install_required_when_binary_is_newer_than_the_bundle() {
+        // Regression: commit 43b6743 (one-directional `needs_update`) left the
+        // 2026-08-29 incident unrepairable — the installed 0.8.2 daemon was
+        // never replaced by the 0.8.1 bundle the app could actually speak to.
+        assert!(daemon_install_required(&install_status_for(
+            Some("0.8.2"),
+            "0.8.1"
+        )));
+    }
+
+    #[test]
+    fn daemon_install_required_skips_when_binary_matches_the_bundle() {
+        assert!(!daemon_install_required(&install_status_for(
+            Some("0.8.1"),
+            "0.8.1"
+        )));
     }
 
     #[test]
