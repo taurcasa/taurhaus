@@ -183,7 +183,10 @@ pub(crate) fn ensure_bundled_daemon_installed(
     install_bundled_daemon(app, provider.wsl_distro.as_deref()).map(Some)
 }
 
-fn read_daemon_install_status(wsl_distro: Option<&str>) -> Result<DaemonInstallStatus, String> {
+/// The installed-vs-bundled daemon snapshot the install and repair paths share.
+pub(crate) fn read_daemon_install_status(
+    wsl_distro: Option<&str>,
+) -> Result<DaemonInstallStatus, String> {
     if crate::daemon::launcher::is_native_daemon() {
         check_daemon_install_native()
     } else {
@@ -227,10 +230,7 @@ fn check_daemon_install_native() -> Result<DaemonInstallStatus, String> {
         _ => None,
     };
 
-    let needs_update = match &version {
-        Some(v) => semver_less_than(v, BUNDLED_VERSION),
-        None => true,
-    };
+    let needs_update = daemon_needs_update(version.as_deref(), BUNDLED_VERSION);
 
     Ok(DaemonInstallStatus {
         installed: true,
@@ -358,10 +358,7 @@ fn check_daemon_install_wsl(
         _ => None,
     };
 
-    let needs_update = match &version {
-        Some(v) => semver_less_than(v, BUNDLED_VERSION),
-        None => true,
-    };
+    let needs_update = daemon_needs_update(version.as_deref(), BUNDLED_VERSION);
 
     Ok(DaemonInstallStatus {
         installed: true,
@@ -387,7 +384,8 @@ pub fn install_daemon(app: tauri::AppHandle) -> IpcResult<OperationResult> {
     result
 }
 
-fn install_bundled_daemon(
+/// Copy the daemon binary the app ships with over whatever is installed.
+pub(crate) fn install_bundled_daemon(
     app: &tauri::AppHandle,
     wsl_distro: Option<&str>,
 ) -> Result<OperationResult, String> {
@@ -431,22 +429,53 @@ fn install_bundled_daemon(
 /// Install daemon natively (macOS/Linux): copy binary + chmod + verify.
 fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationResult, String> {
     let home = dirs::home_dir().ok_or("Could not determine home directory")?;
-    let target_dir = home.join(".local/bin");
-    let target_path = target_dir.join("taurhaus-daemon");
+    let target_path = home.join(".local/bin").join("taurhaus-daemon");
+    install_daemon_native_at(bundled_binary, &target_path, verify_daemon_binary)
+}
 
-    // Create target directory
-    std::fs::create_dir_all(&target_dir)
-        .map_err(|e| format!("Failed to create ~/.local/bin: {e}"))?;
+/// Stage the bundled build beside the installed one, verify it there, and only
+/// then rename it into place.
+///
+/// The daemon being replaced is usually *running*: the pairing repair installs
+/// under a live but wrongly-paired daemon and restarts it afterwards, and the
+/// startup bootstrap installs under whatever a previous run left behind. Unix
+/// refuses to write a mapped executable (`ETXTBSY`), so an in-place copy fails
+/// exactly when the install matters most. A rename does not touch the running
+/// image — the old inode stays alive for the process that has it mapped, while
+/// the path already names the new build for the restart that follows. Verifying
+/// the staged file first also means a corrupt bundle never replaces a daemon
+/// that works. This is what the WSL install script has always done.
+fn install_daemon_native_at<V>(
+    bundled_binary: &std::path::Path,
+    target_path: &std::path::Path,
+    verify: V,
+) -> Result<OperationResult, String>
+where
+    V: FnOnce(&std::path::Path) -> Result<String, String>,
+{
+    let target_dir = target_path.parent().ok_or_else(|| {
+        format!(
+            "Daemon install path has no parent directory: {}",
+            target_path.display()
+        )
+    })?;
 
-    // Copy binary
-    std::fs::copy(bundled_binary, &target_path)
+    std::fs::create_dir_all(target_dir)
+        .map_err(|e| format!("Failed to create {}: {e}", target_dir.display()))?;
+
+    let staged = StagedDaemonBinary {
+        path: target_dir.join(format!(".taurhaus-daemon.new.{}", std::process::id())),
+    };
+
+    // Copy binary into the staging sibling, never over the live one.
+    std::fs::copy(bundled_binary, &staged.path)
         .map_err(|e| format!("Failed to copy daemon binary: {e}"))?;
 
     // Set executable permissions
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&target_path, std::fs::Permissions::from_mode(0o755))
+        std::fs::set_permissions(&staged.path, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("Failed to set executable permission: {e}"))?;
     }
 
@@ -454,28 +483,54 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationRe
     // Cargo's linker-signed adhoc binaries get invalidated on copy;
     // macOS Sequoia+ enforces code signature validity and kills unsigned binaries.
     #[cfg(target_os = "macos")]
-    {
-        let sign = std::process::Command::new("codesign")
-            .args(["--force", "--sign", "-"])
-            .arg(&target_path)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .output();
-        match sign {
-            Ok(output) if output.status.success() => {}
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(format!("Failed to sign daemon binary: {stderr}"));
-            }
-            Err(e) => {
-                return Err(format!("Failed to run codesign: {e}"));
-            }
-        }
-    }
+    sign_daemon_binary(&staged.path)?;
 
-    // Verify installation
-    let mut verify = std::process::Command::new(&target_path);
+    let version = verify(&staged.path)?;
+
+    std::fs::rename(&staged.path, target_path)
+        .map_err(|e| format!("Failed to move the staged daemon into place: {e}"))?;
+
+    Ok(OperationResult::success(format!(
+        "Daemon installed successfully: {version}"
+    )))
+}
+
+/// The half-installed binary, removed unless it was renamed into place.
+struct StagedDaemonBinary {
+    path: std::path::PathBuf,
+}
+
+impl Drop for StagedDaemonBinary {
+    fn drop(&mut self) {
+        // Gone already after a successful rename; only a failed install leaves
+        // something to clean up.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Re-sign an adhoc-signed binary after it was copied.
+#[cfg(target_os = "macos")]
+fn sign_daemon_binary(path: &std::path::Path) -> Result<(), String> {
+    let sign = std::process::Command::new("codesign")
+        .args(["--force", "--sign", "-"])
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output();
+    match sign {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Failed to sign daemon binary: {stderr}"))
+        }
+        Err(e) => Err(format!("Failed to run codesign: {e}")),
+    }
+}
+
+/// Run the freshly written binary and read the version it reports.
+fn verify_daemon_binary(path: &std::path::Path) -> Result<String, String> {
+    let mut verify = std::process::Command::new(path);
     verify.arg("--version").stdin(std::process::Stdio::null());
     let verify = crate::process_utils::run_command_with_timeout(
         &mut verify,
@@ -486,10 +541,7 @@ fn install_daemon_native(bundled_binary: &std::path::Path) -> Result<OperationRe
     match verify {
         Ok(output) if output.status.success() => {
             let raw = String::from_utf8_lossy(&output.stdout);
-            let version = raw.trim();
-            Ok(OperationResult::success(format!(
-                "Daemon installed successfully: {version}"
-            )))
+            Ok(raw.trim().to_string())
         }
         Ok(_) => Err(
             "Daemon was copied but --version check failed. The binary may be corrupted."
@@ -639,30 +691,22 @@ fn parse_wsl_install_output(stdout: &[u8]) -> Result<WslInstallResult, String> {
     })
 }
 
-/// Simple semver less-than comparison.
+/// Whether the installed daemon has to be replaced by the bundled one.
 ///
-/// Compares major.minor.patch numerically. Returns true if `a` < `b`.
-/// Falls back to string comparison if parsing fails.
-fn semver_less_than(a: &str, b: &str) -> bool {
-    let parse = |s: &str| -> Option<(u32, u32, u32)> {
-        let parts: Vec<&str> = s.split('.').collect();
-        if parts.len() != 3 {
-            return None;
-        }
-        Some((
-            parts[0].parse().ok()?,
-            parts[1].parse().ok()?,
-            parts[2].parse().ok()?,
-        ))
-    };
-
-    match (parse(a), parse(b)) {
-        (Some(a), Some(b)) => a < b,
-        _ => a < b, // String comparison as fallback
+/// Not "is it older" — "is it a different build". The app pins an exact daemon
+/// protocol (`daemon::protocol::PROTOCOL_VERSION`) and every connect path drops
+/// a daemon that answers with anything else, so a *newer* installed daemon is
+/// exactly as unusable as an older one: it accepts TCP, fails the version gate,
+/// and the app reconnects into the same mismatch forever. A daemon whose version
+/// could not be read is replaced too — an unreadable build is not a paired one.
+pub(crate) fn daemon_needs_update(installed_version: Option<&str>, bundled_version: &str) -> bool {
+    match installed_version {
+        Some(installed) => installed.trim() != bundled_version.trim(),
+        None => true,
     }
 }
 
-fn daemon_install_required(status: &DaemonInstallStatus) -> bool {
+pub(crate) fn daemon_install_required(status: &DaemonInstallStatus) -> bool {
     status.wsl_available && (!status.installed || status.needs_update)
 }
 
@@ -671,6 +715,17 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
     use std::time::{Duration, Instant};
+
+    fn install_status_for(installed: Option<&str>, bundled: &str) -> DaemonInstallStatus {
+        DaemonInstallStatus {
+            installed: installed.is_some(),
+            version: installed.map(str::to_string),
+            bundled_version: bundled.to_string(),
+            needs_update: daemon_needs_update(installed, bundled),
+            wsl_available: true,
+            error: None,
+        }
+    }
 
     fn canonical_linux_path(path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy();
@@ -690,31 +745,6 @@ mod tests {
             drop(streams);
         });
         (addr.to_string(), accept_thread)
-    }
-
-    #[test]
-    fn semver_comparison() {
-        assert!(semver_less_than("0.3.1", "0.3.2"));
-        assert!(semver_less_than("0.2.9", "0.3.0"));
-        assert!(semver_less_than("0.3.2", "1.0.0"));
-        assert!(!semver_less_than("0.3.2", "0.3.2"));
-        assert!(!semver_less_than("0.3.3", "0.3.2"));
-        assert!(!semver_less_than("1.0.0", "0.9.9"));
-    }
-
-    #[test]
-    fn semver_comparison_prerelease_and_malformed_edges() {
-        // Falls back to string comparison when strict x.y.z parsing fails.
-        assert!(!semver_less_than("0.3.2-alpha", "0.3.2"));
-        assert!(semver_less_than("0.3.2", "0.3.2-alpha"));
-
-        assert!(!semver_less_than("abc", "abc"));
-        assert!(semver_less_than("abc", "abd"));
-        assert!(semver_less_than("", "0.0.0"));
-        assert!(!semver_less_than("", ""));
-        assert!(semver_less_than("1.2", "1.2.3"));
-        assert!(semver_less_than("1.2.3.4", "2.0.0"));
-        assert!(!semver_less_than("1.2.3", "1.2.3"));
     }
 
     #[test]
@@ -837,17 +867,44 @@ mod tests {
     }
 
     #[test]
-    fn daemon_install_required_when_binary_is_outdated() {
-        let status = DaemonInstallStatus {
-            installed: true,
-            version: Some("0.5.9".to_string()),
-            bundled_version: "0.5.10".to_string(),
-            needs_update: true,
-            wsl_available: true,
-            error: None,
-        };
+    fn daemon_needs_update_compares_in_both_directions() {
+        // Regression: commit 43b6743 gated the startup auto-install on
+        // `semver_less_than(installed, BUNDLED_VERSION)`, so a daemon *newer*
+        // than the app was never replaced. The app pins an exact protocol
+        // version, so a newer daemon is exactly as unusable as an older one.
+        // Seen live 2026-08-29: WSL daemon 0.8.2 against Windows app 0.8.1.
+        assert!(daemon_needs_update(Some("0.5.9"), "0.5.10"));
+        assert!(daemon_needs_update(Some("0.8.2"), "0.8.1"));
+        assert!(!daemon_needs_update(Some("0.8.1"), "0.8.1"));
+        assert!(!daemon_needs_update(Some("  0.8.1  "), "0.8.1"));
+        assert!(daemon_needs_update(None, "0.8.1"));
+    }
 
-        assert!(daemon_install_required(&status));
+    #[test]
+    fn daemon_install_required_when_binary_is_outdated() {
+        assert!(daemon_install_required(&install_status_for(
+            Some("0.5.9"),
+            "0.5.10"
+        )));
+    }
+
+    #[test]
+    fn daemon_install_required_when_binary_is_newer_than_the_bundle() {
+        // Regression: commit 43b6743 (one-directional `needs_update`) left the
+        // 2026-08-29 incident unrepairable — the installed 0.8.2 daemon was
+        // never replaced by the 0.8.1 bundle the app could actually speak to.
+        assert!(daemon_install_required(&install_status_for(
+            Some("0.8.2"),
+            "0.8.1"
+        )));
+    }
+
+    #[test]
+    fn daemon_install_required_skips_when_binary_matches_the_bundle() {
+        assert!(!daemon_install_required(&install_status_for(
+            Some("0.8.1"),
+            "0.8.1"
+        )));
     }
 
     #[test]
@@ -933,5 +990,181 @@ mod tests {
         });
 
         accept_thread.join().expect("accept thread joined");
+    }
+
+    /// A real executable running at the install target, standing in for the
+    /// daemon the repair replaces. `sleep` is used because the kernel only
+    /// refuses to overwrite a *mapped* image; it is never a CLI this app
+    /// manages, and the child is killed when the guard drops.
+    #[cfg(target_os = "linux")]
+    struct RunningBinary {
+        child: std::process::Child,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for RunningBinary {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn stand_in_executable() -> Option<std::path::PathBuf> {
+        ["/bin/sleep", "/usr/bin/sleep"]
+            .iter()
+            .map(std::path::PathBuf::from)
+            .find(|candidate| candidate.exists())
+    }
+
+    #[cfg(unix)]
+    fn install_target(dir: &std::path::Path) -> std::path::PathBuf {
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).expect("create install dir");
+        bin.join("taurhaus-daemon")
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &std::path::Path, bytes: &[u8]) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(path, bytes).expect("write binary");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .expect("mark executable");
+    }
+
+    #[cfg(unix)]
+    fn leftovers_beside(target: &std::path::Path) -> Vec<String> {
+        std::fs::read_dir(target.parent().expect("install dir"))
+            .expect("read install dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .filter(|name| name != "taurhaus-daemon")
+            .collect()
+    }
+
+    // Regression: commit fbc0a0d taught the reconnect path to repair a
+    // mismatched pairing by installing the bundled daemon and only then
+    // restarting it, while the native installer still wrote straight over
+    // ~/.local/bin/taurhaus-daemon with std::fs::copy. Linux refuses to open a
+    // running executable for writing (ETXTBSY), so the one case the repair
+    // exists for — a live daemon this app cannot pair with — failed at the
+    // install step, and the one-repair-per-episode guard blocked a retry.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_native_install_replaces_a_daemon_binary_that_is_still_running() {
+        let Some(stand_in) = stand_in_executable() else {
+            return;
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = install_target(dir.path());
+        write_executable(&target, &std::fs::read(&stand_in).expect("read stand-in"));
+
+        let running = RunningBinary {
+            child: std::process::Command::new(&target)
+                .arg("30")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .expect("run the installed daemon"),
+        };
+
+        // Precondition: the kernel has the image mapped, so an in-place write
+        // is exactly the ETXTBSY (errno 26) failure seen in the field.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let mut busy = false;
+        while Instant::now() < deadline {
+            match std::fs::copy(&stand_in, &target) {
+                Err(error) if error.raw_os_error() == Some(26) => {
+                    busy = true;
+                    break;
+                }
+                _ => std::thread::sleep(Duration::from_millis(20)),
+            }
+        }
+        assert!(
+            busy,
+            "the stand-in daemon never mapped its image, so this test proves nothing"
+        );
+
+        let old_image = std::fs::read(&target).expect("read the running image");
+        let bundled = dir.path().join("bundled-taurhaus-daemon");
+        std::fs::write(&bundled, b"the app's own daemon build").expect("write bundle");
+
+        let mut verified: Option<std::path::PathBuf> = None;
+        let result = install_daemon_native_at(&bundled, &target, |staged| {
+            verified = Some(staged.to_path_buf());
+            Ok("taurhaus-daemon 0.8.1".to_string())
+        });
+
+        assert!(
+            result.is_ok(),
+            "installing under a running daemon must work: {:?}",
+            result.err()
+        );
+        assert_eq!(
+            std::fs::read(&target).expect("read installed daemon"),
+            b"the app's own daemon build",
+            "the install path has to hold the bundled build afterwards"
+        );
+        assert_ne!(
+            verified.as_deref(),
+            Some(target.as_path()),
+            "a corrupt bundle must be caught before it replaces a working daemon"
+        );
+        assert!(
+            leftovers_beside(&target).is_empty(),
+            "the staged binary must not be left behind: {:?}",
+            leftovers_beside(&target)
+        );
+
+        let mut running = running;
+        assert!(
+            running.child.try_wait().expect("poll stand-in").is_none(),
+            "the running daemon keeps its old image until the restart stops it"
+        );
+        let mut still_mapped = Vec::new();
+        std::io::Read::read_to_end(
+            &mut std::fs::File::open(format!("/proc/{}/exe", running.child.id()))
+                .expect("open the running image"),
+            &mut still_mapped,
+        )
+        .expect("read the running image");
+        assert_eq!(
+            still_mapped, old_image,
+            "replacing the path must not rewrite the image the daemon is running"
+        );
+    }
+
+    // Regression: same episode as above. The native installer copied first and
+    // ran `--version` afterwards, so a corrupt or placeholder bundle replaced a
+    // working daemon and left the host with nothing that runs.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_verification_leaves_the_installed_daemon_in_place() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = install_target(dir.path());
+        write_executable(&target, b"the daemon that works");
+        let bundled = dir.path().join("bundled-taurhaus-daemon");
+        std::fs::write(&bundled, b"a corrupt build").expect("write bundle");
+
+        let result = install_daemon_native_at(&bundled, &target, |_staged| {
+            Err("--version check failed".to_string())
+        });
+
+        assert!(
+            result.is_err(),
+            "a build that cannot report a version is not installed"
+        );
+        assert_eq!(
+            std::fs::read(&target).expect("read installed daemon"),
+            b"the daemon that works",
+            "a failed verification must not take the working daemon down with it"
+        );
+        assert!(
+            leftovers_beside(&target).is_empty(),
+            "the staged binary must be cleaned up: {:?}",
+            leftovers_beside(&target)
+        );
     }
 }

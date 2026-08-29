@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
@@ -594,6 +595,7 @@ pub(crate) fn daemon_health_check(
     app: AppHandle,
     connected_at_startup: bool,
     bootstrap_complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    log_path: PathBuf,
 ) {
     use std::sync::atomic::Ordering;
     use std::time::Duration;
@@ -654,6 +656,9 @@ pub(crate) fn daemon_health_check(
             match classify_daemon_health(daemon.ping_protocol_version().map_err(|e| e.to_string()))
             {
                 DaemonHealth::Healthy => {
+                    // A paired daemon closes the mismatch episode, so a later
+                    // swap under the running app is repaired again.
+                    DAEMON_REPAIR_GUARD.episode_resolved();
                     if consecutive_failures > 0 {
                         tracing::debug!("Daemon health check recovered");
                     }
@@ -733,6 +738,12 @@ pub(crate) fn daemon_health_check(
 
             let distro = provider_state.wsl_distro.as_deref();
             let port = daemon::server::DEFAULT_PORT;
+            let repair_target = DaemonRepairTarget {
+                distro,
+                port,
+                log_path: &log_path,
+                bootstrap_complete: bootstrap_complete.as_ref(),
+            };
             match recover_daemon_connection(
                 || {
                     daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
@@ -740,6 +751,15 @@ pub(crate) fn daemon_health_check(
                         && confirm_daemon_protocol(
                             || daemon.ping_protocol_version().map_err(|e| e.to_string()),
                             |reason| daemon.disconnect(reason),
+                            |installed_protocol, app_protocol| {
+                                repair_daemon_pairing(
+                                    &app,
+                                    daemon,
+                                    &repair_target,
+                                    installed_protocol,
+                                    app_protocol,
+                                )
+                            },
                         )
                 },
                 || {
@@ -764,11 +784,12 @@ pub(crate) fn daemon_health_check(
                         max = MAX_RESTART_ATTEMPTS,
                         "Attempting daemon restart after sustained reconnect failure"
                     );
-                    daemon::launcher::try_restart_daemon(distro, port).is_ok()
+                    daemon::launcher::try_restart_daemon_at(distro, port, &log_path).is_ok()
                 },
             ) {
                 DaemonRecoveryResult::Reconnected
                 | DaemonRecoveryResult::RestartedAndReconnected => {
+                    DAEMON_REPAIR_GUARD.episode_resolved();
                     tracing::info!("Daemon connection recovered");
                     consecutive_failures = 0;
                     restart_attempts = 0;
@@ -825,10 +846,21 @@ fn classify_daemon_health(ping: Result<u32, String>) -> DaemonHealth {
 /// treating a successful reconnect as recovery walks around the startup gate.
 /// A daemon that fails here is disconnected, which sends the caller on to its
 /// restart path.
-fn confirm_daemon_protocol<P, D>(ping_protocol_version: P, disconnect: D) -> bool
+///
+/// A protocol mismatch is not a transient fault — restarting the same installed
+/// binary reproduces it forever — so `repair_mismatch` gets the running and the
+/// expected protocol version and may replace the daemon from the app's own
+/// bundle. It returns whether the daemon is paired and healthy again, which is
+/// this function's answer too.
+fn confirm_daemon_protocol<P, D, M>(
+    ping_protocol_version: P,
+    disconnect: D,
+    repair_mismatch: M,
+) -> bool
 where
     P: FnOnce() -> Result<u32, String>,
     D: FnOnce(&str),
+    M: FnOnce(u32, u32) -> bool,
 {
     match classify_daemon_health(ping_protocol_version()) {
         DaemonHealth::Healthy => true,
@@ -836,14 +868,382 @@ where
             tracing::warn!(
                 daemon_protocol_version = running,
                 expected,
-                "Reconnected daemon is outdated — rebuild with `just install-daemon`"
+                "Reconnected daemon does not pair with this app — repairing from the bundle"
             );
             disconnect("reconnect_protocol_mismatch");
-            false
+            repair_mismatch(running, expected)
         }
         DaemonHealth::Unreachable(error) => {
             tracing::debug!(error = %error, "Reconnected daemon did not answer the protocol ping");
             disconnect("reconnect_ping_failed");
+            false
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// App/daemon pairing repair
+// ---------------------------------------------------------------------------
+
+/// Serializes bundle repairs: one per mismatch episode, never two at once.
+///
+/// The health monitor sees the same mismatch on every poll, so without this the
+/// repair would reinstall and restart the daemon every 15 s for as long as the
+/// mismatch lasts. `episode_resolved` reopens the door once a healthy daemon is
+/// observed, so a later regression is repaired again rather than ignored.
+pub(crate) struct DaemonRepairGuard {
+    running: std::sync::atomic::AtomicBool,
+    episode_attempted: std::sync::atomic::AtomicBool,
+}
+
+/// Proof that this caller owns the repair lane; releases it on drop.
+pub(crate) struct DaemonRepairPermit<'a> {
+    guard: &'a DaemonRepairGuard,
+}
+
+impl Drop for DaemonRepairPermit<'_> {
+    fn drop(&mut self) {
+        self.guard
+            .running
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+impl DaemonRepairGuard {
+    pub(crate) const fn new() -> Self {
+        Self {
+            running: std::sync::atomic::AtomicBool::new(false),
+            episode_attempted: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// Claim the repair lane, or `None` when a repair is already running or this
+    /// mismatch episode has already had one.
+    fn begin(&self) -> Option<DaemonRepairPermit<'_>> {
+        use std::sync::atomic::Ordering;
+
+        if self
+            .running
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return None;
+        }
+
+        if self.episode_attempted.swap(true, Ordering::AcqRel) {
+            self.running.store(false, Ordering::Release);
+            return None;
+        }
+
+        Some(DaemonRepairPermit { guard: self })
+    }
+
+    /// Claim the repair lane once the startup bootstrap has let go of it.
+    ///
+    /// Startup runs the bootstrap and the health monitor at the same time, and
+    /// the bootstrap installs the bundled daemon and restarts it itself. Two
+    /// installers writing the same binary and two threads stopping and starting
+    /// the same daemon kill each other's work, so the bootstrap is checked
+    /// *before* the episode is consumed: a mismatch seen while it runs is left
+    /// alone, and the first tick afterwards still gets its one repair.
+    fn begin_after_bootstrap(
+        &self,
+        bootstrap_complete: &std::sync::atomic::AtomicBool,
+    ) -> Option<DaemonRepairPermit<'_>> {
+        if !bootstrap_complete.load(std::sync::atomic::Ordering::Acquire) {
+            return None;
+        }
+        self.begin()
+    }
+
+    /// A healthy daemon ends the episode: the next mismatch may repair again.
+    fn episode_resolved(&self) {
+        self.episode_attempted
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+static DAEMON_REPAIR_GUARD: DaemonRepairGuard = DaemonRepairGuard::new();
+
+/// Where a repaired daemon has to come back.
+///
+/// The log path is not a logging detail: the launcher derives the daemon's
+/// `TAURHAUS_DATA_DIR` from its parent, so this is how a repaired daemon keeps
+/// reading the same sessions, teams and tmux focus as the app that repaired it.
+struct DaemonRepairTarget<'a> {
+    distro: Option<&'a str>,
+    port: u16,
+    log_path: &'a Path,
+    /// The startup bootstrap installs the bundled daemon and restarts it too.
+    /// Until it is done, this lane stays shut.
+    bootstrap_complete: &'a std::sync::atomic::AtomicBool,
+}
+
+/// The restart step of a repair: through the launcher, with the app's own
+/// captured launch context, never a guessed one.
+fn restart_repaired_daemon_with<R>(
+    target: &DaemonRepairTarget<'_>,
+    restart: R,
+) -> Result<(), String>
+where
+    R: FnOnce(&str, u16, &Path) -> Result<(), std::io::Error>,
+{
+    let distro = target
+        .distro
+        .ok_or_else(|| "no daemon distro configured".to_string())?;
+    restart(distro, target.port, target.log_path).map_err(|error| error.to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DaemonRepairOutcome {
+    /// Installed from the bundle, restarted, and reconnected.
+    Repaired,
+    /// Nothing to repair from here; the reason is a stable telemetry token.
+    Skipped(&'static str),
+    Failed(String),
+}
+
+/// Replace the running daemon with the app's own bundled build.
+///
+/// The three steps are separated so the caller supplies the real installer,
+/// launcher and reconnect, and the tests supply recorders: none of them may run
+/// unless the previous one succeeded, and a failed install in particular must
+/// not stop a daemon that is still serving.
+fn run_daemon_bundle_repair<I, R, C>(
+    status: &models::DaemonInstallStatus,
+    install: I,
+    restart: R,
+    reconnect: C,
+) -> DaemonRepairOutcome
+where
+    I: FnOnce() -> Result<(), String>,
+    R: FnOnce() -> Result<(), String>,
+    C: FnOnce() -> Result<(), String>,
+{
+    if !status.wsl_available {
+        return DaemonRepairOutcome::Skipped("environment_unavailable");
+    }
+
+    if !commands::daemon::daemon_install_required(status) {
+        return DaemonRepairOutcome::Skipped("bundle_matches_installed");
+    }
+
+    if let Err(error) = install() {
+        return DaemonRepairOutcome::Failed(format!("bundled daemon install failed: {error}"));
+    }
+
+    if let Err(error) = restart() {
+        return DaemonRepairOutcome::Failed(format!("daemon restart failed: {error}"));
+    }
+
+    if let Err(error) = reconnect() {
+        return DaemonRepairOutcome::Failed(format!("reconnect after repair failed: {error}"));
+    }
+
+    DaemonRepairOutcome::Repaired
+}
+
+fn daemon_repair_fields(
+    installed_version: Option<&str>,
+    bundled_version: &str,
+    installed_protocol: u32,
+    app_protocol: u32,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "installed_version".to_string(),
+        match installed_version {
+            Some(version) => serde_json::Value::String(version.to_string()),
+            None => serde_json::Value::Null,
+        },
+    );
+    fields.insert(
+        "bundled_version".to_string(),
+        serde_json::Value::String(bundled_version.to_string()),
+    );
+    fields.insert(
+        "installed_protocol".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(installed_protocol)),
+    );
+    fields.insert(
+        "app_protocol".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(app_protocol)),
+    );
+    fields
+}
+
+/// One line the sidebar can show while the app swaps the daemon out under it.
+fn daemon_repair_notice(installed_version: Option<&str>, bundled_version: &str) -> String {
+    format!(
+        "Daemon {} ≠ app {bundled_version} — reinstalling the bundled daemon",
+        installed_version.unwrap_or("unknown")
+    )
+}
+
+/// Repair the app/daemon pair after a reconnect found the wrong protocol.
+///
+/// Runs at most once per mismatch episode (`DAEMON_REPAIR_GUARD`) and always
+/// through the existing launcher, so the restarted daemon keeps the data dir and
+/// Claude root the app spawned it with — an env-less restart strips those and
+/// takes the tmux focus hub down with them.
+fn repair_daemon_pairing(
+    app: &AppHandle,
+    daemon: &provider::daemon_client::DaemonProvider,
+    target: &DaemonRepairTarget<'_>,
+    installed_protocol: u32,
+    app_protocol: u32,
+) -> bool {
+    let distro = target.distro;
+    let port = target.port;
+    let Some(_permit) = DAEMON_REPAIR_GUARD.begin_after_bootstrap(target.bootstrap_complete) else {
+        tracing::debug!(
+            daemon_protocol_version = installed_protocol,
+            expected = app_protocol,
+            bootstrap_complete = target
+                .bootstrap_complete
+                .load(std::sync::atomic::Ordering::Acquire),
+            "Daemon bundle repair deferred — the bootstrap owns the lane, \
+             or this mismatch episode already had its repair"
+        );
+        return false;
+    };
+
+    let bundled_version = env!("CARGO_PKG_VERSION");
+    let status = match commands::daemon::read_daemon_install_status(distro) {
+        Ok(status) => status,
+        Err(error) => {
+            let mut fields =
+                daemon_repair_fields(None, bundled_version, installed_protocol, app_protocol);
+            fields.insert(
+                "error.code".to_string(),
+                serde_json::Value::String("DAEMON_REPAIR_STATUS_UNREADABLE".to_string()),
+            );
+            fields.insert(
+                "error.message".to_string(),
+                serde_json::Value::String(error),
+            );
+            commands::logging::emit_global(
+                "error",
+                "backend",
+                "daemon.repair.failed",
+                Some("Daemon bundle repair failed".to_string()),
+                fields,
+            );
+            return false;
+        }
+    };
+
+    let installed_version = status.version.as_deref();
+    let fields = daemon_repair_fields(
+        installed_version,
+        &status.bundled_version,
+        installed_protocol,
+        app_protocol,
+    );
+    commands::logging::emit_global(
+        "info",
+        "backend",
+        "daemon.repair.started",
+        Some("Daemon bundle repair started".to_string()),
+        fields.clone(),
+    );
+    emit_frontend_event(
+        app,
+        "daemon-status",
+        serde_json::json!({
+            "status": "reconnecting",
+            "notice": daemon_repair_notice(installed_version, &status.bundled_version),
+        }),
+    );
+
+    let outcome = run_daemon_bundle_repair(
+        &status,
+        || commands::daemon::install_bundled_daemon(app, distro).map(|_| ()),
+        || restart_repaired_daemon_with(target, daemon::launcher::try_restart_daemon_at),
+        || {
+            daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
+                .map_err(|error| error.to_string())?;
+            match classify_daemon_health(daemon.ping_protocol_version().map_err(|e| e.to_string()))
+            {
+                DaemonHealth::Healthy => Ok(()),
+                DaemonHealth::ProtocolMismatch { running, expected } => {
+                    daemon.disconnect("repair_protocol_mismatch");
+                    Err(format!(
+                        "repaired daemon still speaks protocol {running}, expected {expected}"
+                    ))
+                }
+                DaemonHealth::Unreachable(error) => {
+                    daemon.disconnect("repair_ping_failed");
+                    Err(error)
+                }
+            }
+        },
+    );
+
+    match outcome {
+        DaemonRepairOutcome::Repaired => {
+            tracing::info!(
+                installed_protocol,
+                app_protocol,
+                "Daemon reinstalled from the app bundle and reconnected"
+            );
+            commands::logging::emit_global(
+                "info",
+                "backend",
+                "daemon.repair.completed",
+                Some("Daemon bundle repair completed".to_string()),
+                fields,
+            );
+            true
+        }
+        DaemonRepairOutcome::Skipped(reason) => {
+            let mut fields = fields;
+            fields.insert(
+                "error.code".to_string(),
+                serde_json::Value::String("DAEMON_REPAIR_NOT_POSSIBLE".to_string()),
+            );
+            fields.insert(
+                "error.message".to_string(),
+                serde_json::Value::String(reason.to_string()),
+            );
+            tracing::warn!(
+                reason,
+                installed_protocol,
+                app_protocol,
+                "Daemon bundle repair not possible here"
+            );
+            commands::logging::emit_global(
+                "warn",
+                "backend",
+                "daemon.repair.failed",
+                Some("Daemon bundle repair failed".to_string()),
+                fields,
+            );
+            false
+        }
+        DaemonRepairOutcome::Failed(error) => {
+            let mut fields = fields;
+            fields.insert(
+                "error.code".to_string(),
+                serde_json::Value::String("DAEMON_REPAIR_FAILED".to_string()),
+            );
+            fields.insert(
+                "error.message".to_string(),
+                serde_json::Value::String(error.clone()),
+            );
+            tracing::error!(
+                error = %error,
+                installed_protocol,
+                app_protocol,
+                "Daemon bundle repair failed"
+            );
+            commands::logging::emit_global(
+                "error",
+                "backend",
+                "daemon.repair.failed",
+                Some("Daemon bundle repair failed".to_string()),
+                fields,
+            );
             false
         }
     }
@@ -2197,6 +2597,7 @@ mod tests {
         assert!(!confirm_daemon_protocol(
             || Ok(daemon::protocol::PROTOCOL_VERSION - 1),
             |reason| disconnects.push(reason.to_string()),
+            |_running, _expected| false,
         ));
         assert_eq!(
             disconnects.len(),
@@ -2208,6 +2609,7 @@ mod tests {
         assert!(!confirm_daemon_protocol(
             || Err("read timed out".to_string()),
             |reason| disconnects.push(reason.to_string()),
+            |_running, _expected| panic!("an unreachable daemon is not a pairing mismatch"),
         ));
         assert_eq!(disconnects.len(), 1);
 
@@ -2215,8 +2617,304 @@ mod tests {
         assert!(confirm_daemon_protocol(
             || Ok(daemon::protocol::PROTOCOL_VERSION),
             |reason| disconnects.push(reason.to_string()),
+            |_running, _expected| panic!("a paired daemon is never repaired"),
         ));
         assert!(disconnects.is_empty());
+    }
+
+    fn repair_target<'a>(
+        log_path: &'a std::path::Path,
+        bootstrap_complete: &'a std::sync::atomic::AtomicBool,
+    ) -> DaemonRepairTarget<'a> {
+        DaemonRepairTarget {
+            distro: Some("Ubuntu"),
+            port: 17233,
+            log_path,
+            bootstrap_complete,
+        }
+    }
+
+    fn repair_status(
+        installed: Option<&str>,
+        bundled: &str,
+        environment_available: bool,
+    ) -> models::DaemonInstallStatus {
+        models::DaemonInstallStatus {
+            installed: installed.is_some(),
+            version: installed.map(str::to_string),
+            bundled_version: bundled.to_string(),
+            needs_update: crate::commands::daemon::daemon_needs_update(installed, bundled),
+            wsl_available: environment_available,
+            error: None,
+        }
+    }
+
+    // Regression: commits 43b6743 (bundled-daemon install gated on
+    // `semver_less_than`, so a newer daemon was never replaced) and a0f3545
+    // (every reconnect gated on the exact protocol, with nothing behind the
+    // gate but a disconnect). Seen live 2026-08-29: the WSL daemon was replaced
+    // by 0.8.2 while the running Windows app was 0.8.1, and the app looped
+    // daemon.connection.reconnecting -> established ->
+    // lost reason=reconnect_protocol_mismatch every 15 s for hours while
+    // sessions froze on the last snapshot. The classifier has to drive the
+    // bundle repair — once per mismatch episode, not once per 15 s tick.
+    #[test]
+    fn a_reconnect_protocol_mismatch_drives_exactly_one_bundle_repair_per_episode() {
+        let guard = DaemonRepairGuard::new();
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(true);
+        let repairs = std::cell::Cell::new(0usize);
+
+        let mismatch_tick = || {
+            confirm_daemon_protocol(
+                || Ok(daemon::protocol::PROTOCOL_VERSION + 1),
+                |_reason| {},
+                |_running, _expected| match guard.begin_after_bootstrap(&bootstrap_complete) {
+                    Some(_permit) => {
+                        repairs.set(repairs.get() + 1);
+                        false
+                    }
+                    None => false,
+                },
+            )
+        };
+
+        for _ in 0..5 {
+            assert!(!mismatch_tick(), "a mismatched daemon is never healthy");
+        }
+        assert_eq!(
+            repairs.get(),
+            1,
+            "the reconnect loop must not reinstall the daemon on every tick"
+        );
+
+        // A healthy daemon closes the episode; the next mismatch may repair again.
+        guard.episode_resolved();
+        assert!(!mismatch_tick());
+        assert_eq!(repairs.get(), 2);
+    }
+
+    // Regression: commit fbc0a0d wired the repair into the reconnect classifier
+    // unconditionally. Startup runs the bootstrap and the health monitor
+    // concurrently (startup::orchestration), and the bootstrap installs the
+    // bundled daemon and restarts it itself; only the health monitor's *restart*
+    // fallback waited for bootstrap_complete, whose comment already warns that
+    // two threads doing stop/start race and kill each other's daemon. An app
+    // opened against a mismatched daemon could therefore run two installers and
+    // two restarts at once — and worse, the bootstrap-time tick consumed the
+    // one repair the episode is allowed.
+    #[test]
+    fn a_mismatch_seen_during_bootstrap_neither_repairs_nor_burns_the_episode() {
+        let guard = DaemonRepairGuard::new();
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(false);
+
+        for _ in 0..5 {
+            assert!(
+                guard.begin_after_bootstrap(&bootstrap_complete).is_none(),
+                "the startup bootstrap owns the install/restart lane until it is done"
+            );
+        }
+
+        bootstrap_complete.store(true, std::sync::atomic::Ordering::Release);
+        assert!(
+            guard.begin_after_bootstrap(&bootstrap_complete).is_some(),
+            "a mismatch seen during bootstrap still has to be repairable afterwards"
+        );
+    }
+
+    #[test]
+    fn a_bundle_repair_already_running_is_never_started_a_second_time() {
+        let guard = DaemonRepairGuard::new();
+        let permit = guard
+            .begin()
+            .expect("the first mismatch claims the episode");
+
+        assert!(guard.begin().is_none(), "no second repair while one runs");
+        guard.episode_resolved();
+        assert!(
+            guard.begin().is_none(),
+            "a resolved episode still must not start a concurrent repair"
+        );
+
+        drop(permit);
+        assert!(
+            guard.begin().is_some(),
+            "a finished repair releases the lane"
+        );
+    }
+
+    // Regression: commit fbc0a0d restarted the repaired daemon through
+    // try_restart_daemon(distro, port), which invents its launch context from a
+    // guessed log path — /tmp on a native host, %APPDATA% on Windows whatever
+    // TAURHAUS_DATA_DIR says. The repair then fixed the protocol but handed the
+    // app a daemon reading a different data root, so sessions and tmux focus
+    // stayed frozen anyway.
+    #[test]
+    fn a_repair_restarts_the_daemon_against_the_apps_own_launch_context() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let captured = dir.path().join("taurhaus.log.jsonl");
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(true);
+        let target = repair_target(&captured, &bootstrap_complete);
+        let launched = std::cell::RefCell::new(None);
+
+        let result = restart_repaired_daemon_with(&target, |distro, port, log_path| {
+            launched.replace(Some((distro.to_string(), port, log_path.to_path_buf())));
+            Ok(())
+        });
+
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert_eq!(
+            launched.into_inner(),
+            Some(("Ubuntu".to_string(), 17233, captured)),
+            "the repaired daemon has to be launched with the data root the app uses"
+        );
+    }
+
+    #[test]
+    fn a_repair_on_a_host_without_a_daemon_runtime_never_launches_anything() {
+        let captured = std::path::PathBuf::from("/does/not/matter/taurhaus.log.jsonl");
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(true);
+        let target = DaemonRepairTarget {
+            distro: None,
+            ..repair_target(&captured, &bootstrap_complete)
+        };
+
+        let result = restart_repaired_daemon_with(&target, |_distro, _port, _log_path| {
+            panic!("a host with no daemon runtime must not launch one")
+        });
+
+        assert_eq!(result, Err("no daemon distro configured".to_string()));
+    }
+
+    #[test]
+    fn a_bundle_repair_installs_restarts_and_reconnects_in_that_order() {
+        let steps = std::cell::RefCell::new(Vec::new());
+        let outcome = run_daemon_bundle_repair(
+            &repair_status(Some("0.8.2"), "0.8.1", true),
+            || {
+                steps.borrow_mut().push("install");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("restart");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("reconnect");
+                Ok(())
+            },
+        );
+
+        assert_eq!(outcome, DaemonRepairOutcome::Repaired);
+        assert_eq!(
+            steps.into_inner(),
+            vec!["install", "restart", "reconnect"],
+            "an installed binary only takes effect once the daemon is restarted"
+        );
+    }
+
+    #[test]
+    fn a_bundle_repair_is_skipped_when_the_daemon_environment_is_unavailable() {
+        let steps = std::cell::RefCell::new(Vec::new());
+        let outcome = run_daemon_bundle_repair(
+            &repair_status(None, "0.8.1", false),
+            || {
+                steps.borrow_mut().push("install");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("restart");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("reconnect");
+                Ok(())
+            },
+        );
+
+        assert_eq!(
+            outcome,
+            DaemonRepairOutcome::Skipped("environment_unavailable")
+        );
+        assert!(
+            steps.into_inner().is_empty(),
+            "no install may run without a reachable WSL distro or native daemon home"
+        );
+    }
+
+    #[test]
+    fn a_bundle_repair_is_skipped_when_the_bundle_matches_the_installed_daemon() {
+        let steps = std::cell::RefCell::new(Vec::new());
+        let outcome = run_daemon_bundle_repair(
+            &repair_status(Some("0.8.1"), "0.8.1", true),
+            || {
+                steps.borrow_mut().push("install");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("restart");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("reconnect");
+                Ok(())
+            },
+        );
+
+        assert_eq!(
+            outcome,
+            DaemonRepairOutcome::Skipped("bundle_matches_installed"),
+            "reinstalling the same build cannot change the protocol it speaks"
+        );
+        assert!(steps.into_inner().is_empty());
+    }
+
+    #[test]
+    fn a_failed_install_stops_the_repair_before_the_daemon_is_restarted() {
+        let steps = std::cell::RefCell::new(Vec::new());
+        let outcome = run_daemon_bundle_repair(
+            &repair_status(Some("0.8.2"), "0.8.1", true),
+            || {
+                steps.borrow_mut().push("install");
+                Err("bundled daemon binary not found".to_string())
+            },
+            || {
+                steps.borrow_mut().push("restart");
+                Ok(())
+            },
+            || {
+                steps.borrow_mut().push("reconnect");
+                Ok(())
+            },
+        );
+
+        match outcome {
+            DaemonRepairOutcome::Failed(error) => {
+                assert!(error.contains("bundled daemon binary not found"), "{error}");
+            }
+            other => panic!("expected a failed repair, got {other:?}"),
+        }
+        assert_eq!(
+            steps.into_inner(),
+            vec!["install"],
+            "a failed install must not stop the daemon that is still running"
+        );
+    }
+
+    #[test]
+    fn a_repaired_daemon_that_never_comes_back_is_reported_as_failed() {
+        let outcome = run_daemon_bundle_repair(
+            &repair_status(Some("0.8.2"), "0.8.1", true),
+            || Ok(()),
+            || Ok(()),
+            || Err("daemon did not answer within the reconnect window".to_string()),
+        );
+
+        match outcome {
+            DaemonRepairOutcome::Failed(error) => {
+                assert!(error.contains("did not answer"), "{error}");
+            }
+            other => panic!("expected a failed repair, got {other:?}"),
+        }
     }
 
     // Regression: commit 07ab6c5 seeded the bridge from a snapshot fetched on

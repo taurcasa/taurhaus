@@ -4,11 +4,30 @@ import {
   applyShellDaemonStatusSnapshot,
   canCheckDaemonUpdate,
   consumeInitialShellDaemonStatus,
+  daemonStatusNotice,
   isShellDaemonRecoveryPending,
   normalizeShellDaemonStatus,
 } from './daemonStatus.js'
 
 describe('daemonStatus', () => {
+  it('surfaces the daemon repair notice that rides along with a status event', () => {
+    // Regression: seen live 2026-08-29 — a 0.8.2 daemon under a 0.8.1 app
+    // reconnected and was dropped every 15s with nothing on screen to say why.
+    expect(
+      daemonStatusNotice({
+        status: 'reconnecting',
+        notice: 'Daemon 0.8.2 \u2260 app 0.8.1 — reinstalling the bundled daemon',
+      }),
+    ).toBe('Daemon 0.8.2 \u2260 app 0.8.1 — reinstalling the bundled daemon')
+  })
+
+  it('has no notice for an ordinary daemon status event', () => {
+    expect(daemonStatusNotice({ status: 'connected' })).toBeNull()
+    expect(daemonStatusNotice({ status: 'reconnecting', notice: '  ' })).toBeNull()
+    expect(daemonStatusNotice(null)).toBeNull()
+    expect(daemonStatusNotice({ status: 'reconnecting', notice: 42 })).toBeNull()
+  })
+
   it('normalizes healthy daemon states away from the banner', () => {
     expect(normalizeShellDaemonStatus('connected')).toBeNull()
     expect(normalizeShellDaemonStatus('not_configured')).toBeNull()
