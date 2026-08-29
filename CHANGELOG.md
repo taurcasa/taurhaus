@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Claude workflow run snapshots and ledger export** — taurhaus reconstructs live workflow agents from the persisted script, journal, and bounded transcript tails, then switches to Claude's completed summary for authoritative labels, phases, totals, timing, and result. Three IPC commands list summaries, fetch a full run, and render the common procedure result as a Markdown ledger row; Windows performs the same scan in the WSL daemon through two additive methods. Session snapshots also carry an optional 60-second workflow activity hint derived from subagent transcript writes. There is no UI, persistence, watcher, or automatic plan edit in W2a, and the additive wire fields keep daemon protocol 14 unchanged.
+
 ## [0.8.2] - 2026-08-29
 
 ### Changed
