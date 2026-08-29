@@ -311,6 +311,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src-tauri/src/coordination/compaction_events.rs` | Structured delivery-result events shared by the native hook path. Hook lifecycle events are built in `compact_hook.rs`. |
 | `src-tauri/src/session_scanner/transcript_boundary.rs` | Bounded transcript-tail parsing used to timestamp a Codex native-hook delivery. |
 | `src-tauri/src/workflow_runs/` | Claude workflow run scanner, bounded transcript cache, live activity hint, IPC commands, and ledger-row renderer. |
+| `docs/architecture/workflow-runs.md` | Workflow artifact sources, live/completed precedence, bounded reads, caches, activity semantics, and IPC platform split. |
 | `src-tauri/src/templates/agent_definitions.rs` | Renders a role as a Claude Code agent definition (body from `DeliveryRenderer::render_role_sections`) and exports the Claude roles into `<project>/.claude/agents`. |
 | `src-tauri/src/templates/adapters.rs` | Role import/export adapters, mapping rules, provenance, and round-trip loss tracking. |
 | `src-tauri/src/templates/storage/` | Template git/storage domain split (`roles`, `presets`, `git`, `state`). |
