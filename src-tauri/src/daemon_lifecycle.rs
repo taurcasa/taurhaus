@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{LazyLock, Mutex};
 use std::thread::JoinHandle;
@@ -594,6 +595,7 @@ pub(crate) fn daemon_health_check(
     app: AppHandle,
     connected_at_startup: bool,
     bootstrap_complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    log_path: PathBuf,
 ) {
     use std::sync::atomic::Ordering;
     use std::time::Duration;
@@ -736,6 +738,11 @@ pub(crate) fn daemon_health_check(
 
             let distro = provider_state.wsl_distro.as_deref();
             let port = daemon::server::DEFAULT_PORT;
+            let repair_target = DaemonRepairTarget {
+                distro,
+                port,
+                log_path: &log_path,
+            };
             match recover_daemon_connection(
                 || {
                     daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
@@ -747,8 +754,7 @@ pub(crate) fn daemon_health_check(
                                 repair_daemon_pairing(
                                     &app,
                                     daemon,
-                                    distro,
-                                    port,
+                                    &repair_target,
                                     installed_protocol,
                                     app_protocol,
                                 )
@@ -777,7 +783,7 @@ pub(crate) fn daemon_health_check(
                         max = MAX_RESTART_ATTEMPTS,
                         "Attempting daemon restart after sustained reconnect failure"
                     );
-                    daemon::launcher::try_restart_daemon(distro, port).is_ok()
+                    daemon::launcher::try_restart_daemon_at(distro, port, &log_path).is_ok()
                 },
             ) {
                 DaemonRecoveryResult::Reconnected
@@ -940,6 +946,32 @@ impl DaemonRepairGuard {
 
 static DAEMON_REPAIR_GUARD: DaemonRepairGuard = DaemonRepairGuard::new();
 
+/// Where a repaired daemon has to come back.
+///
+/// The log path is not a logging detail: the launcher derives the daemon's
+/// `TAURHAUS_DATA_DIR` from its parent, so this is how a repaired daemon keeps
+/// reading the same sessions, teams and tmux focus as the app that repaired it.
+struct DaemonRepairTarget<'a> {
+    distro: Option<&'a str>,
+    port: u16,
+    log_path: &'a Path,
+}
+
+/// The restart step of a repair: through the launcher, with the app's own
+/// captured launch context, never a guessed one.
+fn restart_repaired_daemon_with<R>(
+    target: &DaemonRepairTarget<'_>,
+    restart: R,
+) -> Result<(), String>
+where
+    R: FnOnce(&str, u16, &Path) -> Result<(), std::io::Error>,
+{
+    let distro = target
+        .distro
+        .ok_or_else(|| "no daemon distro configured".to_string())?;
+    restart(distro, target.port, target.log_path).map_err(|error| error.to_string())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DaemonRepairOutcome {
     /// Installed from the bundle, restarted, and reconnected.
@@ -1035,11 +1067,12 @@ fn daemon_repair_notice(installed_version: Option<&str>, bundled_version: &str) 
 fn repair_daemon_pairing(
     app: &AppHandle,
     daemon: &provider::daemon_client::DaemonProvider,
-    distro: Option<&str>,
-    port: u16,
+    target: &DaemonRepairTarget<'_>,
     installed_protocol: u32,
     app_protocol: u32,
 ) -> bool {
+    let distro = target.distro;
+    let port = target.port;
     let Some(_permit) = DAEMON_REPAIR_GUARD.begin() else {
         tracing::debug!(
             daemon_protocol_version = installed_protocol,
@@ -1100,10 +1133,7 @@ fn repair_daemon_pairing(
     let outcome = run_daemon_bundle_repair(
         &status,
         || commands::daemon::install_bundled_daemon(app, distro).map(|_| ()),
-        || {
-            let distro = distro.ok_or_else(|| "no daemon distro configured".to_string())?;
-            daemon::launcher::try_restart_daemon(distro, port).map_err(|error| error.to_string())
-        },
+        || restart_repaired_daemon_with(target, daemon::launcher::try_restart_daemon_at),
         || {
             daemon::launcher::reconnect_existing_provider_until_reachable(daemon, port)
                 .map_err(|error| error.to_string())?;
@@ -2643,6 +2673,52 @@ mod tests {
             guard.begin().is_some(),
             "a finished repair releases the lane"
         );
+    }
+
+    // Regression: commit fbc0a0d restarted the repaired daemon through
+    // try_restart_daemon(distro, port), which invents its launch context from a
+    // guessed log path — /tmp on a native host, %APPDATA% on Windows whatever
+    // TAURHAUS_DATA_DIR says. The repair then fixed the protocol but handed the
+    // app a daemon reading a different data root, so sessions and tmux focus
+    // stayed frozen anyway.
+    #[test]
+    fn a_repair_restarts_the_daemon_against_the_apps_own_launch_context() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let captured = dir.path().join("taurhaus.log.jsonl");
+        let target = DaemonRepairTarget {
+            distro: Some("Ubuntu"),
+            port: 17233,
+            log_path: &captured,
+        };
+        let launched = std::cell::RefCell::new(None);
+
+        let result = restart_repaired_daemon_with(&target, |distro, port, log_path| {
+            launched.replace(Some((distro.to_string(), port, log_path.to_path_buf())));
+            Ok(())
+        });
+
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert_eq!(
+            launched.into_inner(),
+            Some(("Ubuntu".to_string(), 17233, captured)),
+            "the repaired daemon has to be launched with the data root the app uses"
+        );
+    }
+
+    #[test]
+    fn a_repair_on_a_host_without_a_daemon_runtime_never_launches_anything() {
+        let captured = std::path::PathBuf::from("/does/not/matter/taurhaus.log.jsonl");
+        let target = DaemonRepairTarget {
+            distro: None,
+            port: 17233,
+            log_path: &captured,
+        };
+
+        let result = restart_repaired_daemon_with(&target, |_distro, _port, _log_path| {
+            panic!("a host with no daemon runtime must not launch one")
+        });
+
+        assert_eq!(result, Err("no daemon distro configured".to_string()));
     }
 
     #[test]

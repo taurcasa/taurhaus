@@ -207,9 +207,32 @@ pub enum StartupDaemonValidation {
     RestartedStaleBinary,
 }
 
-/// Try to restart the daemon process (called by health check on disconnect).
+/// Restart the daemon for a caller that has no launch context of its own.
+///
+/// Prefer [`try_restart_daemon_at`]: the log path decides the data root the
+/// daemon is launched with, so a caller that knows the app's own path has to
+/// say it.
 pub fn try_restart_daemon(distro: &str, port: u16) -> Result<(), std::io::Error> {
-    try_restart_daemon_with(distro, port, stop_existing_daemon, try_start_daemon)
+    try_restart_daemon_at(distro, port, &fallback_launch_log_path())
+}
+
+/// Restart the daemon against the log path the app itself is writing.
+///
+/// The daemon's `TAURHAUS_DATA_DIR` is derived from this path's parent
+/// (`daemon_launch_env`), so a restart that guesses puts the daemon on a
+/// different data root than the app and the two stop seeing the same sessions.
+pub fn try_restart_daemon_at(
+    distro: &str,
+    port: u16,
+    log_path: &Path,
+) -> Result<(), std::io::Error> {
+    try_restart_daemon_with(
+        distro,
+        port,
+        log_path,
+        stop_existing_daemon,
+        try_start_daemon,
+    )
 }
 
 pub fn validate_startup_daemon_binary(
@@ -304,6 +327,7 @@ fn startup_daemon_binary_is_stale(running_exe: &Path, expected_path: &Path) -> b
 fn try_restart_daemon_with<Stop, Start>(
     distro: &str,
     port: u16,
+    log_path: &Path,
     stopper: Stop,
     starter: Start,
 ) -> Result<(), std::io::Error>
@@ -315,9 +339,8 @@ where
         validate_wsl_distro(distro).map_err(std::io::Error::other)?;
     }
     tracing::info!(port, distro, "Attempting daemon restart");
-    let log_path = health_check_log_path();
-    stopper(distro, port, &log_path)?;
-    starter(distro, port, &log_path)
+    stopper(distro, port, log_path)?;
+    starter(distro, port, log_path)
 }
 
 fn stop_existing_daemon(distro: &str, port: u16, log_path: &Path) -> Result<(), std::io::Error> {
@@ -874,19 +897,13 @@ fn ensure_tmux_session_wsl(distro: &str, session_name: &str, log_path: &Path) {
     }
 }
 
-/// Best-effort log path for the health check (which doesn't receive the
-/// app's log path). Falls back to the known Windows app data location.
-fn health_check_log_path() -> PathBuf {
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        PathBuf::from(appdata)
-            .join("com.taurhaus.dev")
-            .join(crate::commands::logging::JSONL_LOG_FILE_NAME)
-    } else {
-        PathBuf::from(format!(
-            "/tmp/{}",
-            crate::commands::logging::JSONL_LOG_FILE_NAME
-        ))
-    }
+/// Launch log path for a caller that carries no captured one.
+///
+/// Resolved through `PlatformPaths`, which honours the `TAURHAUS_DATA_DIR` the
+/// app publishes at startup, so even a guess lands on the app's own data root
+/// rather than `/tmp` or a hardcoded `%APPDATA%`.
+fn fallback_launch_log_path() -> PathBuf {
+    crate::provider::platform_paths::PlatformPaths::log_path()
 }
 
 /// Attempt a single TCP connection to the daemon.
@@ -1196,6 +1213,7 @@ time.sleep(3600)
             let result = try_restart_daemon_with(
                 "native",
                 0,
+                &test_log_path(),
                 |_distro, _port, _log_path| Ok(()),
                 |distro, port, _log_path| {
                     starter_called = true;
@@ -1229,6 +1247,7 @@ time.sleep(3600)
         let result = try_restart_daemon_with(
             "native",
             port,
+            &test_log_path(),
             stop_existing_daemon,
             |_distro, restart_port, _log_path| {
                 starter_called = true;
@@ -1307,9 +1326,9 @@ time.sleep(3600)
     }
 
     #[test]
-    fn health_check_log_path_resolves() {
+    fn fallback_launch_log_path_resolves() {
         // Smoke test: should always return a path, never panic.
-        let path = health_check_log_path();
+        let path = fallback_launch_log_path();
         assert!(
             !path.as_os_str().is_empty(),
             "Health check log path should not be empty"
@@ -1377,6 +1396,100 @@ time.sleep(3600)
         assert_eq!(
             env,
             vec![("TAURHAUS_DATA_DIR", "/tmp/taurhaus".to_string())]
+        );
+    }
+
+    // Regression: commit fbc0a0d gave the reconnect path a pairing repair that
+    // restarts the daemon through try_restart_daemon(distro, port), which
+    // invents its launch context from health_check_log_path() — /tmp on native
+    // hosts, %APPDATA% on Windows whatever TAURHAUS_DATA_DIR says. The repaired
+    // daemon then reads a different data root than the app that repaired it, so
+    // sessions and tmux focus stay frozen even though the pairing is fixed.
+    #[test]
+    fn a_restart_launches_the_daemon_against_the_captured_log_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let captured = dir.path().join("taurhaus.log.jsonl");
+        let seen = std::cell::RefCell::new(Vec::new());
+
+        let result = try_restart_daemon_with(
+            "Ubuntu",
+            17233,
+            &captured,
+            |_distro, _port, log_path| {
+                seen.borrow_mut().push(log_path.to_path_buf());
+                Ok(())
+            },
+            |_distro, _port, log_path| {
+                seen.borrow_mut().push(log_path.to_path_buf());
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok(), "{:?}", result.err());
+        assert_eq!(
+            seen.into_inner(),
+            vec![captured.clone(), captured],
+            "stop and start both have to run against the app's own log path"
+        );
+    }
+
+    /// The captured path is not decoration: the daemon's data root is its
+    /// parent, for a native launch and for a WSL one.
+    #[test]
+    fn a_captured_log_path_names_the_data_root_the_daemon_launches_with() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let captured = dir.path().join("taurhaus.log.jsonl");
+
+        let native = daemon_launch_env(&captured, true);
+        assert_eq!(
+            native,
+            vec![(
+                "TAURHAUS_DATA_DIR",
+                dir.path().to_string_lossy().to_string()
+            )]
+        );
+
+        let captured_windows =
+            PathBuf::from(r"C:\Users\me\isolated-root\com.taurhaus.dev\taurhaus.log.jsonl");
+        std::env::set_var(
+            "TAURHAUS_CLAUDE_DIR",
+            r"\\wsl.localhost\Ubuntu\home\me\isolated-root\.claude",
+        );
+        let wsl = daemon_launch_env(&captured_windows, false);
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+        assert_eq!(
+            wsl,
+            vec![
+                (
+                    "TAURHAUS_DATA_DIR",
+                    "/mnt/c/Users/me/isolated-root/com.taurhaus.dev".to_string()
+                ),
+                (
+                    "TAURHAUS_CLAUDE_DIR",
+                    "/home/me/isolated-root/.claude".to_string()
+                ),
+            ]
+        );
+    }
+
+    /// The callers that have no captured path — the Settings start button, the
+    /// restart after a WSL install — still must not land on /tmp when the app
+    /// runs against an isolated root.
+    #[test]
+    fn the_fallback_launch_log_path_follows_the_apps_data_root() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::env::set_var("TAURHAUS_DATA_DIR", dir.path());
+
+        let resolved = fallback_launch_log_path();
+
+        std::env::remove_var("TAURHAUS_DATA_DIR");
+        assert_eq!(
+            resolved,
+            dir.path()
+                .join(crate::commands::logging::JSONL_LOG_FILE_NAME)
         );
     }
 }

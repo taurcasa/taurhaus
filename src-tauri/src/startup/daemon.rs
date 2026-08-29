@@ -130,7 +130,12 @@ pub(crate) fn spawn_background_bootstrap(
                 }
 
                 let connected = reconnect_existing_daemon_if_expected(daemon).is_ok()
-                    || (crate::daemon::launcher::try_restart_daemon(distro, port).is_ok()
+                    || (crate::daemon::launcher::try_restart_daemon_at(
+                        distro,
+                        port,
+                        &boot_log_path,
+                    )
+                    .is_ok()
                         && crate::daemon::launcher::reconnect_existing_provider_until_reachable(
                             daemon, port,
                         )
@@ -441,11 +446,16 @@ pub(crate) fn start_runtime_monitors(
     if context.wsl_distro.is_some() {
         let health_handle = app.clone();
         let connected_at_startup = context.daemon_connected_at_startup;
+        // The health monitor restarts the daemon, so it needs the launch
+        // context the app itself was set up with — a guessed log path puts the
+        // restarted daemon on a different data root than the app.
+        let log_path = context.log_path.clone();
         std::thread::spawn(move || {
             daemon_lifecycle::daemon_health_check(
                 health_handle,
                 connected_at_startup,
                 bootstrap_complete,
+                log_path,
             );
         });
 
