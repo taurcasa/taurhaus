@@ -742,6 +742,7 @@ pub(crate) fn daemon_health_check(
                 distro,
                 port,
                 log_path: &log_path,
+                bootstrap_complete: bootstrap_complete.as_ref(),
             };
             match recover_daemon_connection(
                 || {
@@ -937,6 +938,24 @@ impl DaemonRepairGuard {
         Some(DaemonRepairPermit { guard: self })
     }
 
+    /// Claim the repair lane once the startup bootstrap has let go of it.
+    ///
+    /// Startup runs the bootstrap and the health monitor at the same time, and
+    /// the bootstrap installs the bundled daemon and restarts it itself. Two
+    /// installers writing the same binary and two threads stopping and starting
+    /// the same daemon kill each other's work, so the bootstrap is checked
+    /// *before* the episode is consumed: a mismatch seen while it runs is left
+    /// alone, and the first tick afterwards still gets its one repair.
+    fn begin_after_bootstrap(
+        &self,
+        bootstrap_complete: &std::sync::atomic::AtomicBool,
+    ) -> Option<DaemonRepairPermit<'_>> {
+        if !bootstrap_complete.load(std::sync::atomic::Ordering::Acquire) {
+            return None;
+        }
+        self.begin()
+    }
+
     /// A healthy daemon ends the episode: the next mismatch may repair again.
     fn episode_resolved(&self) {
         self.episode_attempted
@@ -955,6 +974,9 @@ struct DaemonRepairTarget<'a> {
     distro: Option<&'a str>,
     port: u16,
     log_path: &'a Path,
+    /// The startup bootstrap installs the bundled daemon and restarts it too.
+    /// Until it is done, this lane stays shut.
+    bootstrap_complete: &'a std::sync::atomic::AtomicBool,
 }
 
 /// The restart step of a repair: through the launcher, with the app's own
@@ -1073,11 +1095,15 @@ fn repair_daemon_pairing(
 ) -> bool {
     let distro = target.distro;
     let port = target.port;
-    let Some(_permit) = DAEMON_REPAIR_GUARD.begin() else {
+    let Some(_permit) = DAEMON_REPAIR_GUARD.begin_after_bootstrap(target.bootstrap_complete) else {
         tracing::debug!(
             daemon_protocol_version = installed_protocol,
             expected = app_protocol,
-            "Daemon bundle repair already handled for this mismatch episode"
+            bootstrap_complete = target
+                .bootstrap_complete
+                .load(std::sync::atomic::Ordering::Acquire),
+            "Daemon bundle repair deferred — the bootstrap owns the lane, \
+             or this mismatch episode already had its repair"
         );
         return false;
     };
@@ -2596,6 +2622,18 @@ mod tests {
         assert!(disconnects.is_empty());
     }
 
+    fn repair_target<'a>(
+        log_path: &'a std::path::Path,
+        bootstrap_complete: &'a std::sync::atomic::AtomicBool,
+    ) -> DaemonRepairTarget<'a> {
+        DaemonRepairTarget {
+            distro: Some("Ubuntu"),
+            port: 17233,
+            log_path,
+            bootstrap_complete,
+        }
+    }
+
     fn repair_status(
         installed: Option<&str>,
         bundled: &str,
@@ -2623,13 +2661,14 @@ mod tests {
     #[test]
     fn a_reconnect_protocol_mismatch_drives_exactly_one_bundle_repair_per_episode() {
         let guard = DaemonRepairGuard::new();
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(true);
         let repairs = std::cell::Cell::new(0usize);
 
         let mismatch_tick = || {
             confirm_daemon_protocol(
                 || Ok(daemon::protocol::PROTOCOL_VERSION + 1),
                 |_reason| {},
-                |_running, _expected| match guard.begin() {
+                |_running, _expected| match guard.begin_after_bootstrap(&bootstrap_complete) {
                     Some(_permit) => {
                         repairs.set(repairs.get() + 1);
                         false
@@ -2652,6 +2691,34 @@ mod tests {
         guard.episode_resolved();
         assert!(!mismatch_tick());
         assert_eq!(repairs.get(), 2);
+    }
+
+    // Regression: commit fbc0a0d wired the repair into the reconnect classifier
+    // unconditionally. Startup runs the bootstrap and the health monitor
+    // concurrently (startup::orchestration), and the bootstrap installs the
+    // bundled daemon and restarts it itself; only the health monitor's *restart*
+    // fallback waited for bootstrap_complete, whose comment already warns that
+    // two threads doing stop/start race and kill each other's daemon. An app
+    // opened against a mismatched daemon could therefore run two installers and
+    // two restarts at once — and worse, the bootstrap-time tick consumed the
+    // one repair the episode is allowed.
+    #[test]
+    fn a_mismatch_seen_during_bootstrap_neither_repairs_nor_burns_the_episode() {
+        let guard = DaemonRepairGuard::new();
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(false);
+
+        for _ in 0..5 {
+            assert!(
+                guard.begin_after_bootstrap(&bootstrap_complete).is_none(),
+                "the startup bootstrap owns the install/restart lane until it is done"
+            );
+        }
+
+        bootstrap_complete.store(true, std::sync::atomic::Ordering::Release);
+        assert!(
+            guard.begin_after_bootstrap(&bootstrap_complete).is_some(),
+            "a mismatch seen during bootstrap still has to be repairable afterwards"
+        );
     }
 
     #[test]
@@ -2685,11 +2752,8 @@ mod tests {
     fn a_repair_restarts_the_daemon_against_the_apps_own_launch_context() {
         let dir = tempfile::tempdir().expect("tempdir");
         let captured = dir.path().join("taurhaus.log.jsonl");
-        let target = DaemonRepairTarget {
-            distro: Some("Ubuntu"),
-            port: 17233,
-            log_path: &captured,
-        };
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(true);
+        let target = repair_target(&captured, &bootstrap_complete);
         let launched = std::cell::RefCell::new(None);
 
         let result = restart_repaired_daemon_with(&target, |distro, port, log_path| {
@@ -2708,10 +2772,10 @@ mod tests {
     #[test]
     fn a_repair_on_a_host_without_a_daemon_runtime_never_launches_anything() {
         let captured = std::path::PathBuf::from("/does/not/matter/taurhaus.log.jsonl");
+        let bootstrap_complete = std::sync::atomic::AtomicBool::new(true);
         let target = DaemonRepairTarget {
             distro: None,
-            port: 17233,
-            log_path: &captured,
+            ..repair_target(&captured, &bootstrap_complete)
         };
 
         let result = restart_repaired_daemon_with(&target, |_distro, _port, _log_path| {
