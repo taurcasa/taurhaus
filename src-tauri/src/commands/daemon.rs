@@ -996,12 +996,12 @@ mod tests {
     /// daemon the repair replaces. `sleep` is used because the kernel only
     /// refuses to overwrite a *mapped* image; it is never a CLI this app
     /// manages, and the child is killed when the guard drops.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     struct RunningBinary {
         child: std::process::Child,
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     impl Drop for RunningBinary {
         fn drop(&mut self) {
             let _ = self.child.kill();
@@ -1009,7 +1009,7 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     fn stand_in_executable() -> Option<std::path::PathBuf> {
         ["/bin/sleep", "/usr/bin/sleep"]
             .iter()
@@ -1057,7 +1057,6 @@ mod tests {
         };
         let dir = tempfile::tempdir().expect("tempdir");
         let target = install_target(dir.path());
-        std::fs::copy(&stand_in, &target).expect("seed the installed daemon");
         write_executable(&target, &std::fs::read(&stand_in).expect("read stand-in"));
 
         let running = RunningBinary {
