@@ -53,6 +53,67 @@ use state_sync::*;
 #[cfg(test)]
 use taurhaus_lib::ProviderState;
 
+/// The launch settings a background pass relaunches a member with.
+///
+/// The same resolution an operator-driven resume performs, minus the hook
+/// write: a pass that runs on a timer reads whether the managed Codex hook is
+/// installed rather than reconciling it. Without this the effort relaunch used
+/// stock defaults and moved the member off the account it was launched on.
+pub(crate) fn background_launch_settings(
+    db: &DbState,
+    teams_dir: &std::path::Path,
+) -> (CliCommandSettings, String) {
+    let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
+    let has_managed_codex =
+        crate::coordination::compact_hook::any_managed_codex_member(teams_dir).unwrap_or(false);
+    crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
+        &mut cli_commands,
+        has_managed_codex,
+        has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
+    );
+    (cli_commands, tmux_layout)
+}
+
+/// Put a pending assignment effort into force after a project's tasks changed.
+///
+/// The task scan is the moment an assignment mesh wrote becomes visible to
+/// taurhaus: the task record carries the level, and the operational snapshots
+/// have just been rewritten from it. mesh applies the level itself before it
+/// delivers the notice wherever the harness takes `/effort` in its own prompt;
+/// this is the one harness it cannot reach, so acting here rather than on the
+/// self-heal timer is the difference between seconds and a whole interval at
+/// the wrong level.
+///
+/// Best-effort and quiet: nothing about a task scan depends on it.
+pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, project_path: &str) {
+    use tauri::Manager;
+
+    let state = app.state::<crate::coordination::state::CoordinationState>();
+    match state.teams_working_in_project(project_path) {
+        Ok(teams) if teams.is_empty() => return,
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(
+                project_path = %project_path,
+                error = %err,
+                "could not resolve the teams working in this project"
+            );
+            return;
+        }
+    }
+
+    let db = app.state::<crate::commands::projects::DbState>();
+    let (cli_commands, tmux_layout) = background_launch_settings(&db, state.teams_dir());
+    if let Err(err) = state.apply_task_effort_for_project(project_path, &cli_commands, &tmux_layout)
+    {
+        tracing::warn!(
+            project_path = %project_path,
+            error = %err,
+            "task-arrival effort pass failed"
+        );
+    }
+}
+
 fn load_cli_commands_and_layout(db: &DbState) -> (CliCommandSettings, String) {
     #[cfg(test)]
     {

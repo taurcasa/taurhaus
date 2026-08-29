@@ -475,6 +475,62 @@ describe('meshTabUtils reasoning effort', () => {
   })
 })
 
+describe('meshTabUtils task effort', () => {
+  it('carries the assignment effort and its reason for the lead and every agent', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          reasoningEffort: 'high',
+          taskEffort: 'medium',
+          taskEffortWhy: 'routing only',
+          sessionStatus: 'active',
+        },
+        {
+          name: 'frontend-dev',
+          role: 'member',
+          cli_tool: 'codex',
+          model: 'gpt-5.6-terra',
+          reasoning_effort: 'low',
+          task_effort: 'high',
+          task_effort_why: 'the migration is irreversible',
+          sessionStatus: 'active',
+        },
+      ],
+    })
+
+    expect(config.lead.taskEffort).toBe('medium')
+    expect(config.lead.taskEffortWhy).toBe('routing only')
+    expect(config.agents).toEqual([
+      expect.objectContaining({
+        id: 'frontend-dev',
+        reasoningEffort: 'low',
+        taskEffort: 'high',
+        taskEffortWhy: 'the migration is irreversible',
+      }),
+    ])
+  })
+
+  it('leaves a member with no assignment effort unset', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [
+        { name: 'team-lead', role: 'lead', cliTool: 'claude', model: 'opus' },
+        { name: 'frontend-dev', role: 'member', cli_tool: 'codex', model: 'gpt-5.6-terra' },
+      ],
+    })
+
+    expect(config.lead.taskEffort).toBeNull()
+    expect(config.lead.taskEffortWhy).toBeNull()
+    expect(config.agents[0].taskEffort).toBeNull()
+    expect(config.agents[0].taskEffortWhy).toBeNull()
+  })
+})
+
 describe('meshTabUtils runtime session identity', () => {
   // Regression: 9e15e4e keyed a node's workflow run tree on the member's Claude
   // session, but createLead/createAgent rebuild a node from a fixed field list

@@ -90,6 +90,19 @@ instructions: |
   - completion signal
   - whether screenshots are required (yes for all user-facing work)
   - whether review routing is required (yes for all user-facing work)
+  - the reasoning effort, via `mesh task assign --effort <low|medium|high|xhigh>
+    --why "<reason>"`. Both are required. An assignee whose CLI takes `/effort`
+    in its own prompt is switched to that level before your notice reaches it;
+    a Codex assignee is switched by taurhaus a moment later, by resuming its own
+    conversation, so it may open the task at its previous level for a few
+    seconds. The level and the reason stay visible on the task, the node, and
+    the card that restores context after a compaction. Choose it, in this order: what breaks and for whom if the work
+    is wrong; how reversible it is; how much is genuinely uncertain; how many
+    files, layers and contracts it crosses; and what a higher level costs on
+    every turn of the task. Medium is the default for developer lanes. High is
+    a deliberate exception — an irreversible migration, a release, a diagnosis
+    with no reproduction — and `--why` is where you say which. Do not raise the
+    level to signal urgency; urgency belongs in the objective.
 
   NON-IDLE RULE
 

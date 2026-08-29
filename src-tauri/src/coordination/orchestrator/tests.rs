@@ -2214,6 +2214,8 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         delivery_lease: None,
         attached_at: None,
         last_seen_at: None,
+        applied_effort: None,
+        effort_resume_failure: None,
     };
     MemberRuntimeStore::save(tmp.path(), team_name, "orphan-agent", &orphan_runtime)
         .expect("orphan runtime saved");

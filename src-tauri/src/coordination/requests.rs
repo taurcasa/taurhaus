@@ -72,6 +72,12 @@ pub struct OperationalAssignmentFooter {
     pub validation_expectation: String,
     #[serde(default)]
     pub response_expectation: String,
+    /// Reasoning effort the lead attached to the current assignment.
+    #[serde(default)]
+    pub task_effort: String,
+    /// Why the lead chose that level.
+    #[serde(default)]
+    pub task_effort_why: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -563,6 +569,14 @@ pub struct AddAgentResult {
 pub struct ResumeMemberRequest {
     pub team_name: String,
     pub member_name: String,
+    /// Reasoning effort this resume must put into effect, overriding the
+    /// member's configured launch effort.
+    ///
+    /// Set only by the task-effort pass, which relaunches a harness that has no
+    /// runtime effort command. Additive and defaulted, so an operator-driven
+    /// resume keeps the member's own launch effort.
+    #[serde(default)]
+    pub reasoning_effort_override: Option<String>,
 }
 
 /// Request contract for resuming all members in a team.

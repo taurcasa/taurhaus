@@ -190,6 +190,17 @@
     }
   })
 
+  /**
+   * Hover text for a card's effort chip.
+   *
+   * `mesh task assign` requires a reason with every effort, but a task record
+   * written before that did not carry one, so the level stands on its own.
+   */
+  function taskEffortTitle(task) {
+    const why = String(task?.effort_why ?? '').trim()
+    return why ? `Task effort: ${task.effort} — ${why}` : `Task effort: ${task.effort}`
+  }
+
   /** Handle card click: toggle selection and fetch detail. */
   function selectTask(task) {
     if (isSameTaskIdentity(selectedTask, task)) {
@@ -538,14 +549,23 @@
       <p class="text-[11px] {t.textTertiary} mt-1.5 ml-[22px] line-clamp-2">{task.description}</p>
     {/if}
 
-    <!-- Metadata: blocked_by + owner -->
-    {#if task.blocked_by.length > 0 || task.owner}
+    <!-- Metadata: blocked_by + owner + assigned effort -->
+    {#if task.blocked_by.length > 0 || task.owner || task.effort}
       <div class="flex items-center gap-2 mt-1.5 ml-[22px]">
         {#if task.blocked_by.length > 0}
           <span class="text-[10px] {t.textMuted}">blocked by: {task.blocked_by.map(id => `#${id}`).join(', ')}</span>
         {/if}
         {#if task.owner}
           <span class="text-[10px] {t.textMuted}">{task.owner}</span>
+        {/if}
+        {#if task.effort}
+          <span
+            class="text-[10px] rounded-full border border-current px-1.5 leading-[1.5] {t.textMuted}"
+            data-testid="task-effort"
+            title={taskEffortTitle(task)}
+          >
+            {task.effort}
+          </span>
         {/if}
       </div>
     {/if}

@@ -10,6 +10,7 @@ use crate::coordination::stores::{
     OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
     OperationalWorkingSetSnapshot, TeamConfigStore,
 };
+use crate::coordination::task_effort::AssignmentEffort;
 
 pub fn sync_team_snapshots(
     teams_dir: &Path,
@@ -42,12 +43,14 @@ pub fn sync_member_snapshot(
     let existing = OperationalContextSnapshotStore::load(teams_dir, team_name, member_name)?;
     let project_path = member.project_path.display().to_string();
     let tasks = load_project_tasks(conn, &project_path)?;
+    let (task, effort) = latest_owned_task_from_tasks(&tasks, member_name);
     let snapshot = build_member_snapshot(
         existing.as_ref(),
         team_name,
         member_name,
         &project_path,
-        latest_owned_task_from_tasks(&tasks, member_name),
+        task,
+        effort,
     );
 
     save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)
@@ -79,12 +82,14 @@ pub fn sync_project_task_snapshots(
         {
             let existing =
                 OperationalContextSnapshotStore::load(teams_dir, &team_name, &member.name)?;
+            let (task, effort) = latest_owned_task_from_tasks(&tasks, &member.name);
             let snapshot = build_member_snapshot(
                 existing.as_ref(),
                 &team_name,
                 &member.name,
                 project_path,
-                latest_owned_task_from_tasks(&tasks, &member.name),
+                task,
+                effort,
             );
             save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)?;
         }
@@ -133,6 +138,8 @@ pub fn apply_delivery_context(
                 adjacent_fix_policy: footer.adjacent_fix_policy.clone(),
                 validation_expectation: footer.validation_expectation.clone(),
                 response_expectation: footer.response_expectation.clone(),
+                task_effort: footer.task_effort.clone(),
+                task_effort_why: footer.task_effort_why.clone(),
             })
             .or_else(|| {
                 existing
@@ -182,10 +189,16 @@ fn load_project_tasks(
         .map_err(|err| CoordinationError::StoreError(err.to_string()))
 }
 
+/// The task a member is on, and the effort its lead attached to it.
+///
+/// The two travel together on purpose: an effort read from anywhere else —
+/// the newest message in an inbox that keeps every assignment ever delivered —
+/// would outlive the task it was asked for and pair one task with another
+/// assignment's level.
 fn latest_owned_task_from_tasks(
     tasks: &[taurhaus_lib::db::task_queries::PersistedTask],
     member_name: &str,
-) -> OperationalTaskSnapshot {
+) -> (OperationalTaskSnapshot, Option<AssignmentEffort>) {
     let task = tasks
         .iter()
         .filter(|task| task.owner.as_deref() == Some(member_name))
@@ -197,12 +210,28 @@ fn latest_owned_task_from_tasks(
                 .then_with(|| left.state_changed_at.cmp(&right.state_changed_at))
         });
 
-    task.map(|task| OperationalTaskSnapshot {
-        id: task.source_task_id.clone(),
-        subject: task.subject.clone(),
-        status: task.status.clone(),
-    })
-    .unwrap_or_default()
+    let effort = task.and_then(|task| {
+        Some(AssignmentEffort {
+            level: trimmed(task.effort.as_deref())?.to_ascii_lowercase(),
+            why: trimmed(task.effort_why.as_deref()),
+        })
+    });
+    let snapshot = task
+        .map(|task| OperationalTaskSnapshot {
+            id: task.source_task_id.clone(),
+            subject: task.subject.clone(),
+            status: task.status.clone(),
+        })
+        .unwrap_or_default();
+
+    (snapshot, effort)
+}
+
+fn trimmed(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn build_member_snapshot(
@@ -211,6 +240,7 @@ fn build_member_snapshot(
     member_name: &str,
     project_path: &str,
     task: OperationalTaskSnapshot,
+    effort: Option<AssignmentEffort>,
 ) -> OperationalContextSnapshot {
     OperationalContextSnapshot {
         version: existing.map_or(1, |snapshot| snapshot.version),
@@ -218,9 +248,21 @@ fn build_member_snapshot(
         member_name: member_name.to_string(),
         updated_at: Utc::now(),
         task,
-        assignment_footer: existing
-            .map(|snapshot| snapshot.assignment_footer.clone())
-            .unwrap_or_default(),
+        assignment_footer: {
+            let mut footer = existing
+                .map(|snapshot| snapshot.assignment_footer.clone())
+                .unwrap_or_default();
+            // Written and cleared together with the task: a member with
+            // nothing assigned has no task effort, and the level of a finished
+            // assignment is not what it is working under now.
+            let (level, why) = match effort {
+                Some(effort) => (effort.level, effort.why.unwrap_or_default()),
+                None => (String::new(), String::new()),
+            };
+            footer.task_effort = level;
+            footer.task_effort_why = why;
+            footer
+        },
         ownership: existing
             .map(|snapshot| snapshot.ownership.clone())
             .unwrap_or_default(),
@@ -348,6 +390,8 @@ mod tests {
                 archived_at: None,
                 last_status: Some("in_progress".to_string()),
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             },
         )
         .expect("upsert task");
@@ -367,6 +411,164 @@ mod tests {
         assert_eq!(snapshot.task.subject, "Fix regression");
         assert_eq!(snapshot.task.status, "in_progress");
         assert_eq!(snapshot.working_set.project_path, "proj-web");
+    }
+
+    #[test]
+    fn a_member_with_no_assignment_effort_keeps_an_empty_footer_pair() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert!(snapshot.assignment_footer.task_effort.is_empty());
+        assert!(snapshot.assignment_footer.task_effort_why.is_empty());
+    }
+
+    fn owned_task(
+        source_task_id: &str,
+        subject: &str,
+        status: &str,
+        effort: Option<(&str, &str)>,
+    ) -> taurhaus_lib::db::task_queries::PersistedTask {
+        taurhaus_lib::db::task_queries::PersistedTask {
+            project_path: "proj-web".to_string(),
+            source: "claude".to_string(),
+            source_key: "session-1".to_string(),
+            source_task_id: source_task_id.to_string(),
+            subject: subject.to_string(),
+            description: None,
+            active_form: None,
+            status: status.to_string(),
+            blocks: vec![],
+            blocked_by: vec![],
+            owner: Some("frontend-dev".to_string()),
+            session_id: None,
+            first_seen_at: "2026-03-08T12:00:00Z".to_string(),
+            state_changed_at: Some("2026-03-08T12:00:00Z".to_string()),
+            updated_at: "2026-03-08T12:00:00Z".to_string(),
+            archived_at: None,
+            last_status: Some(status.to_string()),
+            archived_reason: None,
+            effort: effort.map(|(level, _)| level.to_string()),
+            effort_why: effort.map(|(_, why)| why.to_string()),
+        }
+    }
+
+    fn footer_effort(teams_dir: &Path) -> (String, String) {
+        let snapshot =
+            OperationalContextSnapshotStore::load(teams_dir, "architecture-final", "frontend-dev")
+                .expect("load snapshot")
+                .expect("snapshot exists");
+        (
+            snapshot.assignment_footer.task_effort,
+            snapshot.assignment_footer.task_effort_why,
+        )
+    }
+
+    // Regression: 5384985 took the newest effort-bearing message in the
+    // member's inbox whatever task the snapshot had selected, so a member
+    // owning two tasks showed one task's subject beside the other's level.
+    #[test]
+    fn the_footer_carries_the_effort_of_the_task_the_member_is_on() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task(
+                "41",
+                "Queued cleanup",
+                "pending",
+                Some(("low", "mechanical")),
+            ),
+        )
+        .expect("upsert queued task");
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task(
+                "42",
+                "Run the migration",
+                "in_progress",
+                Some(("high", "the migration is irreversible")),
+            ),
+        )
+        .expect("upsert active task");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+        assert_eq!(snapshot.task.id, "42");
+        assert_eq!(
+            (
+                snapshot.assignment_footer.task_effort,
+                snapshot.assignment_footer.task_effort_why
+            ),
+            (
+                "high".to_string(),
+                "the migration is irreversible".to_string()
+            )
+        );
+    }
+
+    // Regression: the same commit never cleared the pair, so the level of a
+    // finished assignment stayed on the node as the member's current task
+    // effort until another assignment arrived.
+    #[test]
+    fn a_finished_assignment_stops_showing_its_effort() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task(
+                "42",
+                "Run the migration",
+                "in_progress",
+                Some(("high", "the migration is irreversible")),
+            ),
+        )
+        .expect("upsert task");
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+        assert_eq!(footer_effort(teams.path()).0, "high");
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task(
+                "42",
+                "Run the migration",
+                "completed",
+                Some(("high", "the migration is irreversible")),
+            ),
+        )
+        .expect("complete task");
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        assert_eq!(
+            footer_effort(teams.path()),
+            (String::new(), String::new()),
+            "a member with nothing assigned has no task effort"
+        );
     }
 
     #[test]
@@ -396,6 +598,8 @@ mod tests {
                 archived_at: None,
                 last_status: Some("completed".to_string()),
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             },
         )
         .expect("upsert task");
@@ -444,6 +648,8 @@ mod tests {
                 archived_at: None,
                 last_status: Some("in_progress".to_string()),
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             },
         )
         .expect("upsert task");
@@ -513,6 +719,8 @@ mod tests {
                         adjacent_fix_policy: "no".to_string(),
                         validation_expectation: "cargo check --tests".to_string(),
                         response_expectation: "report-on-completion".to_string(),
+                        task_effort: String::new(),
+                        task_effort_why: String::new(),
                     },
                 ),
                 ownership: Some(crate::coordination::requests::OperationalOwnershipContext {

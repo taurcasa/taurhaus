@@ -32,6 +32,15 @@ pub struct OperationalAssignmentFooterSnapshot {
     pub validation_expectation: String,
     #[serde(default)]
     pub response_expectation: String,
+    /// Reasoning effort the lead attached to the current assignment.
+    ///
+    /// Written by mesh onto the assignment, read back here; empty when the
+    /// member has no assignment carrying one.
+    #[serde(default)]
+    pub task_effort: String,
+    /// Why the lead chose that level.
+    #[serde(default)]
+    pub task_effort_why: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +203,8 @@ mod tests {
                 adjacent_fix_policy: "no".to_string(),
                 validation_expectation: "cargo check --tests".to_string(),
                 response_expectation: "report-on-completion".to_string(),
+                task_effort: String::new(),
+                task_effort_why: String::new(),
             },
             ownership: OperationalOwnershipSnapshot {
                 override_allowed: false,

@@ -73,7 +73,7 @@ mod tests {
         let count: i64 = conn2
             .query_row("SELECT COUNT(*) FROM _migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(count, 13);
+        assert_eq!(count, crate::db::migrations::MIGRATIONS.len() as i64);
     }
 
     #[test]

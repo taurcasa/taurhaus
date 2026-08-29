@@ -2770,6 +2770,8 @@ fn live_team_status_round_trip() {
                 pane_id: Some("%1".to_string()),
                 session_id: Some("sess-lead".to_string()),
                 workflow_activity: None,
+                task_effort: None,
+                task_effort_why: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2790,6 +2792,8 @@ fn live_team_status_round_trip() {
                 pane_id: Some("%2".to_string()),
                 session_id: None,
                 workflow_activity: None,
+                task_effort: None,
+                task_effort_why: None,
             },
         ],
     };
@@ -2828,6 +2832,8 @@ fn project_mesh_snapshot_round_trip() {
                 pane_id: Some("%2".to_string()),
                 session_id: Some("sess-frontend".to_string()),
                 workflow_activity: None,
+                task_effort: None,
+                task_effort_why: None,
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3309,6 +3315,137 @@ fn live_team_status_carries_the_member_runtime_session_id() {
         .find(|member| member.name == "frontend-dev")
         .expect("frontend-dev is on the roster");
     assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn live_team_status_carries_the_task_effort_the_lead_asked_for() {
+    // The node shows the launch effort; the level the lead attached to the
+    // current assignment is a different number and has to travel beside it.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    seed_assignment_effort(tmp.path(), "frontend-dev", "high", "irreversible migration");
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.task_effort.as_deref(), Some("high"));
+    assert_eq!(
+        member.task_effort_why.as_deref(),
+        Some("irreversible migration")
+    );
+
+    let untouched = status
+        .members
+        .iter()
+        .find(|member| member.name != "frontend-dev")
+        .expect("the team has another member");
+    assert_eq!(untouched.task_effort, None);
+    assert_eq!(untouched.task_effort_why, None);
+}
+
+#[test]
+fn project_mesh_snapshot_carries_the_task_effort_the_lead_asked_for() {
+    // The cold-start roster feeds the same canvas, so it carries the same pair.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    seed_assignment_effort(tmp.path(), "frontend-dev", "medium", "routine lane work");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    let member = snapshot
+        .team_status
+        .expect("team status")
+        .members
+        .into_iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.task_effort.as_deref(), Some("medium"));
+    assert_eq!(member.task_effort_why.as_deref(), Some("routine lane work"));
+}
+
+fn seed_assignment_effort(teams_dir: &std::path::Path, member_name: &str, level: &str, why: &str) {
+    // mesh writes the effort onto the task record it assigns; taurhaus reads
+    // it back off the task the member is on, so that is what a fixture seeds.
+    let config =
+        crate::coordination::stores::TeamConfigStore::load(teams_dir, "architecture-final")
+            .expect("team config");
+    let project_path = config
+        .members
+        .iter()
+        .find(|member| member.name == member_name)
+        .expect("member is on the roster")
+        .project_path
+        .display()
+        .to_string();
+
+    let db = tempfile::NamedTempFile::new().expect("temp db");
+    let conn = taurhaus_lib::db::init_db(db.path()).expect("db");
+    taurhaus_lib::db::task_queries::upsert_task(
+        &conn,
+        &taurhaus_lib::db::task_queries::PersistedTask {
+            project_path,
+            source: "claude".to_string(),
+            source_key: "session-1".to_string(),
+            source_task_id: "42".to_string(),
+            subject: "Run the migration".to_string(),
+            description: None,
+            active_form: None,
+            status: "in_progress".to_string(),
+            blocks: vec![],
+            blocked_by: vec![],
+            owner: Some(member_name.to_string()),
+            session_id: None,
+            first_seen_at: "2026-08-29T09:00:00Z".to_string(),
+            state_changed_at: Some("2026-08-29T09:00:00Z".to_string()),
+            updated_at: "2026-08-29T09:00:00Z".to_string(),
+            archived_at: None,
+            last_status: Some("in_progress".to_string()),
+            archived_reason: None,
+            effort: Some(level.to_string()),
+            effort_why: Some(why.to_string()),
+        },
+    )
+    .expect("upsert assigned task");
+
+    crate::coordination::operational_context::sync_team_snapshots(
+        teams_dir,
+        &conn,
+        "architecture-final",
+    )
+    .expect("sync snapshots");
 }
 
 #[test]

@@ -58,6 +58,14 @@ pub struct OperationalReinjectionTask {
     pub execution_mode: String,
     pub validation_expectation: String,
     pub response_expectation: String,
+    /// Reasoning effort the lead attached to this assignment. Empty when the
+    /// assignment carried none. Additive, so a card written before the field
+    /// existed still decodes.
+    #[serde(default)]
+    pub effort: String,
+    /// Why the lead chose that level.
+    #[serde(default)]
+    pub effort_why: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,6 +178,12 @@ impl CompactionReinjectionService {
                     .response_expectation
                     .trim()
                     .to_string(),
+                effort: snapshot.assignment_footer.task_effort.trim().to_string(),
+                effort_why: snapshot
+                    .assignment_footer
+                    .task_effort_why
+                    .trim()
+                    .to_string(),
             },
             boundaries: OperationalReinjectionBoundaries {
                 file_ownership_boundary: normalize_list(
@@ -205,6 +219,13 @@ impl CompactionReinjectionService {
             format!("Current task: #{} — {}", card.task.id, card.task.subject),
         ];
 
+        if !card.task.effort.is_empty() {
+            lines.push(if card.task.effort_why.is_empty() {
+                format!("Effort: {}", card.task.effort)
+            } else {
+                format!("Effort: {} — {}", card.task.effort, card.task.effort_why)
+            });
+        }
         if !card.task.execution_mode.is_empty() {
             lines.push(format!("Execution mode: {}", card.task.execution_mode));
         }
@@ -498,6 +519,8 @@ mod tests {
                 adjacent_fix_policy: "no".to_string(),
                 validation_expectation: "report-only".to_string(),
                 response_expectation: "report-on-completion".to_string(),
+                task_effort: String::new(),
+                task_effort_why: String::new(),
             },
             ownership: OperationalOwnershipSnapshot {
                 override_allowed: false,
@@ -606,6 +629,8 @@ mod tests {
                     execution_mode: "recommend".to_string(),
                     validation_expectation: "report-only".to_string(),
                     response_expectation: "report-on-completion".to_string(),
+                    effort: String::new(),
+                    effort_why: String::new(),
                 },
                 boundaries: OperationalReinjectionBoundaries {
                     file_ownership_boundary: vec![
@@ -765,6 +790,64 @@ mod tests {
         assert!(rendered.contains(
             "Next action: continue the current task immediately with this restored context."
         ));
+    }
+
+    #[test]
+    fn the_card_restates_the_effort_the_lead_asked_for() {
+        // A compaction is exactly where the member loses the `/effort` mesh
+        // typed into the pane and the reason that came with it.
+        let mut snapshot = sample_snapshot();
+        snapshot.assignment_footer.task_effort = "high".to_string();
+        snapshot.assignment_footer.task_effort_why = "the migration is irreversible".to_string();
+
+        let card = CompactionReinjectionService::compose_at(
+            &sample_member(),
+            &snapshot,
+            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+
+        assert_eq!(card.task.effort, "high");
+        assert_eq!(card.task.effort_why, "the migration is irreversible");
+
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render text");
+        assert!(rendered.contains("Effort: high — the migration is irreversible"));
+    }
+
+    #[test]
+    fn a_card_without_an_effort_says_nothing_about_one() {
+        let card = CompactionReinjectionService::compose_at(
+            &sample_member(),
+            &sample_snapshot(),
+            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render text");
+        assert!(!rendered.contains("Effort:"));
+    }
+
+    #[test]
+    fn an_effort_without_a_reason_still_states_the_level() {
+        let mut snapshot = sample_snapshot();
+        snapshot.assignment_footer.task_effort = "medium".to_string();
+
+        let card = CompactionReinjectionService::compose_at(
+            &sample_member(),
+            &snapshot,
+            DateTime::parse_from_rfc3339("2026-03-08T14:10:05Z")
+                .expect("timestamp")
+                .with_timezone(&Utc),
+        );
+
+        let rendered = CompactionReinjectionService::render_additional_context_text(&card)
+            .expect("render text");
+        assert!(rendered.contains("Effort: medium"));
+        assert!(!rendered.contains("Effort: medium —"));
     }
 
     #[test]

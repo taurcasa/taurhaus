@@ -128,6 +128,8 @@ fn persist_task_scan_with_generation_and_operational_dir(
                         archived_at: None,
                         last_status: Some(t.status.to_string()),
                         archived_reason: None,
+                        effort: t.effort.clone(),
+                        effort_why: t.effort_why.clone(),
                     });
             }
         }
@@ -513,6 +515,8 @@ mod tests {
                 archived_at: None,
                 last_status: None,
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             }],
             errors: vec![],
             source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
@@ -535,6 +539,8 @@ mod tests {
                         archived_at: None,
                         last_status: None,
                         archived_reason: None,
+                        effort: None,
+                        effort_why: None,
                     },
                 ]),
             }],
@@ -651,6 +657,8 @@ mod tests {
                 archived_at: None,
                 last_status: None,
                 archived_reason: None,
+                effort: None,
+                effort_why: None,
             }],
             errors: vec![],
             source_outcomes: vec![crate::task_scanner::SourceScanOutcome {
@@ -673,6 +681,8 @@ mod tests {
                         archived_at: None,
                         last_status: None,
                         archived_reason: None,
+                        effort: None,
+                        effort_why: None,
                     },
                 ]),
             }],

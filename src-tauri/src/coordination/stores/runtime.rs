@@ -43,6 +43,35 @@ pub struct MemberRuntimeRecord {
     pub delivery_lease: Option<DeliveryLease>,
     pub attached_at: Option<DateTime<Utc>>,
     pub last_seen_at: Option<DateTime<Utc>>,
+    /// Reasoning effort currently in force for the running session.
+    ///
+    /// Shared with mesh, which reads and writes it under `appliedEffort`
+    /// before it types `/effort` into the pane, so the key spelling is part of
+    /// the contract. Seeded by the launch effort so a member is never asked to
+    /// switch to the level it already runs at.
+    #[serde(
+        default,
+        rename = "appliedEffort",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub applied_effort: Option<String>,
+    /// Relaunches that tried and failed to reach one assignment's effort.
+    ///
+    /// A failed relaunch leaves `applied_effort` at the level the session was
+    /// actually running, so the switch stays pending and is tried again; this
+    /// is what keeps that retry bounded. Cleared by any launch that commits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort_resume_failure: Option<EffortResumeFailure>,
+}
+
+/// How often a member has failed to reach one requested effort level.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffortResumeFailure {
+    /// The level that could not be reached.
+    pub level: String,
+    /// Attempts spent on it since the last launch that committed.
+    pub attempts: u32,
 }
 
 /// Stateless filesystem-backed store for member runtime documents.
@@ -68,6 +97,12 @@ impl MemberRuntimeStore {
     }
 
     /// Save runtime state atomically via advisory lock + `<member>.json.tmp` + rename.
+    ///
+    /// Two locks, always in this order: the team `.lock` serializes taurhaus's
+    /// own stores, and the record file's own advisory lock is the one mesh
+    /// takes — `appliedEffort` lives in this file and mesh writes it, so
+    /// without the second lock the two processes' whole snapshots overwrite
+    /// each other.
     pub fn save(
         teams_dir: &Path,
         team_name: &str,
@@ -78,11 +113,55 @@ impl MemberRuntimeStore {
         let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
             log_runtime_store_error("lock", &lock_path, err, None);
         })?;
+        let target_path = runtime_record_path(teams_dir, team_name, member_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
+            .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
-        save_runtime_record_locked(teams_dir, team_name, member_name, record)
+        save_runtime_record_locked(teams_dir, team_name, member_name, record, &target_lock)
     }
 
-    /// Update a runtime record while holding the team lock across read and write.
+    /// Save a snapshot loaded earlier, keeping whatever level mesh has put into
+    /// force since.
+    ///
+    /// The liveness passes load every record for a team, decide what changed,
+    /// and save the whole snapshot back. mesh is the only writer of
+    /// `appliedEffort` and writes it into the same file, so a snapshot taken
+    /// before that write would silently revert the level the member is actually
+    /// running at. Re-reading the field under the target-file lock — the lock
+    /// mesh takes too — is what keeps a save that owns nothing about the level
+    /// from overwriting it.
+    ///
+    /// For a caller that *does* own the level — a launch, which puts the member
+    /// at the effort its own command carried — [`Self::save`] is the right
+    /// entry point.
+    pub fn save_preserving_applied_effort(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        record: &MemberRuntimeRecord,
+    ) -> Result<(), CoordinationError> {
+        let lock_path = team_dir(teams_dir, team_name).join(".lock");
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
+            log_runtime_store_error("lock", &lock_path, err, None);
+        })?;
+        let target_path = runtime_record_path(teams_dir, team_name, member_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
+            .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
+
+        let mut record = record.clone();
+        let raw = target_lock.read_contents()?;
+        if !raw.trim().is_empty() {
+            // A record this store cannot parse is one it is about to replace
+            // anyway; the caller's own value stands.
+            if let Ok(current) = parse_runtime_record(&raw, team_name, member_name) {
+                record.applied_effort = current.applied_effort;
+            }
+        }
+
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
+    }
+
+    /// Update a runtime record while holding both locks across read and write.
     pub fn update<F>(
         teams_dir: &Path,
         team_name: &str,
@@ -97,18 +176,28 @@ impl MemberRuntimeStore {
             log_runtime_store_error("lock", &lock_path, err, None);
         })?;
         let path = runtime_record_path(teams_dir, team_name, member_name);
-        let raw =
-            super::lock::read_to_string_with_retry(&path).map_err(|err| match err.kind() {
-                std::io::ErrorKind::NotFound => CoordinationError::NotFound(format!(
-                    "runtime state not found for member '{member_name}' in team '{team_name}'"
-                )),
-                _ => CoordinationError::Io(err),
-            })?;
+        let not_found = || {
+            CoordinationError::NotFound(format!(
+                "runtime state not found for member '{member_name}' in team '{team_name}'"
+            ))
+        };
+        // The record must already exist, so the lock is taken on the file
+        // itself rather than created: locking by creating would turn a missing
+        // record into an empty one every later read has to treat as corrupt.
+        let Some(target_lock) = super::lock::TargetFileLock::acquire_if_exists(&path)
+            .inspect_err(|err| log_runtime_store_error("lock", &path, err, None))?
+        else {
+            return Err(not_found());
+        };
+        let raw = target_lock.read_contents()?;
+        if raw.trim().is_empty() {
+            return Err(not_found());
+        }
         let mut record = parse_runtime_record(&raw, team_name, member_name)?;
         update(&mut record);
         record.schema_version = RUNTIME_SCHEMA_VERSION;
         record.member_name = member_name.to_string();
-        save_runtime_record_locked(teams_dir, team_name, member_name, &record)?;
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)?;
         Ok(record)
     }
 
@@ -250,6 +339,7 @@ fn save_runtime_record_locked(
     team_name: &str,
     member_name: &str,
     record: &MemberRuntimeRecord,
+    _target_lock: &super::lock::TargetFileLock,
 ) -> Result<(), CoordinationError> {
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
@@ -356,6 +446,10 @@ fn parse_runtime_record(
         attached_at: Option<DateTime<Utc>>,
         #[serde(default)]
         last_seen_at: Option<DateTime<Utc>>,
+        #[serde(default, alias = "appliedEffort")]
+        applied_effort: Option<String>,
+        #[serde(default, alias = "effortResumeFailure")]
+        effort_resume_failure: Option<EffortResumeFailure>,
     }
 
     let wire: RuntimeRecordWire = serde_json::from_str(raw).map_err(|err| {
@@ -379,6 +473,11 @@ fn parse_runtime_record(
         delivery_lease: wire.delivery_lease,
         attached_at: wire.attached_at,
         last_seen_at: wire.last_seen_at,
+        applied_effort: wire
+            .applied_effort
+            .map(|level| level.trim().to_string())
+            .filter(|level| !level.is_empty()),
+        effort_resume_failure: wire.effort_resume_failure,
     })
 }
 
@@ -614,7 +713,75 @@ mod tests {
             }),
             attached_at: Some(ts("2026-03-01T21:00:10Z")),
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
+            applied_effort: None,
+            effort_resume_failure: None,
         }
+    }
+
+    #[test]
+    fn applied_effort_round_trips_through_the_key_mesh_reads() {
+        // mesh writes `appliedEffort` into this record before it types
+        // `/effort` into the pane, and reads it back to decide whether the next
+        // assignment needs the command at all. A save from taurhaus that drops
+        // the key makes mesh restate the level on every assignment — and, for
+        // Claude Code, rewrite the user's saved default each time.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        let mut record = sample_record(member_name);
+        record.applied_effort = Some("high".to_string());
+
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &record)
+            .expect("save should succeed");
+
+        let raw = fs::read_to_string(
+            teams_dir
+                .join(team_name)
+                .join("runtime")
+                .join(format!("{member_name}.json")),
+        )
+        .expect("runtime record on disk");
+        let value: Value = serde_json::from_str(&raw).expect("runtime record is json");
+        assert_eq!(
+            value.get("appliedEffort").and_then(Value::as_str),
+            Some("high"),
+            "mesh reads the level under `appliedEffort`"
+        );
+
+        let loaded = MemberRuntimeStore::load(teams_dir, team_name, member_name)
+            .expect("load should succeed");
+        assert_eq!(loaded.applied_effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn a_record_written_by_mesh_keeps_its_applied_effort() {
+        // mesh's own write is a read-modify-write of the raw JSON, so the key
+        // arrives without any of taurhaus's own fields being restated.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("save should succeed");
+
+        let path = teams_dir
+            .join(team_name)
+            .join("runtime")
+            .join(format!("{member_name}.json"));
+        let mut value: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("record")).expect("json");
+        value["appliedEffort"] = Value::String("medium".to_string());
+        fs::write(&path, serde_json::to_string(&value).expect("json")).expect("write");
+
+        let loaded = MemberRuntimeStore::load(teams_dir, team_name, member_name)
+            .expect("load should succeed");
+        assert_eq!(loaded.applied_effort.as_deref(), Some("medium"));
     }
 
     #[test]
@@ -879,6 +1046,8 @@ mod tests {
             delivery_lease: None,
             attached_at: None,
             last_seen_at: None,
+            applied_effort: None,
+            effort_resume_failure: None,
         };
 
         MemberRuntimeStore::save(teams_dir, team_name, "no-heartbeat", &no_timestamps)
@@ -1134,6 +1303,123 @@ mod tests {
             CoordinationError::NotFound(message) => assert!(message.contains("ghost")),
             other => panic!("expected not found, got {other:?}"),
         }
+    }
+
+    // Regression: 50fc736 made `appliedEffort` a field mesh reads and writes
+    // in this same file, but the store still guarded its read-modify-write
+    // with the team `.lock` alone. mesh takes the target file's own advisory
+    // lock, so the two writers never excluded each other and whichever
+    // renamed last replaced the other's whole snapshot.
+    #[test]
+    fn a_runtime_update_waits_for_a_cross_writer_holding_the_target_file_lock() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().to_path_buf();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        let mut seeded = sample_record(member_name);
+        seeded.applied_effort = Some("low".to_string());
+        MemberRuntimeStore::save(&teams_dir, team_name, member_name, &seeded).expect("seed record");
+
+        // Stand in for mesh: hold the target file's own lock across a
+        // read-modify-write, which is what it does before typing `/effort`.
+        let record_path = runtime_record_path(&teams_dir, team_name, member_name);
+        let foreign = super::super::lock::TargetFileLock::acquire_or_create(&record_path)
+            .expect("cross-writer lock");
+        let mut snapshot: Value = serde_json::from_str(&foreign.read_contents().expect("read"))
+            .expect("runtime record is json");
+        snapshot["appliedEffort"] = Value::String("high".to_string());
+
+        let (started, wait_for_start) = std::sync::mpsc::channel();
+        let updater = {
+            let teams_dir = teams_dir.clone();
+            thread::spawn(move || {
+                started.send(()).expect("signal the updater started");
+                MemberRuntimeStore::update(&teams_dir, team_name, member_name, |record| {
+                    record.health = HealthState::SessionDead;
+                })
+            })
+        };
+        wait_for_start.recv().expect("updater started");
+        thread::sleep(Duration::from_millis(300));
+
+        fs::write(
+            &record_path,
+            serde_json::to_string_pretty(&snapshot).expect("payload"),
+        )
+        .expect("cross-writer write");
+        drop(foreign);
+
+        updater
+            .join()
+            .expect("updater thread")
+            .expect("update succeeds");
+
+        let record =
+            MemberRuntimeStore::load(&teams_dir, team_name, member_name).expect("runtime record");
+        assert_eq!(
+            record.applied_effort.as_deref(),
+            Some("high"),
+            "the level mesh wrote survives taurhaus's own update"
+        );
+        assert_eq!(
+            record.health,
+            HealthState::SessionDead,
+            "taurhaus's update is applied on top of what mesh wrote, not under it"
+        );
+    }
+
+    // Regression: ad75a7b took the target-file lock only around the write, so
+    // it protected `update` but not the shape production liveness actually
+    // uses — load every record, decide what changed, save the whole snapshot
+    // back later. mesh writes `appliedEffort` into the same file in that
+    // window, and the stale snapshot went straight back over it.
+    #[test]
+    fn a_save_of_a_snapshot_keeps_the_level_mesh_wrote_after_it_was_loaded() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().to_path_buf();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        let mut seeded = sample_record(member_name);
+        seeded.applied_effort = Some("low".to_string());
+        MemberRuntimeStore::save(&teams_dir, team_name, member_name, &seeded).expect("seed record");
+
+        // What a liveness pass holds: a snapshot read before it decided.
+        let mut snapshot =
+            MemberRuntimeStore::load(&teams_dir, team_name, member_name).expect("load snapshot");
+
+        // Stand in for mesh, writing between that load and the save.
+        let record_path = runtime_record_path(&teams_dir, team_name, member_name);
+        let mut on_disk: Value =
+            serde_json::from_str(&fs::read_to_string(&record_path).expect("read"))
+                .expect("runtime record is json");
+        on_disk["appliedEffort"] = Value::String("high".to_string());
+        fs::write(
+            &record_path,
+            serde_json::to_string_pretty(&on_disk).expect("payload"),
+        )
+        .expect("cross-writer write");
+
+        snapshot.health = HealthState::SessionDead;
+        MemberRuntimeStore::save_preserving_applied_effort(
+            &teams_dir,
+            team_name,
+            member_name,
+            &snapshot,
+        )
+        .expect("save the reconciled snapshot");
+
+        let record =
+            MemberRuntimeStore::load(&teams_dir, team_name, member_name).expect("runtime record");
+        assert_eq!(
+            record.applied_effort.as_deref(),
+            Some("high"),
+            "the level mesh put into force survives a save of an older snapshot"
+        );
+        assert_eq!(
+            record.health,
+            HealthState::SessionDead,
+            "the caller's own change is still written"
+        );
     }
 
     #[test]

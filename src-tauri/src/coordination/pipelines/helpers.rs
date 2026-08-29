@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -22,7 +23,8 @@ use crate::session_scanner::accounts::{configured_default_dir, to_launch_namespa
 use crate::session_scanner::cli_tool::{spec, CliTool};
 use crate::session_scanner::control::validate_command_override;
 use crate::session_scanner::launch::{
-    base_command, redact_command_for_logging, LaunchNote, LaunchSpec, ModelSpec, TeamContext,
+    base_command, redact_command_for_logging, shell_escape, LaunchNote, LaunchSpec, ModelSpec,
+    TeamContext,
 };
 
 const TMUX_SEND_RETRY_DELAYS: [Duration; 2] =
@@ -219,6 +221,8 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         delivery_lease: None,
         attached_at: None,
         last_seen_at: None,
+        applied_effort: None,
+        effort_resume_failure: None,
     }
 }
 
@@ -238,6 +242,7 @@ pub(super) fn build_cli_launch_command(
         &agent.name,
         role,
         cli_commands.codex_bypass_hook_trust,
+        None,
     )
 }
 
@@ -446,7 +451,151 @@ pub(super) fn build_member_activation_launch_command(
         &context.member.name,
         context.member.role,
         cli_commands.codex_bypass_hook_trust,
+        context.resume_session_id.as_deref(),
     )
+}
+
+/// The token a configured resume command uses for "whatever ran last".
+const RESUME_LAST_FLAG: &str = "--last";
+/// The token the Settings resume command uses for an explicit conversation.
+const RESUME_SESSION_PLACEHOLDER: &str = "{session_id}";
+
+/// Point a configured resume command at one named conversation.
+///
+/// A member's pane is not the only one on its account: `--last` resumes
+/// whichever conversation the account touched most recently, which on a shared
+/// `CODEX_HOME` is somebody else's. The placeholder wins where the operator
+/// wrote one, `--last` is replaced where they did not, and a base that names
+/// neither is appended to — a resume verb with no conversation would open the
+/// interactive picker and the pane would sit there.
+pub(super) fn resume_base_for_session(base: &str, session_id: &str) -> String {
+    let escaped = shell_escape(session_id);
+    if base.contains(RESUME_SESSION_PLACEHOLDER) {
+        return base.replace(RESUME_SESSION_PLACEHOLDER, &escaped);
+    }
+    let mut replaced = false;
+    let rewritten = base
+        .split_whitespace()
+        .map(|token| {
+            if token == RESUME_LAST_FLAG && !replaced {
+                replaced = true;
+                escaped.clone()
+            } else {
+                token.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if replaced {
+        rewritten
+    } else {
+        format!("{} {escaped}", base.trim_end())
+    }
+}
+
+/// The operator's base command without the variable that freezes the harness's
+/// effort level for the whole process.
+///
+/// Claude Code reads `CLAUDE_CODE_EFFORT_LEVEL` once at start-up and lets it
+/// outrank every later `/effort`, so a managed member launched with it would
+/// stay at that level for the session's life and silently discard the level the
+/// lead attaches to each assignment. The registry names the variable, so
+/// nothing here branches on tool identity.
+///
+/// A leading `NAME=value` prefix — the shape the Settings field documents — is
+/// dropped and the rest of the operator's command is kept verbatim. Any other
+/// spelling is refused rather than rewritten: this renderer cannot promise to
+/// edit arbitrary shell safely, and the level must not reach a managed pane by
+/// a route it did not check.
+fn without_frozen_effort_env<'a>(
+    base: &'a str,
+    cli_tool: CliTool,
+    team_name: &str,
+    agent_name: &str,
+) -> Result<Cow<'a, str>, CoordinationError> {
+    let Some(variable) = spec(cli_tool).capabilities.runtime_effort_frozen_env else {
+        return Ok(Cow::Borrowed(base));
+    };
+    if !base.contains(variable) {
+        return Ok(Cow::Borrowed(base));
+    }
+
+    let assignment = format!("{variable}=");
+    let mut kept = String::with_capacity(base.len());
+    let mut cursor = 0;
+    let mut in_env_prefix = true;
+    for (start, end) in word_spans(base) {
+        let word = base[start..end].trim_start_matches(['\'', '"']);
+        if in_env_prefix && word.starts_with(assignment.as_str()) {
+            kept.push_str(&base[cursor..start]);
+            cursor = base[end..]
+                .find(|character: char| !character.is_whitespace())
+                .map_or(end, |offset| end + offset);
+            continue;
+        }
+        if word != "env" && !is_env_assignment(word) {
+            in_env_prefix = false;
+        }
+    }
+    kept.push_str(&base[cursor..]);
+    let kept = kept.trim().to_string();
+
+    if kept.contains(variable) {
+        return Err(CoordinationError::Validation(format!(
+            "the configured '{cli_tool}' command sets {variable}, which freezes the session's \
+             reasoning effort and discards the level every assignment asks for; remove it from \
+             the command in Settings"
+        )));
+    }
+
+    let mut fields = Map::new();
+    fields.insert("team".to_string(), Value::String(team_name.to_string()));
+    fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+    fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+    fields.insert("variable".to_string(), Value::String(variable.to_string()));
+    emit_global(
+        "warn",
+        "coordination",
+        "launch.effort.frozen_env_removed",
+        Some("Removed a frozen effort variable from a managed launch".to_string()),
+        fields,
+    );
+    Ok(Cow::Owned(kept))
+}
+
+/// Byte spans of the whitespace-separated words in `command`.
+fn word_spans(command: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut start = None;
+    for (index, character) in command.char_indices() {
+        match (character.is_whitespace(), start) {
+            (false, None) => start = Some(index),
+            (true, Some(begin)) => {
+                spans.push((begin, index));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(begin) = start {
+        spans.push((begin, command.len()));
+    }
+    spans
+}
+
+/// Whether `word` is a shell `NAME=value` environment assignment.
+fn is_env_assignment(word: &str) -> bool {
+    let Some((name, _)) = word.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 // Runtime-only Codex inputs on `CliCommandSettings` keep command rendering
@@ -462,14 +611,25 @@ fn render_team_launch_command(
     agent_name: &str,
     role: MemberRole,
     codex_bypass_hook_trust: bool,
+    resume_session_id: Option<&str>,
 ) -> Result<String, CoordinationError> {
-    let base = base_command(cli_commands, cli_tool, LaunchMode::Fresh);
+    let mode = if resume_session_id.is_some() {
+        LaunchMode::Resume
+    } else {
+        LaunchMode::Fresh
+    };
+    let base = base_command(cli_commands, cli_tool, mode);
     if base.trim().is_empty() {
         return Err(CoordinationError::Validation(format!(
             "configured launch command is empty for '{}'",
             cli_tool
         )));
     }
+    let base = without_frozen_effort_env(base, cli_tool, team_name, agent_name)?;
+    let base = match resume_session_id {
+        Some(session_id) => Cow::Owned(resume_base_for_session(base.as_ref(), session_id)),
+        None => base,
+    };
 
     let mut model = ModelSpec::parse_legacy(model);
     if reasoning_effort.is_some() {
@@ -493,8 +653,8 @@ fn render_team_launch_command(
         .map(|dir| to_launch_namespace(&dir));
     let rendered = LaunchSpec {
         tool: cli_tool,
-        mode: LaunchMode::Fresh,
-        base,
+        mode,
+        base: base.as_ref(),
         model: model.clone(),
         codex_bypass_hook_trust: capabilities.hook_trust && codex_bypass_hook_trust,
         codex_notify_executable: if capabilities.notify_sink {

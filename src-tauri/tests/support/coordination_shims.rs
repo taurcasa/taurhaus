@@ -68,7 +68,8 @@ pub mod session_scanner {
         use crate::session_scanner::cli_tool::CliTool;
 
         pub use taurhaus_lib::session_scanner::launch::{
-            base_command, redact_command_for_logging, LaunchNote, ModelSpec, RenderedLaunch,
+            base_command, command_contains_flag, redact_command_for_logging, shell_escape,
+            LaunchNote, ModelSpec, RenderedLaunch,
         };
 
         pub struct TeamContext<'a> {

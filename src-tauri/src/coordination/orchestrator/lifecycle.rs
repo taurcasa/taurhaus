@@ -169,6 +169,8 @@ impl CoordinationOrchestrator {
             delivery_lease: None,
             attached_at: None,
             last_seen_at: None,
+            applied_effort: None,
+            effort_resume_failure: None,
         };
         MemberRuntimeStore::save(&self.teams_dir, team_name, &member.name, &runtime)?;
 
@@ -370,6 +372,7 @@ impl CoordinationOrchestrator {
             let member_request = ResumeMemberRequest {
                 team_name: request.team_name.clone(),
                 member_name: member.name.clone(),
+                reasoning_effort_override: None,
             };
             let report = self.resume_member_with_cli_commands_and_layout_and_progress_owned(
                 &member_request,

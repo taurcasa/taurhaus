@@ -648,6 +648,10 @@ fn sync_project_tasks_for_projects(
                     "task_count": task_count,
                 }),
             );
+            crate::commands::coordination::apply_task_effort_after_task_change(
+                app,
+                &normalized_path,
+            );
         }
     }
 
@@ -746,6 +750,8 @@ mod tests {
             archived_at: None,
             last_status: Some(status.to_string()),
             archived_reason: None,
+            effort: None,
+            effort_why: None,
         }
     }
 

@@ -122,6 +122,7 @@ pub(super) fn map_resume_member_request_to_contract(
     contracts::ResumeMemberRequest {
         team_name: request.team_name.clone(),
         member_name: request.member_name.clone(),
+        reasoning_effort_override: None,
     }
 }
 

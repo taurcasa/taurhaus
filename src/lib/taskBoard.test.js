@@ -595,6 +595,45 @@ describe('TaskBoard component', () => {
   // Card selection + detail panel
   // ---------------------------------------------------------------------------
 
+  it('shows the effort the lead assigned, with the reason on hover', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [
+        makeTask({
+          status: 'in_progress',
+          subject: 'Migrate the account store',
+          effort: 'high',
+          effort_why: 'the migration is irreversible',
+        }),
+      ],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Migrate the account store')).toBeTruthy()
+    })
+
+    const chip = screen.getByTestId('task-effort')
+    expect(chip.textContent).toContain('high')
+    expect(chip.getAttribute('title')).toBe(
+      'Task effort: high — the migration is irreversible'
+    )
+  })
+
+  it('shows no effort chip for a task no lead assigned', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: [makeTask({ status: 'pending', subject: 'Local todo' })],
+      errors: [],
+    })
+
+    render(TaskBoard, { props: { projectPath: '/test', dark: true } })
+    await waitFor(() => {
+      expect(screen.getByText('Local todo')).toBeTruthy()
+    })
+
+    expect(screen.queryByTestId('task-effort')).toBeNull()
+  })
+
   it('opens detail panel when card is clicked', async () => {
     const task = makeTask({ status: 'in_progress', subject: 'Clickable task' })
     getProjectTasks.mockResolvedValue({ tasks: [task], errors: [] })

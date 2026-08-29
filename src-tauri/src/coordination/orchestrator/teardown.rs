@@ -23,13 +23,22 @@ const MISSING_LEAD_CONFIG_HASH_REASON: &str = "missing_lead_control_auth_token_h
 const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(super) struct TeardownDiagnostics {
-    pub(super) steps: Vec<RemoveMemberStepResult>,
+pub(crate) struct TeardownDiagnostics {
+    /// Per-resource outcome. Read outside this module by the task-effort pass,
+    /// which must know whether the pane actually came down before it resumes.
+    pub(crate) steps: Vec<RemoveMemberStepResult>,
     pub(super) warnings: Vec<String>,
 }
 
 impl CoordinationOrchestrator {
-    pub(super) fn teardown_member_resources_best_effort(
+    /// Stop everything a member is running: its mesh daemon, its mesh
+    /// membership, and its pane.
+    ///
+    /// `pub(crate)` because the task-effort pass needs it too: the resume
+    /// pipeline relaunches only a member whose session is gone, so a harness
+    /// with no runtime effort command is stopped here before it is relaunched
+    /// at the level the lead asked for.
+    pub(crate) fn teardown_member_resources_best_effort(
         &self,
         team_name: &str,
         member_name: &str,

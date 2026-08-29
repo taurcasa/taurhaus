@@ -15,6 +15,11 @@ function optionalEffort(value) {
   return String(value ?? '').trim() || null
 }
 
+/// The reason a lead gave for an assignment's effort, kept verbatim.
+function optionalText(value) {
+  return String(value ?? '').trim() || null
+}
+
 export function inferTeamName(path) {
   const project = projectNameFromPath(path)
   return `${project}-team`
@@ -94,6 +99,8 @@ export function createLead(overrides = {}, projectPath = '') {
     tool: normalizedTool,
     model: String(overrides.model ?? ''),
     reasoningEffort: optionalEffort(overrides.reasoningEffort ?? overrides.reasoning_effort),
+    taskEffort: optionalEffort(overrides.taskEffort ?? overrides.task_effort),
+    taskEffortWhy: optionalText(overrides.taskEffortWhy ?? overrides.task_effort_why),
     status: activityLevel({ status: overrides.status }),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: false,
@@ -121,6 +128,8 @@ export function createAgent(index, overrides = {}, projectPath = '') {
     tool: normalizedTool,
     model: String(overrides.model ?? ''),
     reasoningEffort: optionalEffort(overrides.reasoningEffort ?? overrides.reasoning_effort),
+    taskEffort: optionalEffort(overrides.taskEffort ?? overrides.task_effort),
+    taskEffortWhy: optionalText(overrides.taskEffortWhy ?? overrides.task_effort_why),
     status: activityLevel({ status: overrides.status }),
     projectId: String(overrides.projectId ?? projectPath ?? ''),
     isCrossProject: Boolean(overrides.isCrossProject ?? overrides.is_cross_project),
@@ -350,6 +359,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
     tool: normalizeTool(member?.cliTool),
     model: String(member?.model || ''),
     reasoningEffort: optionalEffort(member?.reasoningEffort ?? member?.reasoning_effort),
+    taskEffort: optionalEffort(member?.taskEffort ?? member?.task_effort),
+    taskEffortWhy: optionalText(member?.taskEffortWhy ?? member?.task_effort_why),
     status: activityLevel(member),
     projectId: String(member?.projectId ?? member?.project_id ?? projectPath ?? ''),
     description: member?.description ?? null,
@@ -382,6 +393,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
       tool: normalizedLeadMember?.tool ?? 'claude',
       model: normalizedLeadMember?.model ?? '',
       reasoningEffort: normalizedLeadMember?.reasoningEffort ?? null,
+      taskEffort: normalizedLeadMember?.taskEffort ?? null,
+      taskEffortWhy: normalizedLeadMember?.taskEffortWhy ?? null,
       status: normalizedLeadMember?.status ?? 'active',
       projectId: normalizedLeadMember?.projectId ?? projectPath,
       description: normalizedLeadMember?.description ?? 'Team lead',
@@ -411,6 +424,8 @@ export function buildTeamConfigFromRuntimeStatus(status, projectPath = '') {
           tool: member.tool,
           model: member.model,
           reasoningEffort: member.reasoningEffort,
+          taskEffort: member.taskEffort,
+          taskEffortWhy: member.taskEffortWhy,
           status: member.status,
           projectId: member.projectId,
           isCrossProject: member.isCrossProject,

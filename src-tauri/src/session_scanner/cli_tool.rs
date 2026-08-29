@@ -118,11 +118,39 @@ pub enum CompactionDelivery {
     MeshInbox,
 }
 
+/// How a *running* session's reasoning effort is changed.
+///
+/// Backend-only, like `CompactionDelivery`: nothing in the UI branches on it,
+/// and the two paths have different owners. mesh submits the slash command to
+/// the pane before it delivers the assignment notice; taurhaus is the only
+/// component that can relaunch a member, so it owns the flag path — and only
+/// that one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeEffort {
+    /// The harness accepts a one-line command in its own prompt. mesh types it
+    /// into the pane before it delivers the assignment notice; taurhaus never
+    /// sends it, so the grammar is mesh's to spell.
+    SlashCommand,
+    /// The harness has no deterministic one-line grammar, so the level is
+    /// applied by relaunching the session with its effort flag.
+    ResumeWithFlag,
+    /// No runtime path: the launch effort stands for the session's lifetime.
+    None,
+}
+
 /// Capability declarations consumed by tool-agnostic call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
     pub model_flag: Option<&'static str>,
     pub effort_flag: Option<EffortFlag>,
+    /// How the level changes once the session is already running.
+    pub runtime_effort: RuntimeEffort,
+    /// Environment variable that freezes the level for the process's whole
+    /// life, outranking the harness's own runtime effort command.
+    ///
+    /// A managed launch must never set it: the level the lead attaches to each
+    /// assignment would be discarded for the session's whole life.
+    pub runtime_effort_frozen_env: Option<&'static str>,
     pub auto_approve_flag: Option<&'static str>,
     pub display_name_flag: Option<&'static str>,
     pub team_flags: bool,
@@ -234,6 +262,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort_frozen_env: Some("CLAUDE_CODE_EFFORT_LEVEL"),
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: Some("-n"),
                 team_flags: true,
@@ -297,6 +327,10 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                     flag: "-c",
                     key: "model_reasoning_effort",
                 }),
+                // Codex 0.150.1 changes effort only through its interactive
+                // `/model` picker, which has no one-line grammar to type.
+                runtime_effort: RuntimeEffort::ResumeWithFlag,
+                runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--yolo"),
                 display_name_flag: None,
                 team_flags: false,
@@ -383,6 +417,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: None,
                 team_flags: false,
@@ -519,6 +555,8 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--always-approve"),
                 display_name_flag: None,
                 team_flags: false,
@@ -591,6 +629,8 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     capabilities: CliCapabilities {
         model_flag: None,
         effort_flag: None,
+        runtime_effort: RuntimeEffort::None,
+        runtime_effort_frozen_env: None,
         auto_approve_flag: None,
         display_name_flag: None,
         team_flags: false,
@@ -668,6 +708,21 @@ pub fn command_settings_for(settings: &CliCommandSettings, tool: CliTool) -> &To
         CliTool::Agy => &settings.agy,
         CliTool::Grok => &settings.grok,
         CliTool::Unknown => &EMPTY,
+    }
+}
+
+/// Mutable sibling of [`command_settings_for`], for the one caller that has to
+/// rewrite a configured base before it renders a launch from it.
+pub fn command_settings_for_mut(
+    settings: &mut CliCommandSettings,
+    tool: CliTool,
+) -> Option<&mut ToolCommands> {
+    match tool {
+        CliTool::Claude => Some(&mut settings.claude),
+        CliTool::Codex => Some(&mut settings.codex),
+        CliTool::Agy => Some(&mut settings.agy),
+        CliTool::Grok => Some(&mut settings.grok),
+        CliTool::Unknown => None,
     }
 }
 

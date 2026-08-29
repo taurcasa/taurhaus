@@ -272,6 +272,20 @@ impl CoordinationOrchestrator {
         if let Some(health) = patch.health {
             runtime.health = health;
         }
+        // A launch puts the member at the effort its command carried, so the
+        // record mesh reads before typing `/effort` starts from what is
+        // actually in force rather than from whatever the last session ended
+        // at. An unset effort clears it: the CLI's own default applies.
+        runtime.applied_effort = context
+            .member
+            .reasoning_effort
+            .as_deref()
+            .map(str::trim)
+            .filter(|level| !level.is_empty())
+            .map(str::to_ascii_lowercase);
+        // A launch that commits is the member reaching a level, so whatever
+        // budget an earlier failed effort switch spent is spent no longer.
+        runtime.effort_resume_failure = None;
 
         MemberRuntimeStore::save(
             &self.teams_dir,

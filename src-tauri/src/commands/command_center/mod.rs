@@ -413,6 +413,7 @@ fn delegate_launch_to_coordination_resume(
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),
         member_name: target.member_name.clone(),
+        reasoning_effort_override: None,
     };
 
     let report = coordination_state
