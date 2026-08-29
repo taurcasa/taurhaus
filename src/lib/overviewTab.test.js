@@ -27,6 +27,12 @@ vi.mock('./MarkdownRenderer.svelte', () => {
   }
 })
 
+vi.mock('./sessionStore.svelte.js', () => ({
+  getSessionsForProject: vi.fn(() => []),
+}))
+
+const { getSessionsForProject } = await import('./sessionStore.svelte.js')
+
 import OverviewTab from './OverviewTab.svelte'
 import OverviewTabContextHarness from './OverviewTabContextHarness.svelte'
 import { accountState, resetAccountsForTest } from './accounts.svelte.js'
@@ -517,5 +523,30 @@ describe('OverviewTab', () => {
   it('renders without errors in dark mode', () => {
     const { container } = render(OverviewTab, { props: defaultProps({ dark: true }) })
     expect(container.querySelector('h1')).toBeTruthy()
+  })
+})
+
+describe('OverviewTab workflow runs', () => {
+  beforeEach(() => {
+    resetAccountsForTest()
+    getSessionsForProject.mockReturnValue([])
+  })
+
+  it('has no workflow section for a project with no known sessions', async () => {
+    render(OverviewTab, { props: { data: { selectedProject: makeProject() } } })
+
+    await waitFor(() => expect(screen.getByText('Project info')).toBeInTheDocument())
+    expect(screen.queryByTestId('overview-workflow-runs')).not.toBeInTheDocument()
+  })
+
+  it('lists the runs of a project whose session has them', async () => {
+    getSessionsForProject.mockReturnValue([{ session_id: 'abc-123-def' }])
+
+    render(OverviewTab, { props: { data: { selectedProject: makeProject() } } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('overview-workflow-runs')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
   })
 })
