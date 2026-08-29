@@ -3682,6 +3682,62 @@ fn a_codex_member_is_relaunched_with_the_assignment_effort() {
     assert_eq!(record.applied_effort.as_deref(), Some("high"));
 }
 
+// Regression: d055165 bounded a pending effort switch to assignments delivered
+// at or after the running session's `attached_at`, and an operator's own resume
+// resets that stamp while carrying no level of its own. A task assigned while
+// the member was stopped therefore came back at the launch effort, and its
+// older timestamp excluded it from every later pass.
+#[test]
+fn a_resume_carries_the_effort_of_an_assignment_made_while_the_member_was_down() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .rfind(|keys| keys.contains("codex"))
+        .expect("a codex launch was sent to the pane");
+    assert!(
+        launch.contains("high"),
+        "the resume must carry the open assignment's level, got: {launch}"
+    );
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("high"),
+        "the member is back at the level the open assignment asked for"
+    );
+
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+    assert!(
+        resumed.is_empty(),
+        "the resume already put the level into force; nothing is taken down again"
+    );
+}
+
 #[test]
 fn a_resume_base_is_pointed_at_the_named_conversation() {
     use super::helpers::resume_base_for_session;

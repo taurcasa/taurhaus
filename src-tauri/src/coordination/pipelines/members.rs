@@ -318,6 +318,33 @@ impl CoordinationOrchestrator {
         Ok(resumed)
     }
 
+    /// The level the member's open assignment asks for, for a member being
+    /// started rather than switched.
+    ///
+    /// A pending effort switch is bounded to assignments delivered since the
+    /// running session attached, because an inbox keeps every assignment ever
+    /// delivered and an old one is no reason to take a live pane down. A member
+    /// that is being started now has no such session: the newest assignment in
+    /// its inbox is the work it is coming back to, and its level is the one it
+    /// must come back at. Only a harness that changes effort by being
+    /// relaunched needs this — every other one takes the level from its own
+    /// prompt once it is up.
+    pub(super) fn open_assignment_effort(
+        &self,
+        team_name: &str,
+        member: &Member,
+    ) -> Option<String> {
+        if !task_effort::relaunches_for_effort(member.cli_tool) {
+            return None;
+        }
+        let messages = MeshInboxStore::load(&self.teams_dir, team_name, &member.name).ok()?;
+        let assigned = task_effort::assignment_effort_since(
+            &messages,
+            chrono::DateTime::<chrono::Utc>::MIN_UTC,
+        )?;
+        task_effort::resume_effort_target(member.cli_tool, Some(&assigned.level), None)
+    }
+
     /// The effort a member must be relaunched to reach, if any.
     fn pending_member_effort(&self, team_name: &str, member: &Member) -> Option<PendingEffort> {
         // Every other harness takes the level through its own prompt. Asking
@@ -850,23 +877,35 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             self.orchestrator.load_resume_member_state(request)?;
         let mut activation_context =
             MemberActivationContext::for_resume_member(&request.team_name, &lead_name, &member);
-        if let Some(level) = request
+        match request
             .reasoning_effort_override
             .as_deref()
             .map(str::trim)
             .filter(|level| !level.is_empty())
         {
-            activation_context.member.reasoning_effort = Some(level.to_ascii_lowercase());
-            // An effort switch is taurhaus's own relaunch of a session the
-            // member was already working in. Starting fresh would drop the
-            // context the assignment builds on, so the relaunch resumes the
-            // conversation the runtime record names.
-            activation_context.resume_session_id = runtime_record
-                .session_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|session_id| !session_id.is_empty())
-                .map(ToString::to_string);
+            Some(level) => {
+                activation_context.member.reasoning_effort = Some(level.to_ascii_lowercase());
+                // An effort switch is taurhaus's own relaunch of a session the
+                // member was already working in. Starting fresh would drop the
+                // context the assignment builds on, so the relaunch resumes the
+                // conversation the runtime record names.
+                activation_context.resume_session_id = runtime_record
+                    .session_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|session_id| !session_id.is_empty())
+                    .map(ToString::to_string);
+            }
+            // An operator's own resume carries no level, so the member would
+            // come back at whatever its config says and the assignment it is
+            // coming back to would be excluded from every later pass by its own
+            // age. The open assignment's level is the one it must come back at.
+            None => {
+                activation_context.member.reasoning_effort = self
+                    .orchestrator
+                    .open_assignment_effort(&request.team_name, &member)
+                    .or(activation_context.member.reasoning_effort);
+            }
         }
         Ok(PreparedMemberActivation {
             member,
