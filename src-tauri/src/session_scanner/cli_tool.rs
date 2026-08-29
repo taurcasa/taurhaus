@@ -121,15 +121,16 @@ pub enum CompactionDelivery {
 /// How a *running* session's reasoning effort is changed.
 ///
 /// Backend-only, like `CompactionDelivery`: nothing in the UI branches on it,
-/// and the two paths have different owners. Mesh submits the slash command to
+/// and the two paths have different owners. mesh submits the slash command to
 /// the pane before it delivers the assignment notice; taurhaus is the only
-/// component that can relaunch a member, so it owns the flag path.
+/// component that can relaunch a member, so it owns the flag path — and only
+/// that one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeEffort {
-    /// The harness accepts a one-line command in its own prompt. `template`
-    /// spells it with a `{level}` placeholder, so nothing outside the registry
-    /// has to know the grammar.
-    SlashCommand { template: &'static str },
+    /// The harness accepts a one-line command in its own prompt. mesh types it
+    /// into the pane before it delivers the assignment notice; taurhaus never
+    /// sends it, so the grammar is mesh's to spell.
+    SlashCommand,
     /// The harness has no deterministic one-line grammar, so the level is
     /// applied by relaunching the session with its effort flag.
     ResumeWithFlag,
@@ -261,9 +262,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
-                runtime_effort: RuntimeEffort::SlashCommand {
-                    template: "/effort {level}",
-                },
+                runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: Some("CLAUDE_CODE_EFFORT_LEVEL"),
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: Some("-n"),
@@ -418,9 +417,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
-                runtime_effort: RuntimeEffort::SlashCommand {
-                    template: "/effort {level}",
-                },
+                runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: None,
@@ -558,9 +555,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
-                runtime_effort: RuntimeEffort::SlashCommand {
-                    template: "/effort {level}",
-                },
+                runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--always-approve"),
                 display_name_flag: None,

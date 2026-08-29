@@ -14,8 +14,7 @@ use crate::coordination::requests::{
     OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest, StepProgress, StepStatus,
 };
 use crate::coordination::runtime::{
-    emit_foreign_pane_event, pane_belongs_to_member, resolve_or_create_pane_for_member,
-    PaneOwnership, PaneResolution,
+    emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
 };
 use crate::coordination::stores::{
     EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeStore, MeshInboxStore, TeamConfigStore,
@@ -228,18 +227,12 @@ impl CoordinationOrchestrator {
         let mut resumed = Vec::new();
 
         for member in &config.members {
-            let Some(delivery) = task_effort::taurhaus_effort_delivery(member.cli_tool) else {
-                continue;
-            };
-            let Some(pending) = self.pending_member_effort(team_name, member, delivery) else {
-                continue;
-            };
-            if let task_effort::EffortDelivery::Prompt { template } = delivery {
-                if self.submit_member_effort_command(team_name, member, template, &pending) {
-                    resumed.push(member.name.clone());
-                }
+            if !task_effort::relaunches_for_effort(member.cli_tool) {
                 continue;
             }
+            let Some(pending) = self.pending_member_effort(team_name, member) else {
+                continue;
+            };
             // The renderer keeps an effort the operator's own base already
             // pins and drops the requested one, so a base that pins gets the
             // assignment's level written into it. Whatever the relaunch will
@@ -357,12 +350,7 @@ impl CoordinationOrchestrator {
     }
 
     /// The effort taurhaus must put into force for a member, if any.
-    fn pending_member_effort(
-        &self,
-        team_name: &str,
-        member: &Member,
-        delivery: task_effort::EffortDelivery,
-    ) -> Option<PendingEffort> {
+    fn pending_member_effort(&self, team_name: &str, member: &Member) -> Option<PendingEffort> {
         // No runtime record means no session to switch: relaunching here would
         // start a member the operator never launched.
         let runtime = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name).ok()?;
@@ -376,14 +364,12 @@ impl CoordinationOrchestrator {
         // The relaunch resumes the member's own conversation. Without a
         // session id the resume pipeline would render a fresh launch, so an
         // effort switch would throw away the context the assignment builds on:
-        // leave the pane running at its level instead. A prompt submission
-        // takes nothing down, so it needs no conversation to come back to.
-        if delivery == task_effort::EffortDelivery::Relaunch
-            && runtime
-                .session_id
-                .as_deref()
-                .map(str::trim)
-                .is_none_or(str::is_empty)
+        // leave the pane running at its level instead.
+        if runtime
+            .session_id
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
         {
             tracing::debug!(
                 team = %team_name,
@@ -419,105 +405,6 @@ impl CoordinationOrchestrator {
             previous: runtime.applied_effort,
             failed_attempts,
         })
-    }
-
-    /// Type a harness's own runtime effort command into its pane.
-    ///
-    /// The path for a member no mesh daemon runs beside: mesh submits the
-    /// command from that daemon, so a harness that polls its own inbox has
-    /// nobody else to do it. The pane is checked against the member's recorded
-    /// identity first — the same guard mesh applies — so a reused or foreign
-    /// pane is never typed into, and the level is recorded only once the keys
-    /// were actually sent.
-    fn submit_member_effort_command(
-        &mut self,
-        team_name: &str,
-        member: &Member,
-        template: &str,
-        pending: &PendingEffort,
-    ) -> bool {
-        let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name) else {
-            return false;
-        };
-        let failure = match runtime.pane_id.as_deref() {
-            None => Some("member has no recorded pane".to_string()),
-            Some(pane_id) => match self.runtime.live_pane(pane_id) {
-                Ok(Some(live_pane)) => match pane_belongs_to_member(&runtime, &live_pane) {
-                    PaneOwnership::Owned => None,
-                    PaneOwnership::Foreign { reason } => Some(format!("foreign pane: {reason}")),
-                },
-                Ok(None) => Some("pane is gone".to_string()),
-                Err(err) => Some(format!("pane could not be probed: {err}")),
-            },
-        };
-        if let Some(reason) = failure {
-            self.record_failed_effort_attempt(
-                team_name,
-                &member.name,
-                &pending.level,
-                pending.failed_attempts + 1,
-            );
-            task_effort::emit_effort_resume(
-                "effort.command.failed",
-                team_name,
-                &member.name,
-                &pending.level,
-                pending.previous.as_deref(),
-                Some(&reason),
-            );
-            return false;
-        }
-
-        task_effort::emit_effort_resume(
-            "effort.command.started",
-            team_name,
-            &member.name,
-            &pending.level,
-            pending.previous.as_deref(),
-            None,
-        );
-        let pane_id = runtime.pane_id.clone().unwrap_or_default();
-        let command = task_effort::runtime_effort_command(template, &pending.level);
-        if let Err(err) = self.runtime.send_tmux_keys_with_enter(&pane_id, &command) {
-            self.record_failed_effort_attempt(
-                team_name,
-                &member.name,
-                &pending.level,
-                pending.failed_attempts + 1,
-            );
-            task_effort::emit_effort_resume(
-                "effort.command.failed",
-                team_name,
-                &member.name,
-                &pending.level,
-                pending.previous.as_deref(),
-                Some(&err.to_string()),
-            );
-            return false;
-        }
-
-        if let Err(err) =
-            MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
-                record.applied_effort = Some(pending.level.clone());
-                record.effort_resume_failure = None;
-            })
-        {
-            tracing::warn!(
-                team = %team_name,
-                member = %member.name,
-                error = %err,
-                "failed to record the level after submitting the effort command"
-            );
-        }
-        task_effort::emit_effort_resume(
-            "effort.command.completed",
-            team_name,
-            &member.name,
-            &pending.level,
-            pending.previous.as_deref(),
-            None,
-        );
-        true
     }
 
     /// Take a live member's session down so the resume pipeline can relaunch it.

@@ -3738,98 +3738,53 @@ fn a_resume_carries_the_effort_of_an_assignment_made_while_the_member_was_down()
     );
 }
 
-// Regression: W5b registered Claude as a `SlashCommand` harness and left the
-// submission to mesh, but mesh applies an assignment's effort inside the member
-// daemon it runs beside a pane — and a harness that polls its own inbox gets no
-// such daemon. Nothing ever typed `/effort` into a Claude member's pane, so the
-// level the lead attached to an assignment never took effect.
+// Regression: 063e74a had taurhaus type `/effort <level>` into a member's own
+// pane from a background pass. mesh 0.2.22 submits that command itself, before
+// it delivers the assignment notice, so taurhaus's copy was a second owner
+// writing into the same pane — and it landed after the member could already
+// read the assignment. The submission is mesh's alone.
 #[test]
-fn a_native_poller_is_told_the_assignment_effort_in_its_own_prompt() {
-    let tmp = TempDir::new().expect("tempdir");
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Claude, Some("low"));
-    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
-    orchestrator
-        .resume_member_with_cli_commands(
-            &ResumeMemberRequest {
-                team_name: "effort-team".to_string(),
-                member_name: "builder".to_string(),
-                reasoning_effort_override: None,
-            },
-            &CliCommandSettings::default(),
-        )
-        .expect("seed resume");
+fn taurhaus_never_types_an_effort_command_into_a_members_pane() {
+    for tool in [CliTool::Claude, CliTool::Agy, CliTool::Grok] {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let mut orchestrator = effort_team(&tmp, runtime.clone(), tool, Some("low"));
+        mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+        orchestrator
+            .resume_member_with_cli_commands(
+                &ResumeMemberRequest {
+                    team_name: "effort-team".to_string(),
+                    member_name: "builder".to_string(),
+                    reasoning_effort_override: None,
+                },
+                &CliCommandSettings::default(),
+            )
+            .expect("seed resume");
+        append_assignment(&tmp, "builder", "high", "the migration is irreversible");
 
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+        let handled = orchestrator
+            .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+            .expect("effort pass");
 
-    orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
-        .expect("effort pass");
-
-    let submitted: Vec<String> = runtime
-        .calls()
-        .into_iter()
-        .filter_map(|call| match call {
-            RuntimeCall::SendKeys { keys, .. } => Some(keys),
-            _ => None,
-        })
-        .filter(|keys| keys.starts_with("/effort"))
-        .collect();
-    assert_eq!(
-        submitted,
-        vec!["/effort high".to_string()],
-        "the harness's own runtime effort command is typed into its pane"
-    );
-
-    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
-    assert_eq!(record.applied_effort.as_deref(), Some("high"));
-
-    orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
-        .expect("second effort pass");
-    let submitted_again = runtime
-        .calls()
-        .into_iter()
-        .filter(|call| matches!(call, RuntimeCall::SendKeys { keys, .. } if keys.starts_with("/effort")))
-        .count();
-    assert_eq!(
-        submitted_again, 1,
-        "a member already at the level is not told again"
-    );
-}
-
-// A member the mesh daemon already covers is left to mesh: two owners typing
-// the same command into one pane would double the level change.
-#[test]
-fn a_member_with_a_mesh_daemon_is_left_to_mesh_for_the_slash_command() {
-    let tmp = TempDir::new().expect("tempdir");
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Agy, Some("low"));
-    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
-    orchestrator
-        .resume_member_with_cli_commands(
-            &ResumeMemberRequest {
-                team_name: "effort-team".to_string(),
-                member_name: "builder".to_string(),
-                reasoning_effort_override: None,
-            },
-            &CliCommandSettings::default(),
-        )
-        .expect("seed resume");
-
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
-
-    orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
-        .expect("effort pass");
-
-    assert!(
-        !runtime.calls().into_iter().any(|call| matches!(
-            call,
-            RuntimeCall::SendKeys { keys, .. } if keys.starts_with("/effort")
-        )),
-        "mesh owns the submission wherever it runs a member daemon"
-    );
+        assert!(
+            handled.is_empty(),
+            "{tool} takes the level from mesh, so taurhaus has nothing to do"
+        );
+        assert!(
+            !runtime.calls().into_iter().any(|call| matches!(
+                call,
+                RuntimeCall::SendKeys { keys, .. } if keys.starts_with("/effort")
+            )),
+            "{tool}: mesh owns the slash command; taurhaus must not send it"
+        );
+        assert!(
+            !runtime
+                .calls()
+                .into_iter()
+                .any(|call| matches!(call, RuntimeCall::KillPane { .. })),
+            "{tool}: a harness mesh can reach is never relaunched for effort"
+        );
+    }
 }
 
 #[test]
@@ -4179,54 +4134,6 @@ fn an_assignment_delivered_to_a_running_member_still_relaunches_it() {
         .expect("effort pass");
 
     assert_eq!(resumed, vec!["builder".to_string()]);
-}
-
-#[test]
-fn a_slash_command_harness_is_never_relaunched_for_effort() {
-    // The level reaches this harness through its own prompt, so the pass must
-    // never take its pane down: a relaunch would kill a session for nothing.
-    let tmp = TempDir::new().expect("tempdir");
-    let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Claude, Some("low"));
-    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
-    orchestrator
-        .resume_member_with_cli_commands(
-            &ResumeMemberRequest {
-                team_name: "effort-team".to_string(),
-                member_name: "builder".to_string(),
-                reasoning_effort_override: None,
-            },
-            &CliCommandSettings::default(),
-        )
-        .expect("seed resume");
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
-
-    let launches_before = launch_commands_sent(&runtime, "claude");
-    let handled = orchestrator
-        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
-        .expect("effort pass");
-
-    assert_eq!(handled, vec!["builder".to_string()]);
-    assert_eq!(
-        launch_commands_sent(&runtime, "claude"),
-        launches_before,
-        "the level went into the prompt; nothing relaunched the member"
-    );
-    assert!(
-        !runtime
-            .calls()
-            .into_iter()
-            .any(|call| matches!(call, RuntimeCall::KillPane { .. })),
-        "a prompt submission takes no pane down"
-    );
-}
-
-fn launch_commands_sent(runtime: &Arc<RecordingCoordinationRuntime>, binary: &str) -> usize {
-    runtime
-        .calls()
-        .into_iter()
-        .filter(|call| matches!(call, RuntimeCall::SendKeys { keys, .. } if keys.contains(binary)))
-        .count()
 }
 
 #[test]

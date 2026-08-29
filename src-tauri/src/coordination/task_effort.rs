@@ -68,46 +68,13 @@ pub fn assignment_effort_since(
         .and_then(message_effort)
 }
 
-/// How taurhaus itself puts an assignment's level into force for a member.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EffortDelivery {
-    /// Relaunch the member with the harness's effort flag.
-    Relaunch,
-    /// Type the harness's own runtime effort command into its pane, rendered
-    /// from the registry's template.
-    Prompt { template: &'static str },
-}
-
-/// The delivery taurhaus owns for `tool`, if it owns one.
-///
-/// mesh submits the slash command itself, but only from the member daemon it
-/// runs beside a pane. A harness that polls its own inbox has no such daemon,
-/// so nothing else would ever type the command and taurhaus owns it; where mesh
-/// does run one, taurhaus stays out of the pane so one assignment cannot have
-/// its level typed twice. The relaunch path is taurhaus's alone either way —
-/// mesh cannot restart a session.
-pub fn taurhaus_effort_delivery(tool: CliTool) -> Option<EffortDelivery> {
-    let capabilities = spec(tool).capabilities;
-    match capabilities.runtime_effort {
-        RuntimeEffort::ResumeWithFlag => Some(EffortDelivery::Relaunch),
-        RuntimeEffort::SlashCommand { template } if capabilities.native_inbox_poller => {
-            Some(EffortDelivery::Prompt { template })
-        }
-        RuntimeEffort::SlashCommand { .. } | RuntimeEffort::None => None,
-    }
-}
-
-/// The command that puts `level` into force in a harness's own prompt.
-pub fn runtime_effort_command(template: &str, level: &str) -> String {
-    template.replace("{level}", level)
-}
-
 /// Whether this harness changes effort by being relaunched.
 ///
-/// Checked before anything reads an inbox: every other harness takes the level
-/// through its own prompt, and the relaunch has nothing to do for it.
+/// The only runtime effort path taurhaus owns. A `SlashCommand` harness takes
+/// the level in its own prompt, and mesh types it there before it delivers the
+/// assignment notice — taurhaus must never send it a second time.
 pub fn relaunches_for_effort(tool: CliTool) -> bool {
-    taurhaus_effort_delivery(tool) == Some(EffortDelivery::Relaunch)
+    spec(tool).capabilities.runtime_effort == RuntimeEffort::ResumeWithFlag
 }
 
 /// Whether the operator's own base command already pins the effort.
@@ -272,7 +239,9 @@ pub fn resume_effort_target(
     requested: Option<&str>,
     applied: Option<&str>,
 ) -> Option<String> {
-    taurhaus_effort_delivery(tool)?;
+    if !relaunches_for_effort(tool) {
+        return None;
+    }
     let requested = trimmed(requested)?;
     if applied
         .map(str::trim)
@@ -486,52 +455,25 @@ mod tests {
     }
 
     #[test]
-    fn every_harness_declares_who_owns_its_effort_change() {
+    fn only_a_relaunching_harness_is_taurhauss_to_switch() {
+        // Every other harness takes the level in its own prompt, and mesh
+        // types it there before the notice. A second submission from taurhaus
+        // would arrive after the member could already read the assignment.
         for entry in crate::session_scanner::cli_tool::all() {
-            let target = resume_effort_target(entry.tool, Some("high"), None);
-            match (
-                entry.capabilities.runtime_effort,
-                entry.capabilities.native_inbox_poller,
-            ) {
-                (RuntimeEffort::ResumeWithFlag, _) => {
-                    assert_eq!(
-                        taurhaus_effort_delivery(entry.tool),
-                        Some(EffortDelivery::Relaunch),
-                        "{} has no other way to change effort",
-                        entry.name
-                    );
-                    assert_eq!(target.as_deref(), Some("high"));
-                }
-                // Nothing runs a mesh member daemon beside this pane, so
-                // taurhaus is the only component that can type the command.
-                (RuntimeEffort::SlashCommand { template }, true) => {
-                    assert_eq!(
-                        taurhaus_effort_delivery(entry.tool),
-                        Some(EffortDelivery::Prompt { template }),
-                        "nothing else would submit {}'s effort command",
-                        entry.name
-                    );
-                    assert_eq!(target.as_deref(), Some("high"));
-                }
-                (RuntimeEffort::SlashCommand { .. }, false) | (RuntimeEffort::None, _) => {
-                    assert_eq!(
-                        taurhaus_effort_delivery(entry.tool),
-                        None,
-                        "{} is not taurhaus's to change",
-                        entry.name
-                    );
-                    assert_eq!(target, None);
-                }
-            }
+            let relaunches = entry.capabilities.runtime_effort == RuntimeEffort::ResumeWithFlag;
+            assert_eq!(
+                relaunches_for_effort(entry.tool),
+                relaunches,
+                "{} declares the wrong owner for a runtime effort change",
+                entry.name
+            );
+            assert_eq!(
+                resume_effort_target(entry.tool, Some("high"), None).as_deref(),
+                relaunches.then_some("high"),
+                "{} must only be switched by the owner that declares it",
+                entry.name
+            );
         }
-    }
-
-    #[test]
-    fn a_prompt_template_renders_the_level_it_is_given() {
-        assert_eq!(
-            runtime_effort_command("/effort {level}", "high"),
-            "/effort high"
-        );
     }
 
     #[test]

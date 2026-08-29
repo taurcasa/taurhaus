@@ -340,14 +340,13 @@ fn grok_declares_the_slices_it_does_not_have() {
 fn every_harness_declares_how_a_running_session_changes_effort() {
     // The lead's per-assignment effort reaches a running member one of two
     // ways, and the registry is the only place that says which: mesh types the
-    // slash command into the pane, or taurhaus resumes the member with the
-    // effort flag. A harness with neither leaves the launch effort standing.
+    // slash command into the pane before it delivers the notice, or taurhaus
+    // resumes the member with the effort flag. A harness with neither leaves
+    // the launch effort standing.
     for entry in all() {
         let runtime_effort = entry.capabilities.runtime_effort;
         let expected = match entry.tool {
-            CliTool::Claude | CliTool::Agy | CliTool::Grok => RuntimeEffort::SlashCommand {
-                template: "/effort {level}",
-            },
+            CliTool::Claude | CliTool::Agy | CliTool::Grok => RuntimeEffort::SlashCommand,
             CliTool::Codex => RuntimeEffort::ResumeWithFlag,
             CliTool::Unknown => RuntimeEffort::None,
         };
