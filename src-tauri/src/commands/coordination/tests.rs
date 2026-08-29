@@ -3397,28 +3397,48 @@ fn project_mesh_snapshot_carries_the_task_effort_the_lead_asked_for() {
 }
 
 fn seed_assignment_effort(teams_dir: &std::path::Path, member_name: &str, level: &str, why: &str) {
-    let mut message = crate::coordination::stores::MeshInboxMessage::new(
-        "team-lead",
-        format!("Effort: {level} — {why}\nStart on the migration."),
-        None,
-        chrono::Utc::now(),
-    );
-    message
-        .extra
-        .insert("effort".to_string(), serde_json::json!(level));
-    message
-        .extra
-        .insert("effortWhy".to_string(), serde_json::json!(why));
-    crate::coordination::stores::MeshInboxStore::append(
-        teams_dir,
-        "architecture-final",
-        member_name,
-        &message,
-    )
-    .expect("append assignment");
+    // mesh writes the effort onto the task record it assigns; taurhaus reads
+    // it back off the task the member is on, so that is what a fixture seeds.
+    let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, "architecture-final")
+        .expect("team config");
+    let project_path = config
+        .members
+        .iter()
+        .find(|member| member.name == member_name)
+        .expect("member is on the roster")
+        .project_path
+        .display()
+        .to_string();
 
     let db = tempfile::NamedTempFile::new().expect("temp db");
     let conn = taurhaus_lib::db::init_db(db.path()).expect("db");
+    taurhaus_lib::db::task_queries::upsert_task(
+        &conn,
+        &taurhaus_lib::db::task_queries::PersistedTask {
+            project_path,
+            source: "claude".to_string(),
+            source_key: "session-1".to_string(),
+            source_task_id: "42".to_string(),
+            subject: "Run the migration".to_string(),
+            description: None,
+            active_form: None,
+            status: "in_progress".to_string(),
+            blocks: vec![],
+            blocked_by: vec![],
+            owner: Some(member_name.to_string()),
+            session_id: None,
+            first_seen_at: "2026-08-29T09:00:00Z".to_string(),
+            state_changed_at: Some("2026-08-29T09:00:00Z".to_string()),
+            updated_at: "2026-08-29T09:00:00Z".to_string(),
+            archived_at: None,
+            last_status: Some("in_progress".to_string()),
+            archived_reason: None,
+            effort: Some(level.to_string()),
+            effort_why: Some(why.to_string()),
+        },
+    )
+    .expect("upsert assigned task");
+
     crate::coordination::operational_context::sync_team_snapshots(
         teams_dir,
         &conn,
