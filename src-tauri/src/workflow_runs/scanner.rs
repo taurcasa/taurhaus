@@ -131,10 +131,10 @@ pub fn workflow_activity(session_dir: &Path, now: SystemTime) -> Option<Workflow
         {
             continue;
         }
-        live_runs = live_runs.saturating_add(1);
         let Ok(files) = fs::read_dir(entry.path()) else {
             continue;
         };
+        let mut run_latest = None;
         for file in files.flatten() {
             let name = file.file_name();
             let Some(name) = name.to_str() else {
@@ -150,15 +150,21 @@ pub fn workflow_activity(session_dir: &Path, now: SystemTime) -> Option<Workflow
                 continue;
             }
             if let Ok(modified) = metadata.modified() {
-                latest = Some(latest.map_or(modified, |current: SystemTime| current.max(modified)));
+                run_latest =
+                    Some(run_latest.map_or(modified, |current: SystemTime| current.max(modified)));
             }
         }
+        let Some(run_latest) = run_latest else {
+            continue;
+        };
+        if now.duration_since(run_latest).unwrap_or_default() > ACTIVITY_WINDOW {
+            continue;
+        }
+        live_runs = live_runs.saturating_add(1);
+        latest = Some(latest.map_or(run_latest, |current: SystemTime| current.max(run_latest)));
     }
 
     let latest = latest?;
-    if now.duration_since(latest).unwrap_or_default() > ACTIVITY_WINDOW {
-        return None;
-    }
     Some(WorkflowActivity {
         live_runs,
         last_write_at: system_time_ms(latest),
@@ -205,7 +211,7 @@ fn live_run(
         )
         .min()
         .unwrap_or_default();
-    let totals = totals_from_agents(&agents, None);
+    let totals = totals_from_agents(&agents);
 
     WorkflowRun {
         run_id: run_id.to_string(),
@@ -394,8 +400,16 @@ fn read_journal(path: &Path) -> Vec<JournalAgent> {
 }
 
 fn read_transcript(path: &Path) -> TranscriptFacts {
-    let Ok(metadata) = fs::metadata(path) else {
-        return TranscriptFacts::default();
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return TranscriptFacts {
+                tokens: Some(0),
+                tool_calls: Some(0),
+                ..Default::default()
+            };
+        }
+        Err(_) => return TranscriptFacts::default(),
     };
     let stamp = FileStamp {
         len: metadata.len(),
@@ -436,9 +450,11 @@ fn read_transcript_uncached(path: &Path, stamp: &FileStamp) -> Option<Transcript
         file.read_to_end(&mut bytes).ok()?;
         (bytes.clone(), bytes, true)
     } else {
-        let mut prefix = vec![0; TRANSCRIPT_PREFIX_LIMIT];
-        let prefix_len = file.read(&mut prefix).ok()?;
-        prefix.truncate(prefix_len);
+        let mut prefix = Vec::with_capacity(TRANSCRIPT_PREFIX_LIMIT);
+        file.by_ref()
+            .take(TRANSCRIPT_PREFIX_LIMIT as u64)
+            .read_to_end(&mut prefix)
+            .ok()?;
         file.seek(SeekFrom::End(-(TRANSCRIPT_TAIL_LIMIT as i64)))
             .ok()?;
         let mut tail = Vec::with_capacity(TRANSCRIPT_TAIL_LIMIT);
@@ -538,7 +554,7 @@ fn content_text(content: Option<&Value>) -> Option<String> {
     }
 }
 
-fn totals_from_agents(agents: &[WorkflowAgent], duration_ms: Option<u64>) -> WorkflowRunTotals {
+fn totals_from_agents(agents: &[WorkflowAgent]) -> WorkflowRunTotals {
     let metrics_complete = agents
         .iter()
         .all(|agent| agent.tokens.is_some() && agent.tool_calls.is_some());
@@ -566,7 +582,7 @@ fn totals_from_agents(agents: &[WorkflowAgent], duration_ms: Option<u64>) -> Wor
                 .map(u64::from)
                 .fold(0_u64, u64::saturating_add)
         }),
-        duration_ms,
+        duration_ms: None,
     }
 }
 
@@ -868,6 +884,7 @@ fn preview(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::fs::{self, File, FileTimes};
+    use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime};
 
@@ -1080,5 +1097,100 @@ mod tests {
             workflow_activity(&fixture.session_dir, written_at + Duration::from_secs(1)),
             None
         );
+    }
+
+    // Regression: 28c0834 counted every summary-less run directory in the
+    // activity hint, so one abandoned run inflated `live_runs` forever when a
+    // different run had a recent transcript write.
+    #[test]
+    fn workflow_activity_excludes_stale_abandoned_runs_from_the_live_count() {
+        let fixture = live_fixture();
+        let written_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let run_root = fixture.session_dir.join("subagents/workflows");
+        for entry in fs::read_dir(run_root.join(RUN_ID)).expect("fresh run") {
+            let path = entry.expect("fresh entry").path();
+            if path.extension().and_then(|value| value.to_str()) == Some("jsonl")
+                && path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|name| name.starts_with("agent-"))
+            {
+                set_modified(&path, written_at);
+            }
+        }
+        let stale_transcript = run_root.join("wf-stale/agent-dead.jsonl");
+        write(&stale_transcript, "");
+        set_modified(&stale_transcript, written_at - Duration::from_secs(61));
+
+        let activity = workflow_activity(&fixture.session_dir, written_at + Duration::from_secs(1))
+            .expect("fresh run remains active");
+
+        assert_eq!(activity.live_runs, 1);
+        assert_eq!(activity.last_write_at, 1_700_000_000_000);
+    }
+
+    // Regression: 28c0834 represented a just-started agent with no transcript
+    // as unknown metrics, collapsing otherwise exact live-run totals to null.
+    #[test]
+    fn a_started_agent_without_a_transcript_contributes_zero_to_live_totals() {
+        let fixture = live_fixture();
+        let journal = fixture
+            .session_dir
+            .join("subagents/workflows")
+            .join(RUN_ID)
+            .join("journal.jsonl");
+        let mut file = File::options().append(true).open(journal).expect("journal");
+        writeln!(file, "{}", json!({"type":"started","agentId":"three"})).expect("started event");
+
+        let run = read_run(&fixture.session_dir, RUN_ID).expect("live run");
+        let agent = run
+            .agents
+            .iter()
+            .find(|agent| agent.agent_id == "three")
+            .expect("new agent");
+
+        assert_eq!(agent.tokens, Some(0));
+        assert_eq!(agent.tool_calls, Some(0));
+        assert_eq!(run.totals.tokens, Some(22));
+        assert_eq!(run.totals.tool_calls, Some(2));
+    }
+
+    #[test]
+    fn oversized_transcript_keeps_tail_facts_but_not_partial_totals() {
+        let fixture = live_fixture();
+        let transcript = fixture
+            .session_dir
+            .join("subagents/workflows")
+            .join(RUN_ID)
+            .join("agent-one.jsonl");
+        let mut file = File::create(transcript).expect("large transcript");
+        writeln!(
+            file,
+            "{}",
+            json!({"message":{"role":"user","content":"Implement safely"}})
+        )
+        .expect("prompt");
+        writeln!(
+            file,
+            "{}",
+            json!({"padding":"x".repeat(TRANSCRIPT_TAIL_LIMIT + 1024)})
+        )
+        .expect("padding");
+        writeln!(
+            file,
+            "{}",
+            json!({"message":{"id":"tail","role":"assistant","model":"opus-tail","usage":{"input_tokens":99},"content":[{"type":"tool_use","name":"Bash"}]}})
+        )
+        .expect("tail");
+
+        let run = read_run(&fixture.session_dir, RUN_ID).expect("live run");
+        let agent = &run.agents[0];
+        assert_eq!(agent.prompt_preview, "Implement safely");
+        assert_eq!(agent.model.as_deref(), Some("opus-tail"));
+        assert_eq!(agent.last_tool.as_deref(), Some("Bash"));
+        assert_eq!(agent.tokens, None);
+        assert_eq!(agent.tool_calls, None);
+        assert_eq!(run.totals.tokens, None);
+        assert_eq!(run.totals.tool_calls, None);
     }
 }
