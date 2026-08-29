@@ -93,35 +93,103 @@ pub fn base_pins_effort(tool: CliTool, base: &str) -> bool {
 /// could take over, which is the one shape a relaunch cannot make carry the
 /// level.
 pub fn base_with_effort(tool: CliTool, base: &str, level: &str) -> Option<String> {
-    let key = effort_key(tool)?;
-    let quoted = matches!(
-        spec(tool).capabilities.effort_flag,
-        Some(EffortFlag::Config { .. })
-    );
-    let mut tokens: Vec<String> = base.split_whitespace().map(ToString::to_string).collect();
-    let value = if quoted {
-        format!("\"{level}\"")
-    } else {
-        level.to_string()
-    };
+    match spec(tool).capabilities.effort_flag? {
+        EffortFlag::Config { key, .. } => config_base_with_effort(base, key, level),
+        EffortFlag::Argument { flag } => argument_base_with_effort(base, flag, level),
+    }
+}
 
+/// Rewrite every `key = value` config assignment in `base` to carry `level`.
+///
+/// The whole assignment is replaced as one span, so the spaced spelling the
+/// shell hands the harness inside a single quoted argument survives the
+/// rewrite. The value is always written quoted: that is the form the harness
+/// parses whatever the original spelling was.
+fn config_base_with_effort(base: &str, key: &str, level: &str) -> Option<String> {
+    let spans = config_assignment_spans(base, key);
+    if spans.is_empty() {
+        return None;
+    }
+    let mut rewritten = base.to_string();
+    for (span, _) in spans.into_iter().rev() {
+        rewritten.replace_range(span, &format!("{key}=\"{level}\""));
+    }
+    Some(rewritten)
+}
+
+/// Rewrite a plain `--flag value` / `--flag=value` effort argument.
+fn argument_base_with_effort(base: &str, flag: &str, level: &str) -> Option<String> {
+    let mut tokens: Vec<String> = base.split_whitespace().map(ToString::to_string).collect();
     let mut rewrote = false;
     for index in 0..tokens.len() {
         let bare = tokens[index].trim_start_matches(['\'', '"']).to_string();
-        if bare.starts_with(&format!("{key}=")) {
-            tokens[index] = format!("{key}={value}");
+        if bare.starts_with(&format!("{flag}=")) {
+            tokens[index] = format!("{flag}={level}");
             rewrote = true;
-        } else if bare == key {
+        } else if bare == flag {
             // `--effort high`: the level is the token after the flag.
             if index + 1 >= tokens.len() {
                 return None;
             }
-            tokens[index + 1] = value.clone();
+            tokens[index + 1] = level.to_string();
             rewrote = true;
         }
     }
-
     rewrote.then(|| tokens.join(" "))
+}
+
+/// Every `key <ws> = <ws> value` assignment in `command`, as a byte span
+/// covering the whole assignment and the value the harness would read.
+///
+/// Found on the raw string rather than on whitespace-separated tokens: the
+/// shell strips the quoting, so `-c 'model_reasoning_effort = "low"'` is one
+/// argument to the harness and three tokens to a naive split.
+fn config_assignment_spans(command: &str, key: &str) -> Vec<(std::ops::Range<usize>, String)> {
+    let mut spans: Vec<(std::ops::Range<usize>, String)> = Vec::new();
+    for (index, _) in command.match_indices(key) {
+        if spans.last().is_some_and(|(span, _)| index < span.end) {
+            continue;
+        }
+        let before = command[..index].chars().next_back();
+        let starts_key = before.is_none_or(|character| {
+            character.is_whitespace() || matches!(character, '\'' | '"' | '=')
+        });
+        if !starts_key {
+            continue;
+        }
+        let after = &command[index + key.len()..];
+        let equals_at = after.len() - after.trim_start().len();
+        let Some(value_offset) = after[equals_at..]
+            .strip_prefix('=')
+            .map(|rest| equals_at + 1 + (rest.len() - rest.trim_start().len()))
+        else {
+            continue;
+        };
+        let Some((raw_len, value)) = read_config_value(&after[value_offset..]) else {
+            continue;
+        };
+        let end = index + key.len() + value_offset + raw_len;
+        spans.push((index..end, value));
+    }
+    spans
+}
+
+/// The value token at the start of `rest`, as its raw length and its content.
+///
+/// A quoted value ends at its closing quote; a bare one ends at the first
+/// whitespace or quote, which is where the shell would end it too.
+fn read_config_value(rest: &str) -> Option<(usize, String)> {
+    let mut characters = rest.char_indices();
+    let (_, first) = characters.next()?;
+    if matches!(first, '\'' | '"') {
+        let close = rest[first.len_utf8()..].find(first)?;
+        let value = rest[first.len_utf8()..first.len_utf8() + close].to_string();
+        return Some((first.len_utf8() * 2 + close, value));
+    }
+    let end = rest
+        .find(|character: char| character.is_whitespace() || matches!(character, '\'' | '"'))
+        .unwrap_or(rest.len());
+    (end > 0).then(|| (end, rest[..end].to_string()))
 }
 
 /// The level a base command pins, read back the way the harness would.
@@ -129,20 +197,26 @@ pub fn base_with_effort(tool: CliTool, base: &str, level: &str) -> Option<String
 /// The relaunch checks its own rewrite with this before it stops anything: a
 /// member is only taken down for a command that demonstrably carries the level.
 pub fn pinned_base_effort(tool: CliTool, base: &str) -> Option<String> {
-    let key = effort_key(tool)?;
-    let tokens: Vec<&str> = base.split_whitespace().collect();
-    for (index, token) in tokens.iter().enumerate() {
-        let bare = token.trim_matches(['\'', '"']);
-        if let Some(value) = bare.strip_prefix(&format!("{key}=")) {
-            return trimmed(Some(value.trim_matches(['\'', '"'])));
-        }
-        if bare == key {
-            return tokens
-                .get(index + 1)
-                .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+    match spec(tool).capabilities.effort_flag? {
+        EffortFlag::Config { key, .. } => config_assignment_spans(base, key)
+            .into_iter()
+            .find_map(|(_, value)| trimmed(Some(value.trim_matches(['\'', '"'])))),
+        EffortFlag::Argument { flag } => {
+            let tokens: Vec<&str> = base.split_whitespace().collect();
+            for (index, token) in tokens.iter().enumerate() {
+                let bare = token.trim_matches(['\'', '"']);
+                if let Some(value) = bare.strip_prefix(&format!("{flag}=")) {
+                    return trimmed(Some(value.trim_matches(['\'', '"'])));
+                }
+                if bare == flag {
+                    return tokens
+                        .get(index + 1)
+                        .and_then(|value| trimmed(Some(value.trim_matches(['\'', '"']))));
+                }
+            }
+            None
         }
     }
-    None
 }
 
 /// The token a harness's base command pins its effort with.
@@ -443,6 +517,44 @@ mod tests {
             rewritten,
             "codex resume --last -c model_reasoning_effort=\"high\" --yolo"
         );
+        assert_eq!(
+            pinned_base_effort(tool, &rewritten).as_deref(),
+            Some("high")
+        );
+    }
+
+    // Regression: 0abb2e4 rewrote a pinned effort by splitting the base on
+    // whitespace, so the spaced form Codex accepts inside one quoted argument
+    // — `-c 'model_reasoning_effort = "low"'` — had its bare `=` token
+    // replaced and the old value left standing beside it.
+    #[test]
+    fn a_spaced_config_pin_is_rewritten_as_one_assignment() {
+        let tool = resume_with_flag_tool();
+        let base = "codex resume --last -c 'model_reasoning_effort = \"low\"' --yolo";
+
+        assert!(base_pins_effort(tool, base));
+        assert_eq!(pinned_base_effort(tool, base).as_deref(), Some("low"));
+
+        let rewritten = base_with_effort(tool, base, "high").expect("the pin is rewritable");
+        assert_eq!(
+            rewritten,
+            "codex resume --last -c 'model_reasoning_effort=\"high\"' --yolo"
+        );
+        assert_eq!(
+            pinned_base_effort(tool, &rewritten).as_deref(),
+            Some("high"),
+            "the rewrite has to read back as the level it was asked for"
+        );
+    }
+
+    #[test]
+    fn an_unquoted_config_pin_is_rewritten_into_a_quoted_one() {
+        let tool = resume_with_flag_tool();
+        let rewritten =
+            base_with_effort(tool, "codex resume -c model_reasoning_effort=low", "high")
+                .expect("the pin is rewritable");
+
+        assert_eq!(rewritten, "codex resume -c model_reasoning_effort=\"high\"");
         assert_eq!(
             pinned_base_effort(tool, &rewritten).as_deref(),
             Some("high")
