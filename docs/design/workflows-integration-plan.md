@@ -28,6 +28,14 @@ Order: W1 + W3 (parallel, small) → W2 → W5 (with the v4 lead roles) → W4.
 |---|---|---|---|---|---|
 | W1 | Opus | Codex gpt-5.6 (one lens) | 5 | 4 → 5 → 3 → 2 → 2 (the round-2 spike was an installer a fix round added outside the spec; removed. Last two: gate opt-out fixed by the orchestrator, same-basename worktree collisions accepted and documented) | #51 |
 | W3 | Opus | Codex gpt-5.6 (one lens) | 4 | 1 → 1 → 3 → 2 (last two: recipe quoting fixed by the orchestrator; the Windows two-rename fallback accepted as the best replacement where rename cannot replace) | #50 |
-| W2 | tbd | tbd | tbd | tbd | tbd |
+| W2a (backend) | Codex | Opus conformance + operational | 2 | 2 → 0 (the raw workflow write time in the activity signature would have turned the 30 s export into a 500 ms one — caught by the operational lens) | #55 |
+| W2b (UI) | Opus | Codex conformance + operational | 4 | 4 → 4 → 5 → 2 (last two closed by the orchestrator: the daemon workflow hint survives the roster join on Windows; live-run phase attribution accepted as a documented limitation) | #57 |
 | W5 | tbd | tbd | tbd | tbd | tbd |
 | W4 | tbd | tbd | tbd | tbd | tbd |
+
+## Follow-ups from W1–W2
+
+- The versioned procedures hard-require `just check-quick` + `just lint`, so they cannot yet drive a repo without the taurhaus justfile (taureval was fixed by hand); a repo profile that names the repo's own required gates — without a silent opt-out — is the next W1 item, along with user-scope installation.
+- Live-run phase attribution (agent → script call) so the canvas can show phase rows mid-run; today live runs render as one flat group until the summary lands (W2a contract).
+- The visual lane is host-broken independently of W2b: `vitest.visual.config.js` defaults to `/usr/bin/google-chrome`, and with the Playwright chromium two stale specs (`readme`, `hoverCard`) fail on main.
+- First real runs of `feature-pr` found and fixed one defect in the procedures themselves (schemas without `additionalProperties: false`, #56) and proved the fail-closed gates work as designed: a run stops at an unavailable review lane or a failing gate instead of returning a green ledger.
