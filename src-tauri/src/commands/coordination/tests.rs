@@ -2360,11 +2360,11 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
     assert_eq!(lead.role_id.as_deref(), Some("v3-lead-claude"));
     assert_eq!(lead.role_name.as_deref(), Some("V3 Team Lead (Claude)"));
     assert_eq!(lead.cli_tool, CliTool::Claude);
-    assert_eq!(developer.role_id.as_deref(), Some("v3-developer-codex"));
-    assert_eq!(developer.role_name.as_deref(), Some("V3 Developer (Codex)"));
+    assert_eq!(developer.role_id.as_deref(), Some("v4-developer-codex"));
+    assert_eq!(developer.role_name.as_deref(), Some("V4 Developer (Codex)"));
     assert_eq!(developer.cli_tool, CliTool::Codex);
-    assert_eq!(developer.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(developer.reasoning_effort, None);
+    assert_eq!(developer.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(developer.reasoning_effort.as_deref(), Some("medium"));
     assert!(developer
         .handoff_expectations
         .as_ref()
@@ -2373,7 +2373,7 @@ fn initialize_request_hydrates_from_preset_when_frontend_sends_minimal_payload()
         .instructions
         .as_deref()
         .unwrap_or("")
-        .contains("vertical user behavior"));
+        .contains("one user-visible behavior"));
 }
 
 #[test]
