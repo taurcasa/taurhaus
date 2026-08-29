@@ -320,8 +320,21 @@ pub fn team_launch_account_dir(
     {
         return Some(dir);
     }
-    let home = dirs::home_dir()?;
-    Some(spec(tool).account_provider()?.default_dir(&home))
+    match capabilities.session_root {
+        // The root taurhaus manages is the platform authority's, not the one
+        // the process would compute from its own home: on Windows the app runs
+        // beside a member launched inside WSL, and an unqualified command there
+        // reads the WSL user's `~/.claude`, which that authority maps to its
+        // UNC form. Going through `dirs::home_dir()` would record and restore
+        // the Windows profile's settings instead.
+        SessionRoot::AppManagedClaudeDir => {
+            Some(crate::provider::platform_paths::PlatformPaths::claude_dir())
+        }
+        SessionRoot::ToolHome => {
+            let home = dirs::home_dir()?;
+            Some(spec(tool).account_provider()?.default_dir(&home))
+        }
+    }
 }
 
 /// Convert an account dir into the namespace used by the launch shell.
@@ -1734,6 +1747,27 @@ mod tests {
         assert_eq!(
             account_label_for_session(CliTool::Claude, project, session_id).as_deref(),
             Some("Second")
+        );
+    }
+
+    // Regression: bf4bd4f resolved the default team-launch account through
+    // `dirs::home_dir()`. In the native Windows app that is the Windows user
+    // profile, while an unqualified managed Claude command runs inside WSL and
+    // reads the WSL user's `~/.claude` — the root `PlatformPaths` already maps
+    // to its UNC form. The capture and the launch have to name one account, so
+    // the default comes from that authority. (On Linux the two agree, so this
+    // pins the contract rather than reproducing the Windows-only split.)
+    #[test]
+    fn the_default_claude_account_is_the_root_the_platform_authority_names() {
+        let resolved = team_launch_account_dir(
+            CliTool::Claude,
+            &crate::models::CliCommandSettings::default(),
+        )
+        .expect("claude resolves a default account dir");
+
+        assert_eq!(
+            resolved,
+            crate::provider::platform_paths::PlatformPaths::claude_dir()
         );
     }
 }
