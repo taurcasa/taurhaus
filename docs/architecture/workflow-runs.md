@@ -105,9 +105,14 @@ good runs on screen and records why.
 
 A mesh node reads its session from the member's own runtime record, which
 `LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`,
-alongside the same optional `workflow_activity` hint the session listing carries
-— read from the member's attached transcript, bounded by the same window. A
-member running a workflow is a headless parent that the harness reports idle for
+alongside the same optional `workflow_activity` hint the session listing carries,
+bounded by the same window. That hint is computed where the transcript is
+readable: the daemon derives it for the runtime session it already scanned, and
+the roster join carries that value into the member view, which is what the app
+prefers wherever it arrived. Reading the member's attached transcript in the app
+is the fallback for a roster joined from attachments alone, and only for a path
+the app can open — on Windows the daemon runs in WSL and the desktop cannot read
+the path it reports. A member running a workflow is a headless parent that the harness reports idle for
 the whole run, so without the hint the canvas node would say Idle beside its own
 live run tree.
 

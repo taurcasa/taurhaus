@@ -432,22 +432,37 @@ fn roster_lead_project_path(roster: &[TeamMemberView]) -> Option<PathBuf> {
         .map(|member| member.configured_project_path.clone())
 }
 
-/// The workflow hint for one member, read from the transcript its runtime
-/// record is attached to.
+/// The workflow hint for one member.
 ///
 /// A member running a workflow is a headless parent: the harness reports it
 /// idle for the whole run, so the roster's own health says nothing about it.
-/// This is the same hint, read the same way and bounded by the same window, as
-/// the one the session listing carries — a member with no attachment, or a
-/// harness with no workflow runs, simply gets `None`.
-fn member_workflow_activity(
+/// This is the same hint, bounded by the same window, as the one the session
+/// listing carries — a member with no attachment, or a harness with no workflow
+/// runs, simply gets `None`.
+///
+/// The daemon computes it on the host that owns the transcript and ships it on
+/// the runtime session, so a value that arrived that way is the answer. Reading
+/// the transcript here is only the fallback for a roster joined from
+/// attachments alone, and only for a path this process can actually open: on
+/// Windows the daemon runs in WSL and the path it reports is a WSL path the
+/// desktop cannot read.
+pub(super) fn member_workflow_activity(
     member: &TeamMemberView,
 ) -> Option<crate::workflow_runs::WorkflowActivity> {
+    if let Some(activity) = member.workflow_activity.clone() {
+        return Some(activity);
+    }
+
+    let transcript = member.jsonl_path.as_deref()?;
+    if !transcript.exists() {
+        return None;
+    }
+
     crate::workflow_runs::activity_for_transcript(
         member
             .attached_cli_tool
             .unwrap_or(member.configured_cli_tool),
-        member.jsonl_path.as_deref().and_then(Path::to_str),
+        transcript.to_str(),
         SystemTime::now(),
     )
 }

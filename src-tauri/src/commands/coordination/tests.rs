@@ -3403,3 +3403,114 @@ fn live_team_status_carries_the_member_workflow_activity() {
         Some(1)
     );
 }
+
+fn daemon_runtime_session(
+    team_name: &str,
+    member_name: &str,
+    jsonl_path: &str,
+    workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
+) -> crate::session_scanner::RuntimeSession {
+    crate::session_scanner::RuntimeSession {
+        pid: 4242,
+        project_path: "/tmp/taurhaus".to_string(),
+        tty: "/dev/pts/3".to_string(),
+        args: "claude".to_string(),
+        cli_tool: CliTool::Claude,
+        tmux_session: Some("taurhaus".to_string()),
+        tmux_window: None,
+        tmux_pane: Some("%17".to_string()),
+        tmux_window_name: None,
+        state: crate::session_scanner::SessionState::Active,
+        session_id: Some("sess-frontend".to_string()),
+        jsonl_path: Some(jsonl_path.to_string()),
+        recent_io: false,
+        last_output_age_secs: None,
+        activity_confidence: Default::default(),
+        activity_attribution: Default::default(),
+        project_unattributed_active: false,
+        group_kind: crate::session_scanner::SessionGroupKind::MeshTeam,
+        group_id: Some(team_name.to_string()),
+        group_label: None,
+        member_name: Some(member_name.to_string()),
+        workflow_activity,
+    }
+}
+
+// Regression: acefb7a answered "is this member running a workflow?" by
+// rescanning the transcript in the desktop process. The daemon already computed
+// that hint and ships it on the runtime session, and on Windows the transcript
+// it names is a WSL path the desktop cannot open — the rescan found nothing and
+// the member never showed Working beside its live run tree. The daemon's value
+// wins; a local scan is only the fallback, and only for a path this host can
+// actually read.
+#[test]
+fn member_workflow_activity_prefers_the_daemon_hint_over_a_local_rescan() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    // A transcript this host really can read, whose session dir holds one live run.
+    let transcripts = tmp.path().join("transcripts");
+    let local_transcript = transcripts.join("sess-frontend.jsonl");
+    let run_dir = transcripts.join("sess-frontend/subagents/workflows/wf_live");
+    std::fs::create_dir_all(&run_dir).expect("run dir");
+    std::fs::write(&local_transcript, "").expect("transcript");
+    std::fs::write(run_dir.join("agent-a1.jsonl"), "{}\n").expect("agent transcript");
+    let local_transcript = local_transcript.display().to_string();
+    // The path a WSL daemon reports to a Windows desktop.
+    let remote_transcript = "/home/daemon-host/.claude/projects/-tmp-taurhaus/sess-frontend.jsonl";
+
+    let member_view = |jsonl_path: &str, live_runs: Option<u32>| {
+        let sessions = vec![daemon_runtime_session(
+            "architecture-final",
+            "frontend-dev",
+            jsonl_path,
+            live_runs.map(|live_runs| crate::workflow_runs::WorkflowActivity {
+                live_runs,
+                last_write_at: 1_772_000_000_000,
+            }),
+        )];
+        crate::coordination::roster::get_team_roster_with_runtime_sessions(
+            tmp.path(),
+            "architecture-final",
+            &sessions,
+        )
+        .expect("roster")
+        .into_iter()
+        .find(|member| member.member_name == "frontend-dev")
+        .expect("frontend-dev is on the roster")
+    };
+
+    // A path this host cannot read: the daemon's count is all there is, and it stands.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(remote_transcript, Some(3)))
+            .map(|activity| activity.live_runs),
+        Some(3)
+    );
+    // A readable path whose scan would disagree: the daemon's count still wins,
+    // which is only possible if no local scan was consulted.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(&local_transcript, Some(3)))
+            .map(|activity| activity.live_runs),
+        Some(3)
+    );
+    // No daemon value and a readable path: the local scan still answers.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(&local_transcript, None))
+            .map(|activity| activity.live_runs),
+        Some(1)
+    );
+    // No daemon value and a path this host cannot read: nothing to say.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(remote_transcript, None)),
+        None
+    );
+}

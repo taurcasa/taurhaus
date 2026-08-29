@@ -59,6 +59,13 @@ pub struct TeamMemberView {
     pub delivery_lease: Option<DeliveryLease>,
     pub attached_at: Option<DateTime<Utc>>,
     pub last_seen_at: Option<DateTime<Utc>>,
+    /// The workflow hint the daemon computed for this member's session, when
+    /// the runtime snapshot carried one.
+    ///
+    /// It is derived where the transcript is readable, which on Windows is the
+    /// WSL daemon and never the desktop process, so it travels with the join
+    /// rather than being re-derived downstream.
+    pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
     pub activity_state: Option<TeamMemberActivityState>,
     pub has_runtime_record: bool,
 }
@@ -145,7 +152,7 @@ pub fn get_team_roster_with_attachments_and_activity(
             let runtime = runtime_by_member.get(&member.name).cloned();
             let activity_state =
                 activity_by_member.and_then(|activity| activity.get(&member.name).copied());
-            build_team_member_view(team_name, member, runtime, activity_state)
+            build_team_member_view(team_name, member, runtime, None, activity_state)
         })
         .collect())
 }
@@ -158,15 +165,29 @@ pub fn get_team_roster_with_runtime_sessions(
     let config = TeamConfigStore::load(teams_dir, team_name)?;
     let runtime_by_member = best_runtime_sessions_by_member(team_name, runtime_sessions)
         .into_iter()
-        .map(|(member_name, session)| (member_name, member_runtime_record_from_session(session)))
+        .map(|(member_name, session)| {
+            (
+                member_name,
+                (
+                    member_runtime_record_from_session(session),
+                    session.workflow_activity.clone(),
+                ),
+            )
+        })
         .collect::<HashMap<_, _>>();
 
     Ok(config
         .members
         .into_iter()
         .map(|member| {
-            let runtime = runtime_by_member.get(&member.name).cloned();
-            build_team_member_view(team_name, member, runtime, None)
+            let (runtime, workflow_activity) = runtime_by_member.get(&member.name).cloned().unzip();
+            build_team_member_view(
+                team_name,
+                member,
+                runtime,
+                workflow_activity.flatten(),
+                None,
+            )
         })
         .collect())
 }
@@ -175,6 +196,7 @@ fn build_team_member_view(
     team_name: &str,
     member: Member,
     runtime: Option<MemberRuntimeRecord>,
+    workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
     activity_state: Option<TeamMemberActivityState>,
 ) -> TeamMemberView {
     let has_runtime_record = runtime.is_some();
@@ -225,6 +247,7 @@ fn build_team_member_view(
             .and_then(|record| record.delivery_lease.clone()),
         attached_at: runtime.as_ref().and_then(|record| record.attached_at),
         last_seen_at: runtime.as_ref().and_then(|record| record.last_seen_at),
+        workflow_activity,
         activity_state,
         has_runtime_record,
     }
@@ -453,5 +476,103 @@ mod tests {
             roster[0].activity_state,
             Some(TeamMemberActivityState::Active)
         );
+    }
+
+    fn workflow_activity(live_runs: u32) -> crate::workflow_runs::WorkflowActivity {
+        crate::workflow_runs::WorkflowActivity {
+            live_runs,
+            last_write_at: 1_772_000_000_000,
+        }
+    }
+
+    fn daemon_runtime_session(
+        team_name: &str,
+        member_name: &str,
+        jsonl_path: &str,
+        workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
+    ) -> RuntimeSession {
+        RuntimeSession {
+            pid: 4242,
+            project_path: "/tmp/taurhaus".to_string(),
+            tty: "/dev/pts/3".to_string(),
+            args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
+            tmux_session: Some("taurhaus".to_string()),
+            tmux_window: None,
+            tmux_pane: Some("%17".to_string()),
+            tmux_window_name: None,
+            state: SessionState::Active,
+            session_id: Some("sess-123".to_string()),
+            jsonl_path: Some(jsonl_path.to_string()),
+            recent_io: false,
+            last_output_age_secs: None,
+            activity_confidence: Default::default(),
+            activity_attribution: Default::default(),
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::MeshTeam,
+            group_id: Some(team_name.to_string()),
+            group_label: None,
+            member_name: Some(member_name.to_string()),
+            workflow_activity,
+        }
+    }
+
+    // Regression: acefb7a read a member's workflow hint in the desktop process
+    // by rescanning the transcript its runtime record names. The daemon has
+    // already computed that hint and ships it on the runtime session, and on
+    // Windows the transcript it names is a WSL path the desktop cannot open --
+    // so a member driving a live run never showed Working beside its run tree.
+    // The join has to carry the daemon's value instead of dropping it.
+    #[test]
+    fn runtime_session_roster_carries_the_daemon_workflow_activity() {
+        let tmp = TempDir::new().expect("tempdir");
+        save_team(tmp.path(), "team-a", vec![sample_member("developer1")]);
+        let sessions = vec![daemon_runtime_session(
+            "team-a",
+            "developer1",
+            // The daemon's own path: readable in WSL, absent on the desktop host.
+            "/home/daemon-host/.claude/projects/-tmp-taurhaus/sess-123.jsonl",
+            Some(workflow_activity(2)),
+        )];
+
+        let roster = get_team_roster_with_runtime_sessions(tmp.path(), "team-a", &sessions)
+            .expect("load roster");
+
+        assert_eq!(roster.len(), 1);
+        assert_eq!(roster[0].workflow_activity, Some(workflow_activity(2)));
+        assert_eq!(
+            roster[0].jsonl_path.as_deref(),
+            Some(Path::new(
+                "/home/daemon-host/.claude/projects/-tmp-taurhaus/sess-123.jsonl"
+            ))
+        );
+    }
+
+    #[test]
+    fn runtime_session_roster_leaves_workflow_activity_unset_when_the_daemon_reports_none() {
+        let tmp = TempDir::new().expect("tempdir");
+        save_team(tmp.path(), "team-a", vec![sample_member("developer1")]);
+        let sessions = vec![daemon_runtime_session(
+            "team-a",
+            "developer1",
+            "/home/daemon-host/.claude/projects/-tmp-taurhaus/sess-123.jsonl",
+            None,
+        )];
+
+        let roster = get_team_roster_with_runtime_sessions(tmp.path(), "team-a", &sessions)
+            .expect("load roster");
+
+        assert_eq!(roster[0].workflow_activity, None);
+    }
+
+    #[test]
+    fn attachment_roster_has_no_daemon_workflow_activity() {
+        let tmp = TempDir::new().expect("tempdir");
+        save_team(tmp.path(), "team-a", vec![sample_member("developer1")]);
+        save_runtime(tmp.path(), "team-a", "developer1", HealthState::Healthy);
+
+        let roster = get_team_roster_with_attachments(tmp.path(), "team-a").expect("load roster");
+
+        assert_eq!(roster[0].workflow_activity, None);
     }
 }
