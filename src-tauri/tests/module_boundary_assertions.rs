@@ -552,14 +552,30 @@ fn scanner_account_memory_never_opens_the_app_database() {
 fn configured_account_root_remains_override_only() {
     // Regression: b2ad272 treated Windows' derived WSL Claude root as an
     // explicit override and changed selector-free launch renderings.
+    //
+    // Scoped to the two functions a rendered command reads. Its sibling
+    // `team_launch_account_dir` deliberately does resolve the platform root:
+    // nothing renders from it, and the file taurhaus reads and writes has to
+    // be the file the member's process reads — on Windows, the WSL one.
     let source = read_source("src/session_scanner/accounts/mod.rs");
     let function = source
         .split("pub fn configured_default_dir")
         .nth(1)
-        .and_then(|tail| tail.split("pub fn to_launch_namespace").next())
+        .and_then(|tail| tail.split("pub fn team_launch_account_dir").next())
         .expect("configured_default_dir body");
     assert!(function.contains("claude_dir_override()"));
     assert!(!function.contains("PlatformPaths::claude_dir()"));
+
+    let renderer = read_source("src/coordination/pipelines/helpers.rs");
+    let for_command = renderer
+        .split("fn team_launch_account_dir_for_command")
+        .nth(1)
+        .and_then(|tail| tail.split("\nconst ").next())
+        .expect("team_launch_account_dir_for_command body");
+    assert!(
+        !for_command.contains("PlatformPaths::claude_dir()"),
+        "a launch command must stay silent where the harness lands on its own default"
+    );
 }
 
 #[test]
