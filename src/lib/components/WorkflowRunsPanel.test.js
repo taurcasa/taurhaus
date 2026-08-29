@@ -159,6 +159,25 @@ describe('WorkflowRunsPanel', () => {
     expect(copyButton).toHaveAttribute('title', expect.stringContaining('no ledger row'))
   })
 
+  // A session snapshot arrives on every daemon update and hands this panel a
+  // fresh array each time. Only a change in which sessions those are is a
+  // reason to ask the backend again.
+  it('does not re-query when a new session array carries the same sessions', async () => {
+    listWorkflowRuns.mockResolvedValue([COMPLETED])
+    const { rerender } = renderPanel({ sessions: [{ session_id: 'sess-1' }] })
+
+    await waitFor(() => expect(screen.getByTestId('workflow-run-row')).toBeInTheDocument())
+    const calls = listWorkflowRuns.mock.calls.length
+
+    await rerender({ projectId: 'proj-1', sessions: [{ session_id: 'sess-1' }] })
+    await waitFor(() => expect(screen.getByTestId('workflow-run-row')).toBeInTheDocument())
+
+    expect(listWorkflowRuns).toHaveBeenCalledTimes(calls)
+
+    await rerender({ projectId: 'proj-1', sessions: [{ session_id: 'sess-9' }] })
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledWith('sess-9'))
+  })
+
   it('keeps the list when one session cannot be read', async () => {
     getProjectTasks.mockResolvedValue({ tasks: [{ id: '1', session_id: 'sess-2' }] })
     listWorkflowRuns.mockImplementation((sessionId) =>

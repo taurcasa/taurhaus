@@ -133,6 +133,28 @@ describe('MeshCanvas workflow runs', () => {
     })
   })
 
+  // The runtime canvas re-renders its members on every team-status refresh. A
+  // fresh array carrying the same sessions is not a reason to re-subscribe, and
+  // every re-subscribe costs a `list_workflow_runs`.
+  it('does not re-subscribe when the member array changes identity', async () => {
+    listWorkflowRuns.mockResolvedValue([run()])
+
+    const { rerender } = render(MeshCanvas, {
+      props: { lead: { ...LEAD, sessionId: 'sess-1' }, agents: [], mode: 'runtime' },
+    })
+    await waitFor(() => expect(screen.getByTestId('workflow-run-agent')).toBeInTheDocument())
+    const calls = listWorkflowRuns.mock.calls.length
+
+    await rerender({
+      lead: { ...LEAD, sessionId: 'sess-1' },
+      agents: [{ id: 'a', name: 'a', tool: 'codex' }],
+      mode: 'runtime',
+    })
+    await waitFor(() => expect(screen.getByTestId('mesh-node-agent')).toBeInTheDocument())
+
+    expect(listWorkflowRuns).toHaveBeenCalledTimes(calls)
+  })
+
   it('grows the canvas so a tree at the bottom stays inside it', () => {
     const { container } = render(MeshCanvas, {
       props: {

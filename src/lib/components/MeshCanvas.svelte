@@ -368,12 +368,29 @@
 
   // One subscription per session on the canvas, released when it leaves. The
   // store owns the single poll timer; nodes never get one of their own.
+  //
+  // Reconciled against a key rather than torn down on every effect run: the
+  // runtime canvas re-renders its members on each team-status refresh, and a
+  // fresh array carrying the same sessions would otherwise cost a re-watch —
+  // and a `list_workflow_runs` — every time.
+  let watchedKey = ''
+  let watchStops = []
+
+  function releaseWorkflowWatches() {
+    for (const stop of watchStops) stop()
+    watchStops = []
+    watchedKey = ''
+  }
+
   $effect(() => {
-    const stops = watchedSessionIds.map((sessionId) => watchWorkflowSession(sessionId))
-    return () => {
-      for (const stop of stops) stop()
-    }
+    const key = watchedSessionIds.join('\u0000')
+    if (key === watchedKey) return
+    releaseWorkflowWatches()
+    watchedKey = key
+    watchStops = watchedSessionIds.map((sessionId) => watchWorkflowSession(sessionId))
   })
+
+  $effect(() => releaseWorkflowWatches)
 
   function withRunTree(member) {
     const workflow = workflowByNodeId.get(String(member.id))

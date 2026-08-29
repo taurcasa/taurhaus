@@ -32,6 +32,12 @@
   let copied = $state(false)
 
   const t = $derived(themeTokens(dark))
+  // A session snapshot hands this panel a fresh array on every daemon update.
+  // Only the set of session ids is a reason to ask the backend again, so the
+  // load effect depends on this string and never on the array itself.
+  const liveSessionKey = $derived(
+    collectWorkflowSessionIds(Array.isArray(sessions) ? sessions : []).join('\u0000')
+  )
   const rows = $derived(runs.map((run) => ({ ...runListRow(run), sessionId: run.sessionId })))
   const detailAgents = $derived(Array.isArray(detail?.agents) ? detail.agents : [])
   const copyLabel = $derived(copied ? 'Copied' : 'Copy ledger row')
@@ -41,10 +47,22 @@
       : 'This run returned no ledger row'
   )
 
+  // The load is keyed, not identity-triggered: a session snapshot hands this
+  // panel a fresh array on every daemon update, and re-querying every session
+  // of every project on each of those would be a poll nobody asked for. A token
+  // rather than an effect teardown decides which answer is still wanted, so a
+  // re-render during a load cannot cancel it.
+  let loadedKey = ''
+  let loadToken = 0
+
   $effect(() => {
     const id = String(projectId || '')
-    const liveSessions = Array.isArray(sessions) ? sessions : []
-    let cancelled = false
+    const key = `${id}\u0000${liveSessionKey}`
+    if (key === loadedKey) return
+    loadedKey = key
+
+    const token = (loadToken += 1)
+    const liveSessionIds = liveSessionKey ? liveSessionKey.split('\u0000') : []
 
     runs = []
     selected = null
@@ -62,13 +80,16 @@
           taskSessions = []
         }
       }
-      if (cancelled) return
+      if (token !== loadToken) return
 
-      const sessionIds = collectWorkflowSessionIds(liveSessions, taskSessions).slice(0, MAX_SESSIONS)
+      const sessionIds = collectWorkflowSessionIds(
+        liveSessionIds.map((sessionId) => ({ session_id: sessionId })),
+        taskSessions
+      ).slice(0, MAX_SESSIONS)
       const answers = await Promise.allSettled(
         sessionIds.map((sessionId) => listWorkflowRuns(sessionId))
       )
-      if (cancelled) return
+      if (token !== loadToken) return
 
       const merged = []
       for (const [index, answer] of answers.entries()) {
@@ -79,10 +100,6 @@
       }
       runs = merged.sort((left, right) => (right?.started_at ?? 0) - (left?.started_at ?? 0))
     })()
-
-    return () => {
-      cancelled = true
-    }
   })
 
   async function selectRun(row) {
