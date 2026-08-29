@@ -86,20 +86,55 @@ export const RUN_TREE_METRICS = Object.freeze({
   margin: 8,
 })
 
+function positiveInteger(value, fallback) {
+  const rounded = Math.round(Number(value))
+  return Number.isFinite(rounded) ? Math.max(0, rounded) : fallback
+}
+
 /**
- * Place one node's run tree, or `null` when the node carries no run.
+ * Read a node's run-tree descriptor, or `null` when it carries no run.
  *
- * The descriptor is `{ rowCount, collapsed }` — how many phase and agent rows
- * the run wants and whether it has collapsed to its summary line. A run with no
- * rows is collapsed by definition: there is nothing to expand.
+ * The descriptor is `{ rowCount, runCount, collapsed }` — how many phase and
+ * agent rows the trees want in total, how many run headers they stack, and
+ * whether the viewer collapsed them. A tree with no rows is collapsed by
+ * definition: there is nothing left to expand.
  */
-function runTreeBox(node, canvasWidth) {
-  const descriptor = node?.runTree
+function runTreeShape(descriptor) {
   if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) return null
 
-  const requestedRows = Math.round(Number(descriptor.rowCount))
-  const rowCount = Number.isFinite(requestedRows) ? Math.max(0, requestedRows) : 0
-  const collapsed = descriptor.collapsed === true || rowCount === 0
+  const requestedRows = positiveInteger(descriptor.rowCount, 0)
+  const collapsed = descriptor.collapsed === true || requestedRows === 0
+  const rowCount = collapsed ? 0 : requestedRows
+  const runCount = Math.max(1, positiveInteger(descriptor.runCount, 1))
+
+  return {
+    rowCount,
+    runCount,
+    collapsed,
+    height: RUN_TREE_METRICS.paddingY * 2
+      + runCount * RUN_TREE_METRICS.headerHeight
+      + rowCount * RUN_TREE_METRICS.rowHeight,
+  }
+}
+
+/** Vertical space a node's tree needs below it, including its gap and margin. */
+function runTreeClearance(members) {
+  let clearance = 0
+  for (const member of members) {
+    const shape = runTreeShape(member?.runTree)
+    if (!shape) continue
+    clearance = Math.max(
+      clearance,
+      RUN_TREE_METRICS.gap + shape.height + RUN_TREE_METRICS.margin
+    )
+  }
+  return clearance
+}
+
+/** Place one node's run tree, or `null` when the node carries no run. */
+function runTreeBox(node, canvasWidth) {
+  const shape = runTreeShape(node?.runTree)
+  if (!shape) return null
 
   const available = Math.max(RUN_TREE_METRICS.minWidth, canvasWidth - RUN_TREE_METRICS.margin * 2)
   const width = clamp(
@@ -107,17 +142,14 @@ function runTreeBox(node, canvasWidth) {
     RUN_TREE_METRICS.minWidth,
     Math.min(RUN_TREE_METRICS.maxWidth, available)
   )
-  const height = RUN_TREE_METRICS.paddingY * 2
-    + RUN_TREE_METRICS.headerHeight
-    + (collapsed ? 0 : rowCount * RUN_TREE_METRICS.rowHeight)
 
   return {
     left: clamp(node.x - width / 2, 0, Math.max(0, canvasWidth - width)),
     top: node.y + node.height / 2 + RUN_TREE_METRICS.gap,
     width,
-    height,
-    rowCount: collapsed ? 0 : rowCount,
-    collapsed,
+    height: shape.height,
+    rowCount: shape.rowCount,
+    collapsed: shape.collapsed,
   }
 }
 
@@ -217,9 +249,21 @@ function computeMeshBoxes(topology, input) {
 
   const primaryAgentY = Math.round(height * 0.65)
   const rowOffset = 44
+  const agentHeight = 64
+  const nodeBreathingRoom = 12
+  const firstRow = topology.rows[0] ?? []
+  const secondRow = topology.rows[1] ?? []
+
+  // A run tree hangs below its node, so a node that has one pushes whatever sits
+  // beneath it further down rather than being drawn over.
+  const firstRowY = Math.max(
+    secondRow.length > 0 ? primaryAgentY - rowOffset : primaryAgentY,
+    lead.y + lead.height / 2 + runTreeClearance([lead]) + agentHeight / 2 + nodeBreathingRoom
+  )
+  const secondRowY = firstRowY + rowOffset * 2 + runTreeClearance(firstRow)
   const positionedAgents = [
-    ...buildRowBoxes(topology.rows[0] ?? [], topology.rows.length > 1 ? primaryAgentY - rowOffset : primaryAgentY, width, nodeWidth, gap, 0),
-    ...buildRowBoxes(topology.rows[1] ?? [], primaryAgentY + rowOffset, width, nodeWidth, gap, 1),
+    ...buildRowBoxes(firstRow, firstRowY, width, nodeWidth, gap, 0),
+    ...buildRowBoxes(secondRow, secondRowY, width, nodeWidth, gap, 1),
   ]
 
   const lastAgent = positionedAgents[positionedAgents.length - 1] ?? null
