@@ -732,7 +732,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         )?;
         Ok(PreparedMemberActivation {
             member: prepared_member,
-            activation_context,
+            activation_context: self.with_launch_account_dir(activation_context),
             lead_name: request.lead.name.clone(),
             previous_runtime: None,
         })
@@ -746,7 +746,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
             MemberActivationContext::for_add_agent(&request.team_name, &lead_name, &request.agent)?;
         Ok(PreparedMemberActivation {
             member,
-            activation_context,
+            activation_context: self.with_launch_account_dir(activation_context),
             lead_name,
             previous_runtime: None,
         })
@@ -778,10 +778,23 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         }
         Ok(PreparedMemberActivation {
             member,
-            activation_context,
+            activation_context: self.with_launch_account_dir(activation_context),
             lead_name,
             previous_runtime: Some(runtime_record),
         })
+    }
+
+    /// Resolve the account this activation launches on, once, so the launch
+    /// command and the operator's own settings file cannot disagree about it.
+    fn with_launch_account_dir(
+        &self,
+        mut context: MemberActivationContext,
+    ) -> MemberActivationContext {
+        context.account_dir = crate::session_scanner::accounts::team_launch_account_dir(
+            context.member.cli_tool,
+            self.cli_commands,
+        );
+        context
     }
 
     fn run_shared_activation(

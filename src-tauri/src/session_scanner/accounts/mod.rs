@@ -298,12 +298,26 @@ pub fn configured_default_dir(tool: CliTool) -> Option<PathBuf> {
 
 /// The account directory a managed team launch of `tool` runs on.
 ///
-/// The configured override where the harness namespaces team config,
-/// otherwise the harness's own default directory — the same two the team
-/// launch renderer picks between. A per-launch selector override is declared
-/// only for a harness with a managed home and is not covered here.
-pub fn team_launch_account_dir(tool: CliTool) -> Option<PathBuf> {
-    if let Some(dir) = configured_default_dir(tool) {
+/// One resolution, in the order the team launch renderer applies it: the
+/// configured override where the harness namespaces team config, then the
+/// account this launch selected, then the harness's own default directory.
+/// Anything that has to read or write that account's own files — capturing the
+/// operator's effort default and putting it back — resolves it here, so the
+/// file taurhaus edits is the file the member's process reads.
+pub fn team_launch_account_dir(
+    tool: CliTool,
+    cli_commands: &crate::models::CliCommandSettings,
+) -> Option<PathBuf> {
+    let capabilities = spec(tool).capabilities;
+    if capabilities.team_config_namespace {
+        if let Some(dir) = configured_default_dir(tool) {
+            return Some(dir);
+        }
+    }
+    if let Some(dir) = capabilities
+        .account_selector
+        .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
+    {
         return Some(dir);
     }
     let home = dirs::home_dir()?;

@@ -3870,6 +3870,69 @@ fn a_successful_launch_clears_the_failed_effort_budget() {
     assert_eq!(record.effort_resume_failure, None);
 }
 
+// Regression: 45cd190 captured the operator's Claude effort default from the
+// process default directory rather than the one the launch actually selects,
+// so a member on a chosen account had another account's level recorded — and
+// that other account's file written back on stop. Launch and capture must name
+// one account.
+#[test]
+fn the_effort_default_is_captured_from_the_account_the_launch_selects() {
+    let tmp = TempDir::new().expect("tempdir");
+    let account = TempDir::new().expect("account dir");
+    fs::write(
+        account.path().join("settings.json"),
+        r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#,
+    )
+    .expect("seed account settings");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Claude, None);
+    let mut cli_commands = CliCommandSettings::default();
+    cli_commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        account.path().to_path_buf(),
+    );
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+
+    orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &cli_commands,
+        )
+        .expect("resume");
+
+    let launch = runtime
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            RuntimeCall::SendKeys { keys, .. } => Some(keys),
+            _ => None,
+        })
+        .rfind(|keys| keys.contains("claude"))
+        .expect("a claude launch was sent to the pane");
+    let launched_dir = launch
+        .split_once("CLAUDE_CONFIG_DIR=")
+        .map(|(_, rest)| {
+            rest.trim_start_matches('\'')
+                .split('\'')
+                .next()
+                .unwrap_or_default()
+        })
+        .filter(|dir| !dir.is_empty())
+        .expect("the launch names the account it runs on");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    let recorded = record.effort_default.expect("the default was captured");
+    assert_eq!(
+        recorded.settings_path,
+        std::path::Path::new(launched_dir).join("settings.json"),
+        "capture must read the account the launch command names, got: {launch}"
+    );
+}
+
 #[test]
 fn a_slash_command_harness_is_never_relaunched_for_effort() {
     // mesh types `/effort` into a Claude pane before it delivers the notice;

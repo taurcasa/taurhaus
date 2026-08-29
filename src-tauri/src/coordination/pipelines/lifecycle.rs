@@ -17,7 +17,6 @@ use crate::coordination::requests::{
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
-use crate::session_scanner::accounts::team_launch_account_dir;
 use crate::session_scanner::cli_tool::{spec, CliTool};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -298,9 +297,9 @@ impl CoordinationOrchestrator {
                 .capabilities
                 .runtime_effort_default_sink
             {
-                if let Some(account_dir) = team_launch_account_dir(context.member.cli_tool) {
+                if let Some(account_dir) = context.account_dir.as_deref() {
                     runtime.effort_default =
-                        effort_default::record(sink, &account_dir, &context.member.model);
+                        effort_default::record(sink, account_dir, &context.member.model);
                 }
             }
         }
