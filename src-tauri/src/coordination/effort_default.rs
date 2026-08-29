@@ -12,6 +12,7 @@
 //! tool identity.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -149,7 +150,12 @@ pub fn restore_member_effort_default(teams_dir: &Path, team_name: &str, member_n
         return;
     };
 
-    restore(sink, recorded, record.applied_effort.as_deref());
+    // A restore that could not read or write the file has not run at all.
+    // Forgetting the record here would leave the harness's level in the
+    // operator's settings with nothing left to put back.
+    if restore(sink, recorded, record.applied_effort.as_deref()) == RestoreOutcome::Unavailable {
+        return;
+    }
     if let Err(err) = crate::coordination::stores::MemberRuntimeStore::update(
         teams_dir,
         team_name,
@@ -254,16 +260,52 @@ fn apply_level(settings: &mut Value, sink: EffortDefaultSink, model: &str, level
     }
 }
 
-/// Write through a sibling temp file so a crash cannot leave a half-written
-/// settings file behind.
+/// Serial number for this process's temp files, so two members restoring at
+/// once never write through the same one.
+static TEMP_FILE_SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Write through a temp file beside the target so a crash cannot leave a
+/// half-written settings file behind.
+///
+/// The target is the link's destination where the operator linked their
+/// settings into a dotfiles repo — renaming over the link would replace it
+/// with a regular file and every later edit would go somewhere else. The temp
+/// file carries this process and a serial in its name so concurrent restores
+/// cannot race through one path, takes the target's own permissions rather
+/// than the default ones, and is flushed to disk before the rename.
 fn write_settings(path: &Path, settings: &Value) -> std::io::Result<()> {
     let payload = serde_json::to_string_pretty(settings)
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
-    let tmp_path = path.with_extension("json.taurhaus-tmp");
-    fs::write(&tmp_path, payload.as_bytes())?;
-    if let Err(err) = fs::rename(&tmp_path, path) {
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let dir = target.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "settings path has no directory",
+        )
+    })?;
+    let serial = TEMP_FILE_SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = dir.join(format!(
+        ".taurhaus-effort-{}-{serial}.tmp",
+        std::process::id()
+    ));
+
+    let write = || -> std::io::Result<()> {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(payload.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+        if let Ok(metadata) = fs::metadata(&target) {
+            fs::set_permissions(&tmp_path, metadata.permissions())?;
+        }
+        fs::rename(&tmp_path, &target)
+    };
+    if let Err(err) = write() {
         let _ = fs::remove_file(&tmp_path);
         return Err(err);
+    }
+    // The rename is only durable once the directory entry is.
+    if let Ok(handle) = fs::File::open(dir) {
+        let _ = handle.sync_all();
     }
     Ok(())
 }
@@ -604,6 +646,142 @@ mod tests {
             record.effort_default, None,
             "a restored default is not restored again on the next stop"
         );
+    }
+
+    // Regression: 45cd190 wrote a sibling temp file and renamed it over the
+    // configured path, which replaces a symlink with a regular file. An
+    // operator whose `settings.json` links into a dotfiles repo lost the link
+    // and every later edit went to the wrong file.
+    #[cfg(unix)]
+    #[test]
+    fn a_settings_symlink_is_written_through_rather_than_replaced() {
+        let dir = account_dir(None);
+        let real = dir.path().join("dotfiles-settings.json");
+        fs::write(&real, r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#).expect("write");
+        std::os::unix::fs::symlink(&real, dir.path().join("settings.json")).expect("symlink");
+
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        fs::write(
+            &real,
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+
+        assert_eq!(
+            restore(SINK, &recorded, Some("high")),
+            RestoreOutcome::Restored
+        );
+        assert!(
+            fs::symlink_metadata(dir.path().join("settings.json"))
+                .expect("settings metadata")
+                .file_type()
+                .is_symlink(),
+            "the operator's link must survive the write"
+        );
+        let written: Value =
+            serde_json::from_str(&fs::read_to_string(&real).expect("read target")).expect("json");
+        assert_eq!(written["modelSettings"]["opus"]["effortLevel"], "low");
+    }
+
+    // Regression: the same write created the replacement with default
+    // permissions, so a settings file the operator had locked down came back
+    // world-readable.
+    #[cfg(unix)]
+    #[test]
+    fn a_restore_keeps_the_settings_files_own_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let path = dir.path().join("settings.json");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("chmod");
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        fs::write(
+            &path,
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("chmod");
+
+        restore(SINK, &recorded, Some("high"));
+
+        let mode = fs::metadata(&path).expect("metadata").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "the operator's own file mode must survive");
+    }
+
+    #[test]
+    fn a_restore_leaves_no_temp_file_behind() {
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+
+        restore(SINK, &recorded, Some("high"));
+
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .expect("read dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name != "settings.json")
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
+    }
+
+    // Regression: 45cd190 cleared the recorded default whatever the restore
+    // reported. A settings file that was momentarily unreadable — locked,
+    // half-written, on a disconnected share — therefore threw away the only
+    // record of the operator's own level, and mesh's value stayed forever.
+    #[test]
+    fn a_restore_that_could_not_run_keeps_the_record_for_the_next_try() {
+        let teams = TempDir::new().expect("teams dir");
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+        seed_member_with_recorded_default(teams.path(), "%42", recorded);
+
+        // Unreadable right now: the restore cannot know what it would replace.
+        fs::write(dir.path().join("settings.json"), "{ not json").expect("corrupt settings");
+        restore_member_effort_default(teams.path(), "effort-team", "lead-dev");
+
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            teams.path(),
+            "effort-team",
+            "lead-dev",
+        )
+        .expect("runtime record");
+        assert!(
+            record.effort_default.is_some(),
+            "a restore that never ran must stay pending"
+        );
+
+        // The next stop finds the file readable again and puts the level back.
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("readable again");
+        restore_member_effort_default(teams.path(), "effort-team", "lead-dev");
+
+        assert_eq!(
+            settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
+            "low"
+        );
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            teams.path(),
+            "effort-team",
+            "lead-dev",
+        )
+        .expect("runtime record");
+        assert_eq!(record.effort_default, None);
     }
 
     #[test]
