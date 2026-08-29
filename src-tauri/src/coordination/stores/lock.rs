@@ -1,12 +1,15 @@
 //! Advisory file locks for store concurrency safety.
 
+use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
 use fs2::FileExt;
+use taurhaus_lib::logging::emit_global;
 
 use crate::coordination::errors::CoordinationError;
 
@@ -20,6 +23,53 @@ const READ_RETRY_BACKOFFS: [Duration; 3] = [
 
 fn is_windows_unsupported_lock_error(err: &std::io::Error) -> bool {
     cfg!(target_os = "windows") && err.raw_os_error() == Some(1)
+}
+
+/// Paths already reported as unlockable, so one degraded volume does not
+/// produce a line per write.
+fn reported_unsupported_locks() -> &'static Mutex<HashSet<PathBuf>> {
+    static REPORTED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    REPORTED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// Whether this path's unlockable storage still has to be reported.
+fn note_unsupported_lock(path: &Path) -> bool {
+    reported_unsupported_locks()
+        .lock()
+        .map(|mut reported| reported.insert(path.to_path_buf()))
+        .unwrap_or(true)
+}
+
+/// Report storage whose advisory locks the platform refuses.
+///
+/// Windows answers `ERROR_INVALID_FUNCTION` for `LockFileEx` on the redirected
+/// paths a WSL-resolved teams directory lives behind. The store still writes —
+/// refusing to would take coordination down on exactly the platform the release
+/// builds target — and every field a cross-writer owns is re-read inside the
+/// same critical section, so what is left exposed is the rename itself. That is
+/// still a degradation an operator has to be able to see, so it is a structured
+/// event and not only a line in the tracing log, and it is emitted once per
+/// path rather than once per write.
+fn report_unsupported_lock(path: &Path, scope: &str) {
+    if !note_unsupported_lock(path) {
+        return;
+    }
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "path".to_string(),
+        serde_json::Value::String(path.display().to_string()),
+    );
+    fields.insert(
+        "scope".to_string(),
+        serde_json::Value::String(scope.to_string()),
+    );
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.store.lock_unsupported",
+        Some("Advisory file locks are unsupported for this path".to_string()),
+        fields,
+    );
 }
 
 pub(super) fn is_transient_file_lock_error(err: &std::io::Error) -> bool {
@@ -69,6 +119,7 @@ pub fn acquire_team_lock(teams_dir: &Path, team_name: &str) -> Result<File, Coor
                 lock_path = %lock_path.display(),
                 "advisory file locks are unsupported for this Windows path; continuing without lock"
             );
+            report_unsupported_lock(&lock_path, "team");
         }
         Err(err) => return Err(CoordinationError::Io(err)),
     }
@@ -130,6 +181,7 @@ impl TargetFileLock {
                         path = %path.display(),
                         "target-file advisory locks are unsupported for this Windows path; continuing without lock"
                     );
+                    report_unsupported_lock(path, "target_file");
                 }
                 Err(err) => return Err(CoordinationError::Io(err)),
             }
@@ -201,6 +253,26 @@ mod tests {
         assert!(is_transient_file_lock_error(
             &std::io::Error::from_raw_os_error(33)
         ));
+    }
+
+    // An unsupported advisory lock used to be reported only through a tracing
+    // line on every single write: invisible in the structured log, and drowning
+    // the unstructured one. Once per path is what an operator can act on.
+    #[test]
+    fn unlockable_storage_is_reported_once_per_path() {
+        let tmp = TempDir::new().expect("tempdir");
+        let first = tmp.path().join("teams-a/.lock");
+        let second = tmp.path().join("teams-b/.lock");
+
+        assert!(note_unsupported_lock(&first), "the first sighting reports");
+        assert!(
+            !note_unsupported_lock(&first),
+            "the same path is not reported again on every write"
+        );
+        assert!(
+            note_unsupported_lock(&second),
+            "another degraded path is reported on its own"
+        );
     }
 
     #[test]
