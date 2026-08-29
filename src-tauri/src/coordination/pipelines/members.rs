@@ -848,13 +848,23 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
 
     /// Resolve the account this activation launches on, once, so the launch
     /// command and the operator's own settings file cannot disagree about it.
+    ///
+    /// The mode is the renderer's own: it reads the resume base only for an
+    /// activation that names a conversation to resume, so the account is
+    /// resolved from the same base command the launch is rendered from.
     fn with_launch_account_dir(
         &self,
         mut context: MemberActivationContext,
     ) -> MemberActivationContext {
+        let mode = if context.resume_session_id.is_some() {
+            crate::daemon::protocol::LaunchMode::Resume
+        } else {
+            crate::daemon::protocol::LaunchMode::Fresh
+        };
         context.account_dir = crate::session_scanner::accounts::team_launch_account_dir(
             context.member.cli_tool,
             self.cli_commands,
+            mode,
         );
         context
     }

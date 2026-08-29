@@ -349,9 +349,14 @@ impl CoordinationOrchestrator {
             if runtime.effort_default.is_some() || runtime.health == HealthState::SessionDead {
                 continue;
             }
+            // A member that is already running was started by an earlier
+            // build, so there is no record of which mode rendered its command.
+            // The fresh base is the one that started it in every ordinary
+            // setup, and it is the account declaration the resume base repeats.
             let Some(account_dir) = crate::session_scanner::accounts::team_launch_account_dir(
                 member.cli_tool,
                 cli_commands,
+                crate::daemon::protocol::LaunchMode::Fresh,
             ) else {
                 continue;
             };
