@@ -1713,6 +1713,8 @@ mod tests {
                     adjacent_fix_policy: "no".to_string(),
                     validation_expectation: "cargo check --tests".to_string(),
                     response_expectation: "report-on-completion".to_string(),
+                    task_effort: String::new(),
+                    task_effort_why: String::new(),
                 },
                 ownership: OperationalOwnershipSnapshot {
                     override_allowed: false,

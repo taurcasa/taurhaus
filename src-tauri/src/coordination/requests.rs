@@ -72,6 +72,12 @@ pub struct OperationalAssignmentFooter {
     pub validation_expectation: String,
     #[serde(default)]
     pub response_expectation: String,
+    /// Reasoning effort the lead attached to the current assignment.
+    #[serde(default)]
+    pub task_effort: String,
+    /// Why the lead chose that level.
+    #[serde(default)]
+    pub task_effort_why: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

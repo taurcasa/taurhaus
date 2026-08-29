@@ -6,10 +6,11 @@ use rusqlite::Connection;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::OperationalContextUpdate;
 use crate::coordination::stores::{
-    OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+    MeshInboxStore, OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
     OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
     OperationalWorkingSetSnapshot, TeamConfigStore,
 };
+use crate::coordination::task_effort::{latest_assignment_effort, AssignmentEffort};
 
 pub fn sync_team_snapshots(
     teams_dir: &Path,
@@ -48,6 +49,7 @@ pub fn sync_member_snapshot(
         member_name,
         &project_path,
         latest_owned_task_from_tasks(&tasks, member_name),
+        assignment_effort(teams_dir, team_name, member_name),
     );
 
     save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)
@@ -85,6 +87,7 @@ pub fn sync_project_task_snapshots(
                 &member.name,
                 project_path,
                 latest_owned_task_from_tasks(&tasks, &member.name),
+                assignment_effort(teams_dir, &team_name, &member.name),
             );
             save_snapshot_if_changed(teams_dir, existing.as_ref(), snapshot)?;
         }
@@ -133,6 +136,8 @@ pub fn apply_delivery_context(
                 adjacent_fix_policy: footer.adjacent_fix_policy.clone(),
                 validation_expectation: footer.validation_expectation.clone(),
                 response_expectation: footer.response_expectation.clone(),
+                task_effort: footer.task_effort.clone(),
+                task_effort_why: footer.task_effort_why.clone(),
             })
             .or_else(|| {
                 existing
@@ -205,12 +210,36 @@ fn latest_owned_task_from_tasks(
     .unwrap_or_default()
 }
 
+/// The effort on the newest assignment in a member's inbox.
+///
+/// Best-effort: a missing or unreadable inbox is no reason to skip the rest of
+/// the snapshot, and it leaves whatever level the footer already carries.
+fn assignment_effort(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> Option<AssignmentEffort> {
+    match MeshInboxStore::load(teams_dir, team_name, member_name) {
+        Ok(messages) => latest_assignment_effort(&messages),
+        Err(err) => {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                error = %err,
+                "failed to read assignment effort from member inbox"
+            );
+            None
+        }
+    }
+}
+
 fn build_member_snapshot(
     existing: Option<&OperationalContextSnapshot>,
     team_name: &str,
     member_name: &str,
     project_path: &str,
     task: OperationalTaskSnapshot,
+    effort: Option<AssignmentEffort>,
 ) -> OperationalContextSnapshot {
     OperationalContextSnapshot {
         version: existing.map_or(1, |snapshot| snapshot.version),
@@ -218,9 +247,16 @@ fn build_member_snapshot(
         member_name: member_name.to_string(),
         updated_at: Utc::now(),
         task,
-        assignment_footer: existing
-            .map(|snapshot| snapshot.assignment_footer.clone())
-            .unwrap_or_default(),
+        assignment_footer: {
+            let mut footer = existing
+                .map(|snapshot| snapshot.assignment_footer.clone())
+                .unwrap_or_default();
+            if let Some(effort) = effort {
+                footer.task_effort = effort.level;
+                footer.task_effort_why = effort.why.unwrap_or_default();
+            }
+            footer
+        },
         ownership: existing
             .map(|snapshot| snapshot.ownership.clone())
             .unwrap_or_default(),
@@ -369,6 +405,119 @@ mod tests {
         assert_eq!(snapshot.working_set.project_path, "proj-web");
     }
 
+    fn assignment_message(level: &str, why: &str) -> crate::coordination::stores::MeshInboxMessage {
+        let mut message = crate::coordination::stores::MeshInboxMessage::new(
+            "team-lead",
+            format!("Effort: {level} — {why}\nFix the regression."),
+            None,
+            Utc::now(),
+        );
+        message
+            .extra
+            .insert("effort".to_string(), serde_json::json!(level));
+        message
+            .extra
+            .insert("effortWhy".to_string(), serde_json::json!(why));
+        message
+    }
+
+    #[test]
+    fn sync_member_snapshot_reads_the_assignment_effort_off_the_inbox() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        crate::coordination::stores::MeshInboxStore::append(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+            &assignment_message("high", "the migration is irreversible"),
+        )
+        .expect("append assignment");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert_eq!(snapshot.assignment_footer.task_effort, "high");
+        assert_eq!(
+            snapshot.assignment_footer.task_effort_why,
+            "the migration is irreversible"
+        );
+    }
+
+    #[test]
+    fn a_later_message_without_an_effort_leaves_the_level_standing() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        crate::coordination::stores::MeshInboxStore::append(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+            &assignment_message("medium", "routine lane work"),
+        )
+        .expect("append assignment");
+        crate::coordination::stores::MeshInboxStore::append(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+            &crate::coordination::stores::MeshInboxMessage::new(
+                "team-lead",
+                "any progress?".to_string(),
+                None,
+                Utc::now(),
+            ),
+        )
+        .expect("append nudge");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert_eq!(snapshot.assignment_footer.task_effort, "medium");
+        assert_eq!(
+            snapshot.assignment_footer.task_effort_why,
+            "routine lane work"
+        );
+    }
+
+    #[test]
+    fn a_member_with_no_assignment_effort_keeps_an_empty_footer_pair() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync snapshot");
+
+        let snapshot = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+
+        assert!(snapshot.assignment_footer.task_effort.is_empty());
+        assert!(snapshot.assignment_footer.task_effort_why.is_empty());
+    }
+
     #[test]
     fn sync_member_snapshot_clears_completed_task_when_no_resumable_task_exists() {
         let teams = TempDir::new().expect("teams dir");
@@ -513,6 +662,8 @@ mod tests {
                         adjacent_fix_policy: "no".to_string(),
                         validation_expectation: "cargo check --tests".to_string(),
                         response_expectation: "report-on-completion".to_string(),
+                        task_effort: String::new(),
+                        task_effort_why: String::new(),
                     },
                 ),
                 ownership: Some(crate::coordination::requests::OperationalOwnershipContext {
