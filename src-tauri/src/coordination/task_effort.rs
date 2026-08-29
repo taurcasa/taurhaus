@@ -9,9 +9,7 @@
 //! surfaces and owns the one path mesh cannot take: relaunching a
 //! [`RuntimeEffort::ResumeWithFlag`] member with the effort flag.
 
-use chrono::{DateTime, Utc};
-
-use crate::coordination::stores::MeshInboxMessage;
+use crate::coordination::stores::OperationalContextSnapshot;
 use crate::session_scanner::cli_tool::{spec, CliTool, EffortFlag, RuntimeEffort};
 use crate::session_scanner::launch::command_contains_flag;
 
@@ -25,47 +23,24 @@ pub struct AssignmentEffort {
     pub why: Option<String>,
 }
 
-/// Effort carried by one inbox message, if it carries one.
+/// The effort the assignment a member is currently on carries.
 ///
-/// mesh serializes its inbox messages in camelCase (`effortWhy`) and its task
-/// metadata in snake_case (`effort_why`); both spellings are read so the same
-/// helper works on either record.
-pub fn message_effort(message: &MeshInboxMessage) -> Option<AssignmentEffort> {
-    let level = trimmed(message.extra.get("effort").and_then(|value| value.as_str()))?;
-    let why = ["effortWhy", "effort_why"]
-        .iter()
-        .find_map(|key| trimmed(message.extra.get(*key).and_then(|value| value.as_str())));
+/// Read off the member's operational snapshot, which pairs the task taurhaus
+/// selected as active with the level and reason mesh persists on that task
+/// record. Correlating on the task is the whole point: an inbox keeps every
+/// assignment ever delivered, so its newest effort-bearing message outlives the
+/// task it was asked for and would pair one task with another's level. A member
+/// with no active task has no assignment effort — the level of finished work is
+/// not what it is working under now.
+pub fn active_task_effort(snapshot: &OperationalContextSnapshot) -> Option<AssignmentEffort> {
+    if snapshot.task.id.trim().is_empty() {
+        return None;
+    }
+    let level = trimmed(Some(&snapshot.assignment_footer.task_effort))?;
     Some(AssignmentEffort {
         level: level.to_ascii_lowercase(),
-        why,
+        why: trimmed(Some(&snapshot.assignment_footer.task_effort_why)),
     })
-}
-
-/// The newest assignment effort delivered since `since`.
-///
-/// mesh appends, so the last message carrying an effort is the current
-/// assignment; messages after it — a nudge, a question — carry no effort and
-/// must not clear the level the member is working under.
-///
-/// A relaunch takes a member's session down, so it may only answer an
-/// assignment the running session has not already been through. An older
-/// record carries no applied level, and an inbox keeps every assignment ever
-/// delivered: without this an upgrade — or an operator restarting a member by
-/// hand — would take the pane straight back down for work that is long done.
-/// The timestamp mesh wrote is the only thing that separates the two.
-pub fn assignment_effort_since(
-    messages: &[MeshInboxMessage],
-    since: DateTime<Utc>,
-) -> Option<AssignmentEffort> {
-    messages
-        .iter()
-        .rev()
-        .find(|message| message_effort(message).is_some())
-        .filter(|message| {
-            DateTime::parse_from_rfc3339(&message.timestamp)
-                .is_ok_and(|delivered| delivered.with_timezone(&Utc) >= since)
-        })
-        .and_then(message_effort)
 }
 
 /// Whether this harness changes effort by being relaunched.
@@ -304,8 +279,8 @@ fn trimmed(value: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::TimeZone;
-    use serde_json::{json, Value};
+    use chrono::{TimeZone, Utc};
+    use serde_json::Value;
 
     use super::*;
 
@@ -337,121 +312,62 @@ mod tests {
         );
     }
 
-    fn message(from: &str, text: &str, effort: Option<(&str, Option<&str>)>) -> MeshInboxMessage {
-        let now = Utc.with_ymd_and_hms(2026, 8, 29, 9, 0, 0).unwrap();
-        let mut message = MeshInboxMessage::new(from, text.to_string(), None, now);
-        if let Some((level, why)) = effort {
-            message
-                .extra
-                .insert("effort".to_string(), json!(level.to_string()));
-            if let Some(why) = why {
-                message
-                    .extra
-                    .insert("effortWhy".to_string(), json!(why.to_string()));
-            }
+    fn snapshot(task_id: &str, level: &str, why: &str) -> OperationalContextSnapshot {
+        use crate::coordination::stores::{
+            OperationalAssignmentFooterSnapshot, OperationalOwnershipSnapshot,
+            OperationalTaskSnapshot, OperationalWorkingSetSnapshot,
+        };
+
+        OperationalContextSnapshot {
+            version: 1,
+            team_name: "architecture-final".to_string(),
+            member_name: "codex-reviewer".to_string(),
+            updated_at: Utc.with_ymd_and_hms(2026, 8, 29, 9, 0, 0).unwrap(),
+            task: OperationalTaskSnapshot {
+                id: task_id.to_string(),
+                subject: "Run the migration".to_string(),
+                status: "in_progress".to_string(),
+            },
+            assignment_footer: OperationalAssignmentFooterSnapshot {
+                task_effort: level.to_string(),
+                task_effort_why: why.to_string(),
+                ..Default::default()
+            },
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: String::new(),
+                focal_files: vec![],
+            },
         }
-        message
     }
 
     #[test]
-    fn an_assignment_message_carries_the_level_and_the_reason() {
-        let effort = message_effort(&message(
-            "lead",
-            "Effort: high — the migration is irreversible",
-            Some(("high", Some("the migration is irreversible"))),
-        ))
-        .expect("assignment carries effort");
+    fn an_active_task_carries_the_level_and_the_reason() {
+        let effort = active_task_effort(&snapshot("42", "High", "the migration is irreversible"))
+            .expect("the task carries an effort");
 
         assert_eq!(effort.level, "high");
         assert_eq!(effort.why.as_deref(), Some("the migration is irreversible"));
     }
 
     #[test]
-    fn a_snake_case_reason_reads_the_same_as_the_camel_case_one() {
-        // The inbox message spells it `effortWhy`; the task record mesh writes
-        // alongside it spells the same value `effort_why`.
-        let mut message = message("lead", "assignment", Some(("medium", None)));
-        message.extra.insert(
-            "effort_why".to_string(),
-            Value::String("routine lane work".to_string()),
-        );
-
-        let effort = message_effort(&message).expect("assignment carries effort");
-        assert_eq!(effort.why.as_deref(), Some("routine lane work"));
+    fn a_member_with_no_active_task_owes_no_level() {
+        // The snapshot clears the pair with the task, but a record written
+        // before that rule would still carry a level beside an empty task.
+        assert_eq!(active_task_effort(&snapshot("", "high", "stale")), None);
     }
 
     #[test]
-    fn a_message_without_an_effort_carries_none() {
-        assert_eq!(
-            message_effort(&message("lead", "any progress?", None)),
-            None
-        );
+    fn a_task_without_an_effort_carries_none() {
+        assert_eq!(active_task_effort(&snapshot("42", "   ", "")), None);
     }
 
     #[test]
-    fn a_blank_level_is_not_an_effort() {
-        assert_eq!(
-            message_effort(&message("lead", "assignment", Some(("   ", None)))),
-            None
-        );
-    }
-
-    #[test]
-    fn the_newest_assignment_wins_and_a_later_nudge_does_not_clear_it() {
-        let messages = vec![
-            message("lead", "first", Some(("low", Some("trivial")))),
-            message("lead", "second", Some(("high", Some("irreversible")))),
-            message("lead", "any progress?", None),
-        ];
-
-        let effort = assignment_effort_since(&messages, DateTime::<Utc>::MIN_UTC)
-            .expect("latest assignment");
-        assert_eq!(effort.level, "high");
-        assert_eq!(effort.why.as_deref(), Some("irreversible"));
-    }
-
-    #[test]
-    fn an_assignment_delivered_before_the_session_started_is_not_current() {
-        let attached = Utc.with_ymd_and_hms(2026, 8, 29, 12, 0, 0).unwrap();
-        let mut old = message("lead", "first", Some(("high", Some("irreversible"))));
-        old.timestamp = Utc
-            .with_ymd_and_hms(2026, 8, 29, 9, 0, 0)
-            .unwrap()
-            .to_rfc3339();
-
-        assert_eq!(assignment_effort_since(&[old.clone()], attached), None);
-
-        let mut fresh = old;
-        fresh.timestamp = Utc
-            .with_ymd_and_hms(2026, 8, 29, 12, 30, 0)
-            .unwrap()
-            .to_rfc3339();
-        assert_eq!(
-            assignment_effort_since(&[fresh], attached)
-                .expect("a fresh assignment counts")
-                .level,
-            "high"
-        );
-    }
-
-    #[test]
-    fn an_unreadable_timestamp_is_not_treated_as_current() {
-        // A record taurhaus cannot date is not a reason to take a pane down.
-        let mut message = message("lead", "first", Some(("high", None)));
-        message.timestamp = "not a timestamp".to_string();
-
-        assert_eq!(
-            assignment_effort_since(
-                &[message],
-                Utc.with_ymd_and_hms(2026, 8, 29, 12, 0, 0).unwrap()
-            ),
-            None
-        );
-    }
-
-    #[test]
-    fn an_empty_inbox_carries_no_effort() {
-        assert_eq!(assignment_effort_since(&[], DateTime::<Utc>::MIN_UTC), None);
+    fn a_level_without_a_reason_still_reads_back() {
+        let effort = active_task_effort(&snapshot("42", "medium", "  "))
+            .expect("the task carries an effort");
+        assert_eq!(effort.level, "medium");
+        assert_eq!(effort.why, None);
     }
 
     #[test]

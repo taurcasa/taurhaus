@@ -979,6 +979,43 @@ mod tests {
         )));
     }
 
+    /// Put a member on an active task carrying `level`, the way the
+    /// operational snapshot sync does once mesh has written the assignment
+    /// onto the task record.
+    fn assign_task(teams_dir: &std::path::Path, team_name: &str, member_name: &str, level: &str) {
+        use crate::coordination::stores::{
+            OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+            OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
+            OperationalWorkingSetSnapshot,
+        };
+
+        OperationalContextSnapshotStore::save(
+            teams_dir,
+            &OperationalContextSnapshot {
+                version: 1,
+                team_name: team_name.to_string(),
+                member_name: member_name.to_string(),
+                updated_at: Utc::now(),
+                task: OperationalTaskSnapshot {
+                    id: "42".to_string(),
+                    subject: "Run the migration".to_string(),
+                    status: "in_progress".to_string(),
+                },
+                assignment_footer: OperationalAssignmentFooterSnapshot {
+                    task_effort: level.to_string(),
+                    task_effort_why: "the migration is irreversible".to_string(),
+                    ..Default::default()
+                },
+                ownership: OperationalOwnershipSnapshot::default(),
+                working_set: OperationalWorkingSetSnapshot {
+                    project_path: "/tmp/app".to_string(),
+                    focal_files: vec![],
+                },
+            },
+        )
+        .expect("write operational snapshot");
+    }
+
     #[test]
     fn the_background_pass_puts_a_pending_assignment_effort_into_force() {
         // The lead's per-assignment effort reaches a Claude, Antigravity or
@@ -1033,22 +1070,7 @@ mod tests {
         )
         .expect("seed runtime");
 
-        let mut message = crate::coordination::stores::MeshInboxMessage::new(
-            "team-lead",
-            "Effort: high — the migration is irreversible".to_string(),
-            None,
-            Utc::now(),
-        );
-        message
-            .extra
-            .insert("effort".to_string(), serde_json::json!("high"));
-        crate::coordination::stores::MeshInboxStore::append(
-            tmp.path(),
-            "effort-team",
-            "builder",
-            &message,
-        )
-        .expect("append assignment");
+        assign_task(tmp.path(), "effort-team", "builder", "high");
 
         state.orchestrator.lock().expect("state mutex").take();
 
@@ -1121,22 +1143,7 @@ mod tests {
         )
         .expect("seed runtime");
 
-        let mut message = crate::coordination::stores::MeshInboxMessage::new(
-            "team-lead",
-            "Effort: high — the migration is irreversible".to_string(),
-            None,
-            Utc::now(),
-        );
-        message
-            .extra
-            .insert("effort".to_string(), serde_json::json!("high"));
-        crate::coordination::stores::MeshInboxStore::append(
-            tmp.path(),
-            "effort-team",
-            "builder",
-            &message,
-        )
-        .expect("append assignment");
+        assign_task(tmp.path(), "effort-team", "builder", "high");
 
         state.orchestrator.lock().expect("state mutex").take();
 

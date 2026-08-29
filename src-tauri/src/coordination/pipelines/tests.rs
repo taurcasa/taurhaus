@@ -3592,7 +3592,69 @@ fn effort_team(
     orchestrator
 }
 
-fn append_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
+/// Put the member on an active task carrying `level`, the way the operational
+/// snapshot sync does after mesh writes the assignment onto the task record.
+fn assign_task(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
+    write_member_snapshot(
+        tmp,
+        member_name,
+        Some(("42", "Run the migration")),
+        level,
+        why,
+    );
+}
+
+/// The member has nothing assigned: its last task is finished, so the snapshot
+/// carries neither a task nor a level.
+fn clear_assignment(tmp: &TempDir, member_name: &str) {
+    write_member_snapshot(tmp, member_name, None, "", "");
+}
+
+fn write_member_snapshot(
+    tmp: &TempDir,
+    member_name: &str,
+    task: Option<(&str, &str)>,
+    level: &str,
+    why: &str,
+) {
+    use crate::coordination::stores::{
+        OperationalAssignmentFooterSnapshot, OperationalContextSnapshot,
+        OperationalContextSnapshotStore, OperationalOwnershipSnapshot, OperationalTaskSnapshot,
+        OperationalWorkingSetSnapshot,
+    };
+
+    OperationalContextSnapshotStore::save(
+        tmp.path(),
+        &OperationalContextSnapshot {
+            version: 1,
+            team_name: "effort-team".to_string(),
+            member_name: member_name.to_string(),
+            updated_at: Utc::now(),
+            task: task
+                .map(|(id, subject)| OperationalTaskSnapshot {
+                    id: id.to_string(),
+                    subject: subject.to_string(),
+                    status: "in_progress".to_string(),
+                })
+                .unwrap_or_default(),
+            assignment_footer: OperationalAssignmentFooterSnapshot {
+                task_effort: level.to_string(),
+                task_effort_why: why.to_string(),
+                ..Default::default()
+            },
+            ownership: OperationalOwnershipSnapshot::default(),
+            working_set: OperationalWorkingSetSnapshot {
+                project_path: "/tmp/builder".to_string(),
+                focal_files: vec![],
+            },
+        },
+    )
+    .expect("write operational snapshot");
+}
+
+/// An assignment mesh delivered to the member's inbox at some point. Kept only
+/// so the tests can prove the switch does *not* read it.
+fn append_inbox_assignment(tmp: &TempDir, member_name: &str, level: &str, why: &str) {
     let mut message = crate::coordination::stores::MeshInboxMessage::new(
         "team-lead",
         format!("Effort: {level} — {why}\nStart on the migration."),
@@ -3656,7 +3718,7 @@ fn a_codex_member_is_relaunched_with_the_assignment_effort() {
         )
         .expect("seed resume");
 
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
         .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
@@ -3694,7 +3756,7 @@ fn a_resume_carries_the_effort_of_an_assignment_made_while_the_member_was_down()
     let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
     mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
 
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let report = orchestrator
         .resume_member_with_cli_commands(
@@ -3760,7 +3822,7 @@ fn taurhaus_never_types_an_effort_command_into_a_members_pane() {
                 &CliCommandSettings::default(),
             )
             .expect("seed resume");
-        append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+        assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
         let handled = orchestrator
             .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
@@ -3836,7 +3898,7 @@ fn a_codex_effort_relaunch_resumes_the_members_own_session() {
     let seeded = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
     assert_eq!(seeded.session_id.as_deref(), Some("session-effort"));
 
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     orchestrator
         .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
@@ -3887,7 +3949,7 @@ fn a_second_pass_over_the_same_assignment_does_not_relaunch_again() {
             &CliCommandSettings::default(),
         )
         .expect("seed resume");
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let first = orchestrator
         .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
@@ -3931,7 +3993,7 @@ fn a_failed_effort_relaunch_stays_retryable_within_a_budget() {
             &CliCommandSettings::default(),
         )
         .expect("seed resume");
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     runtime.set_send_keys_failures("%21", usize::MAX, "launch failed");
     for index in 1..=8 {
@@ -3999,7 +4061,7 @@ fn a_successful_launch_clears_the_failed_effort_budget() {
             &CliCommandSettings::default(),
         )
         .expect("seed resume");
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     runtime.set_send_keys_failures("%21", usize::MAX, "launch failed");
     for index in 1..=8 {
@@ -4024,116 +4086,81 @@ fn a_successful_launch_clears_the_failed_effort_budget() {
     assert_eq!(record.effort_resume_failure, None);
 }
 
-fn append_assignment_at(
-    tmp: &TempDir,
-    member_name: &str,
-    level: &str,
-    why: &str,
-    at: chrono::DateTime<Utc>,
-) {
-    let mut message = crate::coordination::stores::MeshInboxMessage::new(
-        "team-lead",
-        format!("Effort: {level} — {why}\nStart on the migration."),
-        None,
-        at,
-    );
-    message
-        .extra
-        .insert("effort".to_string(), serde_json::json!(level));
-    message
-        .extra
-        .insert("effortWhy".to_string(), serde_json::json!(why));
-    crate::coordination::stores::MeshInboxStore::append(
-        tmp.path(),
-        "effort-team",
-        member_name,
-        &message,
-    )
-    .expect("append assignment");
-}
-
-// Regression: 2529309 compared the newest effort in the inbox against the
-// runtime record with no regard for when either was written. An older record
-// carries no applied effort, so upgrading — or restarting a member by hand —
-// took the pane straight back down for an assignment the running session had
-// already been through.
+// Regression: 4994b24 read the switch's level out of the member's inbox, and
+// an inbox keeps every assignment ever delivered. The newest effort-bearing
+// message therefore outlived the task it was asked for, so a member whose work
+// was long finished still counted as owing that level. The task the member is
+// on is the only thing the level may be read from.
 #[test]
-fn an_assignment_older_than_the_running_session_does_not_relaunch_it() {
+fn a_finished_assignment_leaves_the_running_pane_alone() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
-    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    append_inbox_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    clear_assignment(&tmp, "builder");
 
-    append_assignment_at(
-        &tmp,
-        "builder",
-        "high",
-        "the migration is irreversible",
-        Utc::now() - chrono::Duration::hours(6),
-    );
-
-    // The member is launched now, well after that assignment was delivered.
-    orchestrator
-        .resume_member_with_cli_commands(
-            &ResumeMemberRequest {
-                team_name: "effort-team".to_string(),
-                member_name: "builder".to_string(),
-                reasoning_effort_override: None,
-            },
-            &CliCommandSettings::default(),
-        )
-        .expect("seed resume");
-    // What an upgraded record looks like: a live session, nothing recorded.
-    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
-        record.applied_effort = None;
-    })
-    .expect("clear applied effort");
     let before = codex_launch_attempts(&runtime);
-
     let resumed = orchestrator
         .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
         .expect("effort pass");
 
-    assert!(resumed.is_empty(), "nothing new was assigned to act on");
+    assert!(resumed.is_empty(), "nothing is assigned to act on");
     assert_eq!(
         codex_launch_attempts(&runtime),
         before,
-        "a session that already started under that assignment must not be taken down"
+        "the level of finished work is not what the member is working under now"
     );
 }
 
-// The other side of the same rule: an assignment that arrives while the member
-// is running is exactly what the pass exists for.
+// The other side of the same rule: the task the member is on is what the pass
+// exists for.
 #[test]
-fn an_assignment_delivered_to_a_running_member_still_relaunches_it() {
+fn an_assignment_on_the_members_active_task_relaunches_it() {
     let tmp = TempDir::new().expect("tempdir");
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
-    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
-    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
-    orchestrator
-        .resume_member_with_cli_commands(
-            &ResumeMemberRequest {
-                team_name: "effort-team".to_string(),
-                member_name: "builder".to_string(),
-                reasoning_effort_override: None,
-            },
-            &CliCommandSettings::default(),
-        )
-        .expect("seed resume");
-
-    append_assignment_at(
-        &tmp,
-        "builder",
-        "high",
-        "the migration is irreversible",
-        Utc::now() + chrono::Duration::seconds(1),
-    );
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
         .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
         .expect("effort pass");
 
     assert_eq!(resumed, vec!["builder".to_string()]);
+}
+
+// Regression: 4994b24 resolved an operator's own resume from the newest
+// effort-bearing message in the inbox with no lower bound, so a member coming
+// back came back at the level of the last assignment it had *ever* been sent —
+// work that was finished hours earlier.
+#[test]
+fn a_resume_ignores_an_assignment_the_member_has_already_finished() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = effort_team(&tmp, runtime.clone(), CliTool::Codex, Some("low"));
+    mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
+    append_inbox_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    clear_assignment(&tmp, "builder");
+
+    let report = orchestrator
+        .resume_member_with_cli_commands(
+            &ResumeMemberRequest {
+                team_name: "effort-team".to_string(),
+                member_name: "builder".to_string(),
+                reasoning_effort_override: None,
+            },
+            &CliCommandSettings::default(),
+        )
+        .expect("resume report");
+    assert!(report.resumed, "resume should succeed: {report:?}");
+
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the member comes back at its own launch effort, not a finished task's level"
+    );
 }
 
 #[test]
@@ -4144,7 +4171,7 @@ fn a_member_that_never_started_is_left_alone() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let mut orchestrator = effort_team(&tmp, runtime, CliTool::Codex, Some("low"));
     MemberRuntimeStore::delete(tmp.path(), "effort-team", "builder").expect("delete runtime");
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
         .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
@@ -4183,7 +4210,7 @@ fn an_effort_switch_without_a_session_id_leaves_the_running_pane_alone() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let mut orchestrator =
         seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
     // What an older record — or a session capture that never landed — leaves.
     MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
         record.session_id = None;
@@ -4207,6 +4234,57 @@ fn an_effort_switch_without_a_session_id_leaves_the_running_pane_alone() {
         HealthState::Healthy,
         "the member keeps running at its previous level"
     );
+    assert_eq!(
+        record
+            .effort_resume_failure
+            .as_ref()
+            .map(|failure| failure.level.as_str()),
+        Some("high"),
+        "a switch that cannot be made is reported, not silently deferred forever"
+    );
+}
+
+// Regression: 2529309 handed the member to `teardown_member_resources_best_effort`
+// and relaunched whatever came back. A teardown that could not terminate the
+// pane — an ownership check that fails, a kill that errors — reported its
+// failure only in its diagnostics, so the pass went on to resume a member whose
+// session was still running and rendered a second one beside it.
+#[test]
+fn a_stop_that_failed_aborts_the_effort_resume() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator =
+        seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
+    // The pane no longer belongs to the project the member is on, so the
+    // teardown refuses to kill it.
+    runtime.set_pane_ownership("%21", false);
+
+    let before = codex_launch_attempts(&runtime);
+    let resumed = orchestrator
+        .apply_pending_task_effort("effort-team", &CliCommandSettings::default(), "new_window")
+        .expect("effort pass");
+
+    assert!(resumed.is_empty(), "a stop that failed is not a switch");
+    assert_eq!(
+        codex_launch_attempts(&runtime),
+        before,
+        "a member whose session is still running must never be launched again"
+    );
+    let record = MemberRuntimeStore::load(tmp.path(), "effort-team", "builder").expect("runtime");
+    assert_eq!(
+        record.applied_effort.as_deref(),
+        Some("low"),
+        "the level never took effect"
+    );
+    assert_eq!(
+        record
+            .effort_resume_failure
+            .as_ref()
+            .map(|failure| failure.level.as_str()),
+        Some("high"),
+        "the failure is recorded so the retry is bounded and reported"
+    );
 }
 
 // Regression: 2529309 accepted any runtime record, so an assignment that
@@ -4218,7 +4296,7 @@ fn an_operator_stopped_member_is_not_restarted_by_the_effort_pass() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let mut orchestrator =
         seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
     // The operator's own Stop.
     mark_member_offline(&tmp, "effort-team", "builder", "%21", None);
 
@@ -4249,7 +4327,7 @@ fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() 
     cli_commands.codex.resume =
         "codex resume --last -c model_reasoning_effort=\"low\" --yolo".to_string();
     let mut orchestrator = seed_running_codex_member(&tmp, runtime.clone(), &cli_commands);
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
         .apply_pending_task_effort("effort-team", &cli_commands, "new_window")
@@ -4290,7 +4368,7 @@ fn a_pin_the_rewrite_cannot_read_leaves_the_member_running() {
     // A trailing bare key: there is no value token to replace.
     cli_commands.codex.resume = "codex resume --last --yolo -c model_reasoning_effort".to_string();
     let mut orchestrator = seed_running_codex_member(&tmp, runtime.clone(), &cli_commands);
-    append_assignment(&tmp, "builder", "high", "the migration is irreversible");
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator

@@ -17,7 +17,8 @@ use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
 };
 use crate::coordination::stores::{
-    EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeStore, MeshInboxStore, TeamConfigStore,
+    EffortResumeFailure, MemberRuntimeRecord, MemberRuntimeStore, OperationalContextSnapshotStore,
+    TeamConfigStore,
 };
 use crate::coordination::task_effort;
 use crate::coordination::validation::{
@@ -205,17 +206,20 @@ impl CoordinationOrchestrator {
 
     /// Put every pending assignment effort into force for this team.
     ///
-    /// mesh applies the level itself from the member daemon it runs beside a
-    /// pane. This pass covers the two members it cannot reach: the harness with
-    /// no runtime effort command, relaunched with the effort flag, and the
-    /// harness that polls its own inbox and so has no mesh daemon, told in its
-    /// own prompt. Returns the members whose level it put into force.
+    /// mesh types `/effort` into the pane itself, before it delivers the
+    /// notice, for every harness that takes the command in its own prompt. This
+    /// pass covers the one harness it cannot reach — Codex, which has no such
+    /// grammar — by stopping the member and resuming its own conversation with
+    /// the effort flag. Returns the members whose level it put into force.
     ///
-    /// Best-effort, the same stance mesh takes on its side: a member that
+    /// **Best-effort by design, and behind the notice.** mesh owns both the
+    /// assignment record and the inbox, and nothing on taurhaus's side gates
+    /// either, so a Codex member can read its assignment at its previous effort
+    /// for the seconds between the notice landing and this resume completing.
+    /// Closing that window means gating the notice on `appliedEffort` in mesh,
+    /// which owns both ends; it is the W5a follow-up. Until then a member that
     /// cannot be switched keeps running at its previous level and still has the
-    /// notice, which carries the line. The requested level is recorded either
-    /// way so a failure is reported once instead of relaunching the pane on
-    /// every pass.
+    /// notice, which carries the line.
     pub fn apply_pending_task_effort(
         &mut self,
         team_name: &str,
@@ -268,7 +272,26 @@ impl CoordinationOrchestrator {
                 None,
             );
 
-            self.stop_member_for_effort_resume(team_name, member);
+            // A relaunch that resumed a member whose session is still running
+            // would render a second one beside it, so a stop that did not land
+            // ends the switch here rather than in the pipeline.
+            if let Err(reason) = self.stop_member_for_effort_resume(team_name, member) {
+                self.record_failed_effort_attempt(
+                    team_name,
+                    &member.name,
+                    &pending.level,
+                    pending.failed_attempts + 1,
+                );
+                task_effort::emit_effort_resume(
+                    "effort.resume.failed",
+                    team_name,
+                    &member.name,
+                    &pending.level,
+                    pending.previous.as_deref(),
+                    Some(&reason),
+                );
+                continue;
+            }
             let request = ResumeMemberRequest {
                 team_name: team_name.to_string(),
                 member_name: member.name.clone(),
@@ -322,17 +345,15 @@ impl CoordinationOrchestrator {
         Ok(resumed)
     }
 
-    /// The level the member's open assignment asks for, for a member being
+    /// The level the member's current assignment asks for, for a member being
     /// started rather than switched.
     ///
-    /// A pending effort switch is bounded to assignments delivered since the
-    /// running session attached, because an inbox keeps every assignment ever
-    /// delivered and an old one is no reason to take a live pane down. A member
-    /// that is being started now has no such session: the newest assignment in
-    /// its inbox is the work it is coming back to, and its level is the one it
-    /// must come back at. Only a harness that changes effort by being
-    /// relaunched needs this — every other one takes the level from its own
-    /// prompt once it is up.
+    /// The pass below only switches a member that is already up. A member being
+    /// started has no session to switch: it must simply come back at the level
+    /// its active task asks for, or the very next task event would stop it
+    /// again to change a level the launch could have carried. Only a harness
+    /// that changes effort by being relaunched needs this — every other one
+    /// takes the level from mesh once it is up.
     pub(super) fn open_assignment_effort(
         &self,
         team_name: &str,
@@ -341,12 +362,25 @@ impl CoordinationOrchestrator {
         if !task_effort::relaunches_for_effort(member.cli_tool) {
             return None;
         }
-        let messages = MeshInboxStore::load(&self.teams_dir, team_name, &member.name).ok()?;
-        let assigned = task_effort::assignment_effort_since(
-            &messages,
-            chrono::DateTime::<chrono::Utc>::MIN_UTC,
-        )?;
+        let assigned = self.active_task_effort(team_name, &member.name)?;
         task_effort::resume_effort_target(member.cli_tool, Some(&assigned.level), None)
+    }
+
+    /// The effort the task this member is on carries, if it carries one.
+    ///
+    /// The operational snapshot is the one place that pairs the task taurhaus
+    /// selected as active with the level mesh persisted on that task record,
+    /// and it is rewritten whenever the task scan lands — including to clear
+    /// both when the member finishes its work.
+    fn active_task_effort(
+        &self,
+        team_name: &str,
+        member_name: &str,
+    ) -> Option<task_effort::AssignmentEffort> {
+        let snapshot =
+            OperationalContextSnapshotStore::load(&self.teams_dir, team_name, member_name)
+                .ok()??;
+        task_effort::active_task_effort(&snapshot)
     }
 
     /// The effort taurhaus must put into force for a member, if any.
@@ -361,32 +395,11 @@ impl CoordinationOrchestrator {
         if runtime.health == HealthState::SessionDead && runtime.effort_resume_failure.is_none() {
             return None;
         }
-        // The relaunch resumes the member's own conversation. Without a
-        // session id the resume pipeline would render a fresh launch, so an
-        // effort switch would throw away the context the assignment builds on:
-        // leave the pane running at its level instead.
-        if runtime
-            .session_id
-            .as_deref()
-            .map(str::trim)
-            .is_none_or(str::is_empty)
-        {
-            tracing::debug!(
-                team = %team_name,
-                member = %member.name,
-                "deferring an effort switch for a member with no recorded session"
-            );
-            return None;
-        }
-        // A relaunch answers an assignment the running session has not been
-        // through. A record that never recorded an attach never ran, so there
-        // is no session for a stale assignment to take down and every
-        // assignment still counts.
-        let attached_at = runtime
-            .attached_at
-            .unwrap_or(chrono::DateTime::<chrono::Utc>::MIN_UTC);
-        let messages = MeshInboxStore::load(&self.teams_dir, team_name, &member.name).ok()?;
-        let assigned = task_effort::assignment_effort_since(&messages, attached_at)?;
+        // The level is the one the task the member is on carries, never the
+        // newest effort-bearing message in an inbox that keeps every assignment
+        // ever delivered: that message outlives its task, and a member whose
+        // work is finished owes no level at all.
+        let assigned = self.active_task_effort(team_name, &member.name)?;
         let level = task_effort::resume_effort_target(
             member.cli_tool,
             Some(&assigned.level),
@@ -398,6 +411,27 @@ impl CoordinationOrchestrator {
             .filter(|failure| failure.level.eq_ignore_ascii_case(&level))
             .map_or(0, |failure| failure.attempts);
         if failed_attempts >= MAX_EFFORT_RESUME_ATTEMPTS {
+            return None;
+        }
+        // The relaunch resumes the member's own conversation. Without a session
+        // id the resume pipeline would render a fresh launch, throwing away the
+        // context the assignment builds on, so the switch is refused outright
+        // rather than downgraded into a new conversation.
+        if runtime
+            .session_id
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(str::is_empty)
+        {
+            self.record_failed_effort_attempt(team_name, &member.name, &level, failed_attempts + 1);
+            task_effort::emit_effort_resume(
+                "effort.resume.failed",
+                team_name,
+                &member.name,
+                &level,
+                runtime.applied_effort.as_deref(),
+                Some("member has no recorded session to resume"),
+            );
             return None;
         }
         Some(PendingEffort {
@@ -413,18 +447,41 @@ impl CoordinationOrchestrator {
     /// rule the operator's Stop-then-Resume follows — and a harness with no
     /// runtime effort command has no other way to reach the level the lead
     /// asked for. `effort.resume.started` is emitted before this runs, so the
-    /// stop is never silent. A member already offline is left as it is.
-    fn stop_member_for_effort_resume(&mut self, team_name: &str, member: &Member) {
+    /// stop is never silent. A member already offline is one this pass stopped
+    /// on an earlier attempt, and there is nothing left to take down.
+    ///
+    /// `Err` when the pane is still standing: the teardown is best-effort and
+    /// reports a refused ownership check or a failed kill in its own
+    /// diagnostics, and resuming on top of a live session would render a second
+    /// one beside it.
+    fn stop_member_for_effort_resume(
+        &mut self,
+        team_name: &str,
+        member: &Member,
+    ) -> Result<(), String> {
         let runtime = match MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name) {
             Ok(runtime) if runtime.health != HealthState::SessionDead => runtime,
-            _ => return,
+            _ => return Ok(()),
         };
-        self.teardown_member_resources_best_effort(
+        let diagnostics = self.teardown_member_resources_best_effort(
             team_name,
             &member.name,
             Some(member.project_path.as_path()),
             Some(&runtime),
         );
+        if let Some(failed) = diagnostics
+            .steps
+            .iter()
+            .find(|step| step.step == "kill_pane" && !step.success)
+        {
+            return Err(format!(
+                "stop failed: {}",
+                failed
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| "pane was not terminated".to_string())
+            ));
+        }
         if let Err(err) =
             MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
                 record.health = HealthState::SessionDead;
@@ -438,6 +495,7 @@ impl CoordinationOrchestrator {
                 "failed to mark a member offline before its effort resume"
             );
         }
+        Ok(())
     }
 
     fn record_failed_effort_attempt(

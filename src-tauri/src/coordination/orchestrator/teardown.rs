@@ -24,7 +24,9 @@ const INACTIVE_LEAD_REASON: &str = "inactive_lead_control_identity";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct TeardownDiagnostics {
-    pub(super) steps: Vec<RemoveMemberStepResult>,
+    /// Per-resource outcome. Read outside this module by the task-effort pass,
+    /// which must know whether the pane actually came down before it resumes.
+    pub(crate) steps: Vec<RemoveMemberStepResult>,
     pub(super) warnings: Vec<String>,
 }
 
