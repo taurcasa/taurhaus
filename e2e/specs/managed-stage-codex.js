@@ -107,6 +107,8 @@ const LAUNCH_EFFORT = 'low'
 const ASSIGNED_EFFORT = 'medium'
 
 const TEAM_READY_TIMEOUT_MS = 240_000
+/** The onboarding turn, which is also what opens Codex's thread on disk. */
+const ONBOARDING_TURN_TIMEOUT_MS = 120_000
 /** How long the scanner gets to bind the member's rollout id on its own. */
 const SESSION_BIND_TIMEOUT_MS = 150_000
 /** Stop + resume + relaunch, measured end to end. */
@@ -123,6 +125,7 @@ const codexHome = process.env.CODEX_HOME || ''
 const claudeDir = TAURHAUS_CLAUDE_DIR
 const teamsDir = join(claudeDir, 'teams')
 const appLogPath = join(dataDir, 'taurhaus.log.jsonl')
+const codexNotifyPath = join(dataDir, 'codex-notify.jsonl')
 /** The wdio session's temp root — every path this lane creates lives under it. */
 const sessionTempRoot = dataDir ? dirname(dataDir) : ''
 const projectsDir = process.env.E2E_PROJECTS_DIR || (sessionTempRoot ? join(sessionTempRoot, 'projects') : '')
@@ -512,6 +515,69 @@ async function refreshFixtureTasks(projectId) {
   await invokeTauriOrThrow('get_project_tasks', { projectId })
 }
 
+/**
+ * Turns Codex has finished, counted from its own notify sink.
+ *
+ * Managed launches point Codex's `notify` at the daemon, which appends one
+ * `agent-turn-complete` record per turn to `<data dir>/codex-notify.jsonl`.
+ * Under a scratch `CODEX_HOME` that is the only turn signal available: the
+ * roster's session status is bound to a rollout id the scanner may not have.
+ */
+function completedTurns() {
+  try {
+    return readFileSync(codexNotifyPath, 'utf8').split('\n').filter((line) => line.trim()).length
+  } catch {
+    return 0
+  }
+}
+
+/** Wait for a Codex turn to finish, reporting rather than throwing on a miss. */
+async function waitForTurnAfter(previousTurns, timeoutMs) {
+  try {
+    await browser.waitUntil(async () => completedTurns() > previousTurns, {
+      timeout: timeoutMs,
+      interval: 1_000,
+      timeoutMsg: 'no turn completed',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Make sure the member has finished at least one turn.
+ *
+ * Two things depend on it. Codex opens its thread — and writes the rollout the
+ * effort switch resumes — on its first turn, so a member that has taken none
+ * has no conversation to switch. And a member that cannot take a turn at all
+ * (an exhausted subscription, a prompt this lane does not know to answer)
+ * cannot do a stage either, and should say so here rather than time out later
+ * with the assignment already paid for.
+ *
+ * The first nudge is a bare Enter, which submits an onboarding message left
+ * sitting in the composer when its submit key landed while Codex was still
+ * starting, and is a no-op on an empty one. If that produced no turn, the lane
+ * asks for the cheapest possible reply instead.
+ */
+async function ensureMemberHasTakenATurn(paneId) {
+  if (completedTurns() > 0) return 'already'
+
+  tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
+  if (await waitForTurnAfter(0, ONBOARDING_TURN_TIMEOUT_MS)) return 'onboarding'
+
+  console.log('[e2e] the onboarding message produced no turn; asking for a one-word reply')
+  tmuxQuietly(['send-keys', '-t', paneId, '-l', 'Reply with only the word READY.'])
+  await browser.pause(600)
+  tmuxQuietly(['send-keys', '-t', paneId, 'Enter'])
+  if (await waitForTurnAfter(0, ONBOARDING_TURN_TIMEOUT_MS)) return 'prompted'
+
+  throw new Error(
+    `${MEMBER_NAME} finished no Codex turn within ${2 * ONBOARDING_TURN_TIMEOUT_MS}ms, so it has ` +
+      `opened no conversation and cannot do a stage. Pane ${paneId}:\n${(await capturePane(paneId)).trimEnd()}`
+  )
+}
+
 /** Initialize a Claude-led team with one managed Codex member and wait for its pane. */
 async function initializeManagedStageTeam() {
   const { leadRoleId, agentRoleId } = await pickRoleIds()
@@ -576,6 +642,9 @@ async function initializeManagedStageTeam() {
   if (blockingPrompt(paneContents)) {
     throw new Error(`Codex is parked on an interactive prompt and will not take a turn:\n${paneContents.trimEnd()}`)
   }
+
+  const firstTurn = await ensureMemberHasTakenATurn(paneId)
+  console.log(`[e2e] ${MEMBER_NAME} finished its first turn (${firstTurn})`)
 
   const sessionBinding = await bindMemberSession()
   return { paneId, sessionBinding }
