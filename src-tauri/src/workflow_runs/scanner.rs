@@ -18,6 +18,7 @@ const TRANSCRIPT_PREFIX_LIMIT: usize = 16 * 1024;
 const TRANSCRIPT_TAIL_LIMIT: usize = 256 * 1024;
 const TRANSCRIPT_CACHE_ENTRIES: usize = 256;
 const SUMMARY_CACHE_ENTRIES: usize = 64;
+const ACTIVITY_INDEX_CACHE_ENTRIES: usize = 256;
 const PROMPT_PREVIEW_CHARS: usize = 200;
 const ACTIVITY_WINDOW: Duration = Duration::from_secs(60);
 
@@ -49,9 +50,19 @@ struct CachedSummary {
     summary: Option<Value>,
 }
 
+#[derive(Debug, Clone)]
+struct CachedActivityIndex {
+    run_root_stamp: FileStamp,
+    summary_root_stamp: Option<FileStamp>,
+    run_ids: Vec<String>,
+    completed_run_ids: HashSet<String>,
+}
+
 static TRANSCRIPT_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedTranscript>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static SUMMARY_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedSummary>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static ACTIVITY_INDEX_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedActivityIndex>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Default)]
@@ -126,28 +137,22 @@ fn read_run_with_script(
 }
 
 pub fn workflow_activity(session_dir: &Path, now: SystemTime) -> Option<WorkflowActivity> {
+    let (run_ids, completed_run_ids) = activity_index(session_dir)?;
     let run_root = session_dir.join("subagents/workflows");
-    let entries = fs::read_dir(run_root).ok()?;
     let mut live_runs = 0_u32;
     let mut latest = None;
 
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        let Some(run_id) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        if !file_type.is_dir()
-            || !safe_id(&run_id)
+    for run_id in run_ids {
+        if completed_run_ids.contains(&run_id)
             || session_dir
                 .join("workflows")
                 .join(format!("{run_id}.json"))
                 .is_file()
         {
+            remember_completed_run(session_dir, &run_id);
             continue;
         }
-        let Ok(files) = fs::read_dir(entry.path()) else {
+        let Ok(files) = fs::read_dir(run_root.join(&run_id)) else {
             continue;
         };
         let mut run_latest = None;
@@ -185,6 +190,85 @@ pub fn workflow_activity(session_dir: &Path, now: SystemTime) -> Option<Workflow
         live_runs,
         last_write_at: system_time_ms(latest),
     })
+}
+
+fn activity_index(session_dir: &Path) -> Option<(Vec<String>, HashSet<String>)> {
+    let run_root = session_dir.join("subagents/workflows");
+    let summary_root = session_dir.join("workflows");
+    let run_root_stamp = directory_stamp(&run_root)?;
+    let summary_root_stamp = directory_stamp(&summary_root);
+
+    if let Some(cached) = ACTIVITY_INDEX_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get(session_dir)
+        .filter(|cached| {
+            cached.run_root_stamp == run_root_stamp
+                && cached.summary_root_stamp == summary_root_stamp
+        })
+        .cloned()
+    {
+        return Some((cached.run_ids, cached.completed_run_ids));
+    }
+
+    let mut run_ids = fs::read_dir(&run_root)
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            let run_id = entry.file_name().to_str()?.to_string();
+            (file_type.is_dir() && safe_id(&run_id)).then_some(run_id)
+        })
+        .collect::<Vec<_>>();
+    run_ids.sort();
+    let completed_run_ids = fs::read_dir(&summary_root)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            let run_id = name.strip_suffix(".json")?;
+            (file_type.is_file() && safe_id(run_id)).then(|| run_id.to_string())
+        })
+        .collect::<HashSet<_>>();
+
+    let mut cache = ACTIVITY_INDEX_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if cache.len() >= ACTIVITY_INDEX_CACHE_ENTRIES && !cache.contains_key(session_dir) {
+        cache.clear();
+    }
+    cache.insert(
+        session_dir.to_path_buf(),
+        CachedActivityIndex {
+            run_root_stamp,
+            summary_root_stamp,
+            run_ids: run_ids.clone(),
+            completed_run_ids: completed_run_ids.clone(),
+        },
+    );
+    Some((run_ids, completed_run_ids))
+}
+
+fn directory_stamp(path: &Path) -> Option<FileStamp> {
+    let metadata = fs::metadata(path).ok()?;
+    Some(FileStamp {
+        len: metadata.len(),
+        modified: Some(metadata.modified().ok()?),
+    })
+}
+
+fn remember_completed_run(session_dir: &Path, run_id: &str) {
+    if let Some(cached) = ACTIVITY_INDEX_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get_mut(session_dir)
+    {
+        cached.completed_run_ids.insert(run_id.to_string());
+    }
 }
 
 fn live_run(
