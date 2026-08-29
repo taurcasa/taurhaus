@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::commands::coordination_types::{
     AgentRole, FastAgentSnapshot, FastTeamSnapshot, LiveAgentStatus, LiveRuntimeSnapshotFreshness,
@@ -431,12 +432,31 @@ fn roster_lead_project_path(roster: &[TeamMemberView]) -> Option<PathBuf> {
         .map(|member| member.configured_project_path.clone())
 }
 
+/// The workflow hint for one member, read from the transcript its runtime
+/// record is attached to.
+///
+/// A member running a workflow is a headless parent: the harness reports it
+/// idle for the whole run, so the roster's own health says nothing about it.
+/// This is the same hint, read the same way and bounded by the same window, as
+/// the one the session listing carries — a member with no attachment, or a
+/// harness with no workflow runs, simply gets `None`.
+fn member_workflow_activity(
+    member: &TeamMemberView,
+) -> Option<crate::workflow_runs::WorkflowActivity> {
+    crate::workflow_runs::activity_for_transcript(
+        member.attached_cli_tool.unwrap_or(member.configured_cli_tool),
+        member.jsonl_path.as_deref().and_then(Path::to_str),
+        SystemTime::now(),
+    )
+}
+
 fn live_agent_status_from_roster(
     member: TeamMemberView,
     lead_project_path: Option<&Path>,
 ) -> LiveAgentStatus {
     let cross_project =
         member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
+    let workflow_activity = member_workflow_activity(&member);
     LiveAgentStatus {
         name: member.member_name,
         role: match member.role {
@@ -461,6 +481,7 @@ fn live_agent_status_from_roster(
             .unwrap_or(SessionStatus::Offline),
         pane_id: member.pane_id,
         session_id: member.session_id,
+        workflow_activity,
     }
 }
 
@@ -470,6 +491,7 @@ fn fast_agent_snapshot_from_roster(
 ) -> FastAgentSnapshot {
     let cross_project =
         member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
+    let workflow_activity = member_workflow_activity(&member);
     FastAgentSnapshot {
         name: member.member_name,
         role: match member.role {
@@ -494,6 +516,7 @@ fn fast_agent_snapshot_from_roster(
             .unwrap_or(SessionStatus::Offline),
         pane_id: member.pane_id,
         session_id: member.session_id,
+        workflow_activity,
     }
 }
 

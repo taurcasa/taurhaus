@@ -2769,6 +2769,7 @@ fn live_team_status_round_trip() {
                 session_status: SessionStatus::Active,
                 pane_id: Some("%1".to_string()),
                 session_id: Some("sess-lead".to_string()),
+                workflow_activity: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2788,6 +2789,7 @@ fn live_team_status_round_trip() {
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
                 session_id: None,
+                workflow_activity: None,
             },
         ],
     };
@@ -2825,6 +2827,7 @@ fn project_mesh_snapshot_round_trip() {
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
                 session_id: Some("sess-frontend".to_string()),
+                workflow_activity: None,
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3345,4 +3348,58 @@ fn project_mesh_snapshot_carries_the_member_runtime_session_id() {
         .find(|member| member.name == "frontend-dev")
         .expect("frontend-dev is on the roster");
     assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn live_team_status_carries_the_member_workflow_activity() {
+    // Regression: d442cf6 gave a runtime node its Claude session but not the
+    // workflow hint, so a member whose run tree was visibly live still read
+    // Active or Idle on the canvas — the node carried nothing but coordination
+    // health, and `activitySignal` had no workflow evidence to promote.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    // A scratch transcript with one summary-less run whose agent just wrote.
+    let transcripts = tmp.path().join("transcripts");
+    let transcript = transcripts.join("sess-frontend.jsonl");
+    let run_dir = transcripts.join("sess-frontend/subagents/workflows/wf_live");
+    std::fs::create_dir_all(&run_dir).expect("run dir");
+    std::fs::write(&transcript, "").expect("transcript");
+    std::fs::write(run_dir.join("agent-a1.jsonl"), "{}\n").expect("agent transcript");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("member runtime");
+    record.cli_tool = Some(CliTool::Claude);
+    record.session_id = Some("sess-frontend".to_string());
+    record.jsonl_path = Some(transcript);
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(
+        member
+            .workflow_activity
+            .as_ref()
+            .map(|activity| activity.live_runs),
+        Some(1)
+    );
 }

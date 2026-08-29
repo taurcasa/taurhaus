@@ -84,6 +84,36 @@ describe('coordinationResponses session identity', () => {
     expect(status.members.map((member) => member.sessionId)).toEqual(['sess-lead', 'sess-dev'])
   })
 
+  // Regression: d442cf6 carried the session but not the workflow hint, so a
+  // member running a headless workflow stayed Idle on the canvas.
+  it('carries the workflow activity hint in both spellings', () => {
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          workflowActivity: { live_runs: 1, last_write_at: 1_800_000_000_000 },
+        },
+        {
+          name: 'dev-1',
+          role: 'member',
+          cli_tool: 'claude',
+          workflow_activity: { live_runs: 2, last_write_at: 1_800_000_000_500 },
+        },
+        { name: 'dev-2', role: 'member', cli_tool: 'codex' },
+      ],
+    })
+
+    expect(status.members.map((member) => member.workflowActivity)).toEqual([
+      { live_runs: 1, last_write_at: 1_800_000_000_000 },
+      { live_runs: 2, last_write_at: 1_800_000_000_500 },
+      null,
+    ])
+  })
+
   it('reports no session for a member that is not attached', () => {
     const status = normalizeLiveTeamStatus({
       teamName: 'taurhaus-team',

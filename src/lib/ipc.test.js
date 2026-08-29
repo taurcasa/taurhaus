@@ -2517,6 +2517,7 @@ describe('ipc module', () => {
               sessionStatus: 'active',
               paneId: '%1',
               sessionId: null,
+              workflowActivity: null,
             },
           ],
         },

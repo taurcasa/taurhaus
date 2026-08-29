@@ -104,7 +104,13 @@ good runs on screen and records why.
 | Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over the project's sessions in recency order — running now, then the ones its open tasks came from, then `get_archived_sessions` — capped at 24, and the header says when the cap was reached |
 
 A mesh node reads its session from the member's own runtime record, which
-`LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`.
+`LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`,
+alongside the same optional `workflow_activity` hint the session listing carries
+— read from the member's attached transcript, bounded by the same window. A
+member running a workflow is a headless parent that the harness reports idle for
+the whole run, so without the hint the canvas node would say Idle beside its own
+live run tree.
+
 The Overview panel reloads when the set of sessions changes *or* when the
 activity hint's live-run count moves: a run starts and ends inside a session
 that is already listed, and the count is the one field that moves on that

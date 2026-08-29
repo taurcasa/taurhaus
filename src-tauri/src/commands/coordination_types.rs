@@ -217,6 +217,14 @@ pub struct LiveAgentStatus {
     /// older payload that predates the field, both decode as `None`.
     #[serde(default)]
     pub session_id: Option<String>,
+    /// Recent writes from live workflow subagents under that session.
+    ///
+    /// A headless workflow parent never reports busy, so coordination health is
+    /// the wrong evidence for a member that is running one: without this the
+    /// canvas node says Idle while its own run tree is visibly live. Same shape
+    /// and same window as the session listing's hint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
 }
 
 /// Live-team payload for the frontend mesh roster.
@@ -260,6 +268,9 @@ pub struct FastAgentSnapshot {
     /// See `LiveAgentStatus::session_id`.
     #[serde(default)]
     pub session_id: Option<String>,
+    /// See `LiveAgentStatus::workflow_activity`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
 }
 
 /// Fast team snapshot built from persisted config + runtime only.

@@ -234,4 +234,50 @@ describe('MeshCanvas workflow runs from a live-team payload', () => {
       expect(screen.getByTestId('workflow-run-agent')).toHaveTextContent('implementer')
     })
   })
+
+  // Regression: d442cf6 gave a runtime node its session but not the workflow
+  // hint, so the node derived its level from coordination health alone and a
+  // member whose run tree was visibly live still read Idle on its role card.
+  it('reads a member with a live run as working, not idle', async () => {
+    listWorkflowRuns.mockResolvedValue([])
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      leadName: 'team-lead',
+      runtimeSnapshotFreshness: 'fresh',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          reasoningEffort: null,
+          roleId: null,
+          roleName: null,
+          focusArea: null,
+          contextSummary: null,
+          behaviorSummary: null,
+          projectId: '/home/user/projects/taurhaus',
+          isCrossProject: false,
+          projectLabel: '',
+          description: 'orchestrates work',
+          // The harness reports a headless workflow parent idle for the whole
+          // run — this is exactly the case the hint exists for.
+          sessionStatus: 'idle',
+          paneId: '%1',
+          sessionId: 'sess-lead',
+          workflowActivity: { live_runs: 1, last_write_at: Date.now() - 3000 },
+        },
+      ],
+    })
+    const config = buildTeamConfigFromRuntimeStatus(status, '/home/user/projects/taurhaus')
+
+    render(MeshCanvas, {
+      props: { lead: config.lead, agents: config.agents, mode: 'runtime' },
+    })
+
+    await fireEvent.mouseEnter(screen.getByTestId('mesh-node-lead'))
+    await waitFor(() => {
+      expect(screen.getByTestId('mesh-node-role-card-status')).toHaveTextContent('Working')
+    })
+  })
 })
