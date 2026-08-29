@@ -263,7 +263,9 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/ipc.js` | Thin compatibility re-export. Real IPC implementations live in `src/lib/ipc/`. |
 | `src/lib/ipc/` | Frontend IPC domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`) plus payload/mocks modules. |
 | `src/lib/context/` | Frontend context providers (`ProjectContext.js`, `SessionContext.js`, `ModelCatalogContext.js`). |
-| `src/lib/activitySignal.js` | Single derivation of presented activity (`working`/`active`/`idle`/`uncertain`/`offline` + confidence) used by sidebar, HoverCard, and mesh canvas. |
+| `src/lib/activitySignal.js` | Single derivation of presented activity (`working`/`active`/`idle`/`uncertain`/`offline` + confidence) used by sidebar, HoverCard, and mesh canvas; a live workflow write inside 60 s reads as `working` (`workflowWriteAgeMs`). |
+| `src/lib/workflowRuns.js` | Presentation shaping for workflow runs — tree model, history row, sidebar badge, token/duration formatting. Invents none of the `null`s the scanner returns. |
+| `src/lib/workflowRunStore.svelte.js` | The one poller for live runs: one shared 2 s timer, only while a watched session has an expanded live run. |
 | `src/lib/modelCatalog.js` | Helpers over the backend-owned `ModelCatalog` delivered via `settings.terminal_contract.model_catalog`. |
 | `src/lib/components/ModelSelect.svelte` | Effort-aware model picker used by `MeshTeamBuilder` and `RoleEditor`. |
 | `src/lib/toolRegistry.js` | Frontend tool descriptors + capabilities (`FALLBACK_TOOLS` for `claude`/`codex`/`agy`/`grok`, overridden by the backend contract). |
@@ -280,7 +282,9 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/MeshSetupView.svelte` | Gate/empty/setup/initializing shell that hosts the primary team-builder surface. |
 | `src/lib/components/MeshTeamBuilder.svelte` | Primary team setup UI with quick presets, role filters, drag-and-drop roster composition, and inline validation. |
 | `src/lib/components/MeshCanvas.svelte` | Runtime node canvas that consumes `meshLayout.js` output. |
-| `src/lib/components/meshLayout.js` | Pure mesh canvas layout engine for node boxes and explicit connection routes. |
+| `src/lib/components/meshLayout.js` | Pure mesh canvas layout engine for node boxes, explicit connection routes, and the run-tree child box (`RUN_TREE_METRICS`). |
+| `src/lib/components/WorkflowRunTree.svelte` | A node's workflow runs drawn into the child box `meshLayout` placed: phase and agent rows while live, one line once finished. |
+| `src/lib/components/WorkflowRunsPanel.svelte` | Overview-tab run history: runs across the project's known sessions, the selected run's agent table, and *Copy ledger row*. |
 | `src/lib/components/MeshConnection.svelte` | SVG cubic-route renderer fed by explicit control points from `meshLayout.js`. |
 | `src/lib/components/TemplateBrowserPanel.svelte` | Advanced role/preset catalog, import/export, history, and diff entry points. |
 | `src/lib/components/templateBrowserController.svelte.js` | Controller state/actions for template browsing/composition. |
@@ -345,6 +349,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | Add/fix a Svelte component | `src/lib/components/` (component file plus matching test in same directory) |
 | Fix file watcher behavior | `src-tauri/src/startup/watchers.rs`, `src-tauri/src/fs/watcher.rs`, `src-tauri/src/event_processor.rs` |
 | Fix session detection | `src-tauri/src/session_scanner/mod.rs`, `src-tauri/src/session_scanner/classification.rs` (authoritative vs heuristic, `activity.state.changed`), `src-tauri/src/session_scanner/scans.rs` (degraded scans return last-good), `src-tauri/src/session_scanner/idle/` (`claude_registry.rs`, `codex.rs`, `agy.rs`, `grok.rs`), `src-tauri/src/session_scanner/process.rs`, `src-tauri/src/daemon/session_activity.rs` |
+| Change workflow-run UI | `src/lib/workflowRuns.js`, `src/lib/workflowRunStore.svelte.js`, `src/lib/components/WorkflowRunTree.svelte`, `src/lib/components/WorkflowRunsPanel.svelte`, `src/lib/components/meshLayout.js` (`RUN_TREE_METRICS`), `src/lib/activitySignal.js`; see `docs/architecture/workflow-runs.md` |
 | Fix compaction detection / reinjection | `src-tauri/src/coordination/compact_hook.rs`, `src-tauri/src/coordination/stores/compaction.rs`, `src-tauri/src/coordination/compaction_events.rs`, `src-tauri/src/session_scanner/transcript_boundary.rs`, `src-tauri/src/commands/terminal_settings.rs` (managed Codex hook reconciliation) |
 | Change launch command, model, or reasoning effort | `src-tauri/src/session_scanner/launch.rs`, `src-tauri/src/commands/command_center/launching.rs` (app launches), `src-tauri/src/coordination/pipelines/helpers.rs` (team launches), `src-tauri/src/models/mod.rs` (`ModelCatalog`/`CliVersions`), `src/lib/modelCatalog.js` + `src/lib/components/ModelSelect.svelte`, golden tests in `src-tauri/tests/cli_renderers.rs` |
 | Add or change an account/usage provider | `src-tauri/src/session_scanner/accounts/mod.rs` (the `AccountProvider`/`UsageProvider` contracts and generic resolution), then the tool's sibling module (`claude.rs`/`codex.rs`/`agy.rs`/`grok.rs`), `src-tauri/src/session_scanner/cli_tool.rs` (`account_selector`, `usage`, `usage_note`), `src-tauri/src/daemon/usage_poller.rs`, `src-tauri/src/commands/accounts/mod.rs`, `src-tauri/src/db/migrations/013_project_tool_accounts.sql`, `src-tauri/src/daemon/protocol.rs` (`list_accounts`, `project_transcript`, `refresh_usage`), `src/lib/accounts.svelte.js` + `src/lib/accountMenu.js` |
