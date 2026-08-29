@@ -6,6 +6,8 @@ vi.mock('./ipc.js', () => ({
   getLatestSession: vi.fn(),
   getRecentCommits: vi.fn(),
   getRelationships: vi.fn(),
+  listWorkflowRuns: vi.fn(),
+  getWorkflowRun: vi.fn(),
 }))
 
 vi.mock('./sessionIndicator.js', () => ({
@@ -19,7 +21,14 @@ vi.mock('./format.js', () => ({
   formatDuration: vi.fn((ms) => `${Math.round(ms)}ms`),
 }))
 
-const { getLatestSession, getRecentCommits, getRelationships } = await import('./ipc.js')
+const {
+  getLatestSession,
+  getRecentCommits,
+  getRelationships,
+  getWorkflowRun,
+  listWorkflowRuns,
+} = await import('./ipc.js')
+const { resetWorkflowRunsForTest } = await import('./workflowRunStore.svelte.js')
 
 import HoverCard from './HoverCard.svelte'
 
@@ -419,5 +428,112 @@ describe('HoverCard', () => {
     })
 
     rectSpy.mockRestore()
+  })
+})
+
+describe('HoverCard workflow runs', () => {
+  const liveRun = {
+    run_id: 'wf_live',
+    name: 'feature-pr',
+    phases: ['Implement', 'Review'],
+    status: 'live',
+    started_at: 1000,
+    finished_at: null,
+    agents: [
+      {
+        agent_id: 'a',
+        label: 'reviewer',
+        phase: 'Review',
+        model: 'gpt-5.6',
+        state: 'running',
+        prompt_preview: 'Review the diff',
+        last_tool: 'Read',
+        tokens: 2400,
+        tool_calls: 2,
+        last_write_at: 900,
+      },
+    ],
+    totals: { agents: 2, done: 1, tokens: 2400, tool_calls: 2, duration_ms: null },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetWorkflowRunsForTest()
+    getLatestSession.mockResolvedValue(createLatestSession())
+    getRecentCommits.mockResolvedValue([])
+    getRelationships.mockResolvedValue([])
+    listWorkflowRuns.mockResolvedValue([])
+    getWorkflowRun.mockResolvedValue(liveRun)
+  })
+
+  it('shows no workflow section for a session running none', () => {
+    render(HoverCard, {
+      props: { project: createProject(), sessions: [{ live: true, state: 'active' }] },
+    })
+
+    expect(screen.queryByTestId('hovercard-workflow')).not.toBeInTheDocument()
+  })
+
+  it('reports the live run count and the last agent write without a session id', () => {
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [{
+          live: true,
+          state: 'idle',
+          workflow_activity: { live_runs: 2, last_write_at: Date.now() - 5000 },
+        }],
+      },
+    })
+
+    const section = screen.getByTestId('hovercard-workflow')
+    expect(section).toHaveTextContent('2 workflow runs live')
+    expect(section).toHaveTextContent('last agent write 5s ago')
+    expect(listWorkflowRuns).not.toHaveBeenCalled()
+  })
+
+  // Regression: 1663e40 keyed this on `session_id`, which `DisplaySession`
+  // strips before the sessions reach the frontend — so on the production shape
+  // the card never asked for the run and never named it.
+  it('names the run from the id the frontend session snapshot carries', async () => {
+    listWorkflowRuns.mockResolvedValue([liveRun])
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [{
+          live: true,
+          state: 'idle',
+          workflow_session_id: 'sess-display',
+          workflow_activity: { live_runs: 1, last_write_at: Date.now() - 2000 },
+        }],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('hovercard-workflow')).toHaveTextContent('feature-pr · Review')
+    })
+    expect(listWorkflowRuns).toHaveBeenCalledWith('sess-display')
+  })
+
+  it('names the run and the phase it is in once the run has been read', async () => {
+    listWorkflowRuns.mockResolvedValue([liveRun])
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [{
+          live: true,
+          state: 'idle',
+          session_id: 'sess-1',
+          workflow_activity: { live_runs: 1, last_write_at: Date.now() - 2000 },
+        }],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('hovercard-workflow')).toHaveTextContent('feature-pr · Review')
+    })
+    expect(listWorkflowRuns).toHaveBeenCalledWith('sess-1')
   })
 })

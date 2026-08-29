@@ -147,3 +147,7 @@ pub mod daemon {
         pub use taurhaus_lib::daemon_api::protocol::LaunchMode;
     }
 }
+
+pub mod workflow_runs {
+    pub use taurhaus_lib::workflow_runs::{activity_for_transcript, WorkflowActivity};
+}

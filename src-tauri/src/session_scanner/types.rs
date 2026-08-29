@@ -100,6 +100,15 @@ pub struct DisplaySession {
     /// Recent writes from live workflow subagents attached to this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
+    /// The session id the workflow-run commands are keyed by, when this session
+    /// belongs to a workflow-capable harness and the scanner resolved one.
+    ///
+    /// The display shape otherwise drops runtime identity, and this is the one
+    /// exception: `list_workflow_runs` and `get_workflow_run` take a session id,
+    /// so a surface that shows a run has to be able to name the session it
+    /// lives in. It stays `None` for a harness with no workflow runs to key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_session_id: Option<String>,
 }
 
 /// A detected CLI tool session with runtime transcript metadata preserved.
@@ -163,6 +172,11 @@ impl From<RuntimeSession> for DisplaySession {
             group_label: session.group_label,
             member_name: session.member_name,
             workflow_activity: session.workflow_activity,
+            workflow_session_id: super::cli_tool::spec(session.cli_tool)
+                .capabilities
+                .workflow_runs
+                .then_some(session.session_id)
+                .flatten(),
         }
     }
 }
@@ -255,6 +269,7 @@ mod tests {
             group_label: None,
             member_name: None,
             workflow_activity: None,
+            workflow_session_id: None,
         };
 
         let json = serde_json::to_value(&session).unwrap();
@@ -302,5 +317,76 @@ mod tests {
         assert!(json.get("session_id").is_none());
         assert!(json.get("jsonl_path").is_none());
         assert_eq!(json["workflow_activity"]["live_runs"], 1);
+    }
+
+    // Regression: 1663e40 keyed the hover card and the Overview run history on
+    // a Claude session id, but the frontend-safe listing carried none — every
+    // production session reached the UI without one, so `list_workflow_runs`
+    // was never asked about a session that was actually running a workflow.
+    #[test]
+    fn display_session_carries_the_workflow_session_id() {
+        let runtime = RuntimeSession {
+            pid: 7,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/3".to_string(),
+            args: "claude".to_string(),
+            cli_tool: CliTool::Claude,
+            tmux_session: None,
+            tmux_window: None,
+            tmux_pane: None,
+            tmux_window_name: None,
+            state: SessionState::Idle,
+            session_id: Some("sess-abc".to_string()),
+            jsonl_path: Some("/home/user/.claude/projects/p/sess-abc.jsonl".to_string()),
+            recent_io: false,
+            last_output_age_secs: None,
+            activity_confidence: ActivityConfidence::Low,
+            activity_attribution: ActivityAttribution::None,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+            workflow_activity: None,
+        };
+
+        let json = serde_json::to_value(DisplaySession::from(runtime)).unwrap();
+
+        assert_eq!(json["workflow_session_id"], "sess-abc");
+        // The runtime metadata the display shape strips stays stripped.
+        assert!(json.get("session_id").is_none());
+        assert!(json.get("jsonl_path").is_none());
+    }
+
+    #[test]
+    fn display_session_omits_the_workflow_session_id_for_a_harness_without_runs() {
+        let runtime = RuntimeSession {
+            pid: 8,
+            project_path: "/home/user/projects/taurhaus".to_string(),
+            tty: "/dev/pts/4".to_string(),
+            args: "codex".to_string(),
+            cli_tool: CliTool::Codex,
+            tmux_session: None,
+            tmux_window: None,
+            tmux_pane: None,
+            tmux_window_name: None,
+            state: SessionState::Idle,
+            session_id: Some("sess-codex".to_string()),
+            jsonl_path: None,
+            recent_io: false,
+            last_output_age_secs: None,
+            activity_confidence: ActivityConfidence::Low,
+            activity_attribution: ActivityAttribution::None,
+            project_unattributed_active: false,
+            group_kind: SessionGroupKind::Standalone,
+            group_id: None,
+            group_label: None,
+            member_name: None,
+            workflow_activity: None,
+        };
+
+        let json = serde_json::to_value(DisplaySession::from(runtime)).unwrap();
+
+        assert!(json.get("workflow_session_id").is_none());
     }
 }

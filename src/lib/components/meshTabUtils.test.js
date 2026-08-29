@@ -474,3 +474,46 @@ describe('meshTabUtils reasoning effort', () => {
     )
   })
 })
+
+describe('meshTabUtils runtime session identity', () => {
+  // Regression: 9e15e4e keyed a node's workflow run tree on the member's Claude
+  // session, but createLead/createAgent rebuild a node from a fixed field list
+  // and dropped `sessionId`, so no runtime node ever asked for its runs.
+  it('carries each member session id onto the lead and agent nodes', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [
+        {
+          name: 'team-lead',
+          role: 'lead',
+          cliTool: 'claude',
+          model: 'opus',
+          projectId: '/home/user/projects/taurhaus',
+          sessionStatus: 'active',
+          sessionId: 'sess-lead',
+        },
+        {
+          name: 'dev-1',
+          role: 'member',
+          cliTool: 'codex',
+          model: 'gpt-5.6-terra',
+          projectId: '/home/user/projects/taurhaus',
+          sessionStatus: 'active',
+          session_id: 'sess-dev',
+        },
+      ],
+    })
+
+    expect(config.lead.sessionId).toBe('sess-lead')
+    expect(config.agents.map((agent) => agent.sessionId)).toEqual(['sess-dev'])
+  })
+
+  it('leaves an unattached member without a session', () => {
+    const config = buildTeamConfigFromRuntimeStatus({
+      leadName: 'team-lead',
+      members: [{ name: 'team-lead', role: 'lead', cliTool: 'claude' }],
+    })
+
+    expect(config.lead.sessionId).toBeNull()
+  })
+})

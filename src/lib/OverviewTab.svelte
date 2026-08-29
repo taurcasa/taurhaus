@@ -5,6 +5,8 @@
   import { themeTokens } from './themeTokens.js'
   import { getToolName, TOOL_ICONS } from './toolLogos.js'
   import AccountChip from './components/AccountChip.svelte'
+  import WorkflowRunsPanel from './components/WorkflowRunsPanel.svelte'
+  import { getSessionsForProject } from './sessionStore.svelte.js'
   import {
     accountState,
     effectiveAccount,
@@ -37,6 +39,7 @@
   const readmeContent = $derived.by(() => data?.readmeContent ?? null)
   const relationships = $derived.by(() => data?.relationships ?? [])
   const relationshipsLoading = $derived.by(() => Boolean(data?.relationshipsLoading))
+  const projectSessions = $derived.by(() => getSessionsForProject(selectedProject?.path ?? ''))
 
   const t = $derived(themeTokens(dark))
 
@@ -345,7 +348,10 @@
       </section>
     {/if}
 
-    <!-- 4. Relationships — hidden when empty -->
+    <!-- 4. Workflow runs — hidden when the project's sessions ran none -->
+    <WorkflowRunsPanel projectId={selectedProject?.id ?? ''} sessions={projectSessions} {dark} />
+
+    <!-- 5. Relationships — hidden when empty -->
     {#if relationshipsLoading || relationships.length > 0}
       <section class="py-5 border-b {t.keyline}" data-testid="overview-relationships">
         <div class="flex items-center justify-between mb-3">
@@ -408,7 +414,7 @@
       </section>
     {/if}
 
-    <!-- 5. Project Info -->
+    <!-- 6. Project Info -->
     <section class="py-5 pb-10">
       <span class="text-[11px] {t.textTertiary}">Project info</span>
       <div class="mt-2 space-y-1 text-[13px]">

@@ -2768,6 +2768,8 @@ fn live_team_status_round_trip() {
                 description: Some("orchestrates work".to_string()),
                 session_status: SessionStatus::Active,
                 pane_id: Some("%1".to_string()),
+                session_id: Some("sess-lead".to_string()),
+                workflow_activity: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2786,6 +2788,8 @@ fn live_team_status_round_trip() {
                 description: None,
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
+                session_id: None,
+                workflow_activity: None,
             },
         ],
     };
@@ -2822,6 +2826,8 @@ fn project_mesh_snapshot_round_trip() {
                 description: Some("UI implementation".to_string()),
                 session_status: SessionStatus::Idle,
                 pane_id: Some("%2".to_string()),
+                session_id: Some("sess-frontend".to_string()),
+                workflow_activity: None,
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3265,5 +3271,246 @@ fn add_agent_onboarding_routes_through_deliver_message_audit_trail() {
         event_types.contains(&"delivery_attempted"),
         "expected delivery_attempted audit event for Claude onboarding, got: {:?}",
         event_types
+    );
+}
+
+#[test]
+fn live_team_status_carries_the_member_runtime_session_id() {
+    // Regression: 9e15e4e keyed the mesh canvas run tree on a node's Claude
+    // session, but LiveAgentStatus never serialized the session the runtime
+    // record already held, so no runtime node could ask for its workflow runs.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("member runtime");
+    record.session_id = Some("sess-frontend".to_string());
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn project_mesh_snapshot_carries_the_member_runtime_session_id() {
+    // Regression: the fast snapshot fed the same canvas and dropped the same
+    // field, so the cold-start roster could not load runs either (9e15e4e).
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("member runtime");
+    record.session_id = Some("sess-frontend".to_string());
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    let member = snapshot
+        .team_status
+        .expect("team status")
+        .members
+        .into_iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn live_team_status_carries_the_member_workflow_activity() {
+    // Regression: d442cf6 gave a runtime node its Claude session but not the
+    // workflow hint, so a member whose run tree was visibly live still read
+    // Active or Idle on the canvas — the node carried nothing but coordination
+    // health, and `activitySignal` had no workflow evidence to promote.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    // A scratch transcript with one summary-less run whose agent just wrote.
+    let transcripts = tmp.path().join("transcripts");
+    let transcript = transcripts.join("sess-frontend.jsonl");
+    let run_dir = transcripts.join("sess-frontend/subagents/workflows/wf_live");
+    std::fs::create_dir_all(&run_dir).expect("run dir");
+    std::fs::write(&transcript, "").expect("transcript");
+    std::fs::write(run_dir.join("agent-a1.jsonl"), "{}\n").expect("agent transcript");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+        .expect("member runtime");
+    record.cli_tool = Some(CliTool::Claude);
+    record.session_id = Some("sess-frontend".to_string());
+    record.jsonl_path = Some(transcript);
+    MemberRuntimeStore::save(tmp.path(), "architecture-final", "frontend-dev", &record)
+        .expect("save runtime");
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(
+        member
+            .workflow_activity
+            .as_ref()
+            .map(|activity| activity.live_runs),
+        Some(1)
+    );
+}
+
+fn daemon_runtime_session(
+    team_name: &str,
+    member_name: &str,
+    jsonl_path: &str,
+    workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
+) -> crate::session_scanner::RuntimeSession {
+    crate::session_scanner::RuntimeSession {
+        pid: 4242,
+        project_path: "/tmp/taurhaus".to_string(),
+        tty: "/dev/pts/3".to_string(),
+        args: "claude".to_string(),
+        cli_tool: CliTool::Claude,
+        tmux_session: Some("taurhaus".to_string()),
+        tmux_window: None,
+        tmux_pane: Some("%17".to_string()),
+        tmux_window_name: None,
+        state: crate::session_scanner::SessionState::Active,
+        session_id: Some("sess-frontend".to_string()),
+        jsonl_path: Some(jsonl_path.to_string()),
+        recent_io: false,
+        last_output_age_secs: None,
+        activity_confidence: Default::default(),
+        activity_attribution: Default::default(),
+        project_unattributed_active: false,
+        group_kind: crate::session_scanner::SessionGroupKind::MeshTeam,
+        group_id: Some(team_name.to_string()),
+        group_label: None,
+        member_name: Some(member_name.to_string()),
+        workflow_activity,
+    }
+}
+
+// Regression: acefb7a answered "is this member running a workflow?" by
+// rescanning the transcript in the desktop process. The daemon already computed
+// that hint and ships it on the runtime session, and on Windows the transcript
+// it names is a WSL path the desktop cannot open — the rescan found nothing and
+// the member never showed Working beside its live run tree. The daemon's value
+// wins; a local scan is only the fallback, and only for a path this host can
+// actually read.
+#[test]
+fn member_workflow_activity_prefers_the_daemon_hint_over_a_local_rescan() {
+    let tmp = TempDir::new().expect("tempdir");
+    let state = test_state(tmp.path().to_path_buf());
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    // A transcript this host really can read, whose session dir holds one live run.
+    let transcripts = tmp.path().join("transcripts");
+    let local_transcript = transcripts.join("sess-frontend.jsonl");
+    let run_dir = transcripts.join("sess-frontend/subagents/workflows/wf_live");
+    std::fs::create_dir_all(&run_dir).expect("run dir");
+    std::fs::write(&local_transcript, "").expect("transcript");
+    std::fs::write(run_dir.join("agent-a1.jsonl"), "{}\n").expect("agent transcript");
+    let local_transcript = local_transcript.display().to_string();
+    // The path a WSL daemon reports to a Windows desktop.
+    let remote_transcript = "/home/daemon-host/.claude/projects/-tmp-taurhaus/sess-frontend.jsonl";
+
+    let member_view = |jsonl_path: &str, live_runs: Option<u32>| {
+        let sessions = vec![daemon_runtime_session(
+            "architecture-final",
+            "frontend-dev",
+            jsonl_path,
+            live_runs.map(|live_runs| crate::workflow_runs::WorkflowActivity {
+                live_runs,
+                last_write_at: 1_772_000_000_000,
+            }),
+        )];
+        crate::coordination::roster::get_team_roster_with_runtime_sessions(
+            tmp.path(),
+            "architecture-final",
+            &sessions,
+        )
+        .expect("roster")
+        .into_iter()
+        .find(|member| member.member_name == "frontend-dev")
+        .expect("frontend-dev is on the roster")
+    };
+
+    // A path this host cannot read: the daemon's count is all there is, and it stands.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(remote_transcript, Some(3)))
+            .map(|activity| activity.live_runs),
+        Some(3)
+    );
+    // A readable path whose scan would disagree: the daemon's count still wins,
+    // which is only possible if no local scan was consulted.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(&local_transcript, Some(3)))
+            .map(|activity| activity.live_runs),
+        Some(3)
+    );
+    // No daemon value and a readable path: the local scan still answers.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(&local_transcript, None))
+            .map(|activity| activity.live_runs),
+        Some(1)
+    );
+    // No daemon value and a path this host cannot read: nothing to say.
+    assert_eq!(
+        live_status::member_workflow_activity(&member_view(remote_transcript, None)),
+        None
     );
 }

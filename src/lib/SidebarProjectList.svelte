@@ -1,5 +1,6 @@
 <script>
   import { isContextMenuKey } from './a11y.js'
+  import { workflowBadge } from './workflowRuns.js'
 
   let {
     sidebarLoading = false,
@@ -118,6 +119,7 @@
       {@const foregroundActive = foregroundProjectId && project.id === foregroundProjectId}
       {@const projectSessions = getSessionsForProject(project.path)}
       {@const indicators = toolIndicators(projectSessions)}
+      {@const workflow = workflowBadge(projectSessions)}
       {@const secondaryBranch = branchLine(project)}
       <button
         data-testid="project-item"
@@ -221,6 +223,19 @@
                       </span>
                     {/if}
                   {/each}
+                </span>
+              {/if}
+              {#if workflow.visible}
+                <span
+                  class="sidebar-workflow-badge shrink-0"
+                  data-testid="sidebar-workflow-badge"
+                  aria-label={workflow.ariaLabel}
+                  title={workflow.title}
+                >
+                  <svg class="w-[8px] h-[8px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 3v6a3 3 0 0 0 3 3h9M6 21v-6a3 3 0 0 1 3-3h9"/>
+                  </svg>
+                  {workflow.label}
                 </span>
               {/if}
               {#if project.isDirty}

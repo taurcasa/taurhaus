@@ -107,7 +107,7 @@ pub struct WorkflowActivity {
     pub last_write_at: i64,
 }
 
-pub(crate) fn activity_for_transcript(
+pub fn activity_for_transcript(
     tool: crate::session_scanner::CliTool,
     transcript: Option<&str>,
     now: std::time::SystemTime,

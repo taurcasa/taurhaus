@@ -45,7 +45,13 @@ Claude's session registry does not publish a busy edge for a headless workflow p
 {"workflow_activity":{"live_runs":1,"last_write_at":1787949436814}}
 ```
 
-`live_runs` counts only summary-less runs with a transcript write inside that same window. The field is optional and serde-defaulted, so this is an additive daemon snapshot change and protocol 14 does not need a bump. The hub's change signature contains the optional live-run count, not the raw millisecond write time: run start/end and count changes wake a session-list poll, while each mid-run transcript append does not trigger a new long-poll version or per-member activity export. The payload still retains the exact `last_write_at` for the next real transition or periodic snapshot refresh.
+The same listing also carries `workflow_session_id`, the session id
+`list_workflow_runs` and `get_workflow_run` are keyed by. `DisplaySession`
+otherwise strips runtime identity, and this is the one exception: a surface that
+shows a run has to be able to name the session it lives in, and it stays absent
+for a harness that has no workflow runs to key.
+
+`live_runs` counts only summary-less runs with a transcript write inside that same window. The field is optional and serde-defaulted, so this is an additive daemon snapshot change and protocol 14 does not need a bump. The hub's change signature contains the optional live-run count and the write time quantized to a 20-second bucket, never the raw millisecond value: run start/end and count changes wake a session-list poll, a long run still writing wakes one at most once per bucket, and each individual mid-run transcript append triggers no new long-poll version or per-member activity export. The payload always carries the exact `last_write_at`; the bucket only decides when it is worth delivering. The bucket is a third of the app's 60-second window, so a run whose live-run count never moves cannot age out on screen while its agents are still writing.
 
 The 500 ms activity path caches the run-directory and completed-summary indexes by directory stamp. Completed run IDs are remembered after first observation, so accumulated run history is not walked and re-statted on every session scan; current summary-less run transcripts still receive the file metadata checks needed to detect new writes.
 
@@ -58,3 +64,98 @@ The 500 ms activity path caches the run-directory and completed-summary indexes 
 Linux and macOS scan in-process. On Windows the app sends the additive `list_workflow_runs` and `get_workflow_run` daemon methods so paths are read inside WSL, matching account and transcript detection. Session IDs are resolved only inside detected config roots; tests install scratch config roots and never inspect a real tool home.
 
 The ledger renderer accepts only the common procedure return shape documented in `.claude/workflows/README.md`. It escapes Markdown cells and renders `title`, `implementer`, joined reviewers, rounds, and majors, with the merge cell left as `tbd`. A plain string or any other result shape returns `null`; W2a never edits a plan document.
+
+## What the UI does with a run
+
+W2b consumes the three commands and the activity hint; it adds no storage and no
+second source of truth.
+
+**Activity.** `src/lib/activitySignal.js` promotes a session whose
+`workflow_activity` counts a live run with a write inside the same 60-second
+window to `working`, with confidence graded by how recent that write is (high
+within 20 s, medium within 45 s, low to the edge). It is the one recency field
+that derivation reads: `recent_io` and `last_output_age_secs` freeze at whatever
+rode the last event, while `last_write_at` is an absolute timestamp that ages out
+of the window by itself. Every stronger reading still wins — a foreign or dead
+pane, an offline record, a degraded or stale snapshot, unattributed project
+activity. Because the sidebar, hover card and canvas all read this one
+derivation, they agree for free.
+
+**Polling.** `src/lib/workflowRunStore.svelte.js` is the only thing that asks
+again, and it splits the cadence along the line that separates the two costs.
+Watching a session lists its runs once. The 2-second tick then carries only the
+sessions that have an *expanded* live run, because that is where
+`get_workflow_run` — the call that reads every agent transcript — is made; it
+stops by itself when the last live run finishes or is collapsed. Every other
+watched session is re-listed every 10 seconds: nothing announces a run, so a
+workflow that starts after a node is already on screen would otherwise stay
+invisible for as long as it is watched, and `list_workflow_runs` is one
+directory read plus, for a live run, one journal. Both timers are shared by the
+whole app and stop when the last watcher leaves. A failed poll keeps the last
+good runs on screen and records why.
+
+**Live runs have no phases.** Claude writes agent labels and phase titles only
+into a run's completed summary, so while a run is going every agent arrives with
+`label: null` and `phase: null`. A live run therefore renders as one flat group
+of agents under no phase row, each named by its prompt preview, and the running
+agent is what the hover card shows as the run's current step. Phase rows and real
+agent labels appear for that same run only once it completes and its summary is
+written, in the Overview panel's agent table — by then the canvas tree has
+collapsed the run to its one finished line. Placing a live agent under a declared
+phase by its position in the script would be a guess, and neither the scanner nor
+the UI makes it.
+
+**Surfaces.**
+
+| Surface | What it shows | Where the data comes from |
+|---|---|---|
+| Mesh canvas (`WorkflowRunTree.svelte`) | A live run's agents as one flat group — prompt preview, model, state, last tool, tokens — and one line for a finished one | The node's session, watched while the canvas is mounted; or `workflowRuns` handed to the node by a caller |
+| Sidebar row | A run-count badge, hovering to give the count and the newest write's age | `workflow_activity` alone — no IPC |
+| Hover card | The run's name and its current step — the running agent's own prompt preview, because a live run has no phase to name until its summary is written | The hovered project's session — named by `workflow_session_id` — watched only while the card is up |
+| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, *Copy ledger row*, and *Search older sessions* | `list_workflow_runs` over every session the project can name — running now first, then its open tasks and `get_archived_sessions` merged into one order by the newest timestamp each record carries — a page of 24 at a time, asking the next page while a page comes back empty and stopping on the first page that produced a run or at 96 sessions, whichever comes first; the header says where it stopped and the control carries the same search on from there |
+
+A mesh node reads its session from the member's own runtime record, which
+`LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`,
+alongside the same optional `workflow_activity` hint the session listing carries,
+bounded by the same window. That hint is computed where the transcript is
+readable: the daemon derives it for the runtime session it already scanned, and
+the roster join carries that value into the member view, which is what the app
+prefers wherever it arrived. Reading the member's attached transcript in the app
+is the fallback for a roster joined from attachments alone, and only for a path
+the app can open — on Windows the daemon runs in WSL and the desktop cannot read
+the path it reports. A member running a workflow is a headless parent that the harness reports idle for
+the whole run, so without the hint the canvas node would say Idle beside its own
+live run tree.
+
+The Overview panel reloads when the set of sessions changes *or* when the
+activity hint's live-run count moves: a run starts and ends inside a session
+that is already listed, and the count is the one field that moves on that
+transition — the hub versions it, so it moves once per run rather than once per
+agent write. A reload for that reason keeps the rows and the open run in place,
+and re-asks as far back as the reader had already opened the history up, so a
+run that started somewhere else cannot collapse the search back to one page.
+
+The 96-session budget bounds what one load costs, never what a reader can reach:
+*Search older sessions* resumes the same paged search from where it stopped, one
+budget per press, and leaves when the project has no session left to name. It is
+the one case where the section shows itself with no runs in it — a project whose
+first workflow is older than the first search would otherwise have no history and
+no way to ask for it.
+
+**Geometry.** The tree is a sized child box: `meshLayout.js` owns `RUN_TREE_METRICS`
+and places `{ left, top, width, height }` from a `{ rowCount, runCount, collapsed }`
+descriptor, and the component fills exactly that rectangle. Because a tree hangs
+below its node, the layout also pushes whatever sits beneath a node down by that
+node's tree clearance — otherwise the lead's tree would cover the agent row. A
+tree is also capped at its column pitch less a gutter, so two neighbouring nodes
+that both carry one cannot overlap; the readable minimum still wins on a canvas
+too narrow to honour that cap. Within that width a finished run's one-liner drops
+the word "tokens" so the duration survives, and its tooltip spells the unit out.
+
+**What the UI will not invent.** The run directory Claude writes while a run is
+going (`journal.jsonl`, `agent-*.jsonl`, `agent-*.meta.json`) carries no label
+and no phase, so the scanner returns neither and the UI adds neither
+(`scanner.rs` `live_run`; see *Live runs have no phases* above). A token total
+the scanner declined to count exactly renders as nothing rather than a partial
+number. The activity hint carries no run name, so the sidebar badge says only how
+many runs are live; the name appears where a run has actually been read.

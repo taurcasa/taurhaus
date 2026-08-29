@@ -43,3 +43,23 @@ export function listAccounts(...args) {
 export function setProjectAccount(...args) {
   return asyncResult('setProjectAccount', args)
 }
+
+export function getProjectTasks(...args) {
+  return asyncResult('getProjectTasks', args)
+}
+
+export function getArchivedSessions(...args) {
+  return asyncResult('getArchivedSessions', args)
+}
+
+export function listWorkflowRuns(...args) {
+  return asyncResult('listWorkflowRuns', args)
+}
+
+export function getWorkflowRun(...args) {
+  return asyncResult('getWorkflowRun', args)
+}
+
+export function workflowLedgerRow(...args) {
+  return asyncResult('workflowLedgerRow', args)
+}

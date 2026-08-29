@@ -280,3 +280,80 @@ describe('activitySignal invariants', () => {
     expect(isRetainedSignal(undefined)).toBe(false)
   })
 })
+
+describe('activitySignal workflow writes', () => {
+  function withWorkflow(record, { liveRuns = 1, secondsAgo = 1 } = {}) {
+    return {
+      ...record,
+      workflow_activity: {
+        live_runs: liveRuns,
+        last_write_at: Date.now() - secondsAgo * 1000,
+      },
+    }
+  }
+
+  it('reads an idle session with a fresh workflow write as working', () => {
+    expect(activitySignal(withWorkflow({ state: 'idle' }))).toEqual({
+      level: 'working',
+      label: 'Working',
+      confidence: 'high',
+      source: 'workflow',
+    })
+  })
+
+  it('grades confidence by how recent the last agent write is', () => {
+    expect(activitySignal(withWorkflow({ state: 'idle' }, { secondsAgo: 5 })).confidence).toBe('high')
+    expect(activitySignal(withWorkflow({ state: 'idle' }, { secondsAgo: 30 })).confidence).toBe('medium')
+    expect(activitySignal(withWorkflow({ state: 'idle' }, { secondsAgo: 55 })).confidence).toBe('low')
+  })
+
+  it('ignores a write older than the sixty-second window', () => {
+    expect(activitySignal(withWorkflow({ state: 'idle' }, { secondsAgo: 61 }))).toEqual({
+      level: 'idle',
+      label: 'Idle',
+      confidence: 'medium',
+      source: 'status',
+    })
+  })
+
+  it('ignores an activity hint that counts no live run', () => {
+    expect(activitySignal(withWorkflow({ state: 'idle' }, { liveRuns: 0 })).level).toBe('idle')
+  })
+
+  it('accepts the camelCase spelling of the hint', () => {
+    const record = {
+      state: 'idle',
+      workflowActivity: { liveRuns: 2, lastWriteAt: Date.now() - 1000 },
+    }
+    expect(activitySignal(record).level).toBe('working')
+    expect(activitySignal(record).source).toBe('workflow')
+  })
+
+  it('leaves every stronger reading unchanged', () => {
+    expect(activitySignal(withWorkflow({ state: 'active', pane_foreign: true })).level).toBe('offline')
+    expect(activitySignal(withWorkflow({ state: 'offline' })).level).toBe('offline')
+    expect(activitySignal(withWorkflow({ state: 'idle', degraded: true })).source).toBe('degraded')
+    expect(activitySignal(withWorkflow({ state: 'idle', _presenceStale: true })).source).toBe('stale')
+    expect(
+      activitySignal(withWorkflow({ state: 'active', project_unattributed_active: true })).source
+    ).toBe('project')
+  })
+
+  it('names the workflow write as the evidence even for an attributed session', () => {
+    const attributed = {
+      state: 'active',
+      activity_attribution: 'attributed',
+      activity_confidence: 'medium',
+    }
+    expect(activitySignal(withWorkflow(attributed)).source).toBe('workflow')
+    expect(activitySignal(attributed).source).toBe('session')
+  })
+
+  it('tolerates a malformed hint', () => {
+    expect(activitySignal({ state: 'idle', workflow_activity: {} }).level).toBe('idle')
+    expect(activitySignal({ state: 'idle', workflow_activity: null }).level).toBe('idle')
+    expect(
+      activitySignal({ state: 'idle', workflow_activity: { live_runs: 1, last_write_at: 'soon' } }).level
+    ).toBe('idle')
+  })
+})

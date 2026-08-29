@@ -905,3 +905,41 @@ describe('Sidebar component branches', () => {
     expect(clearTimeoutSpy).toHaveBeenCalled()
   })
 })
+
+describe('Sidebar workflow run badge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetAccountsForTest()
+    listAccounts.mockResolvedValue({ accounts: [], source: 'native', degraded: false, error: null })
+    getSessionsForProject.mockReturnValue([])
+  })
+
+  it('badges a project whose session is running workflows', () => {
+    getSessionsForProject.mockImplementation((path) =>
+      path === '/projects/project-0'
+        ? [{
+          state: 'idle',
+          workflow_activity: { live_runs: 2, last_write_at: Date.now() - 4000 },
+        }]
+        : []
+    )
+
+    render(Sidebar, { props: { projects: makeProjects(2) } })
+
+    const badges = screen.getAllByTestId('sidebar-workflow-badge')
+    expect(badges).toHaveLength(1)
+    expect(badges[0]).toHaveTextContent('2')
+    expect(badges[0]).toHaveAttribute('aria-label', '2 workflow runs live')
+    expect(badges[0].title).toContain('last agent write')
+  })
+
+  it('shows no badge once the last agent write has aged out', () => {
+    getSessionsForProject.mockReturnValue([
+      { state: 'idle', workflow_activity: { live_runs: 1, last_write_at: Date.now() - 120_000 } },
+    ])
+
+    render(Sidebar, { props: { projects: makeProjects(1) } })
+
+    expect(screen.queryByTestId('sidebar-workflow-badge')).not.toBeInTheDocument()
+  })
+})

@@ -159,6 +159,13 @@ function normalizeCoordinationMember(value) {
     behaviorSummary: value.behaviorSummary ?? value.behavior_summary ?? null,
     sessionStatus: value.sessionStatus ?? value.session_status ?? 'offline',
     paneId: value.paneId ?? value.pane_id ?? null,
+    // The Claude session behind the member, when the backend attached one. The
+    // mesh canvas keys a node's workflow runs on it.
+    sessionId: value.sessionId ?? value.session_id ?? null,
+    // Live workflow writes under that session. A headless workflow parent
+    // reports idle for the whole run, so this is the only evidence the node's
+    // activity derivation has that it is working.
+    workflowActivity: value.workflowActivity ?? value.workflow_activity ?? null,
     isCrossProject: Boolean(value.isCrossProject ?? value.is_cross_project),
     projectLabel: String(value.projectLabel ?? value.project_label ?? '').trim(),
   }

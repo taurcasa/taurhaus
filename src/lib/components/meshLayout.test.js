@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { computeMeshLayout } from './meshLayout.js'
+import { computeMeshLayout, RUN_TREE_METRICS } from './meshLayout.js'
 
 function createLead(overrides = {}) {
   return {
@@ -263,6 +263,217 @@ describe('meshLayout', () => {
     for (const agent of layout.agents) {
       expect(agent.x - agent.width / 2).toBeGreaterThanOrEqual(0)
       expect(agent.x + agent.width / 2).toBeLessThanOrEqual(width)
+    }
+  })
+})
+
+describe('meshLayout run tree child', () => {
+  function layoutWithTree(runTree, overrides = {}) {
+    return computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: [{ ...createAgents(1)[0], runTree }],
+      ...overrides,
+    })
+  }
+
+  it('places no box for a node without a run', () => {
+    const layout = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(2),
+    })
+
+    expect(layout.lead.runTree).toBeNull()
+    expect(layout.agents.every((agent) => agent.runTree === null)).toBe(true)
+  })
+
+  it('hangs the box under its node, centred on it', () => {
+    const layout = layoutWithTree({ rowCount: 4 })
+    const [agent] = layout.agents
+
+    expect(agent.runTree.top).toBe(agent.y + agent.height / 2 + RUN_TREE_METRICS.gap)
+    expect(agent.runTree.left + agent.runTree.width / 2).toBeCloseTo(agent.x, 5)
+  })
+
+  it('sizes the box from the row count', () => {
+    const four = layoutWithTree({ rowCount: 4 }).agents[0].runTree
+    const two = layoutWithTree({ rowCount: 2 }).agents[0].runTree
+
+    expect(four.height - two.height).toBe(2 * RUN_TREE_METRICS.rowHeight)
+    expect(four.rowCount).toBe(4)
+  })
+
+  it('gives a collapsed run a header-only box', () => {
+    const collapsed = layoutWithTree({ rowCount: 0, collapsed: true }).agents[0].runTree
+
+    expect(collapsed.collapsed).toBe(true)
+    expect(collapsed.height).toBe(
+      RUN_TREE_METRICS.paddingY * 2 + RUN_TREE_METRICS.headerHeight
+    )
+  })
+
+  it('never renders a box narrower than a readable minimum', () => {
+    const layout = computeMeshLayout({
+      width: 360,
+      height: 520,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(6).map((agent) => ({ ...agent, runTree: { rowCount: 3 } })),
+    })
+
+    for (const agent of layout.agents) {
+      expect(agent.runTree.width).toBeGreaterThanOrEqual(RUN_TREE_METRICS.minWidth)
+    }
+  })
+
+  it('keeps the box inside the canvas', () => {
+    const width = 420
+    const layout = computeMeshLayout({
+      width,
+      height: 520,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(3).map((agent) => ({ ...agent, runTree: { rowCount: 5 } })),
+    })
+
+    for (const agent of layout.agents) {
+      expect(agent.runTree.left).toBeGreaterThanOrEqual(0)
+      expect(agent.runTree.left + agent.runTree.width).toBeLessThanOrEqual(width)
+    }
+  })
+
+  it('places a box under the lead too', () => {
+    const layout = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: { ...createLead(), runTree: { rowCount: 2 } },
+      agents: createAgents(2),
+    })
+
+    expect(layout.lead.runTree.top).toBe(
+      layout.lead.y + layout.lead.height / 2 + RUN_TREE_METRICS.gap
+    )
+  })
+
+  it('ignores a malformed descriptor', () => {
+    expect(layoutWithTree({}).agents[0].runTree.rowCount).toBe(0)
+    expect(layoutWithTree('live').agents[0].runTree).toBeNull()
+  })
+})
+
+describe('meshLayout makes room for run trees', () => {
+  const tallTree = { rowCount: 8 }
+
+  function agentsWith(count, runTree) {
+    return createAgents(count).map((agent, index) => (
+      index === 0 ? { ...agent, runTree } : agent
+    ))
+  }
+
+  it('stacks one header per run in the box height', () => {
+    const one = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: [{ ...createAgents(1)[0], runTree: { rowCount: 2, runCount: 1 } }],
+    }).agents[0].runTree
+    const three = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: [{ ...createAgents(1)[0], runTree: { rowCount: 2, runCount: 3 } }],
+    }).agents[0].runTree
+
+    expect(three.height - one.height).toBe(2 * RUN_TREE_METRICS.headerHeight)
+  })
+
+  it('drops the agent row below the lead tree instead of overlapping it', () => {
+    const withoutTree = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(3),
+    })
+    const withTree = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: { ...createLead(), runTree: tallTree },
+      agents: createAgents(3),
+    })
+
+    const treeBottom = withTree.lead.runTree.top + withTree.lead.runTree.height
+    for (const agent of withTree.agents) {
+      expect(agent.y - agent.height / 2).toBeGreaterThanOrEqual(treeBottom)
+    }
+    expect(withTree.agents[0].y).toBeGreaterThan(withoutTree.agents[0].y)
+  })
+
+  it('drops the second row below the first row trees', () => {
+    const layout = computeMeshLayout({
+      width: 1200,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: agentsWith(8, tallTree),
+    })
+
+    const firstRow = layout.agents.filter((agent) => agent.row === 0)
+    const secondRow = layout.agents.filter((agent) => agent.row === 1)
+    expect(secondRow.length).toBeGreaterThan(0)
+
+    const deepestTree = Math.max(
+      ...firstRow
+        .filter((agent) => agent.runTree)
+        .map((agent) => agent.runTree.top + agent.runTree.height)
+    )
+    for (const agent of secondRow) {
+      expect(agent.y - agent.height / 2).toBeGreaterThanOrEqual(deepestTree)
+    }
+  })
+
+  it('leaves a tree-free layout exactly where it was', () => {
+    const input = {
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(8),
+    }
+    const layout = computeMeshLayout(input)
+
+    expect(layout.agents.map((agent) => agent.y)).toEqual([
+      372, 372, 372, 372, 460, 460, 460, 460,
+    ])
+  })
+})
+
+describe('meshLayout keeps neighbouring run trees apart', () => {
+  it('never overlaps the tree boxes of two adjacent nodes', () => {
+    const layout = computeMeshLayout({
+      width: 960,
+      height: 640,
+      mode: 'runtime',
+      lead: createLead(),
+      agents: createAgents(3).map((agent) => ({ ...agent, runTree: { rowCount: 4 } })),
+    })
+
+    const boxes = layout.agents
+      .map((agent) => agent.runTree)
+      .sort((left, right) => left.left - right.left)
+
+    for (let index = 1; index < boxes.length; index += 1) {
+      const previous = boxes[index - 1]
+      expect(boxes[index].left).toBeGreaterThanOrEqual(previous.left + previous.width)
     }
   })
 })

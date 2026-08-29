@@ -63,6 +63,117 @@ function fitHorizontalLayout(rowCount, availableWidth, preferredNodeWidth, prefe
   }
 }
 
+/**
+ * Geometry of the workflow run tree that hangs under a node.
+ *
+ * The tree is a sized child box the layout engine places, so the renderer never
+ * does arithmetic of its own: it is handed a rectangle and fills it. The row
+ * heights live here too, because the box height is `header + rows` and both
+ * ends must agree on what a row is worth.
+ */
+export const RUN_TREE_METRICS = Object.freeze({
+  /** Vertical distance from the node's bottom edge to the top of the box. */
+  gap: 10,
+  paddingX: 8,
+  paddingY: 6,
+  /** The run name / status line, always rendered. */
+  headerHeight: 18,
+  /** One phase title or one agent. */
+  rowHeight: 16,
+  minWidth: 152,
+  /**
+   * What a tree asks for when the row can afford it. Collapsed and expanded
+   * ask for the same width: an agent row needs it to carry a label, a model and
+   * a tool, and a finished run's one-liner needs it to keep its tokens and
+   * duration instead of an ellipsis.
+   */
+  preferredWidth: 216,
+  maxWidth: 272,
+  /** Breathing room kept between the box and the canvas edge when it fits. */
+  margin: 8,
+  /** Clear space left between the trees of two neighbouring nodes. */
+  columnGutter: 6,
+})
+
+function positiveInteger(value, fallback) {
+  const rounded = Math.round(Number(value))
+  return Number.isFinite(rounded) ? Math.max(0, rounded) : fallback
+}
+
+/**
+ * Read a node's run-tree descriptor, or `null` when it carries no run.
+ *
+ * The descriptor is `{ rowCount, runCount, collapsed }` — how many phase and
+ * agent rows the trees want in total, how many run headers they stack, and
+ * whether the viewer collapsed them. A tree with no rows is collapsed by
+ * definition: there is nothing left to expand.
+ */
+function runTreeShape(descriptor) {
+  if (!descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)) return null
+
+  const requestedRows = positiveInteger(descriptor.rowCount, 0)
+  const collapsed = descriptor.collapsed === true || requestedRows === 0
+  const rowCount = collapsed ? 0 : requestedRows
+  const runCount = Math.max(1, positiveInteger(descriptor.runCount, 1))
+
+  return {
+    rowCount,
+    runCount,
+    collapsed,
+    height: RUN_TREE_METRICS.paddingY * 2
+      + runCount * RUN_TREE_METRICS.headerHeight
+      + rowCount * RUN_TREE_METRICS.rowHeight,
+  }
+}
+
+/** Vertical space a node's tree needs below it, including its gap and margin. */
+function runTreeClearance(members) {
+  let clearance = 0
+  for (const member of members) {
+    const shape = runTreeShape(member?.runTree)
+    if (!shape) continue
+    clearance = Math.max(
+      clearance,
+      RUN_TREE_METRICS.gap + shape.height + RUN_TREE_METRICS.margin
+    )
+  }
+  return clearance
+}
+
+/**
+ * Place one node's run tree, or `null` when the node carries no run.
+ *
+ * `columnLimit` is the widest a tree may grow without reaching into the next
+ * node's column — two neighbours that both carry a tree must not overlap. The
+ * lead is alone in its row and passes none. The readable minimum still wins on
+ * a canvas too narrow to honour the limit: a box nobody can read is worse than
+ * two that touch.
+ */
+function runTreeBox(node, canvasWidth, columnLimit = Number.POSITIVE_INFINITY) {
+  const shape = runTreeShape(node?.runTree)
+  if (!shape) return null
+
+  const available = Math.max(RUN_TREE_METRICS.minWidth, canvasWidth - RUN_TREE_METRICS.margin * 2)
+  const ceiling = Math.max(
+    RUN_TREE_METRICS.minWidth,
+    Math.min(RUN_TREE_METRICS.maxWidth, available, columnLimit)
+  )
+  const width = clamp(
+    Math.max(Number(node.width) || 0, RUN_TREE_METRICS.preferredWidth),
+    RUN_TREE_METRICS.minWidth,
+    ceiling
+  )
+
+  return {
+    left: clamp(node.x - width / 2, 0, Math.max(0, canvasWidth - width)),
+    top: node.y + node.height / 2 + RUN_TREE_METRICS.gap,
+    width,
+    height: shape.height,
+    rowCount: shape.rowCount,
+    collapsed: shape.collapsed,
+  }
+}
+
 function buildRowBoxes(items, y, width, nodeWidth, gap, row) {
   if (!items.length) return []
   const totalWidth = items.length * nodeWidth + (items.length - 1) * gap
@@ -159,9 +270,21 @@ function computeMeshBoxes(topology, input) {
 
   const primaryAgentY = Math.round(height * 0.65)
   const rowOffset = 44
+  const agentHeight = 64
+  const nodeBreathingRoom = 12
+  const firstRow = topology.rows[0] ?? []
+  const secondRow = topology.rows[1] ?? []
+
+  // A run tree hangs below its node, so a node that has one pushes whatever sits
+  // beneath it further down rather than being drawn over.
+  const firstRowY = Math.max(
+    secondRow.length > 0 ? primaryAgentY - rowOffset : primaryAgentY,
+    lead.y + lead.height / 2 + runTreeClearance([lead]) + agentHeight / 2 + nodeBreathingRoom
+  )
+  const secondRowY = firstRowY + rowOffset * 2 + runTreeClearance(firstRow)
   const positionedAgents = [
-    ...buildRowBoxes(topology.rows[0] ?? [], topology.rows.length > 1 ? primaryAgentY - rowOffset : primaryAgentY, width, nodeWidth, gap, 0),
-    ...buildRowBoxes(topology.rows[1] ?? [], primaryAgentY + rowOffset, width, nodeWidth, gap, 1),
+    ...buildRowBoxes(firstRow, firstRowY, width, nodeWidth, gap, 0),
+    ...buildRowBoxes(secondRow, secondRowY, width, nodeWidth, gap, 1),
   ]
 
   const lastAgent = positionedAgents[positionedAgents.length - 1] ?? null
@@ -180,8 +303,11 @@ function computeMeshBoxes(topology, input) {
   return {
     width,
     height,
-    lead,
-    agents: positionedAgents,
+    lead: { ...lead, runTree: runTreeBox(lead, width) },
+    agents: positionedAgents.map((agent) => ({
+      ...agent,
+      runTree: runTreeBox(agent, width, nodeWidth + gap - RUN_TREE_METRICS.columnGutter),
+    })),
     addNode,
     nodeWidth,
     gap,
