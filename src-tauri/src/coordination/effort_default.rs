@@ -42,8 +42,9 @@ pub enum RestoreOutcome {
     Restored,
     /// The file already carries the user's value.
     AlreadyRestored,
-    /// Left alone: the value on disk is not the one the harness wrote, so the
-    /// user changed it themselves after the team started.
+    /// Left alone: the value on disk is not one the harness is known to have
+    /// written, so it is the user's — either changed by hand after the team
+    /// started, or never touched by the harness at all.
     UserChanged,
     /// The settings file could not be read or written.
     Unavailable,
@@ -81,17 +82,28 @@ pub fn record(
     Some(recorded)
 }
 
+/// Serializes taurhaus's own read-compare-write of a settings file.
+///
+/// Two members of one team stop at the same moment; without this they could
+/// both read the file and the second rename would drop the first's edit. It
+/// cannot lock the harness out — nothing here can — which is why the ownership
+/// check below refuses to write over a value taurhaus cannot prove it caused.
+static RESTORE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Put the user's default back.
 ///
-/// `written_by_harness` is the level the harness was last asked to run at. The
-/// field is only touched while it still holds that level: a user who changed it
-/// by hand since keeps their change. Writing the same value twice is a no-op,
-/// so a repeated teardown is safe.
+/// `written_by_harness` is the level taurhaus knows the harness was asked to
+/// run at — mesh types the assignment's level, so that is the value that
+/// reached the file. The field is only touched while it still holds that
+/// level: a user who changed it by hand since keeps their change, and with no
+/// such proof at all the value on disk is the user's and is left alone.
+/// Writing the same value twice is a no-op, so a repeated teardown is safe.
 pub fn restore(
     sink: EffortDefaultSink,
     recorded: &RecordedEffortDefault,
     written_by_harness: Option<&str>,
 ) -> RestoreOutcome {
+    let _guard = RESTORE_LOCK.lock().unwrap_or_else(|err| err.into_inner());
     let Some(mut settings) = read_settings(&recorded.settings_path) else {
         return emit_restore(recorded, RestoreOutcome::Unavailable);
     };
@@ -101,13 +113,13 @@ pub fn restore(
         return emit_restore(recorded, RestoreOutcome::AlreadyRestored);
     }
     let written_by_harness = written_by_harness.map(str::trim).filter(|l| !l.is_empty());
-    if let Some(expected) = written_by_harness {
-        if !current
+    let harness_owns_current = written_by_harness.is_some_and(|expected| {
+        current
             .as_deref()
             .is_some_and(|level| level.eq_ignore_ascii_case(expected))
-        {
-            return emit_restore(recorded, RestoreOutcome::UserChanged);
-        }
+    });
+    if !harness_owns_current {
+        return emit_restore(recorded, RestoreOutcome::UserChanged);
     }
 
     apply_level(
@@ -153,7 +165,8 @@ pub fn restore_member_effort_default(teams_dir: &Path, team_name: &str, member_n
     // A restore that could not read or write the file has not run at all.
     // Forgetting the record here would leave the harness's level in the
     // operator's settings with nothing left to put back.
-    if restore(sink, recorded, record.applied_effort.as_deref()) == RestoreOutcome::Unavailable {
+    let written = harness_written_level(teams_dir, team_name, member_name, &record);
+    if restore(sink, recorded, written.as_deref()) == RestoreOutcome::Unavailable {
         return;
     }
     if let Err(err) = crate::coordination::stores::MemberRuntimeStore::update(
@@ -171,6 +184,26 @@ pub fn restore_member_effort_default(teams_dir: &Path, team_name: &str, member_n
             "failed to clear the recorded effort default after restoring it"
         );
     }
+}
+
+/// The level taurhaus knows the harness was last asked to run at.
+///
+/// mesh types the assignment's level into the pane, so the newest assignment
+/// in the member's inbox is the value that reached the settings file. The
+/// launch effort stands in where no assignment carried one — and is `None` for
+/// every member launched without a declared effort, which is why a restore
+/// with neither leaves the file alone.
+fn harness_written_level(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+    record: &crate::coordination::stores::MemberRuntimeRecord,
+) -> Option<String> {
+    crate::coordination::stores::MeshInboxStore::load(teams_dir, team_name, member_name)
+        .ok()
+        .and_then(|messages| crate::coordination::task_effort::latest_assignment_effort(&messages))
+        .map(|effort| effort.level)
+        .or_else(|| record.applied_effort.clone())
 }
 
 /// Same, for the member that owns `pane_id`.
@@ -543,6 +576,20 @@ mod tests {
         pane_id: &str,
         recorded: RecordedEffortDefault,
     ) {
+        seed_member_with_recorded_default_and_effort(
+            teams_dir,
+            pane_id,
+            recorded,
+            Some("high".to_string()),
+        )
+    }
+
+    fn seed_member_with_recorded_default_and_effort(
+        teams_dir: &Path,
+        pane_id: &str,
+        recorded: RecordedEffortDefault,
+        applied_effort: Option<String>,
+    ) {
         use crate::coordination::domain::{HealthState, Member, MemberRole};
         use crate::coordination::stores::{MemberRuntimeStore, TeamConfig, TeamConfigStore};
 
@@ -602,7 +649,7 @@ mod tests {
             delivery_lease: None,
             attached_at: None,
             last_seen_at: None,
-            applied_effort: Some("high".to_string()),
+            applied_effort,
             effort_default: Some(recorded),
             effort_resume_failure: None,
         };
@@ -830,5 +877,73 @@ mod tests {
         let dir = account_dir(Some(r#"{}"#));
 
         assert_eq!(record(SINK, dir.path(), "  "), None);
+    }
+
+    fn assignment_message(level: &str) -> crate::coordination::stores::MeshInboxMessage {
+        let mut message = crate::coordination::stores::MeshInboxMessage::new(
+            "team-lead",
+            format!("Effort: {level} — the migration is irreversible"),
+            None,
+            chrono::Utc::now(),
+        );
+        message
+            .extra
+            .insert("effort".to_string(), serde_json::json!(level));
+        message
+    }
+
+    // Regression: 45cd190 ran the ownership check only when it was handed a
+    // level the harness had been asked for. A launch that declares no effort
+    // records none, so the common case wrote unconditionally: an operator who
+    // changed their own default while such a team ran had that change reverted
+    // on stop, with nothing to say the harness had ever touched the file.
+    #[test]
+    fn a_value_the_harness_never_wrote_is_not_reverted() {
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        // The operator's own change, made while the team ran.
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"xhigh"}}}"#,
+        )
+        .expect("user write");
+
+        assert_eq!(restore(SINK, &recorded, None), RestoreOutcome::UserChanged);
+        assert_eq!(
+            settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
+            "xhigh",
+            "an unproven value on disk belongs to the user"
+        );
+    }
+
+    // The other side of the same rule: mesh types the assignment's level, so
+    // the newest assignment in the member's inbox is the proof — the launch
+    // effort is not, and is `None` for every member that declares none.
+    #[test]
+    fn the_level_mesh_typed_is_proof_enough_to_put_the_users_back() {
+        let teams = TempDir::new().expect("teams dir");
+        let dir = account_dir(Some(r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#));
+        let recorded = record(SINK, dir.path(), "opus").expect("recorded");
+        seed_member_with_recorded_default_and_effort(teams.path(), "%42", recorded, None);
+        crate::coordination::stores::MeshInboxStore::append(
+            teams.path(),
+            "effort-team",
+            "lead-dev",
+            &assignment_message("high"),
+        )
+        .expect("append assignment");
+        // What `/effort high` left in the operator's own settings.
+        fs::write(
+            dir.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"high"}}}"#,
+        )
+        .expect("harness write");
+
+        restore_member_effort_default(teams.path(), "effort-team", "lead-dev");
+
+        assert_eq!(
+            settings_json(&dir)["modelSettings"]["opus"]["effortLevel"],
+            "low"
+        );
     }
 }
