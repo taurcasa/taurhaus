@@ -5,9 +5,16 @@
    * `RUN_TREE_METRICS`, because the box was sized as header + rows and the
    * rendered rows have to be worth exactly that.
    *
-   * A live run is expanded — phase titles, then its agents. A finished run is
-   * one line: name, agents done, tokens, duration. Live rows breathe rather
-   * than spin; a viewer who does not want the motion gets none.
+   * A live run is expanded into its agents. Claude writes agent labels and
+   * phase titles only into a run's completed summary, so every agent of a live
+   * run arrives with `label: null` and `phase: null`: they render as one flat
+   * group under no phase row, each named by its prompt preview, and the running
+   * one is what the hover card calls the current step. The grouping is here for
+   * the day the journal names a phase; nothing here infers one. A finished run
+   * is one line — name, agents done, tokens, duration — and its per-agent
+   * labels and phases are read in the Overview panel's run history instead.
+   * Live rows breathe rather than spin; a viewer who does not want the motion
+   * gets none.
    */
   import { runTreeModel } from '../workflowRuns.js'
   import { RUN_TREE_METRICS } from './meshLayout.js'

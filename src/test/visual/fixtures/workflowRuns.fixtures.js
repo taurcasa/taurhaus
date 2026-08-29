@@ -1,8 +1,13 @@
 /**
  * Workflow run fixtures shared by every surface that draws one: the canvas run
  * tree, the sidebar badge and the Overview run-history panel. Shapes follow
- * `docs/architecture/workflow-runs.md`, including the `null`s the scanner
- * genuinely returns for a live agent it could not place in a phase.
+ * `docs/architecture/workflow-runs.md`.
+ *
+ * `UNPHASED_LIVE_RUN` is what a live run really looks like today: Claude writes
+ * labels and phase titles only into the completed summary, so every live agent
+ * arrives with `label: null` and `phase: null`. `LIVE_RUN` is the shape a
+ * phase-attributed live run would have, kept so the phase grouping has a
+ * fixture to draw at all.
  */
 
 function agent(overrides = {}) {

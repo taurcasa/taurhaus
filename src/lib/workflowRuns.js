@@ -325,9 +325,11 @@ export function runTreeModel(run) {
 }
 
 /**
- * What a live run is doing right now: the phase of its running agent, or that
- * agent's own label when the scanner could not place it in a phase. `''` when
- * the run has no agent running.
+ * What a live run is doing right now: the phase of its running agent where one
+ * is known, otherwise that agent's own label. A live agent carries
+ * `phase: null` until the run's summary is written, so in practice this names
+ * the running agent — its prompt preview. `''` when the run has no agent
+ * running.
  */
 export function currentWorkflowStep(run) {
   const model = runTreeModel(run)

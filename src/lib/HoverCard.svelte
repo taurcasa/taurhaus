@@ -314,7 +314,9 @@
    * The session activity hint carries a count and a write time and no run name,
    * so the count is all a row can say on its own. Once the shared store has
    * actually read the run — which happens while this card is up — the run's own
-   * name and the phase its running agent is in replace the count.
+   * name and its current step replace the count. A live run has no phase to
+   * name: its agents carry none until the run's summary is written, so the step
+   * is the running agent's own prompt preview.
    */
   function buildWorkflowRow(session, runs) {
     const ageMs = workflowWriteAgeMs(session)
