@@ -263,7 +263,11 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
         "src/task_scanner/codex.rs",
         "src/templates/adapters.rs",
     ];
-    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 82;
+    // 86 since the registry gained `command_settings_for_mut`, the mutable
+    // mirror of `command_settings_for` that the task-effort relaunch needs to
+    // rewrite one tool's configured resume base. Field selection per tool has
+    // to name the tools; the registry is where that is allowed to happen.
+    const EXPECTED_RUNTIME_LITERAL_COUNT: usize = 86;
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
