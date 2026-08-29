@@ -1127,7 +1127,9 @@ pub struct DaemonInstallStatus {
     pub version: Option<String>,
     /// Version bundled with this app (from CARGO_PKG_VERSION).
     pub bundled_version: String,
-    /// True if installed version < bundled version (needs update).
+    /// True when the installed daemon differs from the bundled one — in either
+    /// direction. The app pins an exact daemon protocol, so a newer daemon is
+    /// as unusable as an older one and has to be replaced from the bundle.
     pub needs_update: bool,
     /// Whether WSL is available and a distro is configured.
     pub wsl_available: bool,

@@ -21,6 +21,7 @@
   import { startPolling as startSessionPolling, stopPolling as stopSessionPolling } from './lib/sessionStore.svelte.js'
   import { push as pushNav, goBack as navGoBack, goForward as navGoForward, reset as resetNav, withSuppressed as navWithSuppressed } from './lib/navHistory.svelte.js'
   import { createShellDaemonStatusController } from './lib/shell/daemonStatus.svelte.js'
+  import { daemonStatusNotice } from './lib/daemonStatus.js'
   import { setupShellEventListeners } from './lib/shell/events.svelte.js'
   import { createShellNavigationController } from './lib/shell/navigation.svelte.js'
   import { createShellProjectSelectionController } from './lib/shell/projectSelection.svelte.js'
@@ -436,7 +437,12 @@
         }
         fileChangePaths = paths
       },
-      onDaemonStatus: ({ status }) => {
+      onDaemonStatus: (payload) => {
+        const { status } = payload
+        const notice = daemonStatusNotice(payload)
+        if (notice) {
+          shellNotice = notice
+        }
         daemonController.handleDaemonStatusEvent(status)
         if (status !== 'connected') {
           sessionController.handleDaemonDisconnected()

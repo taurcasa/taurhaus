@@ -1,3 +1,19 @@
+/**
+ * One line the backend attaches to a `daemon-status` event when it is doing
+ * something the status word alone cannot explain — today, replacing a daemon
+ * whose protocol does not pair with this app. Returns null when the event
+ * carries nothing worth putting on screen.
+ */
+export function daemonStatusNotice(payload) {
+  const notice = payload?.notice
+  if (typeof notice !== 'string') {
+    return null
+  }
+
+  const trimmed = notice.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 export function normalizeShellDaemonStatus(status) {
   if (status === 'connected' || status === 'not_configured' || status == null) {
     return null
