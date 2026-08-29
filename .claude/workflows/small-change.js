@@ -416,7 +416,8 @@ const COMMON = [RULES.checkout, RULES.spec, RULES.gates, RULES.tdd, RULES.commit
 
 const IMPL_SCHEMA = {
   type: 'object',
-  required: ['status', 'summary', 'commits', 'files_changed', 'tests_added', 'red_observed', 'gate', 'deviations'],
+  additionalProperties: false,
+  required: ['status', 'error', 'model_used', 'summary', 'commits', 'files_changed', 'tests_added', 'red_observed', 'gate', 'deviations'],
   properties: {
     status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
     error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
@@ -434,7 +435,8 @@ const IMPL_SCHEMA = {
 
 const FINDINGS_SCHEMA = {
   type: 'object',
-  required: ['status', 'findings', 'verdict', 'model_used'],
+  additionalProperties: false,
+  required: ['status', 'error', 'model_used', 'findings', 'verdict', 'reviewer'],
   properties: {
     status: { type: 'string', enum: ['ok', 'unavailable'], description: "'ok' only for work you did and saw succeed; 'unavailable' when this lane could not run" },
     error: { type: 'string', description: 'why the lane is unavailable: the exit code and the last log lines' },
@@ -444,6 +446,7 @@ const FINDINGS_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
+        additionalProperties: false,
         required: ['title', 'severity', 'file', 'evidence', 'fix'],
         properties: {
           title: { type: 'string' },
@@ -461,7 +464,8 @@ const FINDINGS_SCHEMA = {
 
 const GATE_SCHEMA = {
   type: 'object',
-  required: ['status', 'commands', 'diff_stat', 'commits'],
+  additionalProperties: false,
+  required: ['status', 'commands', 'failures', 'diff_stat', 'commits', 'error'],
   properties: {
     status: { type: 'string', enum: ['pass', 'fail'], description: "'pass' only when every command you ran passed and `failures` and `error` are empty" },
     commands: {
@@ -469,7 +473,8 @@ const GATE_SCHEMA = {
       description: 'every gate command you ran, in order; a command that did not apply is left off the list',
       items: {
         type: 'object',
-        required: ['command', 'status'],
+        additionalProperties: false,
+        required: ['command', 'status', 'detail'],
         properties: {
           command: { type: 'string', description: 'the exact command line' },
           status: { type: 'string', enum: ['pass', 'fail', 'skipped'], description: 'anything but `pass` fails the run, required command or not' },

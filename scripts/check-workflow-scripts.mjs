@@ -109,6 +109,18 @@ export function checkWorkflowSource(fileName, source) {
   for (const [pattern, message] of BANNED) {
     if (pattern.test(source)) problems.push(`${fileName}: ${message}`)
   }
+
+  // Every object in a `*_SCHEMA` literal must close itself with
+  // `additionalProperties: false`: the OpenAI structured-output endpoint behind
+  // `codex exec --output-schema` rejects a schema that leaves it out, so a Codex
+  // review lane would fail before reading a single file.
+  for (const block of source.matchAll(/const\s+(\w+_SCHEMA)\s*=\s*\{[\s\S]*?\n\}/g)) {
+    const objects = (block[0].match(/type:\s*'object'/g) || []).length
+    const closed = (block[0].match(/additionalProperties:\s*false/g) || []).length
+    if (objects > closed) {
+      problems.push(`${fileName}: ${block[1]} has ${objects} object schema(s) but only ${closed} declare \`additionalProperties: false\` — Codex's --output-schema rejects the rest`)
+    }
+  }
   return problems
 }
 

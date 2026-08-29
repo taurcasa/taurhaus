@@ -62,6 +62,8 @@ Per script:
   `outputs` (report directory, default `scratch`).
 - `docs-sweep`: `table` (drift table path), `groups` (file groups to sweep), `maxRounds` (default 3).
 
+Every `*_SCHEMA` literal keeps `additionalProperties: false` on each object and lists every property in `required`: the OpenAI structured-output endpoint behind `codex exec --output-schema` rejects anything else, and `just lint-workflows` checks it.
+
 ## What a run returns
 
 `feature-pr`, `small-change`, `fix-round` and `docs-sweep` return the same ledger shape, so a plan's
