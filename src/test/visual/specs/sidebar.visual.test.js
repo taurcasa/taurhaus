@@ -51,6 +51,12 @@ describe('Sidebar visual coverage', () => {
       }
     }
 
+    if (scenario.name.startsWith('workflow_runs_')) {
+      const badge = screen.getByLabelText('2 workflow runs live')
+      expect(badge).toHaveTextContent('2')
+      expect(badge.title).toContain('last agent write')
+    }
+
     const selectedRow = screen.getByText(scenario.expected.selectedProjectName).closest('button')
     expect(selectedRow).toBeTruthy()
     expect(selectedRow.className).toContain('bg-white/[0.08]')

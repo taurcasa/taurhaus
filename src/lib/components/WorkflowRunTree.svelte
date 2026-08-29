@@ -122,8 +122,9 @@
     border: 0;
     background: none;
     color: inherit;
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 600;
+    letter-spacing: -0.005em;
     line-height: 1;
     text-align: left;
     cursor: pointer;
@@ -183,7 +184,7 @@
   }
 
   .workflow-run-model {
-    max-width: 62px;
+    max-width: 54px;
     overflow: hidden;
     text-overflow: ellipsis;
   }

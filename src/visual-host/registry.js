@@ -9,6 +9,7 @@ import RosterDesignBHost from './hosts/RosterDesignBHost.svelte'
 import RosterDesignCHost from './hosts/RosterDesignCHost.svelte'
 import ShellPopupsHost from './hosts/ShellPopupsHost.svelte'
 import SidebarHost from './hosts/SidebarHost.svelte'
+import WorkflowRunsHost from './hosts/WorkflowRunsHost.svelte'
 import { configureVisualHostState } from './mockState.js'
 
 import { accountScenarios } from '../test/visual/fixtures/account.fixtures.js'
@@ -20,6 +21,7 @@ import { modelSelectScenarios } from '../test/visual/fixtures/modelSelect.fixtur
 import { rosterDesignScenarios } from '../test/visual/fixtures/rosterDesigns.fixtures.js'
 import { shellPopupsScenarios } from '../test/visual/fixtures/shellPopups.fixtures.js'
 import { sidebarScenarios } from '../test/visual/fixtures/sidebar.fixtures.js'
+import { workflowRunsScenarios } from '../test/visual/fixtures/workflowRuns.fixtures.js'
 
 export const viewportPresets = [
   { id: 'desktop', label: 'Desktop 1920x1080', width: 1920, height: 1080 },
@@ -39,6 +41,10 @@ function applyHoverCardMocks(scenario) {
       getRelationships: scenario?.ipc?.getRelationships ?? [],
     },
   })
+}
+
+function applyWorkflowRunsMocks(scenario) {
+  configureVisualHostState({ ipc: scenario?.ipc ?? {} })
 }
 
 function applySidebarMocks(scenario) {
@@ -85,6 +91,13 @@ export const visualRegistry = [
     component: SidebarHost,
     scenarios: sidebarScenarios,
     applyMocks: applySidebarMocks,
+  },
+  {
+    id: 'workflow-runs',
+    label: 'Workflow runs (Overview history panel)',
+    component: WorkflowRunsHost,
+    scenarios: workflowRunsScenarios,
+    applyMocks: applyWorkflowRunsMocks,
   },
   {
     id: 'account',

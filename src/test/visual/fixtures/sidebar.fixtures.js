@@ -33,6 +33,7 @@ function createSession({
   activity_attribution = 'attributed',
   activity_confidence = 'high',
   _presenceStale = false,
+  workflow_activity = null,
 } = {}) {
   return {
     cli_tool,
@@ -51,6 +52,7 @@ function createSession({
     activity_attribution,
     activity_confidence,
     _presenceStale,
+    ...(workflow_activity ? { workflow_activity } : {}),
   }
 }
 
@@ -166,6 +168,14 @@ const teamRailThresholdProject = createProject({
   path: '/projects/team-rail-threshold',
   activityState: 'active',
   branch: 'mesh/threshold',
+})
+
+const workflowRunsProject = createProject({
+  id: 'project-workflow-runs',
+  name: 'Workflow Runs Live',
+  path: '/projects/workflow-runs',
+  activityState: 'active',
+  branch: 'feat/w2b-workflow-runs-ui',
 })
 
 const groupedProjects = [
@@ -860,6 +870,49 @@ const activity_levels_dark = createScenario({
   },
 })
 
+function workflowSession() {
+  return createSession({
+    cli_tool: 'claude',
+    state: 'idle',
+    tmux_window: '5',
+    tmux_pane: '%51',
+    workflow_activity: { live_runs: 2, last_write_at: Date.now() - 4000 },
+  })
+}
+
+// A headless workflow parent reads idle to the harness; the run badge and the
+// working dot both come from the transcript writes its subagents are making.
+const workflow_runs_dark = createScenario({
+  name: 'workflow_runs_dark',
+  theme: 'dark',
+  projects: [workflowRunsProject, dormantCleanProject],
+  selectedProject: workflowRunsProject,
+  sessionStore: {
+    sessionsByProject: { '/projects/workflow-runs': [workflowSession()] },
+    sessionByProject: { '/projects/workflow-runs': workflowSession() },
+  },
+  expected: {
+    labels: ['Workflow Runs Live'],
+    selectedProjectName: 'Workflow Runs Live',
+  },
+})
+
+const workflow_runs_light = createScenario({
+  name: 'workflow_runs_light',
+  theme: 'light',
+  projects: [workflowRunsProject, dormantCleanProject],
+  selectedProject: workflowRunsProject,
+  sessionStore: {
+    sessionsByProject: { '/projects/workflow-runs': [workflowSession()] },
+    sessionByProject: { '/projects/workflow-runs': workflowSession() },
+  },
+  expected: {
+    labels: ['Workflow Runs Live'],
+    selectedProjectName: 'Workflow Runs Live',
+  },
+  compareAgainst: 'workflow_runs_dark',
+})
+
 export const sidebarScenarios = [
   launch_context_menu_dark,
   launch_context_menu_light,
@@ -879,4 +932,6 @@ export const sidebarScenarios = [
   team_stack_mixed_light,
   team_plus_standalone_dark,
   team_rail_threshold_dark,
+  workflow_runs_dark,
+  workflow_runs_light,
 ]

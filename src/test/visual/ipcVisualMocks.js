@@ -50,6 +50,9 @@ function createMockMap() {
     setProjectAccount: vi.fn(),
     search: vi.fn(),
     getProjectTasks: vi.fn(),
+    listWorkflowRuns: vi.fn(),
+    getWorkflowRun: vi.fn(),
+    workflowLedgerRow: vi.fn(),
     getTaskDetail: vi.fn(),
     getArchivedSessions: vi.fn(),
     getAllCommits: vi.fn(),
@@ -153,6 +156,9 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.listClaudeSessions.mockResolvedValue([])
   visualIpcMocks.search.mockResolvedValue([])
   visualIpcMocks.getProjectTasks.mockResolvedValue({ tasks: [], errors: [] })
+  visualIpcMocks.listWorkflowRuns.mockResolvedValue([])
+  visualIpcMocks.getWorkflowRun.mockResolvedValue(null)
+  visualIpcMocks.workflowLedgerRow.mockResolvedValue(null)
   visualIpcMocks.getTaskDetail.mockResolvedValue(null)
   visualIpcMocks.getArchivedSessions.mockResolvedValue([])
   visualIpcMocks.getAllCommits.mockResolvedValue([])

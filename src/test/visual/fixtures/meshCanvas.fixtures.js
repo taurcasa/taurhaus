@@ -1,4 +1,5 @@
 import { createAgentMembers, createConnection, createLeadMember } from './builders.js'
+import { FINISHED_RUN, LIVE_RUN, UNPHASED_LIVE_RUN } from './workflowRuns.fixtures.js'
 
 function createMeshCanvasScenario({
   name,
@@ -7,6 +8,7 @@ function createMeshCanvasScenario({
   canvasSize = { width: 900, height: 520 },
   agentCount,
   agentOverrides = [],
+  leadOverrides = {},
 } = {}) {
   const lead = createLeadMember({
     projectId: 'taurhaus',
@@ -14,6 +16,7 @@ function createMeshCanvasScenario({
       x: Math.round(canvasSize.width / 2),
       y: Math.round(canvasSize.height * 0.3),
     },
+    ...leadOverrides,
   })
   const agents = createAgentMembers(agentCount, { canvasSize }).map((agent, index) => ({
     ...agent,
@@ -104,6 +107,35 @@ const runtime_eightAgents_dark = createMeshCanvasScenario({
   agentCount: 8,
 })
 
+// The lead is the node that invokes a workflow, so its tree is the one the
+// canvas has to place without drawing over the agents beneath it.
+export const runtime_workflowLiveTree_dark = createMeshCanvasScenario({
+  name: 'runtime_workflowLiveTree_dark',
+  theme: 'dark',
+  agentCount: 3,
+  leadOverrides: { workflowRuns: [LIVE_RUN] },
+})
+
+export const runtime_workflowLiveTree_light = createMeshCanvasScenario({
+  name: 'runtime_workflowLiveTree_light',
+  theme: 'light',
+  agentCount: 3,
+  leadOverrides: { workflowRuns: [LIVE_RUN] },
+})
+
+// One agent whose live run has no phases the scanner could place, next to one
+// whose runs have finished and collapsed to a line each.
+export const runtime_workflowMixedRuns_dark = createMeshCanvasScenario({
+  name: 'runtime_workflowMixedRuns_dark',
+  theme: 'dark',
+  agentCount: 3,
+  agentOverrides: [
+    { workflowRuns: [UNPHASED_LIVE_RUN] },
+    {},
+    { workflowRuns: [FINISHED_RUN] },
+  ],
+})
+
 export const empty_noAgents_light = createMeshCanvasScenario({
   name: 'empty_noAgents_light',
   theme: 'light',
@@ -119,5 +151,8 @@ export const meshCanvasScenarios = [
   runtime_fiveAgents_light,
   runtime_sevenAgents_dark,
   runtime_eightAgents_dark,
+  runtime_workflowLiveTree_dark,
+  runtime_workflowLiveTree_light,
+  runtime_workflowMixedRuns_dark,
   empty_noAgents_light,
 ]

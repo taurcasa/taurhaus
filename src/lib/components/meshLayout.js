@@ -81,7 +81,9 @@ export const RUN_TREE_METRICS = Object.freeze({
   /** One phase title or one agent. */
   rowHeight: 16,
   minWidth: 152,
-  maxWidth: 240,
+  /** What an expanded tree asks for, so agent rows are readable. */
+  expandedWidth: 216,
+  maxWidth: 272,
   /** Breathing room kept between the box and the canvas edge when it fits. */
   margin: 8,
 })
@@ -136,9 +138,12 @@ function runTreeBox(node, canvasWidth) {
   const shape = runTreeShape(node?.runTree)
   if (!shape) return null
 
+  // A collapsed tree is one line and sits flush with its node; an expanded one
+  // asks for enough width to read a label, a model and a tool on one row.
   const available = Math.max(RUN_TREE_METRICS.minWidth, canvasWidth - RUN_TREE_METRICS.margin * 2)
+  const preferred = shape.collapsed ? RUN_TREE_METRICS.minWidth : RUN_TREE_METRICS.expandedWidth
   const width = clamp(
-    Math.max(Number(node.width) || 0, RUN_TREE_METRICS.minWidth),
+    Math.max(Number(node.width) || 0, preferred),
     RUN_TREE_METRICS.minWidth,
     Math.min(RUN_TREE_METRICS.maxWidth, available)
   )

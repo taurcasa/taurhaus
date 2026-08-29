@@ -30,6 +30,7 @@ function createMember({
   isCrossProject = false,
   projectLabel = '',
   position = { x: 0, y: 0 },
+  workflowRuns = null,
 } = {}) {
   return {
     id,
@@ -43,6 +44,7 @@ function createMember({
     isCrossProject,
     projectLabel,
     position,
+    ...(workflowRuns ? { workflowRuns } : {}),
   }
 }
 

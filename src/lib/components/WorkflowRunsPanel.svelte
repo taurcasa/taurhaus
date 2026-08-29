@@ -134,7 +134,7 @@
       {#each rows as row (`${row.sessionId}:${row.runId}`)}
         <button
           type="button"
-          class="w-full flex items-center gap-3 h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer"
+          class="w-full flex items-center gap-3 h-[30px] text-[13px] text-left {t.hoverRow} -mx-2 px-2 rounded transition-colors cursor-pointer {selected === row.runId ? t.sectionBg : ''}"
           data-testid="workflow-run-row"
           aria-expanded={selected === row.runId}
           onclick={() => selectRun(row)}
@@ -162,7 +162,7 @@
         </button>
 
         {#if selected === row.runId}
-          <div class="pl-2 pr-2 pb-2 pt-1" data-testid="workflow-run-detail">
+          <div class="ml-1 border-l {t.keyline} pl-3 pr-2 pb-2 pt-1" data-testid="workflow-run-detail">
             {#if detailAgents.length > 0}
               <ul class="space-y-0.5">
                 {#each detailAgents as agent (agent.agent_id)}
@@ -190,6 +190,10 @@
                     <span class="text-[11px] {t.textTertiary} shrink-0 tabular-nums w-[48px] text-right">
                       {formatTokens(agent.tokens) ?? ''}
                     </span>
+                    <!-- Keeps the agent tokens column under the run tokens
+                         column: the run row carries a duration this one has no
+                         equivalent for. -->
+                    <span class="shrink-0 w-[60px]" aria-hidden="true"></span>
                   </li>
                 {/each}
               </ul>
@@ -199,7 +203,7 @@
 
             <button
               type="button"
-              class="mt-2 text-[11px] {t.textTertiary} hover:underline disabled:no-underline disabled:opacity-40 disabled:cursor-not-allowed"
+              class="mt-2.5 text-[11px] {t.textTertiary} hover:underline disabled:no-underline disabled:opacity-40 disabled:cursor-not-allowed"
               data-testid="workflow-copy-ledger"
               disabled={!ledgerRow}
               title={copyTitle}

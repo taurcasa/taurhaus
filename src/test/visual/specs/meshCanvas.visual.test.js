@@ -8,6 +8,9 @@ import {
   runtime_fiveAgents_dark,
   runtime_fiveAgents_light,
   runtime_threeAgents_dark,
+  runtime_workflowLiveTree_dark,
+  runtime_workflowLiveTree_light,
+  runtime_workflowMixedRuns_dark,
 } from '../fixtures/meshCanvas.fixtures.js'
 import MeshCanvasVisualHost from './MeshCanvasVisualHost.svelte'
 import { captureVisual, renderVisual } from '../renderVisual.js'
@@ -60,6 +63,22 @@ describe('MeshCanvas visual pilot', () => {
 
     if (scenario === runtime_fiveAgents_dark || scenario === runtime_fiveAgents_light) {
       expect(screen.getByText('[mesh]')).toBeInTheDocument()
+    }
+
+    if (
+      scenario === runtime_workflowLiveTree_dark
+      || scenario === runtime_workflowLiveTree_light
+    ) {
+      expect(screen.getByTestId('workflow-run-tree')).toBeInTheDocument()
+      expect(screen.getAllByTestId('workflow-run-phase')).toHaveLength(2)
+      expect(screen.getAllByTestId('workflow-run-agent')).toHaveLength(3)
+    }
+
+    if (scenario === runtime_workflowMixedRuns_dark) {
+      expect(screen.getAllByTestId('workflow-run-tree')).toHaveLength(2)
+      // The unphased live run renders its agents with no phase row above them.
+      expect(screen.queryAllByTestId('workflow-run-phase')).toHaveLength(0)
+      expect(screen.getAllByTestId('workflow-run-agent')).toHaveLength(2)
     }
 
     const screenshotPath = await captureVisual(`meshCanvas/${scenario.name}.png`)
