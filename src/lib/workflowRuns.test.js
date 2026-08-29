@@ -51,6 +51,15 @@ describe('workflowSessionId', () => {
     expect(workflowSessionId({ sessionId: 'def' })).toBe('def')
   })
 
+  // Regression: 1663e40 read only `session_id`, which the frontend-safe session
+  // listing strips. A production session reached every surface without an id,
+  // so no surface ever asked `list_workflow_runs` about the session actually
+  // running the workflow.
+  it('reads the id the frontend session snapshot actually carries', () => {
+    expect(workflowSessionId({ workflow_session_id: 'sess-abc' })).toBe('sess-abc')
+    expect(workflowSessionId({ workflowSessionId: 'sess-def' })).toBe('sess-def')
+  })
+
   it('is empty for a record without one', () => {
     expect(workflowSessionId({})).toBe('')
     expect(workflowSessionId(null)).toBe('')

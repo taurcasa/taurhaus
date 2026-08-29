@@ -39,9 +39,23 @@ function runStatus(run) {
   return raw in STATUS_LABELS ? raw : 'unknown'
 }
 
-/** The Claude session id a record carries, in either spelling. `''` when it has none. */
+/**
+ * The session id a record carries, in every spelling the app hands us. `''`
+ * when it has none.
+ *
+ * `workflow_session_id` comes first because that is the field the frontend-safe
+ * session listing carries (`DisplaySession`): the display shape strips runtime
+ * identity and re-exposes exactly this one, because `list_workflow_runs` and
+ * `get_workflow_run` are keyed by session. Team members and archived session
+ * records still spell it `session_id`/`sessionId`.
+ */
 export function workflowSessionId(record) {
-  return text(record?.session_id) || text(record?.sessionId)
+  return (
+    text(record?.workflow_session_id) ||
+    text(record?.workflowSessionId) ||
+    text(record?.session_id) ||
+    text(record?.sessionId)
+  )
 }
 
 /**

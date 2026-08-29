@@ -45,6 +45,12 @@ Claude's session registry does not publish a busy edge for a headless workflow p
 {"workflow_activity":{"live_runs":1,"last_write_at":1787949436814}}
 ```
 
+The same listing also carries `workflow_session_id`, the session id
+`list_workflow_runs` and `get_workflow_run` are keyed by. `DisplaySession`
+otherwise strips runtime identity, and this is the one exception: a surface that
+shows a run has to be able to name the session it lives in, and it stays absent
+for a harness that has no workflow runs to key.
+
 `live_runs` counts only summary-less runs with a transcript write inside that same window. The field is optional and serde-defaulted, so this is an additive daemon snapshot change and protocol 14 does not need a bump. The hub's change signature contains the optional live-run count, not the raw millisecond write time: run start/end and count changes wake a session-list poll, while each mid-run transcript append does not trigger a new long-poll version or per-member activity export. The payload still retains the exact `last_write_at` for the next real transition or periodic snapshot refresh.
 
 The 500 ms activity path caches the run-directory and completed-summary indexes by directory stamp. Completed run IDs are remembered after first observation, so accumulated run history is not walked and re-statted on every session scan; current summary-less run transcripts still receive the file metadata checks needed to detect new writes.
@@ -94,7 +100,7 @@ good runs on screen and records why.
 |---|---|---|
 | Mesh canvas (`WorkflowRunTree.svelte`) | Phase rows and agent rows (label, model, state, last tool, tokens) for a live run; one line for a finished one | The node's session, watched while the canvas is mounted; or `workflowRuns` handed to the node by a caller |
 | Sidebar row | A run-count badge, hovering to give the count and the newest write's age | `workflow_activity` alone — no IPC |
-| Hover card | The run's name and the phase its running agent is in | The hovered project's session, watched only while the card is up |
+| Hover card | The run's name and the phase its running agent is in | The hovered project's session — named by `workflow_session_id` — watched only while the card is up |
 | Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over the project's sessions in recency order — running now, then the ones its open tasks came from, then `get_archived_sessions` — capped at 24, and the header says when the cap was reached |
 
 A mesh node reads its session from the member's own runtime record, which

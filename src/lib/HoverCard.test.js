@@ -492,6 +492,30 @@ describe('HoverCard workflow runs', () => {
     expect(listWorkflowRuns).not.toHaveBeenCalled()
   })
 
+  // Regression: 1663e40 keyed this on `session_id`, which `DisplaySession`
+  // strips before the sessions reach the frontend — so on the production shape
+  // the card never asked for the run and never named it.
+  it('names the run from the id the frontend session snapshot carries', async () => {
+    listWorkflowRuns.mockResolvedValue([liveRun])
+
+    render(HoverCard, {
+      props: {
+        project: createProject(),
+        sessions: [{
+          live: true,
+          state: 'idle',
+          workflow_session_id: 'sess-display',
+          workflow_activity: { live_runs: 1, last_write_at: Date.now() - 2000 },
+        }],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('hovercard-workflow')).toHaveTextContent('feature-pr · Review')
+    })
+    expect(listWorkflowRuns).toHaveBeenCalledWith('sess-display')
+  })
+
   it('names the run and the phase it is in once the run has been read', async () => {
     listWorkflowRuns.mockResolvedValue([liveRun])
 

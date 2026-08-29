@@ -328,6 +328,22 @@ describe('WorkflowRunsPanel session coverage', () => {
     })
   })
 
+  // Regression: 1663e40 collected the live sessions by `session_id`, a field
+  // `DisplaySession` strips, so a workflow running right now in a session with
+  // no task and no archive record never reached the history at all.
+  it('asks the session the frontend snapshot names', async () => {
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-display' ? [COMPLETED] : [])
+    )
+
+    renderPanel({ sessions: [{ workflow_session_id: 'sess-display' }] })
+
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledWith('sess-display'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    })
+  })
+
   it('keeps the list when the archived sessions cannot be read', async () => {
     getArchivedSessions.mockRejectedValue(new Error('no cache'))
     listWorkflowRuns.mockResolvedValue([COMPLETED])
