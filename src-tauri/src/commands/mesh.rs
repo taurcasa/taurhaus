@@ -978,6 +978,14 @@ printf '%s%s\n' "${WSL_INSTALL_VERSION_JSON_MARKER:-__TAURHAUS_MESH_VERSION_JSON
 /// path. It runs only after the app has parsed the staged copy's version JSON and
 /// matched the whole contract against the bundle manifest; `abort` discards the
 /// staged copy when that verification rejected it.
+///
+/// The daemon patterns stay command-line shaped instead of being anchored to the
+/// binary being replaced. Anchoring was considered and rejected: a daemon still
+/// running the *previous* mesh reads `/proc/<pid>/exe -> <target_path> (deleted)`,
+/// `mesh_command_invocation_with_env` puts `env` in argv[0], and `mesh_cli` falls back
+/// to a bare `mesh` from `PATH` when no home resolves — so an exe/argv0 anchor would
+/// skip exactly the drifted daemons this block exists to cycle. Tests that execute
+/// this script for real isolate themselves in a private PID namespace instead.
 fn install_mesh_wsl_finish_script() -> &'static str {
     r#"set -eu
 mode="$1"
@@ -1176,6 +1184,120 @@ exit 0
             .map_err(|e| e.to_string())
     }
 
+    /// Set on a test binary that is already running inside a private PID namespace,
+    /// so the nested run executes the test body instead of nesting again.
+    #[cfg(not(target_os = "windows"))]
+    const PRIVATE_PID_NAMESPACE_ENV: &str = "TAURHAUS_MESH_TEST_PID_NAMESPACE";
+
+    /// Whether this host can give a command its own PID namespace. Unprivileged user
+    /// namespaces are a kernel/distro switch, so it is probed once, for real.
+    #[cfg(not(target_os = "windows"))]
+    fn private_pid_namespace_available() -> bool {
+        static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *AVAILABLE.get_or_init(|| {
+            Command::new("unshare")
+                .args(["-Urpf", "--mount-proc", "--", "true"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false)
+        })
+    }
+
+    /// `program`, prepared to run with its own PID namespace and its own `/proc`:
+    /// `pgrep` inside it can only see processes started inside it, and `kill` inside
+    /// it can only reach those. Check `private_pid_namespace_available()` first.
+    #[cfg(not(target_os = "windows"))]
+    fn private_pid_namespace_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+        let mut command = Command::new("unshare");
+        command.args(["-Urpf", "--mount-proc", "--"]);
+        command.arg(program);
+        command.stdin(std::process::Stdio::null());
+        command
+    }
+
+    /// `module_path!()` is prefixed with the crate name; libtest filters are not.
+    #[cfg(not(target_os = "windows"))]
+    fn libtest_module_path() -> &'static str {
+        module_path!()
+            .split_once("::")
+            .map_or(module_path!(), |(_, rest)| rest)
+    }
+
+    /// Runs the calling test inside a private PID namespace and reports whether the
+    /// caller is done.
+    ///
+    /// The install script's daemon cycle is `pgrep -f` plus `kill`, which is host-wide:
+    /// run from a plain `cargo test`, it reaches the operator's live `mesh team-daemon`
+    /// and `mesh daemon` processes. Every test that executes that script for real, or
+    /// that puts a mesh-daemon-shaped process on the process table, re-runs itself in
+    /// here, where the host's daemons do not exist. A host that cannot isolate skips
+    /// the test — the host PID namespace is never an acceptable fallback.
+    #[cfg(not(target_os = "windows"))]
+    #[must_use]
+    fn isolated_from_host_mesh_daemons(test_name: &str) -> bool {
+        if std::env::var_os(PRIVATE_PID_NAMESPACE_ENV).is_some() {
+            return false;
+        }
+        if !private_pid_namespace_available() {
+            eprintln!(
+                "skipping {test_name}: `unshare -Urpf --mount-proc` is unavailable on this host, \
+                 and running the mesh installer's pgrep/kill block in the host PID namespace \
+                 would reach the operator's live mesh daemons"
+            );
+            return true;
+        }
+
+        let test_binary = std::env::current_exe().expect("test binary path");
+        let filter = format!("{}::{test_name}", libtest_module_path());
+        let output = private_pid_namespace_command(&test_binary)
+            .args(["--exact", &filter, "--nocapture", "--test-threads=1"])
+            .env(PRIVATE_PID_NAMESPACE_ENV, "1")
+            .output()
+            .expect("re-run the test inside a private PID namespace");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "{test_name} failed inside its private PID namespace\n\
+             --- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+        );
+        assert!(
+            stdout.contains("1 passed"),
+            "{test_name} never ran inside its private PID namespace: the filter `{filter}` \
+             matched no test\n--- stdout ---\n{stdout}"
+        );
+        true
+    }
+
+    /// The pids the installer's shipped team-daemon pattern can reach from where a
+    /// test runs. The installer kills what this matches, so a test that drives that
+    /// block must be able to reach nothing but its own fake daemons.
+    #[cfg(not(target_os = "windows"))]
+    fn team_daemon_pids_visible_to_the_installer() -> Vec<String> {
+        pgrep_pids(
+            private_pid_namespace_command("pgrep"),
+            MESH_TEAM_DAEMON_PATTERN,
+        )
+    }
+
+    /// `pgrep -f <pattern>`, as a list of pid strings. Never kills anything.
+    #[cfg(not(target_os = "windows"))]
+    fn pgrep_pids(mut pgrep: Command, pattern: &str) -> Vec<String> {
+        let output = pgrep
+            .args(["-f", pattern])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run pgrep");
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect()
+    }
+
     /// A token no other process on this machine carries, so a test that drives the
     /// installer's `pgrep`/`kill` block can only ever reach its own fake daemons —
     /// never the operator's live mesh daemons.
@@ -1203,11 +1325,28 @@ exit 0
 
     #[cfg(not(target_os = "windows"))]
     fn spawn_fake_daemon(argv0: &str) -> std::process::Child {
-        Command::new("bash")
+        let child = Command::new("bash")
             .args(["-lc", &format!("exec -a '{argv0}' sleep 100")])
             .stdin(std::process::Stdio::null())
             .spawn()
-            .expect("spawn fake daemon")
+            .expect("spawn fake daemon");
+        wait_for_fake_daemon_command_line(child.id(), argv0);
+        child
+    }
+
+    /// `bash -lc` has not exec'd into the fake daemon's command line when `spawn`
+    /// returns, and a `pgrep` that looks before it does sees no daemon at all. Waits
+    /// for the process table to show the command line the test asked for.
+    #[cfg(not(target_os = "windows"))]
+    fn wait_for_fake_daemon_command_line(pid: u32, argv0: &str) {
+        for _ in 0..500 {
+            let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+            if String::from_utf8_lossy(&cmdline).starts_with(argv0) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("fake daemon {pid} never showed the command line `{argv0}`");
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1447,6 +1586,11 @@ exit 0
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn install_mesh_wsl_replaces_the_installed_binary_and_cycles_matching_daemons() {
+        if isolated_from_host_mesh_daemons(
+            "install_mesh_wsl_replaces_the_installed_binary_and_cycles_matching_daemons",
+        ) {
+            return;
+        }
         if !bash_is_available() {
             eprintln!("skipping WSL install orchestration test: bash is unavailable");
             return;
@@ -1468,8 +1612,6 @@ exit 0
         let mut team = spawn_fake_daemon(&format!(
             "mesh team-daemon start --team alpha --name lead --marker {token}"
         ));
-        std::thread::sleep(Duration::from_millis(150));
-
         let plan = WslMeshInstallPlan {
             source_path: source_mesh.to_str().expect("source path"),
             stage_id: &token,
@@ -1514,27 +1656,24 @@ exit 0
 
     #[cfg(not(target_os = "windows"))]
     // The shipped team-daemon pattern matches live `mesh team-daemon start` command
-    // lines on the host running the tests, which is exactly why the guard tests below
-    // drive the installer with token-scoped patterns instead of the shipped ones.
+    // lines on the host running the tests, which is exactly why every test that puts a
+    // daemon-shaped process on the process table, or that runs the installer's cycle
+    // block for real, runs inside its own PID namespace and drives the installer with
+    // token-scoped patterns rather than the shipped ones.
     #[test]
     fn shipped_team_daemon_pattern_matches_a_real_team_daemon_command_line() {
+        if isolated_from_host_mesh_daemons(
+            "shipped_team_daemon_pattern_matches_a_real_team_daemon_command_line",
+        ) {
+            return;
+        }
+
         let token = unique_daemon_token();
         let team = spawn_fake_daemon(&format!(
             "/home/someone/.local/bin/mesh team-daemon start --team alpha --name lead --marker {token}"
         ));
-        std::thread::sleep(Duration::from_millis(150));
-
-        // `pgrep` only, never `kill`: this test observes the host, it does not touch it.
-        let output = Command::new("pgrep")
-            .arg("-f")
-            .arg(MESH_TEAM_DAEMON_PATTERN)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .expect("run pgrep");
-        let matched = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(|line| line.trim().to_string())
-            .collect::<Vec<_>>();
+        // `pgrep` only, never `kill`, and only inside this test's own PID namespace.
+        let matched = pgrep_pids(Command::new("pgrep"), MESH_TEAM_DAEMON_PATTERN);
 
         assert!(
             matched.contains(&team.id().to_string()),
@@ -1545,6 +1684,45 @@ exit 0
     }
 
     #[cfg(not(target_os = "windows"))]
+    // Regression: 2026-08-28 — a plain `cargo test --lib -- commands::mesh` stopped
+    // the operator's live `mesh team-daemon` processes. The installer's cycle block
+    // is driven by `pgrep -f`, which is host-wide, so every test that runs that block
+    // has to run somewhere the host's own mesh daemons are invisible.
+    #[test]
+    fn the_installer_patterns_cannot_reach_host_mesh_daemons_from_a_test() {
+        if !private_pid_namespace_available() {
+            eprintln!(
+                "skipping PID namespace isolation test: `unshare -Urpf --mount-proc` is \
+                 unavailable on this host"
+            );
+            return;
+        }
+
+        let token = unique_daemon_token();
+        // A host process shaped exactly like a live `mesh team-daemon start`. This
+        // test only ever runs `pgrep`; it never kills by pattern.
+        let team = spawn_fake_daemon(&format!(
+            "/home/someone/.local/bin/mesh team-daemon start --team alpha --name lead --marker {token}"
+        ));
+        let team_pid = team.id().to_string();
+        let on_host = pgrep_pids(Command::new("pgrep"), MESH_TEAM_DAEMON_PATTERN);
+        let visible = team_daemon_pids_visible_to_the_installer();
+
+        stop_fake_daemon(team);
+
+        assert!(
+            on_host.contains(&team_pid),
+            "the shipped team pattern must match a live-shaped team daemon on this host, \
+             otherwise this test proves nothing"
+        );
+        assert!(
+            visible.is_empty(),
+            "a test that drives the installer's pgrep/kill block must not be able to see \
+             any mesh daemon on this host, but it can reach pids {visible:?}"
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
     // Regression: 2026-08-28 — the 0-byte `~/.local/bin/mesh` incident, review
     // follow-up. The WSL script only checked that the copy's output contained the
     // literal `"version"`, then stopped every mesh daemon and swapped the binary;
@@ -1552,6 +1730,11 @@ exit 0
     // truncated answer therefore replaced a working mesh before anyone could say so.
     #[test]
     fn install_mesh_wsl_keeps_installed_binary_when_the_copy_reports_malformed_json() {
+        if isolated_from_host_mesh_daemons(
+            "install_mesh_wsl_keeps_installed_binary_when_the_copy_reports_malformed_json",
+        ) {
+            return;
+        }
         if !bash_is_available() {
             eprintln!("skipping WSL malformed-JSON guard test: bash is unavailable");
             return;
@@ -1575,8 +1758,6 @@ exit 0
         let mut team = spawn_fake_daemon(&format!(
             "mesh team-daemon start --team alpha --name lead --marker {token}"
         ));
-        std::thread::sleep(Duration::from_millis(150));
-
         let plan = WslMeshInstallPlan {
             source_path: source_mesh.to_str().expect("source path"),
             stage_id: &token,
@@ -1618,6 +1799,11 @@ exit 0
     // mesh was already installed by the time the mismatch was reported.
     #[test]
     fn install_mesh_wsl_keeps_installed_binary_when_the_copy_reports_a_mismatched_contract() {
+        if isolated_from_host_mesh_daemons(
+            "install_mesh_wsl_keeps_installed_binary_when_the_copy_reports_a_mismatched_contract",
+        ) {
+            return;
+        }
         if !bash_is_available() {
             eprintln!("skipping WSL contract-mismatch guard test: bash is unavailable");
             return;
@@ -1641,8 +1827,6 @@ exit 0
         let mut team = spawn_fake_daemon(&format!(
             "mesh team-daemon start --team alpha --name lead --marker {token}"
         ));
-        std::thread::sleep(Duration::from_millis(150));
-
         let plan = WslMeshInstallPlan {
             source_path: source_mesh.to_str().expect("source path"),
             stage_id: &token,
@@ -1834,7 +2018,7 @@ exit 0
 
         let status = mesh_status_for_native_binary(&bundled_test_contract(), &binary);
 
-        assert!(status.installed);
+        assert!(status.installed, "{status:?}");
         assert_eq!(status.version.as_deref(), Some("9.9.9"));
         assert!(status.compatibility_issues.is_empty());
         assert!(!mesh_install_required(&status));
@@ -1952,6 +2136,11 @@ exit 0
     // broken copy replaced a working mesh before anything proved it runs.
     #[test]
     fn install_mesh_wsl_keeps_installed_binary_when_copy_reports_no_version() {
+        if isolated_from_host_mesh_daemons(
+            "install_mesh_wsl_keeps_installed_binary_when_copy_reports_no_version",
+        ) {
+            return;
+        }
         if !bash_is_available() {
             eprintln!("skipping install_mesh_wsl guard test: bash is unavailable");
             return;
