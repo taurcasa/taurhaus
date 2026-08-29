@@ -1,4 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  getWorkflowRun,
+  listWorkflowRuns,
+  workflowLedgerRow,
+} from './ipc/workflows.js'
 
 // Mock @tauri-apps/api/core — must be before importing ipc module
 vi.mock('@tauri-apps/api/core', () => ({
@@ -479,9 +484,9 @@ describe('ipc module', () => {
     it('returns workflow-shaped mock data outside Tauri', async () => {
       delete window.__TAURI_INTERNALS__
 
-      const summaries = await ipc.listWorkflowRuns('mock-workflow-session')
-      const run = await ipc.getWorkflowRun('mock-workflow-session', summaries[0].run_id)
-      const row = await ipc.workflowLedgerRow('mock-workflow-session', summaries[0].run_id)
+      const summaries = await listWorkflowRuns('mock-workflow-session')
+      const run = await getWorkflowRun('mock-workflow-session', summaries[0].run_id)
+      const row = await workflowLedgerRow('mock-workflow-session', summaries[0].run_id)
 
       expect(summaries[0]).not.toHaveProperty('agents')
       expect(summaries[0]).not.toHaveProperty('result')
