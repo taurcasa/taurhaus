@@ -2770,6 +2770,8 @@ fn live_team_status_round_trip() {
                 pane_id: Some("%1".to_string()),
                 session_id: Some("sess-lead".to_string()),
                 workflow_activity: None,
+                task_effort: None,
+                task_effort_why: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2790,6 +2792,8 @@ fn live_team_status_round_trip() {
                 pane_id: Some("%2".to_string()),
                 session_id: None,
                 workflow_activity: None,
+                task_effort: None,
+                task_effort_why: None,
             },
         ],
     };
@@ -2828,6 +2832,8 @@ fn project_mesh_snapshot_round_trip() {
                 pane_id: Some("%2".to_string()),
                 session_id: Some("sess-frontend".to_string()),
                 workflow_activity: None,
+                task_effort: None,
+                task_effort_why: None,
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3309,6 +3315,116 @@ fn live_team_status_carries_the_member_runtime_session_id() {
         .find(|member| member.name == "frontend-dev")
         .expect("frontend-dev is on the roster");
     assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn live_team_status_carries_the_task_effort_the_lead_asked_for() {
+    // The node shows the launch effort; the level the lead attached to the
+    // current assignment is a different number and has to travel beside it.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    seed_assignment_effort(tmp.path(), "frontend-dev", "high", "irreversible migration");
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.task_effort.as_deref(), Some("high"));
+    assert_eq!(
+        member.task_effort_why.as_deref(),
+        Some("irreversible migration")
+    );
+
+    let untouched = status
+        .members
+        .iter()
+        .find(|member| member.name != "frontend-dev")
+        .expect("the team has another member");
+    assert_eq!(untouched.task_effort, None);
+    assert_eq!(untouched.task_effort_why, None);
+}
+
+#[test]
+fn project_mesh_snapshot_carries_the_task_effort_the_lead_asked_for() {
+    // The cold-start roster feeds the same canvas, so it carries the same pair.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+    let lookup = MockBinaryLookup::with_available(&["mesh", "tmux"]);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    seed_assignment_effort(tmp.path(), "frontend-dev", "medium", "routine lane work");
+
+    let snapshot =
+        coordination_get_project_mesh_snapshot_with_lookup(&state, "proj-web".to_string(), &lookup)
+            .expect("snapshot should succeed");
+
+    let member = snapshot
+        .team_status
+        .expect("team status")
+        .members
+        .into_iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.task_effort.as_deref(), Some("medium"));
+    assert_eq!(member.task_effort_why.as_deref(), Some("routine lane work"));
+}
+
+fn seed_assignment_effort(teams_dir: &std::path::Path, member_name: &str, level: &str, why: &str) {
+    let mut message = crate::coordination::stores::MeshInboxMessage::new(
+        "team-lead",
+        format!("Effort: {level} — {why}\nStart on the migration."),
+        None,
+        chrono::Utc::now(),
+    );
+    message
+        .extra
+        .insert("effort".to_string(), serde_json::json!(level));
+    message
+        .extra
+        .insert("effortWhy".to_string(), serde_json::json!(why));
+    crate::coordination::stores::MeshInboxStore::append(
+        teams_dir,
+        "architecture-final",
+        member_name,
+        &message,
+    )
+    .expect("append assignment");
+
+    let db = tempfile::NamedTempFile::new().expect("temp db");
+    let conn = taurhaus_lib::db::init_db(db.path()).expect("db");
+    crate::coordination::operational_context::sync_team_snapshots(
+        teams_dir,
+        &conn,
+        "architecture-final",
+    )
+    .expect("sync snapshots");
 }
 
 #[test]

@@ -225,6 +225,14 @@ pub struct LiveAgentStatus {
     /// and same window as the session listing's hint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
+    /// Reasoning effort the lead attached to this member's current assignment,
+    /// read back off the operational snapshot. Distinct from
+    /// `reasoning_effort`, which is the level the session was launched at.
+    #[serde(default)]
+    pub task_effort: Option<String>,
+    /// Why the lead chose that level.
+    #[serde(default)]
+    pub task_effort_why: Option<String>,
 }
 
 /// Live-team payload for the frontend mesh roster.
@@ -271,6 +279,12 @@ pub struct FastAgentSnapshot {
     /// See `LiveAgentStatus::workflow_activity`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
+    /// See `LiveAgentStatus::task_effort`.
+    #[serde(default)]
+    pub task_effort: Option<String>,
+    /// See `LiveAgentStatus::task_effort_why`.
+    #[serde(default)]
+    pub task_effort_why: Option<String>,
 }
 
 /// Fast team snapshot built from persisted config + runtime only.

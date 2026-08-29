@@ -21,7 +21,9 @@ use crate::coordination::roster::{
     get_team_roster_with_attachments, get_team_roster_with_runtime_sessions, TeamMemberView,
 };
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfig, TeamConfigStore};
+use crate::coordination::stores::{
+    ActiveProjectTeamStore, OperationalContextSnapshotStore, TeamConfig, TeamConfigStore,
+};
 #[cfg(not(test))]
 use crate::ProviderState;
 #[cfg(test)]
@@ -60,7 +62,14 @@ pub(super) fn coordination_get_live_team_status_impl(
             let lead_project_path = roster_lead_project_path(&roster);
             let members = roster
                 .into_iter()
-                .map(|member| live_agent_status_from_roster(member, lead_project_path.as_deref()))
+                .map(|member| {
+                    live_agent_status_from_roster(
+                        member,
+                        lead_project_path.as_deref(),
+                        state.teams_dir(),
+                        &team_name,
+                    )
+                })
                 .collect();
 
             return Ok(LiveTeamStatus {
@@ -89,7 +98,14 @@ pub(super) fn coordination_get_live_team_status_impl(
     let lead_project_path = roster_lead_project_path(&roster);
     let members = roster
         .into_iter()
-        .map(|member| live_agent_status_from_roster(member, lead_project_path.as_deref()))
+        .map(|member| {
+            live_agent_status_from_roster(
+                member,
+                lead_project_path.as_deref(),
+                state.teams_dir(),
+                &team_name,
+            )
+        })
         .collect();
 
     Ok(LiveTeamStatus {
@@ -186,7 +202,7 @@ fn coordination_get_project_mesh_snapshot_with_availability(
     let team_status = if let Some(team_name) = discovery.team_name.as_deref() {
         Some(
             get_team_roster_with_attachments(state.teams_dir(), team_name)
-                .map(map_fast_team_snapshot)
+                .map(|roster| map_fast_team_snapshot(roster, state.teams_dir(), team_name))
                 .map_err(super::map_coordination_error)?,
         )
     } else {
@@ -347,7 +363,7 @@ fn build_project_discovery_candidate(
         .iter()
         .filter(|member| member.has_runtime_record)
         .count();
-    let fast_snapshot = map_fast_team_snapshot(roster);
+    let fast_snapshot = map_fast_team_snapshot(roster, teams_dir, &config.name);
 
     Ok(ProjectDiscoveryCandidate {
         team_name: config.name.clone(),
@@ -404,12 +420,23 @@ fn config_references_project(
     })
 }
 
-fn map_fast_team_snapshot(roster: Vec<TeamMemberView>) -> FastTeamSnapshot {
+fn map_fast_team_snapshot(
+    roster: Vec<TeamMemberView>,
+    teams_dir: &Path,
+    team_name: &str,
+) -> FastTeamSnapshot {
     let lead_name = roster_lead_name(&roster);
     let lead_project_path = roster_lead_project_path(&roster);
     let members = roster
         .into_iter()
-        .map(|member| fast_agent_snapshot_from_roster(member, lead_project_path.as_deref()))
+        .map(|member| {
+            fast_agent_snapshot_from_roster(
+                member,
+                lead_project_path.as_deref(),
+                teams_dir,
+                team_name,
+            )
+        })
         .collect();
 
     FastTeamSnapshot { lead_name, members }
@@ -467,13 +494,52 @@ pub(super) fn member_workflow_activity(
     )
 }
 
+/// The effort the lead attached to this member's current assignment.
+///
+/// mesh writes it onto the assignment; the operational snapshot is where
+/// taurhaus reads it back. Best-effort: a member with no snapshot yet, or one
+/// whose assignment carried no effort, reports `None` and the node falls back
+/// to showing only the launch effort.
+fn member_task_effort(
+    teams_dir: &Path,
+    team_name: &str,
+    member_name: &str,
+) -> (Option<String>, Option<String>) {
+    let footer = match OperationalContextSnapshotStore::load(teams_dir, team_name, member_name) {
+        Ok(Some(snapshot)) => snapshot.assignment_footer,
+        Ok(None) => return (None, None),
+        Err(err) => {
+            tracing::warn!(
+                team = %team_name,
+                member = %member_name,
+                error = %err,
+                "failed to read the operational snapshot for a member's task effort"
+            );
+            return (None, None);
+        }
+    };
+    (
+        non_empty(&footer.task_effort),
+        non_empty(&footer.task_effort_why),
+    )
+}
+
+fn non_empty(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
 fn live_agent_status_from_roster(
     member: TeamMemberView,
     lead_project_path: Option<&Path>,
+    teams_dir: &Path,
+    team_name: &str,
 ) -> LiveAgentStatus {
     let cross_project =
         member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
     let workflow_activity = member_workflow_activity(&member);
+    let (task_effort, task_effort_why) =
+        member_task_effort(teams_dir, team_name, &member.member_name);
     LiveAgentStatus {
         name: member.member_name,
         role: match member.role {
@@ -499,16 +565,22 @@ fn live_agent_status_from_roster(
         pane_id: member.pane_id,
         session_id: member.session_id,
         workflow_activity,
+        task_effort,
+        task_effort_why,
     }
 }
 
 fn fast_agent_snapshot_from_roster(
     member: TeamMemberView,
     lead_project_path: Option<&Path>,
+    teams_dir: &Path,
+    team_name: &str,
 ) -> FastAgentSnapshot {
     let cross_project =
         member_cross_project_status(lead_project_path, member.configured_project_path.as_path());
     let workflow_activity = member_workflow_activity(&member);
+    let (task_effort, task_effort_why) =
+        member_task_effort(teams_dir, team_name, &member.member_name);
     FastAgentSnapshot {
         name: member.member_name,
         role: match member.role {
@@ -534,6 +606,8 @@ fn fast_agent_snapshot_from_roster(
         pane_id: member.pane_id,
         session_id: member.session_id,
         workflow_activity,
+        task_effort,
+        task_effort_why,
     }
 }
 
