@@ -17,6 +17,7 @@ const SCRIPT_META_READ_LIMIT: u64 = 64 * 1024;
 const TRANSCRIPT_PREFIX_LIMIT: usize = 16 * 1024;
 const TRANSCRIPT_TAIL_LIMIT: usize = 256 * 1024;
 const TRANSCRIPT_CACHE_ENTRIES: usize = 256;
+const SUMMARY_CACHE_ENTRIES: usize = 64;
 const PROMPT_PREVIEW_CHARS: usize = 200;
 const ACTIVITY_WINDOW: Duration = Duration::from_secs(60);
 
@@ -42,7 +43,15 @@ struct CachedTranscript {
     facts: TranscriptFacts,
 }
 
+#[derive(Debug, Clone)]
+struct CachedSummary {
+    stamp: FileStamp,
+    summary: Option<Value>,
+}
+
 static TRANSCRIPT_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedTranscript>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static SUMMARY_CACHE: LazyLock<Mutex<HashMap<PathBuf, CachedSummary>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Default)]
@@ -98,10 +107,7 @@ pub fn read_run(session_dir: &Path, run_id: &str) -> Option<WorkflowRun> {
         .and_then(read_script_meta)
         .unwrap_or_default();
     let summary_path = session_dir.join("workflows").join(format!("{run_id}.json"));
-    let summary = fs::read_to_string(&summary_path)
-        .ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .filter(Value::is_object);
+    let summary = read_summary(&summary_path);
 
     match summary {
         Some(summary) => completed_run(run_id, &run_dir, script_path, script_meta, &summary),
@@ -440,6 +446,42 @@ fn read_transcript(path: &Path) -> TranscriptFacts {
         },
     );
     facts
+}
+
+fn read_summary(path: &Path) -> Option<Value> {
+    let metadata = fs::metadata(path).ok()?;
+    let stamp = FileStamp {
+        len: metadata.len(),
+        modified: metadata.modified().ok(),
+    };
+    if let Some(summary) = SUMMARY_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .get(path)
+        .filter(|cached| cached.stamp == stamp)
+        .and_then(|cached| cached.summary.clone())
+    {
+        return Some(summary);
+    }
+
+    let summary = fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .filter(Value::is_object);
+    let mut cache = SUMMARY_CACHE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if cache.len() >= SUMMARY_CACHE_ENTRIES && !cache.contains_key(path) {
+        cache.clear();
+    }
+    cache.insert(
+        path.to_path_buf(),
+        CachedSummary {
+            stamp,
+            summary: summary.clone(),
+        },
+    );
+    summary
 }
 
 fn read_transcript_uncached(path: &Path, stamp: &FileStamp) -> Option<TranscriptFacts> {
@@ -1192,5 +1234,29 @@ mod tests {
         assert_eq!(agent.tool_calls, None);
         assert_eq!(run.totals.tokens, None);
         assert_eq!(run.totals.tool_calls, None);
+    }
+
+    #[test]
+    fn completed_summary_is_reused_for_an_unchanged_file_stamp() {
+        let fixture = live_fixture();
+        let summary_path = fixture
+            .session_dir
+            .join("workflows")
+            .join(format!("{RUN_ID}.json"));
+        let raw = completed_summary("completed").to_string();
+        write(&summary_path, &raw);
+        let modified = fs::metadata(&summary_path)
+            .expect("summary metadata")
+            .modified()
+            .expect("summary mtime");
+
+        let first = read_run(&fixture.session_dir, RUN_ID).expect("first scan");
+        let invalid_same_length = raw.replacen('{', "!", 1);
+        assert_eq!(invalid_same_length.len(), raw.len());
+        write(&summary_path, &invalid_same_length);
+        set_modified(&summary_path, modified);
+
+        let second = read_run(&fixture.session_dir, RUN_ID).expect("cached scan");
+        assert_eq!(second, first);
     }
 }
