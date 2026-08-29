@@ -134,6 +134,47 @@ impl MemberRuntimeStore {
         save_runtime_record_locked(teams_dir, team_name, member_name, record, &target_lock)
     }
 
+    /// Save a snapshot loaded earlier, keeping whatever level mesh has put into
+    /// force since.
+    ///
+    /// The liveness passes load every record for a team, decide what changed,
+    /// and save the whole snapshot back. mesh is the only writer of
+    /// `appliedEffort` and writes it into the same file, so a snapshot taken
+    /// before that write would silently revert the level the member is actually
+    /// running at. Re-reading the field under the target-file lock — the lock
+    /// mesh takes too — is what keeps a save that owns nothing about the level
+    /// from overwriting it.
+    ///
+    /// For a caller that *does* own the level — a launch, which puts the member
+    /// at the effort its own command carried — [`Self::save`] is the right
+    /// entry point.
+    pub fn save_preserving_applied_effort(
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        record: &MemberRuntimeRecord,
+    ) -> Result<(), CoordinationError> {
+        let lock_path = team_dir(teams_dir, team_name).join(".lock");
+        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
+            log_runtime_store_error("lock", &lock_path, err, None);
+        })?;
+        let target_path = runtime_record_path(teams_dir, team_name, member_name);
+        let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
+            .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
+
+        let mut record = record.clone();
+        let raw = target_lock.read_contents()?;
+        if !raw.trim().is_empty() {
+            // A record this store cannot parse is one it is about to replace
+            // anyway; the caller's own value stands.
+            if let Ok(current) = parse_runtime_record(&raw, team_name, member_name) {
+                record.applied_effort = current.applied_effort;
+            }
+        }
+
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
+    }
+
     /// Update a runtime record while holding both locks across read and write.
     pub fn update<F>(
         teams_dir: &Path,
@@ -1351,6 +1392,60 @@ mod tests {
             record.health,
             HealthState::SessionDead,
             "taurhaus's update is applied on top of what mesh wrote, not under it"
+        );
+    }
+
+    // Regression: ad75a7b took the target-file lock only around the write, so
+    // it protected `update` but not the shape production liveness actually
+    // uses — load every record, decide what changed, save the whole snapshot
+    // back later. mesh writes `appliedEffort` into the same file in that
+    // window, and the stale snapshot went straight back over it.
+    #[test]
+    fn a_save_of_a_snapshot_keeps_the_level_mesh_wrote_after_it_was_loaded() {
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().to_path_buf();
+        let team_name = "architecture-final";
+        let member_name = "codex-reviewer";
+        let mut seeded = sample_record(member_name);
+        seeded.applied_effort = Some("low".to_string());
+        MemberRuntimeStore::save(&teams_dir, team_name, member_name, &seeded).expect("seed record");
+
+        // What a liveness pass holds: a snapshot read before it decided.
+        let mut snapshot =
+            MemberRuntimeStore::load(&teams_dir, team_name, member_name).expect("load snapshot");
+
+        // Stand in for mesh, writing between that load and the save.
+        let record_path = runtime_record_path(&teams_dir, team_name, member_name);
+        let mut on_disk: Value =
+            serde_json::from_str(&fs::read_to_string(&record_path).expect("read"))
+                .expect("runtime record is json");
+        on_disk["appliedEffort"] = Value::String("high".to_string());
+        fs::write(
+            &record_path,
+            serde_json::to_string_pretty(&on_disk).expect("payload"),
+        )
+        .expect("cross-writer write");
+
+        snapshot.health = HealthState::SessionDead;
+        MemberRuntimeStore::save_preserving_applied_effort(
+            &teams_dir,
+            team_name,
+            member_name,
+            &snapshot,
+        )
+        .expect("save the reconciled snapshot");
+
+        let record =
+            MemberRuntimeStore::load(&teams_dir, team_name, member_name).expect("runtime record");
+        assert_eq!(
+            record.applied_effort.as_deref(),
+            Some("high"),
+            "the level mesh put into force survives a save of an older snapshot"
+        );
+        assert_eq!(
+            record.health,
+            HealthState::SessionDead,
+            "the caller's own change is still written"
         );
     }
 

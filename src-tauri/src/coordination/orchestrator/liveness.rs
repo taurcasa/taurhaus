@@ -149,7 +149,12 @@ impl CoordinationOrchestrator {
                 }
                 runtime.daemon_pid = None;
             }
-            MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+            MemberRuntimeStore::save_preserving_applied_effort(
+                &self.teams_dir,
+                team_name,
+                &member_name,
+                &runtime,
+            )?;
             reconciled_members.insert(member_name);
         }
 
@@ -260,7 +265,12 @@ impl CoordinationOrchestrator {
                         runtime.daemon_pid = None;
                     }
                 }
-                MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+                MemberRuntimeStore::save_preserving_applied_effort(
+                    &self.teams_dir,
+                    team_name,
+                    &member_name,
+                    &runtime,
+                )?;
                 tracing::info!(
                     team = %team_name,
                     member = %member_name,
@@ -470,7 +480,12 @@ impl CoordinationOrchestrator {
 
             runtime.health = HealthState::Healthy;
             runtime.last_seen_at = Some(Utc::now());
-            MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+            MemberRuntimeStore::save_preserving_applied_effort(
+                &self.teams_dir,
+                team_name,
+                &member_name,
+                &runtime,
+            )?;
             tracing::info!(
                 team = %team_name,
                 member = %member_name,
@@ -578,7 +593,12 @@ impl CoordinationOrchestrator {
                 Ok(false) => {
                     runtime.daemon_pid = None;
                     runtime.health = HealthState::SessionDead;
-                    MemberRuntimeStore::save(&self.teams_dir, team_name, &member_name, &runtime)?;
+                    MemberRuntimeStore::save_preserving_applied_effort(
+                        &self.teams_dir,
+                        team_name,
+                        &member_name,
+                        &runtime,
+                    )?;
                     tracing::info!(
                         team = %team_name,
                         member = %member_name,
