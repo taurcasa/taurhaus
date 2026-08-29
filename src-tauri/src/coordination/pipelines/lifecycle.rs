@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
-use crate::coordination::domain::{Member, MemberRole};
+use crate::coordination::domain::{HealthState, Member, MemberRole};
 use crate::coordination::effort_default;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
@@ -17,6 +17,7 @@ use crate::coordination::requests::{
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{spec, CliTool};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -317,6 +318,70 @@ impl CoordinationOrchestrator {
             self.sync_team_config_metadata(&context.team_name)?;
         }
         Ok(())
+    }
+
+    /// Record the operator's own effort default for members already running.
+    ///
+    /// A launch captures it, but a team that was already up when this build
+    /// landed has no record: its first `/effort` from mesh would overwrite the
+    /// operator's saved level with nothing left to put back. This closes that
+    /// window once, for a live member of a harness that saves the level, and
+    /// is a no-op for every member that already has a record.
+    pub fn capture_missing_effort_defaults(
+        &self,
+        team_name: &str,
+        cli_commands: &CliCommandSettings,
+    ) -> Result<usize, CoordinationError> {
+        let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
+        let mut recorded = 0;
+
+        for member in &config.members {
+            let Some(sink) = spec(member.cli_tool)
+                .capabilities
+                .runtime_effort_default_sink
+            else {
+                continue;
+            };
+            let Ok(runtime) = MemberRuntimeStore::load(&self.teams_dir, team_name, &member.name)
+            else {
+                continue;
+            };
+            if runtime.effort_default.is_some() || runtime.health == HealthState::SessionDead {
+                continue;
+            }
+            let Some(account_dir) = crate::session_scanner::accounts::team_launch_account_dir(
+                member.cli_tool,
+                cli_commands,
+            ) else {
+                continue;
+            };
+            let model = member
+                .model
+                .clone()
+                .or_else(|| {
+                    crate::models::ModelCatalog::default_for(member.cli_tool)
+                        .map(|entry| entry.id.clone())
+                })
+                .unwrap_or_default();
+            let Some(captured) = effort_default::record(sink, &account_dir, &model) else {
+                continue;
+            };
+            match MemberRuntimeStore::update(&self.teams_dir, team_name, &member.name, |record| {
+                if record.effort_default.is_none() {
+                    record.effort_default = Some(captured.clone());
+                }
+            }) {
+                Ok(_) => recorded += 1,
+                Err(err) => tracing::warn!(
+                    team = %team_name,
+                    member = %member.name,
+                    error = %err,
+                    "failed to record a running member's effort default"
+                ),
+            }
+        }
+
+        Ok(recorded)
     }
 
     pub(super) fn sync_team_config_metadata(

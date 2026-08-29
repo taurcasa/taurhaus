@@ -192,6 +192,19 @@ impl CoordinationState {
             // mesh's own `/effort`; the one that has no such command is
             // relaunched here. It rides this pass rather than a timer of its
             // own, and it is a no-op for every member already at its level.
+            // A team already running when this build landed has no record of
+            // the operator's own effort default. Close that window before the
+            // assignment pass, which is where a level change first reaches a
+            // member.
+            if let Err(err) = orchestrator.capture_missing_effort_defaults(&team_name, cli_commands)
+            {
+                tracing::warn!(
+                    team = %team_name,
+                    error = %err,
+                    "background effort-default capture failed"
+                );
+            }
+
             match orchestrator.apply_pending_task_effort(&team_name, cli_commands, tmux_layout) {
                 Ok(members) => summary.members_effort_resumed += members.len(),
                 Err(err) => {
@@ -1064,6 +1077,84 @@ mod tests {
         )
         .expect("runtime record");
         assert_eq!(record.applied_effort.as_deref(), Some("high"));
+    }
+
+    // Regression: 45cd190 captured the operator's saved effort default only
+    // during a member launch. A team already running when the build landed
+    // therefore took its first `/effort` from mesh with nothing recorded, so
+    // stopping it put nothing back and the operator's own level was gone.
+    #[test]
+    fn the_background_pass_records_a_missing_effort_default_for_a_running_member() {
+        let tmp = TempDir::new().expect("tempdir");
+        let account = TempDir::new().expect("account dir");
+        std::fs::write(
+            account.path().join("settings.json"),
+            r#"{"modelSettings":{"opus":{"effortLevel":"low"}}}"#,
+        )
+        .expect("seed account settings");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new(|_kind, _teams_dir| {
+                Ok(Arc::new(FakeBackend::default()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("effort-team", None)?;
+                orch.add_member(
+                    "effort-team",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+        write_lead_credential(tmp.path(), "effort-team");
+
+        // What an already-running member looks like after the upgrade: live,
+        // with no record of the operator's own level.
+        crate::coordination::stores::MemberRuntimeStore::update(
+            tmp.path(),
+            "effort-team",
+            "team-lead",
+            |record| {
+                record.pane_id = Some("%41".to_string());
+                record.health = HealthState::Healthy;
+                record.effort_default = None;
+            },
+        )
+        .expect("seed runtime");
+        runtime.set_pane_exists("%41", true);
+        runtime.set_pane_dead("%41", false);
+
+        state.orchestrator.lock().expect("state mutex").take();
+
+        let mut cli_commands = CliCommandSettings::default();
+        cli_commands.account_selector_dirs.insert(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            account.path().to_path_buf(),
+        );
+        state
+            .run_background_self_heal_pass(&cli_commands, DEFAULT_TMUX_LAYOUT)
+            .expect("background pass succeeds");
+
+        let record = crate::coordination::stores::MemberRuntimeStore::load(
+            tmp.path(),
+            "effort-team",
+            "team-lead",
+        )
+        .expect("runtime record");
+        let recorded = record
+            .effort_default
+            .expect("the operator's level was recorded");
+        assert_eq!(recorded.level.as_deref(), Some("low"));
+        assert_eq!(recorded.settings_path, account.path().join("settings.json"));
     }
 
     // Regression: 2529309 ran the effort relaunch with
