@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The bundled presets staff the v4 developer roles** — Dev Team, Full Team and Research Team now staff `v4-developer-codex` (gpt-5.6-sol, medium) and Grok Pair staffs `v4-developer-grok` (grok-4.6, medium), so a preset roster runs the v4 wording instead of the v3 roles at gpt-5.4 with no effort and grok-4.6 at high. No preset pins model or effort on a developer slot — both come from the role, so a preset follows the role default wherever it moves — and the lead, architect, researcher and quick-dev slots are untouched. The v3 developer roles stay in the catalog for one more release so the Phase C comparison can be re-run against them; at medium the two are indistinguishable on the current eval cases (`docs/design/research/phase-c-v4-results.md`), so v4 is the default for its wording contract rather than for a score.
+
 ## [0.8.3] - 2026-08-29
 
 ### Added
