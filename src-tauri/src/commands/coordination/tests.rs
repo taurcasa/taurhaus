@@ -3399,8 +3399,9 @@ fn project_mesh_snapshot_carries_the_task_effort_the_lead_asked_for() {
 fn seed_assignment_effort(teams_dir: &std::path::Path, member_name: &str, level: &str, why: &str) {
     // mesh writes the effort onto the task record it assigns; taurhaus reads
     // it back off the task the member is on, so that is what a fixture seeds.
-    let config = crate::coordination::stores::TeamConfigStore::load(teams_dir, "architecture-final")
-        .expect("team config");
+    let config =
+        crate::coordination::stores::TeamConfigStore::load(teams_dir, "architecture-final")
+            .expect("team config");
     let project_path = config
         .members
         .iter()
