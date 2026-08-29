@@ -34,6 +34,34 @@ The registry (`src-tauri/src/session_scanner/cli_tool.rs`) is the one place tool
 
 `model` and `reasoning_effort` are separate fields everywhere: role templates and presets (`model:` + `reasoning_effort:`; legacy `"gpt-5.4 high"` spellings still load), persisted per team member, hydrated on resume (member → role default → catalog default), and rendered per CLI by `LaunchSpec` (`src-tauri/src/session_scanner/launch.rs`). Effort is validated per tool; an unknown or unsupported value is logged (`launch.effort.invalid`) and dropped — never silently. A backend `ModelCatalog` on the terminal contract feeds one effort-aware `ModelSelect` in the UI; the catalog is a suggestion list, not an allowlist, so user-added models keep their declared effort. The Claude arm lists `fable` (Fable 5) and `opus` (Opus 5) as the models roles run on; `sonnet`, `haiku` and the 4.x ids stay in the list so persisted roles still resolve, marked deprecated with `opus` as the replacement, and the retired Codex ids point at `gpt-5.6-sol` the same way. A deprecated model still launches — the hint is shown in `ModelSelect` and logged as `launch.model.deprecated`, never substituted. Every launch logs the rendered command (`launch.command.rendered`).
 
+## Task-level effort
+
+The launch effort is a property of the *member*: it is what the session was started with and it holds for the session's lifetime. The effort a piece of work deserves is a property of the *assignment*, and it changes from task to task. Those are two different numbers, and both are visible: the node and its detail show the launch effort, and beside it the level the current assignment carries, with the lead's reason on hover.
+
+Effort travels with the assignment, in mesh, because mesh is the only component that owns both the assignment record and the pane submission for every CLI. `mesh task assign` requires `--effort` and `--why`; both are persisted on the task record and on the inbox message the assignee receives, and mesh applies the level before it delivers the notice. taurhaus reads the pair back for the operational footer, the post-compaction card, the task card and the mesh canvas, and owns the two things mesh cannot do.
+
+**How a running session changes effort** is a registry declaration (`CliCapabilities::runtime_effort`), because the two paths have different owners:
+
+| Path | Harnesses | Who applies it |
+|---|---|---|
+| `SlashCommand` | Claude Code, Antigravity, Grok | mesh types `/effort <level>` into the pane before the notice, and only when the level differs from the one already in force |
+| `ResumeWithFlag` | Codex | taurhaus, which stops the session and relaunches it with the effort flag — Codex 0.150.1 changes effort only through its interactive `/model` picker, which has no one-line grammar to type |
+| `None` | — | nothing; the launch effort stands |
+
+Both owners read the same fact — `appliedEffort` on the member's runtime record, seeded by the launch — so neither acts on an assignment the other has already handled, and neither restates a level the member is already at.
+
+**Claude Code's `/effort` has a side effect**: it also saves the level as the user's default for that model, in `modelSettings.<model>.effortLevel` under the account's `settings.json`. A team run would leave the operator's own default rewritten long after the team stopped, so taurhaus records the user's value before a managed member's first launch and puts it back when the member or the team stops — atomically, touching only that field, and only while the value on disk is still the one the harness wrote. Which harnesses have the side effect, and where they save it, is another registry declaration (`runtime_effort_default_sink`). `CLAUDE_CODE_EFFORT_LEVEL` outranks the saved default and is frozen per process, so managed Claude launches must not set it.
+
+**Choosing the level is the lead's job**, not an algorithm's. The proportionality rule, in the order a lead should weigh it:
+
+- **Stakes** — what breaks, and for whom, if the work is wrong.
+- **Reversibility** — a migration, a release or a user-visible write earns more than something a revert undoes.
+- **Uncertainty** — an unfamiliar subsystem or a diagnosis with no reproduction earns more than a mechanical change.
+- **Scope** — the number of files, layers and contracts the change crosses.
+- **Budget** — a higher level costs tokens and wall-clock for every turn of the task, not just the hard one.
+
+Phase B evidence: **medium is the default for developer roles**, and **high is a deliberate exception with a stated reason**. `--why` exists to make that reason survive into the assignment, the footer and the post-compaction card — the lead states it once and every surface that shows the level shows why.
+
 ## Accounts and usage
 
 Account selection is a capability slice, not a Claude-only path. A provider discovers tool-owned config directories and identities; the generic core remembers `pinned` and `last_used` choices per project and tool, resolves explicit → session → pin → last-used → global default → base-command selector → default-dir precedence, and renders the registry's selector in `LaunchSpec`. Resumes derive their account from the provider's transcript layout. Tools without a provider stay on the logged single-account floor.
