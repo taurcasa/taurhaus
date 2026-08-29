@@ -73,13 +73,15 @@ pub fn scan_session_runs(session_dir: &Path) -> Vec<WorkflowRun> {
     let Ok(entries) = fs::read_dir(run_root) else {
         return Vec::new();
     };
+    let scripts = list_scripts(session_dir);
     let mut runs = entries
         .flatten()
         .filter_map(|entry| {
             let file_type = entry.file_type().ok()?;
             let run_id = entry.file_name().to_str()?.to_string();
+            let script_path = find_script_in(&scripts, &run_id);
             (file_type.is_dir() && safe_id(&run_id))
-                .then(|| read_run(session_dir, &run_id))
+                .then(|| read_run_with_script(session_dir, &run_id, script_path))
                 .flatten()
         })
         .collect::<Vec<_>>();
@@ -93,6 +95,15 @@ pub fn scan_session_runs(session_dir: &Path) -> Vec<WorkflowRun> {
 }
 
 pub fn read_run(session_dir: &Path, run_id: &str) -> Option<WorkflowRun> {
+    let script_path = find_script(session_dir, run_id);
+    read_run_with_script(session_dir, run_id, script_path)
+}
+
+fn read_run_with_script(
+    session_dir: &Path,
+    run_id: &str,
+    script_path: Option<PathBuf>,
+) -> Option<WorkflowRun> {
     if !safe_id(run_id) {
         return None;
     }
@@ -101,7 +112,6 @@ pub fn read_run(session_dir: &Path, run_id: &str) -> Option<WorkflowRun> {
         return None;
     }
 
-    let script_path = find_script(session_dir, run_id);
     let script_meta = script_path
         .as_deref()
         .and_then(read_script_meta)
@@ -629,19 +639,37 @@ fn totals_from_agents(agents: &[WorkflowAgent]) -> WorkflowRunTotals {
 }
 
 fn find_script(session_dir: &Path, run_id: &str) -> Option<PathBuf> {
-    let suffix = format!("-{run_id}.js");
+    find_script_in(&list_scripts(session_dir), run_id)
+}
+
+fn list_scripts(session_dir: &Path) -> Vec<PathBuf> {
     let mut scripts = fs::read_dir(session_dir.join("workflows/scripts"))
-        .ok()?
+        .ok()
+        .into_iter()
+        .flatten()
         .flatten()
         .filter_map(|entry| {
-            let file_type = entry.file_type().ok()?;
-            let name = entry.file_name();
-            let name = name.to_str()?;
-            (file_type.is_file() && name.ends_with(&suffix)).then(|| entry.path())
+            entry
+                .file_type()
+                .ok()
+                .filter(|file_type| file_type.is_file())
+                .map(|_| entry.path())
         })
         .collect::<Vec<_>>();
     scripts.sort();
-    scripts.into_iter().next()
+    scripts
+}
+
+fn find_script_in(scripts: &[PathBuf], run_id: &str) -> Option<PathBuf> {
+    let suffix = format!("-{run_id}.js");
+    scripts
+        .iter()
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(&suffix))
+        })
+        .cloned()
 }
 
 fn read_script_meta(path: &Path) -> Option<ScriptMeta> {
