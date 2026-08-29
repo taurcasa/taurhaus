@@ -46,6 +46,16 @@ impl CoordinationOrchestrator {
         let mut diagnostics = TeardownDiagnostics::default();
         let pane_id = runtime.and_then(|record| record.pane_id.as_deref());
 
+        // Give the operator their own saved effort default back before the
+        // member's record goes away. A no-op for a harness whose runtime effort
+        // command has no such side effect, which is why the effort resume can
+        // reuse this teardown without undoing its own switch.
+        crate::coordination::effort_default::restore_member_effort_default(
+            &self.teams_dir,
+            team_name,
+            member_name,
+        );
+
         let mut daemon_pids = Vec::new();
         if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
             daemon_pids.push(pid);

@@ -10,6 +10,7 @@ pub mod compaction_events;
 pub mod consumer;
 pub mod delivery;
 pub mod domain;
+pub mod effort_default;
 pub mod errors;
 pub mod events;
 pub mod health;

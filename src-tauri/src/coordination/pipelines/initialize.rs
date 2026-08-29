@@ -386,6 +386,7 @@ impl CoordinationOrchestrator {
                     attached_at: None,
                     last_seen_at: None,
                     applied_effort: None,
+                    effort_default: None,
                 },
             )?;
 

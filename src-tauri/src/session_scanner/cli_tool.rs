@@ -135,6 +135,22 @@ pub enum RuntimeEffort {
     None,
 }
 
+/// Where a harness also saves a runtime effort change as the user's own
+/// default, so taurhaus can put the user's value back.
+///
+/// Claude Code 2.1.251's `/effort <level>` has this side effect: the level is
+/// written to `modelSettings.<model>.effortLevel` in the account's
+/// `settings.json` and outlives the session mesh set it for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffortDefaultSink {
+    /// Settings file, relative to the account directory.
+    pub file: &'static str,
+    /// Object inside that file, keyed by model id.
+    pub section: &'static str,
+    /// Field inside the model's object.
+    pub field: &'static str,
+}
+
 /// Capability declarations consumed by tool-agnostic call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
@@ -142,6 +158,8 @@ pub struct CliCapabilities {
     pub effort_flag: Option<EffortFlag>,
     /// How the level changes once the session is already running.
     pub runtime_effort: RuntimeEffort,
+    /// Where that runtime change also lands as the user's saved default.
+    pub runtime_effort_default_sink: Option<EffortDefaultSink>,
     pub auto_approve_flag: Option<&'static str>,
     pub display_name_flag: Option<&'static str>,
     pub team_flags: bool,
@@ -254,6 +272,11 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort_default_sink: Some(EffortDefaultSink {
+                    file: "settings.json",
+                    section: "modelSettings",
+                    field: "effortLevel",
+                }),
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: Some("-n"),
                 team_flags: true,
@@ -320,6 +343,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 // Codex 0.150.1 changes effort only through its interactive
                 // `/model` picker, which has no one-line grammar to type.
                 runtime_effort: RuntimeEffort::ResumeWithFlag,
+                runtime_effort_default_sink: None,
                 auto_approve_flag: Some("--yolo"),
                 display_name_flag: None,
                 team_flags: false,
@@ -407,6 +431,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort_default_sink: None,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: None,
                 team_flags: false,
@@ -544,6 +569,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort_default_sink: None,
                 auto_approve_flag: Some("--always-approve"),
                 display_name_flag: None,
                 team_flags: false,
@@ -617,6 +643,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         model_flag: None,
         effort_flag: None,
         runtime_effort: RuntimeEffort::None,
+        runtime_effort_default_sink: None,
         auto_approve_flag: None,
         display_name_flag: None,
         team_flags: false,

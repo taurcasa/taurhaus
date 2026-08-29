@@ -5,6 +5,7 @@ use taurhaus_lib::logging::emit_global;
 
 use crate::coordination::delivery::{DeliveryRenderer, RoleContext};
 use crate::coordination::domain::{Member, MemberRole};
+use crate::coordination::effort_default;
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::member_activation::{
     MemberActivationContext, MemberActivationDeliveryPolicy, MemberActivationRosterPolicy,
@@ -16,7 +17,8 @@ use crate::coordination::requests::{
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
 };
 use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
-use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::accounts::team_launch_account_dir;
+use crate::session_scanner::cli_tool::{spec, CliTool};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PreparedOnboardingDelivery {
@@ -283,6 +285,22 @@ impl CoordinationOrchestrator {
             .map(str::trim)
             .filter(|level| !level.is_empty())
             .map(str::to_ascii_lowercase);
+        // A harness whose runtime effort command also rewrites the user's saved
+        // default gets that value captured once, before its first managed
+        // launch, so a teardown can put the operator's own level back. Captured
+        // once per launch cycle: a later commit must not overwrite the user's
+        // value with the one mesh wrote.
+        if runtime.effort_default.is_none() {
+            if let Some(sink) = spec(context.member.cli_tool)
+                .capabilities
+                .runtime_effort_default_sink
+            {
+                if let Some(account_dir) = team_launch_account_dir(context.member.cli_tool) {
+                    runtime.effort_default =
+                        effort_default::record(sink, &account_dir, &context.member.model);
+                }
+            }
+        }
 
         MemberRuntimeStore::save(
             &self.teams_dir,

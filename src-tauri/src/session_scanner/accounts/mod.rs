@@ -296,6 +296,20 @@ pub fn configured_default_dir(tool: CliTool) -> Option<PathBuf> {
     (path_key(&configured) != path_key(&process_default)).then_some(configured)
 }
 
+/// The account directory a managed team launch of `tool` runs on.
+///
+/// The configured override where the harness namespaces team config,
+/// otherwise the harness's own default directory — the same two the team
+/// launch renderer picks between. A per-launch selector override is declared
+/// only for a harness with a managed home and is not covered here.
+pub fn team_launch_account_dir(tool: CliTool) -> Option<PathBuf> {
+    if let Some(dir) = configured_default_dir(tool) {
+        return Some(dir);
+    }
+    let home = dirs::home_dir()?;
+    Some(spec(tool).account_provider()?.default_dir(&home))
+}
+
 /// Convert an account dir into the namespace used by the launch shell.
 pub fn to_launch_namespace(dir: &Path) -> PathBuf {
     let raw = dir.to_string_lossy().into_owned();

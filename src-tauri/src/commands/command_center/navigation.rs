@@ -12,6 +12,15 @@ pub(super) fn stop_cli_session_impl(
 ) -> Result<(), String> {
     let tool = cli_tool.unwrap_or_default();
 
+    // Stopping a managed member is the moment the operator's own saved effort
+    // default has to come back: mesh's `/effort` rewrote it for the assignment,
+    // and nothing else would put it right. Runs before the pane goes away, so
+    // the member that owns it can still be identified.
+    crate::coordination::effort_default::restore_effort_default_for_pane(
+        &crate::provider::platform_paths::PlatformPaths::teams_dir(),
+        &tmux_pane,
+    );
+
     if let Some(ref daemon) = provider.daemon {
         if daemon.is_connected() {
             let id = "stop-session";
