@@ -90,14 +90,39 @@ impl TargetFileLock {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
+        Self::acquire(path, true)?.ok_or_else(|| {
+            CoordinationError::StoreError(format!(
+                "target file disappeared while locking: {}",
+                path.display()
+            ))
+        })
+    }
 
+    /// Lock a file that already exists, or report that it does not.
+    ///
+    /// A read-modify-write of a record that must exist cannot use
+    /// [`Self::acquire_or_create`]: creating the file to lock it would turn a
+    /// missing record into an empty one that every later read has to treat as
+    /// corrupt.
+    pub fn acquire_if_exists(path: &Path) -> Result<Option<Self>, CoordinationError> {
+        Self::acquire(path, false)
+    }
+
+    fn acquire(path: &Path, create: bool) -> Result<Option<Self>, CoordinationError> {
         for _ in 0..INODE_RETRY_LIMIT {
-            let file = OpenOptions::new()
+            let file = match OpenOptions::new()
                 .read(true)
                 .write(true)
-                .create(true)
+                .create(create)
                 .truncate(false)
-                .open(path)?;
+                .open(path)
+            {
+                Ok(file) => file,
+                Err(err) if !create && err.kind() == std::io::ErrorKind::NotFound => {
+                    return Ok(None)
+                }
+                Err(err) => return Err(CoordinationError::Io(err)),
+            };
             match file.lock_exclusive() {
                 Ok(()) => {}
                 Err(err) if is_windows_unsupported_lock_error(&err) => {
@@ -109,7 +134,7 @@ impl TargetFileLock {
                 Err(err) => return Err(CoordinationError::Io(err)),
             }
             if inode_matches(&file, path) {
-                return Ok(Self { file });
+                return Ok(Some(Self { file }));
             }
         }
 
