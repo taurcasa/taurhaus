@@ -1410,6 +1410,55 @@ fn build_cli_launch_command_for_codex_appends_model_when_missing() {
     );
 }
 
+// Regression: W5b shipped the Claude effort side-effect capture while the
+// launch renderer still preserved a configured base verbatim, so a base such
+// as `CLAUDE_CODE_EFFORT_LEVEL=low claude` froze a managed member at that
+// level for the session's whole life and silently discarded every assignment's
+// `/effort`.
+#[test]
+fn a_managed_launch_never_carries_the_frozen_effort_variable() {
+    let variable = spec(CliTool::Claude)
+        .capabilities
+        .runtime_effort_frozen_env
+        .expect("Claude freezes its effort through an environment variable");
+    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = format!("{variable}=low claude --dangerously-skip-permissions");
+
+    let rendered =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("the launch still renders without the frozen level");
+    assert!(
+        !rendered.contains(variable),
+        "a managed launch must not freeze the level: {rendered}"
+    );
+    assert!(
+        rendered.contains("claude --dangerously-skip-permissions"),
+        "the rest of the operator's own command is kept: {rendered}"
+    );
+}
+
+// A spelling this renderer cannot rewrite safely is refused instead, so the
+// frozen level can never reach a managed pane by another route.
+#[test]
+fn a_frozen_effort_variable_the_renderer_cannot_strip_is_refused() {
+    let variable = spec(CliTool::Claude)
+        .capabilities
+        .runtime_effort_frozen_env
+        .expect("Claude freezes its effort through an environment variable");
+    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = format!("export {variable}=low && claude");
+
+    let error =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect_err("the frozen level must not reach a managed launch");
+    assert!(
+        error.to_string().contains(variable),
+        "the error names the variable: {error}"
+    );
+}
+
 #[test]
 fn team_launch_rendering_does_not_probe_ambient_codex_home() {
     // Regression: 6fe0aa3 made pure launch rendering stat the developer's real

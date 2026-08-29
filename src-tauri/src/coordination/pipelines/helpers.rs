@@ -518,6 +518,111 @@ pub(super) fn resume_base_for_session(base: &str, session_id: &str) -> String {
     }
 }
 
+/// The operator's base command without the variable that freezes the harness's
+/// effort level for the whole process.
+///
+/// Claude Code reads `CLAUDE_CODE_EFFORT_LEVEL` once at start-up and lets it
+/// outrank every later `/effort`, so a managed member launched with it would
+/// stay at that level for the session's life and silently discard the level the
+/// lead attaches to each assignment. The registry names the variable, so
+/// nothing here branches on tool identity.
+///
+/// A leading `NAME=value` prefix — the shape the Settings field documents — is
+/// dropped and the rest of the operator's command is kept verbatim. Any other
+/// spelling is refused rather than rewritten: this renderer cannot promise to
+/// edit arbitrary shell safely, and the level must not reach a managed pane by
+/// a route it did not check.
+fn without_frozen_effort_env<'a>(
+    base: &'a str,
+    cli_tool: CliTool,
+    team_name: &str,
+    agent_name: &str,
+) -> Result<Cow<'a, str>, CoordinationError> {
+    let Some(variable) = spec(cli_tool).capabilities.runtime_effort_frozen_env else {
+        return Ok(Cow::Borrowed(base));
+    };
+    if !base.contains(variable) {
+        return Ok(Cow::Borrowed(base));
+    }
+
+    let assignment = format!("{variable}=");
+    let mut kept = String::with_capacity(base.len());
+    let mut cursor = 0;
+    let mut in_env_prefix = true;
+    for (start, end) in word_spans(base) {
+        let word = base[start..end].trim_start_matches(['\'', '"']);
+        if in_env_prefix && word.starts_with(assignment.as_str()) {
+            kept.push_str(&base[cursor..start]);
+            cursor = base[end..]
+                .find(|character: char| !character.is_whitespace())
+                .map_or(end, |offset| end + offset);
+            continue;
+        }
+        if word != "env" && !is_env_assignment(word) {
+            in_env_prefix = false;
+        }
+    }
+    kept.push_str(&base[cursor..]);
+    let kept = kept.trim().to_string();
+
+    if kept.contains(variable) {
+        return Err(CoordinationError::Validation(format!(
+            "the configured '{cli_tool}' command sets {variable}, which freezes the session's \
+             reasoning effort and discards the level every assignment asks for; remove it from \
+             the command in Settings"
+        )));
+    }
+
+    let mut fields = Map::new();
+    fields.insert("team".to_string(), Value::String(team_name.to_string()));
+    fields.insert("member".to_string(), Value::String(agent_name.to_string()));
+    fields.insert("tool".to_string(), Value::String(cli_tool.to_string()));
+    fields.insert("variable".to_string(), Value::String(variable.to_string()));
+    emit_global(
+        "warn",
+        "coordination",
+        "launch.effort.frozen_env_removed",
+        Some("Removed a frozen effort variable from a managed launch".to_string()),
+        fields,
+    );
+    Ok(Cow::Owned(kept))
+}
+
+/// Byte spans of the whitespace-separated words in `command`.
+fn word_spans(command: &str) -> Vec<(usize, usize)> {
+    let mut spans = Vec::new();
+    let mut start = None;
+    for (index, character) in command.char_indices() {
+        match (character.is_whitespace(), start) {
+            (false, None) => start = Some(index),
+            (true, Some(begin)) => {
+                spans.push((begin, index));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(begin) = start {
+        spans.push((begin, command.len()));
+    }
+    spans
+}
+
+/// Whether `word` is a shell `NAME=value` environment assignment.
+fn is_env_assignment(word: &str) -> bool {
+    let Some((name, _)) = word.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
 // Runtime-only Codex inputs on `CliCommandSettings` keep command rendering
 // independent from ambient CODEX_HOME state; grouping the stable team/member
 // fields would add a second launch context type for this single renderer.
@@ -545,9 +650,10 @@ fn render_team_launch_command(
             cli_tool
         )));
     }
+    let base = without_frozen_effort_env(base, cli_tool, team_name, agent_name)?;
     let base = match resume_session_id {
-        Some(session_id) => Cow::Owned(resume_base_for_session(base, session_id)),
-        None => Cow::Borrowed(base),
+        Some(session_id) => Cow::Owned(resume_base_for_session(base.as_ref(), session_id)),
+        None => base,
     };
 
     let mut model = ModelSpec::parse_legacy(model);

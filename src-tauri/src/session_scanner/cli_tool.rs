@@ -160,6 +160,12 @@ pub struct CliCapabilities {
     pub runtime_effort: RuntimeEffort,
     /// Where that runtime change also lands as the user's saved default.
     pub runtime_effort_default_sink: Option<EffortDefaultSink>,
+    /// Environment variable that freezes the level for the process's whole
+    /// life, outranking the harness's own runtime effort command.
+    ///
+    /// A managed launch must never set it: the level the lead attaches to each
+    /// assignment would be discarded for the session's whole life.
+    pub runtime_effort_frozen_env: Option<&'static str>,
     pub auto_approve_flag: Option<&'static str>,
     pub display_name_flag: Option<&'static str>,
     pub team_flags: bool,
@@ -277,6 +283,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                     section: "modelSettings",
                     field: "effortLevel",
                 }),
+                runtime_effort_frozen_env: Some("CLAUDE_CODE_EFFORT_LEVEL"),
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: Some("-n"),
                 team_flags: true,
@@ -344,6 +351,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 // `/model` picker, which has no one-line grammar to type.
                 runtime_effort: RuntimeEffort::ResumeWithFlag,
                 runtime_effort_default_sink: None,
+                runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--yolo"),
                 display_name_flag: None,
                 team_flags: false,
@@ -432,6 +440,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_default_sink: None,
+                runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: None,
                 team_flags: false,
@@ -570,6 +579,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
                 runtime_effort: RuntimeEffort::SlashCommand,
                 runtime_effort_default_sink: None,
+                runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--always-approve"),
                 display_name_flag: None,
                 team_flags: false,
@@ -644,6 +654,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         effort_flag: None,
         runtime_effort: RuntimeEffort::None,
         runtime_effort_default_sink: None,
+        runtime_effort_frozen_env: None,
         auto_approve_flag: None,
         display_name_flag: None,
         team_flags: false,
