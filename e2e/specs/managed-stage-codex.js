@@ -64,6 +64,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { ensureMainApp, waitForAppReady } from '../helpers.js'
@@ -88,6 +89,16 @@ import {
 const MIN_CODEX_VERSION = [0, 147, 0]
 /** `--effort`/`--why` on `task create/assign` and the pending-effort gate. */
 const MIN_MESH_VERSION = [0, 2, 23]
+/**
+ * The mesh binary taurhaus itself runs.
+ *
+ * `coordination/mesh_cli.rs` resolves `~/.local/bin/mesh` by absolute path, not
+ * through `PATH`, so the member daemon that holds the notice can be a different
+ * build from the one this lane calls. Both are checked: on mesh 0.2.22 the
+ * gate does not exist and `pendingEffort` is simply absent from `task get`,
+ * which would fail this lane on an `undefined` instead of naming the cause.
+ */
+const TAURHAUS_MESH_BINARY = join(homedir(), '.local', 'bin', 'mesh')
 /** The taurhaus-owned tmux session every managed pane is created in. */
 const TMUX_SESSION = 'taurhaus'
 
@@ -266,6 +277,16 @@ function hostSkipReason() {
   if (!meshVersion) return 'mesh CLI is not on PATH'
   if (!versionAtLeast(meshVersion, MIN_MESH_VERSION)) {
     return `mesh ${meshVersion.join('.')} predates the ${MIN_MESH_VERSION.join('.')} pending-effort gate`
+  }
+
+  const managedMeshVersion = parseVersion(TAURHAUS_MESH_BINARY, ['--version'])
+  if (!managedMeshVersion) return `taurhaus's own mesh binary is missing at ${TAURHAUS_MESH_BINARY}`
+  if (!versionAtLeast(managedMeshVersion, MIN_MESH_VERSION)) {
+    return (
+      `${TAURHAUS_MESH_BINARY} is mesh ${managedMeshVersion.join('.')}, which predates the ` +
+      `${MIN_MESH_VERSION.join('.')} pending-effort gate; taurhaus runs that binary, not the one on PATH ` +
+      '(run `just install-mesh`)'
+    )
   }
   return ''
 }
@@ -676,12 +697,18 @@ function deliveryRecord(taskId) {
   return attentionRecord({ claudeDir, team: TEAM_NAME, taskId })
 }
 
+/**
+ * Wait until mesh records the notice as delivered, and return its own record.
+ *
+ * Both timestamps in it are mesh's, so the hold is measured against the clock
+ * that decided it rather than against this process's wall clock.
+ */
 async function waitForDelivery(taskId, timeout) {
-  let delivered = null
+  let record = null
   await browser.waitUntil(
     async () => {
-      delivered = deliveryRecord(taskId)?.deliveredAt ?? null
-      return Boolean(delivered)
+      record = deliveryRecord(taskId)
+      return Boolean(record?.deliveredAt)
     },
     {
       timeout,
@@ -689,7 +716,11 @@ async function waitForDelivery(taskId, timeout) {
       timeoutMsg: `mesh never delivered the notice for task #${taskId}`,
     }
   )
-  return Date.parse(delivered)
+  return {
+    assignedAtMs: Date.parse(record.assignedAt),
+    deliveredAtMs: Date.parse(record.deliveredAt),
+    deliveryState: record.deliveryState,
+  }
 }
 
 /** The member's `RESULT`, failing fast on a `BLOCKED` instead of waiting it out. */
@@ -860,10 +891,15 @@ describe('managed Codex stage', function () {
     // ...and only then did mesh deliver. An expired effort wait would have
     // delivered while `pendingEffort` was still true, which is the failure this
     // ordering rules out; mesh's own "effort wait expired" line goes to a
-    // discarded stdout and cannot be read.
-    const deliveredAtMs = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
-    const resumeCompletedAtMs = Date.parse(measured.effortResumeCompletedAt ?? 0)
-    expect(deliveredAtMs).toBeGreaterThanOrEqual(resumeCompletedAtMs)
+    // discarded stdout and cannot be read. The boundary is the *start* of the
+    // resume, not its completion: the relaunch writes `appliedEffort` inside the
+    // pipeline, a moment before `effort.resume.completed` is emitted, so mesh is
+    // entitled to deliver in between. What it may never do is deliver during the
+    // hold, which is everything before the switch began.
+    const delivery = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
+    const resumeStartedAtMs = Date.parse(measured.effortResumeStartedAt)
+    expect(delivery.deliveredAtMs).toBeGreaterThanOrEqual(resumeStartedAtMs)
+    expect(delivery.deliveryState).toBe('delivered')
 
     const paneAfterResume = readRuntimeRecord()?.pane_id ?? null
     console.log(`[e2e] ${MEMBER_NAME} resumed into pane ${paneAfterResume}`)
@@ -881,11 +917,15 @@ describe('managed Codex stage', function () {
     const resultAtMs = Date.parse(result.message.timestamp)
     Object.assign(measured, {
       taskId: assigned.taskId,
-      holdMs: deliveredAtMs - assigned.assignedAtMs,
-      resumeMs: resumeCompletedAtMs - Date.parse(measured.effortResumeStartedAt ?? 0),
+      // Assignment to delivery: how long mesh held the notice.
+      holdMs: delivery.deliveredAtMs - delivery.assignedAtMs,
+      // Stop, relaunch, reattach: what the hold was spent on.
+      resumeMs: Date.parse(measured.effortResumeCompletedAt) - resumeStartedAtMs,
+      // Assignment to the level being in force, as taurhaus recorded it.
       appliedEffortMs: appliedAtMs - assigned.assignedAtMs,
-      memberMs: resultAtMs - deliveredAtMs,
-      totalMs: resultAtMs - assigned.assignedAtMs,
+      // Delivery to RESULT: the member's own working time.
+      memberMs: resultAtMs - delivery.deliveredAtMs,
+      totalMs: resultAtMs - delivery.assignedAtMs,
       commit: result.payload.commit,
       validation: validation.command,
     })
@@ -911,7 +951,7 @@ describe('managed Codex stage', function () {
     // Run the effort pass over the new assignment before reading the log back:
     // it is the task scan, not the delivery, that would start a switch.
     await refreshFixtureTasks(managed.projectId)
-    const deliveredAtMs = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
+    const delivery = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
     await browser.pause(EFFORT_PASS_SETTLE_MS)
 
     // A task event runs the effort pass; with the level already in force it must
@@ -921,7 +961,7 @@ describe('managed Codex stage', function () {
     expect(effortResumeEvents(events, 'effort.resume.failed')).toEqual([])
     expect(readRuntimeRecord()?.appliedEffort).toBe(ASSIGNED_EFFORT)
 
-    measured.secondAssignmentHoldMs = deliveredAtMs - assigned.assignedAtMs
+    measured.secondAssignmentHoldMs = delivery.deliveredAtMs - delivery.assignedAtMs
   })
 
   it('records why the managed Codex stage lane was unavailable', async function () {
