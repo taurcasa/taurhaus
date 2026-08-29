@@ -1330,7 +1330,10 @@ mod tests {
                 .find(|preset| preset.preset_id == *preset_id)
                 .unwrap_or_else(|| panic!("expected '{preset_id}' preset in built-ins"));
             assert!(
-                preset.agent_slots.iter().any(|slot| slot.role_id == *role_id),
+                preset
+                    .agent_slots
+                    .iter()
+                    .any(|slot| slot.role_id == *role_id),
                 "preset '{preset_id}' should staff its developer slot with '{role_id}'"
             );
 
