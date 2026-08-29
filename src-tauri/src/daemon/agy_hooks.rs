@@ -312,7 +312,7 @@ pub fn records_for_workspace(path: &Path, workspace: &str) -> Vec<AgyHookRecord>
             .collect::<Vec<_>>()
     })
     .unwrap_or_default();
-    matches.sort_by(|left, right| right.ts.cmp(&left.ts));
+    matches.sort_by_key(|record| std::cmp::Reverse(record.ts));
     matches
 }
 
