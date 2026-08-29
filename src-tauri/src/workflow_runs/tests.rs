@@ -120,6 +120,11 @@ fn ipc_command_implementations_resolve_only_scratch_claude_session_dirs() {
     assert!(summary_json.get("agents").is_none());
     assert!(summary_json.get("result").is_none());
 
+    // A session without a directory has no runs; the list is empty, not an error.
+    let none = list_workflow_runs_impl(&provider, "session-without-a-dir").expect("empty list");
+    assert!(none.is_empty());
+    assert!(list_workflow_runs_impl(&provider, "../escape").is_err());
+
     let run = get_workflow_run_impl(&provider, "session-123", RUN_ID).expect("get run");
     assert!(run.agents.is_empty());
     assert!(run.result.is_some());

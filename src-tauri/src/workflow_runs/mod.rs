@@ -208,7 +208,13 @@ fn workflow_ledger_row_impl(
 pub(crate) fn list_runs_for_session_id(
     session_id: &str,
 ) -> Result<Vec<WorkflowRunSummary>, String> {
-    let session_dir = find_session_dir(session_id)?;
+    // A session that has no directory yet has no runs; only an invalid
+    // identifier is an error.
+    let session_dir = match find_session_dir(session_id) {
+        Ok(dir) => dir,
+        Err(error) if error.starts_with("Session not found") => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
     Ok(scan_session_runs(&session_dir)
         .iter()
         .map(WorkflowRunSummary::from)
