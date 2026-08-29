@@ -61,18 +61,9 @@ Two independent studies agree on the shape (details and the disagreements in the
 
 Rules that follow from the vendors: the scale is calibrated per model, so "everyone at high" is four unrelated policies (vendor defaults: Anthropic high, OpenAI medium, Google medium, xAI high); Anthropic's own Opus 5 curve puts `medium` ~2 points below `high` at about half the cost and shows a *medium-first, retry-at-high* policy beating high-only; `max` regressed on their chart — never a default; effort is set at launch per member and held (mid-session changes invalidate caching); as effort goes **up** the role gets shorter and outcome-shaped, as it goes **down** the role gains an explicit checklist; delete self-verification instructions from Opus 5 roles at `high` and above; grok's `xhigh` buys ~1 point for +20 % cost while `medium→high` buys ~3 points. Only an eval can settle: the luna cliff, Gemini flash at medium on our tasks, and whether Claude implementation from a written spec really needs `high`.
 
-## Phase B — measured baseline (needs the go)
+## Phase B — measured baseline (done 2026-08-29)
 
-v3 roles **as written**, on the current model per family, dev split, one run per cell, **at two effort levels each** so the baseline also answers the effort question; the deliverable is the judge rationales per model and effort, not the scores.
-
-| Cell | Role (existing) | Adapter | Model / effort | Cases |
-|---|---|---|---|---|
-| B1 | `v3-developer-claude` | claude-code | `opus` / medium **and** high | 9 (implementation/dev) × 2 |
-| B2 | `v3-developer-codex` | codex-cli | `gpt-5.6-sol` / medium **and** high | 7 × 2 |
-| B3 | `v3-developer-agy` | agy-cli | `gemini-3.7-flash-high` / medium **and** high | 9 × 2 |
-| B4 | `grok-developer` | grok-cli | `grok-4.6` / medium **and** high | 7 × 2 |
-
-≈ 64 interactive agent sessions plus judging (halve it by running one effort first if the budget is tight; `medium` first, since that is the level under question). Fable cells (lead/architect, `high` vs `xhigh`) wait until the Fable buckets recover after Aug 30/Sep 1.
+Results and rationale themes: [`research/phase-b-baseline.md`](research/phase-b-baseline.md). Headline: `no_fake_features` 61/61 everywhere; the dominant `correct_action` failure is "planned instead of built" in every family (partly an eval-design artefact — no fixture workspace — partly the v3 escalation framing); copy failures are process jargon lifted from the role text; **medium beats or ties high** for developer roles on judgment-style tasks (Opus 0.75 vs 0.63, sol 0.90 vs 0.86, grok 1.00 vs 0.71, flash 0.75 vs 0.78). Effort ladder for developer roles: medium by default, high only with a stated reason.
 
 ## Phase C — v4 and the comparison
 
