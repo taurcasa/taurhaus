@@ -126,8 +126,10 @@ pub enum CompactionDelivery {
 /// component that can relaunch a member, so it owns the flag path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeEffort {
-    /// The harness accepts a one-line `/effort <level>` in its own prompt.
-    SlashCommand,
+    /// The harness accepts a one-line command in its own prompt. `template`
+    /// spells it with a `{level}` placeholder, so nothing outside the registry
+    /// has to know the grammar.
+    SlashCommand { template: &'static str },
     /// The harness has no deterministic one-line grammar, so the level is
     /// applied by relaunching the session with its effort flag.
     ResumeWithFlag,
@@ -277,7 +279,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
-                runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort: RuntimeEffort::SlashCommand {
+                    template: "/effort {level}",
+                },
                 runtime_effort_default_sink: Some(EffortDefaultSink {
                     file: "settings.json",
                     section: "modelSettings",
@@ -438,7 +442,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
-                runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort: RuntimeEffort::SlashCommand {
+                    template: "/effort {level}",
+                },
                 runtime_effort_default_sink: None,
                 runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
@@ -577,7 +583,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
-                runtime_effort: RuntimeEffort::SlashCommand,
+                runtime_effort: RuntimeEffort::SlashCommand {
+                    template: "/effort {level}",
+                },
                 runtime_effort_default_sink: None,
                 runtime_effort_frozen_env: None,
                 auto_approve_flag: Some("--always-approve"),

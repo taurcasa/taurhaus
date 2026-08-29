@@ -345,7 +345,9 @@ fn every_harness_declares_how_a_running_session_changes_effort() {
     for entry in all() {
         let runtime_effort = entry.capabilities.runtime_effort;
         let expected = match entry.tool {
-            CliTool::Claude | CliTool::Agy | CliTool::Grok => RuntimeEffort::SlashCommand,
+            CliTool::Claude | CliTool::Agy | CliTool::Grok => RuntimeEffort::SlashCommand {
+                template: "/effort {level}",
+            },
             CliTool::Codex => RuntimeEffort::ResumeWithFlag,
             CliTool::Unknown => RuntimeEffort::None,
         };
