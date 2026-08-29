@@ -58,6 +58,14 @@ pub struct AgyHookRecord {
     pub ts: DateTime<Utc>,
     pub conversation_id: String,
     pub state: AgyHookState,
+    /// The first entry of the payload's `workspacePaths`, normalized like every
+    /// other project path so it matches a session cwd. Records written before
+    /// this field existed carry `None` and match no workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    /// The model agy reported for the invocation (`modelName`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     /// Whatever `Stop` said about why the turn ended. agy spells it in
     /// SCREAMING_SNAKE and only `NO_TOOL_CALL` has ever been observed, so this
     /// stays an open string: an unseen member must never gate the idle edge.
@@ -80,6 +88,10 @@ struct HookPayload {
     fully_idle: bool,
     #[serde(default)]
     termination_reason: Option<String>,
+    #[serde(default)]
+    workspace_paths: Vec<String>,
+    #[serde(default)]
+    model_name: Option<String>,
 }
 
 /// Append one native Antigravity activity edge to the bounded JSONL sink.
@@ -112,6 +124,16 @@ pub fn append_event_at(
         },
         termination_reason: payload
             .termination_reason
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        workspace: payload
+            .workspace_paths
+            .into_iter()
+            .next()
+            .map(|value| crate::provider::path::normalize_project_path(&value))
+            .filter(|value| !value.is_empty()),
+        model: payload
+            .model_name
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
     };
@@ -233,11 +255,12 @@ fn latest_records(contents: &[u8]) -> HashMap<String, AgyHookRecord> {
         .collect()
 }
 
-pub fn latest_record_for_session_after(
+/// Read the sink's latest record per conversation, reparsing only when the
+/// file changed under the cache.
+fn with_latest_records<T>(
     path: &Path,
-    session_id: &str,
-    not_before: SystemTime,
-) -> Option<AgyHookRecord> {
+    consume: impl FnOnce(&HashMap<String, AgyHookRecord>) -> T,
+) -> Option<T> {
     let metadata = fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
     {
@@ -246,9 +269,7 @@ pub fn latest_record_for_session_after(
             .get(path)
             .filter(|cached| cached.len == metadata.len() && cached.modified == modified)
         {
-            return cached.records.get(session_id).cloned().and_then(|record| {
-                (record.ts >= DateTime::<Utc>::from(not_before)).then_some(record)
-            });
+            return Some(consume(&cached.records));
         }
     }
 
@@ -256,7 +277,7 @@ pub fn latest_record_for_session_after(
     #[cfg(test)]
     RECORD_PARSE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let records = latest_records(&contents);
-    let record = records.get(session_id).cloned();
+    let value = consume(&records);
     RECORD_CACHE.lock().ok()?.insert(
         path.to_path_buf(),
         CachedRecords {
@@ -265,8 +286,34 @@ pub fn latest_record_for_session_after(
             records,
         },
     );
-    let record = record?;
+    Some(value)
+}
+
+pub fn latest_record_for_session_after(
+    path: &Path,
+    session_id: &str,
+    not_before: SystemTime,
+) -> Option<AgyHookRecord> {
+    let record = with_latest_records(path, |records| records.get(session_id).cloned())??;
     (record.ts >= DateTime::<Utc>::from(not_before)).then_some(record)
+}
+
+/// Every conversation the sink last saw in `workspace`, newest record first.
+///
+/// The workspace is the normalized form written by [`append_event_at`]; a
+/// record from before that field existed names no workspace and is never
+/// returned.
+pub fn records_for_workspace(path: &Path, workspace: &str) -> Vec<AgyHookRecord> {
+    let mut matches = with_latest_records(path, |records| {
+        records
+            .values()
+            .filter(|record| record.workspace.as_deref() == Some(workspace))
+            .cloned()
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    matches.sort_by_key(|record| std::cmp::Reverse(record.ts));
+    matches
 }
 
 pub fn latest_record_for_session(path: &Path, session_id: &str) -> Option<AgyHookRecord> {
@@ -459,6 +506,8 @@ mod tests {
                     conversation_id: format!("conversation-{index}"),
                     state: AgyHookState::Idle,
                     termination_reason: None,
+                    workspace: None,
+                    model: None,
                 },
             )
             .unwrap();
@@ -504,5 +553,127 @@ mod tests {
             RECORD_PARSE_COUNT.load(std::sync::atomic::Ordering::Relaxed),
             1
         );
+    }
+
+    #[test]
+    fn observed_payload_keeps_the_workspace_and_model_it_reports() {
+        // Regression: commit 4e9e2c5's sink kept only `conversationId` and the
+        // state, so no record could say which workspace it came from and a
+        // conversation missing from agy's cwd index had nothing to attach to.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+        let pre_invocation = r#"{
+            "artifactDirectoryPath": "/home/user/.gemini/antigravity-cli/brain/7f71fcb0",
+            "conversationId": "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869",
+            "initialNumSteps": 1,
+            "invocationNum": 0,
+            "modelName": "gemini-3.7-flash-high",
+            "transcriptPath": "/home/user/.gemini/antigravity-cli/brain/7f71fcb0/transcript_full.jsonl",
+            "workspacePaths": ["/home/user/projects/QueenUI"]
+        }"#;
+
+        append_event_at(&path, AgyHookEvent::Busy, pre_invocation, ts).unwrap();
+
+        let record =
+            latest_record_for_session(&path, "7f71fcb0-8a57-4f01-a3fd-a6f43cf70869").unwrap();
+        assert_eq!(
+            record.workspace.as_deref(),
+            Some("/home/user/projects/QueenUI")
+        );
+        assert_eq!(record.model.as_deref(), Some("gemini-3.7-flash-high"));
+    }
+
+    #[test]
+    fn workspace_is_stored_in_the_normalized_form_paths_are_matched_in() {
+        // The workspace is a match key against a session cwd, so it is written
+        // through the same normalization every project path goes through.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            r#"{"conversationId":"conversation-1","workspacePaths":["\\\\wsl.localhost\\Ubuntu\\home\\user\\projects\\QueenUI\\"]}"#,
+            ts,
+        )
+        .unwrap();
+
+        let record = latest_record_for_session(&path, "conversation-1").unwrap();
+        assert_eq!(
+            record.workspace.as_deref(),
+            Some("/home/user/projects/QueenUI")
+        );
+    }
+
+    #[test]
+    fn records_written_before_the_workspace_field_existed_still_load() {
+        // The sink is append-only and survives an upgrade: a 0.8.2 record has
+        // neither field and must still parse as the state it recorded.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        std::fs::write(
+            &path,
+            "{\"ts\":\"2026-08-28T17:46:24Z\",\"conversationId\":\"conversation-1\",\"state\":\"idle\"}\n",
+        )
+        .unwrap();
+
+        let record = latest_record_for_session(&path, "conversation-1").unwrap();
+        assert_eq!(record.state, AgyHookState::Idle);
+        assert_eq!(record.workspace, None);
+        assert_eq!(record.model, None);
+    }
+
+    #[test]
+    fn records_for_workspace_lists_the_newest_conversation_first() {
+        // The fallback identity path asks the sink which conversations a cwd
+        // has seen; the newest is the one a live session is most likely to be.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+        let busy = |conversation: &str, workspace: &str| {
+            serde_json::json!({
+                "conversationId": conversation,
+                "workspacePaths": [workspace],
+            })
+            .to_string()
+        };
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            &busy("older", "/home/user/projects/QueenUI"),
+            ts,
+        )
+        .unwrap();
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            &busy("newer", "/home/user/projects/QueenUI"),
+            ts + chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            &busy("elsewhere", "/home/user/projects/other"),
+            ts + chrono::Duration::seconds(2),
+        )
+        .unwrap();
+
+        let matches = records_for_workspace(&path, "/home/user/projects/QueenUI");
+
+        assert_eq!(
+            matches
+                .iter()
+                .map(|record| record.conversation_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["newer", "older"]
+        );
+        assert!(records_for_workspace(&path, "/home/user/projects/absent").is_empty());
     }
 }

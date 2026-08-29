@@ -14,7 +14,7 @@ agent_slots:
     project_binding: lead_project
     overrides:
       name_pattern: researcher
-  - role_id: v3-developer-codex
+  - role_id: v4-developer-codex
     count: 1
     project_binding: lead_project
 

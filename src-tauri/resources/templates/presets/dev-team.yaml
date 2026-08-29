@@ -9,7 +9,7 @@ version: "3.0.0"
 lead_role_id: v3-lead-claude
 
 agent_slots:
-  - role_id: v3-developer-codex
+  - role_id: v4-developer-codex
     count: 2
     project_binding: lead_project
 
