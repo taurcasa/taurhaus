@@ -209,6 +209,23 @@ export function runTreeModel(run) {
   }
 }
 
+/**
+ * What a live run is doing right now: the phase of its running agent, or that
+ * agent's own label when the scanner could not place it in a phase. `''` when
+ * the run has no agent running.
+ */
+export function currentWorkflowStep(run) {
+  const model = runTreeModel(run)
+  if (!model?.isLive) return ''
+
+  for (const group of model.groups) {
+    const running = group.agents.find((agent) => agent.state === 'running')
+    if (!running) continue
+    return group.title || running.label
+  }
+  return ''
+}
+
 /** One row of the run-history list, built from a `WorkflowRunSummary`. */
 export function runListRow(summary) {
   const status = runStatus(summary)

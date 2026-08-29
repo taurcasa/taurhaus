@@ -2,7 +2,9 @@
   import { getLatestSession, getRecentCommits, getRelationships } from './ipc.js'
   import { formatDuration } from './format.js'
   import { groupedSessionIndicators, hasLiveSession, sessionBadge, toolIcon } from './sessionIndicator.js'
-  import { activitySignal, isActiveLevel, isRetainedSignal } from './activitySignal.js'
+  import { activitySignal, isActiveLevel, isRetainedSignal, workflowWriteAgeMs } from './activitySignal.js'
+  import { currentWorkflowStep, formatWriteAge, workflowSessionId } from './workflowRuns.js'
+  import { watchWorkflowSession, workflowSessionRuns } from './workflowRunStore.svelte.js'
 
   const FRESH_SESSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
   const DEFAULT_WIDTH = 312
@@ -92,6 +94,14 @@
   const latestChange = $derived.by(() => buildLatestChange(latestSession, latestCommit, freshLatestSession))
   const relationshipCue = $derived.by(() => summarizeRelationship(relationships, project?.id))
   const motionRow = $derived.by(() => buildMotionRow(primarySession, extraSessionCount))
+  const workflowSession = $derived.by(
+    () => prioritizedSessions.find((session) => workflowWriteAgeMs(session) !== null) ?? null
+  )
+  const workflowSessionKey = $derived.by(() => workflowSessionId(workflowSession))
+  const workflowRuns = $derived.by(
+    () => (workflowSessionKey ? workflowSessionRuns(workflowSessionKey).runs : [])
+  )
+  const workflowRow = $derived.by(() => buildWorkflowRow(workflowSession, workflowRuns))
   const verdict = $derived.by(() => buildVerdict({
     project,
     primarySession,
@@ -148,6 +158,14 @@
     return () => {
       cancelled = true
     }
+  })
+
+  // Follow the hovered project's workflow runs only while the card is up: one
+  // session, for as long as the pointer rests on the row.
+  $effect(() => {
+    const sessionKey = workflowSessionKey
+    if (!sessionKey) return
+    return watchWorkflowSession(sessionKey)
   })
 
   $effect(() => {
@@ -287,6 +305,38 @@
       body: `${badge.toolLabel} is waiting on input${extraSuffix}`,
       meta: idleMeta,
       icon,
+    }
+  }
+
+  /**
+   * What the project's workflow runs are doing.
+   *
+   * The session activity hint carries a count and a write time and no run name,
+   * so the count is all a row can say on its own. Once the shared store has
+   * actually read the run — which happens while this card is up — the run's own
+   * name and the phase its running agent is in replace the count.
+   */
+  function buildWorkflowRow(session, runs) {
+    const ageMs = workflowWriteAgeMs(session)
+    if (ageMs === null) return null
+
+    const activity = session?.workflow_activity ?? session?.workflowActivity
+    const liveRuns = Math.max(1, Number(activity?.live_runs ?? activity?.liveRuns) || 1)
+    const runWord = liveRuns === 1 ? 'workflow run' : 'workflow runs'
+    const writeAge = formatWriteAge(ageMs)
+    const meta = writeAge ? `last agent write ${writeAge}` : 'waiting for the next agent write'
+
+    const liveRun = runs.find((run) => String(run?.status ?? '').toLowerCase() === 'live') ?? null
+    if (!liveRun) {
+      return { body: `${liveRuns} ${runWord} live`, meta }
+    }
+
+    const step = currentWorkflowStep(liveRun)
+    const name = String(liveRun.name ?? liveRun.run_id ?? '').trim() || 'workflow'
+    const extra = liveRuns > 1 ? ` +${liveRuns - 1} more` : ''
+    return {
+      body: step ? `${name} · ${step}${extra}` : `${name}${extra}`,
+      meta,
     }
   }
 
@@ -531,6 +581,14 @@
           </div>
         </div>
       </section>
+
+      {#if workflowRow}
+        <section class="rounded-lg px-2.5 py-2 border {ui.evidenceRow}" data-testid="hovercard-workflow">
+          <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Workflow</div>
+          <div class="mt-0.5 text-[12px] leading-[1.35] truncate {ui.bodyText}">{workflowRow.body}</div>
+          <div class="mt-0.5 text-[11px] leading-[1.3] {ui.secondaryText}">{workflowRow.meta}</div>
+        </section>
+      {/if}
 
       <section class="rounded-lg px-2.5 py-2 border {ui.evidenceRow}" data-testid="hovercard-latest-change">
         <div class="text-[10px] uppercase tracking-[0.08em] font-medium {ui.mutedText}">Last update</div>

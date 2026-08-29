@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   collectWorkflowSessionIds,
+  currentWorkflowStep,
   formatRunDuration,
   formatTokens,
   runListRow,
@@ -315,5 +316,28 @@ describe('workflowBadge', () => {
       workflowBadge([session({ workflow_activity: { live_runs: 1, last_write_at: Date.now() - 61_000 } })])
         .visible
     ).toBe(false)
+  })
+})
+
+describe('currentWorkflowStep', () => {
+  it('names the phase the running agent is in', () => {
+    expect(currentWorkflowStep(run({
+      agents: [
+        agent({ agent_id: 'a', phase: 'Implement', state: 'done' }),
+        agent({ agent_id: 'b', phase: 'Review', state: 'running' }),
+      ],
+    }))).toBe('Review')
+  })
+
+  it('falls back to the agent label when the scanner placed no phase', () => {
+    expect(currentWorkflowStep(run({
+      agents: [agent({ label: 'implementer', state: 'running' })],
+    }))).toBe('implementer')
+  })
+
+  it('is empty when nothing is running or the run has finished', () => {
+    expect(currentWorkflowStep(run({ agents: [agent({ state: 'queued' })] }))).toBe('')
+    expect(currentWorkflowStep(run({ status: 'completed' }))).toBe('')
+    expect(currentWorkflowStep(null)).toBe('')
   })
 })
