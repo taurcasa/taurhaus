@@ -50,7 +50,7 @@ pub mod session_scanner {
 
     pub mod accounts {
         pub use taurhaus_lib::session_scanner::accounts::{
-            configured_default_dir, team_launch_account_dir, to_launch_namespace,
+            configured_default_dir, to_launch_namespace,
         };
     }
 

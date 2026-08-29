@@ -170,8 +170,6 @@ impl CoordinationOrchestrator {
             attached_at: None,
             last_seen_at: None,
             applied_effort: None,
-            launch_effort: None,
-            effort_default: None,
             effort_resume_failure: None,
         };
         MemberRuntimeStore::save(&self.teams_dir, team_name, &member.name, &runtime)?;

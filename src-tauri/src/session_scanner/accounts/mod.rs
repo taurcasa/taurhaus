@@ -296,60 +296,6 @@ pub fn configured_default_dir(tool: CliTool) -> Option<PathBuf> {
     (path_key(&configured) != path_key(&process_default)).then_some(configured)
 }
 
-/// The account directory a managed team launch of `tool` runs on.
-///
-/// One resolution, in the order the team launch renderer applies it: the
-/// selector the operator's own base command for `mode` already assigns — the
-/// renderer keeps that one and drops its own — then the configured override
-/// where the harness namespaces team config, then the account this launch
-/// selected, then the harness's own default directory. Anything that has to
-/// read or write that account's own files — capturing the operator's effort
-/// default and putting it back — resolves it here, so the file taurhaus edits
-/// is the file the member's process reads.
-///
-/// `None` where the base assigns the selector a value taurhaus cannot read as
-/// a directory: the launch still runs on that account, and recording another
-/// account's file would be worse than recording nothing.
-pub fn team_launch_account_dir(
-    tool: CliTool,
-    cli_commands: &crate::models::CliCommandSettings,
-    mode: crate::daemon::protocol::LaunchMode,
-) -> Option<PathBuf> {
-    let capabilities = spec(tool).capabilities;
-    if let Some(selector) = capabilities.account_selector {
-        let base = crate::session_scanner::launch::base_command(cli_commands, tool, mode);
-        if let Some(assigned) = command_env_assignment(base, selector) {
-            return assigned;
-        }
-    }
-    if capabilities.team_config_namespace {
-        if let Some(dir) = configured_default_dir(tool) {
-            return Some(dir);
-        }
-    }
-    if let Some(dir) = capabilities
-        .account_selector
-        .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
-    {
-        return Some(dir);
-    }
-    match capabilities.session_root {
-        // The root taurhaus manages is the platform authority's, not the one
-        // the process would compute from its own home: on Windows the app runs
-        // beside a member launched inside WSL, and an unqualified command there
-        // reads the WSL user's `~/.claude`, which that authority maps to its
-        // UNC form. Going through `dirs::home_dir()` would record and restore
-        // the Windows profile's settings instead.
-        SessionRoot::AppManagedClaudeDir => {
-            Some(crate::provider::platform_paths::PlatformPaths::claude_dir())
-        }
-        SessionRoot::ToolHome => {
-            let home = dirs::home_dir()?;
-            Some(spec(tool).account_provider()?.default_dir(&home))
-        }
-    }
-}
-
 /// Convert an account dir into the namespace used by the launch shell.
 pub fn to_launch_namespace(dir: &Path) -> PathBuf {
     let raw = dir.to_string_lossy().into_owned();
@@ -1320,8 +1266,6 @@ pub trait UsageProvider: Sync {
 
 #[cfg(test)]
 mod tests {
-    use crate::daemon::protocol::LaunchMode;
-
     use super::*;
 
     struct FakeProvider;
@@ -1762,71 +1706,6 @@ mod tests {
         assert_eq!(
             account_label_for_session(CliTool::Claude, project, session_id).as_deref(),
             Some("Second")
-        );
-    }
-
-    // Regression: bf4bd4f resolved the team-launch account from the configured
-    // override and the account-selector map alone, never from the base command
-    // itself. The launch renderer keeps a selector the operator's own base
-    // already assigns and drops its own, so a supported base such as
-    // `CLAUDE_CONFIG_DIR=/accounts/work claude …` ran against `/accounts/work`
-    // while taurhaus recorded and restored the default account's settings.
-    #[test]
-    fn a_base_command_that_selects_an_account_names_the_account_the_launch_runs_on() {
-        let mut cli_commands = crate::models::CliCommandSettings::default();
-        cli_commands.claude.fresh = "CLAUDE_CONFIG_DIR=/accounts/work claude".to_string();
-        cli_commands.claude.resume =
-            "CLAUDE_CONFIG_DIR=/accounts/review claude --resume".to_string();
-        cli_commands.account_selector_dirs.insert(
-            "CLAUDE_CONFIG_DIR".to_string(),
-            PathBuf::from("/accounts/chosen"),
-        );
-
-        assert_eq!(
-            team_launch_account_dir(CliTool::Claude, &cli_commands, LaunchMode::Fresh),
-            Some(PathBuf::from("/accounts/work")),
-            "the base command the launch renders from is the one that decides"
-        );
-        assert_eq!(
-            team_launch_account_dir(CliTool::Claude, &cli_commands, LaunchMode::Resume),
-            Some(PathBuf::from("/accounts/review")),
-            "a resume renders from the resume base, so it resolves that one"
-        );
-    }
-
-    #[test]
-    fn a_base_command_without_a_selector_leaves_the_chosen_account_in_place() {
-        let mut cli_commands = crate::models::CliCommandSettings::default();
-        cli_commands.account_selector_dirs.insert(
-            "CLAUDE_CONFIG_DIR".to_string(),
-            PathBuf::from("/accounts/chosen"),
-        );
-
-        assert_eq!(
-            team_launch_account_dir(CliTool::Claude, &cli_commands, LaunchMode::Fresh),
-            Some(PathBuf::from("/accounts/chosen"))
-        );
-    }
-
-    // Regression: bf4bd4f resolved the default team-launch account through
-    // `dirs::home_dir()`. In the native Windows app that is the Windows user
-    // profile, while an unqualified managed Claude command runs inside WSL and
-    // reads the WSL user's `~/.claude` — the root `PlatformPaths` already maps
-    // to its UNC form. The capture and the launch have to name one account, so
-    // the default comes from that authority. (On Linux the two agree, so this
-    // pins the contract rather than reproducing the Windows-only split.)
-    #[test]
-    fn the_default_claude_account_is_the_root_the_platform_authority_names() {
-        let resolved = team_launch_account_dir(
-            CliTool::Claude,
-            &crate::models::CliCommandSettings::default(),
-            LaunchMode::Fresh,
-        )
-        .expect("claude resolves a default account dir");
-
-        assert_eq!(
-            resolved,
-            crate::provider::platform_paths::PlatformPaths::claude_dir()
         );
     }
 }

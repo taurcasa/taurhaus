@@ -13,7 +13,6 @@ use taurhaus_lib::logging::emit_global;
 
 use super::compaction::prune_state_if_session_mismatch;
 use crate::coordination::domain::{DeliveryLease, HealthState};
-use crate::coordination::effort_default::RecordedEffortDefault;
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
 
@@ -56,19 +55,6 @@ pub struct MemberRuntimeRecord {
         skip_serializing_if = "Option::is_none"
     )]
     pub applied_effort: Option<String>,
-    /// The level taurhaus itself last put into `applied_effort`, at the launch
-    /// or relaunch that committed.
-    ///
-    /// taurhaus's own, never mesh's: the two fields agreeing means the level in
-    /// force is the one taurhaus launched at, and only a divergence is proof
-    /// that the harness was asked to change it — which is what a settings
-    /// restore needs before it writes over a value it may not own.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub launch_effort: Option<String>,
-    /// The user's own saved effort default, captured before the harness's
-    /// runtime effort command overwrote it. Put back when the member stops.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub effort_default: Option<RecordedEffortDefault>,
     /// Relaunches that tried and failed to reach one assignment's effort.
     ///
     /// A failed relaunch leaves `applied_effort` at the level the session was
@@ -462,10 +448,6 @@ fn parse_runtime_record(
         last_seen_at: Option<DateTime<Utc>>,
         #[serde(default, alias = "appliedEffort")]
         applied_effort: Option<String>,
-        #[serde(default, alias = "launchEffort")]
-        launch_effort: Option<String>,
-        #[serde(default)]
-        effort_default: Option<RecordedEffortDefault>,
         #[serde(default, alias = "effortResumeFailure")]
         effort_resume_failure: Option<EffortResumeFailure>,
     }
@@ -495,11 +477,6 @@ fn parse_runtime_record(
             .applied_effort
             .map(|level| level.trim().to_string())
             .filter(|level| !level.is_empty()),
-        launch_effort: wire
-            .launch_effort
-            .map(|level| level.trim().to_string())
-            .filter(|level| !level.is_empty()),
-        effort_default: wire.effort_default,
         effort_resume_failure: wire.effort_resume_failure,
     })
 }
@@ -737,8 +714,6 @@ mod tests {
             attached_at: Some(ts("2026-03-01T21:00:10Z")),
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
             applied_effort: None,
-            launch_effort: None,
-            effort_default: None,
             effort_resume_failure: None,
         }
     }
@@ -1072,8 +1047,6 @@ mod tests {
             attached_at: None,
             last_seen_at: None,
             applied_effort: None,
-            launch_effort: None,
-            effort_default: None,
             effort_resume_failure: None,
         };
 

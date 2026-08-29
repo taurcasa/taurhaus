@@ -290,25 +290,6 @@ impl CoordinationOrchestrator {
                 .push(step_succeeded("kill_pane", "no pane id recorded"));
         }
 
-        // Give the operator their own saved effort default back, now that the
-        // session that would rewrite it is gone. A teardown that could not
-        // terminate the pane keeps the record instead: the level the harness
-        // wrote is still in force, and clearing it here would leave a later
-        // teardown nothing to put back. A no-op for a harness whose runtime
-        // effort command has no such side effect, which is why the effort
-        // resume can reuse this teardown without undoing its own switch.
-        if diagnostics
-            .steps
-            .iter()
-            .any(|step| step.step == "kill_pane" && step.success)
-        {
-            crate::coordination::effort_default::restore_member_effort_default(
-                &self.teams_dir,
-                team_name,
-                member_name,
-            );
-        }
-
         diagnostics
     }
 

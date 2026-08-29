@@ -741,8 +741,6 @@ mod tests {
                 attached_at: Some(ts("2026-03-07T13:31:00+00:00")),
                 last_seen_at: Some(ts("2026-03-07T13:31:05+00:00")),
                 applied_effort: None,
-                launch_effort: None,
-                effort_default: None,
                 effort_resume_failure: None,
             },
         )

@@ -79,14 +79,6 @@ pub struct MemberActivationContext {
     /// leaves it unset and keeps starting fresh: members share a project, and a
     /// checkpoint-based resume would pick up another member's conversation.
     pub resume_session_id: Option<String>,
-    /// Account directory this activation launches on, resolved once from the
-    /// operator's launch settings.
-    ///
-    /// The launch command and anything that edits that account's own files —
-    /// capturing the operator's effort default, putting it back — read the
-    /// same value, so taurhaus never writes to a directory the member's
-    /// process does not read.
-    pub account_dir: Option<PathBuf>,
 }
 
 impl MemberActivationContext {
@@ -108,7 +100,6 @@ impl MemberActivationContext {
             roster_policy: MemberActivationRosterPolicy::Preseeded,
             runtime_commit_policy: MemberActivationRuntimeCommitPolicy::Staged,
             resume_session_id: None,
-            account_dir: None,
         })
     }
 
@@ -129,7 +120,6 @@ impl MemberActivationContext {
             roster_policy: MemberActivationRosterPolicy::CreateMember,
             runtime_commit_policy: MemberActivationRuntimeCommitPolicy::FinalizeAtEnd,
             resume_session_id: None,
-            account_dir: None,
         })
     }
 
@@ -160,7 +150,6 @@ impl MemberActivationContext {
             roster_policy: MemberActivationRosterPolicy::ExistingMember,
             runtime_commit_policy: MemberActivationRuntimeCommitPolicy::FinalizeAtEnd,
             resume_session_id: None,
-            account_dir: None,
         }
     }
 }

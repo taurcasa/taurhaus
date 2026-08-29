@@ -222,8 +222,6 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         attached_at: None,
         last_seen_at: None,
         applied_effort: None,
-        launch_effort: None,
-        effort_default: None,
         effort_resume_failure: None,
     }
 }
@@ -457,29 +455,6 @@ pub(super) fn build_member_activation_launch_command(
     )
 }
 
-/// The account dir a launch command names, or none where the tool's own
-/// default already is the one it would name.
-///
-/// The renderer says nothing where the harness would land on its default dir
-/// anyway — the command stays the one the operator wrote. Capture and restore
-/// resolve the same account through [`team_launch_account_dir`], which always
-/// names it.
-fn team_launch_account_dir_for_command(
-    cli_tool: CliTool,
-    cli_commands: &CliCommandSettings,
-) -> Option<std::path::PathBuf> {
-    let capabilities = spec(cli_tool).capabilities;
-    capabilities
-        .team_config_namespace
-        .then(|| configured_default_dir(cli_tool))
-        .flatten()
-        .or_else(|| {
-            capabilities
-                .account_selector
-                .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
-        })
-}
-
 /// The token a configured resume command uses for "whatever ran last".
 const RESUME_LAST_FLAG: &str = "--last";
 /// The token the Settings resume command uses for an explicit conversation.
@@ -666,7 +641,15 @@ fn render_team_launch_command(
     // Code reads on its own — `TAURHAUS_CLAUDE_DIR` moves it, and a member
     // launched without the assignment writes its inbox where no team reads.
     let capabilities = spec(cli_tool).capabilities;
-    let team_config_dir = team_launch_account_dir_for_command(cli_tool, cli_commands)
+    let team_config_dir = capabilities
+        .team_config_namespace
+        .then(|| configured_default_dir(cli_tool))
+        .flatten()
+        .or_else(|| {
+            capabilities
+                .account_selector
+                .and_then(|selector| cli_commands.account_selector_dirs.get(selector).cloned())
+        })
         .map(|dir| to_launch_namespace(&dir));
     let rendered = LaunchSpec {
         tool: cli_tool,
