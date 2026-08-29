@@ -82,6 +82,10 @@ pub(crate) fn dispatch(
             handle_project_transcript(&request.id, &request.params)
         }
         protocol::method::REFRESH_USAGE => handle_refresh_usage(&request.id, &request.params),
+        protocol::method::LIST_WORKFLOW_RUNS => {
+            handle_list_workflow_runs(&request.id, &request.params)
+        }
+        protocol::method::GET_WORKFLOW_RUN => handle_get_workflow_run(&request.id, &request.params),
         _ => DaemonResponse::err(
             &request.id,
             "UNKNOWN_METHOD",
@@ -139,6 +143,28 @@ fn handle_project_transcript(id: &str, params: &serde_json::Value) -> DaemonResp
             .map(|path| path.display().to_string()),
         },
     )
+}
+
+fn handle_list_workflow_runs(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::WorkflowSessionParams = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match crate::workflow_runs::list_runs_for_session_id(&params.session_id) {
+        Ok(runs) => DaemonResponse::ok(id, runs),
+        Err(error) => DaemonResponse::err(id, "WORKFLOW_RUN_ERROR", error),
+    }
+}
+
+fn handle_get_workflow_run(id: &str, params: &serde_json::Value) -> DaemonResponse {
+    let params: protocol::WorkflowRunParams = match serde_json::from_value(params.clone()) {
+        Ok(params) => params,
+        Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
+    };
+    match crate::workflow_runs::get_run_for_session_id(&params.session_id, &params.run_id) {
+        Ok(run) => DaemonResponse::ok(id, run),
+        Err(error) => DaemonResponse::err(id, "WORKFLOW_RUN_ERROR", error),
+    }
 }
 
 pub(crate) fn handle_ping(id: &str, start_time: Instant) -> DaemonResponse {
@@ -567,5 +593,60 @@ mod tests {
             result.transcript.as_deref(),
             Some(transcript.display().to_string().as_str())
         );
+    }
+
+    #[test]
+    fn workflow_handlers_scan_the_daemon_hosts_scratch_session() {
+        let config = TempDir::new().expect("config");
+        let session_dir = config.path().join("projects/project/session-123");
+        let run_id = "wf_daemon-123";
+        std::fs::create_dir_all(session_dir.join("subagents/workflows").join(run_id))
+            .expect("run dir");
+        std::fs::create_dir_all(session_dir.join("workflows/scripts")).expect("scripts dir");
+        std::fs::write(
+            session_dir
+                .join("workflows/scripts")
+                .join(format!("daemon-{run_id}.js")),
+            "export const meta = { name: 'daemon', description: 'daemon fixture', phases: [{ title: 'Run' }] }\n",
+        )
+        .expect("script");
+        std::fs::write(
+            session_dir
+                .join("subagents/workflows")
+                .join(run_id)
+                .join("journal.jsonl"),
+            "",
+        )
+        .expect("journal");
+        let workflow_tool = crate::session_scanner::cli_tool::all()
+            .iter()
+            .find(|entry| entry.capabilities.workflow_runs)
+            .expect("workflow tool")
+            .tool;
+        let _scan = install_detection_override(
+            workflow_tool,
+            AccountScan {
+                config_dirs: vec![config.path().to_path_buf()],
+                accounts: Vec::new(),
+            },
+        );
+
+        let listed =
+            handle_list_workflow_runs("req-list", &serde_json::json!({"session_id":"session-123"}));
+        assert!(listed.is_ok(), "{listed:?}");
+        let summaries: Vec<crate::workflow_runs::WorkflowRunSummary> =
+            serde_json::from_value(listed.result.expect("list result")).expect("decode list");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].run_id, run_id);
+
+        let fetched = handle_get_workflow_run(
+            "req-get",
+            &serde_json::json!({"session_id":"session-123","run_id":run_id}),
+        );
+        assert!(fetched.is_ok(), "{fetched:?}");
+        let run: crate::workflow_runs::WorkflowRun =
+            serde_json::from_value(fetched.result.expect("get result")).expect("decode run");
+        assert_eq!(run.name, "daemon");
+        assert_eq!(run.status, crate::workflow_runs::WorkflowRunStatus::Live);
     }
 }

@@ -458,6 +458,39 @@ describe('ipc module', () => {
     })
   })
 
+  describe('workflow run IPC', () => {
+    it('invokes the three workflow commands with session and run ids', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke
+        .mockResolvedValueOnce([{ run_id: 'wf_123', name: 'feature-pr' }])
+        .mockResolvedValueOnce({ run_id: 'wf_123', agents: [], result: null })
+        .mockResolvedValueOnce('| W2a | Codex | Opus | 1 | 0 | tbd |')
+
+      await expect(ipc.listWorkflowRuns('session-123')).resolves.toHaveLength(1)
+      await expect(ipc.getWorkflowRun('session-123', 'wf_123')).resolves.toMatchObject({ run_id: 'wf_123' })
+      await expect(ipc.workflowLedgerRow('session-123', 'wf_123')).resolves.toContain('| W2a |')
+
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(1, 'list_workflow_runs', { sessionId: 'session-123' })
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(2, 'get_workflow_run', { sessionId: 'session-123', runId: 'wf_123' })
+      expect(tauriCore.invoke).toHaveBeenNthCalledWith(3, 'workflow_ledger_row', { sessionId: 'session-123', runId: 'wf_123' })
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('returns workflow-shaped mock data outside Tauri', async () => {
+      delete window.__TAURI_INTERNALS__
+
+      const summaries = await ipc.listWorkflowRuns('mock-workflow-session')
+      const run = await ipc.getWorkflowRun('mock-workflow-session', summaries[0].run_id)
+      const row = await ipc.workflowLedgerRow('mock-workflow-session', summaries[0].run_id)
+
+      expect(summaries[0]).not.toHaveProperty('agents')
+      expect(summaries[0]).not.toHaveProperty('result')
+      expect(run.agents.length).toBeGreaterThan(0)
+      expect(run).toHaveProperty('result')
+      expect(row).toMatch(/^\| .+ \| tbd \|$/)
+    })
+  })
+
   // -----------------------------------------------------------------------
   // Search IPC functions
   // -----------------------------------------------------------------------

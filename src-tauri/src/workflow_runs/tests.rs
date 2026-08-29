@@ -358,3 +358,91 @@ fn ledger_row_renders_only_the_procedure_return_shape() {
     run.result = Some(json!("plain workflow result"));
     assert_eq!(ledger_row(&run), None);
 }
+
+struct EnvRestore {
+    values: Vec<(&'static str, Option<std::ffi::OsString>)>,
+}
+
+impl EnvRestore {
+    fn set(paths: &[(&'static str, &Path)]) -> Self {
+        let values = paths
+            .iter()
+            .map(|(key, path)| {
+                let previous = std::env::var_os(key);
+                std::env::set_var(key, path);
+                (*key, previous)
+            })
+            .collect();
+        Self { values }
+    }
+}
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        for (key, value) in self.values.drain(..).rev() {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+}
+
+#[test]
+fn ipc_command_implementations_resolve_only_scratch_claude_session_dirs() {
+    let _env_guard = crate::test_support::acquire_env_test_guard();
+    let fixture = live_fixture();
+    let data_dir = fixture._temp.path().join("taurhaus-data");
+    let config_dir = fixture._temp.path().to_path_buf();
+    fs::create_dir_all(&data_dir).expect("data dir");
+    let _env = EnvRestore::set(&[
+        ("TAURHAUS_DATA_DIR", &data_dir),
+        ("TAURHAUS_CLAUDE_DIR", &config_dir),
+        ("CLAUDE_CONFIG_DIR", &config_dir),
+    ]);
+    let workflow_tool = crate::session_scanner::cli_tool::all()
+        .iter()
+        .find(|entry| entry.capabilities.workflow_runs)
+        .expect("workflow tool")
+        .tool;
+    let _accounts = crate::session_scanner::accounts::install_detection_override(
+        workflow_tool,
+        crate::session_scanner::accounts::AccountScan {
+            config_dirs: vec![config_dir],
+            accounts: Vec::new(),
+        },
+    );
+    write(
+        &fixture
+            .session_dir
+            .join("workflows")
+            .join(format!("{LIVE_RUN_ID}.json")),
+        &completed_summary(LIVE_RUN_ID, "completed").to_string(),
+    );
+    let provider = crate::ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+
+    let summaries = list_workflow_runs_impl(&provider, "session-123").expect("list runs");
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].run_id, LIVE_RUN_ID);
+    let summary_json = serde_json::to_value(&summaries[0]).expect("summary json");
+    assert!(summary_json.get("agents").is_none());
+    assert!(summary_json.get("result").is_none());
+
+    let run = get_workflow_run_impl(&provider, "session-123", LIVE_RUN_ID).expect("get run");
+    assert_eq!(run.agents.len(), 2);
+    assert!(run.result.is_some());
+    assert_eq!(
+        workflow_ledger_row_impl(&provider, "session-123", LIVE_RUN_ID)
+            .expect("ledger command")
+            .as_deref(),
+        Some("| W2a \\| scanner | Codex | Opus conformance, Opus operational | 2 | 1 | tbd |")
+    );
+
+    let error = get_workflow_run_impl(&provider, "missing-session", LIVE_RUN_ID)
+        .expect_err("unknown session");
+    assert!(error.contains("Session not found"), "{error}");
+}

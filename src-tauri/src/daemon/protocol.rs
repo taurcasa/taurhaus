@@ -107,6 +107,8 @@ pub mod method {
     pub const LIST_ACCOUNTS: &str = "list_accounts";
     pub const PROJECT_TRANSCRIPT: &str = "project_transcript";
     pub const REFRESH_USAGE: &str = "refresh_usage";
+    pub const LIST_WORKFLOW_RUNS: &str = "list_workflow_runs";
+    pub const GET_WORKFLOW_RUN: &str = "get_workflow_run";
 
     // Command Center — session management
     pub const LIST_DISPLAY_SESSIONS: &str = "list_display_sessions";
@@ -162,6 +164,19 @@ pub struct ProjectTranscriptParams {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProjectTranscriptResult {
     pub transcript: Option<String>,
+}
+
+/// `list_workflow_runs` — completed and live runs under one Claude session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowSessionParams {
+    pub session_id: String,
+}
+
+/// `get_workflow_run` — one full run including agents and result.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowRunParams {
+    pub session_id: String,
+    pub run_id: String,
 }
 
 /// `ping` — health check
