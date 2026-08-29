@@ -6,13 +6,18 @@
  * timer for the whole app: a node does not get a timer of its own, and nothing
  * polls while nothing live is expanded.
  *
- * The cadence is deliberately narrow:
+ * The cadence is deliberately narrow, and split in two so the expensive call
+ * stays rare while a run that starts later is still found:
  *
  * - watching a session lists its runs once, immediately;
- * - the 2 s loop runs only while some watched session has an *expanded* live
- *   run, and stops by itself when the last one finishes or is collapsed;
+ * - the 2 s loop carries only the sessions that have an *expanded* live run,
+ *   and stops by itself when the last one finishes or is collapsed;
  * - `get_workflow_run` — the expensive call, it reads every agent transcript —
- *   is made only for an expanded live run.
+ *   is made only for an expanded live run;
+ * - every other watched session is re-listed every 10 s. `list_workflow_runs`
+ *   reads a directory and, for a live run, one journal; a run that starts after
+ *   a node is already on screen is otherwise invisible for as long as it is
+ *   watched, because the snapshot never announces itself.
  *
  * A failed poll keeps the last good runs on screen and records why, because a
  * run that is still on disk has not stopped existing just because one call to
@@ -21,7 +26,10 @@
 
 import { getWorkflowRun, listWorkflowRuns } from './ipc.js'
 
-const REFRESH_INTERVAL_MS = 2000
+/** How often an expanded live run is re-read in full. */
+const DETAIL_INTERVAL_MS = 2000
+/** How often every other watched session is re-listed, looking for a new run. */
+const DISCOVERY_INTERVAL_MS = 10_000
 
 const EMPTY_SESSION = Object.freeze({ runs: Object.freeze([]), loaded: false, error: null })
 
@@ -32,7 +40,8 @@ const sessions = $state({ byId: {} })
 const watchers = new Map()
 /** sessionId of every refresh currently in flight, so ticks never overlap. */
 const inFlight = new Set()
-let timer = null
+let detailTimer = null
+let discoveryTimer = null
 
 function sessionState(sessionId) {
   if (!sessions.byId[sessionId]) {
@@ -68,29 +77,46 @@ export function isWorkflowRunCollapsed(sessionId, id) {
   return Boolean(state?.collapsed[String(id)])
 }
 
-function hasExpandedLiveRun() {
-  for (const sessionId of watchers.keys()) {
-    const state = sessions.byId[sessionId]
-    if (!state) continue
-    if (state.runs.some((run) => isLive(run) && !state.collapsed[runId(run)])) return true
+function hasExpandedLiveRun(sessionId) {
+  const state = sessions.byId[sessionId]
+  if (!state) return false
+  return state.runs.some((run) => isLive(run) && !state.collapsed[runId(run)])
+}
+
+/** Watched sessions on one side of the expanded-live-run line. */
+function watchedSessions(expanded) {
+  return [...watchers.keys()].filter((sessionId) => hasExpandedLiveRun(sessionId) === expanded)
+}
+
+function stopTimers() {
+  if (detailTimer !== null) {
+    clearTimeout(detailTimer)
+    detailTimer = null
   }
-  return false
+  if (discoveryTimer !== null) {
+    clearTimeout(discoveryTimer)
+    discoveryTimer = null
+  }
 }
 
-function stopTimer() {
-  if (timer === null) return
-  clearTimeout(timer)
-  timer = null
+function tick(sessionIds) {
+  return Promise.allSettled(sessionIds.map((sessionId) => refresh(sessionId))).then(scheduleTicks)
 }
 
-function scheduleTick() {
-  if (timer !== null) return
-  if (!hasExpandedLiveRun()) return
-  timer = setTimeout(() => {
-    timer = null
-    const pending = [...watchers.keys()].map((sessionId) => refresh(sessionId))
-    void Promise.allSettled(pending).then(scheduleTick)
-  }, REFRESH_INTERVAL_MS)
+function scheduleTicks() {
+  if (detailTimer === null && watchedSessions(true).length > 0) {
+    detailTimer = setTimeout(() => {
+      detailTimer = null
+      void tick(watchedSessions(true))
+    }, DETAIL_INTERVAL_MS)
+  }
+
+  if (discoveryTimer === null && watchers.size > 0) {
+    discoveryTimer = setTimeout(() => {
+      discoveryTimer = null
+      void tick(watchedSessions(false))
+    }, DISCOVERY_INTERVAL_MS)
+  }
 }
 
 async function refresh(sessionId) {
@@ -137,7 +163,7 @@ export function watchWorkflowSession(sessionId) {
   watchers.set(id, (watchers.get(id) ?? 0) + 1)
   if (watchers.get(id) === 1) {
     sessionState(id)
-    void refresh(id).then(scheduleTick)
+    void refresh(id).then(scheduleTicks)
   }
 
   return () => {
@@ -147,7 +173,7 @@ export function watchWorkflowSession(sessionId) {
       return
     }
     watchers.delete(id)
-    if (watchers.size === 0) stopTimer()
+    if (watchers.size === 0) stopTimers()
   }
 }
 
@@ -157,7 +183,7 @@ export function toggleWorkflowRun(sessionId, id) {
   const key = String(id)
   if (state.collapsed[key]) {
     delete state.collapsed[key]
-    void refresh(String(sessionId)).then(scheduleTick)
+    void refresh(String(sessionId)).then(scheduleTicks)
     return
   }
   state.collapsed[key] = true
@@ -165,7 +191,7 @@ export function toggleWorkflowRun(sessionId, id) {
 
 /** @public Test seam: drop every watcher, timer and cached run. */
 export function resetWorkflowRunsForTest() {
-  stopTimer()
+  stopTimers()
   watchers.clear()
   inFlight.clear()
   sessions.byId = {}

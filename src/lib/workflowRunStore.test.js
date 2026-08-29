@@ -93,7 +93,7 @@ describe('workflowRunStore', () => {
     unwatch()
   })
 
-  it('stops polling once no run is live any more', async () => {
+  it('drops the two-second poll once no run is live any more', async () => {
     listWorkflowRuns.mockResolvedValue([summary()])
     const unwatch = watchWorkflowSession('sess-1')
     await vi.advanceTimersByTimeAsync(0)
@@ -101,10 +101,53 @@ describe('workflowRunStore', () => {
     listWorkflowRuns.mockResolvedValue([summary({ status: 'completed', finished_at: 9000 })])
     await vi.advanceTimersByTimeAsync(2000)
     const listCalls = listWorkflowRuns.mock.calls.length
+    const detailCalls = getWorkflowRun.mock.calls.length
 
-    await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(4000)
     expect(listWorkflowRuns).toHaveBeenCalledTimes(listCalls)
+    expect(getWorkflowRun).toHaveBeenCalledTimes(detailCalls)
     unwatch()
+  })
+
+  // Regression: 9e15e4e listed a session once and then refused to look again
+  // until a live run was already in the cache, so a canvas opened before the
+  // workflow started never discovered it — the run stayed invisible for as long
+  // as the node was on screen.
+  it('finds a run that starts after the first listing came back empty', async () => {
+    listWorkflowRuns.mockResolvedValue([])
+    const unwatch = watchWorkflowSession('sess-1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(workflowSessionRuns('sess-1').runs).toEqual([])
+
+    listWorkflowRuns.mockResolvedValue([summary()])
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    expect(workflowSessionRuns('sess-1').runs.map((run) => run.run_id)).toEqual(['wf_live'])
+    expect(getWorkflowRun).toHaveBeenCalledWith('sess-1', 'wf_live')
+    unwatch()
+  })
+
+  // Regression: 9e15e4e refreshed every watched session on the two-second tick
+  // as soon as any one of them had a live run, so a ten-member mesh ran ten
+  // `list_workflow_runs` per tick for one workflow.
+  it('spends the fast tick only on the sessions with an expanded live run', async () => {
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-live' ? [summary()] : [])
+    )
+
+    const live = watchWorkflowSession('sess-live')
+    const quiet = watchWorkflowSession('sess-quiet')
+    await vi.advanceTimersByTimeAsync(0)
+
+    const quietCalls = listWorkflowRuns.mock.calls.filter(([id]) => id === 'sess-quiet').length
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(listWorkflowRuns.mock.calls.filter(([id]) => id === 'sess-live').length).toBe(2)
+    expect(listWorkflowRuns.mock.calls.filter(([id]) => id === 'sess-quiet').length).toBe(
+      quietCalls
+    )
+    live()
+    quiet()
   })
 
   it('stops fetching a live run the viewer collapsed, and resumes on expand', async () => {
