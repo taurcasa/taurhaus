@@ -12,6 +12,7 @@ function createDefaults() {
       listAccounts: { accounts: [], source: 'native', degraded: false, error: null },
       setProjectAccount: undefined,
       getProjectTasks: { tasks: [], errors: [] },
+      getArchivedSessions: { sessions: [], errors: [] },
       listWorkflowRuns: [],
       getWorkflowRun: null,
       workflowLedgerRow: null,

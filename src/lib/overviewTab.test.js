@@ -547,6 +547,6 @@ describe('OverviewTab workflow runs', () => {
     await waitFor(() => {
       expect(screen.getByTestId('overview-workflow-runs')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    expect(screen.getAllByTestId('workflow-run-row')[0]).toHaveTextContent('feature-pr')
   })
 })

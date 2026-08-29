@@ -3,13 +3,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte'
 import '@testing-library/jest-dom/vitest'
 
 vi.mock('../ipc.js', () => ({
+  getArchivedSessions: vi.fn(),
   getProjectTasks: vi.fn(),
   listWorkflowRuns: vi.fn(),
   getWorkflowRun: vi.fn(),
   workflowLedgerRow: vi.fn(),
 }))
 
-const { getProjectTasks, getWorkflowRun, listWorkflowRuns, workflowLedgerRow } =
+const { getArchivedSessions, getProjectTasks, getWorkflowRun, listWorkflowRuns, workflowLedgerRow } =
   await import('../ipc.js')
 const WorkflowRunsPanel = (await import('./WorkflowRunsPanel.svelte')).default
 
@@ -64,6 +65,7 @@ function renderPanel(props = {}) {
 describe('WorkflowRunsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getArchivedSessions.mockResolvedValue({ sessions: [], errors: [] })
     getProjectTasks.mockResolvedValue({ tasks: [] })
     listWorkflowRuns.mockResolvedValue([])
     getWorkflowRun.mockResolvedValue(DETAIL)
@@ -195,6 +197,7 @@ describe('WorkflowRunsPanel', () => {
 describe('WorkflowRunsPanel theming', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getArchivedSessions.mockResolvedValue({ sessions: [], errors: [] })
     getProjectTasks.mockResolvedValue({ tasks: [] })
     listWorkflowRuns.mockResolvedValue([COMPLETED])
     getWorkflowRun.mockResolvedValue(DETAIL)
@@ -216,5 +219,148 @@ describe('WorkflowRunsPanel theming', () => {
 
     await rerender({ projectId: 'proj-1', sessions: [{ session_id: 'sess-1' }], dark: false })
     expect(screen.getByTestId('overview-workflow-runs')).not.toHaveClass('is-dark')
+  })
+})
+
+const LIVE = {
+  run_id: 'wf_live',
+  name: 'feature-pr',
+  description: 'Implement, review, and gate a feature',
+  phases: ['Implement'],
+  status: 'live',
+  started_at: 9000,
+  finished_at: null,
+  totals: { agents: 3, done: 1, tokens: 2100, tool_calls: 4, duration_ms: null },
+}
+
+function liveSession(sessionId, liveRuns = 1) {
+  return {
+    session_id: sessionId,
+    workflow_activity: { live_runs: liveRuns, last_write_at: 1_787_949_436_814 },
+  }
+}
+
+describe('WorkflowRunsPanel run lifecycle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getArchivedSessions.mockResolvedValue({ sessions: [], errors: [] })
+    getProjectTasks.mockResolvedValue({ tasks: [] })
+    listWorkflowRuns.mockResolvedValue([])
+    getWorkflowRun.mockResolvedValue(DETAIL)
+    workflowLedgerRow.mockResolvedValue(null)
+  })
+
+  // Regression: d010cee keyed the reload on the set of session ids alone. A run
+  // starts and ends inside a session that is already listed, so the panel
+  // returned early and a run that began after the tab was open never appeared.
+  it('picks up a run that starts in a session it already knows', async () => {
+    const { rerender } = renderPanel({ sessions: [{ session_id: 'sess-1' }] })
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledWith('sess-1'))
+    expect(screen.queryByTestId('workflow-run-row')).not.toBeInTheDocument()
+
+    listWorkflowRuns.mockResolvedValue([LIVE])
+    await rerender({ projectId: 'proj-1', sessions: [liveSession('sess-1')] })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('Live')
+    })
+  })
+
+  // Regression: the same key left a finished run showing as live forever
+  // (d010cee).
+  it('notices a live run finishing in a session it already knows', async () => {
+    listWorkflowRuns.mockResolvedValue([LIVE])
+    const { rerender } = renderPanel({ sessions: [liveSession('sess-1')] })
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('Live')
+    })
+
+    listWorkflowRuns.mockResolvedValue([{ ...LIVE, status: 'completed', finished_at: 20_000 }])
+    await rerender({ projectId: 'proj-1', sessions: [{ session_id: 'sess-1' }] })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('Completed')
+    })
+  })
+
+  it('keeps the open run selected while a live run refreshes', async () => {
+    listWorkflowRuns.mockResolvedValue([LIVE])
+    const { rerender } = renderPanel({ sessions: [liveSession('sess-1')] })
+    await waitFor(() => expect(screen.getByTestId('workflow-run-row')).toBeInTheDocument())
+    await fireEvent.click(screen.getByTestId('workflow-run-row'))
+    await waitFor(() => expect(screen.getByTestId('workflow-run-detail')).toBeInTheDocument())
+
+    await rerender({ projectId: 'proj-1', sessions: [liveSession('sess-1', 2)] })
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledTimes(2))
+
+    expect(screen.getByTestId('workflow-run-detail')).toBeInTheDocument()
+  })
+})
+
+describe('WorkflowRunsPanel session coverage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getArchivedSessions.mockResolvedValue({ sessions: [], errors: [] })
+    getProjectTasks.mockResolvedValue({ tasks: [] })
+    listWorkflowRuns.mockResolvedValue([])
+    getWorkflowRun.mockResolvedValue(DETAIL)
+    workflowLedgerRow.mockResolvedValue(null)
+  })
+
+  // Regression: d010cee named a project's sessions from the live snapshot and
+  // `get_project_tasks`, and the latter returns only unarchived tasks. Once a
+  // session ended and its tasks archived, its runs left the history — which is
+  // exactly the history this panel exists to show.
+  it('asks the archived sessions of the project too', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [{ session_id: 'sess-archived', started_at: '2026-08-01T10:00:00Z' }],
+      errors: [],
+    })
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-archived' ? [COMPLETED] : [])
+    )
+
+    renderPanel({ sessions: [] })
+
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledWith('sess-archived'))
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    })
+  })
+
+  it('keeps the list when the archived sessions cannot be read', async () => {
+    getArchivedSessions.mockRejectedValue(new Error('no cache'))
+    listWorkflowRuns.mockResolvedValue([COMPLETED])
+
+    renderPanel({ sessions: [{ session_id: 'sess-1' }] })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    })
+  })
+
+  // Regression: the cap was applied to a set that had no order, so a project
+  // with more archived sessions than the cap could lose its live one (d010cee).
+  it('asks the newest sessions first and says so when it stopped short', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: Array.from({ length: 40 }, (_unused, index) => ({
+        session_id: `sess-old-${index}`,
+      })),
+      errors: [],
+    })
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-now' ? [COMPLETED] : [])
+    )
+
+    renderPanel({ sessions: [{ session_id: 'sess-now' }] })
+
+    await waitFor(() => expect(screen.getByTestId('workflow-run-row')).toBeInTheDocument())
+    const asked = listWorkflowRuns.mock.calls.map(([sessionId]) => sessionId)
+    expect(asked[0]).toBe('sess-now')
+    expect(asked).toContain('sess-old-0')
+    expect(asked.length).toBeLessThan(41)
+    expect(screen.getByTestId('overview-workflow-runs')).toHaveTextContent(
+      `newest ${asked.length} sessions`
+    )
   })
 })

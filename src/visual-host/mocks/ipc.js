@@ -48,6 +48,10 @@ export function getProjectTasks(...args) {
   return asyncResult('getProjectTasks', args)
 }
 
+export function getArchivedSessions(...args) {
+  return asyncResult('getArchivedSessions', args)
+}
+
 export function listWorkflowRuns(...args) {
   return asyncResult('listWorkflowRuns', args)
 }

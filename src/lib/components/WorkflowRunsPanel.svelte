@@ -3,29 +3,44 @@
    * Workflow run history for one project, as a section of its Overview tab.
    *
    * The run APIs are keyed by Claude session, and a project has no single
-   * session, so this asks the sessions it can name: the ones running right now,
-   * plus the ones the project's tasks came from. A session that cannot be read
-   * is dropped from the merge rather than emptying the list — the other
-   * sessions' runs are still true.
+   * session, so this asks the sessions it can name, newest first: the ones
+   * running right now, the ones the project's open tasks came from, and its
+   * archived sessions — a session's tasks archive when it ends, which is
+   * precisely when its runs become history. A session that cannot be read is
+   * dropped from the merge rather than emptying the list — the other sessions'
+   * runs are still true.
    *
    * The section hides itself when nothing came back, the way the sibling
    * Sessions and Relationships sections do.
    */
   import {
+    getArchivedSessions,
     getProjectTasks,
     getWorkflowRun,
     listWorkflowRuns,
     workflowLedgerRow,
   } from '../ipc.js'
-  import { formatTokens, collectWorkflowSessionIds, runListRow } from '../workflowRuns.js'
+  import {
+    collectWorkflowSessionIds,
+    formatTokens,
+    runListRow,
+    workflowSessionId,
+  } from '../workflowRuns.js'
   import { themeTokens } from '../themeTokens.js'
 
   let { projectId = '', sessions = [], dark = false } = $props()
 
-  /** Enough sessions to cover a project's recent history without a fan-out. */
-  const MAX_SESSIONS = 8
+  /**
+   * How many sessions one project view will ask about. A long-lived project has
+   * hundreds of archived sessions and almost none of them ran a workflow, so
+   * the list is cut — but only after it has been ordered newest first, and the
+   * header says when it was cut.
+   */
+  const MAX_SESSIONS = 24
 
   let runs = $state([])
+  let askedSessions = $state(0)
+  let sessionsTruncated = $state(false)
   let selected = $state(null)
   let detail = $state(null)
   let ledgerRow = $state(null)
@@ -37,6 +52,22 @@
   // load effect depends on this string and never on the array itself.
   const liveSessionKey = $derived(
     collectWorkflowSessionIds(Array.isArray(sessions) ? sessions : []).join('\u0000')
+  )
+  // A run starts and ends inside a session that is already listed, so the set
+  // of sessions cannot see it happen. The live-run count in the session
+  // activity hint can: it is the one field that moves when a run begins or
+  // finishes, and the daemon's change signature carries it, so this key moves
+  // exactly once per transition and not once per agent write.
+  const liveRunKey = $derived(
+    (Array.isArray(sessions) ? sessions : [])
+      .map((session) => {
+        const activity = session?.workflow_activity ?? session?.workflowActivity
+        const liveRuns = Number(activity?.live_runs ?? activity?.liveRuns)
+        if (!Number.isFinite(liveRuns) || liveRuns <= 0) return ''
+        return `${workflowSessionId(session)}:${liveRuns}`
+      })
+      .filter(Boolean)
+      .join('\u0000')
   )
   const rows = $derived(runs.map((run) => ({ ...runListRow(run), sessionId: run.sessionId })))
   const detailAgents = $derived(Array.isArray(detail?.agents) ? detail.agents : [])
@@ -53,43 +84,62 @@
   // rather than an effect teardown decides which answer is still wanted, so a
   // re-render during a load cannot cancel it.
   let loadedKey = ''
+  let loadedRunKey = ''
   let loadToken = 0
 
   $effect(() => {
     const id = String(projectId || '')
     const key = `${id}\u0000${liveSessionKey}`
-    if (key === loadedKey) return
+    const runKey = liveRunKey
+    if (key === loadedKey && runKey === loadedRunKey) return
+    // A different project or a different set of sessions is a different list.
+    // A run starting or finishing inside the same sessions is the same list
+    // moving, so the rows and the open run stay while it reloads.
+    const restart = key !== loadedKey
     loadedKey = key
+    loadedRunKey = runKey
 
     const token = (loadToken += 1)
     const liveSessionIds = liveSessionKey ? liveSessionKey.split('\u0000') : []
 
-    runs = []
-    selected = null
-    detail = null
-    ledgerRow = null
-    copied = false
+    if (restart) {
+      runs = []
+      selected = null
+      detail = null
+      ledgerRow = null
+      copied = false
+    }
 
     void (async () => {
       let taskSessions = []
+      let archivedSessions = []
       if (id) {
-        try {
-          const answer = await getProjectTasks(id)
-          taskSessions = Array.isArray(answer?.tasks) ? answer.tasks : []
-        } catch {
-          taskSessions = []
-        }
+        const [tasks, archived] = await Promise.allSettled([
+          getProjectTasks(id),
+          getArchivedSessions(id),
+        ])
+        taskSessions =
+          tasks.status === 'fulfilled' && Array.isArray(tasks.value?.tasks) ? tasks.value.tasks : []
+        archivedSessions =
+          archived.status === 'fulfilled' && Array.isArray(archived.value?.sessions)
+            ? archived.value.sessions
+            : []
       }
       if (token !== loadToken) return
 
-      const sessionIds = collectWorkflowSessionIds(
+      const candidates = collectWorkflowSessionIds(
         liveSessionIds.map((sessionId) => ({ session_id: sessionId })),
-        taskSessions
-      ).slice(0, MAX_SESSIONS)
+        taskSessions,
+        archivedSessions
+      )
+      const sessionIds = candidates.slice(0, MAX_SESSIONS)
       const answers = await Promise.allSettled(
         sessionIds.map((sessionId) => listWorkflowRuns(sessionId))
       )
       if (token !== loadToken) return
+
+      askedSessions = sessionIds.length
+      sessionsTruncated = candidates.length > sessionIds.length
 
       const merged = []
       for (const [index, answer] of answers.entries()) {
@@ -147,7 +197,9 @@
     <div class="flex items-center justify-between mb-3">
       <span class="text-[11px] {t.textTertiary}">Workflow runs</span>
       <span class="text-[11px] {t.textTertiary}">
-        {rows.length} run{rows.length !== 1 ? 's' : ''}
+        {rows.length} run{rows.length !== 1 ? 's' : ''}{sessionsTruncated
+          ? ` · newest ${askedSessions} sessions`
+          : ''}
       </span>
     </div>
 
