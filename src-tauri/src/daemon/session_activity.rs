@@ -102,6 +102,7 @@ struct SessionEventSignature {
     activity_confidence: ActivityConfidence,
     activity_attribution: ActivityAttribution,
     project_unattributed_active: bool,
+    workflow_activity: Option<crate::workflow_runs::WorkflowActivity>,
 }
 
 fn event_signature(session: &DisplaySession) -> SessionEventSignature {
@@ -118,6 +119,7 @@ fn event_signature(session: &DisplaySession) -> SessionEventSignature {
         activity_confidence: session.activity_confidence,
         activity_attribution: session.activity_attribution,
         project_unattributed_active: session.project_unattributed_active,
+        workflow_activity: session.workflow_activity.clone(),
     }
 }
 
@@ -545,6 +547,7 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: None,
         }
     }
 

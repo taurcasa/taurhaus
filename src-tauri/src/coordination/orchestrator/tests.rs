@@ -2616,6 +2616,7 @@ fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
         group_id: Some(team_name.to_string()),
         group_label: Some(team_name.to_string()),
         member_name: Some(member_name.to_string()),
+        workflow_activity: None,
     };
 
     let reconciled = orchestrator

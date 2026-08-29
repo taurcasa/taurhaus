@@ -100,5 +100,21 @@ pub struct WorkflowActivity {
     pub last_write_at: i64,
 }
 
+pub(crate) fn activity_for_transcript(
+    tool: crate::session_scanner::CliTool,
+    transcript: Option<&str>,
+    now: std::time::SystemTime,
+) -> Option<WorkflowActivity> {
+    if !crate::session_scanner::cli_tool::spec(tool)
+        .capabilities
+        .workflow_runs
+    {
+        return None;
+    }
+    let transcript = std::path::Path::new(transcript?);
+    let session_dir = transcript.with_extension("");
+    workflow_activity(&session_dir, now)
+}
+
 #[cfg(test)]
 mod tests;

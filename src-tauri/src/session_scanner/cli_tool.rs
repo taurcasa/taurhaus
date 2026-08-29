@@ -152,6 +152,8 @@ pub struct CliCapabilities {
     /// The harness resolves generated agent definitions from the project's
     /// own `.claude/agents` directory.
     pub agent_definitions: bool,
+    /// The harness persists workflow run directories taurhaus can scan.
+    pub workflow_runs: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,6 +256,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 hook_trust: false,
                 managed_home: false,
                 agent_definitions: true,
+                workflow_runs: true,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
@@ -316,6 +319,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 hook_trust: true,
                 managed_home: true,
                 agent_definitions: false,
+                workflow_runs: false,
             },
             stop_strategy: StopStrategy::Interrupt,
             stop_presence_dir: None,
@@ -401,6 +405,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 hook_trust: false,
                 managed_home: false,
                 agent_definitions: false,
+                workflow_runs: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: Some("presence"),
@@ -543,6 +548,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                 hook_trust: false,
                 managed_home: false,
                 agent_definitions: false,
+                workflow_runs: false,
             },
             stop_strategy: StopStrategy::SlashExit,
             stop_presence_dir: None,
@@ -607,6 +613,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
         hook_trust: false,
         managed_home: false,
         agent_definitions: false,
+        workflow_runs: false,
     },
     stop_strategy: StopStrategy::Interrupt,
     stop_presence_dir: None,

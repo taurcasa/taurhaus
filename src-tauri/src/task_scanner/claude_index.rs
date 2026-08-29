@@ -273,6 +273,7 @@ mod tests {
             group_id: None,
             group_label: None,
             member_name: None,
+            workflow_activity: None,
         }
     }
 
