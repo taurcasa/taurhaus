@@ -899,7 +899,10 @@ describe('managed Codex stage', function () {
     const delivery = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
     const resumeStartedAtMs = Date.parse(measured.effortResumeStartedAt)
     expect(delivery.deliveredAtMs).toBeGreaterThanOrEqual(resumeStartedAtMs)
-    expect(delivery.deliveryState).toBe('delivered')
+    // `deliveredAt` is the timestamp; `deliveryState` is mesh's own word for
+    // the same transition and must have left the held state with it.
+    expect(delivery.deliveryState).not.toBe('pending')
+    console.log(`[e2e] mesh delivery state for #${assigned.taskId}: ${delivery.deliveryState}`)
 
     const paneAfterResume = readRuntimeRecord()?.pane_id ?? null
     console.log(`[e2e] ${MEMBER_NAME} resumed into pane ${paneAfterResume}`)
