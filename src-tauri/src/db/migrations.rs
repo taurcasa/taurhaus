@@ -86,16 +86,47 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         )?;
 
         if !already_applied {
-            conn.execute_batch(sql)?;
-            conn.execute(
-                "INSERT INTO _migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))",
-                rusqlite::params![version, name],
-            )?;
+            apply_migration(conn, version, name, sql)?;
             tracing::info!(version, name, "applied migration");
         }
     }
 
     Ok(())
+}
+
+/// Migrations that open and close their own transaction.
+///
+/// SQLite refuses a nested `BEGIN`, and a table rebuild has to turn foreign
+/// keys off outside one, so these run exactly as they are written and take
+/// responsibility for their own atomicity.
+const SELF_MANAGED_TRANSACTION_VERSIONS: &[i64] = &[9];
+
+/// Apply one migration and record it as one unit of work.
+///
+/// SQLite auto-commits statement by statement, so a batch that stops partway
+/// used to leave half a schema behind with no version recorded — and the next
+/// start ran the whole batch again and aborted on what the first half had
+/// already done. One transaction covers the statements and the version row
+/// together, so a migration either happened or did not.
+fn apply_migration(
+    conn: &Connection,
+    version: i64,
+    name: &str,
+    sql: &str,
+) -> Result<(), rusqlite::Error> {
+    const RECORD: &str =
+        "INSERT INTO _migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))";
+
+    if SELF_MANAGED_TRANSACTION_VERSIONS.contains(&version) {
+        conn.execute_batch(sql)?;
+        conn.execute(RECORD, rusqlite::params![version, name])?;
+        return Ok(());
+    }
+
+    let transaction = conn.unchecked_transaction()?;
+    transaction.execute_batch(sql)?;
+    transaction.execute(RECORD, rusqlite::params![version, name])?;
+    transaction.commit()
 }
 
 #[cfg(test)]
@@ -122,6 +153,50 @@ mod tests {
             MIGRATIONS.len(),
             "Migration versions must be unique"
         );
+    }
+
+    // Regression: 2529309 shipped migration 014 as two unconditional
+    // `ALTER TABLE ... ADD COLUMN` statements run through `execute_batch`,
+    // which SQLite auto-commits one statement at a time, and recorded the
+    // version afterwards. A crash between the two left a column added and no
+    // version recorded, and the next start aborted for good on the duplicate.
+    #[test]
+    fn a_migration_that_fails_partway_leaves_neither_schema_nor_version_behind() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _migrations (version INTEGER PRIMARY KEY NOT NULL, name TEXT NOT NULL, applied_at TEXT NOT NULL);
+             CREATE TABLE tasks (id INTEGER PRIMARY KEY);",
+        )
+        .unwrap();
+
+        let outcome = apply_migration(
+            &conn,
+            999,
+            "half_applied",
+            "ALTER TABLE tasks ADD COLUMN effort TEXT;\n\
+             ALTER TABLE no_such_table ADD COLUMN effort_why TEXT;",
+        );
+
+        assert!(outcome.is_err(), "the second statement cannot succeed");
+        let columns: Vec<String> = conn
+            .prepare("SELECT name FROM pragma_table_info('tasks')")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(
+            !columns.iter().any(|column| column == "effort"),
+            "a half-applied migration must not leave a column behind: {columns:?}"
+        );
+        let recorded: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM _migrations WHERE version = 999)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!recorded, "a migration that failed is not recorded");
     }
 
     #[test]
