@@ -602,6 +602,8 @@
         behaviorSummary={layout.lead.behaviorSummary}
         tool={layout.lead.tool}
         model={layout.lead.model}
+        taskEffort={layout.lead.taskEffort}
+        taskEffortWhy={layout.lead.taskEffortWhy}
         status={layout.lead.status}
         isCrossProject={layout.lead.isCrossProject}
         projectLabel={layout.lead.projectLabel}
@@ -625,6 +627,8 @@
           behaviorSummary={agent.behaviorSummary}
           tool={agent.tool}
           model={agent.model}
+          taskEffort={agent.taskEffort}
+          taskEffortWhy={agent.taskEffortWhy}
           status={agent.status}
           isCrossProject={agent.isCrossProject}
           projectLabel={agent.projectLabel}

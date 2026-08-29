@@ -119,6 +119,28 @@ describe('MeshCanvas', () => {
     }
   })
 
+  it('carries the assignment effort from the roster onto the node', () => {
+    render(MeshCanvas, {
+      props: {
+        lead: { ...lead, taskEffort: 'medium', taskEffortWhy: 'routing only' },
+        agents: [
+          {
+            ...makeAgents(1)[0],
+            taskEffort: 'high',
+            taskEffortWhy: 'the migration is irreversible',
+          },
+        ],
+        mode: 'runtime',
+      },
+    })
+
+    expect(screen.getByTestId('mesh-node-task-effort-lead')).toHaveTextContent('medium')
+    expect(screen.getByTestId('mesh-node-task-effort-agent')).toHaveAttribute(
+      'title',
+      'Task effort: high — the migration is irreversible'
+    )
+  })
+
   it('renders lead node when lead prop is provided', () => {
     render(MeshCanvas, {
       props: {

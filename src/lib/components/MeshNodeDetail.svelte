@@ -76,6 +76,14 @@
   const modelDisplay = $derived(
     model ? `${model}${reasoningEffort ? ` · ${reasoningEffort}` : ''}` : ''
   )
+  // The effort the lead attached to the current assignment. Distinct from the
+  // launch effort in `modelDisplay`, and only ever set for a runtime node.
+  const taskEffort = $derived.by(() =>
+    String(node?.taskEffort ?? node?.task_effort ?? '').trim()
+  )
+  const taskEffortWhy = $derived.by(() =>
+    String(node?.taskEffortWhy ?? node?.task_effort_why ?? '').trim()
+  )
   const editKind = $derived.by(() =>
     String(editDraft?.kind ?? node?.role ?? 'agent').trim().toLowerCase() === 'lead' ? 'lead' : 'agent'
   )
@@ -267,6 +275,15 @@
       { label: 'Tool', value: toolLabel, testId: null },
       { label: 'Model', value: modelDisplay || 'Not specified', testId: null },
     ]
+
+    if (taskEffort) {
+      entries.push({
+        label: 'Task effort',
+        value: taskEffort,
+        testId: 'mesh-node-detail-task-effort',
+        title: taskEffortWhy || taskEffort,
+      })
+    }
 
     if (roleId) {
       entries.push({ label: 'Role ID', value: roleId, testId: null })
@@ -1124,7 +1141,7 @@
                   <dd
                     class="min-w-0 break-words font-medium {bodyTone}"
                     data-testid={entry.testId}
-                    title={entry.value}
+                    title={entry.title ?? entry.value}
                   >
                     {entry.value}
                   </dd>

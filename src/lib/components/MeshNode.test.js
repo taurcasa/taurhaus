@@ -77,6 +77,39 @@ describe('MeshNode', () => {
     expect(source).not.toMatch(/\brgba?\(/)
   })
 
+  it('shows the assignment effort beside the model, with the reason on hover', async () => {
+    const view = render(MeshNode, {
+      props: {
+        role: 'agent',
+        model: 'gpt-5.6-terra',
+        taskEffort: 'high',
+        taskEffortWhy: 'the migration is irreversible',
+      },
+    })
+
+    const chip = screen.getByTestId('mesh-node-task-effort-agent')
+    expect(chip).toHaveTextContent('high')
+    expect(chip).toHaveAttribute('title', 'Task effort: high — the migration is irreversible')
+    expect(chip.parentElement).toHaveAttribute('data-testid', 'mesh-node-meta-row-agent')
+
+    await view.rerender({
+      role: 'agent',
+      model: 'gpt-5.6-terra',
+      taskEffort: 'high',
+      taskEffortWhy: '',
+    })
+    expect(screen.getByTestId('mesh-node-task-effort-agent')).toHaveAttribute(
+      'title',
+      'Task effort: high'
+    )
+  })
+
+  it('shows no effort chip for a member with no assignment effort', () => {
+    render(MeshNode, { props: { role: 'agent', model: 'gpt-5.6-terra' } })
+
+    expect(screen.queryByTestId('mesh-node-task-effort-agent')).toBeNull()
+  })
+
   it('shows a compact project chip only for cross-project members', async () => {
     const view = render(MeshNode, {
       props: {

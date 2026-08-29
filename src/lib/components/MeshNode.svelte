@@ -13,6 +13,8 @@
     behaviorSummary = '',
     tool = 'claude',
     model = '',
+    taskEffort = '',
+    taskEffortWhy = '',
     status = 'offline',
     isCrossProject = false,
     projectLabel = '',
@@ -34,6 +36,17 @@
   const hasModel = $derived(safeModel.length > 0)
   const safeProjectLabel = $derived(String(projectLabel || '').trim())
   const showProjectChip = $derived(Boolean(isCrossProject) && safeProjectLabel.length > 0)
+
+  // The effort the lead attached to the current assignment, which is a
+  // different number from the effort the session was launched at.
+  const safeTaskEffort = $derived(String(taskEffort || '').trim())
+  const safeTaskEffortWhy = $derived(String(taskEffortWhy || '').trim())
+  const showTaskEffort = $derived(safeTaskEffort.length > 0)
+  const taskEffortTitle = $derived(
+    safeTaskEffortWhy
+      ? `Task effort: ${safeTaskEffort} — ${safeTaskEffortWhy}`
+      : `Task effort: ${safeTaskEffort}`
+  )
 
   const safeTool = $derived.by(() => {
     return normalizeTool(tool)
@@ -110,14 +123,24 @@
       <span class="mesh-node-status" style={`background-color: ${statusColor};`}></span>
     </span>
 
-    {#if hasModel || showProjectChip}
+    {#if hasModel || showTaskEffort || showProjectChip}
       <span
         class="mesh-node-meta-row"
-        class:chip-only={!hasModel && showProjectChip}
+        class:chip-only={!hasModel && (showTaskEffort || showProjectChip)}
         data-testid={`mesh-node-meta-row-${normalizedRole}`}
       >
         {#if hasModel}
           <span class="mesh-node-model" data-testid={`mesh-node-model-${normalizedRole}`}>{safeModel}</span>
+        {/if}
+
+        {#if showTaskEffort}
+          <span
+            class="mesh-node-task-effort"
+            data-testid={`mesh-node-task-effort-${normalizedRole}`}
+            title={taskEffortTitle}
+          >
+            {safeTaskEffort}
+          </span>
         {/if}
 
         {#if showProjectChip}
@@ -300,6 +323,16 @@
 
   .mesh-node-meta-row.chip-only {
     justify-content: flex-end;
+  }
+
+  .mesh-node-task-effort {
+    flex: 0 0 auto;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 0 5px;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    opacity: 0.85;
   }
 
   .mesh-node-project-chip {

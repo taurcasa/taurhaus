@@ -58,6 +58,22 @@ function renderDetail(props = {}) {
 }
 
 describe('MeshNodeDetail', () => {
+  it('states the assignment effort next to the launch effort, with the reason on hover', () => {
+    renderDetail({
+      node: { taskEffort: 'high', taskEffortWhy: 'the migration is irreversible' },
+    })
+
+    const row = screen.getByTestId('mesh-node-detail-task-effort')
+    expect(row).toHaveTextContent('high')
+    expect(row).toHaveAttribute('title', 'the migration is irreversible')
+  })
+
+  it('omits the assignment effort row when the member has no assignment effort', () => {
+    renderDetail()
+
+    expect(screen.queryByTestId('mesh-node-detail-task-effort')).toBeNull()
+  })
+
   it('renders as a full dialog with pinned runtime actions and markdown-backed sections', () => {
     renderDetail({
       actions: {
