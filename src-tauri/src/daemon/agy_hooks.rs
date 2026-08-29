@@ -255,11 +255,12 @@ fn latest_records(contents: &[u8]) -> HashMap<String, AgyHookRecord> {
         .collect()
 }
 
-pub fn latest_record_for_session_after(
+/// Read the sink's latest record per conversation, reparsing only when the
+/// file changed under the cache.
+fn with_latest_records<T>(
     path: &Path,
-    session_id: &str,
-    not_before: SystemTime,
-) -> Option<AgyHookRecord> {
+    consume: impl FnOnce(&HashMap<String, AgyHookRecord>) -> T,
+) -> Option<T> {
     let metadata = fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
     {
@@ -268,9 +269,7 @@ pub fn latest_record_for_session_after(
             .get(path)
             .filter(|cached| cached.len == metadata.len() && cached.modified == modified)
         {
-            return cached.records.get(session_id).cloned().and_then(|record| {
-                (record.ts >= DateTime::<Utc>::from(not_before)).then_some(record)
-            });
+            return Some(consume(&cached.records));
         }
     }
 
@@ -278,7 +277,7 @@ pub fn latest_record_for_session_after(
     #[cfg(test)]
     RECORD_PARSE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let records = latest_records(&contents);
-    let record = records.get(session_id).cloned();
+    let value = consume(&records);
     RECORD_CACHE.lock().ok()?.insert(
         path.to_path_buf(),
         CachedRecords {
@@ -287,8 +286,34 @@ pub fn latest_record_for_session_after(
             records,
         },
     );
-    let record = record?;
+    Some(value)
+}
+
+pub fn latest_record_for_session_after(
+    path: &Path,
+    session_id: &str,
+    not_before: SystemTime,
+) -> Option<AgyHookRecord> {
+    let record = with_latest_records(path, |records| records.get(session_id).cloned())??;
     (record.ts >= DateTime::<Utc>::from(not_before)).then_some(record)
+}
+
+/// Every conversation the sink last saw in `workspace`, newest record first.
+///
+/// The workspace is the normalized form written by [`append_event_at`]; a
+/// record from before that field existed names no workspace and is never
+/// returned.
+pub fn records_for_workspace(path: &Path, workspace: &str) -> Vec<AgyHookRecord> {
+    let mut matches = with_latest_records(path, |records| {
+        records
+            .values()
+            .filter(|record| record.workspace.as_deref() == Some(workspace))
+            .cloned()
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    matches.sort_by(|left, right| right.ts.cmp(&left.ts));
+    matches
 }
 
 pub fn latest_record_for_session(path: &Path, session_id: &str) -> Option<AgyHookRecord> {
@@ -601,5 +626,54 @@ mod tests {
         assert_eq!(record.state, AgyHookState::Idle);
         assert_eq!(record.workspace, None);
         assert_eq!(record.model, None);
+    }
+
+    #[test]
+    fn records_for_workspace_lists_the_newest_conversation_first() {
+        // The fallback identity path asks the sink which conversations a cwd
+        // has seen; the newest is the one a live session is most likely to be.
+        let _guard = AGY_HOOK_TEST_LOCK.lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("agy-hooks.jsonl");
+        let ts = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+        let busy = |conversation: &str, workspace: &str| {
+            serde_json::json!({
+                "conversationId": conversation,
+                "workspacePaths": [workspace],
+            })
+            .to_string()
+        };
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            &busy("older", "/home/user/projects/QueenUI"),
+            ts,
+        )
+        .unwrap();
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            &busy("newer", "/home/user/projects/QueenUI"),
+            ts + chrono::Duration::seconds(1),
+        )
+        .unwrap();
+        append_event_at(
+            &path,
+            AgyHookEvent::Busy,
+            &busy("elsewhere", "/home/user/projects/other"),
+            ts + chrono::Duration::seconds(2),
+        )
+        .unwrap();
+
+        let matches = records_for_workspace(&path, "/home/user/projects/QueenUI");
+
+        assert_eq!(
+            matches
+                .iter()
+                .map(|record| record.conversation_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["newer", "older"]
+        );
+        assert!(records_for_workspace(&path, "/home/user/projects/absent").is_empty());
     }
 }
