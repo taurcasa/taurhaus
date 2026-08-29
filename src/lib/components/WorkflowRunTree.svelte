@@ -20,7 +20,9 @@
     onToggleRun = (_runId) => {},
   } = $props()
 
-  const collapsed = $derived(new Set(collapsedRunIds.map((id) => String(id))))
+  const collapsed = $derived(
+    new Set((Array.isArray(collapsedRunIds) ? collapsedRunIds : []).map((id) => String(id)))
+  )
 
   const models = $derived(
     (Array.isArray(runs) ? runs : [])

@@ -105,7 +105,13 @@ async function refresh(sessionId) {
 
     for (const [index, summary] of next.entries()) {
       if (!isLive(summary) || state.collapsed[runId(summary)]) continue
-      next[index] = await getWorkflowRun(sessionId, runId(summary))
+      try {
+        next[index] = await getWorkflowRun(sessionId, runId(summary))
+      } catch {
+        // One unreadable run — a directory removed mid-scan, say — leaves that
+        // run as its summary. It has not stopped existing, and the other runs
+        // of the session are still true.
+      }
     }
 
     state.runs = next

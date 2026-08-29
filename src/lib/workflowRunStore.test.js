@@ -166,6 +166,23 @@ describe('workflowRunStore', () => {
     unwatch()
   })
 
+  it('keeps a run listed when its detail cannot be read', async () => {
+    listWorkflowRuns.mockResolvedValue([summary(), summary({ run_id: 'wf_other' })])
+    getWorkflowRun.mockImplementation((_sessionId, runId) =>
+      runId === 'wf_live' ? Promise.reject(new Error('vanished')) : Promise.resolve(detail({ run_id: 'wf_other' }))
+    )
+
+    const unwatch = watchWorkflowSession('sess-1')
+    await vi.advanceTimersByTimeAsync(0)
+
+    const state = workflowSessionRuns('sess-1')
+    expect(state.runs.map((run) => run.run_id)).toEqual(['wf_live', 'wf_other'])
+    expect(state.runs[0].agents).toBeUndefined()
+    expect(state.runs[1].agents).toHaveLength(1)
+    expect(state.error).toBeNull()
+    unwatch()
+  })
+
   it('never calls the backend without a session id', async () => {
     const unwatch = watchWorkflowSession('')
     await vi.advanceTimersByTimeAsync(2000)
