@@ -207,3 +207,50 @@ export function findResultMessage(messages, taskId) {
   }
   return null
 }
+
+/**
+ * What the completion signal asked for and the payload did not carry.
+ *
+ * `RESULT <task-id>` plus *any* JSON object is not the contract: the assignment
+ * names `{commit, files, validation}`, and a payload that answers `{"noop":
+ * true}` has not reported a deliverable however well-formed it is. A symbolic
+ * `commit` is rejected here for the same reason `commitExists` rejects one —
+ * `HEAD` names whatever the repo happens to point at, not what the stage wrote.
+ */
+export function resultContractViolations(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return ['the result carried no JSON object']
+  }
+
+  const violations = []
+  const commit = String(payload.commit ?? '').trim()
+  if (!/^[0-9a-f]{7,40}$/i.test(commit)) {
+    violations.push(`"commit" is ${commit ? `"${commit}"` : 'missing'}, not a commit sha`)
+  }
+  const files = payload.files
+  if (!Array.isArray(files) || files.length === 0 || files.some((file) => !String(file ?? '').trim())) {
+    violations.push('"files" is not a non-empty list of paths')
+  }
+  if (!String(payload.validation ?? '').trim()) {
+    violations.push('"validation" is missing or blank')
+  }
+  return violations
+}
+
+/**
+ * Where an assignment stands between mesh's effort gate and mesh's delivery.
+ *
+ * The gate's promise is an ordering: the member reaches the level the
+ * assignment asks for, *then* the notice is delivered. Its failure mode is not
+ * "no delivery" but a delivery that came too early — mesh's effort wait
+ * expiring mid-relaunch and handing the notice to a member still running at the
+ * old level. Both readings are cheap and neither is conclusive alone, so they
+ * are judged together: a `deliveredAt` seen while the runtime record still
+ * reports the old level is that expiry, and nothing else looks like it.
+ */
+export function effortDeliveryVerdict({ appliedEffort, requiredEffort, deliveredAt = null }) {
+  const applied = String(appliedEffort ?? '').trim().toLowerCase()
+  const required = String(requiredEffort ?? '').trim().toLowerCase()
+  if (applied && applied === required) return 'in-force'
+  return deliveredAt ? 'delivered-early' : 'holding'
+}

@@ -16,7 +16,8 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /** The command the stage is asked to validate its own work with. */
@@ -110,15 +111,43 @@ export function commitExists(repoPath, revision) {
 }
 
 /**
- * Run the fixture's own test command and report whether it passed.
+ * The paths a commit adds, relative to the repo root.
+ *
+ * The stage reports a commit; this is what says the commit is *the* one. A
+ * member that names the fixture's own baseline — a real commit object, and so
+ * one `commitExists` accepts — adds nothing, and shows up here as an empty
+ * list.
+ *
+ * `git show` rather than `diff-tree` because it handles a root commit without
+ * a second spelling, and `--diff-filter=A` because the deliverable is a file
+ * that did not exist before.
+ */
+export function filesAddedByCommit(repoPath, revision) {
+  const candidate = String(revision ?? '').trim()
+  if (!/^[0-9a-f]{7,40}$/i.test(candidate)) return []
+
+  const result = spawnSync(
+    'git',
+    ['-C', repoPath, 'show', '--format=', '--name-only', '--diff-filter=A', '-r', candidate],
+    { encoding: 'utf8', timeout: 30_000 }
+  )
+  if (result.status !== 0) return []
+  return String(result.stdout ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+/**
+ * Run the fixture's own test command in `directory` and report whether it passed.
  *
  * `bun test` needs no install, which is what keeps the assigned task bounded:
  * the member writes one module and one test and runs them, and nothing in the
  * lane depends on a package registry.
  */
-export function runFixtureTests(repoPath) {
+export function runFixtureTests(directory) {
   const result = spawnSync('bun', ['test'], {
-    cwd: repoPath,
+    cwd: directory,
     encoding: 'utf8',
     timeout: 120_000,
   })
@@ -127,5 +156,40 @@ export function runFixtureTests(repoPath) {
     command: FIXTURE_TEST_COMMAND,
     passed: result.status === 0,
     output: output || String(result.error?.message ?? 'no output'),
+  }
+}
+
+/**
+ * Run the fixture's tests from a clean checkout of `revision`.
+ *
+ * The deliverable is a commit, so the commit is what gets validated. Running
+ * them in the fixture worktree instead would accept a stage that wrote the
+ * files, ran the tests and never committed them — the member's own report would
+ * name some other commit and everything would still be green.
+ *
+ * The checkout is a detached worktree in a temp directory, removed on every
+ * path out; a `bun test` in it sees exactly the tree the commit records.
+ */
+export function runFixtureTestsAtCommit(repoPath, revision) {
+  const checkout = mkdtempSync(join(tmpdir(), 'taurhaus-stage-commit-'))
+  try {
+    try {
+      git(repoPath, ['worktree', 'add', '--detach', checkout, String(revision ?? '')])
+    } catch (error) {
+      return {
+        command: FIXTURE_TEST_COMMAND,
+        passed: false,
+        output: `could not check out ${revision}: ${String(error?.stderr ?? error?.message ?? error).trim()}`,
+      }
+    }
+    return runFixtureTests(checkout)
+  } finally {
+    try {
+      git(repoPath, ['worktree', 'remove', '--force', checkout])
+    } catch {
+      // The directory below is removed either way; a worktree entry that could
+      // not be dropped is pruned by git on its own and lives in a temp dir.
+    }
+    rmSync(checkout, { recursive: true, force: true })
   }
 }
