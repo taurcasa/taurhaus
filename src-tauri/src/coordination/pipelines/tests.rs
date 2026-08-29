@@ -3621,8 +3621,7 @@ fn a_codex_member_is_relaunched_with_the_assignment_effort() {
             RuntimeCall::SendKeys { keys, .. } => Some(keys),
             _ => None,
         })
-        .filter(|keys| keys.contains("codex"))
-        .next_back()
+        .rfind(|keys| keys.contains("codex"))
         .expect("a codex launch was sent to the pane");
     assert!(
         launch.contains("model_reasoning_effort=\\\"high\\\"")
