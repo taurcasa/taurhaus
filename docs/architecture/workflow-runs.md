@@ -76,12 +76,17 @@ activity. Because the sidebar, hover card and canvas all read this one
 derivation, they agree for free.
 
 **Polling.** `src/lib/workflowRunStore.svelte.js` is the only thing that asks
-again, on one timer for the whole app. Watching a session lists its runs once;
-the 2-second loop runs only while some watched session has an *expanded* live
-run and stops by itself when the last one finishes or is collapsed;
-`get_workflow_run` — the call that reads every agent transcript — is made only
-for an expanded live run. A failed poll keeps the last good runs on screen and
-records why.
+again, and it splits the cadence along the line that separates the two costs.
+Watching a session lists its runs once. The 2-second tick then carries only the
+sessions that have an *expanded* live run, because that is where
+`get_workflow_run` — the call that reads every agent transcript — is made; it
+stops by itself when the last live run finishes or is collapsed. Every other
+watched session is re-listed every 10 seconds: nothing announces a run, so a
+workflow that starts after a node is already on screen would otherwise stay
+invisible for as long as it is watched, and `list_workflow_runs` is one
+directory read plus, for a live run, one journal. Both timers are shared by the
+whole app and stop when the last watcher leaves. A failed poll keeps the last
+good runs on screen and records why.
 
 **Surfaces.**
 
@@ -90,7 +95,15 @@ records why.
 | Mesh canvas (`WorkflowRunTree.svelte`) | Phase rows and agent rows (label, model, state, last tool, tokens) for a live run; one line for a finished one | The node's session, watched while the canvas is mounted; or `workflowRuns` handed to the node by a caller |
 | Sidebar row | A run-count badge, hovering to give the count and the newest write's age | `workflow_activity` alone — no IPC |
 | Hover card | The run's name and the phase its running agent is in | The hovered project's session, watched only while the card is up |
-| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over the project's live sessions plus the sessions its tasks came from (`session_id`), capped at eight |
+| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over the project's sessions in recency order — running now, then the ones its open tasks came from, then `get_archived_sessions` — capped at 24, and the header says when the cap was reached |
+
+A mesh node reads its session from the member's own runtime record, which
+`LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`.
+The Overview panel reloads when the set of sessions changes *or* when the
+activity hint's live-run count moves: a run starts and ends inside a session
+that is already listed, and the count is the one field that moves on that
+transition — the hub versions it, so it moves once per run rather than once per
+agent write. A reload for that reason keeps the rows and the open run in place.
 
 **Geometry.** The tree is a sized child box: `meshLayout.js` owns `RUN_TREE_METRICS`
 and places `{ left, top, width, height }` from a `{ rowCount, runCount, collapsed }`
