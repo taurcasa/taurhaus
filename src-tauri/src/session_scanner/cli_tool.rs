@@ -118,11 +118,30 @@ pub enum CompactionDelivery {
     MeshInbox,
 }
 
+/// How a *running* session's reasoning effort is changed.
+///
+/// Backend-only, like `CompactionDelivery`: nothing in the UI branches on it,
+/// and the two paths have different owners. Mesh submits the slash command to
+/// the pane before it delivers the assignment notice; taurhaus is the only
+/// component that can relaunch a member, so it owns the flag path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeEffort {
+    /// The harness accepts a one-line `/effort <level>` in its own prompt.
+    SlashCommand,
+    /// The harness has no deterministic one-line grammar, so the level is
+    /// applied by relaunching the session with its effort flag.
+    ResumeWithFlag,
+    /// No runtime path: the launch effort stands for the session's lifetime.
+    None,
+}
+
 /// Capability declarations consumed by tool-agnostic call sites.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliCapabilities {
     pub model_flag: Option<&'static str>,
     pub effort_flag: Option<EffortFlag>,
+    /// How the level changes once the session is already running.
+    pub runtime_effort: RuntimeEffort,
     pub auto_approve_flag: Option<&'static str>,
     pub display_name_flag: Option<&'static str>,
     pub team_flags: bool,
@@ -234,6 +253,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                runtime_effort: RuntimeEffort::SlashCommand,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: Some("-n"),
                 team_flags: true,
@@ -297,6 +317,9 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
                     flag: "-c",
                     key: "model_reasoning_effort",
                 }),
+                // Codex 0.150.1 changes effort only through its interactive
+                // `/model` picker, which has no one-line grammar to type.
+                runtime_effort: RuntimeEffort::ResumeWithFlag,
                 auto_approve_flag: Some("--yolo"),
                 display_name_flag: None,
                 team_flags: false,
@@ -383,6 +406,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                runtime_effort: RuntimeEffort::SlashCommand,
                 auto_approve_flag: Some("--dangerously-skip-permissions"),
                 display_name_flag: None,
                 team_flags: false,
@@ -519,6 +543,7 @@ static TOOL_SPECS: LazyLock<[CliToolSpec; 4]> = LazyLock::new(|| {
             capabilities: CliCapabilities {
                 model_flag: Some("--model"),
                 effort_flag: Some(EffortFlag::Argument { flag: "--effort" }),
+                runtime_effort: RuntimeEffort::SlashCommand,
                 auto_approve_flag: Some("--always-approve"),
                 display_name_flag: None,
                 team_flags: false,
@@ -591,6 +616,7 @@ static UNKNOWN_TOOL_SPEC: LazyLock<CliToolSpec> = LazyLock::new(|| CliToolSpec {
     capabilities: CliCapabilities {
         model_flag: None,
         effort_flag: None,
+        runtime_effort: RuntimeEffort::None,
         auto_approve_flag: None,
         display_name_flag: None,
         team_flags: false,

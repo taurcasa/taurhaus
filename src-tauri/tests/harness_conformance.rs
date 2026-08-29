@@ -20,7 +20,7 @@ use taurhaus_lib::session_scanner::accounts::{
     UsageStatus,
 };
 use taurhaus_lib::session_scanner::cli_tool::{
-    all, spec, CliTool, CompactionDelivery, SessionRoot, StopStrategy,
+    all, spec, CliTool, CompactionDelivery, RuntimeEffort, SessionRoot, StopStrategy,
 };
 use taurhaus_lib::session_scanner::idle::{AgyHooksActivitySource, IdleResult, SessionSource};
 use taurhaus_lib::session_scanner::launch::{
@@ -333,6 +333,38 @@ fn grok_declares_the_slices_it_does_not_have() {
     assert_eq!(
         grok.capabilities.usage_note,
         Some("Grok shows credits in its own /usage")
+    );
+}
+
+#[test]
+fn every_harness_declares_how_a_running_session_changes_effort() {
+    // The lead's per-assignment effort reaches a running member one of two
+    // ways, and the registry is the only place that says which: mesh types the
+    // slash command into the pane, or taurhaus resumes the member with the
+    // effort flag. A harness with neither leaves the launch effort standing.
+    for entry in all() {
+        let runtime_effort = entry.capabilities.runtime_effort;
+        let expected = match entry.tool {
+            CliTool::Claude | CliTool::Agy | CliTool::Grok => RuntimeEffort::SlashCommand,
+            CliTool::Codex => RuntimeEffort::ResumeWithFlag,
+            CliTool::Unknown => RuntimeEffort::None,
+        };
+        assert_eq!(
+            runtime_effort, expected,
+            "{} declares the wrong runtime effort path",
+            entry.name
+        );
+        if runtime_effort != RuntimeEffort::None {
+            assert!(
+                entry.capabilities.effort_flag.is_some(),
+                "{} changes effort at runtime but declares no launch effort flag",
+                entry.name
+            );
+        }
+    }
+    assert_eq!(
+        spec(CliTool::Unknown).capabilities.runtime_effort,
+        RuntimeEffort::None
     );
 }
 
