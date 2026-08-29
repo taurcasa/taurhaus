@@ -139,7 +139,11 @@
 </script>
 
 {#if rows.length > 0}
-  <section class="py-5 border-b {t.keyline}" data-testid="overview-workflow-runs">
+  <section
+    class="py-5 border-b {t.keyline}"
+    class:is-dark={dark}
+    data-testid="overview-workflow-runs"
+  >
     <div class="flex items-center justify-between mb-3">
       <span class="text-[11px] {t.textTertiary}">Workflow runs</span>
       <span class="text-[11px] {t.textTertiary}">
@@ -284,13 +288,15 @@
     color: var(--color-zinc-500, #71717a);
   }
 
-  :global(.dark) .workflow-run-status[data-status='completed'],
-  :global(.dark) .workflow-run-status[data-state='done'] {
+  /* Themed from the panel's own `dark` prop, like every other component here,
+     so a surface rendered dark inside a light document still comes out right. */
+  .is-dark .workflow-run-status[data-status='completed'],
+  .is-dark .workflow-run-status[data-state='done'] {
     color: var(--color-brand-400);
   }
 
-  :global(.dark) .workflow-run-status[data-status='live'],
-  :global(.dark) .workflow-run-status[data-state='running'] {
+  .is-dark .workflow-run-status[data-status='live'],
+  .is-dark .workflow-run-status[data-state='running'] {
     color: var(--color-success-400);
   }
 </style>

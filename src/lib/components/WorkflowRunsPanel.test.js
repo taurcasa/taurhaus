@@ -191,3 +191,30 @@ describe('WorkflowRunsPanel', () => {
     })
   })
 })
+
+describe('WorkflowRunsPanel theming', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getProjectTasks.mockResolvedValue({ tasks: [] })
+    listWorkflowRuns.mockResolvedValue([COMPLETED])
+    getWorkflowRun.mockResolvedValue(DETAIL)
+    workflowLedgerRow.mockResolvedValue(null)
+  })
+
+  // The status pills switch colour with the panel's own `dark` prop, not with a
+  // global `html.dark` class: every other component in this codebase themes
+  // itself from the prop, and a surface rendered dark inside a light document
+  // (or the reverse) has to come out right.
+  it('carries its own dark marker rather than depending on a global class', async () => {
+    const { rerender } = render(WorkflowRunsPanel, {
+      props: { projectId: 'proj-1', sessions: [{ session_id: 'sess-1' }], dark: true },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('overview-workflow-runs')).toHaveClass('is-dark')
+    })
+
+    await rerender({ projectId: 'proj-1', sessions: [{ session_id: 'sess-1' }], dark: false })
+    expect(screen.getByTestId('overview-workflow-runs')).not.toHaveClass('is-dark')
+  })
+})
