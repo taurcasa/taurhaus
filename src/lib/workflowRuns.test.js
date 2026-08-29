@@ -5,6 +5,7 @@ import {
   currentWorkflowStep,
   formatRunDuration,
   formatTokens,
+  orderWorkflowSessionIds,
   runListRow,
   runTreeDescriptor,
   runTreeModel,
@@ -80,6 +81,60 @@ describe('collectWorkflowSessionIds', () => {
 
   it('tolerates a non-array source', () => {
     expect(collectWorkflowSessionIds(null, undefined, [{ session_id: 'a' }])).toEqual(['a'])
+  })
+})
+
+// Regression: 2772530 asked the run APIs about a plain concatenation of live,
+// open-task and archived sessions, and open tasks arrive ordered by
+// source/source_key/task id. Twenty-four of those could crowd a newer archived
+// session out of the cap entirely.
+describe('orderWorkflowSessionIds', () => {
+  it('leads with the sessions running right now, in their own order', () => {
+    expect(
+      orderWorkflowSessionIds(
+        [{ workflow_session_id: 'live-1' }, { workflow_session_id: 'live-2' }],
+        [{ session_id: 'old', ended_at: '2026-03-01T10:00:00Z' }]
+      )
+    ).toEqual(['live-1', 'live-2', 'old'])
+  })
+
+  it('orders the rest by the newest timestamp each record carries', () => {
+    expect(
+      orderWorkflowSessionIds(
+        [],
+        [
+          { session_id: 'task-old', updated_at: '2026-01-05T10:00:00Z' },
+          { session_id: 'task-new', updated_at: '2026-04-05T10:00:00Z' },
+        ],
+        [{ session_id: 'archived-mid', ended_at: '2026-02-05T10:00:00Z' }]
+      )
+    ).toEqual(['task-new', 'archived-mid', 'task-old'])
+  })
+
+  it('keeps a record we cannot date behind every one we can', () => {
+    expect(
+      orderWorkflowSessionIds(
+        [],
+        [{ session_id: 'undated' }, { session_id: 'dated', ended_at: '2026-01-05T10:00:00Z' }]
+      )
+    ).toEqual(['dated', 'undated'])
+  })
+
+  it('dedupes on the newest sighting of the same session', () => {
+    expect(
+      orderWorkflowSessionIds(
+        [],
+        [
+          { session_id: 'a', updated_at: '2026-01-05T10:00:00Z' },
+          { session_id: 'b', updated_at: '2026-02-05T10:00:00Z' },
+          { session_id: 'a', updated_at: '2026-03-05T10:00:00Z' },
+        ]
+      )
+    ).toEqual(['a', 'b'])
+  })
+
+  it('skips records without an id and tolerates a non-array source', () => {
+    expect(orderWorkflowSessionIds(null, undefined, [{}, { session_id: '' }])).toEqual([])
   })
 })
 

@@ -355,6 +355,60 @@ describe('WorkflowRunsPanel session coverage', () => {
     })
   })
 
+  // Regression: 2772530 concatenated live, open-task and archived sessions and
+  // cut the first 24 — and open tasks arrive ordered by source/source_key/task
+  // id, not by recency. Two dozen of them pushed a newer archived session past
+  // the cut, so its runs were never asked for.
+  it('orders every candidate by its own timestamp before it cuts the list', async () => {
+    getProjectTasks.mockResolvedValue({
+      tasks: Array.from({ length: 30 }, (_unused, index) => ({
+        session_id: `sess-task-${index}`,
+        updated_at: '2026-02-01T09:00:00Z',
+      })),
+    })
+    getArchivedSessions.mockResolvedValue({
+      sessions: [{ session_id: 'sess-recent', ended_at: '2026-03-01T09:00:00Z' }],
+      errors: [],
+    })
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-recent' ? [COMPLETED] : [])
+    )
+
+    renderPanel({ sessions: [] })
+
+    await waitFor(() => expect(listWorkflowRuns).toHaveBeenCalledWith('sess-recent'))
+    expect(listWorkflowRuns.mock.calls[0][0]).toBe('sess-recent')
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    })
+  })
+
+  // Regression: 2772530 stopped at the first 24 candidates whatever came back,
+  // so a project whose only workflow ran in an older session had no history at
+  // all and no way to reach it.
+  it('keeps looking back when the newest sessions have no runs', async () => {
+    getArchivedSessions.mockResolvedValue({
+      sessions: [
+        ...Array.from({ length: 30 }, (_unused, index) => ({
+          session_id: `sess-quiet-${index}`,
+          ended_at: '2026-03-02T10:00:00Z',
+        })),
+        { session_id: 'sess-ancient', ended_at: '2026-01-01T10:00:00Z' },
+      ],
+      errors: [],
+    })
+    listWorkflowRuns.mockImplementation((sessionId) =>
+      Promise.resolve(sessionId === 'sess-ancient' ? [COMPLETED] : [])
+    )
+
+    renderPanel({ sessions: [] })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workflow-run-row')).toHaveTextContent('feature-pr')
+    })
+    expect(listWorkflowRuns).toHaveBeenCalledWith('sess-ancient')
+  })
+
   // Regression: the cap was applied to a set that had no order, so a project
   // with more archived sessions than the cap could lose its live one (d010cee).
   it('asks the newest sessions first and says so when it stopped short', async () => {

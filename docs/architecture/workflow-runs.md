@@ -101,7 +101,7 @@ good runs on screen and records why.
 | Mesh canvas (`WorkflowRunTree.svelte`) | Phase rows and agent rows (label, model, state, last tool, tokens) for a live run; one line for a finished one | The node's session, watched while the canvas is mounted; or `workflowRuns` handed to the node by a caller |
 | Sidebar row | A run-count badge, hovering to give the count and the newest write's age | `workflow_activity` alone — no IPC |
 | Hover card | The run's name and the phase its running agent is in | The hovered project's session — named by `workflow_session_id` — watched only while the card is up |
-| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over the project's sessions in recency order — running now, then the ones its open tasks came from, then `get_archived_sessions` — capped at 24, and the header says when the cap was reached |
+| Overview tab (`WorkflowRunsPanel.svelte`) | Run history newest first, an agent table for the selected run, and *Copy ledger row* | `list_workflow_runs` over every session the project can name — running now first, then its open tasks and `get_archived_sessions` merged into one order by the newest timestamp each record carries — a page of 24 at a time, asking the next page while a page comes back empty (up to 96 sessions), and the header says when it stopped short |
 
 A mesh node reads its session from the member's own runtime record, which
 `LiveAgentStatus` and `FastAgentSnapshot` carry as an optional `session_id`,

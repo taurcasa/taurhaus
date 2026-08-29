@@ -264,7 +264,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/ipc/` | Frontend IPC domain modules (`client`, `projects`, `sessions`, `tasks`, `templates`, `coordination`, `system`) plus payload/mocks modules. |
 | `src/lib/context/` | Frontend context providers (`ProjectContext.js`, `SessionContext.js`, `ModelCatalogContext.js`). |
 | `src/lib/activitySignal.js` | Single derivation of presented activity (`working`/`active`/`idle`/`uncertain`/`offline` + confidence) used by sidebar, HoverCard, and mesh canvas; a live workflow write inside 60 s reads as `working` (`workflowWriteAgeMs`). |
-| `src/lib/workflowRuns.js` | Presentation shaping for workflow runs — tree model, history row, sidebar badge, token/duration formatting. Invents none of the `null`s the scanner returns. |
+| `src/lib/workflowRuns.js` | Presentation shaping for workflow runs — session ordering, tree model, history row, sidebar badge, token/duration formatting. Invents none of the `null`s the scanner returns. |
 | `src/lib/workflowRunStore.svelte.js` | The one poller for live runs: one shared 2 s timer, only while a watched session has an expanded live run. |
 | `src/lib/modelCatalog.js` | Helpers over the backend-owned `ModelCatalog` delivered via `settings.terminal_contract.model_catalog`. |
 | `src/lib/components/ModelSelect.svelte` | Effort-aware model picker used by `MeshTeamBuilder` and `RoleEditor`. |

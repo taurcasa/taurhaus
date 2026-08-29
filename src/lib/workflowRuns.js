@@ -78,6 +78,90 @@ export function collectWorkflowSessionIds(...sources) {
   return ids
 }
 
+/**
+ * A record's own timestamp in milliseconds, or `null`.
+ *
+ * Accepts what the backend actually sends for a session: ISO 8601 strings on
+ * archived sessions and tasks, plain milliseconds where a record carries them.
+ */
+function recordTimestamp(value) {
+  const numeric = count(value)
+  if (numeric !== null) return numeric
+  const raw = text(value)
+  if (!raw) return null
+  const parsed = Date.parse(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+/**
+ * The newest moment a session record can vouch for: an archived session's end,
+ * the last time its tasks were archived, a task's own update, and only then the
+ * start. `null` when the record carries nothing we can date.
+ */
+function sessionRecency(record) {
+  const fields = [
+    record?.ended_at ?? record?.endedAt,
+    record?.last_archived_at ?? record?.lastArchivedAt,
+    record?.updated_at ?? record?.updatedAt,
+    record?.state_changed_at ?? record?.stateChangedAt,
+    record?.started_at ?? record?.startedAt,
+  ]
+  for (const field of fields) {
+    const at = recordTimestamp(field)
+    if (at !== null) return at
+  }
+  return null
+}
+
+/**
+ * The sessions to ask about, newest first: the ones running right now in the
+ * order they were given, then every other known session ordered by the newest
+ * timestamp it carries, then the ones we cannot date at all.
+ *
+ * The run APIs are keyed by session and a project view can only afford to ask
+ * about so many, so the order is what decides which runs are reachable. It has
+ * to be one order across every source: open tasks arrive sorted by
+ * source/source_key/task id, and a plain concatenation would let two dozen of
+ * them push a newer archived session past the cut.
+ */
+export function orderWorkflowSessionIds(liveRecords, ...historyRecords) {
+  const known = new Map()
+
+  for (const record of Array.isArray(liveRecords) ? liveRecords : []) {
+    const id = workflowSessionId(record)
+    if (!id || known.has(id)) continue
+    known.set(id, { order: known.size, live: true, at: null })
+  }
+
+  for (const source of historyRecords) {
+    if (!Array.isArray(source)) continue
+    for (const record of source) {
+      const id = workflowSessionId(record)
+      if (!id) continue
+      const at = sessionRecency(record)
+      const existing = known.get(id)
+      if (!existing) {
+        known.set(id, { order: known.size, live: false, at })
+        continue
+      }
+      if (!existing.live && at !== null && (existing.at === null || at > existing.at)) {
+        existing.at = at
+      }
+    }
+  }
+
+  return [...known.entries()]
+    .sort(([, left], [, right]) => {
+      if (left.live !== right.live) return left.live ? -1 : 1
+      if (left.live) return left.order - right.order
+      if (left.at === right.at) return left.order - right.order
+      if (left.at === null) return 1
+      if (right.at === null) return -1
+      return right.at - left.at
+    })
+    .map(([id]) => id)
+}
+
 function trimNumber(value) {
   return value.toFixed(1).replace(/\.0$/, '')
 }

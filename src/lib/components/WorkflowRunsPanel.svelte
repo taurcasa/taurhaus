@@ -23,6 +23,7 @@
   import {
     collectWorkflowSessionIds,
     formatTokens,
+    orderWorkflowSessionIds,
     runListRow,
     workflowSessionId,
   } from '../workflowRuns.js'
@@ -31,12 +32,22 @@
   let { projectId = '', sessions = [], dark = false } = $props()
 
   /**
-   * How many sessions one project view will ask about. A long-lived project has
-   * hundreds of archived sessions and almost none of them ran a workflow, so
-   * the list is cut — but only after it has been ordered newest first, and the
+   * How many sessions one round asks about. A long-lived project has hundreds
+   * of archived sessions and almost none of them ran a workflow, so the list is
+   * cut — but only after every candidate has been ordered newest first, and the
    * header says when it was cut.
    */
-  const MAX_SESSIONS = 24
+  const SESSION_PAGE = 24
+  /**
+   * How far back a project view will keep looking when it has found nothing.
+   *
+   * A page that comes back empty is not an answer, it is the absence of one: a
+   * project whose only workflow ran thirty sessions ago would otherwise show no
+   * history and offer no way to reach it. So an empty page asks the next one,
+   * and a page with runs in it stops — the rest is older than what is already
+   * on screen, and the header says the list was cut.
+   */
+  const MAX_SESSIONS = SESSION_PAGE * 4
 
   let runs = $state([])
   let askedSessions = $state(0)
@@ -127,27 +138,32 @@
       }
       if (token !== loadToken) return
 
-      const candidates = collectWorkflowSessionIds(
+      const candidates = orderWorkflowSessionIds(
         liveSessionIds.map((sessionId) => ({ session_id: sessionId })),
         taskSessions,
         archivedSessions
       )
-      const sessionIds = candidates.slice(0, MAX_SESSIONS)
-      const answers = await Promise.allSettled(
-        sessionIds.map((sessionId) => listWorkflowRuns(sessionId))
-      )
-      if (token !== loadToken) return
-
-      askedSessions = sessionIds.length
-      sessionsTruncated = candidates.length > sessionIds.length
 
       const merged = []
-      for (const [index, answer] of answers.entries()) {
-        if (answer.status !== 'fulfilled' || !Array.isArray(answer.value)) continue
-        for (const run of answer.value) {
-          merged.push({ ...run, sessionId: sessionIds[index] })
+      let asked = 0
+      while (asked < candidates.length && asked < MAX_SESSIONS && merged.length === 0) {
+        const page = candidates.slice(asked, asked + SESSION_PAGE)
+        const answers = await Promise.allSettled(
+          page.map((sessionId) => listWorkflowRuns(sessionId))
+        )
+        if (token !== loadToken) return
+        asked += page.length
+
+        for (const [index, answer] of answers.entries()) {
+          if (answer.status !== 'fulfilled' || !Array.isArray(answer.value)) continue
+          for (const run of answer.value) {
+            merged.push({ ...run, sessionId: page[index] })
+          }
         }
       }
+
+      askedSessions = asked
+      sessionsTruncated = candidates.length > asked
       runs = merged.sort((left, right) => (right?.started_at ?? 0) - (left?.started_at ?? 0))
     })()
   })
