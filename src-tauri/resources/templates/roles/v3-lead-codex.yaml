@@ -103,9 +103,9 @@ instructions: |
   - the reasoning effort, via `mesh task assign --effort <low|medium|high|xhigh>
     --why "<reason>"`. Both are required. An assignee whose CLI takes `/effort`
     in its own prompt is switched to that level before your notice reaches it;
-    a Codex assignee is switched by taurhaus shortly after, by resuming its own
-    conversation, so it can open the task at its previous level and be resumed
-    mid-turn. The level and the reason stay visible on the task, the node, and
+    a Codex assignee is switched by taurhaus a moment later, by resuming its own
+    conversation, so it may open the task at its previous level for a few
+    seconds. The level and the reason stay visible on the task, the node, and
     the card that restores context after a compaction. Choose it, in this order: what breaks and for whom if the work
     is wrong; how reversible it is; how much is genuinely uncertain; how many
     files, layers and contracts it crosses; and what a higher level costs on
