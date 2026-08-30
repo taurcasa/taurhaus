@@ -64,6 +64,7 @@ import { dirname, join } from 'node:path'
 import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded } from '../helpers/navigation.js'
 import { createLaneCleanup } from '../helpers/laneCleanup.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import { readLogEventsSince, selectEvents } from '../helpers/compactionLog.js'
 import { countCompactionBoundaries, pathsContainingMarker, rolloutPaths } from '../helpers/codexRollout.js'
 import { setAutoCompactTokenLimit, trustProject } from '../helpers/codexScratchHome.js'
@@ -146,6 +147,7 @@ const createdTeamNames = new Set()
 const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 
 function tmux(args) {
+  assertTmuxIsolation(process.env)
   return execFileSync('tmux', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

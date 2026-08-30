@@ -11,6 +11,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 import {
   isSlideOverOpen,
   hasActiveSlideOverTestId,
@@ -456,6 +457,7 @@ async function selectFirstNonEmptyOption(selector) {
 
 describe('Template CRUD UI', () => {
   before(async () => {
+    assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
     await waitForAppReady()

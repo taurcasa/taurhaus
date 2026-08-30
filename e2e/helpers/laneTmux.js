@@ -23,7 +23,8 @@
  *     operator's server while believing it is isolated.
  */
 
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 /** The socket directory for the lane's own tmux server. */
 export function isolatedTmuxTmpdir(sessionTempRoot) {
@@ -65,20 +66,50 @@ export function parseProcEnviron(raw) {
   return environment
 }
 
-/**
- * The specs that must run against a tmux server of their own.
- *
- * Only the managed-stage lane, deliberately. `compaction-codex-hooks.js` has
- * the same shape of problem, but it costs a subscription turn to re-verify and
- * nothing here was run against it; moving it is its own change.
- */
-const ISOLATED_TMUX_SPECS = ['managed-stage-codex.js']
+const TMUX_CALL_PATTERNS = [
+  /\bexecFileSync\s*\(\s*['"]tmux['"]/g,
+  /\b(?:snapshotTmuxPanes|cleanupNewTmuxPanes)\s*\(/g,
+]
 
-/** Whether this WDIO session runs a spec that needs its own tmux server. */
-export function wantsIsolatedTmux(specs) {
-  return (specs ?? []).some((spec) =>
-    ISOLATED_TMUX_SPECS.some((name) => String(spec ?? '').endsWith(name))
-  )
+function firstTmuxCallOffset(source) {
+  let first = -1
+  for (const pattern of TMUX_CALL_PATTERNS) {
+    pattern.lastIndex = 0
+    const match = pattern.exec(source)
+    if (match && (first < 0 || match.index < first)) first = match.index
+  }
+  return first
+}
+
+/** Spec filenames whose source invokes tmux directly or through the pane helper. */
+export function findTmuxDrivingSpecs(specsDir) {
+  return readdirSync(specsDir)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .filter((name) => firstTmuxCallOffset(readFileSync(join(specsDir, name), 'utf8')) >= 0)
+}
+
+/** Missing or late isolation assertions in tmux-driving specs. */
+export function tmuxIsolationCoverageProblems(specsDir) {
+  const problems = []
+  for (const name of findTmuxDrivingSpecs(specsDir)) {
+    const source = readFileSync(join(specsDir, name), 'utf8')
+    const tmuxOffset = firstTmuxCallOffset(source)
+    const assertionOffset = source.indexOf('assertTmuxIsolation(')
+    if (assertionOffset < 0) {
+      problems.push(`${name}: call assertTmuxIsolation before the first tmux call`)
+    } else if (assertionOffset > tmuxOffset) {
+      problems.push(`${name}: assertTmuxIsolation is after the first tmux call`)
+    }
+  }
+  return problems
+}
+
+/** Throw before a spec can address any tmux server it does not own. */
+export function assertTmuxIsolation(environment, sessionTempRoot) {
+  const root = sessionTempRoot || dirname(String(environment?.TAURHAUS_DATA_DIR ?? ''))
+  const problem = tmuxIsolationProblem(environment, root)
+  if (problem) throw new Error(`E2E tmux isolation is required: ${problem}`)
 }
 
 /**

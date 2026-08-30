@@ -14,6 +14,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 
 let mainApp = false
 let tier2Enabled = false
@@ -24,6 +25,7 @@ const uniqueSuffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`
 let tmuxPaneSnapshot = { available: false, paneIds: [], reason: 'snapshot not captured' }
 
 function tmux(args) {
+  assertTmuxIsolation(process.env)
   return execFileSync('tmux', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

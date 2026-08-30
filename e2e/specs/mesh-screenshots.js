@@ -2,6 +2,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 
 let mainApp = false
 let tier2Enabled = false
@@ -186,6 +187,7 @@ async function initializeRuntimeForScreenshot() {
 
 describe('Mesh Screenshot Capture', () => {
   before(async () => {
+    assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
     await waitForAppReady()

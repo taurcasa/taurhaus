@@ -13,6 +13,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId, selectProjectByName, openContextMenu, dismissContextMenu, switchToTab } from '../helpers/navigation.js'
 import { POLL, POLL_WIZARD, WAIT_MEDIUM, WAIT_SHORT } from '../helpers/timing.js'
 import { PROJECTS_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 
 const TARGET_PROJECT_NAME = 'taurhaus'
 const TARGET_PROJECT_PATH = TAURHAUS_PROJECT_PATH
@@ -35,6 +36,7 @@ let daemonConnected = false
 let originalSettings = null
 
 function tmux(args) {
+  assertTmuxIsolation(process.env)
   return execFileSync('tmux', args, { encoding: 'utf8' }).trim()
 }
 

@@ -5,7 +5,7 @@ use tauri::{Emitter, Manager, State};
 use crate::commands::lifecycle::IpcCommandSpan;
 use crate::daemon::launcher::{validate_wsl_distro, wsl_command};
 use crate::daemon::protocol::PROTOCOL_VERSION;
-use crate::daemon::server::DEFAULT_PORT;
+use crate::daemon::server::app_daemon_port;
 use crate::errors::{CommandResultExt, IpcResult};
 use crate::models::{DaemonInstallStatus, DaemonStatus, OperationResult};
 use crate::ProviderState;
@@ -61,7 +61,7 @@ fn daemon_status_snapshot(provider: &ProviderState) -> DaemonStatus {
         protocol_version: 0,
         expected_protocol_version: PROTOCOL_VERSION,
         uptime_secs: None,
-        port: DEFAULT_PORT,
+        port: app_daemon_port(),
         wsl_distro: provider.wsl_distro.clone(),
     }
 }
@@ -82,7 +82,7 @@ pub fn start_daemon(
             }
         })?;
 
-        let port = DEFAULT_PORT;
+        let port = app_daemon_port();
         crate::daemon::launcher::try_restart_daemon(distro, port)
             .map_err(|e| format!("Failed to start daemon: {e}"))?;
 
@@ -598,7 +598,7 @@ fn install_daemon_wsl(
     let result = parse_wsl_install_output(&output.stdout)?;
 
     if result.daemon_was_running {
-        crate::daemon::launcher::try_restart_daemon(&distro, DEFAULT_PORT)
+        crate::daemon::launcher::try_restart_daemon(&distro, app_daemon_port())
             .map_err(|e| format!("Daemon installed but restart failed: {e}"))?;
     }
 

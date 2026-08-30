@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import {
   applyTmuxIsolation,
+  findTmuxDrivingSpecs,
   isolatedTmuxTmpdir,
   parseProcEnviron,
+  tmuxIsolationCoverageProblems,
   tmuxIsolationProblem,
-  wantsIsolatedTmux,
 } from './laneTmux.js'
 
 const root = '/tmp/taurhaus-e2e-1234-abcd'
@@ -63,19 +64,28 @@ describe('parseProcEnviron', () => {
   })
 })
 
-describe('wantsIsolatedTmux', () => {
-  it('is true when the run names the managed-stage lane', () => {
-    expect(wantsIsolatedTmux(['/repo/e2e/specs/managed-stage-codex.js'])).toBe(true)
+describe('tmux-driving spec coverage', () => {
+  // Regression: commit 3c781765 isolated one paid spec through a module-local
+  // allowlist while every other tmux-driving spec stayed on the operator server.
+  it('derives every tmux-driving spec from its source calls', () => {
+    const specsDir = resolve(import.meta.dirname, '..', 'specs')
+
+    expect(findTmuxDrivingSpecs(specsDir)).toEqual([
+      'command-center-real-actions.js',
+      'compaction-codex-hooks.js',
+      'managed-stage-codex.js',
+      'mesh-recovery.js',
+      'mesh-screenshots.js',
+      'mesh-workflow.js',
+      'session-management.js',
+      'template-crud-ui.js',
+      'template-screenshots.js',
+    ])
   })
 
-  it('is false for the specs that share the operator server today', () => {
-    expect(wantsIsolatedTmux(['/repo/e2e/specs/compaction-codex-hooks.js'])).toBe(false)
-    expect(wantsIsolatedTmux(['/repo/e2e/specs/search-workflow.js'])).toBe(false)
-  })
-
-  it('is false for no specs at all', () => {
-    expect(wantsIsolatedTmux(undefined)).toBe(false)
-    expect(wantsIsolatedTmux([])).toBe(false)
+  it('requires every tmux-driving spec to assert isolation before its first tmux call', () => {
+    const specsDir = resolve(import.meta.dirname, '..', 'specs')
+    expect(tmuxIsolationCoverageProblems(specsDir)).toEqual([])
   })
 })
 

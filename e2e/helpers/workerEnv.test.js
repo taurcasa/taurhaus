@@ -41,4 +41,22 @@ describe('buildWorkerEnv', () => {
     }
     expect(env.PATH).toBe('/usr/bin')
   })
+
+  // Regression: commit fc896344 isolated worker roots but left every ordinary
+  // E2E app on the operator's tmux server and daemon port 17233.
+  it('gives every worker a private tmux server and daemon port', () => {
+    const sessionTempRoot = '/tmp/taurhaus-e2e-1234-worker'
+    const env = buildWorkerEnv(sessionTempRoot, {
+      baseEnv: {
+        TMUX: '/tmp/tmux-1000/default,407334,0',
+        TMUX_TMPDIR: '/tmp/operator-tmux',
+        TAURHAUS_DAEMON_PORT: '17233',
+      },
+    })
+
+    expect(env.TMUX_TMPDIR).toBe(join(sessionTempRoot, 'tmux'))
+    expect('TMUX' in env).toBe(false)
+    expect(Number(env.TAURHAUS_DAEMON_PORT)).toBeGreaterThan(0)
+    expect(env.TAURHAUS_DAEMON_PORT).not.toBe('17233')
+  })
 })

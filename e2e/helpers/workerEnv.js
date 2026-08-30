@@ -1,5 +1,7 @@
 import { resolve } from 'node:path'
 
+import { applyTmuxIsolation } from './laneTmux.js'
+
 export const WORKER_ROOT_ENV_KEYS = [
   'TAURHAUS_DATA_DIR',
   'TAURHAUS_CLAUDE_DIR',
@@ -16,6 +18,16 @@ const ROOT_SUBDIRS = {
   TAURHAUS_AGY_DIR: 'agy-home',
 }
 
+/** A stable high port derived from the worker's unique session root. */
+export function workerDaemonPort(sessionTempRoot) {
+  let hash = 2166136261
+  for (const char of resolve(sessionTempRoot)) {
+    hash ^= char.codePointAt(0)
+    hash = Math.imul(hash, 16777619) >>> 0
+  }
+  return 20_000 + (hash % 40_000)
+}
+
 /** Build the complete environment for one isolated WDIO worker. */
 export function buildWorkerEnv(sessionTempRoot, { baseEnv = {} } = {}) {
   if (typeof sessionTempRoot !== 'string' || sessionTempRoot.trim() === '') {
@@ -27,5 +39,7 @@ export function buildWorkerEnv(sessionTempRoot, { baseEnv = {} } = {}) {
   for (const key of WORKER_ROOT_ENV_KEYS) {
     env[key] = resolve(root, ROOT_SUBDIRS[key])
   }
+  env.TAURHAUS_DAEMON_PORT = String(workerDaemonPort(root))
+  applyTmuxIsolation(env, root)
   return env
 }

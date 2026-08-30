@@ -9,6 +9,17 @@ use crate::project_provider::ProjectProvider;
 
 /// Default port for the daemon.
 pub const DEFAULT_PORT: u16 = 17233;
+/// App-only override used by isolated E2E workers and explicit launchers.
+pub const DAEMON_PORT_OVERRIDE_ENV: &str = "TAURHAUS_DAEMON_PORT";
+
+/// Port the app and its daemon launcher must agree on for this process.
+pub fn app_daemon_port() -> u16 {
+    std::env::var(DAEMON_PORT_OVERRIDE_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(DEFAULT_PORT)
+}
 
 /// Maximum allowed length for a single request line (1 MB).
 ///
@@ -527,6 +538,19 @@ fn log_dropped_push_event(event: &DaemonEvent, stage: &str, error: Option<&str>)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Regression: commit fc896344 isolated E2E data roots but left the app on
+    // port 17233, where its auth failure could restart the operator's daemon.
+    #[test]
+    fn app_daemon_port_honors_the_worker_override() {
+        let _env_guard = crate::test_support::acquire_env_test_guard();
+        std::env::set_var("TAURHAUS_DAEMON_PORT", "29441");
+
+        let port = app_daemon_port();
+
+        std::env::remove_var("TAURHAUS_DAEMON_PORT");
+        assert_eq!(port, 29441);
+    }
     use crate::provider::local::LocalProvider;
     use serde_json::Value;
     use std::io::{BufRead, BufReader, Write};

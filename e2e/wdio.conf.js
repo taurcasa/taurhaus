@@ -43,7 +43,6 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
-import { applyTmuxIsolation, wantsIsolatedTmux } from './helpers/laneTmux.js'
 import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
@@ -234,21 +233,17 @@ function restoreCodexHome() {
   codexHomeOverridden = false
 }
 
-// The managed-stage lane creates tmux panes and pushes this session's temporary
-// roots into the `taurhaus` tmux session's environment. On the operator's own
-// tmux server that hands those roots — deleted at teardown — to the next pane
-// they open, so the lane runs against a server of its own. The app is what
-// creates the panes, so the override has to be in place before tauri-driver
-// starts it, and `TMUX` has to go: a suite started from inside a tmux pane
-// inherits one, and every tmux client prefers it to `TMUX_TMPDIR`.
+// Every worker uses the tmux server named by buildWorkerEnv. The app is what
+// creates managed panes, so the override has to be in place before tauri-driver
+// starts it, and inherited TMUX must stay absent.
 let previousTmuxEnvironment = null
 let tmuxSocketDir = ''
 
-function prepareIsolatedTmux(specs, tempRoot) {
-  if (!wantsIsolatedTmux(specs)) return
-
+function prepareIsolatedTmux(workerEnv) {
   previousTmuxEnvironment = { TMUX_TMPDIR: process.env.TMUX_TMPDIR ?? null, TMUX: process.env.TMUX ?? null }
-  tmuxSocketDir = applyTmuxIsolation(process.env, tempRoot)
+  tmuxSocketDir = workerEnv.TMUX_TMPDIR
+  process.env.TMUX_TMPDIR = tmuxSocketDir
+  delete process.env.TMUX
   // tmux creates `$TMUX_TMPDIR/tmux-<uid>` but not its parent, and fails when
   // the parent is missing.
   mkdirSync(tmuxSocketDir, { recursive: true })
@@ -587,10 +582,10 @@ export const config = {
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
     prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
-    for (const key of WORKER_ROOT_ENV_KEYS) {
+    for (const key of [...WORKER_ROOT_ENV_KEYS, 'TAURHAUS_DAEMON_PORT']) {
       process.env[key] = workerEnv[key]
     }
-    prepareIsolatedTmux(specs, sessionTempRoot)
+    prepareIsolatedTmux(workerEnv)
 
     tauriDriver = spawn(
       localTauriDriverPath,

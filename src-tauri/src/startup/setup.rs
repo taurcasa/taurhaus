@@ -146,7 +146,7 @@ fn connect_daemon_provider(
     wsl_distro: &Option<String>,
     log_path: &std::path::Path,
 ) -> (Option<provider::daemon_client::DaemonProvider>, bool) {
-    let port = crate::daemon::server::DEFAULT_PORT;
+    let port = crate::daemon::server::app_daemon_port();
     let addr = format!("127.0.0.1:{port}");
     let connect_distro = wsl_distro.clone();
     connect_daemon_provider_with(
