@@ -688,9 +688,16 @@ describe('workflow procedures — the outcome', () => {
       expect(result.outcome).toBe('followup_required')
       expect(result.ledger.remaining.map((finding) => finding.title)).toContain(major.title)
       expect(result.gate.status).toBe('pass')
+      // Runnable as handed back: fix-round needs the checkout, and the branch
+      // and spec keep the next round on the same work.
       expect(result.followup).toEqual({
         name: 'fix-round',
         args: {
+          worktree: BASE_ARGS.worktree,
+          branch: BASE_ARGS.branch,
+          base: 'main',
+          spec: BASE_ARGS.spec,
+          title: result.ledger.title,
           findings: result.ledger.remaining,
           startRound: result.ledger.rounds + 1,
         },
@@ -724,6 +731,11 @@ describe('workflow procedures — the outcome', () => {
     expect(result.followup).toEqual({
       name: 'fix-round',
       args: {
+        worktree: BASE_ARGS.worktree,
+        branch: BASE_ARGS.branch,
+        base: 'main',
+        spec: BASE_ARGS.spec,
+        title: result.ledger.title,
         findings: result.ledger.remaining,
         startRound: result.ledger.rounds + 1,
       },

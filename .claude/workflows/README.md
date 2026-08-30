@@ -73,7 +73,7 @@ ledger row can be filled from the run instead of by hand:
 {
   outcome: 'complete' | 'followup_required',
   // Present only for followup_required:
-  followup: { name: 'fix-round', args: { findings: remaining, startRound: rounds + 1 } },
+  followup: { name: 'fix-round', args: { worktree, branch, base, spec, title, findings: remaining, startRound: rounds + 1 } },
   ledger: { title, size, implementer, models, effort, reviewers, rounds, majors, findings, remaining },
   commits: [...],
   gate: { status: 'pass', commands: [{command, status, detail}], diff_stat, commits },
