@@ -38,11 +38,18 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
+import {
+  E2E_RUN_TOKEN_ENV,
+  cleanupStaleProcessLedgers,
+  createOwnedProcessLedger,
+  findRunTokenProcessRecords,
+} from './helpers/laneCleanup.js'
 import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
@@ -63,8 +70,6 @@ const mochaBail = process.env.E2E_MOCHA_BAIL !== '0'
 const suiteBail = Number(process.env.E2E_BAIL || 1)
 const traceTiming = process.env.E2E_TRACE_TIMING === '1'
 const traceTimingThresholdMs = Number(process.env.E2E_TRACE_THRESHOLD_MS || 1_500)
-const driverPidRegistry = resolve(tmpdir(), `taurhaus-e2e-driver-pids-${wdioPort}.txt`)
-
 const specList = buildSpecList(specsDir)
 const specGroupIndexByPath = new Map()
 for (const [groupIndex, group] of specList.entries()) {
@@ -78,6 +83,8 @@ let sessionTempRoot = null
 let tauriDriverStderrBuffer = ''
 let sessionAppLogPaths = []
 let sessionDaemonLogPaths = []
+let sessionRunToken = ''
+let processLedger = null
 
 function runGitOrThrow(cwd, args, errorMessage) {
   const result = spawnSync('git', args, {
@@ -299,74 +306,32 @@ async function waitForWebDriverReady(host, port, timeoutMs = 5_000, intervalMs =
   throw new Error(`tauri-driver did not become protocol-ready at ${host}:${port} within ${timeoutMs}ms`)
 }
 
-function killByPattern(pattern) {
+function killByPortPattern(pattern) {
   if (process.platform === 'win32') return
   spawnSync('pkill', ['-f', pattern], { stdio: 'ignore' })
 }
 
-function appendDriverPid(pid) {
-  if (!pid) return
-  appendFileSync(driverPidRegistry, `${pid}\n`)
-}
-
-function readDriverPids() {
-  try {
-    const lines = readFileSync(driverPidRegistry, 'utf8')
-      .split('\n')
-      .map(line => Number.parseInt(line.trim(), 10))
-      .filter(pid => Number.isInteger(pid) && pid > 0)
-    return [...new Set(lines)]
-  } catch {
-    return []
+function refreshOwnedProcessRecords() {
+  if (!processLedger || !sessionRunToken) return
+  for (const record of findRunTokenProcessRecords(sessionRunToken)) {
+    if (record.pid !== process.pid) processLedger.record(record)
   }
-}
-
-function clearDriverPidRegistry() {
-  rmSync(driverPidRegistry, { force: true })
-}
-
-function killDriverTree(pid) {
-  if (!pid || pid <= 0) return
-  try {
-    process.kill(-pid, 'SIGKILL')
-    return
-  } catch {
-    // Fall back to direct PID kill.
-  }
-  try {
-    process.kill(pid, 'SIGKILL')
-  } catch {
-    // no-op
-  }
-}
-
-function cleanupRegisteredDrivers() {
-  for (const pid of readDriverPids()) {
-    killDriverTree(pid)
-  }
-  clearDriverPidRegistry()
 }
 
 function cleanupDriverPortFallback() {
   // Last-resort fallback for orphan processes on this worker's ports.
-  killByPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
-  killByPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
-}
-
-function cleanupStaleDriverProcessesPreRun() {
-  // Safe at startup only (before worker sessions begin).
-  // Prevents orphan test apps from prior aborted runs.
-  killByPattern('tauri-driver --port')
-  killByPattern('WebKitWebDriver --port=')
+  killByPortPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
+  killByPortPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
 }
 
 function cleanupTauriDriver() {
-  if (tauriDriver?.pid) {
-    killDriverTree(tauriDriver.pid)
-  }
+  refreshOwnedProcessRecords()
+  processLedger?.cleanup()
   tauriDriver = null
-  cleanupRegisteredDrivers()
   cleanupDriverPortFallback()
+  processLedger?.remove()
+  processLedger = null
+  sessionRunToken = ''
 }
 
 function cleanupSessionTempRoot() {
@@ -522,7 +487,7 @@ export const config = {
    * Skip with E2E_SKIP_BUILD=1 if you already have a fresh build.
    */
   async onPrepare() {
-    cleanupStaleDriverProcessesPreRun()
+    cleanupStaleProcessLedgers(projectRoot)
 
     if (process.env.E2E_SKIP_BUILD === '1') {
       console.log('[e2e] Skipping build (E2E_SKIP_BUILD=1)')
@@ -555,7 +520,12 @@ export const config = {
     cleanupAllE2eArtifacts()
 
     sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
-    const workerEnv = buildWorkerEnv(sessionTempRoot, { baseEnv: process.env })
+    sessionRunToken = randomUUID()
+    processLedger = createOwnedProcessLedger({ checkoutRoot: projectRoot, runToken: sessionRunToken })
+    const workerEnv = buildWorkerEnv(sessionTempRoot, {
+      baseEnv: process.env,
+      runToken: sessionRunToken,
+    })
     const tauriDataDir = workerEnv.TAURHAUS_DATA_DIR
     const tauriClaudeDir = workerEnv.TAURHAUS_CLAUDE_DIR
     const e2eProjectsDir = `${sessionTempRoot}/projects`
@@ -582,7 +552,7 @@ export const config = {
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
     prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
-    for (const key of [...WORKER_ROOT_ENV_KEYS, 'TAURHAUS_DAEMON_PORT']) {
+    for (const key of [...WORKER_ROOT_ENV_KEYS, 'TAURHAUS_DAEMON_PORT', E2E_RUN_TOKEN_ENV]) {
       process.env[key] = workerEnv[key]
     }
     prepareIsolatedTmux(workerEnv)
@@ -596,7 +566,7 @@ export const config = {
         detached: true,
       }
     )
-    appendDriverPid(tauriDriver.pid)
+    processLedger.recordPid(tauriDriver.pid, { processGroup: true })
     if (tauriDriver?.stdout) {
       tauriDriver.stdout.on('data', (chunk) => {
         process.stdout.write(chunk)
@@ -611,6 +581,11 @@ export const config = {
     }
 
     await waitForWebDriverReady('127.0.0.1', wdioPort)
+  },
+
+  before() {
+    // WebKitWebDriver and the app exist only after WDIO creates the session.
+    refreshOwnedProcessRecords()
   },
 
   /**

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 
-import { createLaneCleanup } from './laneCleanup.js'
+import { createLaneCleanup, killOwnedProcessRecord } from './laneCleanup.js'
 
 function silentLogger() {
   return { log: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -152,5 +152,33 @@ describe('lane cleanup', () => {
 
     expect(proc.listenerCount('uncaughtException')).toBe(0)
     expect(proc.listenerCount('unhandledRejection')).toBe(0)
+  })
+})
+
+describe('owned process cleanup', () => {
+  // Regression: commit 707ce88a recorded a PID without its Linux start time,
+  // so a reused PID could make cleanup kill a process this run never started.
+  it('does not kill a recorded process whose PID has been reused', () => {
+    const kill = vi.fn()
+
+    const killed = killOwnedProcessRecord(
+      { pid: 4242, startTime: '100' },
+      { readStartTime: () => '200', kill }
+    )
+
+    expect(killed).toBe(false)
+    expect(kill).not.toHaveBeenCalled()
+  })
+
+  it('kills a recorded process when both PID and start time still match', () => {
+    const kill = vi.fn()
+
+    const killed = killOwnedProcessRecord(
+      { pid: 4242, startTime: '100' },
+      { readStartTime: () => '100', kill }
+    )
+
+    expect(killed).toBe(true)
+    expect(kill).toHaveBeenCalledWith(4242, 'SIGKILL')
   })
 })
