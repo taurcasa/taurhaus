@@ -1685,6 +1685,7 @@ mod tests {
                 last_seen_at: None,
                 applied_effort: None,
                 effort_resume_failure: None,
+                extra: Default::default(),
             },
         )
         .expect("save runtime");
@@ -1705,6 +1706,7 @@ mod tests {
                     subject: "Implement Claude SessionStart(source=compact) hook bridge"
                         .to_string(),
                     status: "in_progress".to_string(),
+                    ..Default::default()
                 },
                 assignment_footer: OperationalAssignmentFooterSnapshot {
                     execution_mode: "implement".to_string(),
@@ -2490,6 +2492,7 @@ mod tests {
                     last_seen_at: None,
                     applied_effort: None,
                     effort_resume_failure: None,
+                    extra: Default::default(),
                 },
             )
             .expect("save runtime");

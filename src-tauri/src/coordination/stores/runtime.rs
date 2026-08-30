@@ -1,23 +1,28 @@
 //! Member runtime state store.
 
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
 use super::compaction::prune_state_if_session_mismatch;
+use super::config::extension_fields_only;
 use crate::coordination::domain::{DeliveryLease, HealthState};
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
 
 const RUNTIME_DIRNAME: &str = "runtime";
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
+static RUNTIME_RECORD_SKIP_REASONS: OnceLock<Mutex<HashMap<(String, String), String>>> =
+    OnceLock::new();
 const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
     Duration::from_millis(100),
     Duration::from_millis(200),
@@ -27,7 +32,9 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    #[serde(default = "schema_version_one")]
     pub schema_version: u32,
+    #[serde(default)]
     pub member_name: String,
     pub cli_tool: Option<CliTool>,
     pub project_path: Option<PathBuf>,
@@ -39,9 +46,16 @@ pub struct MemberRuntimeRecord {
     pub session_id: Option<String>,
     pub jsonl_path: Option<PathBuf>,
     pub daemon_pid: Option<u32>,
+    #[serde(
+        default = "default_runtime_health",
+        deserialize_with = "deserialize_runtime_health"
+    )]
     pub health: HealthState,
+    #[serde(default, alias = "deliveryLease")]
     pub delivery_lease: Option<DeliveryLease>,
+    #[serde(default, alias = "attachedAt")]
     pub attached_at: Option<DateTime<Utc>>,
+    #[serde(default, alias = "lastSeenAt")]
     pub last_seen_at: Option<DateTime<Utc>>,
     /// Reasoning effort currently in force for the running session.
     ///
@@ -62,6 +76,8 @@ pub struct MemberRuntimeRecord {
     /// is what keeps that retry bounded. Cleared by any launch that commits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_resume_failure: Option<EffortResumeFailure>,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// How often a member has failed to reach one requested effort level.
@@ -117,11 +133,14 @@ impl MemberRuntimeStore {
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
-        save_runtime_record_locked(teams_dir, team_name, member_name, record, &target_lock)
+        let mut record = record.clone();
+        merge_current_extension_fields(&mut record, &target_lock.read_contents()?, false);
+
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
 
-    /// Save a snapshot loaded earlier, keeping whatever level mesh has put into
-    /// force since.
+    /// Save a snapshot loaded earlier, keeping mesh-owned extension fields and
+    /// whatever level mesh has put into force since.
     ///
     /// The liveness passes load every record for a team, decide what changed,
     /// and save the whole snapshot back. mesh is the only writer of
@@ -149,14 +168,7 @@ impl MemberRuntimeStore {
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
         let mut record = record.clone();
-        let raw = target_lock.read_contents()?;
-        if !raw.trim().is_empty() {
-            // A record this store cannot parse is one it is about to replace
-            // anyway; the caller's own value stands.
-            if let Ok(current) = parse_runtime_record(&raw, team_name, member_name) {
-                record.applied_effort = current.applied_effort;
-            }
-        }
+        merge_current_extension_fields(&mut record, &target_lock.read_contents()?, true);
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
@@ -249,15 +261,31 @@ impl MemberRuntimeStore {
             }
             let member_name = match path.file_stem().and_then(|s| s.to_str()) {
                 Some(name) => name.to_string(),
-                None => continue,
+                None => {
+                    log_runtime_record_skipped(team_name, "<invalid>", "invalid member filename");
+                    continue;
+                }
             };
             let raw = match fs::read_to_string(&path) {
                 Ok(raw) => raw,
-                Err(_) => continue,
+                Err(err) => {
+                    log_runtime_record_skipped(
+                        team_name,
+                        &member_name,
+                        &format!("failed to read runtime record: {err}"),
+                    );
+                    continue;
+                }
             };
             match parse_runtime_record(&raw, team_name, &member_name) {
-                Ok(record) => results.push((member_name, record)),
-                Err(_) => continue, // skip corrupt
+                Ok(record) => {
+                    clear_runtime_record_skipped(team_name, &member_name);
+                    results.push((member_name, record));
+                }
+                Err(err) => {
+                    log_runtime_record_skipped(team_name, &member_name, &err.to_string());
+                    continue;
+                }
             }
         }
 
@@ -316,9 +344,19 @@ impl MemberRuntimeStore {
                 .to_string();
 
             let should_remove = match fs::read_to_string(&path) {
-                Ok(raw) => match parse_runtime_record(&raw, team_name, &member_name) {
-                    Ok(record) => is_stale(&record, cutoff),
+                Ok(raw) => match serde_json::from_str::<Value>(&raw) {
                     Err(_) => true,
+                    Ok(Value::Object(object)) => {
+                        match parse_runtime_record(&raw, team_name, &member_name) {
+                            Ok(record) if has_staleness_fields(&object) => {
+                                is_stale(&record, cutoff)
+                            }
+                            // Valid objects may be partial mesh records or use
+                            // fields from a newer schema. Neither is corrupt.
+                            Ok(_) | Err(_) => false,
+                        }
+                    }
+                    Ok(_) => true,
                 },
                 Err(err) => return Err(CoordinationError::Io(err)),
             };
@@ -344,6 +382,7 @@ fn save_runtime_record_locked(
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
     normalized.member_name = member_name.to_string();
+    normalized.extra = extension_fields_only(normalized.extra, RUNTIME_AUTHORED_KEYS);
 
     let runtime_dir = runtime_dir_path(teams_dir, team_name);
     fs::create_dir_all(&runtime_dir).map_err(|err| {
@@ -439,17 +478,23 @@ fn parse_runtime_record(
         jsonl_path: Option<PathBuf>,
         #[serde(default, alias = "daemonPid")]
         daemon_pid: Option<u32>,
+        #[serde(
+            default = "default_runtime_health",
+            deserialize_with = "deserialize_runtime_health"
+        )]
         health: HealthState,
-        #[serde(default)]
+        #[serde(default, alias = "deliveryLease")]
         delivery_lease: Option<DeliveryLease>,
-        #[serde(default)]
+        #[serde(default, alias = "attachedAt")]
         attached_at: Option<DateTime<Utc>>,
-        #[serde(default)]
+        #[serde(default, alias = "lastSeenAt")]
         last_seen_at: Option<DateTime<Utc>>,
         #[serde(default, alias = "appliedEffort")]
         applied_effort: Option<String>,
         #[serde(default, alias = "effortResumeFailure")]
         effort_resume_failure: Option<EffortResumeFailure>,
+        #[serde(flatten, default)]
+        extra: BTreeMap<String, Value>,
     }
 
     let wire: RuntimeRecordWire = serde_json::from_str(raw).map_err(|err| {
@@ -478,11 +523,90 @@ fn parse_runtime_record(
             .map(|level| level.trim().to_string())
             .filter(|level| !level.is_empty()),
         effort_resume_failure: wire.effort_resume_failure,
+        extra: extension_fields_only(wire.extra, RUNTIME_AUTHORED_KEYS),
     })
 }
 
+fn merge_current_extension_fields(
+    record: &mut MemberRuntimeRecord,
+    current_raw: &str,
+    preserve_applied_effort: bool,
+) {
+    if current_raw.trim().is_empty() {
+        return;
+    }
+
+    // Extract extensions from the JSON object directly: a future value for a
+    // taurhaus-owned field must not make unrelated mesh keys unreadable.
+    let Ok(Value::Object(current)) = serde_json::from_str::<Value>(current_raw) else {
+        return;
+    };
+    let current_applied_effort = current
+        .get("appliedEffort")
+        .or_else(|| current.get("applied_effort"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|level| !level.is_empty())
+        .map(ToString::to_string);
+    // The file is the authority for foreign keys: a key mesh deleted between
+    // this snapshot's load and its save must stay deleted, so the snapshot's
+    // own extras are replaced, never unioned.
+    record.extra = extension_fields_only(current.into_iter().collect(), RUNTIME_AUTHORED_KEYS);
+    if preserve_applied_effort {
+        record.applied_effort = current_applied_effort;
+    }
+}
+
+const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "schema_version",
+    "schemaVersion",
+    "member_name",
+    "memberName",
+    "cli_tool",
+    "cliTool",
+    "project_path",
+    "projectPath",
+    "cwd",
+    "pane_id",
+    "paneId",
+    "pane_pid",
+    "panePid",
+    "pane_start_time",
+    "paneStartTime",
+    "session_id",
+    "sessionId",
+    "jsonl_path",
+    "jsonlPath",
+    "daemon_pid",
+    "daemonPid",
+    "health",
+    "delivery_lease",
+    "deliveryLease",
+    "attached_at",
+    "attachedAt",
+    "last_seen_at",
+    "lastSeenAt",
+    "applied_effort",
+    "appliedEffort",
+    "effort_resume_failure",
+    "effortResumeFailure",
+];
+
 fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {
     latest_activity(record).is_none_or(|ts| ts <= cutoff)
+}
+
+fn has_staleness_fields(object: &Map<String, Value>) -> bool {
+    [
+        "delivery_lease",
+        "deliveryLease",
+        "attached_at",
+        "attachedAt",
+        "last_seen_at",
+        "lastSeenAt",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key))
 }
 
 fn latest_activity(record: &MemberRuntimeRecord) -> Option<DateTime<Utc>> {
@@ -669,8 +793,61 @@ fn log_runtime_store_error(
     );
 }
 
+fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) {
+    let skip_reasons = RUNTIME_RECORD_SKIP_REASONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut skip_reasons = skip_reasons
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let key = (team_name.to_string(), member_name.to_string());
+    if skip_reasons.get(&key).map(String::as_str) == Some(reason) {
+        return;
+    }
+    skip_reasons.insert(key, reason.to_string());
+    drop(skip_reasons);
+
+    let mut fields = Map::new();
+    fields.insert("team".to_string(), Value::String(team_name.to_string()));
+    fields.insert("member".to_string(), Value::String(member_name.to_string()));
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.runtime.record_skipped",
+        Some("Member runtime record was skipped".to_string()),
+        fields,
+    );
+    tracing::warn!(
+        team = team_name,
+        member = member_name,
+        reason,
+        "member runtime record was skipped"
+    );
+}
+
+fn clear_runtime_record_skipped(team_name: &str, member_name: &str) {
+    let Some(skip_reasons) = RUNTIME_RECORD_SKIP_REASONS.get() else {
+        return;
+    };
+    skip_reasons
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&(team_name.to_string(), member_name.to_string()));
+}
+
 const fn schema_version_one() -> u32 {
     RUNTIME_SCHEMA_VERSION
+}
+
+const fn default_runtime_health() -> HealthState {
+    HealthState::SessionDead
+}
+
+fn deserialize_runtime_health<'de, D>(deserializer: D) -> Result<HealthState, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_else(|_| default_runtime_health()))
 }
 
 #[cfg(test)]
@@ -678,6 +855,7 @@ mod tests {
     use std::time::Duration;
 
     use chrono::TimeZone;
+    use taurhaus_lib::logging::{install_global_sink, LogFileState};
     use tempfile::TempDir;
 
     use super::*;
@@ -715,6 +893,7 @@ mod tests {
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
             applied_effort: None,
             effort_resume_failure: None,
+            extra: BTreeMap::new(),
         }
     }
 
@@ -862,6 +1041,116 @@ mod tests {
     }
 
     #[test]
+    fn minimal_mesh_runtime_loads_and_is_not_cleaned_up_as_stale() {
+        // Regression: 50fc736 made `health` mandatory, so mesh's minimal
+        // applied-effort record was rejected and then deleted as corrupt.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "mesh-minimal";
+        let member_name = "builder";
+        let runtime_dir = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        let path = runtime_dir.join(format!("{member_name}.json"));
+        fs::write(&path, r#"{"appliedEffort":"medium"}"#).expect("minimal runtime");
+
+        let record = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("minimal mesh record should load");
+        assert_eq!(record.health, HealthState::SessionDead);
+        assert_eq!(record.applied_effort.as_deref(), Some("medium"));
+        assert_eq!(
+            MemberRuntimeStore::load_all(tmp.path(), team_name)
+                .expect("load all")
+                .len(),
+            1,
+            "a partial object is a runtime record, not corrupt input"
+        );
+
+        let removed = MemberRuntimeStore::cleanup_stale(
+            tmp.path(),
+            team_name,
+            Duration::from_secs(60),
+            ts("2026-03-01T21:10:00Z"),
+        )
+        .expect("cleanup");
+        assert!(removed.is_empty(), "partial mesh record must be preserved");
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn camel_case_activity_timestamp_keeps_a_fresh_runtime_record() {
+        // Regression: 44540568 classified `lastSeenAt` as taurhaus-authored
+        // without teaching the runtime decoder to read that spelling.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "camel-activity";
+        let member_name = "builder";
+        let runtime_dir = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        let path = runtime_dir.join(format!("{member_name}.json"));
+        fs::write(
+            &path,
+            serde_json::json!({
+                "paneId": "%7",
+                "deliveryLease": {
+                    "owner_pid": 42,
+                    "instance_uuid": "mesh-instance",
+                    "hostname": "mesh-host",
+                    "heartbeat_at": "2026-03-01T21:09:40Z",
+                    "started_at": "2026-03-01T21:00:00Z"
+                },
+                "attachedAt": "2026-03-01T21:09:20Z",
+                "lastSeenAt": "2026-03-01T21:09:30Z"
+            })
+            .to_string(),
+        )
+        .expect("camel-case runtime");
+
+        let record = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("camel-case activity should load");
+        assert_eq!(
+            record.delivery_lease.as_ref().map(|lease| lease.owner_pid),
+            Some(42)
+        );
+        assert_eq!(record.attached_at, Some(ts("2026-03-01T21:09:20Z")));
+        assert_eq!(record.last_seen_at, Some(ts("2026-03-01T21:09:30Z")));
+
+        let removed = MemberRuntimeStore::cleanup_stale(
+            tmp.path(),
+            team_name,
+            Duration::from_secs(60),
+            ts("2026-03-01T21:10:00Z"),
+        )
+        .expect("cleanup");
+        assert!(removed.is_empty(), "the fresh record must be retained");
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn future_health_value_does_not_hide_an_otherwise_valid_runtime_record() {
+        // Regression: 56712858 preserved forward-compatible JSON objects in
+        // cleanup but still made them invisible to load and member resume.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "future-health";
+        let member_name = "builder";
+        let runtime_dir = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        fs::write(
+            runtime_dir.join(format!("{member_name}.json")),
+            r#"{"paneId":"%7","health":"future_mesh_state"}"#,
+        )
+        .expect("future runtime");
+
+        let record = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("future health should degrade one field, not the record");
+        assert_eq!(record.pane_id.as_deref(), Some("%7"));
+        assert_eq!(record.health, HealthState::SessionDead);
+        assert_eq!(
+            MemberRuntimeStore::load_all(tmp.path(), team_name)
+                .expect("load all")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
     fn stale_logic_uses_latest_activity_timestamp() {
         let mut record = sample_record("agent-1");
         record.delivery_lease.as_mut().expect("lease").heartbeat_at = ts("2026-03-01T21:07:00Z");
@@ -1001,7 +1290,11 @@ mod tests {
         let team_name = "architecture-final";
         let runtime_dir = runtime_dir_path(teams_dir, team_name);
         fs::create_dir_all(&runtime_dir).expect("create runtime dir");
-        fs::write(runtime_dir.join("broken.json"), "{not-json").expect("write broken json");
+        // Invalid JSON has no extension map or timestamp information that can
+        // be preserved safely, so it remains genuinely corrupt.
+        fs::write(runtime_dir.join("broken.json"), "not json").expect("write broken json");
+        // A valid JSON value that is not an object cannot be a runtime record.
+        fs::write(runtime_dir.join("array.json"), "[]").expect("write non-object json");
 
         let removed = MemberRuntimeStore::cleanup_stale(
             teams_dir,
@@ -1011,7 +1304,7 @@ mod tests {
         )
         .expect("cleanup should succeed");
 
-        assert_eq!(removed, vec!["broken".to_string()]);
+        assert_eq!(removed, vec!["array".to_string(), "broken".to_string()]);
         assert!(
             !runtime_dir.join("broken.json").exists(),
             "broken runtime file should be pruned during cleanup"
@@ -1048,6 +1341,7 @@ mod tests {
             last_seen_at: None,
             applied_effort: None,
             effort_resume_failure: None,
+            extra: BTreeMap::new(),
         };
 
         MemberRuntimeStore::save(teams_dir, team_name, "no-heartbeat", &no_timestamps)
@@ -1275,23 +1569,48 @@ mod tests {
     }
 
     #[test]
-    fn load_all_skips_corrupt_files() {
+    fn load_all_skips_corrupt_files_with_one_diagnostic_across_repeated_loads() {
+        // Regression: 56712858 emitted the same warning on every two-second
+        // status poll while a persistent corrupt runtime file remained.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path();
-        let team_name = "architecture-final";
+        let team_name = "runtime-skip-dedup";
 
         let valid = sample_record("valid-agent");
         MemberRuntimeStore::save(teams_dir, team_name, "valid-agent", &valid).expect("save");
 
         let runtime_dir = runtime_dir_path(teams_dir, team_name);
+        // This is invalid JSON, not a merely partial runtime object, so it is
+        // skipped while the valid record remains available.
         fs::write(runtime_dir.join("corrupt-agent.json"), "{{bad json").expect("write corrupt");
+        let log_path = tmp.path().join("runtime.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
 
         let results =
             MemberRuntimeStore::load_all(teams_dir, team_name).expect("load_all should succeed");
+        let repeated_results =
+            MemberRuntimeStore::load_all(teams_dir, team_name).expect("repeat should succeed");
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "valid-agent");
         assert_eq!(results[0].1, valid);
+        assert_eq!(repeated_results, results);
+
+        log_state
+            .flush_for_test()
+            .expect("flush runtime diagnostics");
+        let contents = fs::read_to_string(&log_path).expect("read runtime diagnostics");
+        assert_eq!(
+            contents
+                .matches("\"event\":\"coordination.runtime.record_skipped\"")
+                .count(),
+            1,
+            "one skipped file should emit exactly one diagnostic"
+        );
+        assert!(contents.contains("\"member\":\"corrupt-agent\""));
+        assert!(contents.contains("\"reason\":"));
     }
 
     #[test]
@@ -1420,6 +1739,215 @@ mod tests {
             HealthState::SessionDead,
             "the caller's own change is still written"
         );
+    }
+
+    #[test]
+    fn a_save_of_a_stale_snapshot_preserves_foreign_keys_but_owns_runtime_fields() {
+        // Regression: 50fc736 preserved only `appliedEffort`, so a later
+        // taurhaus save erased every other key mesh added after the snapshot
+        // was loaded.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "two-writer-runtime";
+        let member_name = "codex-reviewer";
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("seed record");
+        let mut stale =
+            MemberRuntimeStore::load(teams_dir, team_name, member_name).expect("load snapshot");
+
+        let path = runtime_record_path(teams_dir, team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["futureMeshField"] = serde_json::json!({ "preserve": [1, 2, 3] });
+        current["health"] = Value::String("healthy".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize mesh write"),
+        )
+        .expect("write mesh update");
+
+        stale.health = HealthState::SessionDead;
+        MemberRuntimeStore::save_preserving_applied_effort(
+            teams_dir,
+            team_name,
+            member_name,
+            &stale,
+        )
+        .expect("save stale snapshot");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("saved json");
+        assert_eq!(
+            saved["futureMeshField"],
+            serde_json::json!({ "preserve": [1, 2, 3] }),
+            "mesh-owned extension fields must survive a stale taurhaus save"
+        );
+        assert_eq!(
+            saved["health"], "session_dead",
+            "the taurhaus-owned field from the snapshot must win"
+        );
+    }
+
+    #[test]
+    fn an_owning_save_preserves_foreign_keys_but_keeps_its_applied_effort() {
+        // Regression: 50fc736 left the ordinary save path able to erase
+        // foreign keys even though launches legitimately own `appliedEffort`.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "owning-runtime-save";
+        let member_name = "codex-reviewer";
+        let mut seeded = sample_record(member_name);
+        seeded.applied_effort = Some("low".to_string());
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &seeded).expect("seed record");
+        let stale =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load snapshot");
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["futureMeshField"] = Value::String("keep me".to_string());
+        current["appliedEffort"] = Value::String("high".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize mesh write"),
+        )
+        .expect("write mesh update");
+
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale).expect("owning save");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("saved json");
+        assert_eq!(saved["futureMeshField"], "keep me");
+        assert_eq!(
+            saved["appliedEffort"], "low",
+            "an owning save still writes the effort carried by its launch snapshot"
+        );
+    }
+
+    // Regression: merge-on-save unioned the snapshot's extras with the file's,
+    // so a foreign key mesh deleted between load and save came back on the
+    // next taurhaus save (Opus review of 2a-i, remaining minor).
+    #[test]
+    fn a_save_does_not_resurrect_a_foreign_key_the_file_no_longer_has() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "no-resurrection";
+        let member_name = "codex-reviewer";
+        let seeded = sample_record(member_name);
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &seeded).expect("seed record");
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["meshOnly"] = Value::String("v1".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize"),
+        )
+        .expect("mesh write");
+        let stale =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load snapshot");
+        assert!(
+            stale.extra.contains_key("meshOnly"),
+            "the snapshot saw the foreign key"
+        );
+
+        // mesh deletes the key after the snapshot was taken.
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current.as_object_mut().expect("object").remove("meshOnly");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize"),
+        )
+        .expect("mesh delete");
+
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale).expect("stale save");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("json");
+        assert!(
+            saved.get("meshOnly").is_none(),
+            "a key the file no longer has must not come back from a stale snapshot"
+        );
+    }
+
+    #[test]
+    fn runtime_authored_keys_cover_every_serialized_record_field() {
+        let member_name = "authored-key-guard";
+        let mut record = sample_record(member_name);
+        record.applied_effort = Some("high".to_string());
+        record.effort_resume_failure = Some(EffortResumeFailure {
+            level: "high".to_string(),
+            attempts: 2,
+        });
+        let Value::Object(serialized) = serde_json::to_value(record).expect("serialize record")
+        else {
+            panic!("runtime record must serialize as an object");
+        };
+
+        for key in serialized.keys() {
+            assert!(
+                RUNTIME_AUTHORED_KEYS.contains(&key.as_str()),
+                "serialized runtime key '{key}' is missing from RUNTIME_AUTHORED_KEYS"
+            );
+        }
+    }
+
+    #[test]
+    fn stale_save_preserves_extensions_from_a_forward_compatible_object() {
+        // Regression: 50fc736 made extension preservation depend on decoding
+        // the whole current record, so one future owned value could still
+        // cause unrelated mesh keys to be erased.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "forward-runtime";
+        let member_name = "codex-reviewer";
+        MemberRuntimeStore::save(
+            tmp.path(),
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("seed record");
+        let mut stale =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load snapshot");
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["health"] = Value::String("future_mesh_state".to_string());
+        current["appliedEffort"] = Value::String("high".to_string());
+        current["futureMeshField"] = serde_json::json!({ "keep": true });
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize future object"),
+        )
+        .expect("write future object");
+
+        stale.health = HealthState::SessionDead;
+        MemberRuntimeStore::save_preserving_applied_effort(
+            tmp.path(),
+            team_name,
+            member_name,
+            &stale,
+        )
+        .expect("save stale snapshot");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("saved json");
+        assert_eq!(
+            saved["futureMeshField"],
+            serde_json::json!({ "keep": true })
+        );
+        assert_eq!(saved["appliedEffort"], "high");
+        assert_eq!(saved["health"], "session_dead");
     }
 
     #[test]
