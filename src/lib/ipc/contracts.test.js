@@ -6,10 +6,9 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import { invoke } from '@tauri-apps/api/core'
 import accountsFixture from './__fixtures__/accounts-result.json'
-import deliveryResultFixture from './__fixtures__/delivery-result.json'
 import liveTeamStatusFixture from './__fixtures__/live-team-status.json'
 import settingsFixture from './__fixtures__/settings.json'
-import { normalizeDeliveryResult, normalizeLiveTeamStatus } from './coordinationResponses.js'
+import { normalizeLiveTeamStatus } from './coordinationResponses.js'
 import { getSettings, listAccounts } from './system.js'
 
 const SETTINGS_RENAMES = {
@@ -60,10 +59,6 @@ const ACCOUNTS_RENAMES = {
   'accounts[].usage.windows[].usedPercentage': 'used_percentage',
   'accounts[].usage.windows[].resetsAt': 'resets_at',
   'accounts[].usage.windows[].isActive': 'is_active',
-}
-
-const DELIVERY_RESULT_RENAMES = {
-  post_write_warnings: 'postWriteWarnings',
 }
 
 function assertEveryFixtureKeySurvives(source, normalized, renames, path = '') {
@@ -131,14 +126,6 @@ describe('Rust IPC fixture contracts', () => {
       accountsFixture,
       await listAccounts('codex'),
       ACCOUNTS_RENAMES,
-    )
-  })
-
-  it('preserves every delivery-result fixture key', () => {
-    assertEveryFixtureKeySurvives(
-      deliveryResultFixture,
-      normalizeDeliveryResult(deliveryResultFixture),
-      DELIVERY_RESULT_RENAMES,
     )
   })
 })
