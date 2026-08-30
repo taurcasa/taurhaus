@@ -200,7 +200,7 @@ function buildResumeTeamMessage(normalizeResumeTeamReport, report) {
   return `Resume complete. ${resumedSummary}`.trim()
 }
 
-export function formatResumeWarning(warning) {
+function formatResumeWarning(warning) {
   if (!warning) return ''
   if (warning.includes(': created a replacement pane')) {
     const [memberName] = warning.split(':', 1)
