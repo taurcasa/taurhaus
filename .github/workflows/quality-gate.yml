@@ -2,7 +2,6 @@ name: Quality Gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - main
@@ -10,7 +9,7 @@ on:
 
 concurrency:
   group: quality-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -128,10 +127,6 @@ jobs:
 
   rust-integration:
     name: Rust integration tests
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      contains(github.event.pull_request.labels.*.name, 'rust-integration')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

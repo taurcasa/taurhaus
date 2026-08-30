@@ -9,6 +9,11 @@ fn read_source(path: &str) -> String {
     fs::read_to_string(crate_root().join(path)).expect("source file should be readable")
 }
 
+fn quality_gate_workflow() -> String {
+    fs::read_to_string(crate_root().join("../.github/workflows/quality-gate.yml"))
+        .expect("quality-gate workflow should be readable")
+}
+
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("directory should be readable") {
         let entry = entry.expect("directory entry should be readable");
@@ -99,6 +104,44 @@ fn cli_tool_literal_count(source: &str) -> usize {
     .into_iter()
     .map(|literal| source.match_indices(literal).count())
     .sum()
+}
+
+#[test]
+fn rust_integration_ci_runs_on_every_pull_request() {
+    // Regression: commit 797bae05 kept the integration job label-gated after
+    // measured warm runs met the PR budget, leaving unlabeled PRs without the
+    // seven integration binaries that the recipe currently owns.
+    let workflow = quality_gate_workflow();
+    let integration_job = workflow
+        .split_once("\n  rust-integration:\n")
+        .map(|(_, job)| job)
+        .expect("quality gate should define the Rust integration job");
+
+    assert!(
+        !integration_job.contains("\n    if:"),
+        "the Rust integration job must not be gated away on pull requests"
+    );
+    assert!(
+        !workflow.contains("rust-integration')") && !workflow.contains("labeled]"),
+        "the measured budget requires the every-PR path, not a label trigger"
+    );
+}
+
+#[test]
+fn main_push_integration_runs_are_never_cancelled_by_newer_pushes() {
+    // Regression: commit 797bae05 put the only automatic main-push integration
+    // run under unconditional workflow cancellation, so a quick later merge
+    // could cancel coverage for the earlier commit without reporting failure.
+    let workflow = quality_gate_workflow();
+
+    assert!(
+        workflow.contains("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"),
+        "only superseded pull-request runs may be cancelled"
+    );
+    assert!(
+        !workflow.contains("cancel-in-progress: true"),
+        "main-push integration runs must never use unconditional cancellation"
+    );
 }
 
 #[test]
