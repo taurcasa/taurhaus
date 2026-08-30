@@ -109,25 +109,42 @@ where
     let session_hub = crate::daemon::session_activity::SessionActivityHub::global();
     let _ = session_hub.wait_for_update(0, 0, Duration::from_millis(750));
 
+    let listener = bind_listener(config)?;
+    serve(config, listener, shutdown, provider)
+}
+
+/// Bind and listen on the daemon's port, without serving on it yet.
+///
+/// Separated from [`serve`] so a caller can bind on its own thread and hand
+/// the socket over: from the moment this returns, the port accepts. The daemon
+/// binds it inline; a test does it to be sure its port is up before it starts
+/// connecting.
+fn bind_listener(config: &DaemonConfig) -> std::io::Result<TcpListener> {
     // On macOS, use SO_REUSEADDR so we can rebind immediately after the previous
     // daemon dies. Linux does not need this for our listener pattern, and enabling
     // it there can permit duplicate listeners on the same port.
-    let listener = {
-        let addr: std::net::SocketAddr = format!("{}:{}", config.bind_addr, config.port)
-            .parse()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
-        let socket = socket2::Socket::new(
-            socket2::Domain::IPV4,
-            socket2::Type::STREAM,
-            Some(socket2::Protocol::TCP),
-        )?;
-        #[cfg(target_os = "macos")]
-        socket.set_reuse_address(true)?;
-        socket.bind(&addr.into())?;
-        socket.listen(128)?;
-        let listener: TcpListener = socket.into();
-        listener
-    };
+    let addr: std::net::SocketAddr = format!("{}:{}", config.bind_addr, config.port)
+        .parse()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let socket = socket2::Socket::new(
+        socket2::Domain::IPV4,
+        socket2::Type::STREAM,
+        Some(socket2::Protocol::TCP),
+    )?;
+    #[cfg(target_os = "macos")]
+    socket.set_reuse_address(true)?;
+    socket.bind(&addr.into())?;
+    socket.listen(128)?;
+    Ok(socket.into())
+}
+
+/// Serve on an already-bound listener until `shutdown` is set or idle timeout.
+fn serve(
+    config: &DaemonConfig,
+    listener: TcpListener,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
 
     let start_time = Instant::now();
@@ -221,6 +238,27 @@ where
     let _ = telemetry_handle.join();
     tracing::info!("daemon shutting down");
     Ok(())
+}
+
+/// Bind a test daemon's listener on the caller's thread.
+///
+/// A test that hands the socket to its serving thread has no window in which
+/// its helper has returned and the port is not up yet — the window a fixed
+/// sleep used to cover, badly.
+#[cfg(test)]
+pub(crate) fn bind_listener_for_test(config: &DaemonConfig) -> std::io::Result<TcpListener> {
+    bind_listener(config)
+}
+
+/// Serve a test daemon on a listener [`bind_listener_for_test`] already bound.
+#[cfg(test)]
+pub(crate) fn serve_for_test(
+    config: &DaemonConfig,
+    listener: TcpListener,
+    shutdown: Arc<AtomicBool>,
+    provider: Arc<dyn ProjectProvider>,
+) -> std::io::Result<()> {
+    serve(config, listener, shutdown, provider)
 }
 
 #[cfg(test)]
