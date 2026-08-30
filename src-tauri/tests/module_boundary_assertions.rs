@@ -145,6 +145,25 @@ fn main_push_integration_runs_are_never_cancelled_by_newer_pushes() {
 }
 
 #[test]
+fn rust_integration_ci_caches_failed_builds() {
+    // Regression: commit 797bae05 cached failed unit builds but not failed
+    // integration builds, forcing the next retry to rebuild the same artifacts
+    // before it could exercise the integration recipe again.
+    let workflow = quality_gate_workflow();
+    let integration_job = workflow
+        .split_once("\n  rust-integration:\n")
+        .map(|(_, job)| job)
+        .expect("quality gate should define the Rust integration job");
+
+    assert!(
+        integration_job.contains(
+            "shared-key: rust-integration\n          cache-on-failure: true"
+        ),
+        "failed integration builds should seed the next retry's Rust cache"
+    );
+}
+
+#[test]
 fn coordination_modules_do_not_import_commands_layer() {
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src/coordination"), &mut files);

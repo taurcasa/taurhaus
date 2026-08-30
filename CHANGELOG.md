@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **CI executes Rust tests** — every pull request runs the serialized Rust unit recipe in its own stable, cached job, while the Rust integration recipe runs on main pushes, manual dispatches, and pull requests labeled `rust-integration`. The integration runner verifies its Linux tools and ephemeral Git identity before starting the tests.
+- **CI executes Rust tests** — every pull request runs the serialized Rust unit and integration recipes in stable, cached jobs alongside the existing fast/frontend gate; main pushes and manual dispatches run both Rust jobs too, and failed builds populate the next retry's cache without skipping test execution.
 
 ### Fixed
 
