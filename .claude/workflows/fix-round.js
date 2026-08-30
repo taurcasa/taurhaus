@@ -315,7 +315,10 @@ function gateProblem(gate, independentPaths) {
   if (ran.length === 0) return 'the gate reported no commands run'
   const gatePaths = normalizedChangedPaths(gate.changed_paths)
   const independentRustPaths = normalizedChangedPaths(independentPaths).filter(isRustPath)
-  if (independentRustPaths.length > 0 && !gatePaths.some(isRustPath)) {
+  // A lane's Rust path may legitimately be gone from the final diff (a reverted file); what cannot
+  // be legitimate is a gate that reports no diff at all while a lane changed Rust. The Rust rule
+  // itself still takes the union, so the reverted case costs one extra test run, never a false green.
+  if (independentRustPaths.length > 0 && gatePaths.length === 0) {
     return 'the gate did not report the diff it was asked to run; another lane reported Rust paths: ' + independentRustPaths.join(', ')
   }
   const catalog = effectiveGateCatalog(gatePaths, independentPaths)
@@ -332,8 +335,8 @@ function gateProblem(gate, independentPaths) {
         .join(', ')
     )
   }
-  const undeclared = ran.filter((entry) => catalog.declared.indexOf(commandOf(entry)) === -1)
-  if (undeclared.length > 0) return 'gate commands were not declared: ' + undeclared.map(commandOf).join(', ')
+  // A command the gate ran beyond the catalog is extra evidence, not a breach — as long as it
+  // passed; a failing one is caught below like any other.
   const failed = ran.filter((c) => c.status !== 'pass')
   if (failed.length > 0) return 'gate commands did not pass: ' + failed.map((c) => c.command + ' (' + c.status + ')').join(', ')
   const reported = Array.isArray(gate.failures) ? gate.failures.filter(Boolean) : []

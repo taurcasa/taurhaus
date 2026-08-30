@@ -639,15 +639,25 @@ describe('workflow procedures — fail closed', () => {
       ).rejects.toThrow(/just check-quick.*never run/i)
     })
 
-    it(`${script} rejects a reported command that was not declared`, async () => {
+    it(`${script} tolerates an extra command the gate ran beyond the catalog when it passed`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        gate: {
+          ...OK_GATE,
+          commands: OK_GATE.commands.concat([{ command: 'echo surprise', status: 'pass' }]),
+        },
+      })
+      expect(result.gate.status).toBe('pass')
+    })
+
+    it(`${script} still fails an extra command the gate ran that did not pass`, async () => {
       await expect(
         run(script, argsFor(script), {
           gate: {
             ...OK_GATE,
-            commands: OK_GATE.commands.concat([{ command: 'echo surprise', status: 'pass' }]),
+            commands: OK_GATE.commands.concat([{ command: 'echo surprise', status: 'fail' }]),
           },
         })
-      ).rejects.toThrow(/not declared.*echo surprise/i)
+      ).rejects.toThrow(/did not pass.*echo surprise/i)
     })
 
     // Regression: gateProblem excluded every `skipped` command from the failure set, so a gate could
@@ -856,6 +866,21 @@ describe('workflow procedures — Rust diff gate', () => {
           gate: { ...OK_GATE, changed_paths: [] },
         })
       ).rejects.toThrow(/gate did not report the diff/i)
+    })
+
+    // A reverted file: the lane touched Rust, the final diff no longer does. The gate reported a
+    // real (non-Rust) diff and ran the Rust lane the union still requires — that is a pass, not
+    // "the gate did not report the diff" (Opus review of 1e, remaining minor).
+    it(`${script} accepts a Rust lane path the final diff no longer contains`, async () => {
+      const { result } = await run(script, argsFor(script), {
+        ...lanePlan(script, [rustPath]),
+        gate: {
+          ...OK_GATE,
+          changed_paths: ['src/lib/only.js'],
+          commands: OK_GATE.commands.concat([{ command: 'just test-rust-unit', status: 'pass' }]),
+        },
+      })
+      expect(result.gate.status).toBe('pass')
     })
 
     // Regression: commit 2d9db3dc matched implementation-lane paths only when they started with
