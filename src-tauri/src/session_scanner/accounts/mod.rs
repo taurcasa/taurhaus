@@ -359,10 +359,12 @@ fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBu
 /// A leading `~` in a base command is the launching shell's home directory,
 /// while every detected account is an absolute path.
 ///
-/// The home is this process's. On Windows the launch runs in WSL and the app
-/// cannot name that home: a tilde dir then matches no detected account, the
-/// resolution falls through as it always did, and the account it lands on has
-/// its own directory rendered.
+/// A resolved base has none left: `launch_base` expands the selector's tilde
+/// where the pane shell lives, which on Windows is the WSL daemon. This is the
+/// last resort for a base nothing resolved — no daemon, or a daemon too old for
+/// `resolve_launch_base` — and there the home is this process's. On Windows
+/// that names no detected account, the resolution falls through as it always
+/// did, and the account it lands on has its own directory rendered.
 fn expand_home(value: &str) -> PathBuf {
     let Some(rest) = value.strip_prefix('~') else {
         return PathBuf::from(value);

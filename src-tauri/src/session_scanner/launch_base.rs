@@ -11,6 +11,7 @@
 //! module existed.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -55,6 +56,16 @@ const MAX_EXPANSIONS: usize = 3;
 
 /// Resolve `base` the way `probe`'s shell would read its first word.
 pub fn resolve_base_command(base: &str, tool: CliTool, probe: &dyn AliasProbe) -> ResolvedBase {
+    resolve_base_command_in(base, tool, probe, dirs::home_dir().as_deref())
+}
+
+/// The same, against an explicit home for the shell that will run the launch.
+fn resolve_base_command_in(
+    base: &str,
+    tool: CliTool,
+    probe: &dyn AliasProbe,
+    home: Option<&Path>,
+) -> ResolvedBase {
     let mut command = base.to_string();
     let mut expansions = Vec::new();
     let mut expanded: HashSet<String> = HashSet::new();
@@ -82,11 +93,64 @@ pub fn resolve_base_command(base: &str, tool: CliTool, probe: &dyn AliasProbe) -
         command.replace_range(head.start..head.end, &body);
     }
 
+    let command = expand_selector_home(&command, tool, home);
     let opaque_head = head_word(&command).filter(|head| !runs_the_tool(tool, head));
     ResolvedBase {
         command,
         expansions,
         opaque_head,
+    }
+}
+
+/// Rewrite this tool's `SELECTOR=~/…` assignments as absolute paths.
+///
+/// Resolution runs where the pane shell runs — in the WSL daemon on Windows —
+/// so `home` is the home that shell would expand the tilde against. The app
+/// never has to guess it from its own side of the boundary, which it cannot do:
+/// a Windows profile path names none of the accounts the daemon detects. Every
+/// consumer downstream compares this selector against absolute account dirs.
+fn expand_selector_home(command: &str, tool: CliTool, home: Option<&Path>) -> String {
+    let (Some(selector), Some(home)) = (spec(tool).capabilities.account_selector, home) else {
+        return command.to_string();
+    };
+    let prefix = format!("{selector}=");
+    let mut rewritten = command.to_string();
+    // Back to front, so each remaining word keeps its span in the original.
+    for word in words(command).into_iter().rev() {
+        // A shell leaves a quoted tilde literal, and so does this.
+        if word.quoted {
+            continue;
+        }
+        let Some(expanded) = word
+            .value
+            .strip_prefix(&prefix)
+            .and_then(|value| expand_tilde(value, home))
+        else {
+            continue;
+        };
+        rewritten.replace_range(
+            word.start..word.end,
+            &format!("{prefix}{}", super::launch::shell_escape(&expanded)),
+        );
+    }
+    rewritten
+}
+
+/// `~` and `~/tail` against `home`, or `None` for anything else.
+///
+/// `~someone` is another user's home, which only that shell can name. The tail
+/// is joined with `/` rather than `Path::join`, because the shell that reads
+/// this line is a POSIX one wherever the app itself happens to run.
+fn expand_tilde(value: &str, home: &Path) -> Option<String> {
+    let rest = value.strip_prefix('~')?;
+    let home = home.to_string_lossy();
+    let home = home.trim_end_matches('/');
+    if rest.is_empty() {
+        return Some(home.to_string());
+    }
+    match rest.strip_prefix('/')?.trim_start_matches('/') {
+        "" => Some(home.to_string()),
+        tail => Some(format!("{home}/{tail}")),
     }
 }
 
@@ -475,24 +539,100 @@ mod tests {
         // saw and every launch ran on the wrong subscription.
         let probe = FakeProbe::new(&[("claude2", "CLAUDE_CONFIG_DIR=~/.claude-account2 claude")]);
 
-        let resolved = resolve_base_command(
+        let resolved = resolve_base_command_in(
             "claude2 --dangerously-skip-permissions",
             CliTool::Claude,
             &probe,
+            Some(Path::new("/home/operator")),
         );
 
         assert_eq!(
             resolved.command,
-            "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions"
+            "CLAUDE_CONFIG_DIR='/home/operator/.claude-account2' claude --dangerously-skip-permissions"
         );
         assert_eq!(
             resolved.expansions,
             vec![AliasExpansion {
                 name: "claude2".to_string(),
                 body: "CLAUDE_CONFIG_DIR=~/.claude-account2 claude".to_string(),
-            }]
+            }],
+            "the alias body stays as the user wrote it"
         );
         assert_eq!(resolved.opaque_head, None);
+    }
+
+    #[test]
+    fn a_tilde_selector_expands_against_the_home_the_pane_shell_has() {
+        // Regression: a86f3b0 left `~` in the resolved command for the app to
+        // expand with its own `dirs::home_dir()`. On Windows that is the
+        // Windows profile and never the WSL home the daemon's accounts sit
+        // under, so a base-owned alias selector matched no detected account and
+        // the launch kept no account identity at all. The probe already runs
+        // where the pane shell runs, so it is the side that knows the home.
+        let probe = FakeProbe::new(&[("claude2", "CLAUDE_CONFIG_DIR=~/.claude-account2 claude")]);
+
+        let resolved = resolve_base_command_in(
+            "claude2 --dangerously-skip-permissions",
+            CliTool::Claude,
+            &probe,
+            // A WSL home, resolved while the app itself runs on Windows.
+            Some(Path::new("/home/mstie")),
+        );
+
+        assert_eq!(
+            resolved.command,
+            "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions"
+        );
+        assert!(
+            !resolved.command.contains('~'),
+            "every consumer downstream compares this against absolute account dirs"
+        );
+    }
+
+    #[test]
+    fn only_an_unquoted_leading_tilde_of_this_tools_selector_is_expanded() {
+        let probe = FakeProbe::new(&[]);
+        let home = Some(Path::new("/home/two words"));
+
+        // A home a shell would need quoted stays one word.
+        assert_eq!(
+            resolve_base_command_in(
+                "CLAUDE_CONFIG_DIR=~/.claude claude",
+                CliTool::Claude,
+                &probe,
+                home
+            )
+            .command,
+            "CLAUDE_CONFIG_DIR='/home/two words/.claude' claude"
+        );
+        // A shell leaves a quoted tilde literal, and so does this.
+        assert_eq!(
+            resolve_base_command_in(
+                "CLAUDE_CONFIG_DIR='~/.claude' claude",
+                CliTool::Claude,
+                &probe,
+                home
+            )
+            .command,
+            "CLAUDE_CONFIG_DIR='~/.claude' claude"
+        );
+        // `~someone` is another user's home; only the launching one is known.
+        assert_eq!(
+            resolve_base_command_in(
+                "CLAUDE_CONFIG_DIR=~other/.claude claude",
+                CliTool::Claude,
+                &probe,
+                home
+            )
+            .command,
+            "CLAUDE_CONFIG_DIR=~other/.claude claude"
+        );
+        // Another tool's selector is not this tool's to rewrite.
+        assert_eq!(
+            resolve_base_command_in("CODEX_HOME=~/.codex claude", CliTool::Claude, &probe, home)
+                .command,
+            "CODEX_HOME=~/.codex claude"
+        );
     }
 
     #[test]
