@@ -68,7 +68,15 @@ export function parseProcEnviron(raw) {
 
 const TMUX_CALL_PATTERNS = [
   /\bexecFileSync\s*\(\s*['"]tmux['"]/g,
-  /\b(?:snapshotTmuxPanes|cleanupNewTmuxPanes)\s*\(/g,
+  new RegExp(
+    `\\b(?:${Array.from(
+      readFileSync(join(import.meta.dirname, 'tmux.js'), 'utf8').matchAll(
+        /^export function\s+([A-Za-z_$][\w$]*)/gm
+      ),
+      (match) => match[1]
+    ).join('|')})\\s*\\(`,
+    'g'
+  ),
 ]
 
 function firstTmuxCallOffset(source) {
@@ -100,6 +108,21 @@ export function tmuxIsolationCoverageProblems(specsDir) {
       problems.push(`${name}: call assertTmuxIsolation before the first tmux call`)
     } else if (assertionOffset > tmuxOffset) {
       problems.push(`${name}: assertTmuxIsolation is after the first tmux call`)
+    }
+
+    const snapshotPattern = /\bsnapshotTmuxPanes\s*\(/g
+    const snapshot = snapshotPattern.exec(source)
+    if (!snapshot) continue
+    const beforeHooks = Array.from(source.matchAll(/\bbefore\s*\(/g))
+      .filter((match) => match.index < snapshot.index)
+    const hookOffset = beforeHooks.at(-1)?.index ?? -1
+    const hookAssertionOffset = hookOffset >= 0
+      ? source.indexOf('assertTmuxIsolation(', hookOffset)
+      : -1
+    if (hookAssertionOffset < hookOffset || hookAssertionOffset > snapshot.index) {
+      problems.push(
+        `${name}: call assertTmuxIsolation in the before hook before snapshotTmuxPanes`
+      )
     }
   }
   return problems

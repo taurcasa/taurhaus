@@ -709,6 +709,7 @@ describe('Mesh Recovery', function () {
   this.timeout(120_000)
 
   before(async function () {
+    assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
     await waitForAppReady()

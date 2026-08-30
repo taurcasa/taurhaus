@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import {
@@ -77,6 +79,7 @@ describe('tmux-driving spec coverage', () => {
       'mesh-recovery.js',
       'mesh-screenshots.js',
       'mesh-workflow.js',
+      'regressions.js',
       'session-management.js',
       'template-crud-ui.js',
       'template-screenshots.js',
@@ -86,6 +89,35 @@ describe('tmux-driving spec coverage', () => {
   it('requires every tmux-driving spec to assert isolation before its first tmux call', () => {
     const specsDir = resolve(import.meta.dirname, '..', 'specs')
     expect(tmuxIsolationCoverageProblems(specsDir)).toEqual([])
+  })
+
+  // Regression: commit 7908cbf4 compared only raw source offsets, so an
+  // assertion inside a tmux wrapper incorrectly covered an earlier runtime
+  // snapshot made directly from a before hook.
+  it('requires snapshot calls in a before hook to be guarded in that hook', () => {
+    const specsDir = mkdtempSync(join(tmpdir(), 'taurhaus-tmux-coverage-'))
+    try {
+      writeFileSync(
+        join(specsDir, 'mesh-recovery.js'),
+        `function tmux(args) {
+  assertTmuxIsolation(process.env)
+  return execFileSync('tmux', args)
+}
+
+describe('fixture', () => {
+  before(() => {
+    snapshotTmuxPanes()
+  })
+})
+`
+      )
+
+      expect(tmuxIsolationCoverageProblems(specsDir)).toEqual([
+        'mesh-recovery.js: call assertTmuxIsolation in the before hook before snapshotTmuxPanes',
+      ])
+    } finally {
+      rmSync(specsDir, { recursive: true, force: true })
+    }
   })
 })
 

@@ -20,8 +20,8 @@ export const specGroups = {
   shell: ['theme-and-shortcuts.js', 'context-menu.js', 'daemon-integration.js'],
   // State mutation and validation.
   config: ['settings-persistence.js', 'project-lifecycle.js', 'error-handling.js'],
-  // Regressions and general visual capture.
-  guards: ['regressions.js', 'screenshots.js', 'readme-screenshots.js'],
+  // General visual capture and non-tmux guards.
+  guards: ['screenshots.js', 'readme-screenshots.js'],
   // Standalone UI and detail-state capture.
   ui: ['first-run-wizard.js', 'role-detail-screenshots.js'],
   // Template storage, editing, and roster screenshots.
@@ -29,7 +29,7 @@ export const specGroups = {
   // Team runtime and recovery workflows.
   mesh: ['mesh-recovery.js', 'mesh-screenshots.js', 'mesh-workflow.js'],
   // Real session actions and runtime session presentation.
-  tmux: ['command-center-real-actions.js', 'session-management.js'],
+  tmux: ['command-center-real-actions.js', 'session-management.js', 'regressions.js'],
 }
 
 /**
