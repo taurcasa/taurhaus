@@ -458,29 +458,67 @@ fn parse_alias_output(name: &str, output: &str) -> Option<String> {
     })
 }
 
+/// Read an `alias` builtin's value as the shell wrote it: a run of adjacent
+/// segments, each single-quoted, double-quoted, backslash-escaped or bare.
+///
+/// The whole value is not one wrapped string. zsh stops quoting at a body's
+/// final quote (`say='echo '\''hi there'\'`) and opens with a bare escape when
+/// the body starts with one (`q=\''foo'\'' bar'`), so anything that assumes an
+/// outer pair either corrupts the body or drops it. Concatenating segments is
+/// what a shell does with the value anyway.
 fn unquote_alias_body(body: &str) -> Option<String> {
     let body = body.trim();
-    if body.is_empty() || body.starts_with("$'") {
-        // `$'...'` carries C escapes this parser does not speak.
+    if body.is_empty() {
         return None;
     }
-    if let Some(inner) = body.strip_prefix('\'').and_then(|b| b.strip_suffix('\'')) {
-        return Some(inner.replace("'\\''", "'"));
-    }
-    if let Some(inner) = body.strip_prefix('"').and_then(|b| b.strip_suffix('"')) {
-        let mut unescaped = String::with_capacity(inner.len());
-        let mut characters = inner.chars().peekable();
-        while let Some(character) = characters.next() {
-            match character {
-                '\\' if matches!(characters.peek(), Some('"' | '\\' | '$' | '`')) => {
-                    unescaped.extend(characters.next());
-                }
-                character => unescaped.push(character),
+    let mut unquoted = String::with_capacity(body.len());
+    let mut rest = body;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix('\'') {
+            let (inner, tail) = after.split_once('\'')?;
+            unquoted.push_str(inner);
+            rest = tail;
+        } else if let Some(after) = rest.strip_prefix('"') {
+            rest = push_double_quoted(after, &mut unquoted)?;
+        } else if let Some(after) = rest.strip_prefix('\\') {
+            let mut characters = after.chars();
+            unquoted.push(characters.next()?);
+            rest = characters.as_str();
+        } else {
+            let end = rest.find(['\'', '"', '\\']).unwrap_or(rest.len());
+            let (bare, tail) = rest.split_at(end);
+            // `$'...'` carries C escapes this parser does not speak.
+            if bare.ends_with('$') && tail.starts_with('\'') {
+                return None;
             }
+            unquoted.push_str(bare);
+            rest = tail;
         }
-        return Some(unescaped);
     }
-    (!body.contains(['\'', '"'])).then(|| body.to_string())
+    Some(unquoted)
+}
+
+/// Consume one double-quoted segment, `after` starting just past its opening
+/// quote. Returns what follows the closing quote, or `None` when there is none.
+fn push_double_quoted<'a>(after: &'a str, unquoted: &mut String) -> Option<&'a str> {
+    let mut characters = after.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '"' => return Some(characters.as_str()),
+            '\\' => {
+                let mut escaped = characters.clone();
+                match escaped.next() {
+                    Some(next @ ('"' | '\\' | '$' | '`')) => {
+                        unquoted.push(next);
+                        characters = escaped;
+                    }
+                    _ => unquoted.push('\\'),
+                }
+            }
+            character => unquoted.push(character),
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -788,6 +826,53 @@ mod tests {
             parse_alias_output("plain", "plain=claude"),
             Some("claude".to_string())
         );
+    }
+
+    // Regression: 0f2bfbb parsed an alias body by stripping a presumed pair of
+    // outer quotes, but zsh does not re-open the wrapper after a body's final
+    // quote — it prints `say='echo '\''hi there'\'`, where the trailing `\'` is
+    // escaped data. Stripping the last character removed that backslash's quote
+    // and left the backslash behind, so an alias ending in a single-quoted
+    // argument reached the launch command corrupted. A body whose first word is
+    // single-quoted (zsh opens with a bare `\'`) was dropped as unparseable for
+    // the same reason.
+    #[test]
+    fn parses_the_zsh_forms_that_do_not_wrap_the_whole_body() {
+        // Captured from `zsh -f`: alias a1="echo 'hi there'" and friends.
+        assert_eq!(
+            parse_alias_output("say", r"say='echo '\''hi there'\'"),
+            Some("echo 'hi there'".to_string())
+        );
+        assert_eq!(
+            parse_alias_output("quoted", r"quoted=\''foo'\'' bar'"),
+            Some("'foo' bar".to_string())
+        );
+        assert_eq!(
+            parse_alias_output("trailing", r"trailing='just'\'"),
+            Some("just'".to_string())
+        );
+
+        // End to end: the operator's own alias, as their zsh prints it, must
+        // reach the launch command with its final argument intact.
+        let body = parse_alias_output(
+            "claude2",
+            r"claude2='CLAUDE_CONFIG_DIR=/homes/two claude --append-system-prompt '\''use account two'\'",
+        )
+        .expect("the pane shell's own output is an alias");
+        let probe = FakeProbe::new(&[("claude2", &body)]);
+
+        let resolved = resolve_base_command_in(
+            "claude2 --dangerously-skip-permissions",
+            CliTool::Claude,
+            &probe,
+            Some(Path::new("/home/operator")),
+        );
+
+        assert_eq!(
+            resolved.command,
+            "CLAUDE_CONFIG_DIR=/homes/two claude --append-system-prompt 'use account two' --dangerously-skip-permissions"
+        );
+        assert_eq!(resolved.opaque_head, None);
     }
 
     #[test]
