@@ -2210,6 +2210,49 @@ fn remove_member_does_not_kill_same_project_pane_owned_by_another_process() {
 }
 
 #[test]
+fn remove_member_does_not_kill_pane_id_only_record_in_another_project() {
+    // Regression: a0c53db8 treated the ownership detector's evidence-free
+    // default as positive kill authorization and bypassed the configured path.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "teardown-pane-id-only";
+    create_running_team(&mut orchestrator, team_name);
+    std::fs::write(
+        tmp.path()
+            .join(team_name)
+            .join("runtime")
+            .join("existing-dev.json"),
+        r#"{"schema_version":1,"member_name":"existing-dev","pane_id":"%9","health":"healthy"}"#,
+    )
+    .expect("write legacy runtime");
+    runtime.set_pane_exists("%9", true);
+    runtime.set_pane_dead("%9", false);
+    runtime.set_pane_current_path("%9", Some("/somewhere/else"));
+
+    let report = orchestrator
+        .remove_member(team_name, "existing-dev", Some("cleanup".to_string()))
+        .expect("remove report");
+
+    assert!(report
+        .steps
+        .iter()
+        .any(|step| step.step == "verify_pane_ownership" && !step.success));
+    assert!(
+        !runtime
+            .calls()
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%9")),
+        "a pane-id-only record must still be checked against the configured project"
+    );
+}
+
+#[test]
 fn remove_member_kills_the_pane_with_its_recorded_identity() {
     // Regression: 4344edb4 did not use the durable member identity as its
     // positive teardown gate.
@@ -2331,6 +2374,48 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         fake.call_counts(),
         (0, 0, 0, 1),
         "orphan runtime reconcile should attempt backend teardown"
+    );
+}
+
+#[test]
+fn startup_reconcile_does_not_kill_orphan_record_without_ownership_evidence() {
+    // Regression: a0c53db8 authorized a kill from pane identity absence when
+    // tolerant decoding surfaced a mesh-authored partial orphan record.
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let backend = Arc::new(FakeBackend::default());
+    let mut orchestrator = CoordinationOrchestrator::new_with_runtime(
+        tmp.path().to_path_buf(),
+        backend,
+        runtime.clone(),
+    );
+    let team_name = "orphan-pane-id-only";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    std::fs::create_dir_all(tmp.path().join(team_name).join("runtime"))
+        .expect("create runtime dir");
+    std::fs::write(
+        tmp.path()
+            .join(team_name)
+            .join("runtime")
+            .join("orphan-agent.json"),
+        r#"{"paneId":"%7","appliedEffort":"medium"}"#,
+    )
+    .expect("write partial runtime");
+    runtime.set_pane_exists("%7", true);
+    runtime.set_pane_dead("%7", false);
+
+    orchestrator
+        .reconcile_runtime_state_on_startup()
+        .expect("startup reconcile should succeed");
+
+    assert!(
+        !runtime
+            .calls()
+            .iter()
+            .any(|call| matches!(call, RuntimeCall::KillPane { pane_id } if pane_id == "%7")),
+        "a partial orphan record must not authorize a pane kill"
     );
 }
 
