@@ -10,11 +10,12 @@
   import {
     accountState,
     effectiveAccount,
+    loggedInAccounts,
     refreshAccounts,
     refreshUsage,
     rememberChoice,
   } from './accounts.svelte.js'
-  import { tools as registryTools } from './toolRegistry.js'
+  import { toolDescriptor, tools as registryTools } from './toolRegistry.js'
 
   let {
     dark = false,
@@ -148,9 +149,29 @@
     projectContext?.selectProject?.(project)
   }
 
-  function handleLaunchSession(tool) {
-    actions?.onLaunchSession?.(tool)
-    sessionContext?.launchSession?.(tool)
+  /**
+   * A quick action launches on whatever the project already decided; holding a
+   * modifier asks instead. Shift is the documented one, and Ctrl/Cmd is the
+   * reflex a lot of people reach for first, so both open the chooser.
+   */
+  function handleLaunchSession(tool, event) {
+    const choose = event?.shiftKey || event?.ctrlKey || event?.metaKey ? 'always' : 'auto'
+    actions?.onLaunchSession?.(tool, { choose })
+    sessionContext?.launchSession?.(tool, { choose })
+  }
+
+  /** Only a host with a second signed-in subscription has a choice to offer. */
+  function canChooseAccount(tool) {
+    return Boolean(
+      toolDescriptor(tool)?.capabilities.accountSelection && loggedInAccounts(tool).length >= 2
+    )
+  }
+
+  function launchTitle(tool) {
+    const name = getToolName(tool)
+    return canChooseAccount(tool)
+      ? `Launch ${name} (Shift+click to choose the account)`
+      : name
   }
 
   function handleOpenTerminal() {
@@ -193,8 +214,8 @@
         {@const icon = TOOL_ICONS[tool]}
         <button
           class="w-7 h-7 flex items-center justify-center rounded-md transition-colors {actionBtnBase}"
-          onclick={() => handleLaunchSession(tool)}
-          title={getToolName(tool)}
+          onclick={(event) => handleLaunchSession(tool, event)}
+          title={launchTitle(tool)}
           data-testid="action-launch-{tool}"
         >
           <svg class="w-3.5 h-3.5 shrink-0" viewBox={icon.viewBox} fill="currentColor">

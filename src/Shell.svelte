@@ -232,7 +232,7 @@
 
   let sessionContextValue = $state({
     daemonStatus: null,
-    launchSession: (tool) => handleOverviewLaunchSession(tool),
+    launchSession: (tool, options) => handleOverviewLaunchSession(tool, options),
     openTerminal: () => handleOverviewOpenTerminal(),
     openManageProjects: () => {
       showAddProject = true
@@ -469,12 +469,13 @@
     })
   }
 
-  function handleOverviewLaunchSession(tool) {
+  function handleOverviewLaunchSession(tool, { choose = 'auto' } = {}) {
     if (!selectedProject) return
     requestLaunch({
       project: selectedProject,
       mode: 'fresh',
       tool,
+      choose,
       launch: (projectId, mode, launchTool, accountId) =>
         launchCliSession(projectId, mode, launchTool, accountId).then((r) => {
           console.log('[overview] launch OK:', r)
@@ -648,6 +649,8 @@
       projectName={pendingAccount.projectName}
       defaultAccountId={pendingAccountState.defaultAccountId}
       degraded={pendingAccountState.degraded}
+      reason={pendingAccount.reason ?? null}
+      preselectedAccountId={pendingAccount.preselectedAccountId ?? null}
       {dark}
       onConfirm={(accountId, remember) => pendingAccount?.confirm(accountId, remember)}
       onCancel={() => pendingAccount?.cancel()}

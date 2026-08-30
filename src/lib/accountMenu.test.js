@@ -229,4 +229,66 @@ describe('accountMenu', () => {
     // A logged-out account still says the more specific thing about itself.
     expect(children[2].meta).toBe('not logged in')
   })
+
+  // Regression: #35 (per-project account memory) meant a project that had
+  // launched once always launched on the remembered subscription. The submenu
+  // could name another account for this launch, but nothing in the menu could
+  // reopen the chooser and its side-by-side usage.
+  it('ends the launch submenu with a way back to the chooser', () => {
+    const onChoose = vi.fn()
+    const children = buildAccountMenuChildren({
+      accounts: [PRIMARY, SECOND],
+      activeAccountId: 'account-1',
+      onSelect: vi.fn(),
+      onChoose,
+    })
+
+    const [separator, choose] = children.slice(-2)
+    expect(separator.separator).toBe(true)
+    expect(choose.key).toBe('choose')
+    expect(choose.label).toBe('Choose account…')
+    expect(choose.disabled).toBeFalsy()
+
+    choose.action()
+    expect(onChoose).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers no such row to a menu that does not ask for one', () => {
+    const children = buildAccountMenuChildren({
+      accounts: [PRIMARY, SECOND],
+      activeAccountId: 'account-1',
+      onSelect: vi.fn(),
+    })
+
+    expect(children).toHaveLength(2)
+    expect(children.some((child) => child.key === 'choose')).toBe(false)
+    expect(children.some((child) => child.separator)).toBe(false)
+  })
+
+  it('keeps the chooser reachable even where the team owns the account', () => {
+    const onChoose = vi.fn()
+    const children = buildAccountMenuChildren({
+      accounts: [PRIMARY, SECOND],
+      activeAccountId: 'account-1',
+      onSelect: vi.fn(),
+      onChoose,
+      disabledNote: TEAM_ACCOUNT_NOTE,
+    })
+
+    const choose = children.at(-1)
+    expect(choose.key).toBe('choose')
+    expect(choose.disabled).toBeFalsy()
+  })
+
+  // A separator has no label to type at and no action to run: keyboard
+  // navigation has to step over it, and `moveFocus` steps over disabled rows.
+  it('marks the separator row unreachable', () => {
+    const children = buildAccountMenuChildren({
+      accounts: [PRIMARY],
+      onSelect: vi.fn(),
+      onChoose: vi.fn(),
+    })
+
+    expect(children.find((child) => child.separator).disabled).toBe(true)
+  })
 })

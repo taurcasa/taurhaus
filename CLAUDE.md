@@ -180,6 +180,7 @@ E2E tests launch the real app binary via tauri-driver + WebDriverIO. They run on
 | `just test-e2e` | Linux (WSL) | Tier 1 E2E — safe-by-default (does not auto-run `install-daemon`), builds Linux debug binary, runs specs locally. |
 | `just test-e2e-full` | Linux (WSL) | Tier 1 + Tier 2 (requires daemon running), safe-by-default daemon handling |
 | `just test-e2e-spec SPEC` | Linux (WSL) | Single spec file (e.g. `just test-e2e-spec search-workflow`), safe-by-default daemon handling |
+| `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | Linux (WSL) | Paid lane: a managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before delivery (W4 experiment 3). Never in a suite run; see [`docs/operations/testing-guide.md`](docs/operations/testing-guide.md). |
 | `just test-macos-e2e` | **macOS** via SSH | macOS E2E test suite on remote Mac Mini. |
 
 For local runs that should rebuild/reinstall the daemon first, opt in explicitly: `E2E_INSTALL_DAEMON=1 just test-e2e`.
@@ -273,7 +274,7 @@ Full architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/architecture/
 | `src/lib/components/ModelSelect.svelte` | Effort-aware model picker used by `MeshTeamBuilder` and `RoleEditor`. |
 | `src/lib/toolRegistry.js` | Frontend tool descriptors + capabilities (`FALLBACK_TOOLS` for `claude`/`codex`/`agy`/`grok`, overridden by the backend contract). |
 | `src/lib/toolLogos.js` | Shared SVG logos + sidebar variants per tool, with an `unknown` fallback. |
-| `src/lib/accounts.svelte.js` | Frontend per-tool account state (accounts, pins, usage, pending chooser); drives `AccountChooser.svelte` (Shell) and `AccountChip.svelte` (OverviewTab). |
+| `src/lib/accounts.svelte.js` | Frontend per-tool account state (accounts, pins, usage, pending chooser); drives `AccountChooser.svelte` (Shell) and `AccountChip.svelte` (OverviewTab). `requestLaunch({ choose })` decides when the chooser opens: `'auto'` keeps every settled launch (named account, project memory, a resume the backend places) and interrupts only when that account's usage is spent or unauthorized (`exhaustedUsage` in `usageWindows.js`), carrying a `reason` — judged on the reading detection just returned, with a background refresh for the next launch; `'always'` is the user asking — Shift/Ctrl/Cmd+click on an Overview quick action, or `Choose account…` in a sidebar launch submenu. |
 | `src/lib/usageWindows.js` | Normalisation helpers over a provider's usage windows. |
 | `src/lib/components/UsageMeter.svelte` | One bar per usage window in the tool's own titles; compact form renders the weekly buckets. |
 | `src/lib/HoverCard.svelte` | Sidebar hover preview focused on current activity, latest change, and relationship cues. |

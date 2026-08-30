@@ -41,6 +41,12 @@ just test-frontend        # Run all frontend Vitest tests
 just test-visual          # Run browser-mode visual screenshot tests
 ```
 
+`just test-visual` resolves its own browser: `PLAYWRIGHT_CHROME_PATH` when set
+(a path that does not exist fails the run and names itself), else
+`/usr/bin/google-chrome`, else Playwright's managed Chromium. The run's first
+line names the binary it launched. See
+[`visual-testing-guide.md`](./visual-testing-guide.md#which-browser-the-lane-launches).
+
 #### Full-window screenshots (`just visual-shot`)
 
 `just test-visual` renders a component into a 960×640 test page. A popup that
@@ -116,6 +122,21 @@ just test-macos-e2e       # macOS E2E via SSH on remote Mac Mini
 
 Test specs live in `e2e/specs/` and are split by workflow/domain rather than by one monolithic suite.
 
+#### Paid E2E lanes
+
+Two specs drive a real Codex subscription and cost money every time they run. `e2e/specList.js` keeps both out of the config's spec list, so no suite run — including a bare `bunx wdio run e2e/wdio.conf.js` — picks them up; each is started by name and nothing else starts it.
+
+| Lane | Recipe | What it proves |
+|---|---|---|
+| `compaction-codex-hooks` | `E2E_INSTALL_DAEMON=1 just test-e2e-spec compaction-codex-hooks` | A managed Codex member gets its restored-context card back through the native hook bridge. See [compaction-testing.md](compaction-testing.md). |
+| `managed-stage-codex` | `E2E_INSTALL_DAEMON=0 just test-e2e-spec managed-stage-codex` | A managed Codex member completes a bounded task through the mesh assignment contract, with the assignment's effort put into force before the notice is delivered (W4 experiment 3). |
+
+Both run against isolated roots — `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR` and a scratch `CODEX_HOME` holding only a copy of `auth.json` plus a generated `config.toml`. The operator's `~/.codex` is read once at copy time and never written; `~/.claude` is neither read nor written. Naming either lane on the command line is what tells `wdio.conf.js` to build that scratch Codex home.
+
+`managed-stage-codex` additionally sets `CLAUDE_DIR` on the panes it creates, because its member runs `mesh` itself: taurhaus passes `--claude-dir` to the member *daemon* it spawns but exports no Claude root into the pane, so without it the member's own `mesh send` would bootstrap the run's team inside the operator's real home. Its team lead is a Claude identity and an inbox, not a working agent — it is launched into the isolated, credential-free `CLAUDE_CONFIG_DIR` and never takes a turn, so the lane spends nothing on Claude. Measured cost and wall clock: [w4-experiment-3.md](../design/research/w4-experiment-3.md).
+
+Both lanes take on every host change they make as an undo (`e2e/helpers/laneCleanup.js`) that runs on interrupt as well as on teardown, and both restore the `taurhaus` tmux session's environment the moment the pane-creating call returns. They differ in whose tmux server that session lives on. `compaction-codex-hooks` uses the operator's, and kills the panes it opened — identified by a working directory inside the session temp root. `managed-stage-codex` runs against a tmux server of its own: `wdio.conf.js` points `TMUX_TMPDIR` at a directory inside the session temp root and clears an inherited `TMUX` before starting tauri-driver, so the app under test and every daemon it spawns create their panes there. That lane refuses to start unless both it and the app are on that server (checked against the app's own `/proc/<pid>/environ`), and teardown takes the whole server down rather than guessing which panes were its own — so a `set-environment` carrying this run's temporary roots can never reach a pane the operator opens.
+
 ## Test lanes
 
 | Recipe | What it runs |
@@ -133,6 +154,8 @@ Test specs live in `e2e/specs/` and are split by workflow/domain rather than by 
 | `just test-e2e` | Tier 1 E2E |
 | `just test-e2e-full` | Tier 1 + Tier 2 E2E |
 | `just test-e2e-spec SPEC` | Single E2E spec |
+| `just test-e2e-spec compaction-codex-hooks` | Paid Codex compaction lane (never in a suite run) |
+| `just test-e2e-spec managed-stage-codex` | Paid managed Codex stage lane (never in a suite run) |
 | `just test-macos` | Rust tests on remote Mac Mini |
 | `just test-macos-e2e` | macOS E2E on remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |

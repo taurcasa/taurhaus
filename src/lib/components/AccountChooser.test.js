@@ -226,4 +226,103 @@ describe('AccountChooser', () => {
     expect(dialog.className).toContain('max-h-[calc(100vh-4rem)]')
     expect(dialog.className).toContain('overflow-y-auto')
   })
+
+  describe('why the chooser opened', () => {
+    const REASON_RESETS_AT = Math.floor(Date.now() / 1000) + 40 * 3600
+
+    it('says nothing when the user opened it themselves', () => {
+      renderChooser()
+
+      expect(screen.queryByTestId('account-chooser-reason')).not.toBeInTheDocument()
+    })
+
+    // Regression: #35 (per-project account memory) let a launch continue into
+    // the remembered subscription after it had run out. When the chooser now
+    // interrupts that launch, the first thing it owes the user is why.
+    it('names the spent account, the window and when it comes back', () => {
+      renderChooser({
+        reason: {
+          kind: 'exhausted',
+          accountLabel: 'stierms@gmail.com',
+          windowTitle: 'Current week (all models)',
+          resetsAt: REASON_RESETS_AT,
+        },
+      })
+
+      const sentence = screen.getByTestId('account-chooser-reason')
+      expect(sentence).toHaveTextContent('stierms@gmail.com is out of usage')
+      expect(sentence).toHaveTextContent('Current week (all models)')
+      expect(sentence).toHaveTextContent(/resets \p{L}+ \d{1,2}:\d{2}/u)
+      expect(sentence).toHaveTextContent('Pick a subscription for this launch.')
+    })
+
+    it('drops the reset clause for a window that does not name one', () => {
+      renderChooser({
+        reason: {
+          kind: 'exhausted',
+          accountLabel: 'stierms@gmail.com',
+          windowTitle: 'Current week (all models)',
+          resetsAt: null,
+        },
+      })
+
+      const sentence = screen.getByTestId('account-chooser-reason')
+      expect(sentence).toHaveTextContent('Current week (all models)')
+      expect(sentence).not.toHaveTextContent('resets')
+    })
+
+    it('says an unreadable account needs signing in again', () => {
+      renderChooser({
+        reason: {
+          kind: 'unauthorized',
+          accountLabel: 'm.stier@giesi.com',
+          windowTitle: null,
+          resetsAt: null,
+        },
+      })
+
+      const sentence = screen.getByTestId('account-chooser-reason')
+      expect(sentence).toHaveTextContent('m.stier@giesi.com needs to sign in again.')
+      expect(sentence).toHaveTextContent('Pick a subscription for this launch.')
+    })
+  })
+
+  describe('the account Enter answers with', () => {
+    it('marks the global default when nothing is pre-selected', () => {
+      renderChooser({ defaultAccountId: 'account-2' })
+
+      expect(screen.getByTestId('account-option-account-2')).toHaveAttribute(
+        'data-preselected',
+        'true'
+      )
+      expect(screen.getByTestId('account-option-account-1')).toHaveAttribute(
+        'data-preselected',
+        'false'
+      )
+    })
+
+    it('takes the pre-selected account instead, and Enter confirms it', async () => {
+      const { onConfirm } = renderChooser({
+        defaultAccountId: 'account-1',
+        preselectedAccountId: 'account-2',
+      })
+
+      expect(screen.getByTestId('account-option-account-2')).toHaveAttribute(
+        'data-preselected',
+        'true'
+      )
+
+      await fireEvent.keyDown(screen.getByTestId('account-chooser'), { key: 'Enter' })
+
+      expect(onConfirm).toHaveBeenCalledWith('account-2', true)
+    })
+
+    it('ignores a pre-selection that cannot run', async () => {
+      const { onConfirm } = renderChooser({ preselectedAccountId: 'account-3' })
+
+      await fireEvent.keyDown(screen.getByTestId('account-chooser'), { key: 'Enter' })
+
+      expect(onConfirm).toHaveBeenCalledWith('account-1', true)
+    })
+  })
 })

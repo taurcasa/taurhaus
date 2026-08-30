@@ -34,13 +34,22 @@ describe('MeshNodeDetail visual spec', () => {
     expect(document.documentElement.dataset.theme).toBe(scenario.theme)
     expect(document.body.dataset.theme).toBe(scenario.theme)
     expect(screen.getByTestId('mesh-node-detail')).toBeInTheDocument()
-    expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent(
-      scenario.member.status === 'active'
-        ? 'Active'
-        : scenario.member.status === 'idle'
-          ? 'Idle'
-          : 'Offline'
-    )
+
+    // c0becd5 made the Configuration list contextual: Status, Pane and Session
+    // are runtime-only rows. Outside runtime the overlay describes a template,
+    // and the header chip beside the tool/model chip carries that state.
+    if (scenario.mode === 'runtime') {
+      expect(screen.getByTestId('mesh-node-detail-status')).toHaveTextContent(
+        scenario.member.status === 'active'
+          ? 'Active'
+          : scenario.member.status === 'idle'
+            ? 'Idle'
+            : 'Offline'
+      )
+    } else {
+      expect(screen.queryByTestId('mesh-node-detail-status')).not.toBeInTheDocument()
+      expect(screen.getByTestId('mesh-node-detail-tool-model').parentElement).toHaveTextContent('Template')
+    }
 
     if (scenario.mode === 'runtime') {
       expect(screen.getByTestId('mesh-node-detail-capture')).toBeInTheDocument()
@@ -61,9 +70,14 @@ describe('MeshNodeDetail visual spec', () => {
     }
 
     if (scenario === cross_project_agy_dark || scenario === cross_project_agy_light) {
-      expect(screen.getByTestId('mesh-node-detail-project')).toHaveTextContent('Project: mesh')
-      expect(screen.getByTestId('mesh-node-detail-project-context')).toHaveTextContent('/home/user/projects/mesh')
-      expect(screen.getByTestId('mesh-node-detail-location')).toHaveTextContent('Location: other project')
+      // The same redesign folded the project cue into one Configuration row:
+      // `Project` is the <dt> label, the member's project label the <dd> value.
+      // The separate project-context and location rows no longer exist.
+      const projectValue = screen.getByTestId('mesh-node-detail-project')
+      expect(projectValue).toHaveTextContent('mesh')
+      expect(projectValue.previousElementSibling).toHaveTextContent('Project')
+      expect(screen.queryByTestId('mesh-node-detail-project-context')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('mesh-node-detail-location')).not.toBeInTheDocument()
     }
 
     const screenshotPath = await captureVisual(`meshNodeDetail/${scenario.name}.png`)

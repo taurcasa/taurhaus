@@ -11,6 +11,7 @@ import {
   setProjectAccount,
 } from './ipc.js'
 import { toolDescriptor, tools } from './toolRegistry.js'
+import { exhaustedUsage } from './usageWindows.js'
 
 const accounts = $state({ byTool: {} })
 const EMPTY_STATE = Object.freeze({
@@ -321,22 +322,75 @@ export function launchFollowsHistory(mode) {
   return HISTORY_MODES.has(mode)
 }
 
-async function backendPlacesLaunch(projectId, tool, mode) {
-  if (!HISTORY_MODES.has(mode)) return false
+/**
+ * The account the backend would place this launch on, or `null` when it would
+ * place none.
+ *
+ * The transcript that decides a resume is the backend's to read, and its answer
+ * carries the account itself — not merely that something decided. Anything
+ * judged about that launch has to be judged about *that* subscription, so the
+ * id travels with the answer even when nothing here can name it.
+ */
+async function backendPlacedAccount(projectId, tool, mode) {
+  if (!HISTORY_MODES.has(mode)) return null
   try {
     const placed = await resolveLaunchAccount(projectId, tool, mode)
-    return !(placed?.needsChoice ?? placed?.needs_choice ?? true)
+    if (placed?.needsChoice ?? placed?.needs_choice ?? true) return null
+    return { accountId: placed?.accountId ?? placed?.account_id ?? null }
   } catch (error) {
     console.warn('Failed to resolve the account for this launch:', error)
-    return false
+    return null
   }
 }
 
+/** The email is what tells two subscriptions of the same person apart. */
+function launchAccountLabel(account) {
+  return (
+    account?.label ||
+    account?.email ||
+    String(account?.display_name ?? '').trim() ||
+    account?.id ||
+    ''
+  )
+}
+
+/**
+ * Why the chooser is opening, when something other than the user opened it.
+ *
+ * `null` is the answer for an account with headroom *and* for one nothing has
+ * ever reported on — a launch is never held up over a reading that does not
+ * exist.
+ */
+function exhaustionReason(account) {
+  const spent = exhaustedUsage(account?.usage)
+  if (!spent) return null
+  return {
+    kind: spent.kind,
+    accountLabel: launchAccountLabel(account),
+    windowTitle: spent.window?.title ?? null,
+    resetsAt: spent.window?.resets_at ?? null,
+  }
+}
+
+/**
+ * Launch, or ask which subscription to launch on.
+ *
+ * `choose` picks the trigger. `'auto'` keeps every decision that already stood
+ * — an account the caller named, a project's memory, a resume the backend
+ * places from its transcript — and only interrupts when the account that
+ * decision lands on has nothing left to spend: the one moment the answer
+ * changes. That judgement is made on the last usage reading taurhaus holds, the
+ * one every other surface is already showing; a fresher one is asked for in the
+ * background, never waited on. `'always'` is the user asking, and skips
+ * straight to the dialog with the account they would otherwise have got
+ * pre-selected.
+ */
 export async function requestLaunch({
   project,
   mode,
   tool,
   accountId = null,
+  choose = 'auto',
   launch = launchCliSession,
   onError = null,
 }) {
@@ -356,20 +410,46 @@ export async function requestLaunch({
   await refreshAccounts(id)
   if (loggedInAccounts(id).length < 2) return run(null)
 
-  const effective = effectiveAccount(project, id)
-  if (
-    (effective.account && effective.origin !== 'default_config_dir') ||
-    (await backendPlacesLaunch(projectId, id, mode))
-  ) {
-    return run(null)
+  let reason = null
+  let preselectedAccountId = null
+
+  if (choose === 'always') {
+    preselectedAccountId = effectiveAccount(project, id).account?.id ?? null
+    await refreshUsage(id)
+  } else {
+    // For a resume the backend outranks anything remembered here: it reads the
+    // transcript, which decides the launch whatever this side would have
+    // picked.
+    const placed = await backendPlacedAccount(projectId, id, mode)
+    const memory = effectiveAccount(project, id)
+    const remembered = memory.origin === 'default_config_dir' ? null : memory.account?.id ?? null
+    const settledAccountId = placed ? placed.accountId : remembered
+
+    if (placed || remembered) {
+      // Judged on the reading the detection above just returned — the same one
+      // the chip and the account menus are showing. A weekly or five-hour
+      // limit is slow-moving state and the chooser stays reachable on demand,
+      // so nothing is learned by holding a launch open for a fresher number:
+      // the refresh asked for here is for the next launch, and for the meters
+      // in the dialog if one opens. A degraded detection confirmed nothing
+      // about any account, so it vetoes nothing either.
+      reason = accountState(id).degraded
+        ? null
+        : exhaustionReason(usableAccount(id, settledAccountId))
+      void refreshUsage(id)
+      if (!reason) return run(null)
+    } else {
+      await refreshUsage(id)
+    }
   }
 
-  await refreshUsage(id)
   state.pending = {
     projectId,
     projectName: project?.name ?? '',
     mode,
     tool: id,
+    reason,
+    preselectedAccountId,
     confirm: (chosen, remember) => {
       state.pending = null
       const stored = remember ? rememberChoice(projectId, id, chosen) : Promise.resolve()

@@ -317,7 +317,7 @@
     if (notice) showSidebarNotice(notice)
   }
 
-  function ctxLaunchTool(mode, tool = tools()[0]?.id, accountId = null) {
+  function ctxLaunchTool(mode, tool = tools()[0]?.id, accountId = null, { choose = 'auto' } = {}) {
     if (!ctxMenu?.project) return
     const project = ctxMenu.project
     console.log(`[cmd-center] ${mode} ${tool} session:`, project.id, project.name)
@@ -328,6 +328,7 @@
       mode,
       tool,
       accountId,
+      choose,
       launch: (projectId, launchMode, launchTool, launchAccountId) =>
         launchCliSession(projectId, launchMode, launchTool, launchAccountId).then((r) => {
           console.log('[cmd-center] launch OK:', r)
@@ -438,8 +439,12 @@
    * be picked: the team resumes in its own config dir, and offering a choice
    * that goes nowhere is worse than offering none. Per-team accounts are a
    * follow-up.
+   *
+   * `onChoose`, where the caller offers it, is the row that reopens the chooser
+   * itself — the only way back to a side-by-side usage comparison once the
+   * project remembers an account.
    */
-  function withAccountSubmenu(item, tool, onPick, mode = 'fresh', sessions = []) {
+  function withAccountSubmenu(item, tool, onPick, mode = 'fresh', sessions = [], onChoose = null) {
     const accounts = resolveChooserAccounts(tool)
     if (!accountSubmenuApplies(tool, accounts)) return item
     const delegated = launchDelegatesToTeam(mode, tool, sessions)
@@ -451,6 +456,7 @@
           ? null
           : activeAccountId(ctxMenu?.project, tool),
         onSelect: onPick,
+        onChoose,
         disabledNote: delegated ? TEAM_ACCOUNT_NOTE : null,
       }),
     }
@@ -529,6 +535,7 @@
       (accountId) => ctxLaunchTool(mode, tool, accountId),
       mode,
       allSessions,
+      () => ctxLaunchTool(mode, tool, null, { choose: 'always' }),
     )
 
     // Continue is listed for Claude and Grok, which reopen the project's last

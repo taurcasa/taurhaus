@@ -11,6 +11,7 @@ vi.mock('./ipc.js', () => ({
 
 const {
   listAccounts,
+  refreshAccountsUsage,
   setProjectAccount,
   launchCliSession,
   resolveLaunchAccount,
@@ -748,6 +749,396 @@ describe('claudeAccounts store', () => {
       })
 
       expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+    })
+  })
+
+  describe('the chooser as the way out of a spent subscription', () => {
+    const OBSERVED_AT = '2026-08-30T08:00:00Z'
+    // Anchored to the run's own clock: a limit that has already come back is
+    // not a spent limit, and a fixture with a fixed reset would quietly become
+    // one as the calendar moved past it.
+    const RESETS_AT = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60
+    const ALREADY_RESET = Math.floor(Date.now() / 1000) - 60
+
+    const windowAt = (key, title, used, extra = {}) => ({
+      key,
+      title,
+      used_percentage: used,
+      resets_at: RESETS_AT,
+      severity: 'normal',
+      is_active: true,
+      ...extra,
+    })
+    const snapshot = (status, windows) => ({
+      observed_at: OBSERVED_AT,
+      status,
+      windows,
+      note: null,
+    })
+    const SPENT = snapshot('ok', [
+      windowAt('session', 'Current session', 12),
+      windowAt('week', 'Current week (all models)', 100, { severity: 'critical' }),
+    ])
+    const HEADROOM = snapshot('ok', [
+      windowAt('session', 'Current session', 12),
+      windowAt('week', 'Current week (all models)', 44),
+    ])
+    const remembering = (accountId = 'account-1', origin = 'last_used') => ({
+      id: 'p1',
+      accountMemory: { claude: { accountId, origin } },
+    })
+    /** What detection publishes, with one account carrying a reading. */
+    const knowing = (usage, accountId = 'account-1') =>
+      detected(
+        [PRIMARY, SECOND].map((account) =>
+          account.id === accountId ? { ...account, usage } : account
+        )
+      )
+
+    // Regression: #35 (per-project account memory) made the chooser open only
+    // when nothing had decided the launch. Every project that has ever launched
+    // remembers an account, so the dialog never appeared again — including at
+    // the one moment its answer matters, when the remembered subscription has
+    // run out of usage and the launch would silently continue into it.
+    it('opens on the remembered account being spent, instead of launching into it', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({
+        projectId: 'p1',
+        reason: {
+          kind: 'exhausted',
+          accountLabel: 'stierms@gmail.com',
+          windowTitle: 'Current week (all models)',
+          resetsAt: RESETS_AT,
+        },
+      })
+    })
+
+    /*
+     * Regression: the six majors of review rounds 2–4, all of them holes in one
+     * shape — "ask for a refresh, wait for the reading it publishes, then
+     * judge". A debounced refresh judged the numbers the fetch it was debounced
+     * against was about to replace (2bec263); reading the Windows daemon's
+     * reply as a started fetch stalled every remembered launch for the full
+     * 30-second deadline (c11770e); a refresh the daemon could not be asked at
+     * all read as "these numbers are current" (4011b02); an account already
+     * found signed out waited out the whole deadline because the poller
+     * republishes nothing until its credential file changes; a transient
+     * failure stayed indistinguishable from a debounce; and every later
+     * refresh pushed the shared deadline out again, so an ordinary hover could
+     * hold a launch open indefinitely.
+     *
+     * The waiting is gone: a weekly or five-hour limit is slow-moving state,
+     * the reading `refreshAccounts` just returned is the one the chip and the
+     * menus already show, and the chooser stays reachable on demand. So the
+     * launch is judged on the reading in hand and a fresher one is only asked
+     * for in the background.
+     */
+    it('decides on the reading in hand, without waiting for the refresh it asks for', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+      // The backend never answers this one: nothing may depend on it.
+      refreshAccountsUsage.mockReturnValueOnce(new Promise(() => {}))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
+    })
+
+    it('asks for a fresher reading in the background, for the next launch and the open dialog', async () => {
+      listAccounts.mockResolvedValue(knowing(HEADROOM))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(refreshAccountsUsage).toHaveBeenCalledWith('claude')
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    it('launches on the remembered account while it still has headroom', async () => {
+      listAccounts.mockResolvedValue(knowing(HEADROOM))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    it('launches when nothing has reported usage for the remembered account', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    it('says an account that cannot be read needs signing in again, at once', async () => {
+      listAccounts.mockResolvedValue(knowing(snapshot('unauthorized', [])))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({
+        reason: { kind: 'unauthorized', accountLabel: 'stierms@gmail.com' },
+      })
+    })
+
+    it('counts a stale reading — it is the last thing known about the limit', async () => {
+      listAccounts.mockResolvedValue(
+        knowing(snapshot('stale', [windowAt('week', 'Current week', 100)]))
+      )
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
+    })
+
+    it('launches on a limit that has already come back, however old the reading is', async () => {
+      listAccounts.mockResolvedValue(
+        knowing(
+          snapshot('stale', [
+            windowAt('week', 'Current week', 100, { resets_at: ALREADY_RESET }),
+          ])
+        )
+      )
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    it('launches while detection is degraded rather than judging what nothing confirmed', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+      await refreshAccounts('claude')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      listAccounts.mockResolvedValue(degraded())
+      await refreshAccounts('claude', { force: true })
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      warn.mockRestore()
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    it('never blocks a launch on an account nothing was ever known about', async () => {
+      listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+      await refreshAccounts('claude')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      listAccounts.mockRejectedValue(new Error('daemon down'))
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      warn.mockRestore()
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    it('checks the account a resume the backend places would run on', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-1',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({
+        mode: 'resume',
+        reason: { kind: 'exhausted' },
+      })
+    })
+
+    it('still asks nothing for a resume whose account has headroom', async () => {
+      listAccounts.mockResolvedValue(knowing(HEADROOM))
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-1',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+    })
+
+    // Regression: ea6dca0 asked the backend only whether *something* had placed
+    // the launch and then read the usage of whichever account the frontend's
+    // own precedence landed on. The transcript that decides a resume is the
+    // backend's to read, and it answers with the account itself: here it places
+    // the resume on the second subscription while the frontend would have
+    // judged the first, so the spent one was never seen.
+    it('checks the account the backend places the resume on, not the frontend fallback', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT, 'account-2'))
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-2',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({
+        mode: 'resume',
+        reason: { kind: 'exhausted', accountLabel: 'm.stier@giesi.com' },
+      })
+    })
+
+    // Regression: ea6dca0 — the same confusion in the other direction: the
+    // project's memory named a spent account the resume would never have run
+    // on, and the chooser opened over a transcript the backend had already
+    // placed on a subscription with headroom.
+    it('launches a resume the backend places on an account with headroom, whatever the project remembers', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-2',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: remembering(), mode: 'resume', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+    })
+
+    // Regression: ea6dca0 — an account the frontend cannot name is not one it
+    // may judge in another account's place.
+    it('launches when the backend places the resume on an account nothing here knows', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-9',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: remembering(), mode: 'resume', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+    })
+
+    it('carries no reason when nothing had decided the account anyway', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+
+      await requestLaunch({ project: { id: 'p1' }, mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toMatchObject({ projectId: 'p1' })
+      expect(claudeAccounts.pending.reason).toBe(null)
+    })
+
+    it('confirming a reasoned chooser still pins and launches', async () => {
+      listAccounts.mockResolvedValue(knowing(SPENT))
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      await claudeAccounts.pending.confirm('account-2', true)
+
+      expect(setProjectAccount).toHaveBeenCalledWith('p1', 'claude', 'account-2')
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+      expect(claudeAccounts.pending).toBe(null)
+    })
+
+    describe("choose: 'always'", () => {
+      it('opens the chooser on a project that already remembers an account', async () => {
+        listAccounts.mockResolvedValue(knowing(HEADROOM))
+
+        await requestLaunch({
+          project: remembering('account-2', 'pinned'),
+          mode: 'fresh',
+          tool: 'claude',
+          choose: 'always',
+        })
+
+        expect(launchCliSession).not.toHaveBeenCalled()
+        expect(claudeAccounts.pending).toMatchObject({
+          projectId: 'p1',
+          preselectedAccountId: 'account-2',
+        })
+        expect(claudeAccounts.pending.reason).toBe(null)
+      })
+
+      it('asks the backend nothing: the user has already said they want to choose', async () => {
+        listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+        resolveLaunchAccount.mockResolvedValue({ needsChoice: false, accountId: 'account-1' })
+
+        await requestLaunch({
+          project: { id: 'p1' },
+          mode: 'resume',
+          tool: 'claude',
+          choose: 'always',
+        })
+
+        expect(resolveLaunchAccount).not.toHaveBeenCalled()
+        expect(claudeAccounts.pending).toMatchObject({ mode: 'resume' })
+      })
+
+      it('reads usage before offering the comparison', async () => {
+        listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+        await refreshAccounts('claude')
+        refreshAccountsUsage.mockClear()
+
+        await requestLaunch({
+          project: remembering(),
+          mode: 'fresh',
+          tool: 'claude',
+          choose: 'always',
+        })
+
+        expect(refreshAccountsUsage).toHaveBeenCalledWith('claude')
+      })
+
+      it('does not chase a newer reading: the dialog is already open', async () => {
+        // The meters fill in as the poller publishes; a user who asked to
+        // choose is looking at the list, not at a launch that has stopped.
+        listAccounts.mockResolvedValue(knowing(HEADROOM))
+
+        await requestLaunch({
+          project: remembering(),
+          mode: 'fresh',
+          tool: 'claude',
+          choose: 'always',
+        })
+
+        expect(claudeAccounts.pending).toMatchObject({ preselectedAccountId: 'account-1' })
+        expect(listAccounts).toHaveBeenCalledTimes(2)
+      })
+
+      it('is still outranked by an account the caller named outright', async () => {
+        listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
+
+        await requestLaunch({
+          project: remembering(),
+          mode: 'fresh',
+          tool: 'claude',
+          accountId: 'account-2',
+          choose: 'always',
+        })
+
+        expect(claudeAccounts.pending).toBe(null)
+        expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', 'account-2')
+      })
+
+      it('has nothing to ask when only one account can run', async () => {
+        listAccounts.mockResolvedValue(detected([PRIMARY, { ...SECOND, logged_in: false }]))
+
+        await requestLaunch({
+          project: remembering(),
+          mode: 'fresh',
+          tool: 'claude',
+          choose: 'always',
+        })
+
+        expect(claudeAccounts.pending).toBe(null)
+        expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+      })
     })
   })
 

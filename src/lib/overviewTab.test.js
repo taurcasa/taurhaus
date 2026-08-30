@@ -221,21 +221,67 @@ describe('OverviewTab', () => {
     const onLaunchSession = vi.fn()
     render(OverviewTab, { props: defaultProps({ onLaunchSession }) })
     await fireEvent.click(screen.getByTestId('action-launch-claude'))
-    expect(onLaunchSession).toHaveBeenCalledWith('claude')
+    expect(onLaunchSession).toHaveBeenCalledWith('claude', { choose: 'auto' })
   })
 
   it('clicking Codex button calls onLaunchSession("codex")', async () => {
     const onLaunchSession = vi.fn()
     render(OverviewTab, { props: defaultProps({ onLaunchSession }) })
     await fireEvent.click(screen.getByTestId('action-launch-codex'))
-    expect(onLaunchSession).toHaveBeenCalledWith('codex')
+    expect(onLaunchSession).toHaveBeenCalledWith('codex', { choose: 'auto' })
   })
 
   it('clicking Antigravity calls onLaunchSession("agy")', async () => {
     const onLaunchSession = vi.fn()
     render(OverviewTab, { props: defaultProps({ onLaunchSession }) })
     await fireEvent.click(screen.getByTestId('action-launch-agy'))
-    expect(onLaunchSession).toHaveBeenCalledWith('agy')
+    expect(onLaunchSession).toHaveBeenCalledWith('agy', { choose: 'auto' })
+  })
+
+  // Regression: #35 (per-project account memory) left no way to reach the
+  // chooser for a project that had already launched once — the quick action
+  // silently ran on the remembered subscription every time.
+  it('Shift+click asks which subscription to launch on', async () => {
+    const onLaunchSession = vi.fn()
+    render(OverviewTab, { props: defaultProps({ onLaunchSession }) })
+
+    await fireEvent.click(screen.getByTestId('action-launch-claude'), { shiftKey: true })
+
+    expect(onLaunchSession).toHaveBeenCalledWith('claude', { choose: 'always' })
+  })
+
+  it('Ctrl or Cmd click asks the same question', async () => {
+    const onLaunchSession = vi.fn()
+    render(OverviewTab, { props: defaultProps({ onLaunchSession }) })
+
+    await fireEvent.click(screen.getByTestId('action-launch-codex'), { ctrlKey: true })
+    await fireEvent.click(screen.getByTestId('action-launch-codex'), { metaKey: true })
+
+    expect(onLaunchSession).toHaveBeenNthCalledWith(1, 'codex', { choose: 'always' })
+    expect(onLaunchSession).toHaveBeenNthCalledWith(2, 'codex', { choose: 'always' })
+  })
+
+  it('says nothing about Shift while the host has no second subscription', () => {
+    render(OverviewTab, { props: defaultProps() })
+
+    expect(screen.getByTestId('action-launch-claude')).toHaveAttribute('title', 'Claude')
+  })
+
+  it('offers the shortcut in the tooltip once there is a choice to make', () => {
+    accountState('claude').accounts = [
+      { id: 'a1', label: 'one@example.com', display_name: 'One', logged_in: true },
+      { id: 'a2', label: 'two@example.com', display_name: 'Two', logged_in: true },
+    ]
+
+    render(OverviewTab, { props: defaultProps() })
+
+    expect(screen.getByTestId('action-launch-claude')).toHaveAttribute(
+      'title',
+      'Launch Claude (Shift+click to choose the account)'
+    )
+    // A tool with one account keeps the plain label: the shortcut would do
+    // nothing there.
+    expect(screen.getByTestId('action-launch-codex')).toHaveAttribute('title', 'Codex')
   })
 
   it('clicking Terminal button calls onOpenTerminal', async () => {

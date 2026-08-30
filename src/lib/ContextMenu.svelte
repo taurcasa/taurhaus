@@ -11,10 +11,11 @@
    * action the row is nothing but its children, so a click opens them.
    *
    * Item shape: `{label, action, icon, disabled, separator, keepOpen, danger,
-   * children}`. A child adds `meta` (right-aligned muted text), `check` (a
-   * leading tick, with the column reserved on every child so labels line up)
-   * and `key` — a unique identity for the row, because a child's label is
-   * whatever the caller's data says and two accounts can carry the same one.
+   * children}`. A child may be a `separator` too, and adds `meta`
+   * (right-aligned muted text), `check` (a leading tick, with the column
+   * reserved on every child so labels line up) and `key` — a unique identity
+   * for the row, because a child's label is whatever the caller's data says and
+   * two accounts can carry the same one.
    */
   let {
     items = [],
@@ -489,13 +490,16 @@
     onmouseleave={handleParentLeave}
   >
     {#each openChildren as child, childIndex (child.key ?? `${childIndex}:${child.label}`)}
+    {#if child.separator}
+      <div class="h-px mx-2 my-1 {separatorBg}" role="separator"></div>
+    {:else}
       <button
         bind:this={childEls[childIndex]}
         class="w-full flex items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition-colors
           {child.disabled ? textMuted + ' cursor-default opacity-50' : textPrimary + ' ' + hoverBg}
           {childIndex === childFocusIndex && !child.disabled ? focusBg : ''}"
-        role="menuitemradio"
-        aria-checked={Boolean(child.check)}
+        role={'check' in child ? 'menuitemradio' : 'menuitem'}
+        aria-checked={'check' in child ? Boolean(child.check) : undefined}
         disabled={child.disabled}
         onmousedown={(e) => { e.stopPropagation(); activate(child) }}
         onmouseenter={() => { if (!child.disabled) childFocusIndex = childIndex }}
@@ -515,6 +519,7 @@
           </span>
         {/if}
       </button>
+    {/if}
     {/each}
   </div>
 {/if}
