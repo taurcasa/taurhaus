@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **The account chooser opens when the remembered subscription is spent, and on demand** — per-project account memory meant every project that had ever launched launched again on the same subscription without asking, including the one moment the answer changes: the week ran out. A launch whose account is settled — by the project's memory or by a resume the backend places from its transcript — now reads usage first and, when that account has a window at or past 100 % (or cannot be read at all), opens the chooser instead of continuing into it, with one sentence saying which subscription is out, which window, and when it comes back. A `stale` reading still counts; a refresh that fails or a provider that measures nothing changes nothing, and the launch proceeds exactly as before. The dialog is also reachable on demand: Shift+click (or Ctrl/Cmd+click) an Overview quick action, or take the `Choose account…` row at the end of a sidebar launch submenu, and it opens with the account the launch would have used pre-selected — the row a keystroke answers with. An account named outright still launches without a dialog, nothing switches subscriptions silently, and what a confirm remembers is unchanged.
+
 ### Changed
 
 - **The bundled presets staff the v4 developer roles** — Dev Team, Full Team and Research Team now staff `v4-developer-codex` (gpt-5.6-sol, medium) and Grok Pair staffs `v4-developer-grok` (grok-4.6, medium), so a preset roster runs the v4 wording instead of the v3 roles at gpt-5.4 with no effort and grok-4.6 at high. No preset pins model or effort on a developer slot — both come from the role, so a preset follows the role default wherever it moves — and the lead, architect, researcher and quick-dev slots are untouched. The v3 developer roles stay in the catalog for one more release so the Phase C comparison can be re-run against them; at medium the two are indistinguishable on the current eval cases (`docs/design/research/phase-c-v4-results.md`), so v4 is the default for its wording contract rather than for a score.
