@@ -94,12 +94,24 @@ pub fn resolve_base_command(base: &str, tool: CliTool, probe: &dyn AliasProbe) -
 ///
 /// Probing runs an interactive shell, so a launch, its preview and the settings
 /// page must not each pay for one.
+#[cfg(not(test))]
 pub fn resolve_base_command_cached(
     base: &str,
     tool: CliTool,
     probe: &dyn AliasProbe,
 ) -> ResolvedBase {
     resolve_base_command_cached_at(base, tool, probe, Instant::now())
+}
+
+/// Under test the process-global cache is a channel between tests: one test's
+/// answer would outlive the alias table the next one installs.
+#[cfg(test)]
+pub fn resolve_base_command_cached(
+    base: &str,
+    tool: CliTool,
+    probe: &dyn AliasProbe,
+) -> ResolvedBase {
+    resolve_base_command(base, tool, probe)
 }
 
 /// One resolution per (shell, tool, base), including a failed probe: a shell
@@ -271,6 +283,7 @@ fn words(command: &str) -> Vec<Word> {
 }
 
 /// How long an interactive shell gets to answer what one word means.
+#[cfg(not(test))]
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Asks the pane's own interactive shell what a word means.
@@ -282,13 +295,25 @@ impl ShellAliasProbe {
     /// The shell a launched pane runs: tmux's `default-shell`, else `$SHELL`.
     pub fn for_pane() -> Self {
         Self {
-            shell: tmux_default_shell()
-                .or_else(|| std::env::var("SHELL").ok())
-                .map(|shell| shell.trim().to_string())
-                .filter(|shell| !shell.is_empty())
-                .unwrap_or_else(|| "/bin/sh".to_string()),
+            shell: pane_shell(),
         }
     }
+}
+
+#[cfg(not(test))]
+fn pane_shell() -> String {
+    tmux_default_shell()
+        .or_else(|| std::env::var("SHELL").ok())
+        .map(|shell| shell.trim().to_string())
+        .filter(|shell| !shell.is_empty())
+        .unwrap_or_else(|| "/bin/sh".to_string())
+}
+
+/// A unit test never starts an interactive shell and never reads the
+/// developer's own rc file.
+#[cfg(test)]
+fn pane_shell() -> String {
+    "test".to_string()
 }
 
 impl AliasProbe for ShellAliasProbe {
@@ -297,16 +322,28 @@ impl AliasProbe for ShellAliasProbe {
     }
 
     fn alias(&self, name: &str) -> Option<String> {
-        if !is_alias_name(name) {
-            return None;
-        }
-        let script = format!("alias -- {name}");
-        let output =
-            super::process::run_with_timeout_within(&self.shell, &["-ic", &script], PROBE_TIMEOUT)?;
-        parse_alias_output(name, &output)
+        is_alias_name(name).then(|| shell_alias(&self.shell, name))?
     }
 }
 
+/// Ask one interactive shell what a single validated word means.
+#[cfg(not(test))]
+fn shell_alias(shell: &str, name: &str) -> Option<String> {
+    let script = format!("alias -- {name}");
+    let output = super::process::run_with_timeout_within(shell, &["-ic", &script], PROBE_TIMEOUT)?;
+    parse_alias_output(name, &output)
+}
+
+#[cfg(test)]
+fn shell_alias(_shell: &str, name: &str) -> Option<String> {
+    ALIAS_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .as_ref()
+        .and_then(|aliases| aliases.get(name).cloned())
+}
+
+#[cfg(not(test))]
 fn tmux_default_shell() -> Option<String> {
     super::process::run_with_timeout("tmux", &["show-options", "-gv", "default-shell"])
         .map(|value| value.trim().to_string())
@@ -349,6 +386,44 @@ fn unquote_alias_body(body: &str) -> Option<String> {
         return Some(unescaped);
     }
     (!body.contains(['\'', '"'])).then(|| body.to_string())
+}
+
+#[cfg(test)]
+static ALIAS_OVERRIDE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+#[cfg(test)]
+static ALIAS_OVERRIDE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Keeps a test-owned alias table installed for `ShellAliasProbe::for_pane`.
+#[cfg(test)]
+pub(crate) struct AliasOverrideGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl Drop for AliasOverrideGuard {
+    fn drop(&mut self) {
+        *ALIAS_OVERRIDE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+    }
+}
+
+/// Install what the pane shell would say, without running one.
+#[cfg(test)]
+pub(crate) fn install_alias_override(aliases: &[(&str, &str)]) -> AliasOverrideGuard {
+    let lock = ALIAS_OVERRIDE_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    *ALIAS_OVERRIDE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(
+        aliases
+            .iter()
+            .map(|(name, body)| (name.to_string(), body.to_string()))
+            .collect(),
+    );
+    AliasOverrideGuard { _lock: lock }
 }
 
 #[cfg(test)]

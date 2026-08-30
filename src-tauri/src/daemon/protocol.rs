@@ -372,6 +372,10 @@ pub struct LaunchSessionResult {
     /// on rather than a sentence it would have to parse.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_note: Option<String>,
+    /// The one detail a note needs to name something the user wrote — the head
+    /// of an opaque base command. Set by the app, never by the daemon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_note_detail: Option<String>,
 }
 
 /// `stop_session` params
@@ -871,6 +875,7 @@ mod tests {
             tmux_pane: "%5".to_string(),
             account_applied: Some(false),
             account_note: Some("team_default".to_string()),
+            account_note_detail: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: LaunchSessionResult = serde_json::from_str(&json).unwrap();

@@ -122,7 +122,16 @@ pub(super) fn launch_cli_session_impl(
     }
 
     let terminal_settings = load_terminal_settings(db);
-    let configured_base = base_command(&terminal_settings.cli_commands, tool, mode);
+    // What the pane's shell will read, not what Settings stores: an alias can
+    // carry an account selector of its own, and nothing downstream can see it
+    // until it is expanded.
+    let pane_base = crate::commands::accounts::resolve_launch_base(
+        provider,
+        tool,
+        base_command(&terminal_settings.cli_commands, tool, mode),
+    );
+    log_opaque_base(tool, &pane_base);
+    let configured_base = pane_base.command.as_str();
     let account = crate::session_scanner::cli_tool::spec(tool)
         .account_provider()
         .map(|_| {
@@ -358,7 +367,7 @@ pub(super) fn launch_cli_session_impl(
                         tool,
                         resolved_account_id.as_deref(),
                     );
-                    return Ok(result);
+                    return Ok(note_opaque_base(result, pane_base.opaque_head.as_deref()));
                 }
                 Ok(response) => {
                     let msg = response
@@ -474,12 +483,53 @@ pub(super) fn launch_cli_session_impl(
         });
     }
 
-    Ok(protocol::LaunchSessionResult {
-        tmux_session: Some(session),
-        tmux_window: window,
-        tmux_pane: pane,
-        ..Default::default()
-    })
+    Ok(note_opaque_base(
+        protocol::LaunchSessionResult {
+            tmux_session: Some(session),
+            tmux_window: window,
+            tmux_pane: pane,
+            ..Default::default()
+        },
+        pane_base.opaque_head.as_deref(),
+    ))
+}
+
+/// The head of the base command is not the tool's own executable, so what it
+/// does with the rendered account selector is its own business.
+pub(super) const OPAQUE_BASE_COMMAND: &str = "opaque_base_command";
+
+/// Say that a launch could not promise the account it selected.
+pub(super) fn note_opaque_base(
+    mut result: protocol::LaunchSessionResult,
+    opaque_head: Option<&str>,
+) -> protocol::LaunchSessionResult {
+    let Some(head) = opaque_head else {
+        return result;
+    };
+    result.account_applied = Some(false);
+    result.account_note = Some(OPAQUE_BASE_COMMAND.to_string());
+    result.account_note_detail = Some(head.to_string());
+    result
+}
+
+/// A wrapper taurhaus will not run to learn what it does.
+pub(super) fn log_opaque_base(
+    tool: CliTool,
+    resolved: &crate::session_scanner::launch_base::ResolvedBase,
+) {
+    let Some(head) = resolved.opaque_head.as_deref() else {
+        return;
+    };
+    let mut fields = Map::new();
+    fields.insert("tool".to_string(), Value::String(tool.to_string()));
+    fields.insert("head".to_string(), Value::String(head.to_string()));
+    crate::commands::logging::emit_global(
+        "warn",
+        "command_center",
+        "launch.base.opaque",
+        Some("Launch command does not run the CLI taurhaus selected an account for".to_string()),
+        fields,
+    );
 }
 
 const SESSION_ID_PLACEHOLDER: &str = "{session_id}";
@@ -874,7 +924,11 @@ pub(super) fn resolve_launch_account_preview_impl(
     let last_used_account_id = memory
         .filter(|memory| memory.origin == AccountMemoryOrigin::LastUsed)
         .map(|memory| memory.account_id.as_str());
-    let base = base_command(&terminal_settings.cli_commands, tool, mode);
+    let base = crate::commands::accounts::resolve_launch_base(
+        provider,
+        tool,
+        base_command(&terminal_settings.cli_commands, tool, mode),
+    );
     let detected = crate::commands::accounts::accounts_report(provider, tool);
 
     let resolution = accounts::resolve_launch_account(
@@ -888,7 +942,7 @@ pub(super) fn resolve_launch_account_preview_impl(
                 .default_account_ids
                 .get(&tool.to_string())
                 .map(String::as_str),
-            base_command: Some(base),
+            base_command: Some(&base.command),
             selector: tool_spec.capabilities.account_selector,
             ..Default::default()
         },
