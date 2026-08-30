@@ -532,8 +532,8 @@ impl LaunchSpec<'_> {
     }
 }
 
-/// Collapse every `selector=...` assignment the command carries into a single
-/// `assignment`, kept where the first one stood.
+/// Collapse every leading `selector=...` assignment into a single `assignment`,
+/// kept where the first one stood.
 ///
 /// Returns the rewritten command and the assignment word that was in force, or
 /// `None` when the command carries no such assignment. Only an unquoted
@@ -558,6 +558,12 @@ fn replace_env_assignment(
             continue;
         }
         let end = shell_word_end(command, cursor);
+        // A shell reads assignments only in front of the command name. Past it
+        // every word is an argument the program receives verbatim, however much
+        // it looks like an assignment, so the scan stops there.
+        if !is_assignment_word(&command[cursor..end]) {
+            break;
+        }
         if command[cursor..end].starts_with(&prefix) {
             spans.push((cursor, end));
         }
@@ -580,6 +586,22 @@ fn replace_env_assignment(
     }
     rewritten.push_str(&command[copied..]);
     Some((rewritten, in_force))
+}
+
+/// Whether a raw shell word is a `NAME=value` assignment rather than a command
+/// name or an argument.
+///
+/// Only an unquoted name counts: `'NAME=value'` is a word the shell looks up as
+/// a command, not an assignment it puts in the environment.
+fn is_assignment_word(word: &str) -> bool {
+    let Some((name, _)) = word.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && name.starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Return the configured base command without normalizing or rewriting it.
@@ -1715,6 +1737,41 @@ mod tests {
                 replaced_with: "CLAUDE_CONFIG_DIR='/home/user/.claude'".to_string(),
             }],
             "the note names the assignment that was in force"
+        );
+    }
+
+    #[test]
+    fn a_selector_shaped_argument_is_not_the_base_command_selector() {
+        // Regression: c65efa4 scanned every shell word for a `SELECTOR=` word,
+        // so an argument after the executable — which a shell passes to the
+        // program, never to the environment — was rewritten in place. The
+        // chosen account never reached the launch, and the note said it had.
+        let base = "claude --append-system-prompt CLAUDE_CONFIG_DIR=/tmp/literal";
+        let rendered = LaunchSpec {
+            tool: CliTool::Claude,
+            mode: LaunchMode::Fresh,
+            base,
+            model: ModelSpec::default(),
+            codex_bypass_hook_trust: false,
+            codex_notify_executable: None,
+            account_dir: Some(std::path::Path::new("/home/user/.claude-account2")),
+            selector: Some("CLAUDE_CONFIG_DIR"),
+            team: None,
+        }
+        .render();
+
+        assert_eq!(
+            rendered.command,
+            concat!(
+                "CLAUDE_CONFIG_DIR='/home/user/.claude-account2' ",
+                "claude --append-system-prompt CLAUDE_CONFIG_DIR=/tmp/literal"
+            ),
+            "the argument stays as typed and the selector goes in front of the executable"
+        );
+        assert_eq!(
+            rendered.notes,
+            vec![],
+            "nothing the base owns was rewritten, so there is nothing to report"
         );
     }
 

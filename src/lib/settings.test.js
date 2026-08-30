@@ -348,6 +348,29 @@ describe('Settings component', () => {
     expect(line).toHaveTextContent('B')
   })
 
+  // Regression: a010581 matched the selector anywhere in the launch command,
+  // so an argument that only looks like an assignment — a word after the
+  // executable, which a shell hands to the program — was reported as the
+  // account the launch command selects.
+  it('ignores a selector-shaped argument after the executable', async () => {
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command:
+            'claude --append-system-prompt CLAUDE_CONFIG_DIR=/home/mstie/.claude-account2',
+          expansions: [],
+          opaqueHead: null,
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent('Effective default: A — default config directory')
+    expect(line).not.toHaveTextContent('from your launch command')
+  })
+
   it('keeps a chosen global default above the launch command', async () => {
     getSettings.mockResolvedValue(
       mockSettings({ terminal: { default_account_ids: { claude: 'account-1' } } })

@@ -342,18 +342,23 @@ pub fn command_contains_env(command: &str, selector: &str) -> bool {
 /// A shell reads the *last* assignment of a name, and expanding an alias can
 /// leave more than one behind: a configured `CLAUDE_CONFIG_DIR=… claude2` line
 /// becomes `CLAUDE_CONFIG_DIR=… CLAUDE_CONFIG_DIR=… claude`. The one in force
-/// is the one this reports.
+/// is the one this reports. Only the leading run counts — a shell puts a word
+/// in the environment only in front of the command name.
 fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBuf>> {
     let prefix = format!("{selector}=");
     shell_words(command)
         .into_iter()
+        // A shell reads assignments only in front of the command name. Past it
+        // every word is an argument the program receives verbatim, however much
+        // it looks like an assignment.
+        .take_while(ShellWord::is_assignment)
         .filter_map(|word| {
-            word.strip_prefix(&prefix).map(|value| {
+            word.value.strip_prefix(&prefix).map(|value| {
                 let value = value.trim();
                 (!value.is_empty()).then(|| expand_home(value))
             })
         })
-        .next_back()
+        .last()
 }
 
 /// A leading `~` in a base command is the launching shell's home directory,
@@ -382,20 +387,50 @@ fn expand_home(value: &str) -> PathBuf {
     }
 }
 
-fn shell_words(command: &str) -> Vec<String> {
+/// One word of a shell command, and whether quoting reached its `NAME=` part.
+struct ShellWord {
+    value: String,
+    name_quoted: bool,
+}
+
+impl ShellWord {
+    /// Whether a shell would put this word in the environment rather than read
+    /// it as a command name or hand it to the program as an argument.
+    fn is_assignment(&self) -> bool {
+        if self.name_quoted {
+            return false;
+        }
+        let Some((name, _)) = self.value.split_once('=') else {
+            return false;
+        };
+        !name.is_empty()
+            && name
+                .starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
+            && name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+    }
+}
+
+fn shell_words(command: &str) -> Vec<ShellWord> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut started = false;
+    let mut name_quoted = false;
     let mut characters = command.chars().peekable();
     while let Some(character) = characters.next() {
         match character {
             character if character.is_whitespace() => {
                 if started {
-                    words.push(std::mem::take(&mut word));
+                    words.push(ShellWord {
+                        value: std::mem::take(&mut word),
+                        name_quoted: std::mem::take(&mut name_quoted),
+                    });
                     started = false;
                 }
             }
             '\'' => {
+                name_quoted |= !word.contains('=');
                 started = true;
                 for quoted in characters.by_ref() {
                     if quoted == '\'' {
@@ -405,6 +440,7 @@ fn shell_words(command: &str) -> Vec<String> {
                 }
             }
             '"' => {
+                name_quoted |= !word.contains('=');
                 started = true;
                 while let Some(quoted) = characters.next() {
                     match quoted {
@@ -417,6 +453,7 @@ fn shell_words(command: &str) -> Vec<String> {
                 }
             }
             '\\' => {
+                name_quoted |= !word.contains('=');
                 started = true;
                 word.extend(characters.next());
             }
@@ -427,7 +464,10 @@ fn shell_words(command: &str) -> Vec<String> {
         }
     }
     if started {
-        words.push(word);
+        words.push(ShellWord {
+            value: word,
+            name_quoted,
+        });
     }
     words
 }
@@ -1606,6 +1646,32 @@ mod tests {
             resolved.account_dir.as_deref(),
             Some(Path::new("/accounts/default")),
             "the assignment in force names another account, so the launch has to name its own"
+        );
+    }
+
+    #[test]
+    fn a_selector_shaped_argument_is_not_a_base_command_selector() {
+        // Regression: 967f956 read the selector out of any shell word of the
+        // base command. A word after the executable is an argument, whatever
+        // it looks like, so `claude --append-system-prompt CLAUDE_CONFIG_DIR=…`
+        // was credited with choosing the account this launch runs on.
+        let resolved = resolve_launch_account(
+            &fixture(),
+            &FakeProvider,
+            AccountRequest {
+                base_command: Some(
+                    "claude --append-system-prompt CLAUDE_CONFIG_DIR=/accounts/last",
+                ),
+                selector: Some("CLAUDE_CONFIG_DIR"),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(resolved.origin, AccountOrigin::DefaultConfigDir);
+        assert_eq!(resolved.account.unwrap().id, "default");
+        assert_eq!(
+            resolved.account_dir, None,
+            "the base command assigns nothing, so the process default needs no selector"
         );
     }
 

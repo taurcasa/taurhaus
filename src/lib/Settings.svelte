@@ -216,6 +216,22 @@
   }
 
   /**
+   * The run of `NAME=value` words a shell puts in the environment: the ones in
+   * front of the command name. Past it every word is an argument the program
+   * receives verbatim, however much it looks like an assignment.
+   */
+  function assignmentPrefix(command) {
+    const line = String(command)
+    const word = /^\s*[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|[^\s'"])*(?=\s|$)/
+    let end = 0
+    for (;;) {
+      const match = word.exec(line.slice(end))
+      if (!match) return line.slice(0, end)
+      end += match[0].length
+    }
+  }
+
+  /**
    * The account a base command's own selector names.
    *
    * A shell reads the last assignment of a name, and an expanded alias can
@@ -227,7 +243,7 @@
   function baseSelectorAccount(command, selector, accounts) {
     if (!selector) return null
     const pattern = new RegExp(`(?:^|\\s)${selector}=(?:'([^']*)'|\"([^\"]*)\"|([^\\s]*))`, 'g')
-    const assignment = [...String(command).matchAll(pattern)].at(-1)
+    const assignment = [...assignmentPrefix(command).matchAll(pattern)].at(-1)
     const dir = assignment ? (assignment[1] ?? assignment[2] ?? assignment[3] ?? '') : ''
     if (!dir) return null
     if (dir.startsWith('~/')) {
