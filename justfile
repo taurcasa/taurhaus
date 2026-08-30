@@ -115,7 +115,7 @@ fmt:
     cd src-tauri && cargo fmt --check
 
 # Lint everything and enforce reproducible frontend structure checks.
-lint: lint-rust lint-frontend lint-workflows
+lint: lint-rust lint-frontend lint-workflows lint-just-gates
 
 # Lint Rust code with clippy.
 lint-rust: ensure-tauri-resources
@@ -128,6 +128,10 @@ lint-frontend:
 # Syntax-check the versioned Workflow procedures in .claude/workflows (parse only, never run).
 lint-workflows:
     bun scripts/check-workflow-scripts.mjs
+
+# Exercise the real full-gate lane joiner with test-only seeded commands.
+lint-just-gates:
+    scripts/check-just-gates.sh
 
 # Typecheck frontend code
 typecheck:
