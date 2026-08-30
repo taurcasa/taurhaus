@@ -28,7 +28,7 @@ ensure-tauri-resources:
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
-# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|green is test-only: it replaces both lanes
+# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|fast-failure|green is test-only: it replaces both lanes
 # and skips `just fmt`.
 # TAURHAUS_CHECK_LOG_DIR overrides logs; TAURHAUS_CHECK_SEED_PEER_PID_FILE exposes a test peer PID.
 check:
@@ -102,6 +102,10 @@ check:
             run_rust_lane() { return 0; }
             run_frontend_lane() { run_seed_late_failure_lane; }
             ;;
+        fast-failure)
+            run_rust_lane() { return 0; }
+            run_frontend_lane() { return 3; }
+            ;;
         green)
             run_rust_lane() { return 0; }
             run_frontend_lane() { return 0; }
@@ -116,9 +120,13 @@ check:
     run_frontend_lane &
     frontend_pid=$!
     pids=("$rust_pid" "$frontend_pid")
+    # Join by consuming every lane's status: `wait -n -p` names the lane it
+    # reaped, and that lane alone leaves the list. Pruning with `kill -0` lost
+    # a lane that had already exited non-zero but not yet been waited for.
     while [ "${#pids[@]}" -gt 0 ]; do
         status=0
-        wait -n "${pids[@]}" || status=$?
+        finished=""
+        wait -n -p finished "${pids[@]}" || status=$?
         if [ "$status" -ne 0 ]; then
             kill "$rust_pid" "$frontend_pid" 2>/dev/null || true
             wait "$rust_pid" 2>/dev/null || true
@@ -127,7 +135,7 @@ check:
         fi
         next_pids=()
         for pid in "${pids[@]}"; do
-            if kill -0 "$pid" 2>/dev/null; then
+            if [ "$pid" != "$finished" ]; then
                 next_pids+=("$pid")
             fi
         done

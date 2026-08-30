@@ -170,6 +170,31 @@ fi
 assert_isolated_log "$late_failure_log_dir" "$late_failure_output"
 assert_seed_warning late-failure "$late_failure_output"
 
+# Regression: the join pruned finished lanes with `kill -0`, so a lane that
+# exited non-zero within the reap gap after its peer was dropped unreaped and the
+# gate printed "Full quality gate passed." (20/60 on a seeded copy; Opus review,
+# 2026-08-30). Both lanes return at once, one non-zero; ten runs widen the window.
+for attempt in $(seq 1 10); do
+    fast_failure_output="$tmp_dir/fast-failure-$attempt.log"
+    fast_failure_log_dir="$tmp_dir/fast-failure-check-logs-$attempt"
+    fast_failure_status=0
+    TAURHAUS_CHECK_LOG_DIR="$fast_failure_log_dir" \
+        TAURHAUS_CHECK_SEED_FAILURE=fast-failure \
+        just --justfile "$repo_root/justfile" --working-directory "$work_dir" check \
+        >"$fast_failure_output" 2>&1 || fast_failure_status=$?
+    if [ "$fast_failure_status" -ne 3 ]; then
+        echo "seeded fast just check failure (run $attempt) exited $fast_failure_status, expected 3" >&2
+        sed -n '1,120p' "$fast_failure_output" >&2
+        exit 1
+    fi
+    assert_output_contains "just check failed with exit code 3" "$fast_failure_output" \
+        "seeded fast just check failure (run $attempt) did not finish flushing its failure output"
+    if grep -Fq "Full quality gate passed." "$fast_failure_output"; then
+        echo "seeded fast just check failure (run $attempt) printed the success line" >&2
+        exit 1
+    fi
+done
+
 green_output="$tmp_dir/green.log"
 green_log_dir="$tmp_dir/green-check-logs"
 green_status=0
