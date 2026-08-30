@@ -840,7 +840,7 @@ const gate = await agent(
       ': run the exact gates above, applying the Rust-diff rule below. No stress or load runs. Do not modify code unless a gate fails for a trivial reason (formatting, an unused import); if you must, commit it.',
     trailers(IMPLEMENTER),
     RULES.gateResult(BASE) + ' ' + RULES.honest,
-  ].join('\n'),
+  ].filter(Boolean).join('\n'),
   call({ label: 'gate:' + TAG, phase: 'Gate', schema: GATE_SCHEMA })
 )
 // A failing gate fails the run: a completed ledger must never sit on top of a red test lane.

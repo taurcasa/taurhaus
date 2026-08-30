@@ -771,6 +771,14 @@ describe('workflow procedures — fail closed', () => {
       expect(calls.filter((call) => call !== gate).every((call) => !call.prompt.includes(gateNotes))).toBe(true)
     })
 
+    // Regression: commit bf8fd672 added optional gate notes without filtering the empty value,
+    // leaving an extra blank prompt segment whenever the caller omitted them.
+    it(`${script} omits the empty gateNotes segment from the gate prompt`, async () => {
+      const { calls } = await run(script, argsFor(script))
+      const gate = calls.find((c) => c.label.startsWith('gate:'))
+      expect(gate.prompt).not.toMatch(/\n{2,}Final gate/)
+    })
+
     it(`${script} asks the gate for a structured result`, async () => {
       const { calls } = await run(script, argsFor(script))
       const gate = calls.find((c) => c.label.startsWith('gate:'))
