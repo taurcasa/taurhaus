@@ -12,6 +12,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, openContextMenu, dismissContextMenu } from '../helpers/navigation.js'
 import { PROJECTS_DIR } from '../helpers/platform.js'
 import { POLL, POLL_WIZARD } from '../helpers/timing.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 
 const TARGET_PROJECT_NAME = 'ledger'
 const TARGET_PROJECT_PATH = join(PROJECTS_DIR, TARGET_PROJECT_NAME)
@@ -26,6 +27,7 @@ let mainApp = false
 let originalSettings = null
 
 function tmux(args) {
+  assertTmuxIsolation(process.env)
   return execFileSync('tmux', args, { encoding: 'utf8' }).trim()
 }
 

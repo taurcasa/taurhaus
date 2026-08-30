@@ -11,6 +11,10 @@ function flatNames(specList) {
   return specList.flat().map((path) => basename(path))
 }
 
+function groupedNames() {
+  return Object.values(specGroups).flat()
+}
+
 describe('default WDIO spec list', () => {
   // Regression: 3b56a3f ("test(e2e): add the live Codex compaction lane driven
   // through the hook bridge") added a spec that spends real Codex and Claude
@@ -34,21 +38,34 @@ describe('default WDIO spec list', () => {
     }
   })
 
-  it('still collects an ordinary ungrouped spec into the catch-all session', () => {
-    const files = [...specGroups[0], 'brand-new-spec.js']
-    const list = buildSpecList(specsDir, files.sort())
-    expect(flatNames(list).at(-1)).toBe('brand-new-spec.js')
-    expect(list).toHaveLength(2)
+  // Regression: commit 111c776c appended every ungrouped spec to a catch-all,
+  // so a new stateful or paid lane could silently enter the default suite.
+  it('rejects an ungrouped spec with instructions for sealing the manifest', () => {
+    const files = [...specGroups.content, 'brand-new-spec.js']
+
+    expect(() => buildSpecList(specsDir, files.sort())).toThrow(
+      /brand-new-spec\.js.*add.*group.*paidSpecs/is
+    )
   })
 
-  it('drops a paid lane from the catch-all session it would otherwise form', () => {
-    const list = buildSpecList(specsDir, [...specGroups[0], ...paidSpecs].sort())
+  it('keeps an explicitly paid lane outside the sealed default list', () => {
+    const list = buildSpecList(specsDir, [...specGroups.content, ...paidSpecs].sort())
     expect(list).toHaveLength(1)
-    expect(flatNames(list).sort()).toEqual([...specGroups[0]].sort())
+    expect(flatNames(list).sort()).toEqual([...specGroups.content].sort())
   })
 
   it('resolves grouped specs to absolute paths under the specs directory', () => {
-    const [firstGroup] = buildSpecList(specsDir, [...specGroups[0]])
-    expect(firstGroup).toEqual(specGroups[0].map((name) => resolve(specsDir, name)))
+    const [firstGroup] = buildSpecList(specsDir, [...specGroups.content])
+    expect(firstGroup).toEqual(specGroups.content.map((name) => resolve(specsDir, name)))
+  })
+
+  it('makes the default list exactly the declared non-paid group union', () => {
+    expect(flatNames(buildSpecList(specsDir)).sort()).toEqual(groupedNames().sort())
+  })
+
+  it('deliberately groups stateful additions by ui, templates, mesh, or tmux need', () => {
+    expect(Object.keys(specGroups)).toEqual(
+      expect.arrayContaining(['ui', 'templates', 'mesh', 'tmux'])
+    )
   })
 })

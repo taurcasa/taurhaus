@@ -6,12 +6,14 @@
  * This keeps per-operation latency low (~95ms vs ~165ms with all specs
  * in one session) while avoiding per-spec app startup overhead.
  *
- * Groups are organized by app layer (inside-out):
+ * The original groups are organized by app layer (inside-out):
  *   1. Content  — individual tab workflows (read-only)
  *   2. Features — cross-cutting features (read-only)
  *   3. Shell    — app chrome & platform integration
  *   4. Config   — state mutation & validation
  *   5. Guards   — regressions & visual capture
+ * Stateful additions use named UI, template, mesh, and tmux groups. The
+ * manifest is sealed: every non-paid spec must be named by one group.
  *
  * Groups are SEALED — new specs form new groups, never expand existing ones.
  * The groups themselves live in `specList.js`, together with the paid lanes a
@@ -38,17 +40,31 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
-import { applyTmuxIsolation, wantsIsolatedTmux } from './helpers/laneTmux.js'
-import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './helpers/workerEnv.js'
+import {
+  E2E_RUN_TOKEN_ENV,
+  cleanupStaleProcessLedgers,
+  createOwnedProcessLedger,
+  findRunTokenProcessRecords,
+} from './helpers/laneCleanup.js'
+import {
+  WORKER_ROOT_ENV_KEYS,
+  buildWorkerEnv,
+  findAvailableWorkerDaemonPort,
+  prepareWorkerHome,
+} from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
+// Mirrors the Rust rule (commands/mesh.rs WSL_MESH_BINARY_PATH): the
+// operator's installed mesh lives at ~/.local/bin/mesh; keep them in step.
+const operatorMeshBinaryPath = resolve(homedir(), '.local', 'bin', 'mesh')
 
 const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')
 const localTauriDriverPath = resolve(projectRoot, 'node_modules', '.bin', 'tauri-driver')
@@ -64,8 +80,6 @@ const mochaBail = process.env.E2E_MOCHA_BAIL !== '0'
 const suiteBail = Number(process.env.E2E_BAIL || 1)
 const traceTiming = process.env.E2E_TRACE_TIMING === '1'
 const traceTimingThresholdMs = Number(process.env.E2E_TRACE_THRESHOLD_MS || 1_500)
-const driverPidRegistry = resolve(tmpdir(), `taurhaus-e2e-driver-pids-${wdioPort}.txt`)
-
 const specList = buildSpecList(specsDir)
 const specGroupIndexByPath = new Map()
 for (const [groupIndex, group] of specList.entries()) {
@@ -79,6 +93,9 @@ let sessionTempRoot = null
 let tauriDriverStderrBuffer = ''
 let sessionAppLogPaths = []
 let sessionDaemonLogPaths = []
+let sessionRunToken = ''
+let processLedger = null
+let ownedProcessRefreshTimer = null
 
 function runGitOrThrow(cwd, args, errorMessage) {
   const result = spawnSync('git', args, {
@@ -234,21 +251,17 @@ function restoreCodexHome() {
   codexHomeOverridden = false
 }
 
-// The managed-stage lane creates tmux panes and pushes this session's temporary
-// roots into the `taurhaus` tmux session's environment. On the operator's own
-// tmux server that hands those roots — deleted at teardown — to the next pane
-// they open, so the lane runs against a server of its own. The app is what
-// creates the panes, so the override has to be in place before tauri-driver
-// starts it, and `TMUX` has to go: a suite started from inside a tmux pane
-// inherits one, and every tmux client prefers it to `TMUX_TMPDIR`.
+// Every worker uses the tmux server named by buildWorkerEnv. The app is what
+// creates managed panes, so the override has to be in place before tauri-driver
+// starts it, and inherited TMUX must stay absent.
 let previousTmuxEnvironment = null
 let tmuxSocketDir = ''
 
-function prepareIsolatedTmux(specs, tempRoot) {
-  if (!wantsIsolatedTmux(specs)) return
-
+function prepareIsolatedTmux(workerEnv) {
   previousTmuxEnvironment = { TMUX_TMPDIR: process.env.TMUX_TMPDIR ?? null, TMUX: process.env.TMUX ?? null }
-  tmuxSocketDir = applyTmuxIsolation(process.env, tempRoot)
+  tmuxSocketDir = workerEnv.TMUX_TMPDIR
+  process.env.TMUX_TMPDIR = tmuxSocketDir
+  delete process.env.TMUX
   // tmux creates `$TMUX_TMPDIR/tmux-<uid>` but not its parent, and fails when
   // the parent is missing.
   mkdirSync(tmuxSocketDir, { recursive: true })
@@ -304,74 +317,45 @@ async function waitForWebDriverReady(host, port, timeoutMs = 5_000, intervalMs =
   throw new Error(`tauri-driver did not become protocol-ready at ${host}:${port} within ${timeoutMs}ms`)
 }
 
-function killByPattern(pattern) {
+function killByPortPattern(pattern) {
   if (process.platform === 'win32') return
   spawnSync('pkill', ['-f', pattern], { stdio: 'ignore' })
 }
 
-function appendDriverPid(pid) {
-  if (!pid) return
-  appendFileSync(driverPidRegistry, `${pid}\n`)
-}
-
-function readDriverPids() {
-  try {
-    const lines = readFileSync(driverPidRegistry, 'utf8')
-      .split('\n')
-      .map(line => Number.parseInt(line.trim(), 10))
-      .filter(pid => Number.isInteger(pid) && pid > 0)
-    return [...new Set(lines)]
-  } catch {
-    return []
+function refreshOwnedProcessRecords() {
+  if (!processLedger || !sessionRunToken) return
+  for (const record of findRunTokenProcessRecords(sessionRunToken)) {
+    if (record.pid !== process.pid) processLedger.record(record)
   }
 }
 
-function clearDriverPidRegistry() {
-  rmSync(driverPidRegistry, { force: true })
+function startOwnedProcessRefresh() {
+  if (ownedProcessRefreshTimer) clearInterval(ownedProcessRefreshTimer)
+  ownedProcessRefreshTimer = setInterval(refreshOwnedProcessRecords, 1_000)
+  ownedProcessRefreshTimer.unref()
 }
 
-function killDriverTree(pid) {
-  if (!pid || pid <= 0) return
-  try {
-    process.kill(-pid, 'SIGKILL')
-    return
-  } catch {
-    // Fall back to direct PID kill.
-  }
-  try {
-    process.kill(pid, 'SIGKILL')
-  } catch {
-    // no-op
-  }
-}
-
-function cleanupRegisteredDrivers() {
-  for (const pid of readDriverPids()) {
-    killDriverTree(pid)
-  }
-  clearDriverPidRegistry()
+function stopOwnedProcessRefresh() {
+  if (!ownedProcessRefreshTimer) return
+  clearInterval(ownedProcessRefreshTimer)
+  ownedProcessRefreshTimer = null
 }
 
 function cleanupDriverPortFallback() {
   // Last-resort fallback for orphan processes on this worker's ports.
-  killByPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
-  killByPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
-}
-
-function cleanupStaleDriverProcessesPreRun() {
-  // Safe at startup only (before worker sessions begin).
-  // Prevents orphan test apps from prior aborted runs.
-  killByPattern('tauri-driver --port')
-  killByPattern('WebKitWebDriver --port=')
+  killByPortPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
+  killByPortPattern(`WebKitWebDriver --port=${nativeWebDriverPort}`)
 }
 
 function cleanupTauriDriver() {
-  if (tauriDriver?.pid) {
-    killDriverTree(tauriDriver.pid)
-  }
+  stopOwnedProcessRefresh()
+  refreshOwnedProcessRecords()
+  processLedger?.cleanup()
   tauriDriver = null
-  cleanupRegisteredDrivers()
   cleanupDriverPortFallback()
+  processLedger?.remove()
+  processLedger = null
+  sessionRunToken = ''
 }
 
 function cleanupSessionTempRoot() {
@@ -483,6 +467,11 @@ export const config = {
   },
 
   async afterTest(test, _context, result) {
+    // The daemon may start after the session-level `before` hook. Refresh on
+    // every test boundary as well as on the timer so hard-killed workers leave
+    // useful on-disk identities for the next cleanup pass.
+    refreshOwnedProcessRecords()
+
     if (traceTiming) {
       const duration = Number(result?.duration || 0)
       if (duration >= traceTimingThresholdMs) {
@@ -527,7 +516,7 @@ export const config = {
    * Skip with E2E_SKIP_BUILD=1 if you already have a fresh build.
    */
   async onPrepare() {
-    cleanupStaleDriverProcessesPreRun()
+    cleanupStaleProcessLedgers(projectRoot)
 
     if (process.env.E2E_SKIP_BUILD === '1') {
       console.log('[e2e] Skipping build (E2E_SKIP_BUILD=1)')
@@ -553,14 +542,26 @@ export const config = {
 
   /**
    * Start tauri-driver before each worker session.
-   * With batched groups, this runs once per group (5 times for the full suite).
+   * With batched groups, this runs once per manifest group.
    */
   async beforeSession(_config, _capabilities, specs) {
     // Guard against stale processes from aborted runs before starting a new worker.
     cleanupAllE2eArtifacts()
 
     sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
-    const workerEnv = buildWorkerEnv(sessionTempRoot, { baseEnv: process.env })
+    sessionRunToken = randomUUID()
+    processLedger = createOwnedProcessLedger({ checkoutRoot: projectRoot, runToken: sessionRunToken })
+    const daemonPort = await findAvailableWorkerDaemonPort(sessionTempRoot)
+    const paidCodexWorker = (specs ?? []).some((spec) =>
+      CODEX_SCRATCH_SPECS.some((name) => resolve(spec).endsWith(name))
+    )
+    const workerEnv = buildWorkerEnv(sessionTempRoot, {
+      baseEnv: process.env,
+      runToken: sessionRunToken,
+      daemonBinaryPath: resolve(projectRoot, 'src-tauri/target/debug/taurhaus-daemon'),
+      daemonPort,
+      skipCliVersionProbes: !paidCodexWorker,
+    })
     const tauriDataDir = workerEnv.TAURHAUS_DATA_DIR
     const tauriClaudeDir = workerEnv.TAURHAUS_CLAUDE_DIR
     const e2eProjectsDir = `${sessionTempRoot}/projects`
@@ -569,6 +570,7 @@ export const config = {
     for (const key of WORKER_ROOT_ENV_KEYS) {
       mkdirSync(workerEnv[key], { recursive: true })
     }
+    prepareWorkerHome(workerEnv.HOME, { meshBinaryPath: operatorMeshBinaryPath })
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,
@@ -587,21 +589,31 @@ export const config = {
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
     prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
-    for (const key of WORKER_ROOT_ENV_KEYS) {
-      process.env[key] = workerEnv[key]
+    for (const key of [
+      'HOME',
+      ...WORKER_ROOT_ENV_KEYS,
+      'TAURHAUS_DAEMON_PORT',
+      'TAURHAUS_DAEMON_BINARY',
+      'TAURHAUS_SKIP_CLI_VERSION_PROBES',
+      E2E_RUN_TOKEN_ENV,
+    ]) {
+      if (workerEnv[key] === undefined) delete process.env[key]
+      else process.env[key] = workerEnv[key]
     }
-    prepareIsolatedTmux(specs, sessionTempRoot)
+    console.log(`[e2e] daemon port for this worker: ${workerEnv.TAURHAUS_DAEMON_PORT}`)
+    prepareIsolatedTmux(workerEnv)
 
     tauriDriver = spawn(
       localTauriDriverPath,
       ['--port', String(wdioPort), '--native-port', String(nativeWebDriverPort), '--native-driver', nativeWebKitDriverPath],
       {
-        env: buildWorkerEnv(sessionTempRoot, { baseEnv: process.env }),
+        env: workerEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
       }
     )
-    appendDriverPid(tauriDriver.pid)
+    processLedger.recordPid(tauriDriver.pid, { processGroup: true })
+    startOwnedProcessRefresh()
     if (tauriDriver?.stdout) {
       tauriDriver.stdout.on('data', (chunk) => {
         process.stdout.write(chunk)
@@ -618,6 +630,11 @@ export const config = {
     await waitForWebDriverReady('127.0.0.1', wdioPort)
   },
 
+  before() {
+    // WebKitWebDriver and the app exist only after WDIO creates the session.
+    refreshOwnedProcessRecords()
+  },
+
   /**
    * Kill tauri-driver after each worker session ends.
    */
@@ -630,5 +647,6 @@ export const config = {
    */
   async onComplete() {
     cleanupAllE2eArtifacts()
+    cleanupStaleProcessLedgers(projectRoot)
   },
 }

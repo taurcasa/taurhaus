@@ -44,7 +44,7 @@ pub(crate) fn spawn_background_bootstrap(
             if let Some(ref distro) = boot_distro {
                 let bootstrap_started_at = std::time::Instant::now();
                 let addr = daemon_addr.clone().unwrap_or_else(|| {
-                    format!("127.0.0.1:{}", crate::daemon::server::DEFAULT_PORT)
+                    format!("127.0.0.1:{}", crate::daemon::server::app_daemon_port())
                 });
                 emit_startup_event(
                     "info",
@@ -57,7 +57,7 @@ pub(crate) fn spawn_background_bootstrap(
                         fields
                     },
                 );
-                let port = crate::daemon::server::DEFAULT_PORT;
+                let port = crate::daemon::server::app_daemon_port();
                 let provider_state = app.state::<ProviderState>();
                 let Some(ref daemon) = provider_state.daemon else {
                     crate::startup::watchers::refresh_auxiliary_watches(
