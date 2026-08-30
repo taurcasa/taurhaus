@@ -4050,6 +4050,50 @@ fn add_agent_onboarding_entry_uses_immediate_policy() {
 // Task-level effort: the resume path taurhaus owns for Codex
 // ---------------------------------------------------------------------------
 
+#[test]
+fn effort_pass_scope_table_pins_retry_and_budget_contract() {
+    let cases = [
+        (
+            "task change starts a switch",
+            EffortPassScope::TaskChanged,
+            0,
+            true,
+        ),
+        (
+            "self-heal does not start a switch",
+            EffortPassScope::RetryPending,
+            0,
+            false,
+        ),
+        (
+            "self-heal retries a failed switch",
+            EffortPassScope::RetryPending,
+            1,
+            true,
+        ),
+        (
+            "the third failure spends the budget",
+            EffortPassScope::TaskChanged,
+            3,
+            false,
+        ),
+        (
+            "self-heal also honors the spent budget",
+            EffortPassScope::RetryPending,
+            3,
+            false,
+        ),
+    ];
+
+    for (name, scope, failed_attempts, expected) in cases {
+        assert_eq!(
+            super::effort::attempt_is_allowed(scope, failed_attempts),
+            expected,
+            "{name}"
+        );
+    }
+}
+
 fn effort_team(
     tmp: &TempDir,
     runtime: Arc<RecordingCoordinationRuntime>,
