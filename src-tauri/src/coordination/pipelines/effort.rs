@@ -30,6 +30,17 @@ pub(super) struct PendingEffort {
     failed_attempts: u32,
 }
 
+/// Typed result of one or more assignment-effort applications.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EffortPassOutcome {
+    /// Members whose requested effort was put into force.
+    pub switched: Vec<String>,
+    /// Members whose switch was attempted or refused, with the reason.
+    pub failed: Vec<(String, String)>,
+    /// Teams that could not be inspected or processed, with the reason.
+    pub skipped_teams: Vec<(String, String)>,
+}
+
 /// How often one requested level is retried before the pass leaves it alone.
 ///
 /// A relaunch stops the member before it launches, so a level that keeps
@@ -253,16 +264,32 @@ impl CoordinationOrchestrator {
         tmux_layout: &str,
         scope: task_effort::EffortPassScope,
     ) -> Result<Vec<String>, CoordinationError> {
+        self.apply_pending_task_effort_outcome(team_name, cli_commands, tmux_layout, scope)
+            .map(|outcome| outcome.switched)
+    }
+
+    pub(crate) fn apply_pending_task_effort_outcome(
+        &mut self,
+        team_name: &str,
+        cli_commands: &CliCommandSettings,
+        tmux_layout: &str,
+        scope: task_effort::EffortPassScope,
+    ) -> Result<EffortPassOutcome, CoordinationError> {
         validate_team_name(team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
-        let mut resumed = Vec::new();
+        let mut outcome = EffortPassOutcome::default();
 
         for member in &config.members {
             if !task_effort::relaunches_for_effort(member.cli_tool) {
                 continue;
             }
-            let Some(pending) = pending_member_effort(self, team_name, member, scope) else {
-                continue;
+            let pending = match pending_member_effort_outcome(self, team_name, member, scope) {
+                Ok(Some(pending)) => pending,
+                Ok(None) => continue,
+                Err(reason) => {
+                    outcome.failed.push((member.name.clone(), reason));
+                    continue;
+                }
             };
             // The renderer keeps an effort the operator's own base already
             // pins and drops the requested one, so a base that pins gets the
@@ -289,6 +316,10 @@ impl CoordinationOrchestrator {
                             pending.applied.as_deref(),
                             Some("configured launch command cannot carry the effort"),
                         );
+                        outcome.failed.push((
+                            member.name.clone(),
+                            "configured launch command cannot carry the effort".to_string(),
+                        ));
                         continue;
                     }
                 };
@@ -322,6 +353,7 @@ impl CoordinationOrchestrator {
                     pending.applied.as_deref(),
                     Some(&reason),
                 );
+                outcome.failed.push((member.name.clone(), reason));
                 continue;
             }
             let request = ResumeMemberRequest {
@@ -329,12 +361,12 @@ impl CoordinationOrchestrator {
                 member_name: member.name.clone(),
                 reasoning_effort_override: Some(pending.requested.clone()),
             };
-            let outcome = self.resume_member_with_cli_commands_and_layout(
+            let resume_result = self.resume_member_with_cli_commands_and_layout(
                 &request,
                 &launch_commands,
                 tmux_layout,
             );
-            let failure = match &outcome {
+            let failure = match &resume_result {
                 Ok(report) if report.resumed => None,
                 Ok(report) => Some(report.message.clone()),
                 Err(err) => Some(err.to_string()),
@@ -342,7 +374,7 @@ impl CoordinationOrchestrator {
 
             match failure {
                 None => {
-                    resumed.push(member.name.clone());
+                    outcome.switched.push(member.name.clone());
                     task_effort::emit_effort_resume(
                         "effort.resume.completed",
                         team_name,
@@ -373,11 +405,12 @@ impl CoordinationOrchestrator {
                         pending.applied.as_deref(),
                         Some(&reason),
                     );
+                    outcome.failed.push((member.name.clone(), reason));
                 }
             }
         }
 
-        Ok(resumed)
+        Ok(outcome)
     }
 
     /// The level the member's current assignment asks for, for a member being
@@ -473,23 +506,41 @@ pub(super) fn pending_member_effort(
     member: &Member,
     scope: task_effort::EffortPassScope,
 ) -> Option<PendingEffort> {
+    pending_member_effort_outcome(orchestrator, team_name, member, scope)
+        .ok()
+        .flatten()
+}
+
+fn pending_member_effort_outcome(
+    orchestrator: &CoordinationOrchestrator,
+    team_name: &str,
+    member: &Member,
+    scope: task_effort::EffortPassScope,
+) -> Result<Option<PendingEffort>, String> {
     // No runtime record means no session to switch: relaunching here would
     // start a member the operator never launched.
-    let runtime =
-        MemberRuntimeStore::load(&orchestrator.teams_dir, team_name, &member.name).ok()?;
+    let runtime = match MemberRuntimeStore::load(&orchestrator.teams_dir, team_name, &member.name) {
+        Ok(runtime) => runtime,
+        Err(CoordinationError::NotFound(_)) => return Ok(None),
+        Err(err) => return Err(format!("could not load member runtime: {err}")),
+    };
     // Only a live member is switched. A member that is down is either one the
     // operator stopped — an assignment is no reason to start it again — or one
     // this pass itself stopped for a switch that failed, which the failure
     // record names and which stays retryable.
     if runtime.health == HealthState::SessionDead && runtime.effort_resume_failure.is_none() {
-        return None;
+        return Ok(None);
     }
-    let assigned = assignment_target(orchestrator, team_name, &member.name)?;
-    let requested = task_effort::resume_effort_target(
+    let Some(assigned) = assignment_target(orchestrator, team_name, &member.name) else {
+        return Ok(None);
+    };
+    let Some(requested) = task_effort::resume_effort_target(
         member.cli_tool,
         Some(&assigned.level),
         runtime.applied_effort.as_deref(),
-    )?;
+    ) else {
+        return Ok(None);
+    };
     let failed_attempts = runtime
         .effort_resume_failure
         .as_ref()
@@ -499,7 +550,7 @@ pub(super) fn pending_member_effort(
         })
         .map_or(0, |failure| failure.attempts);
     if !attempt_is_allowed(scope, failed_attempts) {
-        return None;
+        return Ok(None);
     }
     // The relaunch resumes the member's own conversation. Without a session
     // id the resume pipeline would render a fresh launch, throwing away the
@@ -526,12 +577,12 @@ pub(super) fn pending_member_effort(
             runtime.applied_effort.as_deref(),
             Some("member has no recorded session to resume"),
         );
-        return None;
+        return Err("member has no recorded session to resume".to_string());
     }
-    Some(PendingEffort {
+    Ok(Some(PendingEffort {
         task_id: assigned.task_id,
         requested,
         applied: runtime.applied_effort,
         failed_attempts,
-    })
+    }))
 }

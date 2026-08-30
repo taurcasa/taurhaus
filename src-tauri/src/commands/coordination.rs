@@ -62,16 +62,15 @@ use taurhaus_lib::ProviderState;
 pub(crate) fn background_launch_settings(
     db: &DbState,
     teams_dir: &std::path::Path,
-) -> (CliCommandSettings, String) {
+) -> Result<(CliCommandSettings, String), CoordinationError> {
     let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
-    let has_managed_codex =
-        crate::coordination::compact_hook::any_managed_codex_member(teams_dir).unwrap_or(false);
+    let has_managed_codex = crate::coordination::compact_hook::any_managed_codex_member(teams_dir)?;
     crate::commands::terminal_settings::apply_managed_codex_launch_inputs(
         &mut cli_commands,
         has_managed_codex,
         has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
     );
-    (cli_commands, tmux_layout)
+    Ok((cli_commands, tmux_layout))
 }
 
 /// Put a pending assignment effort into force after a project's tasks changed.
@@ -89,28 +88,36 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
     use tauri::Manager;
 
     let state = app.state::<crate::coordination::state::CoordinationState>();
-    match state.teams_working_in_project(project_path) {
-        Ok(teams) if teams.is_empty() => return,
+    let db = app.state::<crate::commands::projects::DbState>();
+    let (cli_commands, tmux_layout) = match background_launch_settings(&db, state.teams_dir()) {
+        Ok(settings) => settings,
+        Err(err) => {
+            tracing::warn!(
+                project_path = %project_path,
+                error = %err,
+                "could not resolve launch settings for the task-arrival effort pass"
+            );
+            return;
+        }
+    };
+
+    match state.apply_task_effort_for_project(project_path, &cli_commands, &tmux_layout) {
+        Ok(outcome) if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() => {
+            tracing::warn!(
+                project_path = %project_path,
+                members_failed = outcome.failed.len(),
+                teams_skipped = outcome.skipped_teams.len(),
+                "task-arrival effort pass completed with errors"
+            );
+        }
         Ok(_) => {}
         Err(err) => {
             tracing::warn!(
                 project_path = %project_path,
                 error = %err,
-                "could not resolve the teams working in this project"
+                "task-arrival effort pass failed"
             );
-            return;
         }
-    }
-
-    let db = app.state::<crate::commands::projects::DbState>();
-    let (cli_commands, tmux_layout) = background_launch_settings(&db, state.teams_dir());
-    if let Err(err) = state.apply_task_effort_for_project(project_path, &cli_commands, &tmux_layout)
-    {
-        tracing::warn!(
-            project_path = %project_path,
-            error = %err,
-            "task-arrival effort pass failed"
-        );
     }
 }
 

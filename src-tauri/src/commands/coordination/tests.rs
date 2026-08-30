@@ -29,6 +29,24 @@ fn codex_hook_reconcile_failure_is_degraded_for_managed_launches() {
     assert!(source.contains("compaction.codex_hook.degraded"));
 }
 
+// Regression: 6128bd1 collapsed managed-Codex discovery errors to `false`, so
+// task-arrival and self-heal callers silently rendered settings that omitted
+// the launch inputs a managed Codex member requires.
+#[test]
+fn background_launch_settings_reports_managed_codex_discovery_failure() {
+    let teams = TempDir::new().expect("teams dir");
+    let broken_team = teams.path().join("broken-team");
+    std::fs::create_dir_all(&broken_team).expect("create broken team");
+    std::fs::write(broken_team.join("config.json"), b"{not valid json")
+        .expect("write broken config");
+    let (db, _db_file) = test_db_state();
+
+    let error = background_launch_settings(&db, teams.path())
+        .expect_err("managed-Codex discovery failure must reach the caller");
+
+    assert!(error.to_string().contains("failed to parse"));
+}
+
 #[test]
 fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     // Regression: 6fe0aa3 reconciled Codex both before launch and again after a

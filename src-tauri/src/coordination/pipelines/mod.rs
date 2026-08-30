@@ -4,6 +4,7 @@ mod initialize;
 mod lifecycle;
 mod members;
 
+pub use effort::EffortPassOutcome;
 use helpers::*;
 pub(crate) use helpers::{InitializeProgressEmitter, ResumeProgressEmitter};
 pub(crate) use members::ResumeTeamDaemonOwnership;

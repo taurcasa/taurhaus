@@ -4467,6 +4467,35 @@ fn pending_effort_carries_the_held_task_requested_and_applied_identity() {
     assert_eq!(pending.applied.as_deref(), Some("high"));
 }
 
+// Regression: 2529309 emitted and persisted an effort refusal but returned an
+// empty switched list, making the caller treat the pass as nominal success.
+#[test]
+fn an_effort_refusal_is_returned_in_the_typed_outcome() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = seed_running_codex_member(&tmp, runtime, &CliCommandSettings::default());
+    assign_task(&tmp, "builder", "high", "the migration is irreversible");
+    MemberRuntimeStore::update(tmp.path(), "effort-team", "builder", |record| {
+        record.session_id = None;
+    })
+    .expect("clear session id");
+
+    let outcome = orchestrator
+        .apply_pending_task_effort_outcome(
+            "effort-team",
+            &CliCommandSettings::default(),
+            "new_window",
+            EffortPassScope::TaskChanged,
+        )
+        .expect("effort pass");
+
+    assert!(outcome.switched.is_empty());
+    assert_eq!(outcome.failed.len(), 1);
+    assert_eq!(outcome.failed[0].0, "builder");
+    assert!(outcome.failed[0].1.contains("no recorded session"));
+    assert!(outcome.skipped_teams.is_empty());
+}
+
 #[test]
 fn a_launch_records_the_effort_the_session_actually_runs_at() {
     // mesh reads this before it types `/effort`, so it has to start from the
