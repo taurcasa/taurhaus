@@ -46,7 +46,9 @@ impl CoordinationOrchestrator {
         runtime: Option<&MemberRuntimeRecord>,
     ) -> TeardownDiagnostics {
         let mut diagnostics = TeardownDiagnostics::default();
-        let pane_id = runtime.and_then(|record| record.pane_id.as_deref());
+        let pane_record =
+            runtime.and_then(|record| record.pane_id.as_deref().map(|pane_id| (pane_id, record)));
+        let pane_id = pane_record.map(|(pane_id, _)| pane_id);
 
         let mut daemon_pids = Vec::new();
         if let Some(pid) = runtime.and_then(|record| record.daemon_pid) {
@@ -192,72 +194,66 @@ impl CoordinationOrchestrator {
                 .push(step_succeeded("leave_mesh", "mesh presence removed"));
         }
 
-        if let Some(pane_id) = pane_id {
-            let ownership = if let Some(record) = runtime {
-                let mut ownership_record = record.clone();
-                if let Ok(config) = TeamConfigStore::load(&self.teams_dir, team_name) {
-                    if let Some(member) = config
-                        .members
-                        .iter()
-                        .find(|member| member.name == member_name)
-                    {
-                        ownership_record.cli_tool.get_or_insert(member.cli_tool);
-                        ownership_record
-                            .project_path
-                            .get_or_insert_with(|| member.project_path.clone());
-                    }
+        if let Some((pane_id, record)) = pane_record {
+            let mut ownership_record = record.clone();
+            if let Ok(config) = TeamConfigStore::load(&self.teams_dir, team_name) {
+                if let Some(member) = config
+                    .members
+                    .iter()
+                    .find(|member| member.name == member_name)
+                {
+                    ownership_record.cli_tool.get_or_insert(member.cli_tool);
+                    ownership_record
+                        .project_path
+                        .get_or_insert_with(|| member.project_path.clone());
                 }
-                if ownership_record.project_path.is_none() {
-                    ownership_record.project_path = member_project_path.map(Path::to_path_buf);
-                }
+            }
+            if ownership_record.project_path.is_none() {
+                ownership_record.project_path = member_project_path.map(Path::to_path_buf);
+            }
 
-                let has_durable_identity = ownership_record.pane_pid.is_some()
-                    || ownership_record.pane_start_time.is_some();
-                let has_ownership_evidence = has_durable_identity
-                    || ownership_record.cli_tool.is_some()
-                    || ownership_record.project_path.is_some();
-                if !has_ownership_evidence {
-                    Ok(PaneOwnership::Foreign {
-                        reason: "no_ownership_evidence".to_string(),
-                    })
-                } else {
-                    match self.runtime.live_pane(pane_id) {
-                        Ok(Some(live_pane)) => {
-                            let member_ownership =
-                                pane_belongs_to_member(&ownership_record, &live_pane);
-                            if member_ownership != PaneOwnership::Owned || has_durable_identity {
-                                Ok(member_ownership)
-                            } else if let Some(project_path) = member_project_path {
-                                let project_path = project_path.display().to_string();
-                                self.runtime
-                                    .pane_belongs_to_project(pane_id, project_path.as_str())
-                                    .map(|owned| {
-                                        if owned {
-                                            PaneOwnership::Owned
-                                        } else {
-                                            PaneOwnership::Foreign {
-                                                reason: "project_path_mismatch".to_string(),
-                                            }
-                                        }
-                                    })
-                                    .map_err(|err| err.to_string())
-                            } else {
-                                Ok(PaneOwnership::Foreign {
-                                    reason: "no_durable_identity_or_configured_project_path"
-                                        .to_string(),
-                                })
-                            }
-                        }
-                        Ok(None) => Ok(PaneOwnership::Foreign {
-                            reason: "pane_missing".to_string(),
-                        }),
-                        Err(err) => Err(err.to_string()),
-                    }
-                }
-            } else {
+            let has_durable_identity =
+                ownership_record.pane_pid.is_some() || ownership_record.pane_start_time.is_some();
+            let has_ownership_evidence = has_durable_identity
+                || ownership_record.cli_tool.is_some()
+                || ownership_record.project_path.is_some();
+            let ownership = if !has_ownership_evidence {
                 Ok(PaneOwnership::Foreign {
-                    reason: "runtime_record_missing".to_string(),
+                    reason: "no_ownership_evidence".to_string(),
                 })
+            } else {
+                match self.runtime.live_pane(pane_id) {
+                    Ok(Some(live_pane)) => {
+                        let member_ownership =
+                            pane_belongs_to_member(&ownership_record, &live_pane);
+                        if member_ownership != PaneOwnership::Owned || has_durable_identity {
+                            Ok(member_ownership)
+                        } else if let Some(project_path) = member_project_path {
+                            let project_path = project_path.display().to_string();
+                            self.runtime
+                                .pane_belongs_to_project(pane_id, project_path.as_str())
+                                .map(|owned| {
+                                    if owned {
+                                        PaneOwnership::Owned
+                                    } else {
+                                        PaneOwnership::Foreign {
+                                            reason: "project_path_mismatch".to_string(),
+                                        }
+                                    }
+                                })
+                                .map_err(|err| err.to_string())
+                        } else {
+                            Ok(PaneOwnership::Foreign {
+                                reason: "no_durable_identity_or_configured_project_path"
+                                    .to_string(),
+                            })
+                        }
+                    }
+                    Ok(None) => Ok(PaneOwnership::Foreign {
+                        reason: "pane_missing".to_string(),
+                    }),
+                    Err(err) => Err(err.to_string()),
+                }
             };
 
             match ownership {
