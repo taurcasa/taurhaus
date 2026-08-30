@@ -9,6 +9,7 @@ cd "$repo_root"
 # Regression: bcf1f3924f7186b704b5bc5542c937e75c3bac7f captured $? after
 # `! wait -n`, so a failed lane returned success (found by the Opus
 # tests/procedures review, 2026-08-30).
+# Regression: 2a82a4f used ripgrep, which is absent from the target's non-interactive PATH.
 failure_output="$tmp_dir/failure.log"
 failure_status=0
 TAURHAUS_CHECK_SEED_FAILURE=rust just check >"$failure_output" 2>&1 || failure_status=$?
@@ -17,7 +18,7 @@ if [ "$failure_status" -ne 3 ]; then
     sed -n '1,120p' "$failure_output" >&2
     exit 1
 fi
-if rg -Fq "Full quality gate passed." "$failure_output"; then
+if grep -Fq "Full quality gate passed." "$failure_output"; then
     echo "seeded just check failure printed the success line" >&2
     exit 1
 fi
@@ -30,7 +31,7 @@ if [ "$green_status" -ne 0 ]; then
     sed -n '1,120p' "$green_output" >&2
     exit 1
 fi
-if ! rg -Fq "Full quality gate passed." "$green_output"; then
+if ! grep -Fq "Full quality gate passed." "$green_output"; then
     echo "seeded green just check omitted the success line" >&2
     exit 1
 fi
