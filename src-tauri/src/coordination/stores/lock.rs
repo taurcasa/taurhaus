@@ -120,12 +120,14 @@ pub(super) fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> 
 pub struct TeamLockGuard {
     _file: File,
     lock_path: PathBuf,
+    teams_dir: PathBuf,
+    team_name: String,
     _not_send: PhantomData<Rc<()>>,
 }
 
 impl TeamLockGuard {
     pub(crate) fn covers(&self, teams_dir: &Path, team_name: &str) -> bool {
-        team_lock_path(teams_dir, team_name) == self.lock_path
+        self.teams_dir == teams_dir && self.team_name == team_name
     }
 }
 
@@ -182,6 +184,8 @@ pub fn acquire_team_lock(
     Ok(TeamLockGuard {
         _file: file,
         lock_path,
+        teams_dir: teams_dir.to_path_buf(),
+        team_name: team_name.to_string(),
         _not_send: PhantomData,
     })
 }
@@ -284,7 +288,7 @@ fn inode_matches(_file: &File, _path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Barrier};
+    use std::sync::{mpsc, Arc, Barrier};
     use std::thread;
 
     use tempfile::TempDir;
@@ -374,6 +378,28 @@ mod tests {
             .expect("second lock should succeed after drop");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn guard_scope_survives_team_directory_canonicalization_failure() {
+        // Regression: 1827f8a8 re-canonicalized TeamLockGuard::covers while
+        // the guard was held, so a transient lookup failure made a valid guard
+        // appear to cover another team.
+        let tmp = TempDir::new().expect("tempdir");
+        let real_teams_dir = tmp.path().join("real-teams");
+        let teams_dir = tmp.path().join("teams-link");
+        fs::create_dir_all(&real_teams_dir).expect("create real teams dir");
+        std::os::unix::fs::symlink(&real_teams_dir, &teams_dir).expect("link teams dir");
+        let team_name = "canonicalization-test";
+
+        let guard = acquire_team_lock(&teams_dir, team_name).expect("acquire through symlink");
+        fs::remove_dir_all(real_teams_dir.join(team_name)).expect("remove team dir");
+
+        assert!(
+            guard.covers(&teams_dir, team_name),
+            "guard identity must not depend on another filesystem lookup"
+        );
+    }
+
     #[test]
     fn reacquiring_a_team_lock_on_the_same_thread_fails_fast() {
         // Regression: 366f4b7 removed orchestrator-wide exclusion, so the
@@ -383,12 +409,21 @@ mod tests {
         let teams_dir = tmp.path().to_path_buf();
         let team_name = "reentrant-test";
 
-        let _lock = acquire_team_lock(&teams_dir, team_name).expect("first lock should succeed");
-        let error = acquire_team_lock(&teams_dir, team_name)
-            .expect_err("same-thread re-entry must return instead of blocking");
+        let (result_tx, result_rx) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            let _lock =
+                acquire_team_lock(&teams_dir, team_name).expect("first lock should succeed");
+            let error = acquire_team_lock(&teams_dir, team_name)
+                .expect_err("same-thread re-entry must return instead of blocking");
+            result_tx.send(error.to_string()).expect("send result");
+        });
+        let error = result_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("same-thread re-entry blocked instead of failing fast");
+        handle.join().expect("re-entry test thread");
 
         assert!(
-            error.to_string().contains("already held by this thread"),
+            error.contains("already held by this thread"),
             "unexpected re-entry error: {error}"
         );
     }
