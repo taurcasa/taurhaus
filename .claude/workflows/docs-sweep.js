@@ -89,6 +89,7 @@ const CARGO_OPTIONS_WITH_VALUES = [
   '--target',
   '--target-dir',
   '--manifest-path',
+  '--lockfile-path',
   '--message-format',
   '--color',
   '--config',
@@ -120,7 +121,7 @@ function validateGateCommand(command, what) {
       if (word === '--' || word === '&&' || word === '||' || word === '|' || word === ';') break
       if (word.includes('>') || word.includes('<')) break
       if (word.startsWith('-')) {
-        if (CARGO_OPTIONS_WITH_VALUES.indexOf(word) !== -1 || /^--[^=]+$/.test(word)) i += 1
+        if (CARGO_OPTIONS_WITH_VALUES.indexOf(word) !== -1) i += 1
         continue
       }
       filters += 1

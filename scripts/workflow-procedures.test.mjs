@@ -179,6 +179,21 @@ describe('workflow procedures — the shared lib', () => {
     await expect(run('feature-pr.js', { ...BASE_ARGS, gates: ['cargo test a::b c::d'] })).rejects.toThrow(/at most one positional filter/)
   })
 
+  // Regression: commit bf8fd672 treated every long cargo option as value-taking, so a boolean flag
+  // could hide the first of two positional test filters from validation.
+  it.each([
+    'cargo test --release a::b c::d',
+    'cargo test --all-features a::b c::d',
+    'cargo test --lib a::b c::d',
+    'cargo test --workspace a::b c::d',
+    'cargo test --no-fail-fast a::b c::d',
+    'cargo test --timings a::b c::d',
+    'cargo test --unit-graph a::b c::d',
+    'cd src-tauri && cargo test --release a::b c::d',
+  ])('rejects two cargo test filters after a boolean option: %s', async (command) => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates: [command] })).rejects.toThrow(/at most one positional filter/)
+  })
+
   it('accepts cargo test options and one positional filter before the test-binary separator', async () => {
     const command = 'cargo test --package taurhaus coordination -- --nocapture'
     const { result } = await run('feature-pr.js', { ...BASE_ARGS, gates: [command] }, {
