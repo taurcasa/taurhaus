@@ -90,6 +90,72 @@ pub struct EffortResumeFailure {
     pub attempts: u32,
 }
 
+/// Dependency fields captured when a runtime decision begins.
+///
+/// Expensive pane/process probes run after this capture and before commit. The
+/// commit is valid only while the identity, liveness, and shared effort fields
+/// it depended on still match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberRuntimeSnapshot {
+    record_existed: bool,
+    baseline: MemberRuntimeRecord,
+}
+
+impl MemberRuntimeSnapshot {
+    pub fn capture(record: &MemberRuntimeRecord) -> Self {
+        Self {
+            record_existed: true,
+            baseline: record.clone(),
+        }
+    }
+
+    pub fn absent(seed: &MemberRuntimeRecord) -> Self {
+        Self {
+            record_existed: false,
+            baseline: seed.clone(),
+        }
+    }
+
+    fn changed_fields(&self, current: Option<&MemberRuntimeRecord>) -> Vec<&'static str> {
+        if self.record_existed != current.is_some() {
+            return vec!["record"];
+        }
+        let Some(current) = current else {
+            return Vec::new();
+        };
+
+        let mut changed = Vec::new();
+        if self.baseline.pane_id != current.pane_id {
+            changed.push("pane_id");
+        }
+        if self.baseline.pane_pid != current.pane_pid {
+            changed.push("pane_pid");
+        }
+        if self.baseline.pane_start_time != current.pane_start_time {
+            changed.push("pane_start_time");
+        }
+        if self.baseline.session_id != current.session_id {
+            changed.push("session_id");
+        }
+        if self.baseline.daemon_pid != current.daemon_pid {
+            changed.push("daemon_pid");
+        }
+        if self.baseline.health != current.health {
+            changed.push("health");
+        }
+        if self.baseline.applied_effort != current.applied_effort {
+            changed.push("appliedEffort");
+        }
+        changed
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeCommitOutcome {
+    Committed,
+    Skipped { changed_fields: Vec<&'static str> },
+}
+
 /// Stateless filesystem-backed store for member runtime documents.
 #[derive(Debug, Default)]
 pub struct MemberRuntimeStore;
@@ -126,9 +192,21 @@ impl MemberRuntimeStore {
         record: &MemberRuntimeRecord,
     ) -> Result<(), CoordinationError> {
         let lock_path = team_dir(teams_dir, team_name).join(".lock");
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
+        let guard = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
             log_runtime_store_error("lock", &lock_path, err, None);
         })?;
+        Self::save_locked(&guard, teams_dir, team_name, member_name, record)
+    }
+
+    /// Save while the caller holds this team's lock.
+    pub fn save_locked(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        record: &MemberRuntimeRecord,
+    ) -> Result<(), CoordinationError> {
+        ensure_guard_covers_team(guard, teams_dir, team_name)?;
         let target_path = runtime_record_path(teams_dir, team_name, member_name);
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
@@ -160,9 +238,27 @@ impl MemberRuntimeStore {
         record: &MemberRuntimeRecord,
     ) -> Result<(), CoordinationError> {
         let lock_path = team_dir(teams_dir, team_name).join(".lock");
-        let _lock = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
+        let guard = super::lock::acquire_team_lock(teams_dir, team_name).inspect_err(|err| {
             log_runtime_store_error("lock", &lock_path, err, None);
         })?;
+        Self::save_preserving_applied_effort_locked(
+            &guard,
+            teams_dir,
+            team_name,
+            member_name,
+            record,
+        )
+    }
+
+    /// Save a liveness snapshot while the caller holds this team's lock.
+    pub fn save_preserving_applied_effort_locked(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        record: &MemberRuntimeRecord,
+    ) -> Result<(), CoordinationError> {
+        ensure_guard_covers_team(guard, teams_dir, team_name)?;
         let target_path = runtime_record_path(teams_dir, team_name, member_name);
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
@@ -171,6 +267,58 @@ impl MemberRuntimeStore {
         merge_current_extension_fields(&mut record, &target_lock.read_contents()?, true);
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
+    }
+
+    /// Apply a decision only if its runtime dependencies still match.
+    ///
+    /// The caller performs every external probe before acquiring `guard`. This
+    /// method then holds the team lock across target-file lock → re-read →
+    /// compare → mutation → atomic save, so another taurhaus orchestrator
+    /// cannot interleave a runtime-record write for the team.
+    pub fn commit_if_unchanged<F>(
+        guard: &super::lock::TeamLockGuard,
+        teams_dir: &Path,
+        team_name: &str,
+        member_name: &str,
+        expected: &MemberRuntimeSnapshot,
+        write: F,
+    ) -> Result<RuntimeCommitOutcome, CoordinationError>
+    where
+        F: FnOnce(&mut MemberRuntimeRecord),
+    {
+        ensure_guard_covers_team(guard, teams_dir, team_name)?;
+        let target_path = runtime_record_path(teams_dir, team_name, member_name);
+        let target_lock = if expected.record_existed {
+            super::lock::TargetFileLock::acquire_if_exists(&target_path)
+                .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?
+        } else {
+            Some(
+                super::lock::TargetFileLock::acquire_or_create(&target_path)
+                    .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?,
+            )
+        };
+
+        let Some(target_lock) = target_lock else {
+            let changed_fields = vec!["record"];
+            log_runtime_commit_skipped(team_name, member_name, &changed_fields);
+            return Ok(RuntimeCommitOutcome::Skipped { changed_fields });
+        };
+        let raw = target_lock.read_contents()?;
+        let current = if raw.trim().is_empty() {
+            None
+        } else {
+            Some(parse_runtime_record(&raw, team_name, member_name)?)
+        };
+        let changed_fields = expected.changed_fields(current.as_ref());
+        if !changed_fields.is_empty() {
+            log_runtime_commit_skipped(team_name, member_name, &changed_fields);
+            return Ok(RuntimeCommitOutcome::Skipped { changed_fields });
+        }
+
+        let mut record = current.unwrap_or_else(|| expected.baseline.clone());
+        write(&mut record);
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)?;
+        Ok(RuntimeCommitOutcome::Committed)
     }
 
     /// Update a runtime record while holding both locks across read and write.
@@ -370,6 +518,19 @@ impl MemberRuntimeStore {
         removed.sort();
         Ok(removed)
     }
+}
+
+fn ensure_guard_covers_team(
+    guard: &super::lock::TeamLockGuard,
+    teams_dir: &Path,
+    team_name: &str,
+) -> Result<(), CoordinationError> {
+    if guard.covers(teams_dir, team_name) {
+        return Ok(());
+    }
+    Err(CoordinationError::StoreError(format!(
+        "team lock guard does not cover team '{team_name}'"
+    )))
 }
 
 fn save_runtime_record_locked(
@@ -824,6 +985,34 @@ fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) 
     );
 }
 
+fn log_runtime_commit_skipped(team_name: &str, member_name: &str, changed_fields: &[&'static str]) {
+    let mut fields = Map::new();
+    fields.insert("team".to_string(), Value::String(team_name.to_string()));
+    fields.insert("member".to_string(), Value::String(member_name.to_string()));
+    fields.insert(
+        "changed_fields".to_string(),
+        Value::Array(
+            changed_fields
+                .iter()
+                .map(|field| Value::String((*field).to_string()))
+                .collect(),
+        ),
+    );
+    emit_global(
+        "info",
+        "coordination",
+        "coordination.runtime.commit_skipped",
+        Some("Stale member runtime decision was not committed".to_string()),
+        fields,
+    );
+    tracing::info!(
+        team = team_name,
+        member = member_name,
+        changed_fields = ?changed_fields,
+        "stale member runtime decision was not committed"
+    );
+}
+
 fn clear_runtime_record_skipped(team_name: &str, member_name: &str) {
     let Some(skip_reasons) = RUNTIME_RECORD_SKIP_REASONS.get() else {
         return;
@@ -1003,6 +1192,108 @@ mod tests {
             MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load updated"),
             updated
         );
+    }
+
+    #[test]
+    fn stale_snapshot_commit_is_skipped_and_reports_changed_dependencies() {
+        // Regression: 366f4b7 let the background and command orchestrators
+        // save decisions made from stale whole-record snapshots, mixing a new
+        // launch identity with an old liveness verdict.
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "runtime-compare-commit";
+        let member_name = "builder";
+        let mut seeded = sample_record(member_name);
+        seeded.applied_effort = Some("low".to_string());
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &seeded).expect("seed record");
+        let expected = MemberRuntimeSnapshot::capture(&seeded);
+
+        let mut concurrent = seeded.clone();
+        concurrent.pane_id = Some("%fresh".to_string());
+        concurrent.pane_pid = Some(9900);
+        concurrent.pane_start_time = Some(1_755_000_999);
+        concurrent.session_id = Some("session-fresh".to_string());
+        concurrent.daemon_pid = Some(9901);
+        concurrent.health = HealthState::SessionDead;
+        concurrent.applied_effort = Some("high".to_string());
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &concurrent)
+            .expect("concurrent save");
+
+        let log_path = tmp.path().join("commit-skipped.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
+        let guard = super::super::lock::acquire_team_lock(teams_dir, team_name)
+            .expect("acquire compare-and-commit lock");
+        let outcome = MemberRuntimeStore::commit_if_unchanged(
+            &guard,
+            teams_dir,
+            team_name,
+            member_name,
+            &expected,
+            |record| record.last_seen_at = Some(ts("2026-03-01T21:09:00Z")),
+        )
+        .expect("stale commit is handled");
+
+        assert_eq!(
+            outcome,
+            RuntimeCommitOutcome::Skipped {
+                changed_fields: vec![
+                    "pane_id",
+                    "pane_pid",
+                    "pane_start_time",
+                    "session_id",
+                    "daemon_pid",
+                    "health",
+                    "appliedEffort",
+                ],
+            }
+        );
+        assert_eq!(
+            MemberRuntimeStore::load(teams_dir, team_name, member_name).expect("current record"),
+            concurrent,
+            "the stale closure must not write any field"
+        );
+
+        log_state.flush_for_test().expect("flush commit diagnostic");
+        let contents = fs::read_to_string(log_path).expect("read commit diagnostic");
+        assert!(contents.contains("\"event\":\"coordination.runtime.commit_skipped\""));
+        assert!(contents.contains("\"member\":\"builder\""));
+        assert!(contents.contains("\"changed_fields\":[\"pane_id\",\"pane_pid\",\"pane_start_time\",\"session_id\",\"daemon_pid\",\"health\",\"appliedEffort\"]"));
+    }
+
+    #[test]
+    fn unchanged_snapshot_commit_writes_under_the_held_team_lock() {
+        // Regression: 366f4b7 needs the replacement exclusion to retain the
+        // ordinary write-on-drift behavior when no competing writer won.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "runtime-compare-commit";
+        let member_name = "builder";
+        let seeded = sample_record(member_name);
+        MemberRuntimeStore::save(teams_dir, team_name, member_name, &seeded).expect("seed record");
+        let expected = MemberRuntimeSnapshot::capture(&seeded);
+
+        let guard = super::super::lock::acquire_team_lock(teams_dir, team_name)
+            .expect("acquire compare-and-commit lock");
+        let outcome = MemberRuntimeStore::commit_if_unchanged(
+            &guard,
+            teams_dir,
+            team_name,
+            member_name,
+            &expected,
+            |record| {
+                record.health = HealthState::SessionDead;
+                record.session_id = None;
+            },
+        )
+        .expect("unchanged commit succeeds");
+
+        assert_eq!(outcome, RuntimeCommitOutcome::Committed);
+        let stored =
+            MemberRuntimeStore::load(teams_dir, team_name, member_name).expect("committed record");
+        assert_eq!(stored.health, HealthState::SessionDead);
+        assert_eq!(stored.session_id, None);
     }
 
     #[test]
