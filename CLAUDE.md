@@ -402,6 +402,8 @@ This is non-negotiable. No regression fix ships without a corresponding test.
 ### Quality Gates
 - `just check-quick` is the per-task gate: `cargo fmt` + `cargo check --tests` + frontend typecheck + frontend unit tests
 - `just check` is the full gate and is run by team-lead in serialized fashion (or before release)
+- CI runs the stable `Rust unit tests` job (`just test-rust-unit`) on every pull request, independently of the existing fast/frontend quality-gate job.
+- CI runs `Rust integration tests` (`just test-rust-integration`) on every pull request, main push, and manual workflow dispatch.
 - E2E at milestones.
 - Visual review (frontend tasks): 8 categories, scored 1-10, **min 9 per category**
 - Visual dual review: self-review + a cross-review from the other model family (Opus ↔ Codex, as every PR review loop runs). Lower score wins, the orchestrator is final arbiter with justified override.

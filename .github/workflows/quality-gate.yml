@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: quality-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -72,3 +72,93 @@ jobs:
 
       - name: Fast test lane
         run: just test-fast
+
+  rust-unit:
+    name: Rust unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+
+      - name: Install just
+        uses: taiki-e/install-action@23347dcdedb50300bdd1b3853f92e0b2242f8ba5
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
+        with:
+          workspaces: src-tauri -> target
+          shared-key: rust-unit
+          cache-on-failure: true
+
+      - name: Run Rust unit tests
+        run: just test-rust-unit
+
+  rust-integration:
+    name: Rust integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            patchelf \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
+
+      - name: Install just
+        uses: taiki-e/install-action@23347dcdedb50300bdd1b3853f92e0b2242f8ba5
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
+        with:
+          workspaces: src-tauri -> target
+          shared-key: rust-integration
+          cache-on-failure: true
+
+      - name: Run Rust integration tests
+        run: just test-rust-integration

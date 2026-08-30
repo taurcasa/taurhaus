@@ -160,6 +160,17 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 | `just test-macos-e2e` | macOS E2E on remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |
 
+### CI schedule
+
+| Job | Command | When it runs |
+|-----|---------|--------------|
+| `Rust unit tests` | `just test-rust-unit` | Every pull request, main push, and manual workflow dispatch |
+| `Rust integration tests` | `just test-rust-integration` | Every pull request, main push, and manual workflow dispatch |
+
+Both Rust jobs cache build artifacts, including failed builds for faster retries, without skipping test execution. The Rust-only lanes need Cargo, `just`, and the Linux/Tauri system libraries installed by the workflow; the current recipe's tmux interactions use a fake executable, while its Git fixtures use libgit2 with explicit signatures.
+
+`just test-rust-integration` currently executes seven integration binaries. The four other binaries in `src-tauri/tests` — `agy_hook_cli`, `codex_notify_cli`, `harness_conformance`, and `mesh_binary_resolution` — are not yet named by any recipe and therefore do not run in CI. [Hardening lane 1a](../design/hardening-milestone-plan.md) remains their owner because prerequisite PR #82 closed without merging; this CI lane deliberately reuses the recipe instead of changing test selection.
+
 ### Bisection recipes
 
 When a test failure needs narrowing down:
