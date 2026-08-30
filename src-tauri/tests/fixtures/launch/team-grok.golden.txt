@@ -1,0 +1,2 @@
+GROK_HOME='/accounts/grok-team' grok --always-approve --model 'grok-4.6' --effort 'xhigh'
+GROK_HOME='/accounts/grok-team' grok --always-approve --model 'grok-4.6' --effort 'xhigh'

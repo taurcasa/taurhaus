@@ -629,7 +629,7 @@ fn is_env_assignment(word: &str) -> bool {
 // independent from ambient CODEX_HOME state; grouping the stable team/member
 // fields would add a second launch context type for this single renderer.
 #[allow(clippy::too_many_arguments)]
-fn render_team_launch_command(
+pub fn render_team_launch_command(
     cli_commands: &CliCommandSettings,
     cli_tool: CliTool,
     model: &str,

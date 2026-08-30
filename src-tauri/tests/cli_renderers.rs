@@ -6,9 +6,10 @@ use std::process::{Command, Stdio};
 use pretty_assertions::assert_eq;
 use taurhaus_lib::coordination::delivery::{DeliveryRenderer, RoleContext};
 use taurhaus_lib::coordination::domain::MemberRole;
+use taurhaus_lib::coordination::pipelines::render_team_launch_command;
 use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::CliCommandSettings;
-use taurhaus_lib::session_scanner::cli_tool::CliTool;
+use taurhaus_lib::session_scanner::cli_tool::{spec, CliTool};
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
 use taurhaus_lib::templates::agent_definitions::render_agent_definition;
 use taurhaus_lib::templates::types::RoleTemplate;
@@ -241,6 +242,91 @@ fn launch_command_cli_prefixes_an_account_dir_a_base_does_not_carry() {
         "CODEX_HOME='/home/user/.codex-account2' codex --yolo"
     );
     assert_eq!(response["notes"], serde_json::json!([]));
+}
+
+#[test]
+fn team_launch_commands_match_tool_goldens() {
+    struct Case {
+        tool: CliTool,
+        model: &'static str,
+        effort: &'static str,
+        account_dir: Option<&'static str>,
+        base_with_selector: Option<&'static str>,
+        expected: &'static str,
+    }
+
+    for case in [
+        Case {
+            tool: CliTool::Claude,
+            model: "opus",
+            effort: "high",
+            account_dir: Some("/accounts/claude-team"),
+            base_with_selector: Some(
+                "CLAUDE_CONFIG_DIR=~/.claude-other claude --dangerously-skip-permissions",
+            ),
+            expected: include_str!("fixtures/launch/team-claude.golden.txt"),
+        },
+        Case {
+            tool: CliTool::Codex,
+            model: "gpt-5.6-sol",
+            effort: "high",
+            account_dir: Some("/accounts/codex-team"),
+            base_with_selector: Some("CODEX_HOME=~/.codex-other codex --yolo"),
+            expected: include_str!("fixtures/launch/team-codex.golden.txt"),
+        },
+        Case {
+            tool: CliTool::Agy,
+            model: "gemini-3.7-flash-high",
+            effort: "high",
+            account_dir: None,
+            base_with_selector: None,
+            expected: include_str!("fixtures/launch/team-agy.golden.txt"),
+        },
+        Case {
+            tool: CliTool::Grok,
+            model: "grok-4.6",
+            effort: "xhigh",
+            account_dir: Some("/accounts/grok-team"),
+            base_with_selector: Some("GROK_HOME=~/.grok-other grok --always-approve"),
+            expected: include_str!("fixtures/launch/team-grok.golden.txt"),
+        },
+    ] {
+        let mut commands = CliCommandSettings::default();
+        commands.codex_bypass_hook_trust = true;
+        if let (Some(selector), Some(account_dir)) = (
+            spec(case.tool).capabilities.account_selector,
+            case.account_dir,
+        ) {
+            commands
+                .account_selector_dirs
+                .insert(selector.to_string(), account_dir.into());
+        }
+
+        let render = |commands: &CliCommandSettings| {
+            render_team_launch_command(
+                commands,
+                case.tool,
+                case.model,
+                Some(case.effort),
+                "golden-team",
+                "golden-agent",
+                MemberRole::Agent,
+                commands.codex_bypass_hook_trust,
+                None,
+            )
+            .expect("team launch command")
+        };
+
+        let mut actual = vec![render(&commands)];
+
+        if let Some(base_with_selector) = case.base_with_selector {
+            commands.get_mut(case.tool).expect("registered tool").fresh =
+                base_with_selector.to_string();
+            actual.push(render(&commands));
+        }
+
+        assert_eq!(format!("{}\n", actual.join("\n")), case.expected);
+    }
 }
 
 #[test]
