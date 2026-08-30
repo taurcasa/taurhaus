@@ -147,6 +147,17 @@ pub enum DeliveryMethod {
     NativeMessageApi,
 }
 
+/// Outcome of the best-effort member wake that follows a durable inbox append.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum WakeDisposition {
+    AlreadyLive,
+    Spawned { pid: u32 },
+    Adopted { pid: u32 },
+    NotAttempted { reason: String },
+    Failed { reason: String },
+}
+
 /// Delivery completion response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeliveryResult {
