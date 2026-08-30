@@ -122,6 +122,15 @@ describe('MeshNodeDetail', () => {
     expect(screen.getByTestId('mesh-node-detail-session-state')).toHaveTextContent('warming')
   })
 
+  it('offers the existing runtime detail action strip for re-onboarding', async () => {
+    const onReonboard = vi.fn()
+    renderDetail({ actions: { onReonboard } })
+
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-reonboard'))
+
+    expect(onReonboard).toHaveBeenCalledOnce()
+  })
+
   it('renders the roster context with an Add to Team action instead of runtime controls', () => {
     renderDetail({
       mode: 'builder',

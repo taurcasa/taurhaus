@@ -14,6 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Delivery outcomes preserve what actually happened** — every operator inbox result now reports the durable append, the member wake disposition, and any operational-context or runtime-state persistence warning as separate additive facts. `delivered` still means exactly one inbox append happened; a wake or post-write failure never retries it. The runtime member detail can re-send onboarding through the existing command and reports wake failures and post-write warnings in the existing one-line notice.
+
 - **Internal task-deadline policy** — coordination now has a pure, injected-clock decision module for one-shot nudge-at-half and stale-at-deadline actions, plus optional persisted deadline markers. It remains deliberately unwired from self-heal and the placeholder health framework.
 
 ### Changed

@@ -679,6 +679,15 @@
               Resume
             </button>
             <button
+              class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {secondaryActionTone}"
+              type="button"
+              onclick={() => invoke(actions?.onReonboard)}
+              disabled={Boolean(actions?.reonboardDisabled) || typeof actions?.onReonboard !== 'function'}
+              data-testid="mesh-node-detail-reonboard"
+            >
+              Re-onboard
+            </button>
+            <button
               class="inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-[13px] font-medium transition {dangerActionTone}"
               type="button"
               onclick={() => invoke(actions?.onStop)}

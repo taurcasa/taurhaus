@@ -36,6 +36,7 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
     onResumeTeam = () => {},
     onCloseNode = () => {},
     onResumeSelected = () => {},
+    onReonboardSelected = () => {},
     onStopSelected = () => {},
     onFocusSelectedPane = () => {},
     onCaptureRole = () => {},
@@ -389,6 +390,8 @@ import MeshNodeDetail from './MeshNodeDetail.svelte'
           actions={{
             onResume: onResumeSelected,
             resumeDisabled: isResumingTeam,
+            onReonboard: onReonboardSelected,
+            reonboardDisabled: isResumingTeam,
             onStop: onStopSelected,
             stopDisabled: isResumingTeam,
             onFocusPane: canFocusSelectedPane ? onFocusSelectedPane : null,

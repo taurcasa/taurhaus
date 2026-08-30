@@ -12,6 +12,7 @@ vi.mock('../ipc.js', () => ({
   coordinationInitializeTeam: vi.fn(),
   coordinationListTeams: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
+  coordinationReonboard: vi.fn(),
   coordinationRemoveMember: vi.fn(),
   coordinationResumeTeam: vi.fn(),
   coordinationResumeMember: vi.fn(),

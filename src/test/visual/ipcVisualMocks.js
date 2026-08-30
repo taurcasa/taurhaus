@@ -71,6 +71,7 @@ function createMockMap() {
     coordinationInitializeTeam: vi.fn(),
     coordinationListTeams: vi.fn(),
     coordinationPreflightCheck: vi.fn(),
+    coordinationReonboard: vi.fn(),
     coordinationRemoveMember: vi.fn(),
     coordinationResumeMember: vi.fn(),
     coordinationResumeTeam: vi.fn(),
@@ -188,6 +189,13 @@ export function resetVisualIpcMocks(overrides = {}) {
   visualIpcMocks.coordinationInitializeTeam.mockResolvedValue(undefined)
   visualIpcMocks.coordinationListTeams.mockResolvedValue([])
   visualIpcMocks.coordinationPreflightCheck.mockResolvedValue({ canInitialize: true, blockingErrors: [], agentWarnings: [] })
+  visualIpcMocks.coordinationReonboard.mockResolvedValue({
+    delivered: true,
+    method: 'inbox_file',
+    durable: true,
+    wake: { status: 'already_live' },
+    postWriteWarnings: [],
+  })
   visualIpcMocks.coordinationRemoveMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationResumeMember.mockResolvedValue(undefined)
   visualIpcMocks.coordinationResumeTeam.mockResolvedValue(undefined)

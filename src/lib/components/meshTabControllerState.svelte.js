@@ -295,6 +295,7 @@ export function createMeshTabPublicApi({ state, gate, setup, init, runtime }) {
     handleConfirmAction: runtime.handleConfirmAction,
     resumeTeam: runtime.resumeTeam,
     resumeSelected: runtime.resumeSelected,
+    reonboardSelected: runtime.reonboardSelected,
     stopSelected: runtime.stopSelected,
     focusSelectedPane: runtime.focusSelectedPane,
     handleReset: setup.handleReset,

@@ -24,6 +24,7 @@ vi.mock('../ipc.js', () => ({
   coordinationGetLiveTeamStatus: vi.fn(),
   coordinationInitializeTeam: vi.fn(),
   coordinationPreflightCheck: vi.fn(),
+  coordinationReonboard: vi.fn(),
   coordinationRemoveMember: vi.fn(),
   coordinationResumeTeam: vi.fn(),
   coordinationResumeMember: vi.fn(),
@@ -48,6 +49,7 @@ const {
   coordinationGetLiveTeamStatus,
   coordinationInitializeTeam,
   coordinationPreflightCheck,
+  coordinationReonboard,
   coordinationRemoveMember,
   coordinationResumeTeam,
   coordinationResumeMember,
@@ -244,6 +246,14 @@ describe('MeshTab', () => {
       message: 'member resumed',
       steps: [],
       warnings: [],
+    })
+
+    coordinationReonboard.mockResolvedValue({
+      delivered: true,
+      method: 'inbox_file',
+      durable: true,
+      wake: { status: 'already_live' },
+      postWriteWarnings: [],
     })
 
     listRoleTemplates.mockResolvedValue([
@@ -3784,6 +3794,27 @@ describe('MeshTab', () => {
     await waitFor(() => {
       expect(coordinationResumeMember).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
       expect(screen.queryByTestId('mesh-node-detail')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows a one-sentence re-onboarding notice when the durable append has warnings', async () => {
+    coordinationReonboard.mockResolvedValueOnce({
+      delivered: true,
+      method: 'inbox_file',
+      durable: true,
+      wake: { status: 'failed', reason: 'daemon spawn failed' },
+      postWriteWarnings: ['runtime state was not persisted'],
+    })
+    await renderRuntime()
+
+    await fireEvent.click(screen.getByTestId('mesh-node-agent'))
+    await fireEvent.click(screen.getByTestId('mesh-node-detail-reonboard'))
+
+    await waitFor(() => {
+      expect(coordinationReonboard).toHaveBeenCalledWith('architecture-final', 'frontend-dev')
+      expect(screen.getByTestId('mesh-runtime-message')).toHaveTextContent(
+        "Re-onboarding for 'frontend-dev' was saved, but wake failed: daemon spawn failed; post-write warning: runtime state was not persisted."
+      )
     })
   })
 
