@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Project switches no longer time out behind account resolution (0.8.4 regression)** — reading accounts never probes the shell again: launch-base resolution moved to a dedicated Settings-only command, deduplicated per command head with an rc-mtime-aware ten-minute cache, and every I/O-capable IPC command now runs off the main thread, so a slow WSL alias probe can no longer starve project reads into their five-second timeout. A durable boundary test keeps blocking I/O out of synchronous commands, and a forced Settings refresh is carried across daemon calls until the daemon really consumed it.
+
 ### Added
 
 - **Internal task-deadline policy** — coordination now has a pure, injected-clock decision module for one-shot nudge-at-half and stale-at-deadline actions, plus optional persisted deadline markers. It remains deliberately unwired from self-heal and the placeholder health framework.
@@ -19,6 +23,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **CI executes Rust tests** — every pull request runs the serialized Rust unit and integration recipes in stable, cached jobs alongside the existing fast/frontend gate; main pushes and manual dispatches run both Rust jobs too, and failed builds populate the next retry's cache without skipping test execution.
 
 ### Fixed
+
+- **E2E workers cannot write operator tool roots** — every worker now supplies isolated app-data, Claude, Codex, Grok and Antigravity roots to both WDIO setup and the spawned Tauri driver. The daemon token follows the same overridable app-data authority on both sides (with its old path retained only as a read fallback), and Antigravity hook and identity paths honour the taurhaus-only `TAURHAUS_AGY_DIR` override.
 
 - **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
 

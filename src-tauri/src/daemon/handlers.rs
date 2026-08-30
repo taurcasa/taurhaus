@@ -123,6 +123,9 @@ fn handle_resolve_launch_base(id: &str, params: &serde_json::Value) -> DaemonRes
         Ok(params) => params,
         Err(error) => return DaemonResponse::err(id, "INVALID_PARAMS", error.to_string()),
     };
+    if params.force {
+        crate::session_scanner::launch_base::invalidate_base_command_cache();
+    }
     let probe = crate::session_scanner::launch_base::ShellAliasProbe::for_pane();
     DaemonResponse::ok(
         id,

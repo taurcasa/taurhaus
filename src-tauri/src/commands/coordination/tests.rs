@@ -60,7 +60,7 @@ fn every_registered_roster_mutation_reconciles_the_global_harness_hooks() {
     let source = include_str!("../coordination.rs");
 
     let unreconciled = source
-        .split("#[tauri::command]")
+        .split("#[tauri::command")
         .skip(1)
         .filter_map(|command| {
             let name = command

@@ -186,7 +186,7 @@ E2E tests launch the real app binary via tauri-driver + WebDriverIO. They run on
 | `just test-macos-e2e` | **macOS** via SSH | macOS E2E test suite on remote Mac Mini. |
 
 For local runs that should rebuild/reinstall the daemon first, opt in explicitly: `E2E_INSTALL_DAEMON=1 just test-e2e`.
-E2E sessions also use isolated roots via `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR`, plus fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH`.
+Every E2E worker isolates all writable product roots under its session temp directory via `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and the taurhaus-only `TAURHAUS_AGY_DIR`; fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH` live there too. Only explicitly paid specs copy `auth.json` into the otherwise empty scratch `CODEX_HOME`.
 
 Agent/team workflow rule:
 - Use `just check-quick` during implementation.

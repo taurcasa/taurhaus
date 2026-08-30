@@ -27,17 +27,24 @@ On every platform the daemon process hosts the single session hub: the app reads
 
 ### Authentication
 
-On startup, the daemon generates a random 32-byte token, writes it to a well-known path with `0600` permissions, and validates it on every request:
+On startup, the daemon generates a random 32-byte token, writes it under the
+active app-data root, and validates it on every request:
 
-| Platform | Token path |
-|----------|-----------|
-| Linux | `~/.local/share/taurhaus/daemon.token` |
-| macOS | `~/Library/Application Support/taurhaus/daemon.token` |
-| Windows | `{FOLDERID_LocalAppData}/taurhaus/daemon.token` |
+| Authority | Token path |
+|-----------|------------|
+| Current | `<TAURHAUS_DATA_DIR or platform app-data>/daemon.token` (`PlatformPaths::daemon_token_path()`) |
+| Pre-0.8.5 migration fallback | The former platform `taurhaus/daemon.token` path, read-only when the active app-data root is the ordinary platform default (including the startup-pinned default), and never consulted when the root is redirected elsewhere |
+
+Native Unix files are chmodded to `0600`. When the Windows app-data root is
+mounted into WSL through DrvFs, the Windows ACL remains authoritative because
+the mount may not persist Unix mode bits.
 
 The app reads this token on connect and includes it in the `auth` field of every request. A normal daemon run rejects missing or incorrect tokens. Authentication can be disabled only with a debug-build flag or in an explicitly unauthenticated test configuration.
 
-On Windows the token file lives inside the WSL distro the daemon runs in, so every app-side connection reads it for that distro (`read_auth_token_for_distro`), never for whichever distro happens to be default. That includes both connections the focus bridge opens — the long-poll session listener and its direct seed fetch — because since v8 they carry tmux focus and nothing else does.
+On Windows the launcher converts its captured app-data root to the exact Linux
+form it passes to the WSL daemon. The app first tries the native view of that
+root, then uses `read_auth_token_for_distro` with the same launch value and
+selected distro. It never rebuilds the daemon root from `$HOME`.
 
 ### Connection lifecycle
 

@@ -44,6 +44,7 @@ import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
 import { applyTmuxIsolation, wantsIsolatedTmux } from './helpers/laneTmux.js'
+import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
@@ -559,13 +560,15 @@ export const config = {
     cleanupAllE2eArtifacts()
 
     sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
-    const tauriDataDir = `${sessionTempRoot}/app-data`
-    const tauriClaudeDir = `${sessionTempRoot}/claude`
+    const workerEnv = buildWorkerEnv(sessionTempRoot, { baseEnv: process.env })
+    const tauriDataDir = workerEnv.TAURHAUS_DATA_DIR
+    const tauriClaudeDir = workerEnv.TAURHAUS_CLAUDE_DIR
     const e2eProjectsDir = `${sessionTempRoot}/projects`
     const taurhausFixtureProject = `${e2eProjectsDir}/taurhaus`
     const ledgerFixtureProject = `${e2eProjectsDir}/ledger`
-    mkdirSync(tauriDataDir, { recursive: true })
-    mkdirSync(tauriClaudeDir, { recursive: true })
+    for (const key of WORKER_ROOT_ENV_KEYS) {
+      mkdirSync(workerEnv[key], { recursive: true })
+    }
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,
@@ -583,22 +586,19 @@ export const config = {
 
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
-    process.env.TAURHAUS_DATA_DIR = tauriDataDir
-    process.env.TAURHAUS_CLAUDE_DIR = tauriClaudeDir
-    prepareCodexScratchHome(specs, `${sessionTempRoot}/codex-home`)
+    prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
+    for (const key of WORKER_ROOT_ENV_KEYS) {
+      process.env[key] = workerEnv[key]
+    }
     prepareIsolatedTmux(specs, sessionTempRoot)
 
     tauriDriver = spawn(
       localTauriDriverPath,
       ['--port', String(wdioPort), '--native-port', String(nativeWebDriverPort), '--native-driver', nativeWebKitDriverPath],
       {
-      env: {
-        ...process.env,
-        TAURHAUS_DATA_DIR: tauriDataDir,
-        TAURHAUS_CLAUDE_DIR: tauriClaudeDir,
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
+        env: buildWorkerEnv(sessionTempRoot, { baseEnv: process.env }),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       }
     )
     appendDriverPid(tauriDriver.pid)

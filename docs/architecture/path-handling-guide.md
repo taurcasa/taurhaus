@@ -8,7 +8,7 @@ Background: see `docs/analysis/path-handling-audit-2026-03-08.md` for the full i
 
 If your feature touches any of these, start with the existing authorities instead of inventing new path logic:
 - `src-tauri/src/provider/path.rs` for project identity / normalization / Windows<->WSL conversion
-- `src-tauri/src/provider/platform_paths.rs` for app-data, Claude-dir, teams-dir, log, hook, and daemon-binary roots
+- `src-tauri/src/provider/platform_paths.rs` for app-data, daemon-token, tool-home, teams, log, hook, and daemon-binary roots
 
 Use `provider/path.rs` when you are comparing or converting project/session paths:
 - project identity / project matching
@@ -28,12 +28,14 @@ Current canonical helpers:
 
 Current root authority:
 - `PlatformPaths::app_data_root()`
+- `PlatformPaths::daemon_token_path()` — `<app_data>/daemon.token`; the old platform data `taurhaus/daemon.token` is read-only migration fallback
 - `PlatformPaths::log_path()`
 - `PlatformPaths::codex_notify_path()` — `<app_data>/codex-notify.jsonl`
 - `PlatformPaths::claude_dir()`
 - `PlatformPaths::claude_dir_override()` — `Some` only when `TAURHAUS_CLAUDE_DIR` is set
 - `PlatformPaths::teams_dir()`
 - `PlatformPaths::codex_dir()` — `$CODEX_HOME` or `~/.codex` (WSL-UNC on Windows); root for the Codex `hooks.json` installer
+- `PlatformPaths::agy_dir()` — `TAURHAUS_AGY_DIR` or `~/.gemini`; the override is taurhaus-only because agy exposes no supported home selector
 - `PlatformPaths::coordination_template_root(teams_dir)`
 - `PlatformPaths::tool_session_root(tool)`
 - `PlatformPaths::daemon_binary_path()`
@@ -142,6 +144,19 @@ These are two different variables and confusing them silently splits state.
 1. **Launching.** A managed Claude launch renders a `CLAUDE_CONFIG_DIR=<dir>` prefix only when the resolved account has an explicit config dir — a non-default account or an override. The default account deliberately resolves to `None` and renders no prefix, so Claude inherits its own unset-variable behaviour (`session_scanner/launch.rs`, `session_scanner/accounts/claude.rs`). The same rule is data-driven for every harness with an `account_selector` in the registry — `CODEX_HOME` for Codex, `GROK_HOME` for Grok. If the base command already carries the variable, taurhaus keeps it and logs `launch.selector.ignored` (`session_scanner/launch.rs`, `LaunchNote::SelectorIgnored`).
 2. **Reading identity/activity.** Session identity and state are read under the *process's own* `CLAUDE_CONFIG_DIR` (`/proc/<pid>/environ` on Linux, `ps -Eww` on macOS), falling back to `tool_session_root(Claude)`. Never assume the app's root is the session's root.
 3. **The daemon.** It is spawned with `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR` forwarded (converted to Linux form for a WSL daemon); `--data-dir` sets `TAURHAUS_DATA_DIR` inside the daemon. Startup logs `daemon.data_root.mismatch` (warn) when the app and daemon roots diverge anyway.
+
+The daemon token follows that same captured data root. Both processes resolve
+`<TAURHAUS_DATA_DIR>/daemon.token`; on Windows the WSL reader uses the exact
+Linux-form root passed by the launcher. When the active app-data root is the
+ordinary platform default — including the default the app pins at startup — it
+can then try the pre-migration `$HOME/.local/share/taurhaus/daemon.token` as a
+read-only fallback. A root redirected elsewhere never resolves or reads that
+legacy path, and token generation never writes it.
+
+`TAURHAUS_AGY_DIR` is different from a harness selector. It redirects only
+taurhaus's Antigravity hook and identity reads, which gives tests a disposable
+root. The agy CLI does not honour it, and the registry deliberately declares no
+account selector for Antigravity.
 
 Team inboxes always live under the single `PlatformPaths::teams_dir()`, so team members run on the default config dir.
 

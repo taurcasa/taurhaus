@@ -24,6 +24,7 @@ vi.mock('./ipc.js', () => ({
   setProjectAccount: vi.fn(() => Promise.resolve()),
   launchCliSession: vi.fn(() => Promise.resolve()),
   resolveLaunchAccount: vi.fn(() => Promise.resolve({ needsChoice: true })),
+  resolveLaunchBases: vi.fn(() => Promise.resolve([])),
 }))
 
 const {
@@ -35,6 +36,7 @@ const {
   getPlatform,
   listAccounts,
   launchCliSession,
+  resolveLaunchBases,
 } = await import('./ipc.js')
 const { accountState, requestLaunch, resetAccountsForTest } = await import('./accounts.svelte.js')
 const claudeAccounts = accountState('claude')
@@ -131,6 +133,12 @@ function defaultProps(overrides = {}) {
   }
 }
 
+async function settledEffectiveDefault(tool = 'claude') {
+  const line = await screen.findByTestId(`effective-default-${tool}`)
+  await waitFor(() => expect(line).not.toHaveTextContent('resolving…'))
+  return line
+}
+
 describe('Settings component', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -143,6 +151,7 @@ describe('Settings component', () => {
     resetAccountsForTest()
     listAccounts.mockResolvedValue(detected([]))
     launchCliSession.mockResolvedValue({ tmux_pane: '%1' })
+    resolveLaunchBases.mockResolvedValue([])
   })
 
   /** What the backend answers when detection ran. */
@@ -269,10 +278,39 @@ describe('Settings component', () => {
     { ...TWO_ACCOUNTS[1], is_default: false, dir: '/home/mstie/.claude-account2' },
   ]
 
-  const withResolvedBases = (bases, accounts = DETECTED_ACCOUNTS) => (tool) =>
-    Promise.resolve(
-      tool === 'claude' ? { ...detected(accounts), resolvedBases: bases } : detected([])
+  const withResolvedBases = (bases, accounts = DETECTED_ACCOUNTS) => {
+    resolveLaunchBases.mockImplementation((tool) =>
+      Promise.resolve(tool === 'claude' ? bases : [])
     )
+    return (tool) => Promise.resolve(tool === 'claude' ? detected(accounts) : detected([]))
+  }
+
+  // Regression: 0.8.4 / PR #75 made the account-list read path run shell
+  // probes. The four 2026-08-30 stalls then timed out every project section at
+  // 5 s. Settings is the only read surface that asks the dedicated resolver.
+  it('resolves launch bases only for the visible accounts section', async () => {
+    listAccounts.mockResolvedValue(detected(TWO_ACCOUNTS))
+    let finishResolution
+    resolveLaunchBases.mockReturnValue(
+      new Promise((resolve) => {
+        finishResolution = resolve
+      })
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    await waitFor(() => expect(resolveLaunchBases).toHaveBeenCalledWith('claude'))
+    expect(screen.getByTestId('effective-default-claude')).toHaveTextContent(
+      'Effective default: resolving…'
+    )
+
+    finishResolution([])
+    await waitFor(() =>
+      expect(screen.getByTestId('effective-default-claude')).toHaveTextContent(
+        'Effective default: A — default config directory'
+      )
+    )
+  })
 
   // Regression: 0.8.3 derived this line from the literal command, so an alias
   // base like `claude2` showed no selector at all and the sentence claimed the
@@ -295,7 +333,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent('B')
     expect(line).toHaveTextContent(
       'from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
@@ -321,7 +359,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent('B')
     expect(line).toHaveTextContent('alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude')
   })
@@ -344,7 +382,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent('B')
   })
 
@@ -364,7 +402,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent('Effective default: A — default config directory')
     expect(line).not.toHaveTextContent('from your launch command')
   })
@@ -387,7 +425,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent('A')
     expect(line).toHaveTextContent('default')
     expect(line).not.toHaveTextContent('alias for')
@@ -406,7 +444,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent(
       'taurhaus could not select an account: your launch command runs "my-claude-wrapper", which is not the Claude CLI'
     )
@@ -431,7 +469,7 @@ describe('Settings component', () => {
 
     render(Settings, { props: defaultProps() })
 
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent(
       'taurhaus could not select an account: your launch command runs "my-claude-wrapper", which is not the Claude CLI'
     )
@@ -457,7 +495,7 @@ describe('Settings component', () => {
     )
 
     render(Settings, { props: defaultProps() })
-    const line = await screen.findByTestId('effective-default-claude')
+    const line = await settledEffectiveDefault()
     expect(line).toHaveTextContent(
       'Effective default: B — from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
     )

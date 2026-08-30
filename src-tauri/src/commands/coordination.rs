@@ -237,7 +237,7 @@ pub async fn coordination_initialize_team(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_add_agent(
     app: AppHandle,
     db: State<'_, DbState>,
@@ -285,7 +285,7 @@ pub fn coordination_add_agent(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_resume_member(
     app: AppHandle,
     db: State<'_, DbState>,
@@ -325,7 +325,7 @@ pub fn coordination_resume_member(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_resume_team(
     app: AppHandle,
     db: State<'_, DbState>,
@@ -368,7 +368,7 @@ pub fn coordination_resume_team(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_reonboard(
     db: State<'_, DbState>,
     state: State<'_, CoordinationState>,
@@ -402,7 +402,7 @@ pub async fn coordination_get_live_team_status(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_create_team(
     state: State<'_, CoordinationState>,
     team_name: String,
@@ -413,7 +413,7 @@ pub fn coordination_create_team(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_disband_team(
     app: AppHandle,
     state: State<'_, CoordinationState>,
@@ -428,7 +428,7 @@ pub fn coordination_disband_team(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_add_member(
     app: AppHandle,
     state: State<'_, CoordinationState>,
@@ -455,7 +455,7 @@ pub fn coordination_add_member(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_remove_member(
     app: AppHandle,
     state: State<'_, CoordinationState>,
@@ -471,7 +471,7 @@ pub fn coordination_remove_member(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_list_teams(
     state: State<'_, CoordinationState>,
 ) -> IpcResult<TeamDiscoveryResponse> {
@@ -481,7 +481,7 @@ pub fn coordination_list_teams(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_get_team_status(
     state: State<'_, CoordinationState>,
     team_name: String,
@@ -492,7 +492,7 @@ pub fn coordination_get_team_status(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_preflight_check(request: InitializeTeamRequest) -> IpcResult<PreflightReport> {
     let span = IpcCommandSpan::start("coordination_preflight_check");
     let result = coordination_preflight_check_impl(request).ipc();
@@ -500,7 +500,7 @@ pub fn coordination_preflight_check(request: InitializeTeamRequest) -> IpcResult
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityReport> {
     let span = IpcCommandSpan::start("coordination_get_feature_availability");
     let result = Ok(coordination_get_feature_availability_impl());
@@ -508,7 +508,7 @@ pub fn coordination_get_feature_availability() -> IpcResult<FeatureAvailabilityR
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn coordination_get_project_mesh_snapshot(
     state: State<'_, CoordinationState>,
     project_path: String,

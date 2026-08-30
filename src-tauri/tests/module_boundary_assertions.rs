@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -28,6 +28,164 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+fn braced_body(source: &str, function_start: usize) -> Option<(String, usize)> {
+    let open = function_start + source[function_start..].find('{')?;
+    let mut depth = 0_usize;
+    for (offset, byte) in source.as_bytes()[open..].iter().enumerate() {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    let end = open + offset;
+                    return Some((source[open + 1..end].to_string(), end + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn named_function_bodies(source: &str) -> BTreeMap<String, String> {
+    let mut bodies = BTreeMap::new();
+    let mut cursor = 0_usize;
+    while let Some(relative) = source[cursor..].find("fn ") {
+        let function_start = cursor + relative;
+        let name_start = function_start + 3;
+        let name_end = source[name_start..]
+            .find(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+            .map(|offset| name_start + offset)
+            .unwrap_or(source.len());
+        let name = &source[name_start..name_end];
+        let Some((body, end)) = braced_body(source, function_start) else {
+            cursor = name_end;
+            continue;
+        };
+        if !name.is_empty() {
+            bodies.insert(name.to_string(), body);
+        }
+        cursor = end;
+    }
+    bodies
+}
+
+fn command_functions(source: &str) -> Vec<(String, String, bool)> {
+    let mut commands = Vec::new();
+    let mut cursor = 0_usize;
+    while let Some(relative) = source[cursor..].find("#[tauri::command") {
+        let attribute_start = cursor + relative;
+        let Some(attribute_end_offset) = source[attribute_start..].find(']') else {
+            break;
+        };
+        let attribute_end = attribute_start + attribute_end_offset + 1;
+        let Some(fn_offset) = source[attribute_end..].find("fn ") else {
+            break;
+        };
+        let function_start = attribute_end + fn_offset;
+        let asynchronous = source[attribute_start..attribute_end].contains("(async)")
+            || source[attribute_end..function_start].contains("async");
+        let name_start = function_start + 3;
+        let name_end = source[name_start..]
+            .find(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+            .map(|offset| name_start + offset)
+            .unwrap_or(source.len());
+        let name = source[name_start..name_end].to_string();
+        let Some((body, end)) = braced_body(source, function_start) else {
+            break;
+        };
+        commands.push((name, body, asynchronous));
+        cursor = end;
+    }
+    commands
+}
+
+fn io_markers(source: &str) -> Vec<&'static str> {
+    [
+        "send_status_request",
+        "daemon_answer",
+        "Command::new",
+        "std::process",
+        "wsl",
+        "resolve_launch_base",
+        "providers.",
+        "provider.",
+        "fs::read",
+        "fs::metadata",
+    ]
+    .into_iter()
+    .filter(|marker| source.contains(marker))
+    .collect()
+}
+
+fn sync_io_command_violations(sources: &[(String, String)]) -> Vec<String> {
+    let mut implementations = BTreeMap::<String, String>::new();
+    for (name, body) in sources
+        .iter()
+        .flat_map(|(_, source)| named_function_bodies(source))
+    {
+        implementations.entry(name).or_default().push_str(&body);
+    }
+    let mut violations = Vec::new();
+
+    for (path, source) in sources {
+        for (name, body, asynchronous) in command_functions(source) {
+            let mut inspected = body.clone();
+            let mut frontier = vec![body];
+            let mut visited = BTreeSet::from([name.clone()]);
+            while !frontier.is_empty() {
+                let mut next = Vec::new();
+                for caller in frontier {
+                    for (called_name, called_body) in &implementations {
+                        if !visited.contains(called_name)
+                            && caller.contains(&format!("{called_name}("))
+                        {
+                            visited.insert(called_name.clone());
+                            inspected.push_str(called_body);
+                            next.push(called_body.clone());
+                        }
+                    }
+                }
+                frontier = next;
+            }
+            let markers = io_markers(&inspected);
+            if !asynchronous && !markers.is_empty() {
+                violations.push(format!("{path}::{name}: {markers:?}"));
+            }
+        }
+    }
+    violations
+}
+
+fn holds_db_guard_across_search_lock(body: &str) -> bool {
+    let Some(db_lock) = body.find("let conn = db.0.lock") else {
+        return false;
+    };
+    let Some(search_lock_offset) = body[db_lock..].find("search.0.lock()") else {
+        return false;
+    };
+    let search_lock = db_lock + search_lock_offset;
+    let between = &body[db_lock..search_lock];
+    if between.contains("drop(conn)") {
+        return false;
+    }
+
+    let depth_at_db = body[..db_lock].matches('{').count() as isize
+        - body[..db_lock].matches('}').count() as isize;
+    let mut depth = depth_at_db;
+    for byte in between.bytes() {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        if depth < depth_at_db {
+            return false;
+        }
+    }
+    true
 }
 
 fn collect_repo_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -184,6 +342,129 @@ fn values_after_flag(recipe: &str, flag: &str) -> BTreeSet<String> {
                 .to_owned()
         })
         .collect()
+}
+
+#[test]
+fn io_commands_use_tauris_async_execution_context() {
+    // Regression: 0.8.4 / PR #75 left every Tauri command synchronous. A slow
+    // `resolve_launch_base` daemon RPC in `list_accounts` then held the IPC
+    // dispatcher while unrelated project reads hit their 5 s frontend timeout.
+    let mut files = Vec::new();
+    collect_rs_files(&crate_root().join("src/commands"), &mut files);
+    collect_rs_files(&crate_root().join("src/workflow_runs"), &mut files);
+    let sources = files
+        .into_iter()
+        .filter(|path| path.file_name().and_then(|name| name.to_str()) != Some("tests.rs"))
+        .map(|path| {
+            let relative = path
+                .strip_prefix(crate_root())
+                .expect("command source lives below the crate root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let source = fs::read_to_string(&path).expect("command source should be readable");
+            (relative, source_without_test_only_items(&source))
+        })
+        .collect::<Vec<_>>();
+
+    let violations = sync_io_command_violations(&sources);
+    assert!(
+        violations.is_empty(),
+        "I/O-capable Tauri commands can block the dispatcher; add #[tauri::command(async)]:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn async_execution_guard_follows_one_impl_call() {
+    let sources = vec![(
+        "src/commands/example.rs".to_string(),
+        r#"
+#[tauri::command]
+pub fn newly_added_probe() {
+    newly_added_probe_impl();
+}
+
+fn newly_added_probe_impl() {
+    daemon.send_status_request(&request);
+}
+"#
+        .to_string(),
+    )];
+
+    assert_eq!(
+        sync_io_command_violations(&sources),
+        vec!["src/commands/example.rs::newly_added_probe: [\"send_status_request\"]".to_string()],
+        "a newly added sync RPC command must turn the boundary lane red"
+    );
+}
+
+#[test]
+fn async_execution_guard_follows_transitive_command_helpers() {
+    let sources = vec![(
+        "src/commands/accounts.rs".to_string(),
+        r#"
+#[tauri::command]
+pub fn list_accounts() {
+    list_accounts_impl();
+}
+
+fn list_accounts_impl() {
+    accounts_report();
+}
+
+fn accounts_report() {
+    daemon_accounts_report();
+}
+
+fn daemon_accounts_report() {
+    daemon.send_status_request(&request);
+}
+"#
+        .to_string(),
+    )];
+
+    assert_eq!(
+        sync_io_command_violations(&sources),
+        vec!["src/commands/accounts.rs::list_accounts: [\"send_status_request\"]".to_string()],
+        "the flagship read command must stay guarded through ordinary helpers"
+    );
+}
+
+#[test]
+fn async_execution_guard_recognizes_provider_io() {
+    let sources = vec![(
+        "src/commands/files.rs".to_string(),
+        r#"
+#[tauri::command]
+pub fn read_file(providers: State<'_, ProviderState>) {
+    providers.resolve("/project").get_file_content("README.md");
+}
+"#
+        .to_string(),
+    )];
+
+    assert_eq!(
+        sync_io_command_violations(&sources),
+        vec!["src/commands/files.rs::read_file: [\"providers.\"]".to_string()],
+        "provider-backed filesystem and daemon calls must stay off the dispatcher"
+    );
+}
+
+#[test]
+fn project_removal_releases_the_db_before_waiting_for_search() {
+    // Regression: 47fac80d made `remove_project` and `rebuild_index`
+    // concurrent while they acquired DB/search and search/DB respectively.
+    // The AB/BA cycle permanently wedged both commands and every later DB IPC.
+    let source = source_without_test_only_items(&read_source("src/commands/projects.rs"));
+    let functions = named_function_bodies(&source);
+    let body = functions
+        .get("remove_project")
+        .expect("remove_project command body");
+
+    assert!(
+        !holds_db_guard_across_search_lock(body),
+        "remove_project holds the DB mutex while waiting for the search mutex"
+    );
 }
 
 #[test]

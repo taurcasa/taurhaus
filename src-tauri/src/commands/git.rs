@@ -107,7 +107,7 @@ fn reject_wsl_unc_remote_url_lookup(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_recent_commits(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -124,7 +124,7 @@ pub fn get_recent_commits(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_all_commits(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -142,7 +142,7 @@ pub fn get_all_commits(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_git_status(
     db: State<'_, DbState>,
     providers: State<'_, ProviderState>,
@@ -158,7 +158,7 @@ pub fn get_git_status(
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_remote_url(db: State<'_, DbState>, project_id: String) -> IpcResult<Option<String>> {
     let span = IpcCommandSpan::start("get_remote_url");
     let result = (|| -> Result<Option<String>, String> {
