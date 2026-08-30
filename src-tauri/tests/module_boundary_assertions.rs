@@ -1,5 +1,7 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -99,6 +101,112 @@ fn cli_tool_literal_count(source: &str) -> usize {
     .into_iter()
     .map(|literal| source.match_indices(literal).count())
     .sum()
+}
+
+fn integration_test_binaries_on_disk() -> BTreeSet<String> {
+    fs::read_dir(crate_root().join("tests"))
+        .expect("integration test directory should be readable")
+        .map(|entry| {
+            entry
+                .expect("integration test entry should be readable")
+                .path()
+        })
+        .filter(|path| {
+            path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+        })
+        .map(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .expect("integration test filename should be UTF-8")
+                .to_owned()
+        })
+        .collect()
+}
+
+fn dry_run_recipe(recipe: &str) -> String {
+    let crate_dir = crate_root();
+    let repository = crate_dir.parent().expect("crate lives in repository");
+    let output = Command::new("just")
+        .current_dir(repository)
+        .args(["--dry-run", "--no-deps", recipe])
+        .output()
+        .expect("just should dry-run repository recipes");
+    assert!(
+        output.status.success(),
+        "just --dry-run {recipe} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+}
+
+fn show_recipe(recipe: &str) -> String {
+    let crate_dir = crate_root();
+    let repository = crate_dir.parent().expect("crate lives in repository");
+    let output = Command::new("just")
+        .current_dir(repository)
+        .args(["--show", recipe])
+        .output()
+        .expect("just should show repository recipes");
+    assert!(
+        output.status.success(),
+        "just --show {recipe} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("shown recipe should be UTF-8")
+}
+
+fn evaluate_just_variable(variable: &str) -> String {
+    let crate_dir = crate_root();
+    let repository = crate_dir.parent().expect("crate lives in repository");
+    let output = Command::new("just")
+        .current_dir(repository)
+        .args(["--evaluate", variable])
+        .output()
+        .expect("just should evaluate repository variables");
+    assert!(
+        output.status.success(),
+        "just --evaluate {variable} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("evaluated variable should be UTF-8")
+}
+
+fn named_test_binaries(recipe: &str) -> BTreeSet<String> {
+    let tokens = recipe.split_whitespace().collect::<Vec<_>>();
+    tokens
+        .windows(2)
+        .filter(|window| window[0] == "--test")
+        .map(|window| {
+            window[1]
+                .trim_matches(|character| matches!(character, '\'' | '"' | ';'))
+                .to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn rust_integration_recipe_runs_every_test_binary() {
+    // Regression: commit 831571da replaced the integration lane with a
+    // hand-maintained target list; later binaries compiled under `cargo check`
+    // but never ran because nothing checked that list against `tests/*.rs`.
+    let expected = integration_test_binaries_on_disk();
+    let shown_recipe = show_recipe("test-rust-integration");
+    let actual = if shown_recipe.contains("{{ integration_test_args }}") {
+        named_test_binaries(&evaluate_just_variable("integration_test_args"))
+    } else {
+        named_test_binaries(&dry_run_recipe("test-rust-integration"))
+    };
+    let missing = expected.difference(&actual).collect::<Vec<_>>();
+    let stale = actual.difference(&expected).collect::<Vec<_>>();
+
+    assert!(
+        missing.is_empty() && stale.is_empty(),
+        "integration test manifest drifted; missing: {missing:?}; stale: {stale:?}"
+    );
 }
 
 #[test]
