@@ -28,8 +28,9 @@ ensure-tauri-resources:
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
-# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|green is test-only: it replaces both lanes
+# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|green is test-only: it replaces both lanes
 # and skips `just fmt`.
+# TAURHAUS_CHECK_LOG_DIR overrides logs; TAURHAUS_CHECK_SEED_PEER_PID_FILE exposes a test peer PID.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -63,13 +64,13 @@ check:
         if [ -z "$peer_pid_file" ]; then
             return 0
         fi
-        for _ in {1..100}; do
+        for _ in {1..500}; do
             if [ -s "$peer_pid_file" ]; then
                 return 0
             fi
             sleep 0.01
         done
-        echo "Seeded peer lane did not publish its pid." >&2
+        echo "Timed out waiting for the seeded peer lane to publish its pid." >&2
         return 2
     }
     run_seed_failure_lane() {
@@ -83,6 +84,10 @@ check:
         fi
         exec sleep 30
     }
+    run_seed_late_failure_lane() {
+        sleep 0.2
+        return 3
+    }
     case "$seed_failure" in
         "") ;;
         rust)
@@ -92,6 +97,10 @@ check:
         frontend)
             run_rust_lane() { run_seed_peer_lane; }
             run_frontend_lane() { run_seed_failure_lane; }
+            ;;
+        late-failure)
+            run_rust_lane() { return 0; }
+            run_frontend_lane() { run_seed_late_failure_lane; }
             ;;
         green)
             run_rust_lane() { return 0; }

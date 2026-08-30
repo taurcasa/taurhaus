@@ -149,6 +149,27 @@ assert_isolated_log "$frontend_log_dir" "$frontend_output"
 assert_seed_warning frontend "$frontend_output"
 assert_peer_stopped "$frontend_peer_pid_file" frontend
 
+late_failure_output="$tmp_dir/late-failure.log"
+late_failure_log_dir="$tmp_dir/late-failure-check-logs"
+late_failure_status=0
+TAURHAUS_CHECK_LOG_DIR="$late_failure_log_dir" \
+    TAURHAUS_CHECK_SEED_FAILURE=late-failure \
+    just --justfile "$repo_root/justfile" --working-directory "$work_dir" check \
+    >"$late_failure_output" 2>&1 || late_failure_status=$?
+if [ "$late_failure_status" -ne 3 ]; then
+    echo "seeded late just check failure exited $late_failure_status, expected 3" >&2
+    sed -n '1,120p' "$late_failure_output" >&2
+    exit 1
+fi
+assert_output_contains "just check failed with exit code 3" "$late_failure_output" \
+    "seeded late just check did not finish flushing its failure output"
+if grep -Fq "Full quality gate passed." "$late_failure_output"; then
+    echo "seeded late just check failure printed the success line" >&2
+    exit 1
+fi
+assert_isolated_log "$late_failure_log_dir" "$late_failure_output"
+assert_seed_warning late-failure "$late_failure_output"
+
 green_output="$tmp_dir/green.log"
 green_log_dir="$tmp_dir/green-check-logs"
 green_status=0
