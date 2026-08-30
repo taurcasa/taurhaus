@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -55,16 +55,19 @@ describe('buildWorkerEnv', () => {
     expect(env.PATH).toBe('/usr/bin')
   })
 
-  // Regression: commit 272eed7d isolated HOME without a shell startup file,
-  // so zsh-newuser-install captured every tmux pane before its fixture command
-  // could run.
-  it('seeds the isolated home so interactive zsh launches cannot block', () => {
+  // Regression: commit 272eed7d isolated HOME without the mesh binary that
+  // taurhaus resolves exclusively through ~/.local/bin/mesh. Tier-2 workers
+  // then reported mesh unavailable and skipped their runtime coverage.
+  it('seeds the isolated home with shell startup and the resolved mesh binary', () => {
     const workerRoot = mkdtempSync(join(tmpdir(), 'taurhaus-worker-home-'))
     const workerHome = join(workerRoot, 'home')
+    const meshBinary = join(workerRoot, 'operator-mesh')
 
     try {
-      prepareWorkerHome(workerHome)
+      writeFileSync(meshBinary, '#!/bin/sh\n')
+      prepareWorkerHome(workerHome, { meshBinaryPath: meshBinary })
       expect(readFileSync(join(workerHome, '.zshrc'), 'utf8')).toContain('taurhaus E2E')
+      expect(realpathSync(join(workerHome, '.local', 'bin', 'mesh'))).toBe(realpathSync(meshBinary))
     } finally {
       rmSync(workerRoot, { recursive: true, force: true })
     }

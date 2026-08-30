@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { join, resolve } from 'node:path'
 
@@ -25,9 +25,14 @@ const WORKER_DAEMON_PORT_START = 20_000
 const WORKER_DAEMON_PORT_COUNT = 12_000
 
 /** Seed an isolated login home without reading the operator's shell files. */
-export function prepareWorkerHome(workerHome) {
+export function prepareWorkerHome(workerHome, { meshBinaryPath } = {}) {
   mkdirSync(workerHome, { recursive: true })
   writeFileSync(join(workerHome, '.zshrc'), '# taurhaus E2E isolated shell home\n', 'utf8')
+
+  if (!meshBinaryPath || !existsSync(meshBinaryPath)) return
+  const workerBinDir = join(workerHome, '.local', 'bin')
+  mkdirSync(workerBinDir, { recursive: true })
+  symlinkSync(resolve(meshBinaryPath), join(workerBinDir, 'mesh'))
 }
 
 /** A stable non-ephemeral port derived from the worker's unique session root. */

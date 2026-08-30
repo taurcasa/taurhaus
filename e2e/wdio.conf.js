@@ -62,6 +62,7 @@ import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
 const specsDir = resolve(import.meta.dirname, 'specs')
+const operatorMeshBinaryPath = resolve(homedir(), '.local', 'bin', 'mesh')
 
 const binaryPath = resolve(projectRoot, 'src-tauri', 'target', 'debug', 'taurhaus')
 const localTauriDriverPath = resolve(projectRoot, 'node_modules', '.bin', 'tauri-driver')
@@ -567,7 +568,7 @@ export const config = {
     for (const key of WORKER_ROOT_ENV_KEYS) {
       mkdirSync(workerEnv[key], { recursive: true })
     }
-    prepareWorkerHome(workerEnv.HOME)
+    prepareWorkerHome(workerEnv.HOME, { meshBinaryPath: operatorMeshBinaryPath })
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,
