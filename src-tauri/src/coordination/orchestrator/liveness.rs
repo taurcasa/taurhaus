@@ -7,7 +7,10 @@ use crate::coordination::errors::CoordinationError;
 use crate::coordination::runtime::{
     pane_belongs_to_member, quarantine_foreign_member, LivePane, PaneOwnership,
 };
-use crate::coordination::stores::{MemberRuntimeStore, TeamConfigStore};
+use crate::coordination::stores::lock::acquire_team_lock;
+use crate::coordination::stores::{
+    MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
+};
 use crate::coordination::validation::validate_team_name;
 use crate::session_scanner::cli_tool::spec;
 
@@ -56,6 +59,7 @@ impl CoordinationOrchestrator {
         let mut reconciled_members = HashSet::new();
 
         for (member_name, mut runtime) in runtime_records {
+            let expected = MemberRuntimeSnapshot::capture(&runtime);
             let Some(member) = members_by_name.get(&member_name) else {
                 continue;
             };
@@ -149,13 +153,24 @@ impl CoordinationOrchestrator {
                 }
                 runtime.daemon_pid = None;
             }
-            MemberRuntimeStore::save_preserving_applied_effort(
+            let guard = acquire_team_lock(&self.teams_dir, team_name)?;
+            let outcome = MemberRuntimeStore::commit_if_unchanged(
+                &guard,
                 &self.teams_dir,
                 team_name,
                 &member_name,
-                &runtime,
+                &expected,
+                |current| {
+                    current.pane_id = runtime.pane_id.clone();
+                    current.session_id = runtime.session_id.clone();
+                    current.jsonl_path = runtime.jsonl_path.clone();
+                    current.daemon_pid = runtime.daemon_pid;
+                    current.health = runtime.health;
+                },
             )?;
-            reconciled_members.insert(member_name);
+            if outcome == RuntimeCommitOutcome::Committed {
+                reconciled_members.insert(member_name);
+            }
         }
 
         Ok(reconciled_members)

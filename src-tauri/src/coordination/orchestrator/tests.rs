@@ -2825,6 +2825,69 @@ fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
 }
 
 #[test]
+fn daemon_pid_survives_an_interleaved_live_status_save() {
+    // Regression: 366f4b7 allowed the live-status writer to save an offline
+    // verdict from before a launch, dropping the new daemon pid so the next
+    // liveness pass killed that daemon as an unrecorded duplicate.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "live-status-interleave";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add member");
+
+    let mut before_launch =
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load runtime");
+    before_launch.pane_id = Some("%old".to_string());
+    before_launch.pane_pid = Some(7001);
+    before_launch.pane_start_time = Some(1_755_000_007);
+    before_launch.session_id = Some("session-old".to_string());
+    before_launch.daemon_pid = Some(7100);
+    before_launch.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &before_launch)
+        .expect("save old runtime");
+    runtime.set_pane_exists("%old", false);
+    let probe_gate = runtime.pause_live_pane_probe("%old");
+
+    let teams_dir = tmp.path().to_path_buf();
+    let runtime_for_status = runtime.clone();
+    let live_status = std::thread::spawn(move || {
+        let mut status_orchestrator = CoordinationOrchestrator::new_with_runtime(
+            teams_dir,
+            Arc::new(FakeBackend::default()),
+            runtime_for_status,
+        );
+        status_orchestrator.reconcile_team_presence_for_live_status(team_name)
+    });
+    probe_gate.wait_until_blocked();
+
+    let mut launched = before_launch;
+    launched.pane_id = Some("%fresh".to_string());
+    launched.pane_pid = Some(8001);
+    launched.pane_start_time = Some(1_755_000_008);
+    launched.session_id = Some("session-fresh".to_string());
+    launched.daemon_pid = Some(8100);
+    launched.health = HealthState::Healthy;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &launched)
+        .expect("commit launch while live-status probe is in flight");
+    probe_gate.release();
+    live_status
+        .join()
+        .expect("live-status thread")
+        .expect("live-status reconcile");
+
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("final runtime"),
+        launched,
+        "a stale live-status verdict must not erase any committed launch field"
+    );
+}
+
+#[test]
 fn liveness_reconcile_refreshes_stale_claude_session_metadata_on_live_pane() {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
