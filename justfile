@@ -31,10 +31,14 @@ ensure-tauri-resources:
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
+# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|late-failure|fast-failure|green is test-only: it replaces both lanes
+# and skips `just fmt`.
+# TAURHAUS_CHECK_LOG_DIR overrides logs; TAURHAUS_CHECK_SEED_PEER_PID_FILE exposes a test peer PID.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    log_dir=".check-logs"
+    seed_failure="${TAURHAUS_CHECK_SEED_FAILURE:-}"
+    log_dir="${TAURHAUS_CHECK_LOG_DIR:-.check-logs}"
     mkdir -p "$log_dir"
     log_path="$log_dir/check-$(date +%F-%H%M%S).log"
     : > "$log_path"
@@ -42,7 +46,12 @@ check:
     trap 'status=$?; if [ "$status" -ne 0 ]; then echo "just check failed with exit code $status"; fi' EXIT
     echo "Logging full check output to $log_path"
     ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
-    just fmt
+    if [ -n "$seed_failure" ]; then
+        echo "WARNING: TAURHAUS_CHECK_SEED_FAILURE=$seed_failure - lanes replaced and formatting skipped; this is NOT a real gate." >&2
+    fi
+    if [ -z "$seed_failure" ]; then
+        just fmt
+    fi
     run_rust_lane() {
         just lint-rust
         just test-rust
@@ -53,14 +62,75 @@ check:
         just typecheck
         just test-frontend
     }
+    wait_for_seed_peer() {
+        local peer_pid_file="${TAURHAUS_CHECK_SEED_PEER_PID_FILE:-}"
+        if [ -z "$peer_pid_file" ]; then
+            return 0
+        fi
+        for _ in {1..500}; do
+            if [ -s "$peer_pid_file" ]; then
+                return 0
+            fi
+            sleep 0.01
+        done
+        echo "Timed out waiting for the seeded peer lane to publish its pid." >&2
+        return 2
+    }
+    run_seed_failure_lane() {
+        wait_for_seed_peer || return $?
+        return 3
+    }
+    run_seed_peer_lane() {
+        local peer_pid_file="${TAURHAUS_CHECK_SEED_PEER_PID_FILE:-}"
+        if [ -n "$peer_pid_file" ]; then
+            printf '%s\n' "$BASHPID" > "$peer_pid_file"
+        fi
+        exec sleep 30
+    }
+    run_seed_late_failure_lane() {
+        sleep 0.2
+        return 3
+    }
+    case "$seed_failure" in
+        "") ;;
+        rust)
+            run_rust_lane() { run_seed_failure_lane; }
+            run_frontend_lane() { run_seed_peer_lane; }
+            ;;
+        frontend)
+            run_rust_lane() { run_seed_peer_lane; }
+            run_frontend_lane() { run_seed_failure_lane; }
+            ;;
+        late-failure)
+            run_rust_lane() { return 0; }
+            run_frontend_lane() { run_seed_late_failure_lane; }
+            ;;
+        fast-failure)
+            run_rust_lane() { return 0; }
+            run_frontend_lane() { return 3; }
+            ;;
+        green)
+            run_rust_lane() { return 0; }
+            run_frontend_lane() { return 0; }
+            ;;
+        *)
+            echo "Unknown TAURHAUS_CHECK_SEED_FAILURE value: $seed_failure" >&2
+            exit 2
+            ;;
+    esac
     run_rust_lane &
     rust_pid=$!
     run_frontend_lane &
     frontend_pid=$!
     pids=("$rust_pid" "$frontend_pid")
+    # Join by consuming every lane's status: `wait -n -p` names the lane it
+    # reaped, and that lane alone leaves the list. Pruning with `kill -0` lost
+    # a lane that had already exited non-zero but not yet been waited for.
     while [ "${#pids[@]}" -gt 0 ]; do
-        if ! wait -n "${pids[@]}"; then
-            status=$?
+        status=0
+        finished=""
+        wait -n -p finished "${pids[@]}" || status=$?
+        if [ "$status" -ne 0 ]; then
             kill "$rust_pid" "$frontend_pid" 2>/dev/null || true
             wait "$rust_pid" 2>/dev/null || true
             wait "$frontend_pid" 2>/dev/null || true
@@ -68,7 +138,7 @@ check:
         fi
         next_pids=()
         for pid in "${pids[@]}"; do
-            if kill -0 "$pid" 2>/dev/null; then
+            if [ "$pid" != "$finished" ]; then
                 next_pids+=("$pid")
             fi
         done
@@ -94,7 +164,7 @@ fmt:
     cd src-tauri && cargo fmt --check
 
 # Lint everything and enforce reproducible frontend structure checks.
-lint: lint-rust lint-frontend lint-workflows
+lint: lint-rust lint-frontend lint-workflows lint-just-gates
 
 # Lint Rust code with clippy.
 lint-rust: ensure-tauri-resources
@@ -107,6 +177,10 @@ lint-frontend:
 # Syntax-check the versioned Workflow procedures in .claude/workflows (parse only, never run).
 lint-workflows:
     bun scripts/check-workflow-scripts.mjs
+
+# Exercise the real full-gate lane joiner with test-only seeded commands.
+lint-just-gates:
+    scripts/check-just-gates.sh
 
 # Typecheck frontend code
 typecheck:

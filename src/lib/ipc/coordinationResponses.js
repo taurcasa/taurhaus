@@ -17,10 +17,13 @@ function normalizeFailedMember(entry) {
   const memberName = String(entry.memberName ?? entry.member_name ?? '').trim()
   if (!memberName) return null
 
-  return {
+  const normalized = {
+    ...entry,
     memberName,
     message: String(entry.message ?? '').trim() || 'Failed',
   }
+  delete normalized.member_name
+  return normalized
 }
 
 function normalizeTeamRuntimeState(value) {
@@ -131,22 +134,29 @@ export function normalizeStepProgressEvent(value) {
   const normalizedCanonicalStages =
     canonicalStages.length > 0 ? canonicalStages : deriveCanonicalStages(operation, step)
 
-  return {
+  const normalized = {
+    ...value,
     teamName: String(value.teamName ?? value.team_name ?? '').trim(),
     operation,
     progress: {
+      ...(progress && typeof progress === 'object' ? progress : {}),
       step,
       status: normalizeStepStatus(progress?.status),
       message: progress?.message == null ? null : String(progress.message),
       canonicalStages: normalizedCanonicalStages,
     },
   }
+  delete normalized.team_name
+  delete normalized.canonical_stages
+  delete normalized.progress.canonical_stages
+  return normalized
 }
 
 function normalizeCoordinationMember(value) {
   if (!value || typeof value !== 'object') return null
 
   const normalized = {
+    ...value,
     name: String(value.name ?? '').trim(),
     role: String(value.role ?? '').trim().toLowerCase() || 'member',
     cliTool: value.cliTool ?? value.cli_tool ?? 'codex',
@@ -170,6 +180,9 @@ function normalizeCoordinationMember(value) {
     projectLabel: String(value.projectLabel ?? value.project_label ?? '').trim(),
   }
 
+  assignIfDefined(normalized, 'taskEffort', value.taskEffort ?? value.task_effort)
+  assignIfDefined(normalized, 'taskEffortWhy', value.taskEffortWhy ?? value.task_effort_why)
+
   const model = String(value.model ?? '').trim()
   if (model) normalized.model = model
 
@@ -189,6 +202,28 @@ function normalizeCoordinationMember(value) {
     normalized.capabilities = value.capabilities
   }
 
+  for (const alias of [
+    'cli_tool',
+    'project_id',
+    'role_id',
+    'role_name',
+    'focus_area',
+    'context_summary',
+    'behavior_summary',
+    'session_status',
+    'pane_id',
+    'session_id',
+    'workflow_activity',
+    'task_effort',
+    'task_effort_why',
+    'is_cross_project',
+    'project_label',
+    'reasoning_effort',
+    'behavioral_contract',
+  ]) {
+    delete normalized[alias]
+  }
+
   return normalized
 }
 
@@ -196,6 +231,7 @@ export function normalizeLiveTeamStatus(value) {
   if (!value || typeof value !== 'object') return null
 
   const normalized = {
+    ...value,
     teamName: value.teamName ?? value.team_name ?? '',
     leadName: value.leadName ?? value.lead_name ?? 'team-lead',
     members: Array.isArray(value.members)
@@ -211,17 +247,27 @@ export function normalizeLiveTeamStatus(value) {
     ) ?? undefined
   )
   assignIfDefined(normalized, 'description', value.description ?? undefined)
+  delete normalized.team_name
+  delete normalized.lead_name
+  delete normalized.runtime_snapshot_freshness
   return normalized
 }
 
 export function normalizeProjectMeshSnapshot(value) {
   if (!value || typeof value !== 'object') return null
 
+  const rawTeamStatus = value.teamStatus ?? value.team_status
   const normalizedStatus = normalizeLiveTeamStatus(
-    value.teamStatus ?? value.team_status
+    rawTeamStatus
       ? {
+          ...rawTeamStatus,
           teamName: value.teamName ?? value.team_name ?? '',
-          leadName: value.teamStatus?.leadName ?? value.teamStatus?.lead_name ?? value.team_status?.leadName ?? value.team_status?.lead_name ?? 'team-lead',
+          leadName:
+            value.teamStatus?.leadName ??
+            value.teamStatus?.lead_name ??
+            value.team_status?.leadName ??
+            value.team_status?.lead_name ??
+            'team-lead',
           runtimeSnapshotFreshness:
             value.teamStatus?.runtimeSnapshotFreshness ??
             value.teamStatus?.runtime_snapshot_freshness ??
@@ -232,7 +278,8 @@ export function normalizeProjectMeshSnapshot(value) {
       : null
   )
 
-  return {
+  const normalized = {
+    ...value,
     meshAvailable: value.meshAvailable ?? value.mesh_available ?? true,
     tmuxAvailable: value.tmuxAvailable ?? value.tmux_available ?? true,
     teamName: value.teamName ?? value.team_name ?? null,
@@ -241,6 +288,7 @@ export function normalizeProjectMeshSnapshot(value) {
     ),
     teamStatus: normalizedStatus
       ? {
+          ...(rawTeamStatus && typeof rawTeamStatus === 'object' ? rawTeamStatus : {}),
           leadName: normalizedStatus.leadName,
           runtimeSnapshotFreshness: normalizedStatus.runtimeSnapshotFreshness ?? null,
           members: normalizedStatus.members,
@@ -248,12 +296,23 @@ export function normalizeProjectMeshSnapshot(value) {
       : null,
     warnings: normalizeStringList(value.warnings),
   }
+  delete normalized.mesh_available
+  delete normalized.tmux_available
+  delete normalized.team_name
+  delete normalized.team_runtime_state
+  delete normalized.team_status
+  if (normalized.teamStatus) {
+    delete normalized.teamStatus.lead_name
+    delete normalized.teamStatus.runtime_snapshot_freshness
+  }
+  return normalized
 }
 
 export function normalizeResumeTeamReport(value) {
   if (!value || typeof value !== 'object') return null
 
-  return {
+  const normalized = {
+    ...value,
     teamName: value.teamName ?? value.team_name ?? '',
     resumed: Boolean(value.resumed),
     totalMembers: Number(value.totalMembers ?? value.total_members ?? 0),
@@ -265,6 +324,13 @@ export function normalizeResumeTeamReport(value) {
     startedTeamDaemon: Boolean(value.startedTeamDaemon ?? value.started_team_daemon),
     teamDaemonWarning: value.teamDaemonWarning ?? value.team_daemon_warning ?? null,
   }
+  delete normalized.team_name
+  delete normalized.total_members
+  delete normalized.resumed_members
+  delete normalized.failed_members
+  delete normalized.started_team_daemon
+  delete normalized.team_daemon_warning
+  return normalized
 }
 
 export function normalizeResumeTeamProgressEvent(value) {
@@ -275,7 +341,8 @@ export function normalizeResumeTeamProgressEvent(value) {
   const stage = normalizeMemberActivationStage(value.stage)
   if (!teamName || !memberName || !stage) return null
 
-  return {
+  const normalized = {
+    ...value,
     operation: String(value.operation ?? 'resume_team').trim() || 'resume_team',
     teamName,
     memberName,
@@ -285,6 +352,11 @@ export function normalizeResumeTeamProgressEvent(value) {
     status: normalizeStepStatus(value.status),
     message: value.message == null ? null : String(value.message),
   }
+  delete normalized.team_name
+  delete normalized.member_name
+  delete normalized.member_index
+  delete normalized.member_count
+  return normalized
 }
 
 export function normalizeInitializeTeamResult(value) {
@@ -299,13 +371,16 @@ export function normalizeInitializeTeamResult(value) {
     normalized.openedExisting = Boolean(value.openedExisting ?? value.opened_existing)
   }
 
+  delete normalized.team_name
+  delete normalized.opened_existing
+
   return normalized
 }
 
 export function normalizeMemberActionReport(value) {
   if (!value || typeof value !== 'object') return value
 
-  return {
+  const normalized = {
     ...value,
     teamName: value.teamName ?? value.team_name ?? '',
     memberName: value.memberName ?? value.member_name ?? '',
@@ -313,4 +388,9 @@ export function normalizeMemberActionReport(value) {
     reusedPane: Boolean(value.reusedPane ?? value.reused_pane),
     warnings: normalizeStringList(value.warnings),
   }
+  delete normalized.team_name
+  delete normalized.member_name
+  delete normalized.pane_id
+  delete normalized.reused_pane
+  return normalized
 }
