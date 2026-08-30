@@ -181,3 +181,36 @@ describe('templatePayloads normalizeTeamPresetInput', () => {
     }).agentSlots[0].overrides).toBeNull()
   })
 })
+
+// Regression: the lossless normalizers spread their input, so a snake_case
+// payload carried `behavioral_contract` / `role_id` / `project_binding` /
+// `project_id` through next to the camelCase keys they write — and serde
+// rejects a payload naming an aliased field twice ("duplicate field"). Found by
+// the Opus review of the lossless-normalizer change (2026-08-30).
+describe('templatePayloads keeps one spelling per aliased field', () => {
+  it('strips behavioral_contract after reading it', () => {
+    const normalized = normalizeRoleTemplateInput({
+      id: 'role-1',
+      name: 'Role',
+      instructions: 'do things',
+      behavioral_contract: { mode: 'template', summary: 'from snake' },
+    })
+    expect(normalized).not.toHaveProperty('behavioral_contract')
+    expect(normalized.behavioralContract).toBeTruthy()
+  })
+
+  it('strips role_id, project_binding and project_id from every slot', () => {
+    const normalized = normalizeTeamPresetInput({
+      id: 'preset-1',
+      name: 'Preset',
+      agent_slots: [{ role_id: 'dev', project_binding: 'lead_project', project_id: 'p-1', count: 2 }],
+    })
+    const [slot] = normalized.agentSlots
+    expect(slot.roleId).toBe('dev')
+    expect(slot.projectBinding).toBe('lead_project')
+    expect(slot.projectId).toBe('p-1')
+    expect(slot).not.toHaveProperty('role_id')
+    expect(slot).not.toHaveProperty('project_binding')
+    expect(slot).not.toHaveProperty('project_id')
+  })
+})

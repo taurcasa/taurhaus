@@ -135,3 +135,33 @@ describe('coordinationResponses session identity', () => {
     expect(snapshot.teamStatus.members[0].sessionId).toBe('sess-dev')
   })
 })
+
+describe('coordinationResponses task effort', () => {
+  // Regression: f0facb6 added assignment effort to LiveAgentStatus, but the
+  // fixed-list member normalizer dropped both fields before the canvas saw it.
+  it('carries assignment effort and its reason in both wire spellings', () => {
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      members: [
+        {
+          name: 'dev-1',
+          role: 'member',
+          taskEffort: 'high',
+          taskEffortWhy: 'the migration is irreversible',
+        },
+        {
+          name: 'dev-2',
+          role: 'member',
+          task_effort: 'medium',
+          task_effort_why: 'routine lane work',
+        },
+      ],
+    })
+
+    expect(status.members.map(({ taskEffort, taskEffortWhy }) => [taskEffort, taskEffortWhy]))
+      .toEqual([
+        ['high', 'the migration is irreversible'],
+        ['medium', 'routine lane work'],
+      ])
+  })
+})

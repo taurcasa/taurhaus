@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.
+
 ## [0.8.4] - 2026-08-30
 
 ### Added

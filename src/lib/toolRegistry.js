@@ -171,11 +171,28 @@ function capability(raw, camel, snake, fallback = false) {
   return raw?.[camel] ?? raw?.[snake] ?? fallback
 }
 
+// The snake_case spellings `capability()` reads; the backend contract is
+// camelCase, so a consumed alias must not survive next to the key written here.
+const CAPABILITY_ALIASES = [
+  'model_flag', 'effort_flag', 'auto_approve_flag', 'display_name_flag', 'team_flags',
+  'native_inbox_poller', 'session_source', 'runtime_session_capture', 'authoritative_idle',
+  'compaction_hook', 'compaction_hook_compat_import', 'transcript_parser', 'session_root',
+  'account_selector', 'account_selection', 'team_config_namespace', 'usage_note',
+  'notify_sink', 'hook_trust', 'managed_home',
+]
+const DESCRIPTOR_ALIASES = ['display_name', 'medallion_accent', 'default_agent_role_id']
+
+function withoutKeys(value, keys) {
+  for (const key of keys) delete value[key]
+  return value
+}
+
 function normalizeCapabilities(raw) {
   const source = raw && typeof raw === 'object' ? raw : {}
   const effortFlag = capability(source, 'effortFlag', 'effort_flag', null)
-  return {
+  return withoutKeys({
     ...CAPABILITY_DEFAULTS,
+    ...source,
     modelFlag: stringOrNull(capability(source, 'modelFlag', 'model_flag', null)),
     effortFlag: effortFlag && typeof effortFlag === 'object' ? { ...effortFlag } : null,
     autoApproveFlag: stringOrNull(
@@ -209,7 +226,7 @@ function normalizeCapabilities(raw) {
     notifySink: Boolean(capability(source, 'notifySink', 'notify_sink')),
     hookTrust: Boolean(capability(source, 'hookTrust', 'hook_trust')),
     managedHome: Boolean(capability(source, 'managedHome', 'managed_home')),
-  }
+  }, CAPABILITY_ALIASES)
 }
 
 function normalizeDescriptor(raw) {
@@ -220,7 +237,8 @@ function normalizeDescriptor(raw) {
     ? raw.aliases.map((alias) => String(alias ?? '').trim().toLowerCase()).filter(Boolean)
     : []
   if (!aliases.includes(id)) aliases.unshift(id)
-  return {
+  return withoutKeys({
+    ...raw,
     id,
     label: String(raw.label ?? id).trim() || id,
     displayName:
@@ -232,7 +250,7 @@ function normalizeDescriptor(raw) {
     defaultAgentRoleId: stringOrNull(raw.defaultAgentRoleId ?? raw.default_agent_role_id),
     aliases,
     capabilities: normalizeCapabilities(raw.capabilities),
-  }
+  }, DESCRIPTOR_ALIASES)
 }
 
 export function normalizeToolDescriptors(raw, fallback = FALLBACK_TOOLS) {

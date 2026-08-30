@@ -4,6 +4,7 @@ import {
   listWorkflowRuns,
   workflowLedgerRow,
 } from './ipc/workflows.js'
+import { persistDarkModePreference } from './shell/themePreferences.js'
 
 // Mock @tauri-apps/api/core — must be before importing ipc module
 vi.mock('@tauri-apps/api/core', () => ({
@@ -986,6 +987,43 @@ describe('ipc module', () => {
   })
 
   describe('updateSettings()', () => {
+    // Regression: 967f956 replaced the Claude-only default with
+    // `default_account_ids`, but the fixed-list settings normalizer omitted the
+    // map. TerminalSettingsWire defaults an omitted map to empty, so a theme
+    // save wiped every per-tool global default.
+    it('keeps per-tool default accounts through a theme preference save', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke
+        .mockResolvedValueOnce({
+          darkMode: false,
+          terminal: {
+            emulator: 'manual',
+            customCommand: '',
+            tmuxLayout: 'new_window',
+            defaultAccountIds: {
+              claude: 'claude-work',
+              codex: 'codex-team',
+            },
+          },
+        })
+        .mockImplementationOnce((_command, { settings }) => Promise.resolve(settings))
+
+      await persistDarkModePreference({
+        getSettings: ipc.getSettings,
+        updateSettings: ipc.updateSettings,
+        value: true,
+      })
+
+      const updatePayload = tauriCore.invoke.mock.calls.find(
+        ([command]) => command === 'update_settings'
+      )?.[1]?.settings
+      expect(updatePayload.terminal.default_account_ids).toEqual({
+        claude: 'claude-work',
+        codex: 'codex-team',
+      })
+      delete window.__TAURI_INTERNALS__
+    })
+
     it('calls invoke with settings in Tauri', async () => {
       window.__TAURI_INTERNALS__ = {}
       const newSettings = { scan_directories: ['~/work'], thresholds: { active_days: 5, recent_days: 14, stale_days: 60 }, ignore_patterns: [] }

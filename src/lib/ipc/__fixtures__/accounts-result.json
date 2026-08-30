@@ -1,0 +1,51 @@
+{
+  "accounts": [
+    {
+      "dir": "/fixtures/codex-home",
+      "id": "fixture-codex-account",
+      "identity": {
+        "credentialExpiresAt": 1900000000,
+        "displayName": "Fixture Developer",
+        "label": "Fixture account",
+        "loggedIn": true,
+        "organization": "Fixture Organization",
+        "plan": "fixture-plan",
+        "usageCapable": true
+      },
+      "isDefault": true,
+      "isProcessDefault": true,
+      "tool": "codex",
+      "usage": {
+        "note": "Fixture usage is synthetic",
+        "observedAt": "2026-08-30T12:00:00Z",
+        "status": "ok",
+        "windows": [
+          {
+            "compact": true,
+            "isActive": true,
+            "key": "weekly",
+            "resetsAt": 1900000100,
+            "severity": "warning",
+            "title": "Fixture week",
+            "usedPercentage": 37.5
+          }
+        ]
+      }
+    }
+  ],
+  "degraded": true,
+  "error": "Fixture degraded reason",
+  "resolvedBases": [
+    {
+      "command": "CODEX_HOME=/fixtures/codex-home codex --yolo",
+      "expansions": [
+        {
+          "body": "CODEX_HOME=/fixtures/codex-home codex",
+          "name": "fixture-codex"
+        }
+      ],
+      "opaqueHead": "fixture-wrapper"
+    }
+  ],
+  "source": "native"
+}

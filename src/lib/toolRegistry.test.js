@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   FALLBACK_TOOLS,
+  normalizeToolDescriptors,
   configureToolRegistry,
   resetToolRegistry,
   toolDescriptor,
@@ -60,5 +61,32 @@ describe('toolRegistry', () => {
     // Regression: 9a66d1c hard-coded Gemini as the third frontend harness.
     expect(toolDisplayName('antigravity')).toBe('Antigravity CLI')
     expect(toolDescriptor('gemini')).toBeNull()
+  })
+})
+
+// Regression: normalizeCapabilities/normalizeDescriptor spread their raw input
+// but never dropped the snake_case aliases they consumed, so a snake payload
+// produced two spellings of every capability (Opus review, 2026-08-30).
+describe('toolRegistry drops the aliases it consumed', () => {
+  it('leaves one spelling per capability and descriptor field', () => {
+    const [tool] = normalizeToolDescriptors([
+      {
+        id: 'claude',
+        label: 'Claude',
+        display_name: 'Claude Code',
+        medallion_accent: 'brand',
+        default_agent_role_id: 'lead',
+        capabilities: { model_flag: '--model', account_selector: 'CLAUDE_CONFIG_DIR', usage_note: 'n/a' },
+      },
+    ])
+    expect(tool.displayName).toBe('Claude Code')
+    expect(tool.capabilities.modelFlag).toBe('--model')
+    expect(tool.capabilities.accountSelector).toBe('CLAUDE_CONFIG_DIR')
+    for (const key of ['display_name', 'medallion_accent', 'default_agent_role_id']) {
+      expect(tool).not.toHaveProperty(key)
+    }
+    for (const key of ['model_flag', 'account_selector', 'usage_note']) {
+      expect(tool.capabilities).not.toHaveProperty(key)
+    }
   })
 })
