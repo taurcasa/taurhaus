@@ -154,6 +154,18 @@ describe('workflow procedures — the shared lib', () => {
   })
 
   it.each([
+    "'just check-quick' and 'just lint'",
+    'just check-quick and just lint and cargo test stuff',
+    'cd src-tauri && cargo test coordination',
+  ])('rejects a multi-command compatibility string: %s', async (gates) => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates })).rejects.toThrow(/array of exact command strings/i)
+  })
+
+  it('rejects bracketed operational prose in an array gate', async () => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates: ['just lint [do not start the app]'] })).rejects.toThrow(/gateNotes/)
+  })
+
+  it.each([
     { gates: [''], problem: /non-empty/ },
     { gates: ['just lint\njust check-quick'], problem: /newline/ },
     { gates: ['just --summary'], problem: /just <recipe>/ },
@@ -176,6 +188,23 @@ describe('workflow procedures — the shared lib', () => {
       },
     })
     expect(result.gate.status).toBe('pass')
+  })
+
+  it.each([
+    'cargo test --lockfile-path /x/Cargo.lock coordination',
+    'cargo test coordination 2>&1 | tail -40',
+  ])('accepts a cargo test command without misreading option or redirection values: %s', async (command) => {
+    const { result } = await run('feature-pr.js', { ...BASE_ARGS, gates: [command] }, {
+      gate: {
+        ...OK_GATE,
+        commands: OK_GATE.commands.concat([{ command, status: 'pass' }]),
+      },
+    })
+    expect(result.gate.status).toBe('pass')
+  })
+
+  it('validates every cargo test clause in a chained command', async () => {
+    await expect(run('feature-pr.js', { ...BASE_ARGS, gates: ['cargo test foo && cargo test a b'] })).rejects.toThrow(/at most one positional filter/)
   })
 
   it('normalizes a Windows checkout path to its WSL form', async () => {
@@ -724,6 +753,7 @@ describe('workflow procedures — fail closed', () => {
       const gate = calls.find((c) => c.label.startsWith('gate:'))
       expect(gate.prompt).toContain('GATE NOTES')
       expect(gate.prompt).toContain(gateNotes)
+      expect(calls.filter((call) => call !== gate).every((call) => !call.prompt.includes(gateNotes))).toBe(true)
     })
 
     it(`${script} asks the gate for a structured result`, async () => {
@@ -806,6 +836,13 @@ describe('workflow procedures — Rust diff gate', () => {
     expect(gate.prompt).toContain('git diff --name-only main...HEAD')
     expect(gate.prompt).toContain('just test-rust-unit')
     expect(gate.prompt).toMatch(/first step/i)
+  })
+
+  it('tells the implementer that a Rust diff needs an executed Rust test lane', async () => {
+    const { calls } = await run('feature-pr.js', BASE_ARGS)
+    const implementer = calls.find((call) => call.label.startsWith('impl:'))
+    expect(implementer.prompt).toContain('just test-rust-unit')
+    expect(implementer.prompt).toMatch(/check-quick.*does not execute/i)
   })
 })
 

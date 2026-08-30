@@ -62,7 +62,7 @@ Every script takes the shared args below; `worktree` (or `repo`) is the only har
 | `scratch` | `/tmp/taurhaus-workflows` | where the Codex wrapper writes prompts, schemas and logs |
 | `stamp` | — | a short token appended to the scratch file names; the names already carry the checkout and the tag, so pass one only to run the same procedure in the same checkout twice in sequence (a workflow script cannot read the clock itself) |
 | `sessionUrl` | — | the `Claude-Session:` trailer value; omitted when absent |
-| `gates` | `['just check-quick', 'just lint']` | exact command strings declared for the gate; an old caller may pass one command as a string only when it contains neither `;` nor bracketed prose |
+| `gates` | `['just check-quick', 'just lint']` | exact command strings declared for the gate; an old caller may pass one unquoted, unchained command as a string only when it contains neither `;` nor bracketed prose |
 | `requiredGates` | `['just check-quick', 'just lint']` | additional exact commands that must run and pass; each is also declared automatically, and the two defaults cannot be opted out of |
 | `gateNotes` | — | operational instructions handed to the gate agent verbatim, never interpreted as commands |
 | `notes` | — | extra instructions appended to the implementer's task |
@@ -133,7 +133,11 @@ a completed ledger with no findings reads as an approval:
 - **A Rust diff runs Rust tests.** The gate's first step is
   `git diff --name-only <base>...HEAD`, returned as `changed_paths`. Any path under `src-tauri/`
   appends required gate `just test-rust-unit`, unless the caller already declared a `cargo test` or
-  `just test-rust-*` command. `just check-quick` compiles Rust tests but does not execute them.
+  `just test-rust-*` command; an existing Rust-test command is promoted to required instead. The
+  report is cross-checked against the implementation lanes' `files_changed`, so an omitted Rust path
+  cannot turn the rule off. `just check-quick` compiles Rust tests but does not execute them. The
+  automatic gate is the unit lane; callers that need Rust integration tests declare those exact gates
+  separately.
 - **What stays open is not hidden.** Findings the loop could not close come back as `remaining`.
   A blocker or major also makes the outcome `followup_required` and names the next `fix-round` call.
 - **A reviewer is named by the model that ran it.** The lane must report `model_used`, the reviewer

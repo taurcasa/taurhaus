@@ -3,7 +3,10 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { checkWorkflowSource, checkWorkflowDir, detectorWorks } from './check-workflow-scripts.mjs'
+
+const WORKFLOWS = fileURLToPath(new URL('../.claude/workflows', import.meta.url))
 
 const VALID = `export const meta = {
   name: 'demo',
@@ -119,7 +122,7 @@ describe('workflow script check', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-check-'))
     const workflows = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'research-sweep.js', 'docs-sweep.js']
     for (const workflow of workflows) {
-      fs.copyFileSync(path.join('.claude/workflows', workflow), path.join(dir, workflow))
+      fs.copyFileSync(path.join(WORKFLOWS, workflow), path.join(dir, workflow))
     }
     const drifted = path.join(dir, 'small-change.js')
     fs.writeFileSync(drifted, fs.readFileSync(drifted, 'utf8').replace('const DEFAULT_GATES =', 'const DEFAULT_GATES  ='))

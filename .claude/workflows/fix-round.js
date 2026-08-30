@@ -98,12 +98,13 @@ const CARGO_OPTIONS_WITH_VALUES = [
   '--bench',
 ]
 
-function cargoTestIndex(words) {
+function cargoTestIndices(words) {
+  const indices = []
   for (let i = 0; i < words.length - 1; i += 1) {
-    if (words[i] === 'cargo' && words[i + 1] === 'test') return i + 1
-    if (words[i] === 'cargo' && /^\+\S+/.test(words[i + 1] || '') && words[i + 2] === 'test') return i + 2
+    if (words[i] === 'cargo' && words[i + 1] === 'test') indices.push(i + 1)
+    if (words[i] === 'cargo' && /^\+\S+/.test(words[i + 1] || '') && words[i + 2] === 'test') indices.push(i + 2)
   }
-  return -1
+  return indices
 }
 
 function validateGateCommand(command, what) {
@@ -111,27 +112,30 @@ function validateGateCommand(command, what) {
   if (words[0] === 'just' && (!words[1] || words[1].startsWith('-') || !/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(words[1]))) {
     throw new Error(NAME + ': ' + what + ' must use the shape `just <recipe>` — got ' + JSON.stringify(command))
   }
-  const test = cargoTestIndex(words)
-  if (test === -1) return
-  let filters = 0
-  for (let i = test + 1; i < words.length; i += 1) {
-    const word = words[i]
-    if (word === '--' || word === '&&' || word === '||' || word === '|' || word === ';') break
-    if (word.startsWith('-')) {
-      if (CARGO_OPTIONS_WITH_VALUES.indexOf(word) !== -1) i += 1
-      continue
+  for (const test of cargoTestIndices(words)) {
+    let filters = 0
+    for (let i = test + 1; i < words.length; i += 1) {
+      const word = words[i]
+      if (word === '--' || word === '&&' || word === '||' || word === '|' || word === ';') break
+      if (word.includes('>') || word.includes('<')) break
+      if (word.startsWith('-')) {
+        if (CARGO_OPTIONS_WITH_VALUES.indexOf(word) !== -1 || /^--[^=]+$/.test(word)) i += 1
+        continue
+      }
+      filters += 1
     }
-    filters += 1
-  }
-  if (filters > 1) {
-    throw new Error(NAME + ': ' + what + ' cargo test command carries ' + filters + ' positional filters before `--`; it allows at most one positional filter — got ' + JSON.stringify(command))
+    if (filters > 1) {
+      throw new Error(NAME + ': ' + what + ' cargo test command carries ' + filters + ' positional filters before `--`; it allows at most one positional filter — got ' + JSON.stringify(command))
+    }
   }
 }
 
 function typedGateCommands(value, what, allowString) {
   if (value == null) return []
   if (typeof value === 'string') {
-    if (!allowString || value.includes(';') || /\[[^\]\n]*\]/.test(value)) {
+    const words = commandWords(value)
+    const hasConnector = words.some((word, index) => ['&&', '||', '|', 'and', 'plus', 'then'].indexOf(word) !== -1 && index > 0 && index < words.length - 1)
+    if (!allowString || value.includes(';') || /\[[^\]\n]*\]/.test(value) || /['"]/.test(value) || hasConnector) {
       throw new Error(
         NAME +
           ': ' +
@@ -150,6 +154,7 @@ function typedGateCommands(value, what, allowString) {
   return value.map((entry, index) => {
     if (typeof entry !== 'string') throw new Error(NAME + ': ' + what + '[' + index + '] must be an exact command string — got ' + JSON.stringify(entry))
     if (/\r|\n/.test(entry)) throw new Error(NAME + ': ' + what + '[' + index + '] must not contain a newline — got ' + JSON.stringify(entry))
+    if (/\[[^\]\n]*\]/.test(entry)) throw new Error(NAME + ': ' + what + '[' + index + '] must not contain bracketed prose; move operational prose to args.gateNotes — got ' + JSON.stringify(entry))
     const command = entry.trim()
     if (!command) throw new Error(NAME + ': ' + what + '[' + index + '] must be non-empty')
     validateGateCommand(command, what + '[' + index + ']')
@@ -180,7 +185,7 @@ const GATE_NOTES = A.gateNotes || ''
 
 function isRustTestGate(command) {
   const words = commandWords(command)
-  if (cargoTestIndex(words) !== -1) return true
+  if (cargoTestIndices(words).length > 0) return true
   return words.some((word, index) => word === 'just' && /^test-rust(?:-|$)/.test(words[index + 1] || ''))
 }
 
@@ -365,7 +370,10 @@ const RULES = {
     'COMMIT DISCIPLINE: `git add` the files you touched (never `git add -A`) and commit after every green step — a killed run must leave a tree one `git stash` away from clean. Never edit ledger rows in plan documents; the orchestrator fills them at merge.',
   tdd:
     'TDD: write the test first, run it to observe red, then implement and observe green. A regression test carries a "// Regression:" comment naming the commit that broke it.',
-  gates: 'GATES (exact commands; run from the checkout root):\n' + GATES.map((command) => '- ' + command).join('\n'),
+  gates:
+    'GATES (exact commands; run from the checkout root):\n' +
+    GATES.map((command) => '- ' + command).join('\n') +
+    '\nRUST DIFF RULE: if your diff touches `src-tauri/`, also run `just test-rust-unit` — `just check-quick` compiles the Rust tests but does not execute them.',
   gateNotes: GATE_NOTES ? 'GATE NOTES (operational instructions, not commands):\n' + GATE_NOTES : '',
   gateResult: (base) =>
     'As your first step, run `git diff --name-only ' +
@@ -581,7 +589,7 @@ if (OPEN.length === 0) throw new Error(NAME + ': args.findings must be the open 
 const START_ROUND = A.startRound || 2
 const MAX_ROUNDS = A.maxRounds || 2
 
-const COMMON = [RULES.checkout, RULES.spec, RULES.gates, RULES.gateNotes, RULES.tdd, RULES.commits, RULES.safety].filter(Boolean).join('\n')
+const COMMON = [RULES.checkout, RULES.spec, RULES.gates, RULES.tdd, RULES.commits, RULES.safety].filter(Boolean).join('\n')
 
 const IMPL_SCHEMA = {
   type: 'object',
@@ -787,6 +795,7 @@ phase('Gate')
 const gate = await agent(
   [
     COMMON,
+    RULES.gateNotes,
     '',
     'Final gate for ' +
       TITLE +
