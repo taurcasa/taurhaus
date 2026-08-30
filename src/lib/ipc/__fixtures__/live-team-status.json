@@ -1,0 +1,32 @@
+{
+  "leadName": "team-lead",
+  "members": [
+    {
+      "behaviorSummary": "Preserve future fields",
+      "cliTool": "codex",
+      "contextSummary": "Own the frontend contract",
+      "description": "Fixture member",
+      "focusArea": "Lossless IPC",
+      "isCrossProject": true,
+      "model": "gpt-5.6-sol",
+      "name": "fixture-developer",
+      "paneId": "%42",
+      "projectId": "/fixtures/project",
+      "projectLabel": "fixture-project",
+      "reasoningEffort": "high",
+      "role": "member",
+      "roleId": "codex-developer",
+      "roleName": "Codex Developer",
+      "sessionId": "fixture-session",
+      "sessionStatus": "active",
+      "taskEffort": "high",
+      "taskEffortWhy": "The fixture covers every field",
+      "workflowActivity": {
+        "last_write_at": 1800000000000,
+        "live_runs": 2
+      }
+    }
+  ],
+  "runtimeSnapshotFreshness": "fresh",
+  "teamName": "fixture-team"
+}

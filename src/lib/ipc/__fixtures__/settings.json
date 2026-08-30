@@ -1,0 +1,190 @@
+{
+  "codeTheme": {
+    "dark": "fixture-dark",
+    "light": "fixture-light"
+  },
+  "daemon": {
+    "autoStart": true,
+    "path": "/fixtures/taurhaus-daemon",
+    "port": 17333
+  },
+  "darkMode": true,
+  "ignorePatterns": [
+    "fixture-ignore"
+  ],
+  "projectDialogLastPath": "/fixtures/last-project",
+  "scanDirectories": [
+    "/fixtures/projects"
+  ],
+  "terminal": {
+    "cliCommands": {
+      "agy": {
+        "continueCmd": "agy --continue",
+        "fresh": "agy",
+        "resume": "agy --resume fixture-session"
+      },
+      "claude": {
+        "continueCmd": "claude --continue",
+        "fresh": "claude",
+        "resume": "claude --resume fixture-session"
+      },
+      "codex": {
+        "continueCmd": "codex --continue",
+        "fresh": "codex",
+        "resume": "codex --resume fixture-session"
+      },
+      "grok": {
+        "continueCmd": "grok --continue",
+        "fresh": "grok",
+        "resume": "grok --resume fixture-session"
+      }
+    },
+    "customCommand": "fixture-terminal {tmux_session}",
+    "defaultAccountIds": {
+      "claude": "fixture-claude-account",
+      "codex": "fixture-codex-account"
+    },
+    "emulator": "manual",
+    "harness": {
+      "agyHooks": true,
+      "grokHooks": true
+    },
+    "tmuxLayout": "new_window"
+  },
+  "terminalContract": {
+    "cliCommandDefaults": {
+      "agy": {
+        "continueCmd": "agy --continue",
+        "fresh": "agy",
+        "resume": "agy --resume fixture-session"
+      },
+      "claude": {
+        "continueCmd": "claude --continue",
+        "fresh": "claude",
+        "resume": "claude --resume fixture-session"
+      },
+      "codex": {
+        "continueCmd": "codex --continue",
+        "fresh": "codex",
+        "resume": "codex --resume fixture-session"
+      },
+      "grok": {
+        "continueCmd": "grok --continue",
+        "fresh": "grok",
+        "resume": "grok --resume fixture-session"
+      }
+    },
+    "cliVersions": {
+      "agy": "1.1.22",
+      "agyHooksSupported": true,
+      "claude": "2.1.246",
+      "codex": "0.150.1",
+      "codexCompactionHooksSupported": true,
+      "codexNotifySupported": true,
+      "codexQueueWakeSupported": true
+    },
+    "defaultEmulator": "manual",
+    "modelCatalog": {
+      "agy": [
+        {
+          "defaultEffort": "high",
+          "deprecated": true,
+          "efforts": [
+            "high"
+          ],
+          "id": "fixture-agy",
+          "label": "Fixture fixture-agy",
+          "replacement": "fixture-agy-replacement"
+        }
+      ],
+      "claude": [
+        {
+          "defaultEffort": "high",
+          "deprecated": true,
+          "efforts": [
+            "high"
+          ],
+          "id": "fixture-claude",
+          "label": "Fixture fixture-claude",
+          "replacement": "fixture-claude-replacement"
+        }
+      ],
+      "codex": [
+        {
+          "defaultEffort": "high",
+          "deprecated": true,
+          "efforts": [
+            "high"
+          ],
+          "id": "fixture-codex",
+          "label": "Fixture fixture-codex",
+          "replacement": "fixture-codex-replacement"
+        }
+      ],
+      "grok": [
+        {
+          "defaultEffort": "high",
+          "deprecated": true,
+          "efforts": [
+            "high"
+          ],
+          "id": "fixture-grok",
+          "label": "Fixture fixture-grok",
+          "replacement": "fixture-grok-replacement"
+        }
+      ]
+    },
+    "platform": "linux",
+    "supportedEmulators": [
+      "manual",
+      "custom"
+    ],
+    "tools": [
+      {
+        "accent": "sky",
+        "aliases": [
+          "codex",
+          "fixture-codex"
+        ],
+        "capabilities": {
+          "accountSelection": true,
+          "accountSelector": "CODEX_HOME",
+          "authoritativeIdle": true,
+          "autoApproveFlag": "--yolo",
+          "catalog": true,
+          "compactionHook": true,
+          "compactionHookCompatImport": true,
+          "displayNameFlag": "--display-name",
+          "effortFlag": {
+            "flag": "-c",
+            "key": "model_reasoning_effort",
+            "kind": "config"
+          },
+          "hookTrust": true,
+          "managedHome": true,
+          "modelFlag": "-m",
+          "nativeInboxPoller": true,
+          "notifySink": true,
+          "runtimeSessionCapture": true,
+          "sessionRoot": "toolHome",
+          "sessionSource": true,
+          "teamConfigNamespace": true,
+          "teamFlags": true,
+          "transcriptParser": true,
+          "usage": true,
+          "usageNote": "Fixture usage note"
+        },
+        "defaultAgentRoleId": "fixture-developer",
+        "displayName": "Codex fixture CLI",
+        "id": "codex",
+        "label": "Codex fixture",
+        "medallionAccent": "emerald"
+      }
+    ]
+  },
+  "thresholds": {
+    "activeDays": 3,
+    "recentDays": 14,
+    "staleDays": 45
+  }
+}
