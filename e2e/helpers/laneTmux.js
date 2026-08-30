@@ -72,7 +72,7 @@ export function parseProcEnviron(raw) {
  * the same shape of problem, but it costs a subscription turn to re-verify and
  * nothing here was run against it; moving it is its own change.
  */
-export const ISOLATED_TMUX_SPECS = ['managed-stage-codex.js']
+const ISOLATED_TMUX_SPECS = ['managed-stage-codex.js']
 
 /** Whether this WDIO session runs a spec that needs its own tmux server. */
 export function wantsIsolatedTmux(specs) {
