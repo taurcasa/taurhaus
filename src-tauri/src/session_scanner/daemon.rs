@@ -72,8 +72,8 @@ fn fetch_runtime_session_snapshot() -> Option<RuntimeSessionSnapshotResult> {
     use std::net::TcpStream;
     use std::time::Duration;
 
-    const DAEMON_ADDR: &str = "127.0.0.1:17233";
     const DAEMON_TIMEOUT: Duration = Duration::from_millis(500);
+    let daemon_addr = format!("127.0.0.1:{}", crate::daemon::server::app_daemon_port());
 
     let request = crate::daemon::protocol::DaemonRequest::new(
         "windows-session-scan",
@@ -82,7 +82,7 @@ fn fetch_runtime_session_snapshot() -> Option<RuntimeSessionSnapshotResult> {
     )
     .with_auth(crate::daemon::auth::read_auth_token());
 
-    let mut stream = TcpStream::connect(DAEMON_ADDR).ok()?;
+    let mut stream = TcpStream::connect(daemon_addr).ok()?;
     stream.set_nodelay(true).ok()?;
     stream.set_read_timeout(Some(DAEMON_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(DAEMON_TIMEOUT)).ok()?;

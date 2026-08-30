@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use taurhaus_lib::daemon::server::{DaemonConfig, DEFAULT_PORT};
+use taurhaus_lib::daemon::server::{app_daemon_port, DaemonConfig, DEFAULT_PORT};
 use taurhaus_lib::logging::{install_global_sink, LogFileState};
 use taurhaus_lib::provider::local::LocalProvider;
 use taurhaus_lib::provider::platform_paths::PlatformPaths;
@@ -324,7 +324,7 @@ fn parse_args() -> Result<ParseOutcome, String> {
 
 fn parse_args_from(raw: &[String]) -> Result<ParseOutcome, String> {
     let mut args = Args {
-        port: DEFAULT_PORT,
+        port: app_daemon_port(),
         bind_addr: "127.0.0.1".to_string(),
         idle_timeout_secs: Some(600),
         data_dir: None,
@@ -410,7 +410,9 @@ fn print_help() {
     eprintln!("       taurhaus-daemon agy-hook <busy|idle>");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT})");
+    eprintln!(
+        "  -p, --port <PORT>          TCP port to listen on (default: {DEFAULT_PORT}, or $TAURHAUS_DAEMON_PORT when set)"
+    );
     eprintln!("  -b, --bind <ADDR>          Bind address (default: 127.0.0.1)");
     eprintln!(
         "      --idle-timeout <SECS>  Auto-shutdown after N idle seconds (default: 600, 0=disable)"
@@ -480,6 +482,28 @@ mod tests {
             args.data_dir.as_deref(),
             Some(std::path::Path::new("/tmp/taurhaus-data"))
         );
+    }
+
+    // Regression: commit 8062b86a made TAURHAUS_DAEMON_PORT authoritative for
+    // app-side daemon operations, but a manually started daemon still ignored
+    // it unless the same port was repeated as a CLI flag.
+    #[test]
+    fn daemon_port_env_is_the_default_without_a_cli_flag() {
+        let _guard = taurhaus_lib::test_support::acquire_env_test_guard();
+        let key = "TAURHAUS_DAEMON_PORT";
+        let previous = std::env::var_os(key);
+        std::env::set_var(key, "27123");
+
+        let parsed = parse_args_from(&["taurhaus-daemon".to_string()]);
+
+        match previous {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
+        let ParseOutcome::Run(args) = parsed.expect("parse args") else {
+            panic!("expected daemon run args");
+        };
+        assert_eq!(args.port, 27123);
     }
 
     #[test]

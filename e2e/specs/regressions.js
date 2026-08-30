@@ -14,6 +14,7 @@ import { selectProjectByName, switchToTab, waitForProjectsLoaded } from '../help
 import { TAURHAUS_CLAUDE_DIR, TAURHAUS_PROJECT_PATH } from '../helpers/platform.js'
 import { POLL, WAIT_MEDIUM } from '../helpers/timing.js'
 import { ensureAttachedTmuxSession, killTmuxPane, openTmuxWindow } from '../helpers/tmux.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 
 const REGRESSION_STAMP = Date.now()
 const REGRESSION_TEAM = `event-pipeline-team-${REGRESSION_STAMP}`
@@ -61,6 +62,7 @@ describe('Regressions', () => {
   let mainApp = false
 
   before(async () => {
+    assertTmuxIsolation(process.env)
     await waitForAppReady()
     mainApp = await ensureMainApp()
   })

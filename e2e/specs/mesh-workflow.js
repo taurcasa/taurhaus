@@ -9,6 +9,8 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { waitForProjectsLoaded, clickTestId, switchToTab } from '../helpers/navigation.js'
 import { WAIT_SHORT, WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
+import { assertWorkerMeshAvailable } from '../helpers/workerEnv.js'
 
 let mainApp = false
 let tier2Enabled = false
@@ -165,6 +167,7 @@ async function selectFirstNonEmptyOption(selector) {
 
 describe('Mesh Workflow', () => {
   before(async () => {
+    assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
     await waitForAppReady()
@@ -184,6 +187,7 @@ describe('Mesh Workflow', () => {
     }
 
     const report = availability.result || {}
+    assertWorkerMeshAvailable(report)
     const canInitialize = report.canInitialize !== false
     const meshAvailable = report.meshAvailable !== false
     const tmuxAvailable = report.tmuxAvailable !== false

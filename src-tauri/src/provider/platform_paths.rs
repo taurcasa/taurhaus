@@ -14,6 +14,7 @@ const AGY_DIR_OVERRIDE_ENV: &str = "TAURHAUS_AGY_DIR";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const HOOKS_DIRNAME: &str = "hooks";
 const DAEMON_BINARY_NAME: &str = "taurhaus-daemon";
+const DAEMON_BINARY_OVERRIDE_ENV: &str = "TAURHAUS_DAEMON_BINARY";
 pub(crate) const DAEMON_TOKEN_FILENAME: &str = "daemon.token";
 
 /// Central authority for platform-sensitive path resolution.
@@ -147,6 +148,9 @@ impl PlatformPaths {
     /// On Windows this resolves to the WSL Linux path because the daemon is
     /// executed inside WSL, not from the Windows filesystem.
     pub fn daemon_binary_path() -> PathBuf {
+        if let Some(path) = env_path_override(DAEMON_BINARY_OVERRIDE_ENV) {
+            return path;
+        }
         if cfg!(target_os = "windows") {
             if let Some(home) = mesh_cli::resolve_wsl_home_for_coordination() {
                 return PathBuf::from(format!("{home}/.local/bin/{DAEMON_BINARY_NAME}"));
@@ -499,6 +503,19 @@ mod tests {
                     .join(DAEMON_BINARY_NAME)
             );
         }
+    }
+
+    // Regression: commit 7908cbf4 isolated the E2E daemon port but forced the
+    // app to launch the operator-installed daemon, which can predate the
+    // worker's isolated auth-root behavior when installation is opted out.
+    #[test]
+    fn daemon_binary_path_uses_worker_override_when_set() {
+        let _guard = acquire_env_test_guard();
+        let root = TempDir::new().expect("tempdir");
+        let daemon = root.path().join("taurhaus-daemon");
+        let _env = EnvRestore::apply(&[("TAURHAUS_DAEMON_BINARY", Some(daemon.as_path()))]);
+
+        assert_eq!(PlatformPaths::daemon_binary_path(), daemon);
     }
 
     #[test]

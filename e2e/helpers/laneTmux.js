@@ -1,5 +1,5 @@
 /**
- * The tmux server a paid lane is allowed to create panes on.
+ * The tmux server an E2E worker is allowed to create panes on.
  *
  * taurhaus puts every managed pane in a tmux session called `taurhaus`
  * (`TAURHAUS_TMUX_SESSION_NAME`, not configurable), and a lane has to push its
@@ -10,11 +10,11 @@
  * pane the operator opens next, and a pane the lane fails to account for
  * outlives the run.
  *
- * So the lane runs against a tmux *server* of its own: `TMUX_TMPDIR` points at a
+ * So every worker runs against a tmux *server* of its own: `TMUX_TMPDIR` points at a
  * directory inside the wdio session temp root, every process that speaks tmux
  * (this one, the app, the daemons it spawns) inherits it, and teardown kills
  * that server outright. Two things decide whether that actually happened, and
- * both are worth checking before a lane spends a subscription turn:
+ * both are checked before any tmux-driving spec makes its first call:
  *
  *   - `TMUX_TMPDIR` has to name the lane's own socket directory;
  *   - `TMUX` has to be *unset*. A client inside a tmux pane resolves the socket
@@ -23,7 +23,9 @@
  *     operator's server while believing it is isolated.
  */
 
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import * as tmuxHelpers from './tmux.js'
 
 /** The socket directory for the lane's own tmux server. */
 export function isolatedTmuxTmpdir(sessionTempRoot) {
@@ -65,20 +67,82 @@ export function parseProcEnviron(raw) {
   return environment
 }
 
-/**
- * The specs that must run against a tmux server of their own.
- *
- * Only the managed-stage lane, deliberately. `compaction-codex-hooks.js` has
- * the same shape of problem, but it costs a subscription turn to re-verify and
- * nothing here was run against it; moving it is its own change.
- */
-const ISOLATED_TMUX_SPECS = ['managed-stage-codex.js']
+/** Sorted names of callable exports from the tmux helper module. */
+export function callableExportNames(moduleExports) {
+  return Object.entries(moduleExports)
+    .filter(([, value]) => typeof value === 'function')
+    .map(([name]) => name)
+    .sort()
+}
 
-/** Whether this WDIO session runs a spec that needs its own tmux server. */
-export function wantsIsolatedTmux(specs) {
-  return (specs ?? []).some((spec) =>
-    ISOLATED_TMUX_SPECS.some((name) => String(spec ?? '').endsWith(name))
-  )
+const TMUX_CALL_PATTERNS = [
+  /\bexecFileSync\s*\(\s*['"]tmux['"]/g,
+  new RegExp(
+    `\\b(?:${callableExportNames(tmuxHelpers).join('|')})\\s*\\(`,
+    'g'
+  ),
+]
+
+function firstTmuxCallOffset(source) {
+  let first = -1
+  for (const pattern of TMUX_CALL_PATTERNS) {
+    pattern.lastIndex = 0
+    const match = pattern.exec(source)
+    if (match && (first < 0 || match.index < first)) first = match.index
+  }
+  return first
+}
+
+/** Spec filenames whose source invokes tmux directly or through the pane helper. */
+export function findTmuxDrivingSpecs(specsDir) {
+  return readdirSync(specsDir)
+    .filter((name) => name.endsWith('.js'))
+    .sort()
+    .filter((name) => firstTmuxCallOffset(readFileSync(join(specsDir, name), 'utf8')) >= 0)
+}
+
+/** Missing or late isolation assertions in tmux-driving specs. */
+export function tmuxIsolationCoverageProblems(specsDir) {
+  const problems = []
+  for (const name of findTmuxDrivingSpecs(specsDir)) {
+    const source = readFileSync(join(specsDir, name), 'utf8')
+    const tmuxOffset = firstTmuxCallOffset(source)
+    const assertionOffset = source.indexOf('assertTmuxIsolation(')
+    if (assertionOffset < 0) {
+      problems.push(`${name}: call assertTmuxIsolation before the first tmux call`)
+    } else if (assertionOffset > tmuxOffset) {
+      problems.push(`${name}: assertTmuxIsolation is after the first tmux call`)
+    }
+
+    const snapshotPattern = /\bsnapshotTmuxPanes\s*\(/g
+    const snapshot = snapshotPattern.exec(source)
+    if (!snapshot) continue
+    const beforeHooks = Array.from(source.matchAll(/\bbefore\s*\(/g))
+      .filter((match) => match.index < snapshot.index)
+    const hookOffset = beforeHooks.at(-1)?.index ?? -1
+    if (hookOffset < 0) {
+      problems.push(
+        `${name}: call snapshotTmuxPanes from a before hook that asserts isolation first`
+      )
+      continue
+    }
+    const hookAssertionOffset = hookOffset >= 0
+      ? source.indexOf('assertTmuxIsolation(', hookOffset)
+      : -1
+    if (hookAssertionOffset < hookOffset || hookAssertionOffset > snapshot.index) {
+      problems.push(
+        `${name}: call assertTmuxIsolation in the before hook before snapshotTmuxPanes`
+      )
+    }
+  }
+  return problems
+}
+
+/** Throw before a spec can address any tmux server it does not own. */
+export function assertTmuxIsolation(environment, sessionTempRoot) {
+  const root = sessionTempRoot || dirname(String(environment?.TAURHAUS_DATA_DIR ?? ''))
+  const problem = tmuxIsolationProblem(environment, root)
+  if (problem) throw new Error(`E2E tmux isolation is required: ${problem}`)
 }
 
 /**

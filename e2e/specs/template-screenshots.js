@@ -12,6 +12,7 @@ import { waitForAppReady, ensureMainApp } from '../helpers.js'
 import { clickTestId, fastClick, waitForProjectsLoaded } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
+import { assertTmuxIsolation } from '../helpers/laneTmux.js'
 
 const screenshotDir = resolve(import.meta.dirname, '..', 'screenshots', 'templates')
 let mainApp = false
@@ -313,6 +314,7 @@ async function buildFullTeam() {
 
 describe('Roster Builder screenshot capture', () => {
   before(async () => {
+    assertTmuxIsolation(process.env)
     tmuxPaneSnapshot = snapshotTmuxPanes()
 
     rmSync(screenshotDir, { recursive: true, force: true })
