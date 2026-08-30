@@ -23,7 +23,7 @@ Per-module `#[test]` functions with `pretty_assertions` for readable diffs and `
 just test-rust            # Full Rust lane (fast compile + unit + integration/system)
 just test-rust-fast       # Compile check only (fast feedback)
 just test-rust-unit       # Unit/bin tests, heavy suites excluded
-just test-rust-integration # Serialized integration/system suites
+just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites, serialized
 just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
 
@@ -145,7 +145,7 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 | `just test-fast` | Rust compile-check + frontend Vitest |
 | `just test-rust-fast` | Cargo test compile check |
 | `just test-rust-unit` | Rust unit tests (no daemon/network) |
-| `just test-rust-integration` | System/integration tests |
+| `just test-rust-integration` | Every `src-tauri/tests/*.rs` system/integration test binary plus the heavy `--lib` suites, serialized |
 | `just test-frontend` | Vitest frontend tests |
 | `just test-visual` | Browser-mode visual screenshot lane |
 | `just visual-shot C S [V] [T] [OUT]` | One fixture shot at window size via Edge headless |

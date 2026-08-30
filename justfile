@@ -5,6 +5,9 @@
 project   := justfile_directory()
 win_dir   := env_var_or_default("TAURHAUS_WINDOWS_BUILD_DIR", "/mnt/c/taurhaus_build")
 windows_bun_version := `node -p 'require("./package.json").packageManager.split("@").slice(1).join("@")'`
+# Top-level-only by specification; Cargo `tests/<dir>/main.rs` targets require explicit future handling.
+integration_test_args := `for test_file in src-tauri/tests/*.rs; do test_name="${test_file##*/}"; printf -- '--test %s ' "${test_name%.rs}"; done`
+heavy_rust_test_filters := "daemon::server::tests:: daemon::event_listener::tests:: provider::daemon_client::tests:: daemon::launcher::tests:: fs::watcher::tests::watcher_starts_and_stops fs::watcher::tests::unwatch_all_clears_everything"
 
 # macOS remote build host (Scaleway Mac mini)
 mac_host  := "m1@62.210.195.235"
@@ -268,23 +271,12 @@ test-rust-fast: ensure-tauri-resources
 
 # Rust unit-test execution lane (excludes heavy daemon/network/watcher suites).
 test-rust-unit: ensure-tauri-resources
-    cd src-tauri && cargo test --lib --bins -- --test-threads=1 --skip daemon::server::tests:: --skip daemon::event_listener::tests:: --skip provider::daemon_client::tests:: --skip daemon::launcher::tests:: --skip fs::watcher::tests::watcher_starts_and_stops --skip fs::watcher::tests::unwatch_all_clears_everything
+    cd src-tauri && heavy_test_filters="{{heavy_rust_test_filters}}"; skip_args=""; for test_filter in $heavy_test_filters; do skip_args="$skip_args --skip $test_filter"; done; cargo test --lib --bins -- --test-threads=1 $skip_args
 
 # Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
-    cd src-tauri && cargo test --test cli_renderers -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_feature_gate -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_integration -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_module_visibility -- --test-threads=1
-    cd src-tauri && cargo test --test coordination_onboarding_linux_e2e -- --test-threads=1
-    cd src-tauri && cargo test --test module_boundary_assertions -- --test-threads=1
-    cd src-tauri && cargo test --test session_pipeline -- --test-threads=1
-    cd src-tauri && cargo test --lib daemon::server::tests:: -- --test-threads=1
-    cd src-tauri && cargo test --lib daemon::event_listener::tests:: -- --test-threads=1
-    cd src-tauri && cargo test --lib provider::daemon_client::tests:: -- --test-threads=1
-    cd src-tauri && cargo test --lib daemon::launcher::tests:: -- --test-threads=1
-    cd src-tauri && cargo test --lib fs::watcher::tests::watcher_starts_and_stops -- --test-threads=1
-    cd src-tauri && cargo test --lib fs::watcher::tests::unwatch_all_clears_everything -- --test-threads=1
+    cd src-tauri && cargo test {{integration_test_args}} -- --test-threads=1
+    cd src-tauri && for test_filter in {{heavy_rust_test_filters}}; do echo "▸ $test_filter"; cargo test --lib "$test_filter" -- --test-threads=1 || exit; done
 
 # Bisect default Rust unit-test lane by module groups with checkpoints
 test-rust-bisect-unit:
