@@ -1,9 +1,10 @@
 //! Member runtime state store.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -19,6 +20,8 @@ use crate::session_scanner::cli_tool::CliTool;
 
 const RUNTIME_DIRNAME: &str = "runtime";
 const RUNTIME_SCHEMA_VERSION: u32 = 3;
+static RUNTIME_RECORD_SKIP_REASONS: OnceLock<Mutex<HashMap<(String, String), String>>> =
+    OnceLock::new();
 const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
     Duration::from_millis(100),
     Duration::from_millis(200),
@@ -268,7 +271,10 @@ impl MemberRuntimeStore {
                 }
             };
             match parse_runtime_record(&raw, team_name, &member_name) {
-                Ok(record) => results.push((member_name, record)),
+                Ok(record) => {
+                    clear_runtime_record_skipped(team_name, &member_name);
+                    results.push((member_name, record));
+                }
                 Err(err) => {
                     log_runtime_record_skipped(team_name, &member_name, &err.to_string());
                     continue;
@@ -784,6 +790,17 @@ fn log_runtime_store_error(
 }
 
 fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) {
+    let skip_reasons = RUNTIME_RECORD_SKIP_REASONS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut skip_reasons = skip_reasons
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let key = (team_name.to_string(), member_name.to_string());
+    if skip_reasons.get(&key).map(String::as_str) == Some(reason) {
+        return;
+    }
+    skip_reasons.insert(key, reason.to_string());
+    drop(skip_reasons);
+
     let mut fields = Map::new();
     fields.insert("team".to_string(), Value::String(team_name.to_string()));
     fields.insert("member".to_string(), Value::String(member_name.to_string()));
@@ -801,6 +818,16 @@ fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) 
         reason,
         "member runtime record was skipped"
     );
+}
+
+fn clear_runtime_record_skipped(team_name: &str, member_name: &str) {
+    let Some(skip_reasons) = RUNTIME_RECORD_SKIP_REASONS.get() else {
+        return;
+    };
+    skip_reasons
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(&(team_name.to_string(), member_name.to_string()));
 }
 
 const fn schema_version_one() -> u32 {
@@ -1455,11 +1482,13 @@ mod tests {
     }
 
     #[test]
-    fn load_all_skips_corrupt_files_with_one_diagnostic_each() {
+    fn load_all_skips_corrupt_files_with_one_diagnostic_across_repeated_loads() {
+        // Regression: 56712858 emitted the same warning on every two-second
+        // status poll while a persistent corrupt runtime file remained.
         let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path();
-        let team_name = "architecture-final";
+        let team_name = "runtime-skip-dedup";
 
         let valid = sample_record("valid-agent");
         MemberRuntimeStore::save(teams_dir, team_name, "valid-agent", &valid).expect("save");
@@ -1474,15 +1503,18 @@ mod tests {
 
         let results =
             MemberRuntimeStore::load_all(teams_dir, team_name).expect("load_all should succeed");
+        let repeated_results =
+            MemberRuntimeStore::load_all(teams_dir, team_name).expect("repeat should succeed");
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "valid-agent");
         assert_eq!(results[0].1, valid);
+        assert_eq!(repeated_results, results);
 
-        let contents = wait_for_log_contains(
-            &log_path,
-            "\"event\":\"coordination.runtime.record_skipped\"",
-        );
+        log_state
+            .flush_for_test()
+            .expect("flush runtime diagnostics");
+        let contents = fs::read_to_string(&log_path).expect("read runtime diagnostics");
         assert_eq!(
             contents
                 .matches("\"event\":\"coordination.runtime.record_skipped\"")
@@ -1779,17 +1811,5 @@ mod tests {
             }
             other => panic!("expected io error, got {other:?}"),
         }
-    }
-
-    fn wait_for_log_contains(path: &Path, needle: &str) -> String {
-        for _ in 0..50 {
-            if let Ok(contents) = fs::read_to_string(path) {
-                if contents.contains(needle) {
-                    return contents;
-                }
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        fs::read_to_string(path).unwrap_or_default()
     }
 }
