@@ -412,6 +412,32 @@ describe('Settings component', () => {
     )
   })
 
+  // Regression: a chosen global default returned before the opaque-head check,
+  // so an operator with both saw "default" where the launch command was in fact
+  // a wrapper that decides the account itself. (Codex review, round 6.)
+  it('warns about a wrapper even when a global default is chosen', async () => {
+    getSettings.mockResolvedValue(
+      mockSettings({ terminal: { default_account_ids: { claude: 'account-1' } } })
+    )
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command: 'my-claude-wrapper --dangerously-skip-permissions',
+          expansions: [],
+          opaqueHead: 'my-claude-wrapper',
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent(
+      'taurhaus could not select an account: your launch command runs "my-claude-wrapper", which is not the Claude CLI'
+    )
+    expect(line).not.toHaveTextContent('— default')
+  })
+
   // Regression: 1c779eb gave this line the backend's resolved bases and left
   // nothing to invalidate them. Saving a launch command only wrote settings, so
   // the line went on describing the command the operator had just replaced —

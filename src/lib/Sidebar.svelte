@@ -399,9 +399,14 @@
       tool,
       accountId,
       launch: (projectId, launchMode, launchTool, launchAccountId) =>
-        stopClaudeSession(pane, launchTool).then(() =>
-          launchCliSession(projectId, launchMode, launchTool, launchAccountId)
-        ),
+        stopClaudeSession(pane, launchTool)
+          .then(() => launchCliSession(projectId, launchMode, launchTool, launchAccountId))
+          .then((result) => {
+            // A restart is a launch: an account it could not enforce is
+            // reported the same way a fresh launch reports it.
+            noteAccountNotApplied(project, result, launchTool)
+            return result
+          }),
       onError: (error) => {
         console.error('Failed to restart session:', error)
         showSidebarNotice(describeSessionActionError('restart', { tool }, error))

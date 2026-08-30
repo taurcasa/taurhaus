@@ -394,6 +394,36 @@ describe('Sidebar account submenus', () => {
     })
   })
 
+  // Regression: the restart path returned launchCliSession's result without
+  // reading it, so a restart through a wrapper taurhaus cannot see through
+  // reported nothing while a fresh launch through the same wrapper warned.
+  // (Codex review of the launch-base work, round 6.)
+  it('names the wrapper it could not select an account for on a restart too', async () => {
+    getSessionsForProject.mockImplementation(() => [
+      { state: 'active', cli_tool: 'claude', tmux_pane: '%9', tmux_session: 'team', tmux_window: '2' },
+    ])
+    launchCliSession.mockResolvedValue({
+      tmux_session: 'team',
+      tmux_window: '2',
+      tmux_pane: '%9',
+      account_applied: false,
+      account_note: 'opaque_base_command',
+      account_note_detail: 'my-claude-wrapper',
+    })
+
+    await openProjectMenu()
+
+    await hoverOpenSubmenu('menu-item-restart-claude')
+    await fireEvent.mouseDown(screen.getByTestId('submenu-item-matthias'))
+
+    await waitFor(() => {
+      expect(stopClaudeSession).toHaveBeenCalledWith('%9', 'claude')
+      expect(screen.getByTestId('sidebar-notice-message')).toHaveTextContent(
+        'taurhaus could not select an account: your launch command runs "my-claude-wrapper", which is not the Claude CLI'
+      )
+    })
+  })
+
   it('is reachable from the keyboard: ArrowRight opens the submenu, Enter launches', async () => {
     await openProjectMenu()
 

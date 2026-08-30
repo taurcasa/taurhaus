@@ -264,17 +264,21 @@
    */
   function effectiveDefault(tool) {
     const state = accountState(tool.id)
+    const configured = state.accounts.find(
+      (account) => account.is_process_default || account.is_default
+    )
+    const bases = launchBases(tool)
+    // A launch command taurhaus cannot see through decides the account itself,
+    // whatever was chosen here — so the warning outranks every precedence rule
+    // below, the chosen global default included.
+    const opaqueHead = bases.map((base) => base.opaqueHead ?? base.opaque_head).find(Boolean)
+    if (opaqueHead) return { account: configured, origin: opaqueBaseNotice(opaqueHead, tool.id) }
     const chosen = state.accounts.find(
       (account) => account.id === persistedDefaultAccountId(tool.id)
     )
     if (chosen) return { account: chosen, origin: 'default' }
-    const configured = state.accounts.find(
-      (account) => account.is_process_default || account.is_default
-    )
     const selector = tool.capabilities.accountSelector
-    for (const base of launchBases(tool)) {
-      const head = base.opaqueHead ?? base.opaque_head
-      if (head) return { account: configured, origin: opaqueBaseNotice(head, tool.id) }
+    for (const base of bases) {
       const account = baseSelectorAccount(base.command, selector, state.accounts)
       if (!account) continue
       const alias = base.expansions?.[0]
