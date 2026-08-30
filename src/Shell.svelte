@@ -644,6 +644,8 @@
       projectName={pendingAccount.projectName}
       defaultAccountId={pendingAccountState.defaultAccountId}
       degraded={pendingAccountState.degraded}
+      reason={pendingAccount.reason ?? null}
+      preselectedAccountId={pendingAccount.preselectedAccountId ?? null}
       {dark}
       onConfirm={(accountId, remember) => pendingAccount?.confirm(accountId, remember)}
       onCancel={() => pendingAccount?.cancel()}

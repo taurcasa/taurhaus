@@ -1,5 +1,5 @@
 <script>
-  import { compactSelection } from '../usageWindows.js'
+  import { compactSelection, resetLabel } from '../usageWindows.js'
 
   let {
     tool,
@@ -93,18 +93,6 @@
     return `${Math.max(1, minutes)}m`
   }
 
-  function resetLabel(window) {
-    if (window.resets_at == null) return null
-    const date = new Date(Number(window.resets_at) * 1000)
-    if (!Number.isFinite(date.getTime())) return null
-    const moreThanDay = date.getTime() - now > 24 * 60 * 60 * 1000
-    return new Intl.DateTimeFormat(undefined, {
-      ...(moreThanDay ? { weekday: 'short' } : {}),
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
-  }
-
   function statusSuffix() {
     if (usage?.status === 'unauthorized') return 'sign in again'
     if (usage?.status === 'stale') {
@@ -134,9 +122,9 @@
             data-testid={barTestId(window, index)}
           ></span>
         </span>
-        {#if !legacy && resetLabel(window)}
+        {#if !legacy && resetLabel(window.resets_at, now)}
           <span class="text-[10px] leading-none {mutedTone}" data-testid="usage-reset">
-            Resets {resetLabel(window)}
+            Resets {resetLabel(window.resets_at, now)}
           </span>
         {/if}
       </span>

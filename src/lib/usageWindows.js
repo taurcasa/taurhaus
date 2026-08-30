@@ -43,3 +43,22 @@ export function exhaustedUsage(usage) {
   const spent = windows.find((window) => Number(window?.used_percentage) >= 100)
   return spent ? { kind: 'exhausted', window: spent } : null
 }
+
+/**
+ * When a window comes back, in the reader's own locale.
+ *
+ * A reset further out than a day names the weekday as well — "Tue 00:00" is an
+ * answer, "00:00" alone is not. Shared so the meters and the chooser's
+ * explanation say it the same way.
+ */
+export function resetLabel(resetsAt, now = Date.now()) {
+  if (resetsAt == null) return null
+  const date = new Date(Number(resetsAt) * 1000)
+  if (!Number.isFinite(date.getTime())) return null
+  const moreThanDay = date.getTime() - now > 24 * 60 * 60 * 1000
+  return new Intl.DateTimeFormat(undefined, {
+    ...(moreThanDay ? { weekday: 'short' } : {}),
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+}

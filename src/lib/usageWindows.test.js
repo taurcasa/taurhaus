@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { compactSelection, exhaustedUsage } from './usageWindows.js'
+import { compactSelection, exhaustedUsage, resetLabel } from './usageWindows.js'
 
 /** One provider window in the shape `list_accounts` normalises to. */
 function window(key, title, usedPercentage, extra = {}) {
@@ -79,5 +79,27 @@ describe('exhaustedUsage', () => {
   it('ignores a window whose percentage is not a number', () => {
     expect(exhaustedUsage(snapshot('ok', [window('week', 'Current week', null)]))).toBe(null)
     expect(exhaustedUsage({ status: 'ok', windows: null })).toBe(null)
+  })
+})
+
+describe('resetLabel', () => {
+  const NOW = Date.parse('2026-08-30T09:00:00Z')
+  const inSeconds = (seconds) => Math.floor(NOW / 1000) + seconds
+
+  it('has nothing to say about a window that never resets', () => {
+    expect(resetLabel(null, NOW)).toBe(null)
+    expect(resetLabel(undefined, NOW)).toBe(null)
+    expect(resetLabel('not a time', NOW)).toBe(null)
+  })
+
+  it('names the day only once the reset is more than a day out', () => {
+    // Locale-independent: a weekday is a word, a clock time is not.
+    expect(resetLabel(inSeconds(3 * 3600), NOW)).not.toMatch(/^\p{L}/u)
+    expect(resetLabel(inSeconds(40 * 3600), NOW)).toMatch(/^\p{L}/u)
+  })
+
+  it('always carries the clock time', () => {
+    expect(resetLabel(inSeconds(3 * 3600), NOW)).toMatch(/\d{1,2}:\d{2}/)
+    expect(resetLabel(inSeconds(40 * 3600), NOW)).toMatch(/\d{1,2}:\d{2}/)
   })
 })
