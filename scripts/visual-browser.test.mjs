@@ -80,6 +80,51 @@ describe('visual lane browser resolution', () => {
     expect(resolved.source).toBe('playwright-managed chromium')
   })
 
+  // Regression: the cache scan searched `chrome-mac/Chromium.app` and
+  // `chrome-win/chrome.exe`, the pre-1.58 layouts; Playwright 1.58 installs
+  // Chrome for Testing builds under `chrome-mac-{x64,arm64}` and
+  // `chrome-win64`, so on those platforms the fallback could never find a
+  // revision the package did not pin. (Codex review of the visual lane fix.)
+  it('scans the Chrome for Testing layout on macOS, preferring the host architecture', () => {
+    const cache = '/Users/tester/Library/Caches/ms-playwright'
+    const arm = `${cache}/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+    const x64 = `${cache}/chromium-1234/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+    const host = fakeHost({
+      env: { HOME: '/Users/tester' },
+      paths: [arm, x64],
+      entries: { [cache]: ['chromium-1234'] },
+    })
+
+    expect(resolveVisualBrowser({ ...host, platform: 'darwin', arch: 'arm64' }).executablePath).toBe(arm)
+    expect(resolveVisualBrowser({ ...host, platform: 'darwin', arch: 'x64' }).executablePath).toBe(x64)
+  })
+
+  it('takes the other architecture or the legacy Chromium.app on macOS when that is all the cache holds', () => {
+    const cache = '/Users/tester/Library/Caches/ms-playwright'
+    const x64 = `${cache}/chromium-1234/chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`
+    const legacy = `${cache}/chromium-1100/chrome-mac/Chromium.app/Contents/MacOS/Chromium`
+    const onlyX64 = fakeHost({ env: { HOME: '/Users/tester' }, paths: [x64], entries: { [cache]: ['chromium-1234'] } })
+    expect(resolveVisualBrowser({ ...onlyX64, platform: 'darwin', arch: 'arm64' }).executablePath).toBe(x64)
+
+    const onlyLegacy = fakeHost({ env: { HOME: '/Users/tester' }, paths: [legacy], entries: { [cache]: ['chromium-1100'] } })
+    expect(resolveVisualBrowser({ ...onlyLegacy, platform: 'darwin', arch: 'arm64' }).executablePath).toBe(legacy)
+  })
+
+  it('scans the chrome-win64 layout on Windows, then the legacy chrome-win one', () => {
+    const cache = 'C:\\Users\\tester\\AppData\\Local\\ms-playwright'
+    const current = `${cache}/chromium-1234/chrome-win64/chrome.exe`
+    const legacy = `${cache}/chromium-1100/chrome-win/chrome.exe`
+    const host = fakeHost({
+      env: { PLAYWRIGHT_BROWSERS_PATH: cache },
+      paths: [current, legacy],
+      entries: { [cache]: ['chromium-1100', 'chromium-1234'] },
+    })
+    expect(resolveVisualBrowser({ ...host, platform: 'win32', arch: 'x64' }).executablePath).toBe(current)
+
+    const legacyOnly = fakeHost({ env: { PLAYWRIGHT_BROWSERS_PATH: cache }, paths: [legacy], entries: { [cache]: ['chromium-1100'] } })
+    expect(resolveVisualBrowser({ ...legacyOnly, platform: 'win32', arch: 'x64' }).executablePath).toBe(legacy)
+  })
+
   it('honours PLAYWRIGHT_BROWSERS_PATH for the cache scan', () => {
     const installed = '/srv/browsers/chromium-1234/chrome-linux64/chrome'
     const resolved = resolveVisualBrowser(fakeHost({

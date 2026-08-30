@@ -17,11 +17,26 @@ import { join } from 'node:path'
 
 export const SYSTEM_CHROME = '/usr/bin/google-chrome'
 
-// Per-platform layout of a `chromium-<revision>` directory in the cache.
+// Layout of a `chromium-<revision>` directory in the cache, per platform and
+// architecture. Playwright 1.58 ships Chrome for Testing builds
+// (`chrome-linux64`, `chrome-mac-{x64,arm64}/Google Chrome for Testing.app`,
+// `chrome-win64`); the older Chromium layouts stay as fallbacks for a cache
+// that still holds a pre-1.58 revision. The current architecture's build is
+// tried first, the other one after it — a universal cache may hold both.
+const CHROME_FOR_TESTING_MAC = 'Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
 const MANAGED_BINARIES = {
-  linux: ['chrome-linux64/chrome', 'chrome-linux/chrome'],
-  darwin: ['chrome-mac/Chromium.app/Contents/MacOS/Chromium'],
-  win32: ['chrome-win/chrome.exe'],
+  linux: () => ['chrome-linux64/chrome', 'chrome-linux/chrome'],
+  darwin: (arch) => [
+    ...(arch === 'arm64'
+      ? [`chrome-mac-arm64/${CHROME_FOR_TESTING_MAC}`, `chrome-mac-x64/${CHROME_FOR_TESTING_MAC}`]
+      : [`chrome-mac-x64/${CHROME_FOR_TESTING_MAC}`, `chrome-mac-arm64/${CHROME_FOR_TESTING_MAC}`]),
+    'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+  ],
+  win32: () => ['chrome-win64/chrome.exe', 'chrome-win/chrome.exe'],
+}
+
+export function managedBinaryLayouts(platform, arch) {
+  return (MANAGED_BINARIES[platform] ?? MANAGED_BINARIES.linux)(arch)
 }
 
 function defaultCacheRoot(env, platform) {
@@ -33,7 +48,7 @@ function defaultCacheRoot(env, platform) {
   return join(home, '.cache', 'ms-playwright')
 }
 
-function newestManagedChromium({ cacheRoot, platform, exists, readDir }) {
+function newestManagedChromium({ cacheRoot, platform, arch, exists, readDir }) {
   const revisions = readDir(cacheRoot)
     .map((entry) => /^chromium-(\d+)$/.exec(entry))
     .filter(Boolean)
@@ -41,7 +56,7 @@ function newestManagedChromium({ cacheRoot, platform, exists, readDir }) {
     .sort((a, b) => b.revision - a.revision)
 
   for (const { dir } of revisions) {
-    for (const relative of MANAGED_BINARIES[platform] ?? MANAGED_BINARIES.linux) {
+    for (const relative of managedBinaryLayouts(platform, arch)) {
       const candidate = join(cacheRoot, dir, relative)
       if (exists(candidate)) return candidate
     }
@@ -57,6 +72,7 @@ function newestManagedChromium({ cacheRoot, platform, exists, readDir }) {
 export function resolveVisualBrowser({
   env = process.env,
   platform = process.platform,
+  arch = process.arch,
   exists = existsSync,
   readDir = (dir) => (existsSync(dir) ? readdirSync(dir) : []),
   playwrightExecutablePath,
@@ -86,7 +102,7 @@ export function resolveVisualBrowser({
   }
 
   const cacheRoot = defaultCacheRoot(env, platform)
-  const scanned = newestManagedChromium({ cacheRoot, platform, exists, readDir })
+  const scanned = newestManagedChromium({ cacheRoot, platform, arch, exists, readDir })
   if (scanned) {
     return { executablePath: scanned, source: 'playwright-managed chromium' }
   }
