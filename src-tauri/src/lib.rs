@@ -3,6 +3,9 @@
 
 extern crate self as taurhaus_lib;
 
+#[cfg(test)]
+mod ipc_fixtures;
+
 mod bootstrap;
 mod commands;
 mod config;
