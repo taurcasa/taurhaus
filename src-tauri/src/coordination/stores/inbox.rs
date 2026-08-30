@@ -24,6 +24,7 @@ pub struct MeshInboxMessage {
     pub from: String,
     pub text: String,
     pub timestamp: String,
+    #[serde(default)]
     pub read: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
@@ -295,6 +296,31 @@ mod tests {
         let loaded = MeshInboxStore::load(&teams_dir, "t", "agent").expect("load inbox");
 
         assert_eq!(loaded, vec![message]);
+    }
+
+    #[test]
+    fn mesh_message_without_read_defaults_to_unread() {
+        // Regression: 2b69b9cd made taurhaus's `read` field mandatory, so a
+        // mesh-written message without it quarantined the entire live inbox.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path().join("teams");
+        let inbox_dir = teams_dir.join("t").join("inboxes");
+        fs::create_dir_all(&inbox_dir).expect("inbox dir");
+        fs::write(
+            inbox_dir.join("agent.json"),
+            r#"[{
+  "from": "team-lead",
+  "text": "new assignment",
+  "timestamp": "2026-03-08T19:00:00.000Z"
+}]"#,
+        )
+        .expect("write mesh inbox");
+
+        let messages =
+            MeshInboxStore::load(&teams_dir, "t", "agent").expect("mesh inbox should parse");
+
+        assert_eq!(messages.len(), 1);
+        assert!(!messages[0].read);
     }
 
     #[test]

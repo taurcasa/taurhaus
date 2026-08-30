@@ -14,7 +14,7 @@ use crate::coordination::requests::{
     AddAgentReport, AgentSetupConfig, InitializeReport, MemberActivationStage, ResumeAgentReport,
     StepProgress, StepStatus,
 };
-use crate::coordination::runtime::{CoordinationRuntime, DetectedRuntimeSession};
+use crate::coordination::runtime::{CoordinationRuntime, DetectedRuntimeSession, PaneResolution};
 use crate::coordination::stores::MemberRuntimeRecord;
 use crate::coordination::validation::{validate_member_name, validate_non_empty};
 use crate::daemon::protocol::LaunchMode;
@@ -223,6 +223,7 @@ pub(super) fn default_runtime_record(member_name: &str) -> MemberRuntimeRecord {
         last_seen_at: None,
         applied_effort: None,
         effort_resume_failure: None,
+        extra: Default::default(),
     }
 }
 
@@ -284,11 +285,11 @@ pub(super) fn capture_member_pane_identity(
     pane_id: &str,
     runtime_state: &mut MemberActivationRuntimeState,
 ) -> Result<(), CoordinationError> {
-    runtime_state.pane_pid = None;
-    runtime_state.pane_start_time = None;
     let live_pane = match runtime.live_pane(pane_id) {
         Ok(Some(live_pane)) if !live_pane.is_dead => live_pane,
         Ok(Some(_)) => {
+            runtime_state.pane_pid = None;
+            runtime_state.pane_start_time = None;
             tracing::warn!(
                 pane_id = %pane_id,
                 "launched tmux pane was dead before optional identity capture"
@@ -296,6 +297,8 @@ pub(super) fn capture_member_pane_identity(
             return Ok(());
         }
         Ok(None) => {
+            runtime_state.pane_pid = None;
+            runtime_state.pane_start_time = None;
             tracing::warn!(
                 pane_id = %pane_id,
                 "launched tmux pane disappeared before optional identity capture"
@@ -307,6 +310,16 @@ pub(super) fn capture_member_pane_identity(
                 pane_id = %pane_id,
                 error = %error,
                 "failed to capture optional tmux pane identity"
+            );
+            let mut fields = Map::new();
+            fields.insert("pane_id".to_string(), Value::String(pane_id.to_string()));
+            fields.insert("error".to_string(), Value::String(error.to_string()));
+            emit_global(
+                "warn",
+                "coordination",
+                "coordination.pane.probe_failed",
+                Some("Tmux pane identity probe failed".to_string()),
+                fields,
             );
             return Ok(());
         }
@@ -320,6 +333,20 @@ pub(super) fn capture_member_pane_identity(
     runtime_state.pane_pid = live_pane.pane_pid;
     runtime_state.pane_start_time = live_pane.pane_start_time;
     Ok(())
+}
+
+pub(super) fn seed_member_pane_identity_for_resolution(
+    runtime_state: &mut MemberActivationRuntimeState,
+    previous_runtime: &MemberRuntimeRecord,
+    resolution: &PaneResolution,
+) {
+    if resolution.reused_pane && !resolution.created_new_pane {
+        runtime_state.pane_pid = previous_runtime.pane_pid;
+        runtime_state.pane_start_time = previous_runtime.pane_start_time;
+    } else {
+        runtime_state.pane_pid = None;
+        runtime_state.pane_start_time = None;
+    }
 }
 
 pub(super) fn should_use_mesh_sidecar_for_cli_tool(cli_tool: CliTool) -> bool {

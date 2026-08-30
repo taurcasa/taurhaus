@@ -1158,7 +1158,7 @@ const MEMBER_AUTHORED_KEYS: &[&str] = &[
     "tmuxPaneId",
 ];
 
-fn extension_fields_only(
+pub(super) fn extension_fields_only(
     mut fields: BTreeMap<String, Value>,
     authored_keys: &[&str],
 ) -> BTreeMap<String, Value> {
