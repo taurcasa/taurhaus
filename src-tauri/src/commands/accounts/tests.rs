@@ -235,6 +235,20 @@ fn a_resolved_base_from_the_daemon_is_used_as_the_launch_base() {
     assert_eq!(resolved.expansions.len(), 1);
 }
 
+// Regression: bc4457a sent `resolve_launch_base` through `send_status_request`,
+// whose 5 s ping timeout is shorter than the resolution the daemon runs to
+// answer it — up to three interactive-shell probes plus finding the pane shell.
+// A request that expires first is a failure, a failure puts the literal base
+// back, and the alias's own selector is once again what selects the account.
+#[test]
+fn the_resolve_request_outlives_the_resolution_it_asks_for() {
+    assert!(
+        RESOLVE_LAUNCH_BASE_TIMEOUT > launch_base::RESOLUTION_BUDGET,
+        "a {RESOLVE_LAUNCH_BASE_TIMEOUT:?} request cannot carry a {:?} resolution",
+        launch_base::RESOLUTION_BUDGET,
+    );
+}
+
 /// An older daemon has no shell to ask, so the base stays exactly as
 /// configured — which is what every launch did before this feature.
 #[test]

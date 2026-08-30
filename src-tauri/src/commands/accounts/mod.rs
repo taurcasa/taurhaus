@@ -14,6 +14,7 @@
 mod tests;
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use tauri::State;
@@ -34,6 +35,17 @@ pub(crate) const SOURCE_NATIVE: &str = "native";
 pub(crate) const SOURCE_DAEMON: &str = "daemon";
 
 const UNKNOWN_METHOD: &str = "UNKNOWN_METHOD";
+
+/// How long the daemon gets to say what a launch command means.
+///
+/// The daemon answers this one by running an interactive shell, so the request
+/// has to outlive the resolution's own budget with room for the transport. A
+/// request that expires first is indistinguishable from a daemon that cannot
+/// resolve anything: the literal base comes back, the alias goes unseen, and
+/// its selector overrides the account the operator chose — the defect this
+/// resolution exists to fix.
+const RESOLVE_LAUNCH_BASE_TIMEOUT: Duration =
+    Duration::from_secs(launch_base::RESOLUTION_BUDGET.as_secs() + 4);
 
 /// Detected accounts for one registry tool.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -234,7 +246,7 @@ fn daemon_resolve_launch_base(provider: &ProviderState, tool: CliTool, base: &st
     );
     resolved_base_from(
         daemon_answer(
-            daemon.send_status_request(&request),
+            daemon.send_status_request_within(&request, RESOLVE_LAUNCH_BASE_TIMEOUT),
             "the resolved launch base",
         ),
         base,

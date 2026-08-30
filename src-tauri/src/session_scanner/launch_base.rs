@@ -351,16 +351,36 @@ fn words(command: &str) -> Vec<Word> {
 #[cfg(not(test))]
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The whole of one resolution — finding the pane shell, then every probe it
+/// answers — fits inside this.
+///
+/// A caller on the other side of the WSL boundary sizes its request around this
+/// number: a resolution that outlives the request asking for it reads as a
+/// failure, and a failure puts the literal base back, alias selector and all.
+/// Exhausting the budget is fail-soft in exactly the same way, so it is set
+/// where one slow shell still answers and a chain of them stops trying.
+pub const RESOLUTION_BUDGET: Duration = Duration::from_secs(8);
+
 /// Asks the pane's own interactive shell what a word means.
 pub struct ShellAliasProbe {
     shell: String,
+    /// When this resolution stops asking. Probing is the slow part, and the
+    /// budget is the whole probe's, not each question's.
+    deadline: Instant,
 }
 
 impl ShellAliasProbe {
     /// The shell a launched pane runs: tmux's `default-shell`, else `$SHELL`.
     pub fn for_pane() -> Self {
+        Self::for_pane_until(Instant::now() + RESOLUTION_BUDGET)
+    }
+
+    /// The same probe against an explicit deadline.
+    fn for_pane_until(deadline: Instant) -> Self {
         Self {
+            // Finding the shell is inside the budget: it runs tmux to do it.
             shell: pane_shell(),
+            deadline,
         }
     }
 }
@@ -387,20 +407,30 @@ impl AliasProbe for ShellAliasProbe {
     }
 
     fn alias(&self, name: &str) -> Option<String> {
-        is_alias_name(name).then(|| shell_alias(&self.shell, name))?
+        // A shell started with less time than it needs answers nothing useful,
+        // and the caller is no longer waiting for it.
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return None;
+        }
+        is_alias_name(name).then(|| shell_alias(&self.shell, name, remaining))?
     }
 }
 
 /// Ask one interactive shell what a single validated word means.
 #[cfg(not(test))]
-fn shell_alias(shell: &str, name: &str) -> Option<String> {
+fn shell_alias(shell: &str, name: &str, within: Duration) -> Option<String> {
     let script = format!("alias -- {name}");
-    let output = super::process::run_with_timeout_within(shell, &["-ic", &script], PROBE_TIMEOUT)?;
+    let output = super::process::run_with_timeout_within(
+        shell,
+        &["-ic", &script],
+        within.min(PROBE_TIMEOUT),
+    )?;
     parse_alias_output(name, &output)
 }
 
 #[cfg(test)]
-fn shell_alias(_shell: &str, name: &str) -> Option<String> {
+fn shell_alias(_shell: &str, name: &str, _within: Duration) -> Option<String> {
     ALIAS_OVERRIDE
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -818,5 +848,38 @@ mod tests {
             1,
             "a shell that said no is not re-asked"
         );
+    }
+
+    /// Regression: bc4457a put the resolution behind a daemon request whose
+    /// timeout was the 5 s ping. Three probes of 5 s each plus finding the pane
+    /// shell outlast that request, and a request that times out puts the
+    /// literal base back — the alias goes invisible again and its own selector
+    /// overrides the account the operator chose. The resolution is bounded so
+    /// the caller can size a request around it.
+    #[test]
+    fn no_probe_answers_once_the_resolution_budget_is_spent() {
+        let _aliases =
+            install_alias_override(&[("claude2", "CLAUDE_CONFIG_DIR=/homes/two claude")]);
+
+        let fresh = ShellAliasProbe::for_pane();
+        assert_eq!(
+            fresh.alias("claude2").as_deref(),
+            Some("CLAUDE_CONFIG_DIR=/homes/two claude"),
+            "a probe inside its budget asks the shell"
+        );
+
+        let spent = ShellAliasProbe::for_pane_until(Instant::now());
+        assert_eq!(
+            spent.alias("claude2"),
+            None,
+            "a probe past the budget never starts a shell it cannot wait for"
+        );
+
+        let resolved = resolve_base_command_in("claude2 --resume", CliTool::Claude, &spent, None);
+        assert_eq!(
+            resolved.command, "claude2 --resume",
+            "an exhausted budget is fail-soft: the base is exactly as configured"
+        );
+        assert!(resolved.expansions.is_empty());
     }
 }
