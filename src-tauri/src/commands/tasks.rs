@@ -54,7 +54,7 @@ impl TaskQueryRefreshState {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_project_tasks(
     app: AppHandle,
     db: State<'_, DbState>,

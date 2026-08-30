@@ -110,6 +110,10 @@ fn io_markers(source: &str) -> Vec<&'static str> {
         "std::process",
         "wsl",
         "resolve_launch_base",
+        "providers.",
+        "provider.",
+        "fs::read",
+        "fs::metadata",
     ]
     .into_iter()
     .filter(|marker| source.contains(marker))
@@ -121,7 +125,6 @@ fn sync_io_command_violations(sources: &[(String, String)]) -> Vec<String> {
     for (name, body) in sources
         .iter()
         .flat_map(|(_, source)| named_function_bodies(source))
-        .filter(|(name, _)| name.ends_with("_impl"))
     {
         implementations.entry(name).or_default().push_str(&body);
     }
@@ -130,10 +133,22 @@ fn sync_io_command_violations(sources: &[(String, String)]) -> Vec<String> {
     for (path, source) in sources {
         for (name, body, asynchronous) in command_functions(source) {
             let mut inspected = body.clone();
-            for (impl_name, impl_body) in &implementations {
-                if body.contains(&format!("{impl_name}(")) {
-                    inspected.push_str(impl_body);
+            let mut frontier = vec![body];
+            let mut visited = BTreeSet::from([name.clone()]);
+            while !frontier.is_empty() {
+                let mut next = Vec::new();
+                for caller in frontier {
+                    for (called_name, called_body) in &implementations {
+                        if !visited.contains(called_name)
+                            && caller.contains(&format!("{called_name}("))
+                        {
+                            visited.insert(called_name.clone());
+                            inspected.push_str(called_body);
+                            next.push(called_body.clone());
+                        }
+                    }
                 }
+                frontier = next;
             }
             let markers = io_markers(&inspected);
             if !asynchronous && !markers.is_empty() {
@@ -336,6 +351,7 @@ fn io_commands_use_tauris_async_execution_context() {
     // dispatcher while unrelated project reads hit their 5 s frontend timeout.
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src/commands"), &mut files);
+    collect_rs_files(&crate_root().join("src/workflow_runs"), &mut files);
     let sources = files
         .into_iter()
         .filter(|path| path.file_name().and_then(|name| name.to_str()) != Some("tests.rs"))
@@ -379,6 +395,58 @@ fn newly_added_probe_impl() {
         sync_io_command_violations(&sources),
         vec!["src/commands/example.rs::newly_added_probe: [\"send_status_request\"]".to_string()],
         "a newly added sync RPC command must turn the boundary lane red"
+    );
+}
+
+#[test]
+fn async_execution_guard_follows_transitive_command_helpers() {
+    let sources = vec![(
+        "src/commands/accounts.rs".to_string(),
+        r#"
+#[tauri::command]
+pub fn list_accounts() {
+    list_accounts_impl();
+}
+
+fn list_accounts_impl() {
+    accounts_report();
+}
+
+fn accounts_report() {
+    daemon_accounts_report();
+}
+
+fn daemon_accounts_report() {
+    daemon.send_status_request(&request);
+}
+"#
+        .to_string(),
+    )];
+
+    assert_eq!(
+        sync_io_command_violations(&sources),
+        vec!["src/commands/accounts.rs::list_accounts: [\"send_status_request\"]".to_string()],
+        "the flagship read command must stay guarded through ordinary helpers"
+    );
+}
+
+#[test]
+fn async_execution_guard_recognizes_provider_io() {
+    let sources = vec![(
+        "src/commands/files.rs".to_string(),
+        r#"
+#[tauri::command]
+pub fn read_file(providers: State<'_, ProviderState>) {
+    providers.resolve("/project").get_file_content("README.md");
+}
+"#
+        .to_string(),
+    )];
+
+    assert_eq!(
+        sync_io_command_violations(&sources),
+        vec!["src/commands/files.rs::read_file: [\"providers.\"]".to_string()],
+        "provider-backed filesystem and daemon calls must stay off the dispatcher"
     );
 }
 
