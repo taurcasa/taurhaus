@@ -10,8 +10,9 @@ use crate::coordination::member_activation::{
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentReport, AddAgentRequest, DeliveryRequest, InitializeTeamRequest, MemberActivationStage,
-    OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest, StepProgress, StepStatus,
+    AddAgentReport, AddAgentRequest, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
+    MemberActivationStage, OperatorNoticeDelivery, ResumeAgentReport, ResumeMemberRequest,
+    StepProgress, StepStatus, WakeDisposition,
 };
 use crate::coordination::runtime::{
     emit_foreign_pane_event, resolve_or_create_pane_for_member, PaneResolution,
@@ -1175,7 +1176,14 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         };
 
         match delivery_result {
-            Ok(()) => {
+            Ok(results) => {
+                for result in results {
+                    self.warnings.extend(result.post_write_warnings);
+                    if let WakeDisposition::Failed { reason } = result.wake {
+                        self.warnings
+                            .push(format!("onboarding wake failed: {reason}"));
+                    }
+                }
                 self.record_step_success("send_onboarding", "onboarding delivered");
                 self.emit_stage(
                     MemberActivationStage::DeliverOnboarding,
@@ -1334,21 +1342,20 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
         &mut self,
         request: &ResumeMemberRequest,
         prepared: &PreparedMemberActivation,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<Vec<DeliveryResult>, CoordinationError> {
         if let Some(entry) = self.orchestrator.prepare_resume_onboarding_entry(
             request,
             &prepared.member,
             &prepared.lead_name,
         ) {
-            self.orchestrator.deliver_onboarding_entries(vec![entry])?;
-            return Ok(());
+            return self.orchestrator.deliver_onboarding_entries(vec![entry]);
         }
 
         if !crate::session_scanner::cli_tool::spec(prepared.member.cli_tool)
             .capabilities
             .native_inbox_poller
         {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         let message = DeliveryRenderer::render_onboarding(
@@ -1374,7 +1381,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 sender_name: Some(prepared.lead_name.clone()),
                 operational_context: None,
             }))
-            .map(|_| ())
+            .map(|result| vec![result])
     }
 
     fn add_agent_request(&self) -> &'b AddAgentRequest {

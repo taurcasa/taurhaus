@@ -12,7 +12,7 @@ use crate::coordination::member_activation::{
 };
 use crate::coordination::orchestrator::CoordinationOrchestrator;
 use crate::coordination::requests::{
-    AddAgentRequest, AgentSetupConfig, DeliveryRequest, InitializeTeamRequest,
+    AddAgentRequest, AgentSetupConfig, DeliveryRequest, DeliveryResult, InitializeTeamRequest,
     OperatorNoticeDelivery, ResumeMemberRequest, TeardownMode, TeardownRequest,
 };
 use crate::coordination::stores::lock::acquire_team_lock;
@@ -473,23 +473,24 @@ impl CoordinationOrchestrator {
     pub(super) fn deliver_onboarding_entries(
         &mut self,
         entries: Vec<PreparedOnboardingDelivery>,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<Vec<DeliveryResult>, CoordinationError> {
         let mut deferred_entries = Vec::new();
+        let mut results = Vec::new();
 
         for entry in entries {
             match entry.policy {
                 MemberActivationDeliveryPolicy::Immediate => {
-                    self.deliver_prepared_onboarding(entry)?;
+                    results.push(self.deliver_prepared_onboarding(entry)?);
                 }
                 MemberActivationDeliveryPolicy::DeferredBarrier => deferred_entries.push(entry),
             }
         }
 
         for entry in deferred_entries {
-            self.deliver_prepared_onboarding(entry)?;
+            results.push(self.deliver_prepared_onboarding(entry)?);
         }
 
-        Ok(())
+        Ok(results)
     }
 
     pub(super) fn prepare_initialize_onboarding_entries(
@@ -553,14 +554,13 @@ impl CoordinationOrchestrator {
     fn deliver_prepared_onboarding(
         &mut self,
         entry: PreparedOnboardingDelivery,
-    ) -> Result<(), CoordinationError> {
+    ) -> Result<DeliveryResult, CoordinationError> {
         self.deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: entry.member_name,
             team_name: entry.team_name,
             message: entry.message,
             sender_name: Some(entry.sender_name),
             operational_context: None,
-        }))?;
-        Ok(())
+        }))
     }
 }

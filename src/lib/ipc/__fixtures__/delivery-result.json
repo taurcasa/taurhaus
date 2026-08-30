@@ -1,0 +1,13 @@
+{
+  "delivered": true,
+  "durable": true,
+  "method": "inbox_file",
+  "post_write_warnings": [
+    "fixture operational context warning",
+    "fixture runtime state warning"
+  ],
+  "wake": {
+    "pid": 4242,
+    "status": "adopted"
+  }
+}

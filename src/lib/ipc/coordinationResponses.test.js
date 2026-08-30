@@ -1,6 +1,40 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeLiveTeamStatus, normalizeProjectMeshSnapshot } from './coordinationResponses.js'
+import {
+  normalizeDeliveryResult,
+  normalizeLiveTeamStatus,
+  normalizeProjectMeshSnapshot,
+} from './coordinationResponses.js'
+
+describe('coordinationResponses delivery outcomes', () => {
+  it('normalizes the additive delivery facts without dropping future fields', () => {
+    const result = normalizeDeliveryResult({
+      delivered: true,
+      method: 'inbox_file',
+      durable: true,
+      wake: {
+        status: 'failed',
+        reason: 'daemon spawn failed',
+        futureWakeFact: 'preserved',
+      },
+      post_write_warnings: ['runtime state was not persisted'],
+      futureDeliveryFact: { preserved: true },
+    })
+
+    expect(result).toEqual({
+      delivered: true,
+      method: 'inbox_file',
+      durable: true,
+      wake: {
+        status: 'failed',
+        reason: 'daemon spawn failed',
+        futureWakeFact: 'preserved',
+      },
+      postWriteWarnings: ['runtime state was not persisted'],
+      futureDeliveryFact: { preserved: true },
+    })
+  })
+})
 
 describe('coordinationResponses agent snapshots', () => {
   // Regression: FastAgentSnapshot had no model field at all, so the runtime view

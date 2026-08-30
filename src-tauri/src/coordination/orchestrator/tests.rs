@@ -128,10 +128,6 @@ impl DeliveryWakeRuntime {
             remove_runtime_on_pid_probe,
         }
     }
-
-    fn calls(&self) -> Vec<RuntimeCall> {
-        self.inner.calls()
-    }
 }
 
 impl CoordinationRuntime for DeliveryWakeRuntime {
@@ -274,7 +270,7 @@ fn deliver_inbox_notice(
     member_name: &str,
     operational_context: Option<OperationalContextUpdate>,
 ) -> DeliveryResult {
-    orchestrator
+    let result = orchestrator
         .deliver_message(DeliveryRequest::operator_notice(OperatorNoticeDelivery {
             member_name: member_name.to_string(),
             team_name: team_name.to_string(),
@@ -282,7 +278,13 @@ fn deliver_inbox_notice(
             sender_name: None,
             operational_context,
         }))
-        .expect("durable inbox delivery should succeed")
+        .expect("durable inbox delivery should succeed");
+    assert!(
+        result.delivered,
+        "delivered still means the append happened"
+    );
+    assert!(result.durable, "the successful append must be durable");
+    result
 }
 
 fn assert_one_inbox_append(teams_dir: &Path, team_name: &str, member_name: &str) {
@@ -330,6 +332,11 @@ impl CoordinationBackend for UndeliveredBackend {
         Ok(DeliveryResult {
             delivered: false,
             method: DeliveryMethod::NativeMessageApi,
+            durable: false,
+            wake: WakeDisposition::NotAttempted {
+                reason: "delivery did not happen".to_string(),
+            },
+            post_write_warnings: Vec::new(),
         })
     }
 
@@ -366,6 +373,11 @@ impl CoordinationBackend for InboxFileBackend {
         Ok(DeliveryResult {
             delivered: true,
             method: DeliveryMethod::InboxFile,
+            durable: true,
+            wake: WakeDisposition::NotAttempted {
+                reason: "wake not evaluated by backend".to_string(),
+            },
+            post_write_warnings: Vec::new(),
         })
     }
 

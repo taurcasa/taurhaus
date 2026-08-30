@@ -92,7 +92,7 @@ impl CoordinationOrchestrator {
             }));
 
         match effective_backend.deliver(request) {
-            Ok(result) => {
+            Ok(mut result) => {
                 if !result.delivered {
                     let error = CoordinationError::Backend(format!(
                         "backend reported undelivered {delivery_type} for '{member_name_owned}' in team '{team_name_owned}'"
@@ -130,6 +130,7 @@ impl CoordinationOrchestrator {
                     | WakeDisposition::NotAttempted { .. }
                     | WakeDisposition::Failed { .. } => None,
                 };
+                let mut post_write_warnings = Vec::new();
 
                 self.audit_log
                     .push(AuditEvent::DeliverySucceeded(DeliverySucceededEvent {
@@ -147,6 +148,7 @@ impl CoordinationOrchestrator {
                         &member_name_owned,
                         context,
                     ) {
+                        post_write_warnings.push(err.to_string());
                         tracing::warn!(
                             team_name = %team_name_owned,
                             member_name = %member_name_owned,
@@ -168,6 +170,7 @@ impl CoordinationOrchestrator {
                         }
                     },
                 ) {
+                    post_write_warnings.push(err.to_string());
                     tracing::warn!(
                         team_name = %team_name_owned,
                         member_name = %member_name_owned,
@@ -176,6 +179,8 @@ impl CoordinationOrchestrator {
                     );
                 }
 
+                result.wake = wake;
+                result.post_write_warnings.extend(post_write_warnings);
                 Ok(result)
             }
             Err(err) => {

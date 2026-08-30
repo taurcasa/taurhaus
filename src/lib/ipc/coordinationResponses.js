@@ -5,6 +5,26 @@ function normalizeStringList(value) {
   return value.map((entry) => String(entry ?? '').trim()).filter(Boolean)
 }
 
+export function normalizeDeliveryResult(value) {
+  if (!value || typeof value !== 'object') return value
+
+  const normalized = {
+    ...value,
+    delivered: Boolean(value.delivered),
+    method: String(value.method ?? ''),
+    durable: Boolean(value.durable),
+    wake:
+      value.wake && typeof value.wake === 'object'
+        ? { ...value.wake }
+        : value.wake ?? null,
+    postWriteWarnings: normalizeStringList(
+      value.postWriteWarnings ?? value.post_write_warnings
+    ),
+  }
+  delete normalized.post_write_warnings
+  return normalized
+}
+
 function assignIfDefined(target, key, value) {
   if (value !== undefined) {
     target[key] = value

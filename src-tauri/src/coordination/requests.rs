@@ -163,6 +163,9 @@ pub enum WakeDisposition {
 pub struct DeliveryResult {
     pub delivered: bool,
     pub method: DeliveryMethod,
+    pub durable: bool,
+    pub wake: WakeDisposition,
+    pub post_write_warnings: Vec<String>,
 }
 
 /// Request to probe a member's process and interaction health.
