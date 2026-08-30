@@ -265,16 +265,24 @@ impl InFlightAliasChain {
         self.ready.notify_all();
     }
 
-    fn wait(&self) -> Vec<AliasExpansion> {
+    fn wait_for(&self, timeout: Duration) -> Vec<AliasExpansion> {
+        let started = Instant::now();
         let mut result = self
             .result
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         while result.is_none() {
-            result = self
+            let Some(remaining) = timeout.checked_sub(started.elapsed()) else {
+                return Vec::new();
+            };
+            let (next, wait) = self
                 .ready
-                .wait(result)
+                .wait_timeout(result, remaining)
                 .unwrap_or_else(|error| error.into_inner());
+            result = next;
+            if wait.timed_out() && result.is_none() {
+                return Vec::new();
+            }
         }
         result.clone().unwrap_or_default()
     }
@@ -366,7 +374,7 @@ fn resolve_base_command_cached_at_in_generation(
         .unwrap_or_default();
         resolution.complete(expansions);
     }
-    let expansions = resolution.wait();
+    let expansions = resolution.wait_for(RESOLUTION_BUDGET);
     resolve_base_command_from_expansions_in(base, tool, &expansions, home)
 }
 
@@ -1398,6 +1406,20 @@ mod tests {
 
         assert_eq!(resolved.command, "panic2 --fresh");
         assert!(resolved.expansions.is_empty());
+    }
+
+    // Regression: 3c5b6cd9 made joiners use an unbounded Condvar wait. If an
+    // owner disappeared without completing its entry, an IPC worker could be
+    // retained forever instead of returning the fail-soft literal answer.
+    #[test]
+    fn an_abandoned_in_flight_probe_has_a_bounded_wait() {
+        let resolution = InFlightAliasChain::default();
+        let started = Instant::now();
+
+        let expansions = resolution.wait_for(Duration::from_millis(2));
+
+        assert!(expansions.is_empty());
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     // Regression: 0.8.4 / PR #75 probed outside the cache lock without an
