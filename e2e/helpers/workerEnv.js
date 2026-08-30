@@ -30,7 +30,10 @@ function workerDaemonPort(sessionTempRoot) {
 }
 
 /** Build the complete environment for one isolated WDIO worker. */
-export function buildWorkerEnv(sessionTempRoot, { baseEnv = {}, runToken = sessionTempRoot } = {}) {
+export function buildWorkerEnv(
+  sessionTempRoot,
+  { baseEnv = {}, runToken = sessionTempRoot, daemonBinaryPath } = {},
+) {
   if (typeof sessionTempRoot !== 'string' || sessionTempRoot.trim() === '') {
     throw new Error('session temp root is required')
   }
@@ -41,6 +44,8 @@ export function buildWorkerEnv(sessionTempRoot, { baseEnv = {}, runToken = sessi
     env[key] = resolve(root, ROOT_SUBDIRS[key])
   }
   env.TAURHAUS_DAEMON_PORT = String(workerDaemonPort(root))
+  if (daemonBinaryPath) env.TAURHAUS_DAEMON_BINARY = resolve(daemonBinaryPath)
+  env.TAURHAUS_SKIP_CLI_VERSION_PROBES = '1'
   env[E2E_RUN_TOKEN_ENV] = String(runToken)
   applyTmuxIsolation(env, root)
   return env

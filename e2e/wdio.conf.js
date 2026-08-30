@@ -527,6 +527,7 @@ export const config = {
     const workerEnv = buildWorkerEnv(sessionTempRoot, {
       baseEnv: process.env,
       runToken: sessionRunToken,
+      daemonBinaryPath: join(projectRoot, 'src-tauri/target/debug/taurhaus-daemon'),
     })
     const tauriDataDir = workerEnv.TAURHAUS_DATA_DIR
     const tauriClaudeDir = workerEnv.TAURHAUS_CLAUDE_DIR
@@ -554,7 +555,13 @@ export const config = {
     process.env.E2E_PROJECTS_DIR = e2eProjectsDir
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
     prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
-    for (const key of [...WORKER_ROOT_ENV_KEYS, 'TAURHAUS_DAEMON_PORT', E2E_RUN_TOKEN_ENV]) {
+    for (const key of [
+      ...WORKER_ROOT_ENV_KEYS,
+      'TAURHAUS_DAEMON_PORT',
+      'TAURHAUS_DAEMON_BINARY',
+      'TAURHAUS_SKIP_CLI_VERSION_PROBES',
+      E2E_RUN_TOKEN_ENV,
+    ]) {
       process.env[key] = workerEnv[key]
     }
     console.log(`[e2e] daemon port for this worker: ${workerEnv.TAURHAUS_DAEMON_PORT}`)
