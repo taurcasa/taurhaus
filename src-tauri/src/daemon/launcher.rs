@@ -919,7 +919,7 @@ mod tests {
     use crate::provider::local::LocalProvider;
     use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     #[test]
@@ -970,10 +970,37 @@ mod tests {
         }
     }
 
+    /// Ports already handed out in this test binary.
+    static RESERVED_PORTS: Mutex<std::collections::BTreeSet<u16>> =
+        Mutex::new(std::collections::BTreeSet::new());
+
+    // Regression: the kernel hands a just-released ephemeral port straight back
+    // out — 2244 repeats in 4000 bind-and-drop reservations on this machine —
+    // so two tests could each hold "their own" free port and mean the same one.
+    // Then a daemon test binds the port `poll_until_reachable_times_out` is
+    // asserting nothing listens on, and it fails with "Should timeout when no
+    // daemon starts" (seen once under concurrent load). Recording what has been
+    // handed out is what makes a reserved port this test's own.
     fn reserve_free_port() -> u16 {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+        let mut rejected = Vec::new();
+        let port = loop {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0")
+                .expect("localhost port reservation should bind");
+            let port = listener
+                .local_addr()
+                .expect("reserved port should have an address")
+                .port();
+            if RESERVED_PORTS
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .insert(port)
+            {
+                break port;
+            }
+            // Hold the socket so the kernel offers a different port next round.
+            rejected.push(listener);
+        };
+        drop(rejected);
         port
     }
 
@@ -1128,9 +1155,7 @@ time.sleep(3600)
 
     #[test]
     fn dead_port_returns_none() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+        let port = reserve_free_port();
 
         let result = try_connect(port);
         assert!(result.is_none());
@@ -1152,9 +1177,7 @@ time.sleep(3600)
 
     #[test]
     fn poll_until_reachable_times_out() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
+        let port = reserve_free_port();
 
         let start = Instant::now();
         let result = poll_until_reachable(port, Duration::from_secs(1));
