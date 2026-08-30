@@ -323,6 +323,31 @@ fn managed_team_account_dirs_keep_windows_wsl_home_forms_until_rendering() {
     );
 }
 
+#[test]
+fn managed_claude_team_launches_name_the_root_that_owns_the_team_inbox() {
+    let _guard = crate::test_support::acquire_env_test_guard();
+    let claude_root = TempDir::new().expect("temp Claude root");
+    std::env::set_var("TAURHAUS_CLAUDE_DIR", claude_root.path());
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_team_account_selector_dirs(&mut commands, [CliTool::Claude]);
+
+    let selected = commands
+        .account_selector_dirs
+        .get("CLAUDE_CONFIG_DIR")
+        .expect("managed Claude selector");
+    assert_eq!(
+        selected,
+        &crate::provider::platform_paths::PlatformPaths::claude_dir()
+    );
+    assert_eq!(
+        crate::provider::platform_paths::PlatformPaths::teams_dir().parent(),
+        Some(selected.as_path()),
+        "the selected root is the parent of the managed team inbox"
+    );
+    std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+}
+
 /// A daemon that can read the WSL shell answers what the base command means.
 #[test]
 fn a_resolved_base_from_the_daemon_is_used_as_the_launch_base() {

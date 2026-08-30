@@ -1693,13 +1693,14 @@ fn a_managed_launch_never_carries_the_frozen_effort_variable() {
     let rendered =
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
             .expect("the launch still renders without the frozen level");
-    assert!(
-        !rendered.contains(variable),
-        "a managed launch must not freeze the level: {rendered}"
-    );
-    assert!(
-        rendered.contains("claude --dangerously-skip-permissions"),
-        "the rest of the operator's own command is kept: {rendered}"
+    assert_eq!(
+        rendered,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'architecture-final' --agent-name 'builder' ",
+            "--agent-id 'builder@architecture-final' --agent-type 'general-purpose' -n 'builder'"
+        )
     );
 }
 
@@ -1740,8 +1741,11 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
     let trusted =
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
             .expect("trusted command");
-    assert!(!untrusted.contains("--dangerously-bypass-hook-trust"));
-    assert!(trusted.contains("--dangerously-bypass-hook-trust"));
+    assert_eq!(untrusted, "codex --yolo -m 'gpt-5.4'");
+    assert_eq!(
+        trusted,
+        "codex --yolo --dangerously-bypass-hook-trust -m 'gpt-5.4'"
+    );
 }
 
 #[test]
@@ -1823,7 +1827,16 @@ fn unavailable_team_base_resolution_launches_the_literal_and_logs_once() {
         build_cli_launch_command(&agent, "base-unresolved-team", MemberRole::Agent, &commands)
             .expect("resolution failure must not block the launch");
 
-    assert!(command.contains("claude2 --dangerously-skip-permissions"));
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude2 --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'base-unresolved-team' --agent-name 'base-unresolved-member' ",
+            "--agent-id 'base-unresolved-member@base-unresolved-team' ",
+            "--agent-type 'general-purpose' -n 'base-unresolved-member'"
+        )
+    );
     let contents =
         wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.base.unresolved\"");
     assert_eq!(
@@ -1872,10 +1885,25 @@ fn opaque_team_base_reports_the_account_note_and_logs_once() {
     )
     .expect("opaque wrapper must remain launchable");
 
-    assert!(result.command.contains("team-wrapper claude"));
-    assert_eq!(result.account_applied, Some(false));
-    assert_eq!(result.account_note.as_deref(), Some("opaque_base_command"));
-    assert_eq!(result.account_note_detail.as_deref(), Some("team-wrapper"));
+    assert_eq!(
+        result.command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "team-wrapper claude --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'opaque-base-team' --agent-name 'opaque-base-member' ",
+            "--agent-id 'opaque-base-member@opaque-base-team' ",
+            "--agent-type 'general-purpose' -n 'opaque-base-member'"
+        )
+    );
+    assert_eq!(result.account.account_applied, Some(false));
+    assert_eq!(
+        result.account.account_note.as_deref(),
+        Some("opaque_base_command")
+    );
+    assert_eq!(
+        result.account.account_note_detail.as_deref(),
+        Some("team-wrapper")
+    );
     let contents = wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.base.opaque\"");
     assert_eq!(
         contents
@@ -1949,10 +1977,13 @@ fn managed_codex_team_launch_includes_native_notify_sink() {
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
             .expect("managed command");
 
-    assert!(command.contains(concat!(
-        "-c 'notify=[\"/home/test/.local/bin/taurhaus-daemon\",",
-        "\"codex-notify\"]'"
-    )));
+    assert_eq!(
+        command,
+        concat!(
+            "codex --yolo -c 'notify=[\"/home/test/.local/bin/taurhaus-daemon\",",
+            "\"codex-notify\"]' -m 'gpt-5.4'"
+        )
+    );
 }
 
 // Regression: a79d392 forced the catalog's low effort onto declarations that omitted it,
@@ -2020,8 +2051,10 @@ fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
 
     let command = build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
         .expect("command");
-    assert!(command.contains("-m 'gpt-5.4'"));
-    assert!(command.contains("-c 'model_reasoning_effort=\"high\"'"));
+    assert_eq!(
+        command,
+        "codex --yolo -m 'gpt-5.4' -c 'model_reasoning_effort=\"high\"'"
+    );
 }
 
 /// A team member config, with everything but the tool left at its default.
@@ -2082,18 +2115,22 @@ fn build_cli_launch_command_names_a_configured_claude_root() {
     std::env::remove_var("TAURHAUS_CLAUDE_DIR");
 
     let claude = claude.expect("claude command");
-    assert!(
-        claude.starts_with(&format!(
-            "CLAUDE_CONFIG_DIR='{}' ",
+    assert_eq!(
+        claude,
+        format!(
+            concat!(
+                "CLAUDE_CONFIG_DIR='{}' CLAUDECODE=1 ",
+                "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+                "claude --dangerously-skip-permissions --team-name 'ledger-team' ",
+                "--agent-name 'team-lead' --agent-id 'team-lead@ledger-team' ",
+                "--agent-type 'orchestrator' -n 'team-lead'"
+            ),
             override_dir.path().display()
-        )),
-        "{claude}"
+        )
     );
-    // The team environment still lands in front of the binary.
-    assert!(claude.contains("CLAUDECODE=1"), "{claude}");
 
     let codex = codex.expect("codex command");
-    assert!(!codex.contains("CLAUDE_CONFIG_DIR"), "{codex}");
+    assert_eq!(codex, "codex --yolo");
 }
 
 #[test]
@@ -2110,7 +2147,15 @@ fn build_cli_launch_command_leaves_an_unmoved_claude_root_implicit() {
     )
     .expect("command");
 
-    assert!(!command.contains("CLAUDE_CONFIG_DIR"), "{command}");
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --team-name 'ledger-team' ",
+            "--agent-name 'team-lead' --agent-id 'team-lead@ledger-team' ",
+            "--agent-type 'orchestrator' -n 'team-lead'"
+        )
+    );
 }
 
 #[test]
@@ -2143,30 +2188,15 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
     };
     let command =
         build_cli_launch_command(&agent, "ledger-team", MemberRole::Lead, &cmds).expect("command");
-    assert!(command.contains("CLAUDECODE=1"));
-    assert!(command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"));
-    assert!(command.contains("--model 'claude-opus-4-6'"));
-    assert!(command.contains("--team-name 'ledger-team'"));
-    assert!(command.contains("--agent-name 'team-lead'"));
-    assert!(command.contains("--agent-id 'team-lead@ledger-team'"));
-    assert!(command.contains("--agent-type 'orchestrator'"));
-    assert!(command.contains("-n 'team-lead'"));
-    for flag in [
-        "--team-name",
-        "--agent-name",
-        "--agent-id",
-        "--agent-type",
-        "-n",
-    ] {
-        assert_eq!(
-            command
-                .split_whitespace()
-                .filter(|token| *token == flag)
-                .count(),
-            1,
-            "{flag} must be rendered exactly once: {command}"
-        );
-    }
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --model 'claude-opus-4-6' ",
+            "--team-name 'ledger-team' --agent-name 'team-lead' ",
+            "--agent-id 'team-lead@ledger-team' --agent-type 'orchestrator' -n 'team-lead'"
+        )
+    );
 }
 
 // Resume always starts a fresh session — never uses --continue or resume --last.
@@ -2185,8 +2215,6 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
     )
     .expect("command");
     assert_eq!(command, "codex --yolo -m 'gpt-5.3'");
-    assert!(!command.contains("resume"));
-    assert!(!command.contains("--last"));
 
     let claude_agent = setup_config("team-lead", "claude", "opus", "/tmp/project");
 
@@ -2197,9 +2225,16 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
         &cmds,
     )
     .expect("command");
-    assert!(!command.contains("--continue"));
-    assert!(command.contains("--agent-type 'orchestrator'"));
-    assert!(command.contains("--team-name 'architecture-final'"));
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'architecture-final' --agent-name 'team-lead' ",
+            "--agent-id 'team-lead@architecture-final' ",
+            "--agent-type 'orchestrator' -n 'team-lead'"
+        )
+    );
 }
 
 #[test]

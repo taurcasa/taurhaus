@@ -666,18 +666,12 @@ pub fn render_team_launch_command(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct TeamLaunchResult {
     pub(super) command: String,
-    pub(super) account_applied: Option<bool>,
-    pub(super) account_note: Option<String>,
-    pub(super) account_note_detail: Option<String>,
+    pub(super) account: LaunchAccountResult,
 }
 
 impl TeamLaunchResult {
     pub(super) fn account_result(&self) -> LaunchAccountResult {
-        LaunchAccountResult {
-            account_applied: self.account_applied,
-            account_note: self.account_note.clone(),
-            account_note_detail: self.account_note_detail.clone(),
-        }
+        self.account.clone()
     }
 }
 
@@ -897,9 +891,7 @@ pub(super) fn render_team_launch(
 
     Ok(TeamLaunchResult {
         command: rendered.command,
-        account_applied: account.account_applied,
-        account_note: account.account_note.clone(),
-        account_note_detail: account.account_note_detail.clone(),
+        account,
     })
 }
 
