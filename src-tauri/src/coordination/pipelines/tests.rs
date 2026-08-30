@@ -1,5 +1,7 @@
 use super::*;
+use fs2::FileExt;
 use std::fs;
+use std::fs::File;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +28,7 @@ use crate::coordination::runtime::{
 use crate::coordination::stores::{
     MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
 };
+use crate::coordination::stores::lock::TargetFileLock;
 use crate::coordination::task_effort::EffortPassScope;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{spec, CliTool};
@@ -604,6 +607,103 @@ fn activation_runtime_commit_skips_a_stale_dependency_snapshot() {
         .expect("stale activation commit is handled");
 
     assert!(matches!(outcome, RuntimeCommitOutcome::Skipped { .. }));
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("winning runtime"),
+        concurrent
+    );
+}
+
+#[test]
+fn skipped_activation_runtime_commit_is_reported_as_a_conflict() {
+    // Regression: 0dc5fcae swallowed RuntimeCommitOutcome::Skipped in
+    // commit_member_runtime, so resume reported a launch whose runtime state
+    // was never recorded.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let team_name = "activation-skipped-conflict";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let original = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    let mut concurrent = original;
+    concurrent.pane_id = Some("%winner".to_string());
+    concurrent.pane_pid = Some(9001);
+    concurrent.pane_start_time = Some(1_755_000_009);
+    concurrent.session_id = Some("session-winner".to_string());
+    concurrent.daemon_pid = Some(9002);
+    concurrent.health = HealthState::Healthy;
+
+    let runtime_path = tmp
+        .path()
+        .join(team_name)
+        .join("runtime")
+        .join(format!("{member_name}.json"));
+    let target_lock = TargetFileLock::acquire_if_exists(&runtime_path)
+        .expect("acquire target lock")
+        .expect("runtime target exists");
+    let member_config = setup_config(member_name, "codex", "gpt-5.4", "/tmp/builder");
+    let context = MemberActivationContext::for_initialize_member(
+        team_name,
+        "team-lead",
+        &member_config,
+        MemberRole::Agent,
+    )
+    .expect("context");
+    let commit = std::thread::spawn(move || {
+        orchestrator.commit_member_runtime(
+            &context,
+            RuntimeCommitPatch {
+                pane_id: Some(Some("%stale".to_string())),
+                session_id: Some(Some("session-stale".to_string())),
+                daemon_pid: Some(Some(8000)),
+                health: Some(HealthState::SessionDead),
+                ..Default::default()
+            },
+        )
+    });
+
+    let team_lock_path = tmp.path().join(team_name).join(".lock");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let lock_file = File::open(&team_lock_path).expect("open team lock");
+        if lock_file.try_lock_exclusive().is_err() {
+            break;
+        }
+        FileExt::unlock(&lock_file).expect("release probe lock");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "activation commit did not reach its target-file wait"
+        );
+        std::thread::yield_now();
+    }
+
+    fs::write(
+        &runtime_path,
+        serde_json::to_string_pretty(&concurrent).expect("serialize concurrent runtime"),
+    )
+    .expect("write concurrent runtime");
+    drop(target_lock);
+
+    let error = commit
+        .join()
+        .expect("activation commit thread")
+        .expect_err("a skipped activation commit must not report success");
+    assert!(matches!(error, CoordinationError::Conflict(_)));
     assert_eq!(
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("winning runtime"),
         concurrent

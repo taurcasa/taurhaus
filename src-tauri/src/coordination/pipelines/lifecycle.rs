@@ -248,13 +248,21 @@ impl CoordinationOrchestrator {
         };
 
         let outcome = self.commit_member_runtime_if_unchanged(context, patch, &expected)?;
-        if outcome == RuntimeCommitOutcome::Committed
-            && matches!(
-                context.runtime_commit_policy,
-                MemberActivationRuntimeCommitPolicy::FinalizeAtEnd
-            )
-        {
-            self.sync_team_config_metadata(&context.team_name)?;
+        match outcome {
+            RuntimeCommitOutcome::Committed => {
+                if matches!(
+                    context.runtime_commit_policy,
+                    MemberActivationRuntimeCommitPolicy::FinalizeAtEnd
+                ) {
+                    self.sync_team_config_metadata(&context.team_name)?;
+                }
+            }
+            RuntimeCommitOutcome::Skipped { .. } => {
+                return Err(CoordinationError::Conflict(format!(
+                    "runtime changed while activating member '{}'",
+                    context.member.name
+                )));
+            }
         }
         Ok(())
     }
