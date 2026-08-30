@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 export const E2E_RUN_TOKEN_ENV = 'TAURHAUS_E2E_RUN_TOKEN'
 
 /** Linux `/proc/<pid>/stat` field 22, which disambiguates reused PIDs. */
-export function readProcStartTime(pid, { procRoot = '/proc', readFile = readFileSync } = {}) {
+function readProcStartTime(pid, { procRoot = '/proc', readFile = readFileSync } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return null
   try {
     const stat = String(readFile(join(procRoot, String(pid), 'stat'), 'utf8'))
@@ -21,13 +21,13 @@ export function readProcStartTime(pid, { procRoot = '/proc', readFile = readFile
   }
 }
 
-export function ownedProcessRecord(pid, { processGroup = false, readStartTime = readProcStartTime } = {}) {
+function ownedProcessRecord(pid, { processGroup = false, readStartTime = readProcStartTime } = {}) {
   const startTime = readStartTime(pid)
   if (!startTime) return null
   return { pid, startTime: String(startTime), processGroup: Boolean(processGroup) }
 }
 
-export function ownedProcessRecordMatches(record, { readStartTime = readProcStartTime } = {}) {
+function ownedProcessRecordMatches(record, { readStartTime = readProcStartTime } = {}) {
   if (!record || !Number.isInteger(record.pid) || record.pid <= 0 || !record.startTime) return false
   return String(readStartTime(record.pid) ?? '') === String(record.startTime)
 }

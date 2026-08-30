@@ -20,7 +20,7 @@ const ROOT_SUBDIRS = {
 }
 
 /** A stable high port derived from the worker's unique session root. */
-export function workerDaemonPort(sessionTempRoot) {
+function workerDaemonPort(sessionTempRoot) {
   let hash = 2166136261
   for (const char of resolve(sessionTempRoot)) {
     hash ^= char.codePointAt(0)
