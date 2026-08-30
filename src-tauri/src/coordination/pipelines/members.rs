@@ -1136,7 +1136,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                 "failed to clear foreign-pane daemon pid file: {err}"
                             ));
                         }
-                        if let Err(err) = MemberRuntimeStore::save(
+                        if let Err(err) = MemberRuntimeStore::save_preserving_applied_effort(
                             &self.orchestrator.teams_dir,
                             &prepared.activation_context.team_name,
                             &prepared.member.name,

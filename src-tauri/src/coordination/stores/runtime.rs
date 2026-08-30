@@ -9,11 +9,12 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
 use taurhaus_lib::logging::emit_global;
 
 use super::compaction::prune_state_if_session_mismatch;
+use super::config::extension_fields_only;
 use crate::coordination::domain::{DeliveryLease, HealthState};
 use crate::coordination::errors::CoordinationError;
 use crate::session_scanner::cli_tool::CliTool;
@@ -45,10 +46,16 @@ pub struct MemberRuntimeRecord {
     pub session_id: Option<String>,
     pub jsonl_path: Option<PathBuf>,
     pub daemon_pid: Option<u32>,
-    #[serde(default = "default_runtime_health")]
+    #[serde(
+        default = "default_runtime_health",
+        deserialize_with = "deserialize_runtime_health"
+    )]
     pub health: HealthState,
+    #[serde(default, alias = "deliveryLease")]
     pub delivery_lease: Option<DeliveryLease>,
+    #[serde(default, alias = "attachedAt")]
     pub attached_at: Option<DateTime<Utc>>,
+    #[serde(default, alias = "lastSeenAt")]
     pub last_seen_at: Option<DateTime<Utc>>,
     /// Reasoning effort currently in force for the running session.
     ///
@@ -375,7 +382,7 @@ fn save_runtime_record_locked(
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
     normalized.member_name = member_name.to_string();
-    normalized.extra = extension_fields_only(normalized.extra);
+    normalized.extra = extension_fields_only(normalized.extra, RUNTIME_AUTHORED_KEYS);
 
     let runtime_dir = runtime_dir_path(teams_dir, team_name);
     fs::create_dir_all(&runtime_dir).map_err(|err| {
@@ -471,13 +478,16 @@ fn parse_runtime_record(
         jsonl_path: Option<PathBuf>,
         #[serde(default, alias = "daemonPid")]
         daemon_pid: Option<u32>,
-        #[serde(default = "default_runtime_health")]
+        #[serde(
+            default = "default_runtime_health",
+            deserialize_with = "deserialize_runtime_health"
+        )]
         health: HealthState,
-        #[serde(default)]
+        #[serde(default, alias = "deliveryLease")]
         delivery_lease: Option<DeliveryLease>,
-        #[serde(default)]
+        #[serde(default, alias = "attachedAt")]
         attached_at: Option<DateTime<Utc>>,
-        #[serde(default)]
+        #[serde(default, alias = "lastSeenAt")]
         last_seen_at: Option<DateTime<Utc>>,
         #[serde(default, alias = "appliedEffort")]
         applied_effort: Option<String>,
@@ -513,7 +523,7 @@ fn parse_runtime_record(
             .map(|level| level.trim().to_string())
             .filter(|level| !level.is_empty()),
         effort_resume_failure: wire.effort_resume_failure,
-        extra: extension_fields_only(wire.extra),
+        extra: extension_fields_only(wire.extra, RUNTIME_AUTHORED_KEYS),
     })
 }
 
@@ -538,9 +548,10 @@ fn merge_current_extension_fields(
         .map(str::trim)
         .filter(|level| !level.is_empty())
         .map(ToString::to_string);
-    record
-        .extra
-        .extend(extension_fields_only(current.into_iter().collect()));
+    record.extra.extend(extension_fields_only(
+        current.into_iter().collect(),
+        RUNTIME_AUTHORED_KEYS,
+    ));
     if preserve_applied_effort {
         record.applied_effort = current_applied_effort;
     }
@@ -580,13 +591,6 @@ const RUNTIME_AUTHORED_KEYS: &[&str] = &[
     "effort_resume_failure",
     "effortResumeFailure",
 ];
-
-fn extension_fields_only(mut fields: BTreeMap<String, Value>) -> BTreeMap<String, Value> {
-    for key in RUNTIME_AUTHORED_KEYS {
-        fields.remove(*key);
-    }
-    fields
-}
 
 fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {
     latest_activity(record).is_none_or(|ts| ts <= cutoff)
@@ -838,6 +842,14 @@ const fn default_runtime_health() -> HealthState {
     HealthState::SessionDead
 }
 
+fn deserialize_runtime_health<'de, D>(deserializer: D) -> Result<HealthState, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_else(|_| default_runtime_health()))
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -1061,6 +1073,81 @@ mod tests {
         .expect("cleanup");
         assert!(removed.is_empty(), "partial mesh record must be preserved");
         assert!(path.exists());
+    }
+
+    #[test]
+    fn camel_case_activity_timestamp_keeps_a_fresh_runtime_record() {
+        // Regression: 44540568 classified `lastSeenAt` as taurhaus-authored
+        // without teaching the runtime decoder to read that spelling.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "camel-activity";
+        let member_name = "builder";
+        let runtime_dir = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        let path = runtime_dir.join(format!("{member_name}.json"));
+        fs::write(
+            &path,
+            serde_json::json!({
+                "paneId": "%7",
+                "deliveryLease": {
+                    "owner_pid": 42,
+                    "instance_uuid": "mesh-instance",
+                    "hostname": "mesh-host",
+                    "heartbeat_at": "2026-03-01T21:09:40Z",
+                    "started_at": "2026-03-01T21:00:00Z"
+                },
+                "attachedAt": "2026-03-01T21:09:20Z",
+                "lastSeenAt": "2026-03-01T21:09:30Z"
+            })
+            .to_string(),
+        )
+        .expect("camel-case runtime");
+
+        let record = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("camel-case activity should load");
+        assert_eq!(
+            record.delivery_lease.as_ref().map(|lease| lease.owner_pid),
+            Some(42)
+        );
+        assert_eq!(record.attached_at, Some(ts("2026-03-01T21:09:20Z")));
+        assert_eq!(record.last_seen_at, Some(ts("2026-03-01T21:09:30Z")));
+
+        let removed = MemberRuntimeStore::cleanup_stale(
+            tmp.path(),
+            team_name,
+            Duration::from_secs(60),
+            ts("2026-03-01T21:10:00Z"),
+        )
+        .expect("cleanup");
+        assert!(removed.is_empty(), "the fresh record must be retained");
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn future_health_value_does_not_hide_an_otherwise_valid_runtime_record() {
+        // Regression: 56712858 preserved forward-compatible JSON objects in
+        // cleanup but still made them invisible to load and member resume.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "future-health";
+        let member_name = "builder";
+        let runtime_dir = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        fs::write(
+            runtime_dir.join(format!("{member_name}.json")),
+            r#"{"paneId":"%7","health":"future_mesh_state"}"#,
+        )
+        .expect("future runtime");
+
+        let record = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("future health should degrade one field, not the record");
+        assert_eq!(record.pane_id.as_deref(), Some("%7"));
+        assert_eq!(record.health, HealthState::SessionDead);
+        assert_eq!(
+            MemberRuntimeStore::load_all(tmp.path(), team_name)
+                .expect("load all")
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -1741,6 +1828,28 @@ mod tests {
             saved["appliedEffort"], "low",
             "an owning save still writes the effort carried by its launch snapshot"
         );
+    }
+
+    #[test]
+    fn runtime_authored_keys_cover_every_serialized_record_field() {
+        let member_name = "authored-key-guard";
+        let mut record = sample_record(member_name);
+        record.applied_effort = Some("high".to_string());
+        record.effort_resume_failure = Some(EffortResumeFailure {
+            level: "high".to_string(),
+            attempts: 2,
+        });
+        let Value::Object(serialized) = serde_json::to_value(record).expect("serialize record")
+        else {
+            panic!("runtime record must serialize as an object");
+        };
+
+        for key in serialized.keys() {
+            assert!(
+                RUNTIME_AUTHORED_KEYS.contains(&key.as_str()),
+                "serialized runtime key '{key}' is missing from RUNTIME_AUTHORED_KEYS"
+            );
+        }
     }
 
     #[test]
