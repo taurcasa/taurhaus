@@ -255,35 +255,42 @@ describe('Settings component', () => {
     expect(toggle.className).not.toContain('accent-brand')
   })
 
+  /**
+   * Detection as it really comes back: the account in the configured config
+   * directory carries `is_default`, and it is the process default too.
+   */
+  const DETECTED_ACCOUNTS = [
+    {
+      ...TWO_ACCOUNTS[0],
+      is_default: true,
+      is_process_default: true,
+      dir: '/home/mstie/.claude',
+    },
+    { ...TWO_ACCOUNTS[1], is_default: false, dir: '/home/mstie/.claude-account2' },
+  ]
+
+  const withResolvedBases = (bases, accounts = DETECTED_ACCOUNTS) => (tool) =>
+    Promise.resolve(
+      tool === 'claude' ? { ...detected(accounts), resolvedBases: bases } : detected([])
+    )
+
   // Regression: 0.8.3 derived this line from the literal command, so an alias
   // base like `claude2` showed no selector at all and the sentence claimed the
-  // default config directory decided the account.
+  // default config directory decided the account. 1c779eb then read the
+  // detected `is_default` account first, which detection always sets on the
+  // configured directory, so the base command was never reached at all.
   it('names the alias a launch command hides', async () => {
-    const accounts = [
-      { ...TWO_ACCOUNTS[0], is_default: false, is_process_default: true, dir: '/home/user/.claude' },
-      { ...TWO_ACCOUNTS[1], is_default: false, dir: '/home/user/.claude-account2' },
-    ]
-    listAccounts.mockImplementation((tool) =>
-      Promise.resolve(
-        tool === 'claude'
-          ? {
-              ...detected(accounts),
-              resolved_bases: [
-                {
-                  command:
-                    'CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude --dangerously-skip-permissions',
-                  expansions: [
-                    {
-                      name: 'claude2',
-                      body: 'CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude',
-                    },
-                  ],
-                  opaqueHead: null,
-                },
-              ],
-            }
-          : detected([])
-      )
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command:
+            "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
+          expansions: [
+            { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+          ],
+          opaqueHead: null,
+        },
+      ])
     )
 
     render(Settings, { props: defaultProps() })
@@ -291,30 +298,89 @@ describe('Settings component', () => {
     const line = await screen.findByTestId('effective-default-claude')
     expect(line).toHaveTextContent('B')
     expect(line).toHaveTextContent(
-      'from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude)'
+      'from your launch command "claude2" (alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude)'
     )
   })
 
+  // Regression: 1c779eb compared the selector value verbatim against absolute
+  // account dirs, and the operator's own alias is `~/.claude-account2`, so a
+  // base nothing expanded — an older backend, or the literal fallback — matched
+  // no account and the line claimed the default config directory.
+  it('matches a tilde selector nothing expanded', async () => {
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions',
+          expansions: [
+            { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+          ],
+          opaqueHead: null,
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent('B')
+    expect(line).toHaveTextContent('alias for CLAUDE_CONFIG_DIR=~/.claude-account2 claude')
+  })
+
+  // The shell reads the last assignment of a name, and an expanded alias can
+  // leave a configured prefix in front of its own.
+  it('reads the last selector the launch command assigns', async () => {
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command:
+            "CLAUDE_CONFIG_DIR='/home/mstie/.claude' CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude",
+          expansions: [
+            { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+          ],
+          opaqueHead: null,
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent('B')
+  })
+
+  it('keeps a chosen global default above the launch command', async () => {
+    getSettings.mockResolvedValue(
+      mockSettings({ terminal: { default_account_ids: { claude: 'account-1' } } })
+    )
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command: "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude",
+          expansions: [
+            { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+          ],
+          opaqueHead: null,
+        },
+      ])
+    )
+
+    render(Settings, { props: defaultProps() })
+
+    const line = await screen.findByTestId('effective-default-claude')
+    expect(line).toHaveTextContent('A')
+    expect(line).toHaveTextContent('default')
+    expect(line).not.toHaveTextContent('alias for')
+  })
+
   it('warns when the launch command does not run the CLI at all', async () => {
-    const accounts = [
-      { ...TWO_ACCOUNTS[0], is_default: false, is_process_default: true, dir: '/home/user/.claude' },
-      { ...TWO_ACCOUNTS[1], is_default: false, dir: '/home/user/.claude-account2' },
-    ]
-    listAccounts.mockImplementation((tool) =>
-      Promise.resolve(
-        tool === 'claude'
-          ? {
-              ...detected(accounts),
-              resolved_bases: [
-                {
-                  command: 'my-claude-wrapper --dangerously-skip-permissions',
-                  expansions: [],
-                  opaqueHead: 'my-claude-wrapper',
-                },
-              ],
-            }
-          : detected([])
-      )
+    listAccounts.mockImplementation(
+      withResolvedBases([
+        {
+          command: 'my-claude-wrapper --dangerously-skip-permissions',
+          expansions: [],
+          opaqueHead: 'my-claude-wrapper',
+        },
+      ])
     )
 
     render(Settings, { props: defaultProps() })

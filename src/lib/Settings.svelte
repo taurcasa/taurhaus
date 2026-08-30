@@ -165,11 +165,19 @@
     )
   )
 
-  function selectedAccountId(tool) {
-    const state = accountState(tool)
+  /** The account this user chose as the tool's global default, if any. */
+  function persistedDefaultAccountId(tool) {
     return (
       settings?.terminal?.default_account_ids?.[tool] ??
       settings?.terminal?.defaultAccountIds?.[tool] ??
+      null
+    )
+  }
+
+  function selectedAccountId(tool) {
+    const state = accountState(tool)
+    return (
+      persistedDefaultAccountId(tool) ??
       state.accounts.find((account) => account.is_default)?.id ??
       ''
     )
@@ -206,23 +214,51 @@
     return Object.values(commands).map((command) => ({ command: String(command) }))
   }
 
+  /**
+   * The account a base command's own selector names.
+   *
+   * A shell reads the last assignment of a name, and an expanded alias can
+   * leave a configured prefix in front of its own. A backend that resolved the
+   * base has already expanded `~` against the home of the shell that will run
+   * it; one too old to resolve anything leaves the tilde, and the account is
+   * then matched on the path it names below that home.
+   */
+  function baseSelectorAccount(command, selector, accounts) {
+    if (!selector) return null
+    const pattern = new RegExp(`(?:^|\\s)${selector}=(?:'([^']*)'|\"([^\"]*)\"|([^\\s]*))`, 'g')
+    const assignment = [...String(command).matchAll(pattern)].at(-1)
+    const dir = assignment ? (assignment[1] ?? assignment[2] ?? assignment[3] ?? '') : ''
+    if (!dir) return null
+    if (dir.startsWith('~/')) {
+      const tail = dir.slice(1)
+      return accounts.find((account) => String(account.dir).endsWith(tail)) ?? null
+    }
+    return accounts.find((account) => account.dir === dir) ?? null
+  }
+
+  /**
+   * Which account a launch lands on, and why.
+   *
+   * Precedence is the backend's: the global default this user chose, then a
+   * selector the launch command carries — through a shell alias included — and
+   * only then the configured config directory. Detection marks that
+   * directory's account `is_default`, which is a fact about the host rather
+   * than a choice anybody made, so it cannot outrank the launch command.
+   */
   function effectiveDefault(tool) {
     const state = accountState(tool.id)
-    const selected = state.accounts.find((account) => account.id === selectedAccountId(tool.id))
-    if (selected) return { account: selected, origin: 'default' }
+    const chosen = state.accounts.find(
+      (account) => account.id === persistedDefaultAccountId(tool.id)
+    )
+    if (chosen) return { account: chosen, origin: 'default' }
+    const configured = state.accounts.find(
+      (account) => account.is_process_default || account.is_default
+    )
     const selector = tool.capabilities.accountSelector
     for (const base of launchBases(tool)) {
       const head = base.opaqueHead ?? base.opaque_head
-      if (head) {
-        return {
-          account: state.accounts.find(
-            (account) => account.is_process_default || account.is_default
-          ),
-          origin: opaqueBaseNotice(head, tool.id),
-        }
-      }
-      const match = selector && String(base.command).match(new RegExp(`${selector}=['\"]?([^'\" ]+)`))
-      const account = match && state.accounts.find((candidate) => candidate.dir === match[1])
+      if (head) return { account: configured, origin: opaqueBaseNotice(head, tool.id) }
+      const account = baseSelectorAccount(base.command, selector, state.accounts)
       if (!account) continue
       const alias = base.expansions?.[0]
       return {
@@ -232,10 +268,7 @@
           : `from your launch command \"${base.command}\"`,
       }
     }
-    return {
-      account: state.accounts.find((account) => account.is_process_default || account.is_default),
-      origin: 'default config directory',
-    }
+    return { account: configured, origin: 'default config directory' }
   }
 
   function focusCliCommands(tool) {
