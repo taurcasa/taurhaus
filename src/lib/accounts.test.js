@@ -924,6 +924,107 @@ describe('claudeAccounts store', () => {
       }
     })
 
+    // Regression: 2bec263 read a debounced refresh — the backend answers `false`
+    // for a second request inside five seconds — as "the numbers on screen are
+    // current", and judged the launch on them. The fetch that request was
+    // debounced against was still out: opening the sidebar menu starts exactly
+    // such a refresh, so a launch a moment later continued into the account the
+    // fetch it did not wait for was about to report as spent.
+    it('waits for the fetch a debounced refresh was debounced against', async () => {
+      vi.useFakeTimers()
+      try {
+        listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: HEADROOM }, SECOND]))
+        await refreshAccounts('claude')
+        // Opening the menu asks for usage; that fetch is still out.
+        await refreshUsage('claude')
+
+        let readsAfterLaunch = 0
+        listAccounts.mockImplementation(() => {
+          const landed = refreshAccountsUsage.mock.calls.length > 1 && readsAfterLaunch++ > 0
+          const usage = landed ? { ...SPENT, observed_at: LATER } : HEADROOM
+          return Promise.resolve(
+            detected([{ ...PRIMARY, usage }, SECOND])
+          )
+        })
+        // The backend debounces a second refresh within five seconds.
+        refreshAccountsUsage.mockResolvedValueOnce(false)
+
+        const launching = requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+        await vi.advanceTimersByTimeAsync(1_000)
+        await launching
+
+        expect(launchCliSession).not.toHaveBeenCalled()
+        expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
+      } finally {
+        resetAccountsForTest()
+        vi.useRealTimers()
+      }
+    })
+
+    // Regression: 2bec263 replaced the running sync whenever a second caller
+    // asked for usage, settling the launch already waiting on it as "nothing
+    // new was learned". The chip and the sidebar menu both refresh on their
+    // own, so an ordinary hover while a launch waited cancelled its wait and
+    // sent it into the account it was still asking about.
+    it('a second refresh does not cancel the launch already waiting on the first', async () => {
+      vi.useFakeTimers()
+      try {
+        let published = HEADROOM
+        listAccounts.mockImplementation(() =>
+          Promise.resolve(detected([{ ...PRIMARY, usage: published }, SECOND]))
+        )
+        await refreshAccounts('claude')
+
+        const launching = requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+        await vi.advanceTimersByTimeAsync(100)
+        // A chip or a menu asks for usage while the launch is still waiting.
+        await refreshUsage('claude')
+        published = { ...SPENT, observed_at: LATER }
+
+        await vi.advanceTimersByTimeAsync(2_000)
+        await launching
+
+        expect(launchCliSession).not.toHaveBeenCalled()
+        expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
+      } finally {
+        resetAccountsForTest()
+        vi.useRealTimers()
+      }
+    })
+
+    // Regression: c11770e answered the Windows refresh with the daemon having
+    // replied rather than with its `started` field, so every debounced refresh
+    // read as a fetch that had begun and every remembered-account launch waited
+    // out the 30-second deadline for a reading nothing was going to publish.
+    // With the daemon answering honestly, a refresh that started nothing — and
+    // has nothing in flight to join — must decide at once on what is known.
+    it('decides at once when nothing new was started and nothing is in flight', async () => {
+      vi.useFakeTimers()
+      try {
+        listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: HEADROOM }, SECOND]))
+        await refreshAccounts('claude')
+        refreshAccountsUsage.mockResolvedValueOnce(false)
+
+        let settled = false
+        const launching = requestLaunch({
+          project: remembering(),
+          mode: 'fresh',
+          tool: 'claude',
+        }).then(() => {
+          settled = true
+        })
+        await vi.advanceTimersByTimeAsync(1)
+        await launching
+
+        expect(settled).toBe(true)
+        expect(claudeAccounts.pending).toBe(null)
+        expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+      } finally {
+        resetAccountsForTest()
+        vi.useRealTimers()
+      }
+    })
+
     it('never blocks a launch on an account nothing was ever known about', async () => {
       listAccounts.mockResolvedValue(detected([PRIMARY, SECOND]))
       await refreshAccounts('claude')

@@ -149,7 +149,8 @@ const DETECTION_TTL_MS = 60_000
 const USAGE_SYNC_INITIAL_RETRY_MS = 250
 const USAGE_SYNC_MAX_RETRY_MS = 16_000
 const USAGE_SYNC_DEADLINE_MS = 30_000
-const usageSyncTimers = new Map()
+/** One sync chain per tool, shared by everything waiting on its fetch. */
+const usageSyncs = new Map()
 
 export function refreshAccounts(tool = providerTool(), { force = false } = {}) {
   const id = toolId(tool)
@@ -188,13 +189,14 @@ function mergeUsageReport(state, report, pending) {
  * One caller waiting for a named account's reading to be superseded.
  *
  * It answers exactly once, whatever ends the chain that carries it: the newer
- * reading, the deadline, a failed read, or another refresh taking the timer
- * over. A launch that waits must never be left waiting.
+ * reading, the deadline, a failed read, or the chain running out of readings to
+ * wait for. A launch that waits must never be left waiting.
  */
-function usageWatch(accountId, resolve) {
+function usageWatch(accountId, observedAt, resolve) {
   let answered = false
   return {
     accountId,
+    observedAt,
     settle(current) {
       if (answered) return
       answered = true
@@ -203,54 +205,95 @@ function usageWatch(accountId, resolve) {
   }
 }
 
-function stopUsageSync(tool) {
-  const previous = usageSyncTimers.get(tool)
-  if (!previous) return
-  clearTimeout(previous.timer)
-  usageSyncTimers.delete(tool)
-  previous.watch?.settle(false)
+/**
+ * Answer every waiter whose own account has published a reading since it asked.
+ *
+ * Each waiter carries the observation it wants superseded, so waiters that
+ * joined the chain at different moments are each answered by the first reading
+ * that is newer than the one *they* saw.
+ */
+function settleSupersededWatches(tool, state) {
+  const sync = usageSyncs.get(tool)
+  if (!sync) return
+  for (const watch of [...sync.watches]) {
+    const account = state.accounts.find((entry) => entry.id === watch.accountId)
+    if (usageObservation(account) === watch.observedAt) continue
+    sync.watches.delete(watch)
+    watch.settle(true)
+  }
 }
 
-function scheduleUsageSync(
-  tool,
-  pending,
-  deadline,
-  retryMs = USAGE_SYNC_INITIAL_RETRY_MS,
-  watch = null
-) {
-  let waiting = watch
-  if (waiting && !pending.has(waiting.accountId)) {
-    waiting.settle(true)
-    waiting = null
-  }
-  if (pending.size === 0 || Date.now() >= deadline) {
-    waiting?.settle(false)
+function stopUsageSync(tool) {
+  const sync = usageSyncs.get(tool)
+  if (!sync) return
+  clearTimeout(sync.timer)
+  usageSyncs.delete(tool)
+  for (const watch of sync.watches) watch.settle(false)
+  sync.watches.clear()
+}
+
+function armUsageSync(tool, retryMs) {
+  const sync = usageSyncs.get(tool)
+  if (!sync) return
+  const untilDeadline = sync.deadline - Date.now()
+  if (sync.pending.size === 0 || untilDeadline <= 0) {
+    stopUsageSync(tool)
     return
   }
-  stopUsageSync(tool)
-  const timer = setTimeout(async () => {
-    if (usageSyncTimers.get(tool)?.timer === timer) usageSyncTimers.delete(tool)
-    if (Date.now() >= deadline) {
-      waiting?.settle(false)
+  const armed = ++sync.arm
+  const superseded = () => usageSyncs.get(tool) !== sync || sync.arm !== armed
+  const timer = setTimeout(() => {
+    if (superseded()) return
+    if (Date.now() >= sync.deadline) {
+      stopUsageSync(tool)
       return
     }
-    try {
-      const report = await listAccounts(tool)
-      const remaining = mergeUsageReport(mutableAccountState(tool), report, pending)
-      scheduleUsageSync(
-        tool,
-        remaining,
-        deadline,
-        Math.min(retryMs * 2, USAGE_SYNC_MAX_RETRY_MS),
-        waiting
-      )
-    } catch (error) {
-      console.warn('Failed to read refreshed account usage:', error)
-      waiting?.settle(false)
-    }
-  }, Math.min(retryMs, deadline - Date.now()))
+    Promise.resolve(listAccounts(tool))
+      .then((report) => {
+        if (superseded()) return
+        const state = mutableAccountState(tool)
+        sync.pending = mergeUsageReport(state, report, sync.pending)
+        settleSupersededWatches(tool, state)
+        armUsageSync(tool, Math.min(retryMs * 2, USAGE_SYNC_MAX_RETRY_MS))
+      })
+      .catch((error) => {
+        if (superseded()) return
+        console.warn('Failed to read refreshed account usage:', error)
+        stopUsageSync(tool)
+      })
+  }, Math.min(retryMs, untilDeadline))
   timer?.unref?.()
-  usageSyncTimers.set(tool, { timer, watch: waiting })
+  sync.timer = timer
+}
+
+/**
+ * Merge readings to supersede, and any caller waiting on one, into the tool's
+ * one sync chain.
+ *
+ * Callers overlap: opening the sidebar menu asks for fresh usage, and a launch
+ * a moment later asks again while that fetch is still out. They share the one
+ * chain rather than replacing it, so a second caller never cancels the first
+ * one's wait — and a launch that arrives mid-fetch can wait for *that* fetch
+ * instead of judging the reading it is about to replace.
+ *
+ * A null `deadline` joins a chain without extending it: nothing new was
+ * started, so nothing new is promised beyond what the running one will publish.
+ */
+function trackUsageSync(tool, pending, { deadline = null, watch = null } = {}) {
+  let sync = usageSyncs.get(tool)
+  if (!sync) {
+    if (deadline == null) {
+      watch?.settle(false)
+      return
+    }
+    sync = { timer: null, arm: 0, pending: new Map(), deadline, watches: new Set() }
+    usageSyncs.set(tool, sync)
+  }
+  if (deadline != null) sync.deadline = Math.max(sync.deadline, deadline)
+  for (const [accountId, observedAt] of pending) sync.pending.set(accountId, observedAt)
+  if (watch) sync.watches.add(watch)
+  clearTimeout(sync.timer)
+  armUsageSync(tool, USAGE_SYNC_INITIAL_RETRY_MS)
 }
 
 /**
@@ -261,6 +304,13 @@ function scheduleUsageSync(
  * asked to replace. `settleFor` is the launch path's answer to that: naming an
  * account makes the promise wait for that account's own reading to be
  * superseded, bounded by the same deadline the background sync uses.
+ *
+ * The backend also debounces: a request within five seconds of the last one
+ * starts nothing and says so. That is not the same as "the numbers on screen
+ * are current" — the fetch it was debounced against may still be out, and it is
+ * the one this caller is asking about. So a refresh that started nothing joins
+ * the sync already in flight, and only a caller with nothing in flight to join
+ * decides at once on what is already known.
  *
  * An account nothing has ever reported on is not waited for — there is no
  * reading to supersede, and a launch is never held up over one that does not
@@ -280,24 +330,24 @@ export function refreshUsage(tool = providerTool(), { settleFor = null } = {}) {
       .map((account) => [account.id, usageObservation(account)])
   )
   const awaited = settleFor && pending.get(settleFor) != null ? settleFor : null
+  const awaitedObservation = awaited ? pending.get(awaited) : null
   return Promise.resolve(refreshAccountsUsage(id))
     .then((scheduled) => listAccounts(id).then((report) => ({ report, scheduled })))
     .then(({ report, scheduled }) => {
+      const inFlight = usageSyncs.has(id)
       const remaining = mergeUsageReport(state, report, pending)
-      if (!scheduled) return { ok: true, current: true }
-      const deadline = Date.now() + USAGE_SYNC_DEADLINE_MS
+      settleSupersededWatches(id, state)
+      if (!scheduled && !inFlight) return { ok: true, current: true }
+      const deadline = scheduled ? Date.now() + USAGE_SYNC_DEADLINE_MS : null
       if (!awaited || !remaining.has(awaited)) {
-        scheduleUsageSync(id, remaining, deadline)
+        trackUsageSync(id, remaining, { deadline })
         return { ok: true, current: true }
       }
       return new Promise((resolve) => {
-        scheduleUsageSync(
-          id,
-          remaining,
+        trackUsageSync(id, remaining, {
           deadline,
-          USAGE_SYNC_INITIAL_RETRY_MS,
-          usageWatch(awaited, resolve)
-        )
+          watch: usageWatch(awaited, awaitedObservation, resolve),
+        })
       })
     })
     .catch((error) => {
@@ -496,8 +546,8 @@ export function pendingAccountChoice() {
 }
 
 export function resetAccountsForTest() {
-  for (const tool of [...usageSyncTimers.keys()]) stopUsageSync(tool)
-  usageSyncTimers.clear()
+  for (const tool of [...usageSyncs.keys()]) stopUsageSync(tool)
+  usageSyncs.clear()
   for (const state of Object.values(accounts.byTool)) {
     state.accounts = []
     state.degraded = false
