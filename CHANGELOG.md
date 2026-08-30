@@ -6,11 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Internal task-deadline policy** — coordination now has a pure, injected-clock decision module for one-shot nudge-at-half and stale-at-deadline actions, plus optional persisted deadline markers. It remains deliberately unwired from self-heal and the placeholder health framework.
+
 ### Changed
 
 - **Workflow gates are exact, typed commands** — procedure callers pass command arrays and keep gate-only operational notes in `gateNotes`; startup rejects empty or multiline commands, multi-command compatibility strings, bracketed notes in either input form, malformed `just` commands, and every `cargo test` clause with more than one positional filter. Gate reports now match required commands exactly, reject undeclared command lines, and require either `just test-rust-unit` or every caller-declared Rust-test gate whenever the diff includes `src-tauri/`; that diff report is cross-checked against the implementation lanes so an empty `changed_paths` cannot suppress Rust tests. The workflow lint also enforces the typed catalog and byte-identical shared libraries.
 
+### Added
+
+- **CI executes Rust tests** — every pull request runs the serialized Rust unit and integration recipes in stable, cached jobs alongside the existing fast/frontend gate; main pushes and manual dispatches run both Rust jobs too, and failed builds populate the next retry's cache without skipping test execution.
+
 ### Fixed
+
+- **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
+
+- **The full quality gate now fails with its lane** — `just check` preserves a failed parallel lane's status, stops its peer, and is regression-guarded through `just lint` without running the real lanes.
 
 - **Member runtime records are lossless across mesh and taurhaus writers** — runtime records preserve mesh-owned and unknown keys under a flattened extension map, and stale taurhaus snapshots merge those keys from the current file while holding the existing target-file lock. Minimal mesh records such as an `appliedEffort`-only object load as offline instead of being deleted as corrupt; genuinely invalid or non-object JSON is still removed, and skipped records emit `coordination.runtime.record_skipped`. Transient pane-probe failures preserve durable PID/start-time identity and emit `coordination.pane.probe_failed`, while confirmed dead/gone panes clear it and newly created panes never inherit it. Teardown now requires the member's pane identity when a runtime record exists, so a same-project sibling pane is not killed. Mesh inbox messages that omit `read` default to unread.
 - **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.

@@ -1706,6 +1706,7 @@ mod tests {
                     subject: "Implement Claude SessionStart(source=compact) hook bridge"
                         .to_string(),
                     status: "in_progress".to_string(),
+                    ..Default::default()
                 },
                 assignment_footer: OperationalAssignmentFooterSnapshot {
                     execution_mode: "implement".to_string(),

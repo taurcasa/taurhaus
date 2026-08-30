@@ -510,6 +510,7 @@ mod tests {
                 id: "673".to_string(),
                 subject: "Architecture: post-compaction operational re-injection".to_string(),
                 status: "in_progress".to_string(),
+                ..Default::default()
             },
             assignment_footer: OperationalAssignmentFooterSnapshot {
                 execution_mode: "recommend".to_string(),

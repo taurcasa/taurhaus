@@ -1,5 +1,7 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -7,6 +9,11 @@ fn crate_root() -> PathBuf {
 
 fn read_source(path: &str) -> String {
     fs::read_to_string(crate_root().join(path)).expect("source file should be readable")
+}
+
+fn quality_gate_workflow() -> String {
+    fs::read_to_string(crate_root().join("../.github/workflows/quality-gate.yml"))
+        .expect("quality-gate workflow should be readable")
 }
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -101,6 +108,261 @@ fn cli_tool_literal_count(source: &str) -> usize {
     .sum()
 }
 
+fn integration_test_binaries_on_disk() -> BTreeSet<String> {
+    fs::read_dir(crate_root().join("tests"))
+        .expect("integration test directory should be readable")
+        .map(|entry| {
+            entry
+                .expect("integration test entry should be readable")
+                .path()
+        })
+        .filter(|path| {
+            path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+        })
+        .map(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .expect("integration test filename should be UTF-8")
+                .to_owned()
+        })
+        .collect()
+}
+
+fn show_recipe(recipe: &str) -> String {
+    let crate_dir = crate_root();
+    let repository = crate_dir.parent().expect("crate lives in repository");
+    let output = Command::new("just")
+        .current_dir(repository)
+        .args(["--show", recipe])
+        .output()
+        .expect("just should show repository recipes");
+    assert!(
+        output.status.success(),
+        "just --show {recipe} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("shown recipe should be UTF-8")
+}
+
+fn evaluate_just_variable(variable: &str) -> String {
+    let crate_dir = crate_root();
+    let repository = crate_dir.parent().expect("crate lives in repository");
+    let output = Command::new("just")
+        .current_dir(repository)
+        .args(["--evaluate", variable])
+        .output()
+        .expect("just should evaluate repository variables");
+    assert!(
+        output.status.success(),
+        "just --evaluate {variable} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("evaluated variable should be UTF-8")
+}
+
+fn named_test_binaries(recipe: &str) -> BTreeSet<String> {
+    let tokens = recipe.split_whitespace().collect::<Vec<_>>();
+    tokens
+        .windows(2)
+        .filter(|window| window[0] == "--test")
+        .map(|window| {
+            window[1]
+                .trim_matches(|character| matches!(character, '\'' | '"' | ';'))
+                .to_owned()
+        })
+        .collect()
+}
+
+fn values_after_flag(recipe: &str, flag: &str) -> BTreeSet<String> {
+    let tokens = recipe.split_whitespace().collect::<Vec<_>>();
+    tokens
+        .windows(2)
+        .filter(|window| window[0] == flag && !window[1].starts_with('-'))
+        .map(|window| {
+            window[1]
+                .trim_matches(|character| matches!(character, '\'' | '"' | ';'))
+                .to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn rust_integration_recipe_runs_every_test_binary() {
+    // Regression guard (Opus review of the manifest lane, 2026-08-30): the first
+    // draft invoked `just` unconditionally, so a bare
+    // `cargo test` panicked when that development tool was not installed.
+    if Command::new("just").arg("--version").output().is_err() {
+        // `just` is how every lane in this repo is invoked, so its absence means
+        // a bare `cargo test`; this suite should not fail over a missing
+        // development tool.
+        eprintln!("skipping: `just` is not installed");
+        return;
+    }
+
+    // Regression: commit 831571da replaced the integration lane with a
+    // hand-maintained target list; later binaries compiled under `cargo check`
+    // but never ran because nothing checked that list against `tests/*.rs`.
+    let expected = integration_test_binaries_on_disk();
+    let shown_recipe = show_recipe("test-rust-integration");
+    // Regression guard (same review): the first draft silently fell back to a dry-run parser that
+    // cannot evaluate the recipe's backtick-derived integration target list.
+    assert!(
+        shown_recipe.contains("{{ integration_test_args }}"),
+        "the integration recipe no longer derives its targets from integration_test_args"
+    );
+    let actual = named_test_binaries(&evaluate_just_variable("integration_test_args"));
+    let missing = expected.difference(&actual).collect::<Vec<_>>();
+    let stale = actual.difference(&expected).collect::<Vec<_>>();
+
+    assert!(
+        missing.is_empty() && stale.is_empty(),
+        "integration test manifest drifted; missing: {missing:?}; stale: {stale:?}"
+    );
+}
+
+#[test]
+fn heavy_unit_skips_match_integration_reruns() {
+    // Regression guard (Opus review of the manifest lane, 2026-08-30): the first
+    // draft invoked `just` unconditionally, so a bare
+    // `cargo test` panicked when that development tool was not installed.
+    if Command::new("just").arg("--version").output().is_err() {
+        // `just` is how every lane in this repo is invoked, so its absence means
+        // a bare `cargo test`; this suite should not fail over a missing
+        // development tool.
+        eprintln!("skipping: `just` is not installed");
+        return;
+    }
+
+    // Regression: commit 831571da introduced separate heavy-suite skip and
+    // rerun lists, so one side could change while the other silently drifted.
+    let unit_recipe = show_recipe("test-rust-unit");
+    let integration_recipe = show_recipe("test-rust-integration");
+    let shared_reference = "{{ heavy_rust_test_filters }}";
+    let unit_uses_shared_list = unit_recipe.contains(shared_reference);
+    let integration_uses_shared_list = integration_recipe.contains(shared_reference);
+
+    assert!(
+        unit_uses_shared_list && integration_uses_shared_list,
+        "both Rust lanes must source heavy filters from the same manifest"
+    );
+
+    let shared = evaluate_just_variable("heavy_rust_test_filters")
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        !shared.is_empty(),
+        "the heavy manifest must name at least one filter"
+    );
+
+    // Regression guard (same review): the first draft compared the shared manifest with itself, so
+    // a literal filter appended to either recipe could drift without detection.
+    // A `$`-value is only ever the loop variable each lane expands the shared
+    // list through; any other shell variable would be a second list the guard
+    // cannot see (Opus review of the manifest lane, 2026-08-30).
+    let loop_variables = [
+        "$skip_args",
+        "\"$skip_args\"",
+        "$test_filter",
+        "\"$test_filter\"",
+    ];
+    let split_literals = |values: BTreeSet<String>| {
+        let mut literals = BTreeSet::new();
+        for value in values {
+            if value.starts_with('$') || value.starts_with("\"$") {
+                assert!(
+                    loop_variables.contains(&value.as_str()),
+                    "a heavy filter must come from the shared manifest, not another shell variable: {value}"
+                );
+            } else {
+                literals.insert(value);
+            }
+        }
+        literals
+    };
+    let literal_unit_skips = split_literals(values_after_flag(&unit_recipe, "--skip"));
+    let literal_integration_reruns =
+        split_literals(values_after_flag(&integration_recipe, "--lib"));
+    let unexpected_unit_skips = literal_unit_skips.difference(&shared).collect::<Vec<_>>();
+    let unexpected_integration_reruns = literal_integration_reruns
+        .difference(&shared)
+        .collect::<Vec<_>>();
+
+    assert!(
+        unexpected_unit_skips.is_empty(),
+        "unit lane has literal heavy skips outside the shared manifest: {unexpected_unit_skips:?}"
+    );
+    assert!(
+        unexpected_integration_reruns.is_empty(),
+        "integration lane has literal heavy reruns outside the shared manifest: {unexpected_integration_reruns:?}"
+    );
+
+    let mut skipped = shared.clone();
+    skipped.extend(literal_unit_skips);
+    let mut rerun = shared;
+    rerun.extend(literal_integration_reruns);
+    assert_eq!(
+        skipped, rerun,
+        "unit skips and integration reruns must stay in parity"
+    );
+}
+
+#[test]
+fn rust_integration_ci_runs_on_every_pull_request() {
+    // Regression: commit 797bae05 kept the integration job label-gated after
+    // measured warm runs met the PR budget, leaving unlabeled PRs without the
+    // seven integration binaries that the recipe currently owns.
+    let workflow = quality_gate_workflow();
+    let integration_job = workflow
+        .split_once("\n  rust-integration:\n")
+        .map(|(_, job)| job)
+        .expect("quality gate should define the Rust integration job");
+
+    assert!(
+        !integration_job.contains("\n    if:"),
+        "the Rust integration job must not be gated away on pull requests"
+    );
+    assert!(
+        !workflow.contains("rust-integration')") && !workflow.contains("labeled]"),
+        "the measured budget requires the every-PR path, not a label trigger"
+    );
+}
+
+#[test]
+fn main_push_integration_runs_are_never_cancelled_by_newer_pushes() {
+    // Regression: commit 797bae05 put the only automatic main-push integration
+    // run under unconditional workflow cancellation, so a quick later merge
+    // could cancel coverage for the earlier commit without reporting failure.
+    let workflow = quality_gate_workflow();
+
+    assert!(
+        workflow.contains("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"),
+        "only superseded pull-request runs may be cancelled"
+    );
+    assert!(
+        !workflow.contains("cancel-in-progress: true"),
+        "main-push integration runs must never use unconditional cancellation"
+    );
+}
+
+#[test]
+fn rust_integration_ci_caches_failed_builds() {
+    // Regression: commit 797bae05 cached failed unit builds but not failed
+    // integration builds, forcing the next retry to rebuild the same artifacts
+    // before it could exercise the integration recipe again.
+    let workflow = quality_gate_workflow();
+    let integration_job = workflow
+        .split_once("\n  rust-integration:\n")
+        .map(|(_, job)| job)
+        .expect("quality gate should define the Rust integration job");
+
+    assert!(
+        integration_job.contains("shared-key: rust-integration\n          cache-on-failure: true"),
+        "failed integration builds should seed the next retry's Rust cache"
+    );
+}
+
 #[test]
 fn coordination_modules_do_not_import_commands_layer() {
     let mut files = Vec::new();
@@ -164,6 +426,30 @@ fn commands_coordination_types_avoids_domain_enum_definitions() {
         !source.contains("pub enum SessionStatus"),
         "SessionStatus must be sourced from coordination contracts"
     );
+}
+
+#[test]
+fn task_deadline_policy_stays_pure_and_outside_placeholder_health_framework() {
+    let source = read_source("src/coordination/task_deadline.rs");
+    let runtime = runtime_section(&source);
+
+    for forbidden in [
+        "crate::coordination::health",
+        "super::health",
+        "health::transition",
+        "RecoveryPolicy",
+        "Utc::now",
+        "Local::now",
+        "SystemTime::now",
+        "Instant::now",
+        "std::fs",
+        "std::process",
+    ] {
+        assert!(
+            !runtime.contains(forbidden),
+            "task deadline policy crossed its pure-module fence via {forbidden}"
+        );
+    }
 }
 
 #[test]
@@ -245,6 +531,10 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // Regression: commit 9a66d1c distributed CliTool identity branches across
     // runtime consumers; new harness behavior must live in the registry or a
     // declared per-tool capability slice instead.
+    // Regression: commit 35daf4b added a cfg(test)-only IPC fixture module whose
+    // synthetic descriptors are test data, not runtime identity branches.
+    // Regression: commit 7e0b2455 exempted that fixture by path, so removing its
+    // cfg(test) declaration would silently let runtime identity branches escape.
     const ALLOWED_RUNTIME_FILES: &[&str] = &[
         "src/coordination/compact_hook.rs",
         "src/daemon/agy_hooks.rs",
@@ -271,6 +561,18 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
+    let lib_source = read_source("src/lib.rs");
+    let lib_lines = lib_source.lines().collect::<Vec<_>>();
+    let test_only_module_paths = lib_lines
+        .windows(2)
+        .filter_map(|lines| {
+            if lines[0].trim() != "#[cfg(test)]" {
+                return None;
+            }
+            let module = lines[1].trim().strip_prefix("mod ")?.strip_suffix(';')?;
+            Some(format!("src/{module}.rs"))
+        })
+        .collect::<Vec<_>>();
 
     let mut allowed_count = 0;
     let mut violations = Vec::new();
@@ -283,6 +585,9 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
             .expect("source lives under crate root")
             .to_string_lossy()
             .replace('\\', "/");
+        if test_only_module_paths.contains(&relative) {
+            continue;
+        }
         let source = fs::read_to_string(&path).expect("Rust source should be readable");
         let runtime = source_without_test_only_items(&source);
         let count = cli_tool_literal_count(&runtime);

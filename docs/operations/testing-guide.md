@@ -23,7 +23,7 @@ Per-module `#[test]` functions with `pretty_assertions` for readable diffs and `
 just test-rust            # Full Rust lane (fast compile + unit + integration/system)
 just test-rust-fast       # Compile check only (fast feedback)
 just test-rust-unit       # Unit/bin tests, heavy suites excluded
-just test-rust-integration # Serialized integration/system suites
+just test-rust-integration # Every src-tauri/tests/*.rs binary plus the heavy --lib suites, serialized
 just test-daemon-connectivity # Manual daemon chain verification (WSL/local)
 ```
 
@@ -145,7 +145,7 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 | `just test-fast` | Rust compile-check + frontend Vitest |
 | `just test-rust-fast` | Cargo test compile check |
 | `just test-rust-unit` | Rust unit tests (no daemon/network) |
-| `just test-rust-integration` | System/integration tests |
+| `just test-rust-integration` | Every `src-tauri/tests/*.rs` system/integration test binary plus the heavy `--lib` suites, serialized |
 | `just test-frontend` | Vitest frontend tests |
 | `just test-visual` | Browser-mode visual screenshot lane |
 | `just visual-shot C S [V] [T] [OUT]` | One fixture shot at window size via Edge headless |
@@ -159,6 +159,17 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 | `just test-macos` | Rust tests on remote Mac Mini |
 | `just test-macos-e2e` | macOS E2E on remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |
+
+### CI schedule
+
+| Job | Command | When it runs |
+|-----|---------|--------------|
+| `Rust unit tests` | `just test-rust-unit` | Every pull request, main push, and manual workflow dispatch |
+| `Rust integration tests` | `just test-rust-integration` | Every pull request, main push, and manual workflow dispatch |
+
+Both Rust jobs cache build artifacts, including failed builds for faster retries, without skipping test execution. The Rust-only lanes need Cargo, `just`, and the Linux/Tauri system libraries installed by the workflow; the current recipe's tmux interactions use a fake executable, while its Git fixtures use libgit2 with explicit signatures.
+
+`just test-rust-integration` currently executes seven integration binaries. The four other binaries in `src-tauri/tests` — `agy_hook_cli`, `codex_notify_cli`, `harness_conformance`, and `mesh_binary_resolution` — are not yet named by any recipe and therefore do not run in CI. [Hardening lane 1a](../design/hardening-milestone-plan.md) remains their owner because prerequisite PR #82 closed without merging; this CI lane deliberately reuses the recipe instead of changing test selection.
 
 ### Bisection recipes
 

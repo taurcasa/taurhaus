@@ -342,6 +342,7 @@ mod tests {
                 id: task_id.to_string(),
                 subject: "Run the migration".to_string(),
                 status: "in_progress".to_string(),
+                ..Default::default()
             },
             assignment_footer: OperationalAssignmentFooterSnapshot {
                 task_effort: level.to_string(),

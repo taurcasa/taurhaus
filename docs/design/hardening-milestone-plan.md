@@ -1,6 +1,6 @@
 # Hardening milestone before W4 — plan and ledger
 
-Status: **approved 2026-08-30** (all three phases as ordered); Track A (evidence) complete; Phase 1 in progress — 1a (#82), 1b+1c (#81) merged, 1d and 1e in flight. Precedes W4 (`w4-managed-stages-design.md`, experiments 4–5 and the implementation they gate). Companion to [`workflows-integration-plan.md`](workflows-integration-plan.md) (procedures) and [`accounts-and-usage-plan.md`](accounts-and-usage-plan.md).
+Status: **approved 2026-08-30** (all three phases as ordered); Track A (evidence) complete; **Phase 1 complete 2026-08-30** (#80, #81, #82, #84, #85 — exit criteria met: `just check` fails on a failing lane and is guarded, CI executes the Rust unit and integration lanes on every PR, every integration binary is in a derived manifest with a completeness guard, procedure gates are typed and matched exactly with a Rust test run required for Rust diffs, every ledger carries an outcome and every review lens asks the authority question); Phase 2 in progress — 2a-i and 2d in flight. Precedes W4 (`w4-managed-stages-design.md`, experiments 4–5 and the implementation they gate). Companion to [`workflows-integration-plan.md`](workflows-integration-plan.md) (procedures) and [`accounts-and-usage-plan.md`](accounts-and-usage-plan.md).
 
 ## Why now
 
@@ -118,8 +118,12 @@ A `docs-sweep` after Phase 3, since CLAUDE.md, ARCHITECTURE.md and the architect
 |---|---|---|---|---|---|
 | `just check` lane status | Codex gpt-5.6-sol | Opus ×1 | 3 (small-change + 1 fix-round) | 2 (seeded runs evicting the real gate logs; a tee-flush race making the guard itself flaky under load) → 0; one minor — the `kill -0` prune dropping a lane that exited non-zero in the reap gap — closed in the orchestrator's pass with the reviewer's counter-based join | #80 |
 | lossless IPC normalizers | Codex gpt-5.6-sol | Opus ×1 | 1 | 0 (1 minor + 4 nits, orchestrator's pass); the settings round-trip was proven a wipe, not an error | #78 |
-| 1a integration manifest | Codex gpt-5.6-sol | Opus ×1 | 2 | 1 (the justfile-reading guards panicked under a bare `cargo test` without `just`) → 0; one minor (a `$`-prefixed filter bypassing the parity guard) closed in the orchestrator's pass. All eleven binaries ran: 101 s | #82 |
+| 1a integration manifest | Codex gpt-5.6-sol | Opus ×1 | 2 | 1 (the justfile-reading guards panicked under a bare `cargo test` without `just`) → 0; one minor (a `$`-prefixed filter bypassing the parity guard) closed in the orchestrator's pass. All eleven binaries ran: 1261 tests | #82 (merged 17:32 UTC after the recovery below) |
 | 1b+1c procedure honesty | Codex gpt-5.6-sol | Opus ×1 | 1 | 0 (1 minor — the `followup` call was not runnable as handed back — + 3 nits, orchestrator's pass) | #81 |
+| 1e typed workflow gates | Codex gpt-5.6-sol | Opus ×2 (conformance + operational) | 3 | 3 → 0 (a declared-but-not-required `cargo test` gate suppressed the Rust rule while staying optional; the rule switched off on an empty `changed_paths`; non-canonical lane paths evaded the cross-check); `outcome: complete` with one minor (a reverted Rust path) and the extra-passing-command nit closed in the orchestrator's pass | #84 |
+| 1d CI executes Rust tests | Codex gpt-5.6-sol | Opus ×2 | 2 | 2 → 0 (the integration lane stayed label-gated despite the measured budget — unit 2m10s / integration 4m39s warm; the environment step re-derived and had drifted from the recipe). Its first Rust CI run caught a real red on `main` (the boundary guard vs #78's `ipc_fixtures.rs`), fixed by deriving `#[cfg(test)]` exemptions from `lib.rs` | #85 |
+
+Process note (2026-08-30): the merge watchers for #80 and #82 ran their branch cleanup after `gh pr merge` had failed on conflicts, which closed both PRs unmerged; the ledger row above for 1a was written while #82 was in that state. Both branches were restored from their PR refs, merged with main, re-gated (the eleven-binary lane: 1261 passed) and merged; #82 carries the boundary-guard fix cherry-picked from #85. Watchers now verify `MERGED` before any cleanup.
 
 ## Do not touch (union of the reports, carried by the judges)
 
