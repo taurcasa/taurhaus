@@ -10,7 +10,10 @@ pub struct DeadlineInput {
     pub deadline_minutes: u32,
     pub nudged_at: Option<Timestamp>,
     pub stale_at: Option<Timestamp>,
-    pub status: String,
+    /// Whether the assignment is still open. The operational layer owns the
+    /// task-status vocabulary (`is_resumable_task_status`); the policy only
+    /// receives its verdict, so the two can never disagree about a status.
+    pub active: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,12 +23,13 @@ pub enum DeadlineAction {
     MarkStale,
 }
 
-pub(crate) fn is_active_assignment_status(status: &str) -> bool {
-    matches!(status.trim(), "pending" | "in_progress")
-}
-
+/// Decide the one action due now, if any.
+///
+/// Stale supersedes nudge: an assignment first evaluated after its deadline
+/// is marked stale and is never nudged — a nudge at that point would ask for
+/// work the deadline already declared late.
 pub fn decide(assignment: &DeadlineInput, now: Timestamp) -> DeadlineAction {
-    if assignment.deadline_minutes == 0 || !is_active_assignment_status(&assignment.status) {
+    if assignment.deadline_minutes == 0 || !assignment.active {
         return DeadlineAction::Nothing;
     }
 
@@ -58,7 +62,7 @@ mod tests {
     }
 
     fn input(
-        status: &str,
+        active: bool,
         nudged_at: Option<Timestamp>,
         stale_at: Option<Timestamp>,
     ) -> DeadlineInput {
@@ -67,7 +71,7 @@ mod tests {
             deadline_minutes: 20,
             nudged_at,
             stale_at,
-            status: status.to_string(),
+            active,
         }
     }
 
@@ -82,73 +86,80 @@ mod tests {
         let cases = [
             (
                 "before half",
-                input("in_progress", None, None),
+                input(true, None, None),
                 assigned + Duration::minutes(9),
                 DeadlineAction::Nothing,
             ),
             (
                 "at half first",
-                input("in_progress", None, None),
+                input(true, None, None),
                 nudged,
                 DeadlineAction::Nudge,
             ),
             (
                 "at half repeat",
-                input("in_progress", Some(nudged), None),
+                input(true, Some(nudged), None),
                 nudged,
                 DeadlineAction::Nothing,
             ),
             (
                 "between first",
-                input("in_progress", None, None),
+                input(true, None, None),
                 assigned + Duration::minutes(15),
                 DeadlineAction::Nudge,
             ),
             (
                 "between repeat",
-                input("in_progress", Some(nudged), None),
+                input(true, Some(nudged), None),
                 assigned + Duration::minutes(15),
                 DeadlineAction::Nothing,
             ),
             (
+                // Stale supersedes nudge: never nudge an assignment first seen late.
+                "first evaluated after deadline, never nudged",
+                input(true, None, None),
+                assigned + Duration::minutes(25),
+                DeadlineAction::MarkStale,
+            ),
+            (
                 "at deadline first",
-                input("in_progress", Some(nudged), None),
+                input(true, Some(nudged), None),
                 stale,
                 DeadlineAction::MarkStale,
             ),
             (
                 "at deadline repeat",
-                input("in_progress", Some(nudged), Some(stale)),
+                input(true, Some(nudged), Some(stale)),
                 stale,
                 DeadlineAction::Nothing,
             ),
             (
                 "after deadline",
-                input("in_progress", Some(nudged), None),
+                input(true, Some(nudged), None),
                 stale + Duration::minutes(1),
                 DeadlineAction::MarkStale,
             ),
             (
                 "completed",
-                input("completed", None, None),
+                input(false, None, None),
                 stale,
                 DeadlineAction::Nothing,
             ),
             (
                 "cancelled",
-                input("cancelled", None, None),
+                input(false, None, None),
                 stale,
                 DeadlineAction::Nothing,
             ),
             (
                 "empty status",
-                input("", None, None),
+                input(false, None, None),
                 stale,
                 DeadlineAction::Nothing,
             ),
             (
                 "unknown status",
-                input("blocked", None, None),
+                input(false, None, None),
                 stale,
                 DeadlineAction::Nothing,
             ),
@@ -156,7 +167,7 @@ mod tests {
                 "zero deadline",
                 DeadlineInput {
                     deadline_minutes: 0,
-                    ..input("in_progress", None, None)
+                    ..input(true, None, None)
                 },
                 assigned,
                 DeadlineAction::Nothing,

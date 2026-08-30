@@ -208,9 +208,7 @@ fn latest_owned_task_from_tasks(
     let task = tasks
         .iter()
         .filter(|task| task.owner.as_deref() == Some(member_name))
-        .filter(|task| {
-            crate::coordination::task_deadline::is_active_assignment_status(&task.status)
-        })
+        .filter(|task| is_resumable_task_status(&task.status))
         .max_by(|left, right| {
             task_priority(left)
                 .cmp(&task_priority(right))
@@ -319,6 +317,13 @@ fn save_snapshot_if_changed(
     }
 
     OperationalContextSnapshotStore::save(teams_dir, &snapshot)
+}
+
+/// The task statuses an assignment is still open in. This is the one place
+/// the vocabulary is read for assignment selection and deadline policy; the
+/// policy module takes this verdict as input rather than re-deriving it.
+pub(crate) fn is_resumable_task_status(status: &str) -> bool {
+    matches!(status.trim(), "pending" | "in_progress")
 }
 
 fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
