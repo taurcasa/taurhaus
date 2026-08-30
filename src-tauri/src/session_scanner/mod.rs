@@ -26,6 +26,7 @@ pub mod cli_tool;
 pub mod control;
 pub mod idle;
 pub mod launch;
+pub mod launch_base;
 pub mod proc_io;
 pub mod process;
 pub mod tmux;
