@@ -703,6 +703,70 @@ describe('ipc module', () => {
       expect(result.accounts[1].usage).toBeNull()
       delete window.__TAURI_INTERNALS__
     })
+
+    // Regression: 1c779eb taught the backend to report what the pane shell
+    // makes of each launch command, but this normalizer rebuilt the result from
+    // the four fields it already knew and dropped them. Settings therefore fell
+    // back to the literal command in every real app run, and neither the alias
+    // sentence nor the opaque-head warning could ever appear.
+    it('carries what the pane shell makes of each launch command', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      // The camelCase the Rust `AccountsResult` actually serializes.
+      tauriCore.invoke.mockResolvedValue({
+        accounts: [
+          {
+            tool: 'claude',
+            id: 'account-1',
+            dir: '/home/mstie/.claude',
+            identity: { id: 'account-1', label: 'a@example.com', loggedIn: true },
+            isDefault: true,
+            isProcessDefault: true,
+          },
+        ],
+        source: 'native',
+        degraded: false,
+        error: null,
+        resolvedBases: [
+          {
+            command:
+              "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
+            expansions: [
+              { name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' },
+            ],
+            opaqueHead: null,
+          },
+          { command: 'my-wrapper', expansions: [], opaqueHead: 'my-wrapper' },
+        ],
+      })
+
+      const result = await ipc.listAccounts('claude')
+
+      expect(result.resolvedBases).toEqual([
+        {
+          command:
+            "CLAUDE_CONFIG_DIR='/home/mstie/.claude-account2' claude --dangerously-skip-permissions",
+          expansions: [{ name: 'claude2', body: 'CLAUDE_CONFIG_DIR=~/.claude-account2 claude' }],
+          opaqueHead: null,
+        },
+        { command: 'my-wrapper', expansions: [], opaqueHead: 'my-wrapper' },
+      ])
+      delete window.__TAURI_INTERNALS__
+    })
+
+    it('reports no resolved bases when the backend sends none', async () => {
+      window.__TAURI_INTERNALS__ = {}
+      tauriCore.invoke.mockResolvedValue({
+        accounts: [],
+        source: 'daemon',
+        degraded: false,
+        error: null,
+      })
+
+      const result = await ipc.listAccounts('claude')
+
+      expect(result.resolvedBases).toEqual([])
+      delete window.__TAURI_INTERNALS__
+    })
   })
 
   describe('generic account commands', () => {

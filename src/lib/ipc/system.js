@@ -434,14 +434,42 @@ function normalizeAccount(raw) {
   }
 }
 
+/**
+ * One configured launch command as the pane's own shell reads it: an alias
+ * expanded, and a head that is not the CLI named rather than guessed at.
+ */
+function normalizeResolvedBase(raw) {
+  const base = raw && typeof raw === 'object' ? raw : {}
+  const command = String(base.command ?? '')
+  if (!command) return null
+  const expansions = Array.isArray(base.expansions) ? base.expansions : []
+  const opaqueHead = base.opaqueHead ?? base.opaque_head ?? null
+  return {
+    command,
+    expansions: expansions
+      .map((expansion) => ({
+        name: String(expansion?.name ?? ''),
+        body: String(expansion?.body ?? ''),
+      }))
+      .filter((expansion) => expansion.name),
+    opaqueHead: opaqueHead == null ? null : String(opaqueHead),
+  }
+}
+
 function normalizeAccountsResult(raw) {
   const result = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   const accounts = Array.isArray(result.accounts) ? result.accounts : []
+  const resolvedBases = result.resolvedBases ?? result.resolved_bases
   return {
     accounts: accounts.map(normalizeAccount).filter(Boolean),
     source: String(result.source ?? 'native'),
     degraded: Boolean(result.degraded),
     error: result.error == null ? null : String(result.error),
+    // A backend that reports none — an older one, or a caller that did not ask
+    // — leaves the frontend with the literal commands in settings.
+    resolvedBases: (Array.isArray(resolvedBases) ? resolvedBases : [])
+      .map(normalizeResolvedBase)
+      .filter(Boolean),
   }
 }
 
@@ -460,6 +488,7 @@ export function listAccounts(tool) {
     source: 'native',
     degraded: false,
     error: null,
+    resolvedBases: [],
   })).then(normalizeAccountsResult)
 }
 
