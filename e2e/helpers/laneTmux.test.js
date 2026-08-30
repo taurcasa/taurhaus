@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 
 import {
   applyTmuxIsolation,
+  callableExportNames,
   findTmuxDrivingSpecs,
   isolatedTmuxTmpdir,
   parseProcEnviron,
@@ -67,6 +68,17 @@ describe('parseProcEnviron', () => {
 })
 
 describe('tmux-driving spec coverage', () => {
+  // Regression: commit e654ef8a derived only `export function` declarations,
+  // so async functions and callable const exports could bypass the guard.
+  it('derives helper names from every callable runtime export', () => {
+    expect(callableExportNames({
+      syncHelper() {},
+      asyncHelper: async () => {},
+      constHelper: () => {},
+      description: 'not callable',
+    })).toEqual(['asyncHelper', 'constHelper', 'syncHelper'])
+  })
+
   // Regression: commit 3c781765 isolated one paid spec through a module-local
   // allowlist while every other tmux-driving spec stayed on the operator server.
   it('derives every tmux-driving spec from its source calls', () => {

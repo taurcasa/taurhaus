@@ -25,6 +25,7 @@
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import * as tmuxHelpers from './tmux.js'
 
 /** The socket directory for the lane's own tmux server. */
 export function isolatedTmuxTmpdir(sessionTempRoot) {
@@ -66,15 +67,18 @@ export function parseProcEnviron(raw) {
   return environment
 }
 
+/** Sorted names of callable exports from the tmux helper module. */
+export function callableExportNames(moduleExports) {
+  return Object.entries(moduleExports)
+    .filter(([, value]) => typeof value === 'function')
+    .map(([name]) => name)
+    .sort()
+}
+
 const TMUX_CALL_PATTERNS = [
   /\bexecFileSync\s*\(\s*['"]tmux['"]/g,
   new RegExp(
-    `\\b(?:${Array.from(
-      readFileSync(join(import.meta.dirname, 'tmux.js'), 'utf8').matchAll(
-        /^export function\s+([A-Za-z_$][\w$]*)/gm
-      ),
-      (match) => match[1]
-    ).join('|')})\\s*\\(`,
+    `\\b(?:${callableExportNames(tmuxHelpers).join('|')})\\s*\\(`,
     'g'
   ),
 ]
