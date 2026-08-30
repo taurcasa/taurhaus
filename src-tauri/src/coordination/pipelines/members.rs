@@ -232,6 +232,24 @@ impl CoordinationOrchestrator {
         tmux_layout: &str,
         scope: task_effort::EffortPassScope,
     ) -> Result<Vec<String>, CoordinationError> {
+        let mut cli_commands = cli_commands.clone();
+        self.apply_pending_task_effort_with_launch_resolution(
+            team_name,
+            &mut cli_commands,
+            tmux_layout,
+            scope,
+            &mut |_, _| {},
+        )
+    }
+
+    pub(crate) fn apply_pending_task_effort_with_launch_resolution(
+        &mut self,
+        team_name: &str,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        scope: task_effort::EffortPassScope,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<Vec<String>, CoordinationError> {
         validate_team_name(team_name)?;
         let config = TeamConfigStore::load(&self.teams_dir, team_name)?;
         let mut resumed = Vec::new();
@@ -243,6 +261,7 @@ impl CoordinationOrchestrator {
             let Some(pending) = self.pending_member_effort(team_name, member, scope) else {
                 continue;
             };
+            resolve_launch_base(member.cli_tool, cli_commands);
             // The renderer keeps an effort the operator's own base already
             // pins and drops the requested one, so a base that pins gets the
             // assignment's level written into it. Whatever the relaunch will

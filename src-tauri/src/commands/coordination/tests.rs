@@ -44,6 +44,61 @@ fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     assert!(!helper.contains("reconcile_codex_before_managed_launch"));
 }
 
+// Regression: 06575d68 resolved both launch modes for every configured team
+// tool while merely assembling settings for the 30-second self-heal pass, so
+// an idle team paid shell/tmux probe cost despite launching nothing.
+#[test]
+fn idle_background_launch_settings_do_not_probe_team_bases() {
+    let tmp = TempDir::new().expect("temp teams dir");
+    let state = test_state(tmp.path().to_path_buf());
+    state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.create_team("idle-team", None)?;
+            orchestrator.add_member(
+                "idle-team",
+                crate::coordination::domain::Member {
+                    name: "team-lead".to_string(),
+                    role: MemberRole::Lead,
+                    role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
+                    communication_style: None,
+                    runtime_compact_summary: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    quality_gates: None,
+                    handoff_expectations: None,
+                    definition_of_done: None,
+                    phase_scope: None,
+                    mode: None,
+                    inherits_from: None,
+                    required_artifacts: None,
+                    capabilities: None,
+                    model: None,
+                    reasoning_effort: None,
+                    project_path: PathBuf::from("/tmp/idle"),
+                    cli_tool: CliTool::Claude,
+                    extra: Default::default(),
+                },
+            )?;
+            Ok(())
+        })
+        .expect("seed idle team");
+    let (db, _db_file) = test_db_state();
+    let provider = ProviderState {
+        local: crate::provider::local::LocalProvider,
+        daemon: None,
+        wsl_distro: None,
+    };
+    let probe = crate::commands::accounts::install_test_resolution_probe(std::time::Duration::ZERO);
+
+    let _ = background_launch_settings(&db, &provider, tmp.path());
+
+    assert_eq!(probe.calls(), 0, "idle settings assembly must not probe");
+}
+
 #[test]
 fn every_registered_roster_mutation_reconciles_the_global_harness_hooks() {
     // Regression: commit 86601a2 reconciled grok's one global hook from the

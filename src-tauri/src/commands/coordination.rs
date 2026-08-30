@@ -61,7 +61,7 @@ use taurhaus_lib::ProviderState;
 /// stock defaults and moved the member off the account it was launched on.
 pub(crate) fn background_launch_settings(
     db: &DbState,
-    provider: &ProviderState,
+    _provider: &ProviderState,
     teams_dir: &std::path::Path,
 ) -> (CliCommandSettings, String) {
     let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
@@ -72,12 +72,25 @@ pub(crate) fn background_launch_settings(
         has_managed_codex,
         has_managed_codex && crate::coordination::compact_hook::codex_compact_hook_is_installed(),
     );
-    crate::commands::accounts::apply_team_launch_base_resolutions(
-        provider,
-        &mut cli_commands,
-        configured_team_launch_tools(teams_dir, None, None),
-    );
     (cli_commands, tmux_layout)
+}
+
+pub(crate) fn run_background_self_heal_pass(
+    db: &DbState,
+    provider: &ProviderState,
+    state: &CoordinationState,
+) -> Result<crate::coordination::state::BackgroundSelfHealPassResult, CoordinationError> {
+    let (mut cli_commands, tmux_layout) =
+        background_launch_settings(db, provider, state.teams_dir());
+    state.run_background_self_heal_pass_with_launch_resolution(
+        &mut cli_commands,
+        &tmux_layout,
+        &mut |tool, commands| {
+            crate::commands::accounts::apply_team_resume_launch_base_resolution(
+                provider, commands, tool,
+            );
+        },
+    )
 }
 
 fn configured_team_launch_tools(
@@ -128,10 +141,20 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
 
     let db = app.state::<crate::commands::projects::DbState>();
     let provider = app.state::<ProviderState>();
-    let (cli_commands, tmux_layout) =
+    let (mut cli_commands, tmux_layout) =
         background_launch_settings(&db, provider.inner(), state.teams_dir());
-    if let Err(err) = state.apply_task_effort_for_project(project_path, &cli_commands, &tmux_layout)
-    {
+    if let Err(err) = state.apply_task_effort_for_project_with_launch_resolution(
+        project_path,
+        &mut cli_commands,
+        &tmux_layout,
+        &mut |tool, commands| {
+            crate::commands::accounts::apply_team_resume_launch_base_resolution(
+                provider.inner(),
+                commands,
+                tool,
+            );
+        },
+    ) {
         tracing::warn!(
             project_path = %project_path,
             error = %err,

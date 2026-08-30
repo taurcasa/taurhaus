@@ -17,7 +17,6 @@ use crate::coordination::runtime::{CoordinationRuntime, SystemCoordinationRuntim
 use crate::coordination::stores::TeamConfigStore;
 use crate::models::CliCommandSettings;
 use crate::provider::platform_paths::PlatformPaths;
-#[cfg(test)]
 use crate::session_scanner::cli_tool::CliTool;
 
 type BackendFactory = dyn Fn(BackendKind, &Path) -> Result<Arc<dyn CoordinationBackend>, CoordinationError>
@@ -170,6 +169,20 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
+        let mut cli_commands = cli_commands.clone();
+        self.run_background_self_heal_pass_with_launch_resolution(
+            &mut cli_commands,
+            tmux_layout,
+            &mut |_, _| {},
+        )
+    }
+
+    pub(crate) fn run_background_self_heal_pass_with_launch_resolution(
+        &self,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<BackgroundSelfHealPassResult, CoordinationError> {
         let team_names = TeamConfigStore::list(&self.teams_dir)?;
         let mut summary = BackgroundSelfHealPassResult::default();
         let mut orchestrator = self.build_background_orchestrator()?;
@@ -193,11 +206,12 @@ impl CoordinationState {
             // this sweep exists so one that failed there — a pane that would
             // not come down, a launch that did not land — is picked up again
             // rather than left pending until the next assignment.
-            match orchestrator.apply_pending_task_effort(
+            match orchestrator.apply_pending_task_effort_with_launch_resolution(
                 &team_name,
                 cli_commands,
                 tmux_layout,
                 crate::coordination::task_effort::EffortPassScope::RetryPending,
+                resolve_launch_base,
             ) {
                 Ok(members) => summary.members_effort_resumed += members.len(),
                 Err(err) => {
@@ -231,6 +245,22 @@ impl CoordinationState {
         cli_commands: &CliCommandSettings,
         tmux_layout: &str,
     ) -> Result<usize, CoordinationError> {
+        let mut cli_commands = cli_commands.clone();
+        self.apply_task_effort_for_project_with_launch_resolution(
+            project_path,
+            &mut cli_commands,
+            tmux_layout,
+            &mut |_, _| {},
+        )
+    }
+
+    pub(crate) fn apply_task_effort_for_project_with_launch_resolution(
+        &self,
+        project_path: &str,
+        cli_commands: &mut CliCommandSettings,
+        tmux_layout: &str,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
+    ) -> Result<usize, CoordinationError> {
         let teams = self.teams_working_in_project(project_path)?;
         if teams.is_empty() {
             return Ok(0);
@@ -238,11 +268,12 @@ impl CoordinationState {
         self.with_orchestrator(|orchestrator| {
             let mut switched = 0;
             for team_name in teams {
-                match orchestrator.apply_pending_task_effort(
+                match orchestrator.apply_pending_task_effort_with_launch_resolution(
                     &team_name,
                     cli_commands,
                     tmux_layout,
                     crate::coordination::task_effort::EffortPassScope::TaskChanged,
+                    resolve_launch_base,
                 ) {
                     Ok(members) => switched += members.len(),
                     Err(err) => tracing::warn!(
