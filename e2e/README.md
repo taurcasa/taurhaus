@@ -33,8 +33,9 @@ Every WDIO worker puts all writable product roots under its session temp root:
 `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and the
 taurhaus-only Antigravity override `TAURHAUS_AGY_DIR`. The fixture path knobs
 `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH` point into that temp root too.
-Ordinary workers receive an empty scratch Codex home; only a paid lane copies
-`auth.json` into it.
+The child `HOME` is isolated there as well, so default/sibling account discovery
+cannot fall back to the operator's dot-directories. Ordinary workers receive an
+empty scratch Codex home; only a paid lane copies `auth.json` into it.
 
 Every worker also gets a private daemon port and a private tmux server. The
 runner passes `TAURHAUS_DAEMON_PORT` to the app and its daemon launcher, points

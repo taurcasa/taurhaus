@@ -566,6 +566,7 @@ export const config = {
     for (const key of WORKER_ROOT_ENV_KEYS) {
       mkdirSync(workerEnv[key], { recursive: true })
     }
+    mkdirSync(workerEnv.HOME, { recursive: true })
     tauriDriverStderrBuffer = ''
     sessionAppLogPaths = [
       `${tauriDataDir}/taurhaus.log.jsonl`,
@@ -585,6 +586,7 @@ export const config = {
     process.env.E2E_TAURHAUS_PROJECT_PATH = taurhausFixtureProject
     prepareCodexScratchHome(specs, workerEnv.CODEX_HOME)
     for (const key of [
+      'HOME',
       ...WORKER_ROOT_ENV_KEYS,
       'TAURHAUS_DAEMON_PORT',
       'TAURHAUS_DAEMON_BINARY',

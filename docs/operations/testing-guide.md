@@ -124,9 +124,11 @@ Test specs live in `e2e/specs/` and are split by workflow/domain rather than by 
 
 Every worker isolates all five writable product roots beneath its session temp
 directory: `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME`
-and the taurhaus-only Antigravity root `TAURHAUS_AGY_DIR`. Ordinary workers get
-an empty Codex home. Selecting a paid lane is the only path that copies
-`auth.json` from the configured source home into that scratch root.
+and the taurhaus-only Antigravity root `TAURHAUS_AGY_DIR`. The child `HOME` also
+points beneath that directory, preventing implicit sibling-account discovery
+under the operator home. Ordinary workers get an empty Codex home. Selecting a
+paid lane is the only path that copies `auth.json` from the configured source
+home into that scratch root.
 
 Every worker also owns a non-default daemon port and a tmux server rooted at
 `<session-temp-root>/tmux`; the runner clears inherited `TMUX` before the driver,

@@ -44,6 +44,12 @@ describe('buildWorkerEnv', () => {
       expect(isInside(sessionTempRoot, env[key]), `${key} must be inside the worker root`).toBe(true)
       expect(env[key].startsWith(operatorHome), `${key} must not use the operator home`).toBe(false)
     }
+
+    // Regression: commit fc896344 overrode named product roots but preserved
+    // HOME, so account providers still discovered ~/.codex*, ~/.grok*, and
+    // ~/.claude* siblings and polled the operator's subscriptions.
+    expect(isInside(sessionTempRoot, env.HOME), 'HOME must be inside the worker root').toBe(true)
+    expect(env.HOME.startsWith(operatorHome), 'HOME must not use the operator home').toBe(false)
     expect(env.PATH).toBe('/usr/bin')
   })
 

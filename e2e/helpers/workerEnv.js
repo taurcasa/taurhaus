@@ -75,6 +75,7 @@ export function buildWorkerEnv(
 
   const root = resolve(sessionTempRoot)
   const env = { ...baseEnv }
+  env.HOME = resolve(root, 'home')
   for (const key of WORKER_ROOT_ENV_KEYS) {
     env[key] = resolve(root, ROOT_SUBDIRS[key])
   }
