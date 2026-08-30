@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   WORKER_ROOT_ENV_KEYS,
+  assertWorkerMeshAvailable,
   buildWorkerEnv,
   findAvailableWorkerDaemonPort,
   prepareWorkerHome,
@@ -71,6 +72,17 @@ describe('buildWorkerEnv', () => {
     } finally {
       rmSync(workerRoot, { recursive: true, force: true })
     }
+  })
+
+  // Regression: commit 272eed7d made mesh unavailable under the isolated HOME,
+  // while the mesh specs converted that broken worker into silent Tier-2 skips.
+  it('fails loudly when a worker cannot see the mesh binary', () => {
+    expect(() => assertWorkerMeshAvailable({
+      meshAvailable: false,
+      blockingErrors: ['MESH_MISSING'],
+    })).toThrow(/MESH_MISSING/)
+
+    expect(() => assertWorkerMeshAvailable({ meshAvailable: true })).not.toThrow()
   })
 
   // Regression: commit fc896344 isolated worker roots but left every ordinary

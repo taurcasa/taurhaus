@@ -35,6 +35,14 @@ export function prepareWorkerHome(workerHome, { meshBinaryPath } = {}) {
   symlinkSync(resolve(meshBinaryPath), join(workerBinDir, 'mesh'))
 }
 
+/** Refuse to turn a broken isolated worker into silent Tier-2 skips. */
+export function assertWorkerMeshAvailable(report) {
+  if (report?.meshAvailable !== false) return
+  const blockingErrors = Array.isArray(report.blockingErrors) ? report.blockingErrors : []
+  const reason = blockingErrors[0] || 'mesh binary unavailable'
+  throw new Error(`E2E worker cannot run mesh coverage: ${reason}`)
+}
+
 /** A stable non-ephemeral port derived from the worker's unique session root. */
 function workerDaemonPort(sessionTempRoot) {
   let hash = 2166136261

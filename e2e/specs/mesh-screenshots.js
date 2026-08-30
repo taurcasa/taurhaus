@@ -3,6 +3,7 @@ import { waitForProjectsLoaded, clickTestId } from '../helpers/navigation.js'
 import { WAIT_MEDIUM, WAIT_LONG, WAIT_XLONG } from '../helpers/timing.js'
 import { snapshotTmuxPanes, cleanupNewTmuxPanes } from '../helpers/tmux.js'
 import { assertTmuxIsolation } from '../helpers/laneTmux.js'
+import { assertWorkerMeshAvailable } from '../helpers/workerEnv.js'
 
 let mainApp = false
 let tier2Enabled = false
@@ -203,6 +204,7 @@ describe('Mesh Screenshot Capture', () => {
     }
 
     const report = availability.result || {}
+    assertWorkerMeshAvailable(report)
     const canInitialize = report.canInitialize !== false
     const meshAvailable = report.meshAvailable !== false
     const tmuxAvailable = report.tmuxAvailable !== false
