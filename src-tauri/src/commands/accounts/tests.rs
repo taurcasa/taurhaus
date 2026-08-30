@@ -503,3 +503,26 @@ fn an_unforced_resolution_never_invents_a_force() {
     });
     assert_eq!(forces, vec![false, false]);
 }
+
+/// Pins the production source of a managed team's selector dir: the registry
+/// session-home authority (`PlatformPaths::tool_home`). Swapping it for the
+/// account authority is a named follow-up; until then this test makes any
+/// drift visible.
+#[test]
+fn team_selector_dirs_come_from_the_registry_tool_home() {
+    let _guard = crate::test_support::acquire_env_test_guard();
+    let claude_home = tempfile::tempdir().expect("claude home");
+    std::env::set_var("TAURHAUS_CLAUDE_DIR", claude_home.path());
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_team_account_selector_dirs(&mut commands, [CliTool::Claude]);
+    std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+
+    assert_eq!(
+        commands
+            .account_selector_dirs
+            .get("CLAUDE_CONFIG_DIR")
+            .expect("claude selector dir seeded"),
+        &crate::session_scanner::accounts::to_launch_namespace(claude_home.path()),
+    );
+}

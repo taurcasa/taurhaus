@@ -11,6 +11,7 @@ use taurhaus_lib::daemon::protocol::LaunchMode;
 use taurhaus_lib::models::CliCommandSettings;
 use taurhaus_lib::session_scanner::cli_tool::{spec, CliTool};
 use taurhaus_lib::session_scanner::launch::{base_command, LaunchSpec, ModelSpec, TeamContext};
+use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
 use taurhaus_lib::templates::agent_definitions::render_agent_definition;
 use taurhaus_lib::templates::types::RoleTemplate;
 
@@ -324,6 +325,23 @@ fn team_launch_commands_match_tool_goldens() {
         if let Some(base_with_selector) = case.base_with_selector {
             commands.get_mut(case.tool).expect("registered tool").fresh =
                 base_with_selector.to_string();
+            actual.push(render(&commands));
+
+            // The arm production renders: an alias base whose expansion the
+            // resolver carried in — the selector it reveals is rewritten to
+            // the team account dir.
+            commands.get_mut(case.tool).expect("registered tool").fresh = "toolwrap".to_string();
+            commands.resolved_bases.insert(
+                (case.tool, LaunchMode::Fresh),
+                ResolvedBase {
+                    command: base_with_selector.to_string(),
+                    expansions: vec![AliasExpansion {
+                        name: "toolwrap".to_string(),
+                        body: base_with_selector.to_string(),
+                    }],
+                    opaque_head: None,
+                },
+            );
             actual.push(render(&commands));
         }
 

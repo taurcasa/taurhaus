@@ -45,6 +45,9 @@
   }))
   const showOpaqueAccountNote = $derived(hasOpaqueAccountNote(launchAccountResult))
   const accountNoteSentence = $derived(opaqueBaseNotice(safeAccountNoteDetail, safeTool))
+  // Node-sized variant: the wrapper head is the part that must survive the
+  // ellipsis; the full sentence rides on the title.
+  const accountNoteLabel = $derived(`Account not guaranteed: "${safeAccountNoteDetail}"`)
   const requestedHeight = $derived(Number(height))
   const nodeHeight = $derived(
     Number.isFinite(requestedHeight) && requestedHeight > 0
@@ -193,7 +196,7 @@
         class="mesh-node-account-note"
         data-testid={`mesh-node-account-note-${normalizedRole}`}
         title={accountNoteSentence}
-      >{accountNoteSentence}</span>
+      >{accountNoteLabel}</span>
     {/if}
   </span>
 </button>
