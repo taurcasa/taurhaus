@@ -35,7 +35,7 @@ use crate::coordination::domain::{Member, MemberRole};
 use crate::coordination::errors::CoordinationError;
 use crate::coordination::requests::{DeliveryRequest, DeliveryResult, OperatorNoticeDelivery};
 use crate::coordination::state::CoordinationState;
-use crate::coordination::stores::ActiveProjectTeamStore;
+use crate::coordination::stores::{ActiveProjectTeamStore, TeamConfigStore};
 use crate::errors::{sanitize_error, CommandResultExt, IpcError, IpcResult};
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::CliTool;
@@ -106,6 +106,41 @@ fn launch_settings_for_managed_codex(
     (cli_commands, tmux_layout)
 }
 
+pub(crate) fn run_background_self_heal_pass(
+    db: &DbState,
+    provider: &ProviderState,
+    state: &CoordinationState,
+) -> Result<crate::coordination::state::BackgroundSelfHealPassResult, CoordinationError> {
+    let (mut cli_commands, tmux_layout) = background_launch_settings(db, state.teams_dir());
+    state.run_background_self_heal_pass_with_launch_resolution(
+        &mut cli_commands,
+        &tmux_layout,
+        &mut |tool, commands| {
+            crate::commands::accounts::apply_team_resume_launch_base_resolution(
+                provider, commands, tool,
+            );
+        },
+    )
+}
+
+fn configured_team_launch_tools(
+    teams_dir: &std::path::Path,
+    team_name: Option<&str>,
+    member_name: Option<&str>,
+) -> Vec<CliTool> {
+    let team_names = match team_name {
+        Some(team_name) => vec![team_name.to_string()],
+        None => TeamConfigStore::list(teams_dir).unwrap_or_default(),
+    };
+    team_names
+        .into_iter()
+        .filter_map(|team_name| TeamConfigStore::load(teams_dir, &team_name).ok())
+        .flat_map(|config| config.members)
+        .filter(|member| member_name.is_none_or(|name| member.name == name))
+        .map(|member| member.cli_tool)
+        .collect()
+}
+
 /// Put a pending assignment effort into force after a project's tasks changed.
 ///
 /// The task scan is the moment an assignment mesh wrote becomes visible to
@@ -122,10 +157,22 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
 
     let state = app.state::<crate::coordination::state::CoordinationState>();
     let db = app.state::<crate::commands::projects::DbState>();
-    let ((cli_commands, tmux_layout), discovery_error) =
+    let provider = app.state::<ProviderState>();
+    let ((mut cli_commands, tmux_layout), discovery_error) =
         task_effort_launch_settings(&db, state.teams_dir());
 
-    match state.apply_task_effort_for_project(project_path, &cli_commands, &tmux_layout) {
+    match state.apply_task_effort_for_project_with_launch_resolution(
+        project_path,
+        &mut cli_commands,
+        &tmux_layout,
+        &mut |tool, commands| {
+            crate::commands::accounts::apply_team_resume_launch_base_resolution(
+                provider.inner(),
+                commands,
+                tool,
+            );
+        },
+    ) {
         Ok(outcome) if !outcome.failed.is_empty() || !outcome.skipped_teams.is_empty() => {
             tracing::warn!(
                 project_path = %project_path,
@@ -234,6 +281,14 @@ pub async fn coordination_initialize_team(
             has_codex,
             codex_bypass_hook_trust,
         );
+        let launch_tools = std::iter::once(&request.lead)
+            .chain(request.agents.iter())
+            .filter_map(|member| CliTool::from_alias(&member.cli_tool).ok());
+        crate::commands::accounts::apply_team_launch_base_resolutions(
+            app_for_task.state::<ProviderState>().inner(),
+            &mut cli_commands,
+            launch_tools,
+        );
         let mut emit = |event: &StepProgressEvent| {
             let _ = app_for_task.emit("coordination-step-progress", event);
         };
@@ -299,6 +354,11 @@ pub fn coordination_add_agent(
             has_codex,
             codex_bypass_hook_trust,
         );
+        crate::commands::accounts::apply_team_launch_base_resolutions(
+            app.state::<ProviderState>().inner(),
+            &mut cli_commands,
+            CliTool::from_alias(&request.agent.cli_tool).ok(),
+        );
         let mut emit = |event: &StepProgressEvent| {
             let _ = app.emit("coordination-step-progress", event);
         };
@@ -344,6 +404,15 @@ pub fn coordination_resume_member(
             has_codex,
             codex_bypass_hook_trust,
         );
+        crate::commands::accounts::apply_team_launch_base_resolutions(
+            app.state::<ProviderState>().inner(),
+            &mut cli_commands,
+            configured_team_launch_tools(
+                state.teams_dir(),
+                Some(&requested_team_name),
+                Some(&requested_member_name),
+            ),
+        );
         let mut emit = |event: &StepProgressEvent| {
             let _ = app.emit("coordination-step-progress", event);
         };
@@ -382,6 +451,11 @@ pub fn coordination_resume_team(
             &mut cli_commands,
             has_codex,
             codex_bypass_hook_trust,
+        );
+        crate::commands::accounts::apply_team_launch_base_resolutions(
+            app.state::<ProviderState>().inner(),
+            &mut cli_commands,
+            configured_team_launch_tools(state.teams_dir(), Some(&requested_team_name), None),
         );
         let mut emit = |event: &ResumeTeamProgressEvent| {
             emit_resume_team_progress_log_event(event);

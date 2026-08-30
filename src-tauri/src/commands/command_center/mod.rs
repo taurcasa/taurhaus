@@ -398,6 +398,7 @@ fn tmux_launch_result_for_pane(pane_id: &str) -> protocol::LaunchSessionResult {
 
 fn delegate_launch_to_coordination_resume(
     db: &DbState,
+    provider: &ProviderState,
     coordination_state: &CoordinationState,
     target: &TeamMemberMatch,
     tool: CliTool,
@@ -410,6 +411,18 @@ fn delegate_launch_to_coordination_resume(
             .hook_trust,
         false,
     );
+    crate::commands::accounts::apply_team_launch_base_resolutions(
+        provider,
+        &mut terminal_settings.cli_commands,
+        [tool],
+    );
+    let opaque_head = terminal_settings
+        .cli_commands
+        .resolved_bases
+        // This delegated request has no resume session id, so coordination's
+        // renderer selects the Fresh base even though the UI action is Resume.
+        .get(&(tool, protocol::LaunchMode::Fresh))
+        .and_then(|base| base.opaque_head.clone());
     let request = ResumeMemberRequest {
         team_name: target.team_name.clone(),
         member_name: target.member_name.clone(),
@@ -440,7 +453,10 @@ fn delegate_launch_to_coordination_resume(
         )
     })?;
 
-    Ok(tmux_launch_result_for_pane(&pane_id))
+    Ok(launching::note_opaque_base(
+        tmux_launch_result_for_pane(&pane_id),
+        opaque_head.as_deref(),
+    ))
 }
 
 fn enqueue_activity_watch_reconcile(app: tauri::AppHandle, reason: &'static str) {

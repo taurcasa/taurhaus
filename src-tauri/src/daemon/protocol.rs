@@ -319,7 +319,7 @@ pub struct LatestCommitTimeResult {
 // ---------------------------------------------------------------------------
 
 /// Launch mode for a new Claude Code session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LaunchMode {
     /// `claude --dangerously-skip-permissions --continue`

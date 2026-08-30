@@ -238,6 +238,116 @@ fn resolving_launch_bases_carries_what_the_pane_shell_makes_of_each_command() {
     assert_eq!(expansion.name, "claude2");
 }
 
+#[test]
+fn managed_team_resolution_is_carried_on_the_coordination_payload() {
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
+
+    apply_team_launch_base_resolutions_with(&mut commands, [CliTool::Claude], |base, tool| {
+        let command = if base.starts_with("claude2") {
+            base.replacen(
+                "claude2",
+                "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude",
+                1,
+            )
+        } else {
+            base.to_string()
+        };
+        (
+            crate::session_scanner::launch_base::ResolvedBase {
+                command,
+                expansions: Vec::new(),
+                opaque_head: None,
+            },
+            tool == CliTool::Claude,
+        )
+    });
+
+    assert_eq!(
+        commands
+            .resolved_bases
+            .get(&(CliTool::Claude, protocol::LaunchMode::Fresh))
+            .expect("fresh resolution")
+            .command,
+        "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude --dangerously-skip-permissions"
+    );
+    assert!(commands
+        .resolved_bases
+        .contains_key(&(CliTool::Claude, protocol::LaunchMode::Resume)));
+    assert!(!commands
+        .resolved_bases
+        .keys()
+        .any(|(tool, _)| *tool == CliTool::Codex));
+}
+
+#[test]
+fn unavailable_managed_team_resolution_leaves_the_payload_literal() {
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_team_launch_base_resolutions_with(&mut commands, [CliTool::Claude], |base, _| {
+        (
+            crate::session_scanner::launch_base::ResolvedBase {
+                command: base.to_string(),
+                expansions: Vec::new(),
+                opaque_head: None,
+            },
+            false,
+        )
+    });
+
+    assert!(commands.resolved_bases.is_empty());
+}
+
+#[test]
+fn managed_team_account_dirs_keep_windows_wsl_home_forms_until_rendering() {
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_team_account_selector_dirs_with(&mut commands, [CliTool::Claude], |_| {
+        std::path::PathBuf::from(r"\\wsl.localhost\Ubuntu\home\user\.claude")
+    });
+
+    assert_eq!(
+        commands.account_selector_dirs.get("CLAUDE_CONFIG_DIR"),
+        Some(&std::path::PathBuf::from(
+            r"\\wsl.localhost\Ubuntu\home\user\.claude"
+        ))
+    );
+    assert_eq!(
+        crate::session_scanner::accounts::to_launch_namespace(
+            commands
+                .account_selector_dirs
+                .get("CLAUDE_CONFIG_DIR")
+                .expect("carried team account dir")
+        ),
+        std::path::PathBuf::from("/home/user/.claude")
+    );
+}
+
+#[test]
+fn managed_claude_team_launches_name_the_root_that_owns_the_team_inbox() {
+    let _guard = crate::test_support::acquire_env_test_guard();
+    let claude_root = TempDir::new().expect("temp Claude root");
+    std::env::set_var("TAURHAUS_CLAUDE_DIR", claude_root.path());
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_team_account_selector_dirs(&mut commands, [CliTool::Claude]);
+
+    let selected = commands
+        .account_selector_dirs
+        .get("CLAUDE_CONFIG_DIR")
+        .expect("managed Claude selector");
+    assert_eq!(
+        selected,
+        &crate::provider::platform_paths::PlatformPaths::claude_dir()
+    );
+    assert_eq!(
+        crate::provider::platform_paths::PlatformPaths::teams_dir().parent(),
+        Some(selected.as_path()),
+        "the selected root is the parent of the managed team inbox"
+    );
+    std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+}
+
 /// A daemon that can read the WSL shell answers what the base command means.
 #[test]
 fn a_resolved_base_from_the_daemon_is_used_as_the_launch_base() {
@@ -392,4 +502,27 @@ fn an_unforced_resolution_never_invents_a_force() {
         )
     });
     assert_eq!(forces, vec![false, false]);
+}
+
+/// Pins the production source of a managed team's selector dir: the registry
+/// session-home authority (`PlatformPaths::tool_home`). Swapping it for the
+/// account authority is a named follow-up; until then this test makes any
+/// drift visible.
+#[test]
+fn team_selector_dirs_come_from_the_registry_tool_home() {
+    let _guard = crate::test_support::acquire_env_test_guard();
+    let claude_home = tempfile::tempdir().expect("claude home");
+    std::env::set_var("TAURHAUS_CLAUDE_DIR", claude_home.path());
+    let mut commands = crate::models::CliCommandSettings::default();
+
+    apply_team_account_selector_dirs(&mut commands, [CliTool::Claude]);
+    std::env::remove_var("TAURHAUS_CLAUDE_DIR");
+
+    assert_eq!(
+        commands
+            .account_selector_dirs
+            .get("CLAUDE_CONFIG_DIR")
+            .expect("claude selector dir seeded"),
+        &crate::session_scanner::accounts::to_launch_namespace(claude_home.path()),
+    );
 }

@@ -233,6 +233,15 @@ pub struct LiveAgentStatus {
     /// Why the lead chose that level.
     #[serde(default)]
     pub task_effort_why: Option<String>,
+    /// Whether account selection was guaranteed for the rendered launch.
+    #[serde(default)]
+    pub account_applied: Option<bool>,
+    /// Stable reason token when account selection could not be guaranteed.
+    #[serde(default)]
+    pub account_note: Option<String>,
+    /// Wrapper command head associated with `account_note`.
+    #[serde(default)]
+    pub account_note_detail: Option<String>,
 }
 
 /// Live-team payload for the frontend mesh roster.
@@ -285,6 +294,15 @@ pub struct FastAgentSnapshot {
     /// See `LiveAgentStatus::task_effort_why`.
     #[serde(default)]
     pub task_effort_why: Option<String>,
+    /// See `LiveAgentStatus::account_applied`.
+    #[serde(default)]
+    pub account_applied: Option<bool>,
+    /// See `LiveAgentStatus::account_note`.
+    #[serde(default)]
+    pub account_note: Option<String>,
+    /// See `LiveAgentStatus::account_note_detail`.
+    #[serde(default)]
+    pub account_note_detail: Option<String>,
 }
 
 /// Fast team snapshot built from persisted config + runtime only.

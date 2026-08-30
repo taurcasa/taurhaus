@@ -74,11 +74,11 @@ fn effort_launch_commands(
     tool: CliTool,
     level: &str,
 ) -> Option<CliCommandSettings> {
-    let base = crate::session_scanner::launch::base_command(
-        cli_commands,
-        tool,
-        crate::daemon::protocol::LaunchMode::Resume,
-    );
+    let mode = crate::daemon::protocol::LaunchMode::Resume;
+    let resolved_base = cli_commands.resolved_bases.get(&(tool, mode));
+    let base = resolved_base
+        .map(|base| base.command.as_str())
+        .unwrap_or_else(|| crate::session_scanner::launch::base_command(cli_commands, tool, mode));
     if !task_effort::base_pins_effort(tool, base) {
         return Some(cli_commands.clone());
     }
@@ -89,7 +89,10 @@ fn effort_launch_commands(
         return None;
     }
     let mut commands = cli_commands.clone();
-    commands.get_mut(tool)?.resume = rewritten;
+    match commands.resolved_bases.get_mut(&(tool, mode)) {
+        Some(base) => base.command = rewritten,
+        None => commands.get_mut(tool)?.resume = rewritten,
+    }
     Some(commands)
 }
 
@@ -291,16 +294,24 @@ impl CoordinationOrchestrator {
         tmux_layout: &str,
         scope: task_effort::EffortPassScope,
     ) -> Result<Vec<String>, CoordinationError> {
-        self.apply_pending_task_effort_outcome(team_name, cli_commands, tmux_layout, scope)
-            .map(|outcome| outcome.switched)
+        let mut cli_commands = cli_commands.clone();
+        self.apply_pending_task_effort_outcome(
+            team_name,
+            &mut cli_commands,
+            tmux_layout,
+            scope,
+            &mut |_, _| {},
+        )
+        .map(|outcome| outcome.switched)
     }
 
     pub(crate) fn apply_pending_task_effort_outcome(
         &mut self,
         team_name: &str,
-        cli_commands: &CliCommandSettings,
+        cli_commands: &mut CliCommandSettings,
         tmux_layout: &str,
         scope: task_effort::EffortPassScope,
+        resolve_launch_base: &mut dyn FnMut(CliTool, &mut CliCommandSettings),
     ) -> Result<EffortPassOutcome, CoordinationError> {
         validate_team_name(team_name)?;
         let mut outcome = EffortPassOutcome::default();
@@ -326,6 +337,7 @@ impl CoordinationOrchestrator {
                     continue;
                 }
             };
+            resolve_launch_base(member.cli_tool, cli_commands);
             // The renderer keeps an effort the operator's own base already
             // pins and drops the requested one, so a base that pins gets the
             // assignment's level written into it. Whatever the relaunch will

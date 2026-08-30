@@ -82,6 +82,56 @@ fn successful_team_commands_do_not_reconcile_the_codex_hook_twice() {
     assert!(!helper.contains("reconcile_codex_before_managed_launch"));
 }
 
+// Regression: 06575d68 resolved both launch modes for every configured team
+// tool while merely assembling settings for the 30-second self-heal pass, so
+// an idle team paid shell/tmux probe cost despite launching nothing.
+#[test]
+fn idle_background_launch_settings_do_not_probe_team_bases() {
+    let tmp = TempDir::new().expect("temp teams dir");
+    let state = test_state(tmp.path().to_path_buf());
+    state
+        .with_orchestrator(|orchestrator| {
+            orchestrator.create_team("idle-team", None)?;
+            orchestrator.add_member(
+                "idle-team",
+                crate::coordination::domain::Member {
+                    name: "team-lead".to_string(),
+                    role: MemberRole::Lead,
+                    role_id: None,
+                    role_name: None,
+                    focus_area: None,
+                    context_summary: None,
+                    behavior_summary: None,
+                    communication_style: None,
+                    runtime_compact_summary: None,
+                    instructions: None,
+                    behavioral_contract: None,
+                    quality_gates: None,
+                    handoff_expectations: None,
+                    definition_of_done: None,
+                    phase_scope: None,
+                    mode: None,
+                    inherits_from: None,
+                    required_artifacts: None,
+                    capabilities: None,
+                    model: None,
+                    reasoning_effort: None,
+                    project_path: PathBuf::from("/tmp/idle"),
+                    cli_tool: CliTool::Claude,
+                    extra: Default::default(),
+                },
+            )?;
+            Ok(())
+        })
+        .expect("seed idle team");
+    let (db, _db_file) = test_db_state();
+    let probe = crate::commands::accounts::install_test_resolution_probe(std::time::Duration::ZERO);
+
+    let _ = background_launch_settings(&db, tmp.path());
+
+    assert_eq!(probe.calls(), 0, "idle settings assembly must not probe");
+}
+
 #[test]
 fn every_registered_roster_mutation_reconciles_the_global_harness_hooks() {
     // Regression: commit 86601a2 reconciled grok's one global hook from the
@@ -2810,6 +2860,9 @@ fn live_team_status_round_trip() {
                 workflow_activity: None,
                 task_effort: None,
                 task_effort_why: None,
+                account_applied: None,
+                account_note: None,
+                account_note_detail: None,
             },
             LiveAgentStatus {
                 name: "frontend-dev".to_string(),
@@ -2832,6 +2885,9 @@ fn live_team_status_round_trip() {
                 workflow_activity: None,
                 task_effort: None,
                 task_effort_why: None,
+                account_applied: Some(false),
+                account_note: Some("opaque_base_command".to_string()),
+                account_note_detail: Some("team-wrapper".to_string()),
             },
         ],
     };
@@ -2872,6 +2928,9 @@ fn project_mesh_snapshot_round_trip() {
                 workflow_activity: None,
                 task_effort: None,
                 task_effort_why: None,
+                account_applied: Some(false),
+                account_note: Some("opaque_base_command".to_string()),
+                account_note_detail: Some("team-wrapper".to_string()),
             }],
         }),
         warnings: vec!["skipped team folder 'broken-team'".to_string()],
@@ -3353,6 +3412,49 @@ fn live_team_status_carries_the_member_runtime_session_id() {
         .find(|member| member.name == "frontend-dev")
         .expect("frontend-dev is on the roster");
     assert_eq!(member.session_id.as_deref(), Some("sess-frontend"));
+}
+
+#[test]
+fn live_team_status_carries_the_opaque_base_account_note() {
+    let tmp = TempDir::new().expect("tempdir");
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let state = test_state_with_runtime(tmp.path().to_path_buf(), runtime);
+
+    coordination_initialize_team_internal(
+        &state,
+        None,
+        sample_preflight_request(),
+        &crate::models::CliCommandSettings::default(),
+        DEFAULT_TMUX_LAYOUT,
+        None,
+    )
+    .expect("initialize should succeed");
+
+    let note = taurhaus_lib::session_scanner::launch_base::LaunchAccountResult::for_opaque_head(
+        Some("team-wrapper"),
+    );
+    MemberRuntimeStore::update(tmp.path(), "architecture-final", "frontend-dev", |record| {
+        record.launch_account = note.clone();
+    })
+    .expect("update runtime");
+    assert_eq!(
+        MemberRuntimeStore::load(tmp.path(), "architecture-final", "frontend-dev")
+            .expect("reload runtime")
+            .launch_account,
+        note
+    );
+
+    let status =
+        coordination_get_live_team_status_impl(&state, None, "architecture-final".to_string())
+            .expect("live status should succeed");
+    let member = status
+        .members
+        .iter()
+        .find(|member| member.name == "frontend-dev")
+        .expect("frontend-dev is on the roster");
+    assert_eq!(member.account_applied, Some(false));
+    assert_eq!(member.account_note.as_deref(), Some("opaque_base_command"));
+    assert_eq!(member.account_note_detail.as_deref(), Some("team-wrapper"));
 }
 
 #[test]

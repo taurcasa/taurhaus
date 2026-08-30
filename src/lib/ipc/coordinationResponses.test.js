@@ -165,3 +165,34 @@ describe('coordinationResponses task effort', () => {
       ])
   })
 })
+
+describe('coordinationResponses launch account note', () => {
+  it('carries the opaque wrapper note in both wire spellings', () => {
+    const status = normalizeLiveTeamStatus({
+      teamName: 'taurhaus-team',
+      members: [
+        {
+          name: 'dev-1',
+          accountApplied: false,
+          accountNote: 'opaque_base_command',
+          accountNoteDetail: 'team-wrapper',
+        },
+        {
+          name: 'dev-2',
+          account_applied: false,
+          account_note: 'opaque_base_command',
+          account_note_detail: 'other-wrapper',
+        },
+      ],
+    })
+
+    expect(status.members.map(({ accountApplied, accountNote, accountNoteDetail }) => [
+      accountApplied,
+      accountNote,
+      accountNoteDetail,
+    ])).toEqual([
+      [false, 'opaque_base_command', 'team-wrapper'],
+      [false, 'opaque_base_command', 'other-wrapper'],
+    ])
+  })
+})

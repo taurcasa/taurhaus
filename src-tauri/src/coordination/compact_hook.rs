@@ -1685,6 +1685,7 @@ mod tests {
                 last_seen_at: None,
                 applied_effort: None,
                 effort_resume_failure: None,
+                launch_account: Default::default(),
                 extra: Default::default(),
             },
         )
@@ -2492,6 +2493,7 @@ mod tests {
                     last_seen_at: None,
                     applied_effort: None,
                     effort_resume_failure: None,
+                    launch_account: Default::default(),
                     extra: Default::default(),
                 },
             )

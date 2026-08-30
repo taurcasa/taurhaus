@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use taurhaus_lib::logging::{install_global_sink, LogFileState};
+use taurhaus_lib::session_scanner::launch_base::{AliasExpansion, ResolvedBase};
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
@@ -1692,13 +1693,14 @@ fn a_managed_launch_never_carries_the_frozen_effort_variable() {
     let rendered =
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
             .expect("the launch still renders without the frozen level");
-    assert!(
-        !rendered.contains(variable),
-        "a managed launch must not freeze the level: {rendered}"
-    );
-    assert!(
-        rendered.contains("claude --dangerously-skip-permissions"),
-        "the rest of the operator's own command is kept: {rendered}"
+    assert_eq!(
+        rendered,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'architecture-final' --agent-name 'builder' ",
+            "--agent-id 'builder@architecture-final' --agent-type 'general-purpose' -n 'builder'"
+        )
     );
 }
 
@@ -1739,8 +1741,11 @@ fn team_launch_rendering_does_not_probe_ambient_codex_home() {
     let trusted =
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
             .expect("trusted command");
-    assert!(!untrusted.contains("--dangerously-bypass-hook-trust"));
-    assert!(trusted.contains("--dangerously-bypass-hook-trust"));
+    assert_eq!(untrusted, "codex --yolo -m 'gpt-5.4'");
+    assert_eq!(
+        trusted,
+        "codex --yolo --dangerously-bypass-hook-trust -m 'gpt-5.4'"
+    );
 }
 
 #[test]
@@ -1768,6 +1773,194 @@ fn managed_codex_team_launch_carries_the_account_selector() {
     );
 }
 
+#[test]
+fn managed_team_launch_defeats_a_base_alias_account_selector() {
+    // Regression: commit 0f2bfbb0 resolved aliases only on the app-launch path,
+    // so a managed member still ran on the account selected inside `claude2`.
+    let agent = setup_config("builder", "claude", "opus", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
+    commands.account_selector_dirs.insert(
+        "CLAUDE_CONFIG_DIR".to_string(),
+        std::path::PathBuf::from("/home/user/.claude"),
+    );
+    commands.resolved_bases.insert(
+        (CliTool::Claude, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude --dangerously-skip-permissions"
+                .to_string(),
+            expansions: vec![AliasExpansion {
+                name: "claude2".to_string(),
+                body: "CLAUDE_CONFIG_DIR=/home/user/.claude-account2 claude".to_string(),
+            }],
+            opaque_head: None,
+        },
+    );
+
+    let command =
+        build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
+            .expect("managed command");
+
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "CLAUDE_CONFIG_DIR='/home/user/.claude' claude --dangerously-skip-permissions ",
+            "--model 'opus' --team-name 'architecture-final' --agent-name 'builder' ",
+            "--agent-id 'builder@architecture-final' --agent-type 'general-purpose' -n 'builder'"
+        )
+    );
+}
+
+#[test]
+fn unavailable_team_base_resolution_launches_the_literal_and_logs_once() {
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("team-base-unresolved.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let agent = setup_config("base-unresolved-member", "claude", "opus", "/tmp/project");
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.claude.fresh = "claude2 --dangerously-skip-permissions".to_string();
+
+    let command =
+        build_cli_launch_command(&agent, "base-unresolved-team", MemberRole::Agent, &commands)
+            .expect("resolution failure must not block the launch");
+
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude2 --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'base-unresolved-team' --agent-name 'base-unresolved-member' ",
+            "--agent-id 'base-unresolved-member@base-unresolved-team' ",
+            "--agent-type 'general-purpose' -n 'base-unresolved-member'"
+        )
+    );
+    let contents =
+        wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.base.unresolved\"");
+    assert_eq!(
+        contents
+            .lines()
+            .filter(|line| {
+                line.contains("\"event\":\"launch.base.unresolved\"")
+                    && line.contains("\"member\":\"base-unresolved-member\"")
+                    && line.contains("\"team\":\"base-unresolved-team\"")
+            })
+            .count(),
+        1,
+        "one unresolved resolution should produce one event: {contents}"
+    );
+}
+
+#[test]
+fn opaque_team_base_reports_the_account_note_and_logs_once() {
+    // Regression: commit 0f2bfbb0 surfaced opaque launch bases only for app
+    // launches, leaving a managed member's account selection silently unclear.
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("team-base-opaque.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.resolved_bases.insert(
+        (CliTool::Claude, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: "team-wrapper claude --dangerously-skip-permissions".to_string(),
+            expansions: Vec::new(),
+            opaque_head: Some("team-wrapper".to_string()),
+        },
+    );
+
+    let result = render_team_launch(
+        &commands,
+        CliTool::Claude,
+        "opus",
+        None,
+        "opaque-base-team",
+        "opaque-base-member",
+        MemberRole::Agent,
+        false,
+        None,
+    )
+    .expect("opaque wrapper must remain launchable");
+
+    assert_eq!(
+        result.command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "team-wrapper claude --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'opaque-base-team' --agent-name 'opaque-base-member' ",
+            "--agent-id 'opaque-base-member@opaque-base-team' ",
+            "--agent-type 'general-purpose' -n 'opaque-base-member'"
+        )
+    );
+    assert_eq!(result.account.account_applied, Some(false));
+    assert_eq!(
+        result.account.account_note.as_deref(),
+        Some("opaque_base_command")
+    );
+    assert_eq!(
+        result.account.account_note_detail.as_deref(),
+        Some("team-wrapper")
+    );
+    let contents = wait_for_pipeline_log_contains(&log_path, "\"event\":\"launch.base.opaque\"");
+    assert_eq!(
+        contents
+            .lines()
+            .filter(|line| {
+                line.contains("\"event\":\"launch.base.opaque\"")
+                    && line.contains("\"member\":\"opaque-base-member\"")
+                    && line.contains("\"team\":\"opaque-base-team\"")
+            })
+            .count(),
+        1,
+        "one opaque resolution should produce one event: {contents}"
+    );
+}
+
+#[test]
+fn initialized_member_persists_the_opaque_base_account_note() {
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+    let mut commands = crate::models::CliCommandSettings::default();
+    commands.resolved_bases.insert(
+        (CliTool::Codex, crate::daemon::protocol::LaunchMode::Fresh),
+        ResolvedBase {
+            command: "team-wrapper codex --yolo".to_string(),
+            expansions: Vec::new(),
+            opaque_head: Some("team-wrapper".to_string()),
+        },
+    );
+
+    let report = orchestrator
+        .initialize_team_with_cli_commands_and_layout(
+            &InitializeTeamRequest {
+                team_name: "opaque-runtime-team".to_string(),
+                team_description: None,
+                lead_mode: LeadMode::LaunchNew,
+                lead: setup_config("team-lead", "codex", "gpt-5.4", "/tmp/lead"),
+                agents: Vec::new(),
+            },
+            &commands,
+            "new_window",
+        )
+        .expect("initialize report");
+    assert!(
+        report.failed_step.is_none(),
+        "initialize failed: {report:?}"
+    );
+
+    let runtime = MemberRuntimeStore::load(tmp.path(), "opaque-runtime-team", "team-lead")
+        .expect("persisted member runtime");
+    let account = runtime.launch_account;
+    assert_eq!(account.account_applied, Some(false));
+    assert_eq!(account.account_note.as_deref(), Some("opaque_base_command"));
+    assert_eq!(account.account_note_detail.as_deref(), Some("team-wrapper"));
+}
+
 // Regression: 791f6be centralized team launch rendering without a managed
 // Codex notify input, so the pipeline could not opt into native idle edges.
 #[test]
@@ -1784,10 +1977,13 @@ fn managed_codex_team_launch_includes_native_notify_sink() {
         build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &commands)
             .expect("managed command");
 
-    assert!(command.contains(concat!(
-        "-c 'notify=[\"/home/test/.local/bin/taurhaus-daemon\",",
-        "\"codex-notify\"]'"
-    )));
+    assert_eq!(
+        command,
+        concat!(
+            "codex --yolo -c 'notify=[\"/home/test/.local/bin/taurhaus-daemon\",",
+            "\"codex-notify\"]' -m 'gpt-5.4'"
+        )
+    );
 }
 
 // Regression: a79d392 forced the catalog's low effort onto declarations that omitted it,
@@ -1811,10 +2007,12 @@ fn initialize_and_resume_leave_undeclared_effort_to_the_cli() {
 
     let initialize_command =
         build_member_activation_launch_command(&initialize, &CliCommandSettings::default())
-            .expect("initialize command");
+            .expect("initialize command")
+            .command;
     let resume_command =
         build_member_activation_launch_command(&resume, &CliCommandSettings::default())
-            .expect("resume command");
+            .expect("resume command")
+            .command;
 
     assert_eq!(initialize_command, resume_command);
     assert_eq!(initialize_command, "codex --yolo -m 'gpt-5.6-sol'");
@@ -1853,8 +2051,10 @@ fn build_cli_launch_command_for_codex_emits_legacy_reasoning_effort() {
 
     let command = build_cli_launch_command(&agent, "architecture-final", MemberRole::Agent, &cmds)
         .expect("command");
-    assert!(command.contains("-m 'gpt-5.4'"));
-    assert!(command.contains("-c 'model_reasoning_effort=\"high\"'"));
+    assert_eq!(
+        command,
+        "codex --yolo -m 'gpt-5.4' -c 'model_reasoning_effort=\"high\"'"
+    );
 }
 
 /// A team member config, with everything but the tool left at its default.
@@ -1915,18 +2115,22 @@ fn build_cli_launch_command_names_a_configured_claude_root() {
     std::env::remove_var("TAURHAUS_CLAUDE_DIR");
 
     let claude = claude.expect("claude command");
-    assert!(
-        claude.starts_with(&format!(
-            "CLAUDE_CONFIG_DIR='{}' ",
+    assert_eq!(
+        claude,
+        format!(
+            concat!(
+                "CLAUDE_CONFIG_DIR='{}' CLAUDECODE=1 ",
+                "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+                "claude --dangerously-skip-permissions --team-name 'ledger-team' ",
+                "--agent-name 'team-lead' --agent-id 'team-lead@ledger-team' ",
+                "--agent-type 'orchestrator' -n 'team-lead'"
+            ),
             override_dir.path().display()
-        )),
-        "{claude}"
+        )
     );
-    // The team environment still lands in front of the binary.
-    assert!(claude.contains("CLAUDECODE=1"), "{claude}");
 
     let codex = codex.expect("codex command");
-    assert!(!codex.contains("CLAUDE_CONFIG_DIR"), "{codex}");
+    assert_eq!(codex, "codex --yolo");
 }
 
 #[test]
@@ -1943,7 +2147,15 @@ fn build_cli_launch_command_leaves_an_unmoved_claude_root_implicit() {
     )
     .expect("command");
 
-    assert!(!command.contains("CLAUDE_CONFIG_DIR"), "{command}");
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --team-name 'ledger-team' ",
+            "--agent-name 'team-lead' --agent-id 'team-lead@ledger-team' ",
+            "--agent-type 'orchestrator' -n 'team-lead'"
+        )
+    );
 }
 
 #[test]
@@ -1976,30 +2188,15 @@ fn build_cli_launch_command_for_claude_appends_team_context() {
     };
     let command =
         build_cli_launch_command(&agent, "ledger-team", MemberRole::Lead, &cmds).expect("command");
-    assert!(command.contains("CLAUDECODE=1"));
-    assert!(command.contains("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"));
-    assert!(command.contains("--model 'claude-opus-4-6'"));
-    assert!(command.contains("--team-name 'ledger-team'"));
-    assert!(command.contains("--agent-name 'team-lead'"));
-    assert!(command.contains("--agent-id 'team-lead@ledger-team'"));
-    assert!(command.contains("--agent-type 'orchestrator'"));
-    assert!(command.contains("-n 'team-lead'"));
-    for flag in [
-        "--team-name",
-        "--agent-name",
-        "--agent-id",
-        "--agent-type",
-        "-n",
-    ] {
-        assert_eq!(
-            command
-                .split_whitespace()
-                .filter(|token| *token == flag)
-                .count(),
-            1,
-            "{flag} must be rendered exactly once: {command}"
-        );
-    }
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --model 'claude-opus-4-6' ",
+            "--team-name 'ledger-team' --agent-name 'team-lead' ",
+            "--agent-id 'team-lead@ledger-team' --agent-type 'orchestrator' -n 'team-lead'"
+        )
+    );
 }
 
 // Resume always starts a fresh session — never uses --continue or resume --last.
@@ -2018,8 +2215,6 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
     )
     .expect("command");
     assert_eq!(command, "codex --yolo -m 'gpt-5.3'");
-    assert!(!command.contains("resume"));
-    assert!(!command.contains("--last"));
 
     let claude_agent = setup_config("team-lead", "claude", "opus", "/tmp/project");
 
@@ -2030,9 +2225,16 @@ fn build_resume_cli_launch_command_always_uses_fresh_session() {
         &cmds,
     )
     .expect("command");
-    assert!(!command.contains("--continue"));
-    assert!(command.contains("--agent-type 'orchestrator'"));
-    assert!(command.contains("--team-name 'architecture-final'"));
+    assert_eq!(
+        command,
+        concat!(
+            "CLAUDECODE=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 ",
+            "claude --dangerously-skip-permissions --model 'opus' ",
+            "--team-name 'architecture-final' --agent-name 'team-lead' ",
+            "--agent-id 'team-lead@architecture-final' ",
+            "--agent-type 'orchestrator' -n 'team-lead'"
+        )
+    );
 }
 
 #[test]
@@ -4638,12 +4840,14 @@ fn an_effort_refusal_is_returned_in_the_typed_outcome() {
     })
     .expect("clear session id");
 
+    let mut cli_commands = CliCommandSettings::default();
     let outcome = orchestrator
         .apply_pending_task_effort_outcome(
             "effort-team",
-            &CliCommandSettings::default(),
+            &mut cli_commands,
             "new_window",
             EffortPassScope::TaskChanged,
+            &mut |_, _| {},
         )
         .expect("effort pass");
 
@@ -4669,12 +4873,14 @@ fn an_unreadable_team_is_returned_in_the_typed_effort_outcome() {
     fs::create_dir_all(&broken_team).expect("create broken team");
     fs::write(broken_team.join("config.json"), b"{not valid json").expect("write broken config");
 
+    let mut cli_commands = CliCommandSettings::default();
     let outcome = orchestrator
         .apply_pending_task_effort_outcome(
             "broken-team",
-            &CliCommandSettings::default(),
+            &mut cli_commands,
             "new_window",
             EffortPassScope::TaskChanged,
+            &mut |_, _| {},
         )
         .expect("typed effort outcome");
 
@@ -5522,10 +5728,10 @@ fn an_operator_stopped_member_is_not_restarted_by_the_effort_pass() {
     assert_eq!(record.health, HealthState::SessionDead);
 }
 
-// Regression: d055165 skipped the relaunch outright when the configured
-// resume base already pinned `model_reasoning_effort`, so the member stayed
-// at the operator's configured level and the lead's assignment never took
-// effect. The override belongs in the command the relaunch renders.
+// Regression: e2f9745b made team rendering prefer a resolved base, but the
+// effort rewrite still changed only the configured base. Production therefore
+// relaunched at the resolved base's old pin and recorded the assignment's level
+// as applied even though it never reached the command the renderer used.
 #[test]
 fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() {
     let tmp = TempDir::new().expect("tempdir");
@@ -5537,15 +5743,25 @@ fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() 
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort(
+        .apply_pending_task_effort_outcome(
             "effort-team",
-            &cli_commands,
+            &mut cli_commands,
             "new_window",
             EffortPassScope::TaskChanged,
+            &mut |tool, commands| {
+                commands.resolved_bases.insert(
+                    (tool, crate::daemon::protocol::LaunchMode::Resume),
+                    ResolvedBase {
+                        command: commands.codex.resume.clone(),
+                        expansions: Vec::new(),
+                        opaque_head: None,
+                    },
+                );
+            },
         )
         .expect("effort pass");
 
-    assert_eq!(resumed, vec!["builder".to_string()]);
+    assert_eq!(resumed.switched, vec!["builder".to_string()]);
     let launch = runtime
         .calls()
         .into_iter()

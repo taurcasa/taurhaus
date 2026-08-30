@@ -2358,6 +2358,7 @@ fn startup_reconcile_removes_orphan_runtime_records() {
         last_seen_at: None,
         applied_effort: None,
         effort_resume_failure: None,
+        launch_account: Default::default(),
         extra: Default::default(),
     };
     MemberRuntimeStore::save(tmp.path(), team_name, "orphan-agent", &orphan_runtime)
