@@ -485,10 +485,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
             if lines[0].trim() != "#[cfg(test)]" {
                 return None;
             }
-            let module = lines[1]
-                .trim()
-                .strip_prefix("mod ")?
-                .strip_suffix(';')?;
+            let module = lines[1].trim().strip_prefix("mod ")?.strip_suffix(';')?;
             Some(format!("src/{module}.rs"))
         })
         .collect::<Vec<_>>();
