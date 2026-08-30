@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -298,7 +297,108 @@ fn session_update(state: &HubState, changed: bool) -> SessionUpdate {
 pub struct SessionActivityHub {
     state: Mutex<HubState>,
     changed_cv: Condvar,
-    scanner_started: AtomicBool,
+    /// The scanner thread this hub started, if any.
+    scanner: Mutex<Option<ScannerThread>>,
+}
+
+/// The scanner thread a hub started, owned by that hub.
+struct ScannerThread {
+    stop: Arc<ScannerStop>,
+    handle: thread::JoinHandle<()>,
+}
+
+/// The stop signal for one scanner thread.
+///
+/// The loop parks on this condvar instead of `thread::sleep`, so a stop is
+/// honoured as soon as the cycle in flight finishes rather than one scan
+/// interval later.
+#[derive(Default)]
+struct ScannerStop {
+    stopped: Mutex<bool>,
+    wake: Condvar,
+}
+
+impl ScannerStop {
+    fn request(&self) {
+        let mut stopped = self.stopped.lock().unwrap_or_else(|e| e.into_inner());
+        *stopped = true;
+        self.wake.notify_all();
+    }
+
+    fn requested(&self) -> bool {
+        *self.stopped.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Park until `interval` elapses or a stop is requested; `true` means stop.
+    fn park(&self, interval: Duration) -> bool {
+        let stopped = self.stopped.lock().unwrap_or_else(|e| e.into_inner());
+        if *stopped {
+            return true;
+        }
+        let (stopped, _timeout) = self
+            .wake
+            .wait_timeout_while(stopped, interval, |stopped| !*stopped)
+            .unwrap_or_else(|e| e.into_inner());
+        *stopped
+    }
+}
+
+/// One hub's scanner loop.
+///
+/// The loop holds the hub *weakly* and upgrades per cycle: once the hub is
+/// dropped there is nothing to scan for and the loop leaves. That is what makes
+/// `SessionActivityHub::stop_scanner` a promise rather than a hope — a detached
+/// thread that kept an `Arc` of its own hub could never be stopped at all.
+fn scanner_loop(hub: std::sync::Weak<SessionActivityHub>, stop: Arc<ScannerStop>) {
+    let mut next_tick = Instant::now();
+    let mut cadence = ScannerCadence::default();
+    let mut last_activity_export_at: Option<Instant> = None;
+
+    while !stop.requested() {
+        let interval = {
+            let Some(hub) = hub.upgrade() else {
+                return;
+            };
+            let loop_started_at = Instant::now();
+            let teams_dir = PlatformPaths::teams_dir();
+            let cycle = scan_cycle(&teams_dir);
+
+            let decision = hub.commit_cycle(
+                cycle,
+                &mut cadence,
+                last_activity_export_at,
+                loop_started_at,
+            );
+            if decision.export_due {
+                let export_stats = export_activity_snapshots_for_sessions(
+                    &teams_dir,
+                    &hub.snapshot().sessions,
+                    Utc::now(),
+                );
+                last_activity_export_at = Some(loop_started_at);
+                if export_stats.write_failures > 0 {
+                    tracing::warn!(
+                        teams_exported = export_stats.teams_exported,
+                        members_written = export_stats.members_written,
+                        write_failures = export_stats.write_failures,
+                        "activity snapshot export completed with write failures"
+                    );
+                }
+            }
+            decision.interval
+        };
+
+        next_tick += interval;
+        let now = Instant::now();
+        if next_tick > now {
+            if stop.park(next_tick.duration_since(now)) {
+                return;
+            }
+        } else {
+            // Scanner fell behind; reset cadence from "now".
+            next_tick = now;
+        }
+    }
 }
 
 impl SessionActivityHub {
@@ -306,7 +406,7 @@ impl SessionActivityHub {
         Self {
             state: Mutex::new(HubState::default()),
             changed_cv: Condvar::new(),
-            scanner_started: AtomicBool::new(false),
+            scanner: Mutex::new(None),
         }
     }
 
@@ -482,59 +582,62 @@ impl SessionActivityHub {
         }
     }
 
+    /// Start this hub's scanner thread unless it is already running.
+    ///
+    /// The hub owns the thread it starts: `stop_scanner` (and therefore `Drop`)
+    /// ends it. A hub whose scanner has been stopped starts a fresh one here,
+    /// which is why `global()` calls this on every hand-out.
     fn ensure_scanner_thread(self: &Arc<Self>) {
-        if self
-            .scanner_started
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
+        let mut scanner = self.scanner.lock().unwrap_or_else(|e| e.into_inner());
+        if scanner.is_some() {
             return;
         }
 
-        let hub = Arc::clone(self);
-        thread::spawn(move || {
-            let mut next_tick = Instant::now();
-            let mut cadence = ScannerCadence::default();
-            let mut last_activity_export_at: Option<Instant> = None;
+        let stop = Arc::new(ScannerStop::default());
+        let hub = Arc::downgrade(self);
+        let loop_stop = Arc::clone(&stop);
+        let handle = thread::spawn(move || scanner_loop(hub, loop_stop));
+        *scanner = Some(ScannerThread { stop, handle });
+    }
 
-            loop {
-                let loop_started_at = Instant::now();
-                let teams_dir = PlatformPaths::teams_dir();
-                let cycle = scan_cycle(&teams_dir);
+    /// Stop this hub's scanner thread and wait for it to finish.
+    ///
+    /// The thread leaves after the cycle in flight — it parks on the stop
+    /// signal rather than sleeping the scan interval out, so this is a
+    /// sub-cycle wait, not a multi-second one.
+    fn stop_scanner(&self) {
+        let scanner = self
+            .scanner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let Some(ScannerThread { stop, handle }) = scanner else {
+            return;
+        };
+        stop.request();
+        if handle.thread().id() == thread::current().id() {
+            // The hub's last reference died inside a cycle, so this *is* the
+            // scanner thread running its own `Drop`. It has been told to stop
+            // and its next upgrade fails anyway; joining itself would deadlock.
+            return;
+        }
+        let _ = handle.join();
+    }
 
-                let decision = hub.commit_cycle(
-                    cycle,
-                    &mut cadence,
-                    last_activity_export_at,
-                    loop_started_at,
-                );
-                if decision.export_due {
-                    let export_stats = export_activity_snapshots_for_sessions(
-                        &teams_dir,
-                        &hub.snapshot().sessions,
-                        Utc::now(),
-                    );
-                    last_activity_export_at = Some(loop_started_at);
-                    if export_stats.write_failures > 0 {
-                        tracing::warn!(
-                            teams_exported = export_stats.teams_exported,
-                            members_written = export_stats.members_written,
-                            write_failures = export_stats.write_failures,
-                            "activity snapshot export completed with write failures"
-                        );
-                    }
-                }
+    /// The thread id of the scanner this hub started, if it is still running.
+    #[cfg(test)]
+    fn scanner_thread_id(&self) -> Option<thread::ThreadId> {
+        self.scanner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|scanner| scanner.handle.thread().id())
+    }
+}
 
-                next_tick += decision.interval;
-                let now = Instant::now();
-                if next_tick > now {
-                    thread::sleep(next_tick.duration_since(now));
-                } else {
-                    // Scanner fell behind; reset cadence from "now".
-                    next_tick = now;
-                }
-            }
-        });
+impl Drop for SessionActivityHub {
+    fn drop(&mut self) {
+        self.stop_scanner();
     }
 }
 
@@ -543,7 +646,7 @@ mod tests {
     use super::*;
     use crate::session_scanner::idle::{set_binding_store_path_for_test, CODEX_TEST_LOCK};
     use crate::session_scanner::{clear_scan_cache, process, SCANNER_TEST_LOCK};
-    use std::sync::atomic::{AtomicU8, AtomicUsize};
+    use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
     use tempfile::TempDir;
 
     fn session_with_state(state: SessionState) -> DisplaySession {
@@ -1288,6 +1391,107 @@ mod tests {
             pane_id: "%1".to_string(),
             activity: 100,
         }]
+    }
+
+    /// Where `reporting_clients` sends the id of every probing thread.
+    static PROBE_REPORTS: Mutex<Option<std::sync::mpsc::Sender<thread::ThreadId>>> =
+        Mutex::new(None);
+
+    /// `scripted_clients`, plus a report of which thread did the probing.
+    fn reporting_clients() -> Vec<crate::session_scanner::tmux::TmuxClient> {
+        if let Some(reports) = PROBE_REPORTS
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+        {
+            let _ = reports.send(thread::current().id());
+        }
+        scripted_clients()
+    }
+
+    /// Wait until `scanner` reports a probe, or `within` elapses.
+    ///
+    /// Probes from any other thread are ignored, so the answer is about this
+    /// hub's scanner alone however many scanners the test binary is running.
+    fn probed_within(
+        reports: &std::sync::mpsc::Receiver<thread::ThreadId>,
+        scanner: thread::ThreadId,
+        within: Duration,
+    ) -> bool {
+        let deadline = Instant::now() + within;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            match reports.recv_timeout(remaining) {
+                Ok(thread_id) if thread_id == scanner => return true,
+                Ok(_) => continue,
+                Err(_) => return false,
+            }
+        }
+    }
+
+    // Regression: latent since 07ab6c5 put a live tmux probe in `scan_cycle`.
+    // `ensure_scanner_thread` spawned a *detached* thread holding its own `Arc`
+    // of the hub, so the scanner outlived the hub that started it and went on
+    // running `scan_cycle` — through whatever process-global overrides the next
+    // test had installed, and outside `SCANNER_TEST_LOCK`. That is what made
+    // `degraded_cycle_does_not_probe_or_alter_focus` fail with `left: 2,
+    // right: 1` (reproduced 1 run in 6 under concurrent load). The hub owns its
+    // scanner thread: dropping the hub stops and joins it.
+    #[test]
+    fn a_dropped_hub_stops_its_scanner_thread() {
+        let _scanner_lock = SCANNER_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _codex = CODEX_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        // The scanner thread resolves the teams dir under the Claude root and
+        // exports member activity into it; keep both inside the tempdir.
+        let _env = crate::test_support::acquire_env_test_guard();
+        let tmp = TempDir::new().expect("tempdir");
+        std::env::set_var("TAURHAUS_CLAUDE_DIR", tmp.path());
+        set_binding_store_path_for_test(Some(tmp.path().join("codex-bindings.json")));
+        clear_scan_cache();
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_EMPTY, Ordering::SeqCst);
+        process::set_inventory_provider_override(Some(hub_inventory));
+        let (reporter, reports) = std::sync::mpsc::channel();
+        *PROBE_REPORTS
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(reporter);
+        crate::session_scanner::tmux::set_list_clients_override(Some(reporting_clients));
+
+        let hub = Arc::new(SessionActivityHub::new());
+        hub.ensure_scanner_thread();
+        let scanner = hub
+            .scanner_thread_id()
+            .expect("the hub owns the scanner thread it started");
+        assert!(
+            probed_within(&reports, scanner, Duration::from_secs(5)),
+            "the scanner thread must be running while the hub is alive"
+        );
+
+        drop(hub);
+
+        // The hub is gone, so its scanner is stopped and joined before `drop`
+        // returns and no further cycle can run. The detached thread this
+        // replaces kept probing every ACTIVE_SCAN_INTERVAL forever.
+        assert!(
+            !probed_within(&reports, scanner, ACTIVE_SCAN_INTERVAL * 4),
+            "no scan cycle may run after the hub that started it is gone"
+        );
+
+        crate::session_scanner::tmux::set_list_clients_override(None);
+        *PROBE_REPORTS
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+        process::set_inventory_provider_override(None);
+        set_binding_store_path_for_test(None);
+        clear_scan_cache();
+        HUB_INVENTORY_MODE.store(HUB_INVENTORY_HEALTHY, Ordering::SeqCst);
+        std::env::remove_var("TAURHAUS_CLAUDE_DIR");
     }
 
     // Regression: latent since 9a66d1c (degraded scans) — a degraded cycle must
