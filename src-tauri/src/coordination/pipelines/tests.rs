@@ -2457,6 +2457,50 @@ fn load_resume_member_state_preserves_role_template_context() {
     )));
 }
 
+#[test]
+fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
+    // Regression: 50fc736 made a mesh-owned applied-effort record fatal to
+    // activation because taurhaus required its own health field to be present.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    orchestrator
+        .create_team("minimal-runtime", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "minimal-runtime",
+            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "minimal-runtime",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add builder");
+    fs::write(
+        tmp.path()
+            .join("minimal-runtime")
+            .join("runtime")
+            .join("builder.json"),
+        r#"{"appliedEffort":"medium"}"#,
+    )
+    .expect("write minimal mesh runtime");
+
+    let report = orchestrator
+        .resume_member("minimal-runtime", "builder")
+        .expect("resume report");
+
+    assert!(
+        report.resumed,
+        "partial runtime should activate: {report:?}"
+    );
+    assert_eq!(report.failed_step, None);
+}
+
 // Regression: a79d392 treated mesh's pre-existing `external` placeholder as a model
 // declaration, so resume rendered `-m 'external'` instead of the member role's model.
 #[test]

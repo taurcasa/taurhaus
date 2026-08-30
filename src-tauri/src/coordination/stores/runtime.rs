@@ -263,15 +263,28 @@ impl MemberRuntimeStore {
             }
             let member_name = match path.file_stem().and_then(|s| s.to_str()) {
                 Some(name) => name.to_string(),
-                None => continue,
+                None => {
+                    log_runtime_record_skipped(team_name, "<invalid>", "invalid member filename");
+                    continue;
+                }
             };
             let raw = match fs::read_to_string(&path) {
                 Ok(raw) => raw,
-                Err(_) => continue,
+                Err(err) => {
+                    log_runtime_record_skipped(
+                        team_name,
+                        &member_name,
+                        &format!("failed to read runtime record: {err}"),
+                    );
+                    continue;
+                }
             };
             match parse_runtime_record(&raw, team_name, &member_name) {
                 Ok(record) => results.push((member_name, record)),
-                Err(_) => continue, // skip corrupt
+                Err(err) => {
+                    log_runtime_record_skipped(team_name, &member_name, &err.to_string());
+                    continue;
+                }
             }
         }
 
@@ -330,9 +343,19 @@ impl MemberRuntimeStore {
                 .to_string();
 
             let should_remove = match fs::read_to_string(&path) {
-                Ok(raw) => match parse_runtime_record(&raw, team_name, &member_name) {
-                    Ok(record) => is_stale(&record, cutoff),
+                Ok(raw) => match serde_json::from_str::<Value>(&raw) {
                     Err(_) => true,
+                    Ok(Value::Object(object)) => {
+                        match parse_runtime_record(&raw, team_name, &member_name) {
+                            Ok(record) if has_staleness_fields(&object) => {
+                                is_stale(&record, cutoff)
+                            }
+                            // Valid objects may be partial mesh records or use
+                            // fields from a newer schema. Neither is corrupt.
+                            Ok(_) | Err(_) => false,
+                        }
+                    }
+                    Ok(_) => true,
                 },
                 Err(err) => return Err(CoordinationError::Io(err)),
             };
@@ -568,6 +591,19 @@ fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {
     latest_activity(record).is_none_or(|ts| ts <= cutoff)
 }
 
+fn has_staleness_fields(object: &Map<String, Value>) -> bool {
+    [
+        "delivery_lease",
+        "deliveryLease",
+        "attached_at",
+        "attachedAt",
+        "last_seen_at",
+        "lastSeenAt",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key))
+}
+
 fn latest_activity(record: &MemberRuntimeRecord) -> Option<DateTime<Utc>> {
     let mut latest = record.last_seen_at;
     if let Some(attached_at) = record.attached_at {
@@ -752,6 +788,26 @@ fn log_runtime_store_error(
     );
 }
 
+fn log_runtime_record_skipped(team_name: &str, member_name: &str, reason: &str) {
+    let mut fields = Map::new();
+    fields.insert("team".to_string(), Value::String(team_name.to_string()));
+    fields.insert("member".to_string(), Value::String(member_name.to_string()));
+    fields.insert("reason".to_string(), Value::String(reason.to_string()));
+    emit_global(
+        "warn",
+        "coordination",
+        "coordination.runtime.record_skipped",
+        Some("Member runtime record was skipped".to_string()),
+        fields,
+    );
+    tracing::warn!(
+        team = team_name,
+        member = member_name,
+        reason,
+        "member runtime record was skipped"
+    );
+}
+
 const fn schema_version_one() -> u32 {
     RUNTIME_SCHEMA_VERSION
 }
@@ -765,6 +821,7 @@ mod tests {
     use std::time::Duration;
 
     use chrono::TimeZone;
+    use taurhaus_lib::logging::{install_global_sink, LogFileState};
     use tempfile::TempDir;
 
     use super::*;
@@ -950,6 +1007,41 @@ mod tests {
     }
 
     #[test]
+    fn minimal_mesh_runtime_loads_and_is_not_cleaned_up_as_stale() {
+        // Regression: 50fc736 made `health` mandatory, so mesh's minimal
+        // applied-effort record was rejected and then deleted as corrupt.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "mesh-minimal";
+        let member_name = "builder";
+        let runtime_dir = runtime_dir_path(tmp.path(), team_name);
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        let path = runtime_dir.join(format!("{member_name}.json"));
+        fs::write(&path, r#"{"appliedEffort":"medium"}"#).expect("minimal runtime");
+
+        let record = MemberRuntimeStore::load(tmp.path(), team_name, member_name)
+            .expect("minimal mesh record should load");
+        assert_eq!(record.health, HealthState::SessionDead);
+        assert_eq!(record.applied_effort.as_deref(), Some("medium"));
+        assert_eq!(
+            MemberRuntimeStore::load_all(tmp.path(), team_name)
+                .expect("load all")
+                .len(),
+            1,
+            "a partial object is a runtime record, not corrupt input"
+        );
+
+        let removed = MemberRuntimeStore::cleanup_stale(
+            tmp.path(),
+            team_name,
+            Duration::from_secs(60),
+            ts("2026-03-01T21:10:00Z"),
+        )
+        .expect("cleanup");
+        assert!(removed.is_empty(), "partial mesh record must be preserved");
+        assert!(path.exists());
+    }
+
+    #[test]
     fn stale_logic_uses_latest_activity_timestamp() {
         let mut record = sample_record("agent-1");
         record.delivery_lease.as_mut().expect("lease").heartbeat_at = ts("2026-03-01T21:07:00Z");
@@ -1089,7 +1181,11 @@ mod tests {
         let team_name = "architecture-final";
         let runtime_dir = runtime_dir_path(teams_dir, team_name);
         fs::create_dir_all(&runtime_dir).expect("create runtime dir");
-        fs::write(runtime_dir.join("broken.json"), "{not-json").expect("write broken json");
+        // Invalid JSON has no extension map or timestamp information that can
+        // be preserved safely, so it remains genuinely corrupt.
+        fs::write(runtime_dir.join("broken.json"), "not json").expect("write broken json");
+        // A valid JSON value that is not an object cannot be a runtime record.
+        fs::write(runtime_dir.join("array.json"), "[]").expect("write non-object json");
 
         let removed = MemberRuntimeStore::cleanup_stale(
             teams_dir,
@@ -1099,7 +1195,7 @@ mod tests {
         )
         .expect("cleanup should succeed");
 
-        assert_eq!(removed, vec!["broken".to_string()]);
+        assert_eq!(removed, vec!["array".to_string(), "broken".to_string()]);
         assert!(
             !runtime_dir.join("broken.json").exists(),
             "broken runtime file should be pruned during cleanup"
@@ -1364,7 +1460,8 @@ mod tests {
     }
 
     #[test]
-    fn load_all_skips_corrupt_files() {
+    fn load_all_skips_corrupt_files_with_one_diagnostic_each() {
+        let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
         let tmp = TempDir::new().expect("tempdir");
         let teams_dir = tmp.path();
         let team_name = "architecture-final";
@@ -1373,7 +1470,12 @@ mod tests {
         MemberRuntimeStore::save(teams_dir, team_name, "valid-agent", &valid).expect("save");
 
         let runtime_dir = runtime_dir_path(teams_dir, team_name);
+        // This is invalid JSON, not a merely partial runtime object, so it is
+        // skipped while the valid record remains available.
         fs::write(runtime_dir.join("corrupt-agent.json"), "{{bad json").expect("write corrupt");
+        let log_path = tmp.path().join("runtime.log.jsonl");
+        let log_state = LogFileState::new(log_path.clone()).expect("log state");
+        install_global_sink(&log_state);
 
         let results =
             MemberRuntimeStore::load_all(teams_dir, team_name).expect("load_all should succeed");
@@ -1381,6 +1483,20 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "valid-agent");
         assert_eq!(results[0].1, valid);
+
+        let contents = wait_for_log_contains(
+            &log_path,
+            "\"event\":\"coordination.runtime.record_skipped\"",
+        );
+        assert_eq!(
+            contents
+                .matches("\"event\":\"coordination.runtime.record_skipped\"")
+                .count(),
+            1,
+            "one skipped file should emit exactly one diagnostic"
+        );
+        assert!(contents.contains("\"member\":\"corrupt-agent\""));
+        assert!(contents.contains("\"reason\":"));
     }
 
     #[test]
@@ -1618,5 +1734,17 @@ mod tests {
             }
             other => panic!("expected io error, got {other:?}"),
         }
+    }
+
+    fn wait_for_log_contains(path: &Path, needle: &str) -> String {
+        for _ in 0..50 {
+            if let Ok(contents) = fs::read_to_string(path) {
+                if contents.contains(needle) {
+                    return contents;
+                }
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        fs::read_to_string(path).unwrap_or_default()
     }
 }
