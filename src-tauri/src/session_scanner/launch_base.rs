@@ -19,6 +19,7 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::{Deserialize, Serialize};
 
 use super::cli_tool::{spec, CliTool};
+use super::shell_words::{head, leading_assignments};
 
 /// Stable launch-result note used when a wrapper hides account selection.
 pub const OPAQUE_BASE_COMMAND: &str = "opaque_base_command";
@@ -111,23 +112,22 @@ fn probe_alias_expansions(base: &str, probe: &dyn AliasProbe) -> Vec<AliasExpans
     let mut expanded: HashSet<String> = HashSet::new();
 
     while expansions.len() < MAX_EXPANSIONS {
-        let words = words(&command);
-        let Some(head) = words.into_iter().find(|word| !word.is_assignment()) else {
+        let Some(head) = head(&command) else {
             break;
         };
         // A quoted head is never alias-expanded by the shell either.
-        if head.quoted || !is_alias_name(&head.value) || expanded.contains(&head.value) {
+        if head.quoted || !is_alias_name(&head.text) || expanded.contains(&head.text) {
             break;
         }
-        let Some(body) = probe.alias(&head.value).map(|body| body.trim().to_string()) else {
+        let Some(body) = probe.alias(&head.text).map(|body| body.trim().to_string()) else {
             break;
         };
         if body.is_empty() {
             break;
         }
-        expanded.insert(head.value.clone());
+        expanded.insert(head.text.clone());
         expansions.push(AliasExpansion {
-            name: head.value,
+            name: head.text,
             body: body.clone(),
         });
         command.replace_range(head.start..head.end, &body);
@@ -144,13 +144,10 @@ fn resolve_base_command_from_expansions_in(
     let mut command = base.to_string();
     let mut applied = Vec::with_capacity(expansions.len());
     for expansion in expansions {
-        let Some(head) = words(&command)
-            .into_iter()
-            .find(|word| !word.is_assignment())
-        else {
+        let Some(head) = head(&command) else {
             break;
         };
-        if head.quoted || head.value != expansion.name {
+        if head.quoted || head.text != expansion.name {
             break;
         }
         command.replace_range(head.start..head.end, &expansion.body);
@@ -190,7 +187,7 @@ fn expand_selector_home(command: &str, tool: CliTool, home: Option<&Path>) -> St
         if word.quoted {
             continue;
         }
-        let Some(value) = word.value.strip_prefix(&prefix) else {
+        let Some(value) = word.text.strip_prefix(&prefix) else {
             continue;
         };
         // `~/${PROFILE}` names a directory only the launching shell can name.
@@ -209,18 +206,6 @@ fn expand_selector_home(command: &str, tool: CliTool, home: Option<&Path>) -> St
         );
     }
     rewritten
-}
-
-/// The run of `NAME=value` words a shell puts in the environment: the ones in
-/// front of the command name.
-fn leading_assignments(command: &str) -> Vec<Word> {
-    let mut words = words(command);
-    let assignments = words
-        .iter()
-        .position(|word| !word.is_assignment())
-        .unwrap_or(words.len());
-    words.truncate(assignments);
-    words
 }
 
 /// `~` and `~/tail` against `home`, or `None` for anything else.
@@ -418,10 +403,8 @@ fn resolve_base_command_cached_at_in_generation(
 }
 
 fn alias_head(command: &str) -> Option<String> {
-    let head = words(command)
-        .into_iter()
-        .find(|word| !word.is_assignment())?;
-    (!head.quoted && is_alias_name(&head.value)).then_some(head.value)
+    let head = head(command)?;
+    (!head.quoted && is_alias_name(&head.text)).then_some(head.text)
 }
 
 fn shell_rc_fingerprint(shell: &str, home: Option<&Path>) -> RcFingerprint {
@@ -464,10 +447,7 @@ fn runs_the_tool(tool: CliTool, head: &str) -> bool {
 
 /// The first word that is not a leading `NAME=value` assignment.
 fn head_word(command: &str) -> Option<String> {
-    words(command)
-        .into_iter()
-        .find(|word| !word.is_assignment())
-        .map(|word| word.value)
+    head(command).map(|word| word.text)
 }
 
 /// Alias names taurhaus is willing to hand to a shell.
@@ -480,112 +460,6 @@ fn is_alias_name(name: &str) -> bool {
         && name
             .chars()
             .all(|character| character.is_ascii_alphanumeric() || "_.+-".contains(character))
-}
-
-/// One word of a shell command: where it sits, and what it means unquoted.
-struct Word {
-    start: usize,
-    end: usize,
-    value: String,
-    quoted: bool,
-}
-
-impl Word {
-    fn is_assignment(&self) -> bool {
-        let Some((name, _)) = self.value.split_once('=') else {
-            return false;
-        };
-        !name.is_empty()
-            && name
-                .starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
-            && name
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || character == '_')
-    }
-}
-
-/// Split a command into words, keeping each word's span in the original line.
-///
-/// The quoting rules are the ones a POSIX shell applies before it looks a word
-/// up as an alias; nothing here expands, substitutes, or executes.
-fn words(command: &str) -> Vec<Word> {
-    let mut words = Vec::new();
-    let mut value = String::new();
-    let mut start = 0usize;
-    let mut started = false;
-    let mut quoted = false;
-    let mut characters = command.char_indices().peekable();
-
-    while let Some((index, character)) = characters.next() {
-        match character {
-            character if character.is_whitespace() => {
-                if started {
-                    words.push(Word {
-                        start,
-                        end: index,
-                        value: std::mem::take(&mut value),
-                        quoted,
-                    });
-                    started = false;
-                    quoted = false;
-                }
-            }
-            '\'' => {
-                if !started {
-                    start = index;
-                    started = true;
-                }
-                quoted = true;
-                for (_, character) in characters.by_ref() {
-                    if character == '\'' {
-                        break;
-                    }
-                    value.push(character);
-                }
-            }
-            '"' => {
-                if !started {
-                    start = index;
-                    started = true;
-                }
-                quoted = true;
-                while let Some((_, character)) = characters.next() {
-                    match character {
-                        '"' => break,
-                        '\\' if matches!(characters.peek(), Some((_, '"' | '\\' | '$' | '`'))) => {
-                            value.extend(characters.next().map(|(_, character)| character));
-                        }
-                        character => value.push(character),
-                    }
-                }
-            }
-            '\\' => {
-                if !started {
-                    start = index;
-                    started = true;
-                }
-                quoted = true;
-                value.extend(characters.next().map(|(_, character)| character));
-            }
-            character => {
-                if !started {
-                    start = index;
-                    started = true;
-                }
-                value.push(character);
-            }
-        }
-    }
-
-    if started {
-        words.push(Word {
-            start,
-            end: command.len(),
-            value,
-            quoted,
-        });
-    }
-    words
 }
 
 /// How long an interactive shell gets to answer what one word means.

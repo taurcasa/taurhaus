@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use super::cli_tool::SessionRoot;
 use super::cli_tool::{spec, CliTool};
+use super::shell_words::assignment_in_force;
 use super::RuntimeSession;
 
 /// Where a launch's account came from. Ordered by precedence.
@@ -345,20 +346,13 @@ pub fn command_contains_env(command: &str, selector: &str) -> bool {
 /// is the one this reports. Only the leading run counts — a shell puts a word
 /// in the environment only in front of the command name.
 fn command_env_assignment(command: &str, selector: &str) -> Option<Option<PathBuf>> {
-    let prefix = format!("{selector}=");
-    shell_words(command)
-        .into_iter()
-        // A shell reads assignments only in front of the command name. Past it
-        // every word is an argument the program receives verbatim, however much
-        // it looks like an assignment.
-        .take_while(ShellWord::is_assignment)
-        .filter_map(|word| {
-            word.value.strip_prefix(&prefix).map(|value| {
-                let value = value.trim();
-                (!value.is_empty()).then(|| expand_home(value))
-            })
-        })
-        .last()
+    let assignment = assignment_in_force(command, selector)?;
+    let (_, value) = assignment
+        .text
+        .split_once('=')
+        .expect("assignment_in_force returns an assignment");
+    let value = value.trim();
+    Some((!value.is_empty()).then(|| expand_home(value)))
 }
 
 /// A leading `~` in a base command is the launching shell's home directory,
@@ -385,91 +379,6 @@ fn expand_home(value: &str) -> PathBuf {
         Some(tail) => home.join(tail),
         None => home,
     }
-}
-
-/// One word of a shell command, and whether quoting reached its `NAME=` part.
-struct ShellWord {
-    value: String,
-    name_quoted: bool,
-}
-
-impl ShellWord {
-    /// Whether a shell would put this word in the environment rather than read
-    /// it as a command name or hand it to the program as an argument.
-    fn is_assignment(&self) -> bool {
-        if self.name_quoted {
-            return false;
-        }
-        let Some((name, _)) = self.value.split_once('=') else {
-            return false;
-        };
-        !name.is_empty()
-            && name
-                .starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
-            && name
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || character == '_')
-    }
-}
-
-fn shell_words(command: &str) -> Vec<ShellWord> {
-    let mut words = Vec::new();
-    let mut word = String::new();
-    let mut started = false;
-    let mut name_quoted = false;
-    let mut characters = command.chars().peekable();
-    while let Some(character) = characters.next() {
-        match character {
-            character if character.is_whitespace() => {
-                if started {
-                    words.push(ShellWord {
-                        value: std::mem::take(&mut word),
-                        name_quoted: std::mem::take(&mut name_quoted),
-                    });
-                    started = false;
-                }
-            }
-            '\'' => {
-                name_quoted |= !word.contains('=');
-                started = true;
-                for quoted in characters.by_ref() {
-                    if quoted == '\'' {
-                        break;
-                    }
-                    word.push(quoted);
-                }
-            }
-            '"' => {
-                name_quoted |= !word.contains('=');
-                started = true;
-                while let Some(quoted) = characters.next() {
-                    match quoted {
-                        '"' => break,
-                        '\\' if matches!(characters.peek(), Some('"' | '\\' | '$' | '`')) => {
-                            word.extend(characters.next());
-                        }
-                        quoted => word.push(quoted),
-                    }
-                }
-            }
-            '\\' => {
-                name_quoted |= !word.contains('=');
-                started = true;
-                word.extend(characters.next());
-            }
-            character => {
-                started = true;
-                word.push(character);
-            }
-        }
-    }
-    if started {
-        words.push(ShellWord {
-            value: word,
-            name_quoted,
-        });
-    }
-    words
 }
 
 #[cfg(not(test))]

@@ -2,6 +2,7 @@ use crate::coordination::domain::MemberRole;
 use crate::daemon::protocol::LaunchMode;
 use crate::models::{CliCommandSettings, ModelCatalog};
 use crate::session_scanner::cli_tool::{spec, CliCapabilities, CliTool, EffortFlag};
+use crate::session_scanner::shell_words::{leading_assignments, words};
 
 /// Model + effort as the role/member declared them. Parsed from the legacy single string
 /// ("gpt-5.4 high", "gpt-5.4-high", "gpt-5.4", "claude-opus-4-6", "") until PR 5a splits the schema.
@@ -546,29 +547,11 @@ fn replace_env_assignment(
     selector: &str,
     assignment: &str,
 ) -> Option<(String, String)> {
-    let prefix = format!("{selector}=");
-    let mut spans = Vec::new();
-    let mut cursor = 0;
-    while cursor < command.len() {
-        let Some(character) = command[cursor..].chars().next() else {
-            break;
-        };
-        if character.is_whitespace() {
-            cursor += character.len_utf8();
-            continue;
-        }
-        let end = shell_word_end(command, cursor);
-        // A shell reads assignments only in front of the command name. Past it
-        // every word is an argument the program receives verbatim, however much
-        // it looks like an assignment, so the scan stops there.
-        if !is_assignment_word(&command[cursor..end]) {
-            break;
-        }
-        if command[cursor..end].starts_with(&prefix) {
-            spans.push((cursor, end));
-        }
-        cursor = end;
-    }
+    let spans = leading_assignments(command)
+        .into_iter()
+        .filter(|word| word.assignment_name() == Some(selector))
+        .map(|word| (word.start, word.end))
+        .collect::<Vec<_>>();
 
     let (in_force_start, in_force_end) = *spans.last()?;
     let in_force = command[in_force_start..in_force_end].to_string();
@@ -586,22 +569,6 @@ fn replace_env_assignment(
     }
     rewritten.push_str(&command[copied..]);
     Some((rewritten, in_force))
-}
-
-/// Whether a raw shell word is a `NAME=value` assignment rather than a command
-/// name or an argument.
-///
-/// Only an unquoted name counts: `'NAME=value'` is a word the shell looks up as
-/// a command, not an assignment it puts in the environment.
-fn is_assignment_word(word: &str) -> bool {
-    let Some((name, _)) = word.split_once('=') else {
-        return false;
-    };
-    !name.is_empty()
-        && name.starts_with(|character: char| character.is_ascii_alphabetic() || character == '_')
-        && name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Return the configured base command without normalizing or rewriting it.
@@ -647,69 +614,25 @@ pub fn shell_escape(value: &str) -> String {
 /// The executable command remains untouched; this is only for structured logs.
 pub fn redact_command_for_logging(command: &str) -> String {
     let mut redacted = String::with_capacity(command.len());
-    let mut cursor = 0;
+    let mut copied = 0;
 
-    while cursor < command.len() {
-        let character = command[cursor..]
-            .chars()
-            .next()
-            .expect("cursor remains on a character boundary");
-        if character.is_whitespace() {
-            redacted.push(character);
-            cursor += character.len_utf8();
-            continue;
-        }
-
-        let word_end = shell_word_end(command, cursor);
-        let word = &command[cursor..word_end];
-        if let Some((name, _)) = word.split_once('=') {
+    for word in words(command) {
+        redacted.push_str(&command[copied..word.start]);
+        if let Some((name, _)) = word.text.split_once('=') {
             if is_secret_assignment_name(name) {
                 redacted.push_str(name);
                 redacted.push_str("=[REDACTED]");
-                cursor = word_end;
+                copied = word.end;
                 continue;
             }
         }
 
-        redacted.push_str(word);
-        cursor = word_end;
+        redacted.push_str(&command[word.start..word.end]);
+        copied = word.end;
     }
 
+    redacted.push_str(&command[copied..]);
     redacted
-}
-
-fn shell_word_end(command: &str, start: usize) -> usize {
-    let mut quote = None;
-    let mut escaped = false;
-
-    for (offset, character) in command[start..].char_indices() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-
-        match quote {
-            Some('\'') => {
-                if character == '\'' {
-                    quote = None;
-                }
-            }
-            Some('"') => match character {
-                '"' => quote = None,
-                '\\' => escaped = true,
-                _ => {}
-            },
-            Some(_) => unreachable!("only shell quote characters are stored"),
-            None => match character {
-                '\'' | '"' => quote = Some(character),
-                '\\' => escaped = true,
-                _ if character.is_whitespace() => return start + offset,
-                _ => {}
-            },
-        }
-    }
-
-    command.len()
 }
 
 fn is_secret_assignment_name(name: &str) -> bool {
