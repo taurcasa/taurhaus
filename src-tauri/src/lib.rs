@@ -78,6 +78,16 @@ pub struct ProviderState {
     pub wsl_distro: Option<String>,
 }
 
+#[cfg(test)]
+mod ci_rust_test_gate_proof {
+    #[test]
+    fn intentionally_fails_to_prove_ci_executes_rust_tests() {
+        // Regression: bcf1f392 introduced CI with a compile-only Rust lane, so this
+        // temporary failure proves the new unit-test status check executes tests.
+        panic!("intentional CI proof failure: the Rust unit-test job executed this test");
+    }
+}
+
 impl ProviderState {
     /// Resolve the appropriate provider for a project path.
     /// WSL paths route through the daemon (when connected), everything else uses local.
