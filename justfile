@@ -28,6 +28,7 @@ ensure-tauri-resources:
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
+# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|green is test-only: it replaces both lanes.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -39,7 +40,10 @@ check:
     trap 'status=$?; if [ "$status" -ne 0 ]; then echo "just check failed with exit code $status"; fi' EXIT
     echo "Logging full check output to $log_path"
     ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
-    just fmt
+    seed_failure="${TAURHAUS_CHECK_SEED_FAILURE:-}"
+    if [ -z "$seed_failure" ]; then
+        just fmt
+    fi
     run_rust_lane() {
         just lint-rust
         just test-rust
@@ -50,14 +54,34 @@ check:
         just typecheck
         just test-frontend
     }
+    case "$seed_failure" in
+        "") ;;
+        rust)
+            run_rust_lane() { return 3; }
+            run_frontend_lane() { exec sleep 5; }
+            ;;
+        frontend)
+            run_rust_lane() { exec sleep 5; }
+            run_frontend_lane() { return 3; }
+            ;;
+        green)
+            run_rust_lane() { return 0; }
+            run_frontend_lane() { return 0; }
+            ;;
+        *)
+            echo "Unknown TAURHAUS_CHECK_SEED_FAILURE value: $seed_failure" >&2
+            exit 2
+            ;;
+    esac
     run_rust_lane &
     rust_pid=$!
     run_frontend_lane &
     frontend_pid=$!
     pids=("$rust_pid" "$frontend_pid")
     while [ "${#pids[@]}" -gt 0 ]; do
-        if ! wait -n "${pids[@]}"; then
-            status=$?
+        status=0
+        wait -n "${pids[@]}" || status=$?
+        if [ "$status" -ne 0 ]; then
             kill "$rust_pid" "$frontend_pid" 2>/dev/null || true
             wait "$rust_pid" 2>/dev/null || true
             wait "$frontend_pid" 2>/dev/null || true
