@@ -256,20 +256,11 @@ impl CoordinationOrchestrator {
                 runtime.session_id = None;
                 runtime.jsonl_path = None;
 
+                let mut daemon_pid_to_terminate = None;
                 if !spec(member.cli_tool).capabilities.native_inbox_poller {
                     if let Some(pid) = runtime.daemon_pid {
                         match self.runtime.is_process_running_by_pid(pid) {
-                            Ok(true) => {
-                                if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                                    tracing::warn!(
-                                        team = %team_name,
-                                        member = %member_name,
-                                        pid = pid,
-                                        error = %err,
-                                        "failed to terminate stale daemon during liveness reconciliation"
-                                    );
-                                }
-                            }
+                            Ok(true) => daemon_pid_to_terminate = Some(pid),
                             Ok(false) => {}
                             Err(err) => {
                                 tracing::warn!(
@@ -306,6 +297,17 @@ impl CoordinationOrchestrator {
                 )?;
                 drop(guard);
                 if outcome == RuntimeCommitOutcome::Committed {
+                    if let Some(pid) = daemon_pid_to_terminate {
+                        if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                            tracing::warn!(
+                                team = %team_name,
+                                member = %member_name,
+                                pid = pid,
+                                error = %err,
+                                "failed to terminate stale daemon during liveness reconciliation"
+                            );
+                        }
+                    }
                     tracing::info!(
                         team = %team_name,
                         member = %member_name,
@@ -317,6 +319,7 @@ impl CoordinationOrchestrator {
             }
 
             let mut runtime_changed = metadata_backfilled;
+            let mut spawned_daemon_pid = None;
             if !spec(member.cli_tool).capabilities.native_inbox_poller {
                 let pane_id = runtime.pane_id.as_deref();
                 let discovered_daemon_pids = if let Some(pane_id) = pane_id {
@@ -447,6 +450,7 @@ impl CoordinationOrchestrator {
                             Ok(pid) => {
                                 runtime.daemon_pid = Some(pid);
                                 runtime_changed = true;
+                                spawned_daemon_pid = Some(pid);
                                 tracing::info!(
                                     team = %team_name,
                                     member = %member_name,
@@ -545,6 +549,25 @@ impl CoordinationOrchestrator {
                     reason,
                     "reconciled member liveness drift to healthy"
                 );
+            } else if let Some(pid) = spawned_daemon_pid {
+                // The record moved under this pass: the daemon it just spawned
+                // was never committed, so terminate it rather than leave an
+                // unrecorded duplicate for the next pass to find.
+                match self.runtime.terminate_process_by_pid(pid) {
+                    Ok(()) => tracing::info!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        "rolled back a mesh daemon spawned under a skipped commit"
+                    ),
+                    Err(err) => tracing::warn!(
+                        team = %team_name,
+                        member = %member_name,
+                        pid = pid,
+                        error = %err,
+                        "failed to roll back a mesh daemon spawned under a skipped commit"
+                    ),
+                }
             }
         }
 

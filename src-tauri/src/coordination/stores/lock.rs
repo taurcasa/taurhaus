@@ -127,7 +127,14 @@ pub struct TeamLockGuard {
 
 impl TeamLockGuard {
     pub(crate) fn covers(&self, teams_dir: &Path, team_name: &str) -> bool {
-        self.teams_dir == teams_dir && self.team_name == team_name
+        // The exact acquisition inputs match without any filesystem lookup, so
+        // a held guard can never lose its own team to a transient failure.
+        if self.teams_dir == teams_dir && self.team_name == team_name {
+            return true;
+        }
+        // A differently spelled path may still name the same team: fall back
+        // to the canonical lock identity, computed the way acquisition did.
+        self.team_name == team_name && self.lock_path == team_lock_path(teams_dir, team_name)
     }
 }
 
@@ -397,6 +404,29 @@ mod tests {
         assert!(
             guard.covers(&teams_dir, team_name),
             "guard identity must not depend on another filesystem lookup"
+        );
+    }
+
+    #[test]
+    fn guard_scope_accepts_an_aliased_spelling_of_the_same_teams_dir() {
+        // The held-lock set is keyed on the canonical lock path; the scope
+        // check must accept a caller that names the same team through a
+        // different spelling of the teams dir.
+        let tmp = TempDir::new().expect("tempdir");
+        let real_teams_dir = tmp.path().join("real-teams");
+        let teams_link = tmp.path().join("teams-link");
+        fs::create_dir_all(&real_teams_dir).expect("create real teams dir");
+        std::os::unix::fs::symlink(&real_teams_dir, &teams_link).expect("link teams dir");
+        let team_name = "aliased-spelling-test";
+
+        let guard = acquire_team_lock(&real_teams_dir, team_name).expect("acquire via real path");
+        assert!(
+            guard.covers(&teams_link, team_name),
+            "the symlinked spelling names the same team"
+        );
+        assert!(
+            !guard.covers(&real_teams_dir, "another-team"),
+            "a different team is never covered"
         );
     }
 

@@ -307,7 +307,17 @@ impl MemberRuntimeStore {
         let current = if raw.trim().is_empty() {
             None
         } else {
-            Some(parse_runtime_record(&raw, team_name, member_name)?)
+            match parse_runtime_record(&raw, team_name, member_name) {
+                Ok(record) => Some(record),
+                // One member's unreadable record must not abort the whole
+                // pass: skip this commit and leave the file to the next
+                // load_all sweep.
+                Err(_) => {
+                    let changed_fields = vec!["record"];
+                    log_runtime_commit_skipped(team_name, member_name, &changed_fields);
+                    return Ok(RuntimeCommitOutcome::Skipped { changed_fields });
+                }
+            }
         };
         let changed_fields = expected.changed_fields(current.as_ref());
         if !changed_fields.is_empty() {
@@ -2124,6 +2134,40 @@ mod tests {
     // Regression: merge-on-save unioned the snapshot's extras with the file's,
     // so a foreign key mesh deleted between load and save came back on the
     // next taurhaus save (Opus review of 2a-i, remaining minor).
+    // Regression: an unparseable record under a commit aborted the whole
+    // reconcile pass with an error; it must skip just that member and leave
+    // the file to the next load_all sweep.
+    #[test]
+    fn a_record_that_turns_unparseable_mid_commit_skips_instead_of_erroring() {
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "unparseable-skip";
+        let member_name = "codex-worker";
+        let seeded = sample_record(member_name);
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &seeded).expect("seed record");
+        let expected = MemberRuntimeSnapshot::capture(&seeded);
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        std::fs::write(&path, "not json {").expect("corrupt record");
+
+        let guard = crate::coordination::stores::lock::acquire_team_lock(tmp.path(), team_name)
+            .expect("team lock");
+        let outcome = MemberRuntimeStore::commit_if_unchanged(
+            &guard,
+            tmp.path(),
+            team_name,
+            member_name,
+            &expected,
+            |current| current.daemon_pid = Some(4242),
+        )
+        .expect("an unparseable record is a skip, not an error");
+        assert_eq!(
+            outcome,
+            RuntimeCommitOutcome::Skipped {
+                changed_fields: vec!["record"]
+            }
+        );
+    }
+
     #[test]
     fn a_save_does_not_resurrect_a_foreign_key_the_file_no_longer_has() {
         let tmp = TempDir::new().expect("tempdir");

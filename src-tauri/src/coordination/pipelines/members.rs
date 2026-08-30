@@ -1107,37 +1107,17 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                         stale_runtime.session_id = None;
                         stale_runtime.jsonl_path = None;
                         let mut daemon_stop_error = None;
-                        if let Some(pid) = stale_runtime.daemon_pid {
-                            self.runtime_state.foreign_daemon_stopped = match self
-                                .orchestrator
-                                .runtime
-                                .is_process_running_by_pid(pid)
-                            {
-                                Ok(false) => true,
-                                Ok(true) | Err(_) => {
-                                    match self.orchestrator.runtime.terminate_process_by_pid(pid) {
-                                        Ok(()) => true,
-                                        Err(err) => {
-                                            daemon_stop_error = Some(format!(
-                                                "failed to terminate foreign-pane daemon pid {pid}: {err}"
-                                            ));
-                                            false
-                                        }
-                                    }
+                        let mut daemon_pid_to_terminate = None;
+                        match stale_runtime.daemon_pid {
+                            Some(pid) => {
+                                match self.orchestrator.runtime.is_process_running_by_pid(pid) {
+                                    Ok(false) => self.runtime_state.foreign_daemon_stopped = true,
+                                    Ok(true) | Err(_) => daemon_pid_to_terminate = Some(pid),
                                 }
-                            };
-                        } else {
-                            self.runtime_state.foreign_daemon_stopped = true;
+                            }
+                            None => self.runtime_state.foreign_daemon_stopped = true,
                         }
                         stale_runtime.daemon_pid = None;
-                        if let Err(err) = self.orchestrator.runtime.clear_mesh_daemon_pid_file(
-                            &prepared.activation_context.team_name,
-                            &prepared.member.name,
-                        ) {
-                            self.warnings.push(format!(
-                                "failed to clear foreign-pane daemon pid file: {err}"
-                            ));
-                        }
                         let guard = match acquire_team_lock(
                             &self.orchestrator.teams_dir,
                             &prepared.activation_context.team_name,
@@ -1177,6 +1157,24 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                     "runtime changed while resolving foreign pane for member '{}'",
                                     prepared.member.name
                                 )),
+                            ));
+                        }
+                        if let Some(pid) = daemon_pid_to_terminate {
+                            match self.orchestrator.runtime.terminate_process_by_pid(pid) {
+                                Ok(()) => self.runtime_state.foreign_daemon_stopped = true,
+                                Err(err) => {
+                                    daemon_stop_error = Some(format!(
+                                        "failed to terminate foreign-pane daemon pid {pid}: {err}"
+                                    ));
+                                }
+                            }
+                        }
+                        if let Err(err) = self.orchestrator.runtime.clear_mesh_daemon_pid_file(
+                            &prepared.activation_context.team_name,
+                            &prepared.member.name,
+                        ) {
+                            self.warnings.push(format!(
+                                "failed to clear foreign-pane daemon pid file: {err}"
                             ));
                         }
                         if should_emit {
