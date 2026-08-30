@@ -25,10 +25,10 @@ use crate::coordination::requests::{
 use crate::coordination::runtime::{
     CoordinationRuntime, RecordingCoordinationRuntime, RuntimeCall,
 };
+use crate::coordination::stores::lock::TargetFileLock;
 use crate::coordination::stores::{
     MemberRuntimeSnapshot, MemberRuntimeStore, RuntimeCommitOutcome, TeamConfigStore,
 };
-use crate::coordination::stores::lock::TargetFileLock;
 use crate::coordination::task_effort::EffortPassScope;
 use crate::models::CliCommandSettings;
 use crate::session_scanner::cli_tool::{spec, CliTool};
