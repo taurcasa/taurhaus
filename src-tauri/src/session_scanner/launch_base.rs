@@ -293,6 +293,11 @@ static CACHE: LazyLock<Mutex<HashMap<CacheKey, CachedAliasChain>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// A successful settings save makes every earlier shell answer stale.
+///
+/// Tests: this bumps the process-global `CACHE_GENERATION`. Any test that
+/// reaches it — directly, through a cli-command settings save, or through a
+/// forced `resolve_launch_bases` — must hold `cache_generation_test_guard()`
+/// so it cannot race the tests that read the ambient generation.
 pub fn invalidate_base_command_cache() {
     CACHE_GENERATION.fetch_add(1, Ordering::AcqRel);
 }
@@ -728,6 +733,17 @@ static ALIAS_OVERRIDE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None)
 
 #[cfg(test)]
 static ALIAS_OVERRIDE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Serializes every test that bumps or reads the ambient cache generation.
+///
+/// `install_alias_override` holds it for you; a test that calls
+/// `invalidate_base_command_cache` any other way must take this itself.
+#[cfg(test)]
+pub(crate) fn cache_generation_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    ALIAS_OVERRIDE_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
 
 /// Keeps a test-owned alias table installed for `ShellAliasProbe::for_pane`.
 #[cfg(test)]
@@ -1183,9 +1199,7 @@ mod tests {
     // unrelated bump then looked like a cache miss and made this lane flaky.
     #[test]
     fn an_isolated_cache_test_ignores_the_ambient_generation() {
-        let _serial = ALIAS_OVERRIDE_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let _serial = cache_generation_test_guard();
         let home = tempfile::tempdir().expect("temporary shell home");
         let probe = FakeProbe::new(&[("isolated2", "claude")]);
         let start = Instant::now();
@@ -1315,9 +1329,7 @@ mod tests {
     // had just replaced until the old 60-second entry expired.
     #[test]
     fn settings_invalidation_discards_cached_alias_answers() {
-        let _serial = ALIAS_OVERRIDE_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
+        let _serial = cache_generation_test_guard();
         let home = tempfile::tempdir().expect("temporary shell home");
         let probe = FakeProbe::new(&[("saved2", "claude")]);
         let start = Instant::now();

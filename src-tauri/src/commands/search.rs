@@ -17,7 +17,7 @@ pub struct IndexStatus {
     pub is_empty: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search(
     search_state: State<'_, SearchState>,
     query: String,
@@ -44,7 +44,7 @@ fn search_impl(
     index.search(&query, limit).sanitize_err()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_index_status(search_state: State<'_, SearchState>) -> IpcResult<IndexStatus> {
     let span = IpcCommandSpan::start("get_index_status");
     let result =

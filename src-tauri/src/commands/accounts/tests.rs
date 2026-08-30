@@ -349,3 +349,47 @@ fn a_resume_finds_its_transcript_in_a_config_dir_that_names_no_account() {
     assert_eq!(lookup.transcript.as_deref(), Some(transcript.as_path()));
     assert_eq!(lookup.unavailable, None);
 }
+
+/// Regression: a Settings save sends `force` so the cache that answers is
+/// really invalidated. A fail-soft literal reply (daemon absent or
+/// unreachable) must not swallow it — the force is carried to the next base
+/// until one resolution consumed it.
+#[test]
+fn a_forced_refresh_is_carried_until_a_resolution_consumes_it() {
+    let mut forces = Vec::new();
+    let mut answers = [false, true, true].into_iter();
+    let resolved = resolve_bases_threading_force(&["one", "two", "three"], true, |base, force| {
+        forces.push(force);
+        (
+            crate::session_scanner::launch_base::ResolvedBase {
+                command: base.to_string(),
+                expansions: Vec::new(),
+                opaque_head: None,
+            },
+            answers.next().expect("one answer per base"),
+        )
+    });
+    assert_eq!(
+        forces,
+        vec![true, true, false],
+        "the force travels until consumed, then stops"
+    );
+    assert_eq!(resolved.len(), 3);
+}
+
+#[test]
+fn an_unforced_resolution_never_invents_a_force() {
+    let mut forces = Vec::new();
+    resolve_bases_threading_force(&["one", "two"], false, |base, force| {
+        forces.push(force);
+        (
+            crate::session_scanner::launch_base::ResolvedBase {
+                command: base.to_string(),
+                expansions: Vec::new(),
+                opaque_head: None,
+            },
+            true,
+        )
+    });
+    assert_eq!(forces, vec![false, false]);
+}
