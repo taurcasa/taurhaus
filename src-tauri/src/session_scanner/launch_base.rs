@@ -136,10 +136,11 @@ fn resolve_base_command_cached_at(
     // Probing outside the lock: a shell that hangs for its whole budget must
     // not hold every other launch behind it.
     let resolved = resolve_base_command(base, tool, probe);
-    CACHE
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .insert(key, (now, resolved.clone()));
+    let mut cache = CACHE.lock().unwrap_or_else(|error| error.into_inner());
+    // Settings can be edited into any number of distinct base commands; an
+    // entry nobody can read again has no reason to stay.
+    cache.retain(|_, (observed_at, _)| now.duration_since(*observed_at) < CACHE_TTL);
+    cache.insert(key, (now, resolved.clone()));
     resolved
 }
 
