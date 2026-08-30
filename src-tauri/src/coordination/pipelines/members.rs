@@ -54,11 +54,11 @@ fn effort_launch_commands(
     tool: CliTool,
     level: &str,
 ) -> Option<CliCommandSettings> {
-    let base = crate::session_scanner::launch::base_command(
-        cli_commands,
-        tool,
-        crate::daemon::protocol::LaunchMode::Resume,
-    );
+    let mode = crate::daemon::protocol::LaunchMode::Resume;
+    let resolved_base = cli_commands.resolved_bases.get(&(tool, mode));
+    let base = resolved_base.map(|base| base.command.as_str()).unwrap_or_else(|| {
+        crate::session_scanner::launch::base_command(cli_commands, tool, mode)
+    });
     if !task_effort::base_pins_effort(tool, base) {
         return Some(cli_commands.clone());
     }
@@ -69,7 +69,10 @@ fn effort_launch_commands(
         return None;
     }
     let mut commands = cli_commands.clone();
-    commands.get_mut(tool)?.resume = rewritten;
+    match commands.resolved_bases.get_mut(&(tool, mode)) {
+        Some(base) => base.command = rewritten,
+        None => commands.get_mut(tool)?.resume = rewritten,
+    }
     Some(commands)
 }
 

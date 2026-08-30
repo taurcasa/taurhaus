@@ -5102,10 +5102,10 @@ fn an_operator_stopped_member_is_not_restarted_by_the_effort_pass() {
     assert_eq!(record.health, HealthState::SessionDead);
 }
 
-// Regression: d055165 skipped the relaunch outright when the configured
-// resume base already pinned `model_reasoning_effort`, so the member stayed
-// at the operator's configured level and the lead's assignment never took
-// effect. The override belongs in the command the relaunch renders.
+// Regression: e2f9745b made team rendering prefer a resolved base, but the
+// effort rewrite still changed only the configured base. Production therefore
+// relaunched at the resolved base's old pin and recorded the assignment's level
+// as applied even though it never reached the command the renderer used.
 #[test]
 fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() {
     let tmp = TempDir::new().expect("tempdir");
@@ -5117,11 +5117,21 @@ fn a_base_command_that_pins_the_effort_is_relaunched_at_the_assignments_level() 
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
 
     let resumed = orchestrator
-        .apply_pending_task_effort(
+        .apply_pending_task_effort_with_launch_resolution(
             "effort-team",
-            &cli_commands,
+            &mut cli_commands,
             "new_window",
             EffortPassScope::TaskChanged,
+            &mut |tool, commands| {
+                commands.resolved_bases.insert(
+                    (tool, crate::daemon::protocol::LaunchMode::Resume),
+                    ResolvedBase {
+                        command: commands.codex.resume.clone(),
+                        expansions: Vec::new(),
+                        opaque_head: None,
+                    },
+                );
+            },
         )
         .expect("effort pass");
 
