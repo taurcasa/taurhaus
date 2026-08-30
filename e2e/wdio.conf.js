@@ -43,6 +43,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { homedir, tmpdir } from 'node:os'
 import { appendDriverStderr, collectFailureArtifacts } from './failure-artifacts.js'
 import { createCodexScratchHome } from './helpers/codexScratchHome.js'
+import { applyTmuxIsolation, wantsIsolatedTmux } from './helpers/laneTmux.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
@@ -232,6 +233,51 @@ function restoreCodexHome() {
   codexHomeOverridden = false
 }
 
+// The managed-stage lane creates tmux panes and pushes this session's temporary
+// roots into the `taurhaus` tmux session's environment. On the operator's own
+// tmux server that hands those roots — deleted at teardown — to the next pane
+// they open, so the lane runs against a server of its own. The app is what
+// creates the panes, so the override has to be in place before tauri-driver
+// starts it, and `TMUX` has to go: a suite started from inside a tmux pane
+// inherits one, and every tmux client prefers it to `TMUX_TMPDIR`.
+let previousTmuxEnvironment = null
+let tmuxSocketDir = ''
+
+function prepareIsolatedTmux(specs, tempRoot) {
+  if (!wantsIsolatedTmux(specs)) return
+
+  previousTmuxEnvironment = { TMUX_TMPDIR: process.env.TMUX_TMPDIR ?? null, TMUX: process.env.TMUX ?? null }
+  tmuxSocketDir = applyTmuxIsolation(process.env, tempRoot)
+  // tmux creates `$TMUX_TMPDIR/tmux-<uid>` but not its parent, and fails when
+  // the parent is missing.
+  mkdirSync(tmuxSocketDir, { recursive: true })
+  console.log(`[e2e] tmux server for this session: ${tmuxSocketDir} (inherited TMUX cleared)`)
+}
+
+/**
+ * Take the lane's own tmux server down before its socket directory is deleted.
+ *
+ * The spec kills it in its own teardown; this is the path a crashed or killed
+ * run takes, where removing the temp root would otherwise orphan a server —
+ * and the panes, and the CLIs in them — with its socket gone.
+ */
+function killIsolatedTmuxServer() {
+  if (!tmuxSocketDir) return
+  const env = { ...process.env, TMUX_TMPDIR: tmuxSocketDir }
+  delete env.TMUX
+  spawnSync('tmux', ['kill-server'], { env, stdio: 'ignore', timeout: 5_000 })
+}
+
+function restoreTmuxIsolation() {
+  if (!previousTmuxEnvironment) return
+  for (const [key, value] of Object.entries(previousTmuxEnvironment)) {
+    if (value === null) delete process.env[key]
+    else process.env[key] = value
+  }
+  previousTmuxEnvironment = null
+  tmuxSocketDir = ''
+}
+
 async function isWebDriverProtocolReady(host, port, timeoutMs = 500) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -337,8 +383,10 @@ function cleanupSessionTempRoot() {
 
 function cleanupAllE2eArtifacts() {
   cleanupTauriDriver()
+  killIsolatedTmuxServer()
   cleanupSessionTempRoot()
   restoreCodexHome()
+  restoreTmuxIsolation()
 }
 
 let cleanupHandlersRegistered = false
@@ -538,6 +586,7 @@ export const config = {
     process.env.TAURHAUS_DATA_DIR = tauriDataDir
     process.env.TAURHAUS_CLAUDE_DIR = tauriClaudeDir
     prepareCodexScratchHome(specs, `${sessionTempRoot}/codex-home`)
+    prepareIsolatedTmux(specs, sessionTempRoot)
 
     tauriDriver = spawn(
       localTauriDriverPath,

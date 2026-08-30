@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
 
-import { isolatedTmuxTmpdir, parseProcEnviron, tmuxIsolationProblem } from './laneTmux.js'
+import {
+  applyTmuxIsolation,
+  isolatedTmuxTmpdir,
+  parseProcEnviron,
+  tmuxIsolationProblem,
+  wantsIsolatedTmux,
+} from './laneTmux.js'
 
 const root = '/tmp/taurhaus-e2e-1234-abcd'
 
@@ -54,5 +60,43 @@ describe('parseProcEnviron', () => {
 
   it('is empty for empty input', () => {
     expect(parseProcEnviron('')).toEqual({})
+  })
+})
+
+describe('wantsIsolatedTmux', () => {
+  it('is true when the run names the managed-stage lane', () => {
+    expect(wantsIsolatedTmux(['/repo/e2e/specs/managed-stage-codex.js'])).toBe(true)
+  })
+
+  it('is false for the specs that share the operator server today', () => {
+    expect(wantsIsolatedTmux(['/repo/e2e/specs/compaction-codex-hooks.js'])).toBe(false)
+    expect(wantsIsolatedTmux(['/repo/e2e/specs/search-workflow.js'])).toBe(false)
+  })
+
+  it('is false for no specs at all', () => {
+    expect(wantsIsolatedTmux(undefined)).toBe(false)
+    expect(wantsIsolatedTmux([])).toBe(false)
+  })
+})
+
+describe('applyTmuxIsolation', () => {
+  // Regression: 5623e78 added the checks that refuse a lane not on its own tmux
+  // server, but nothing ever put it there — `wdio.conf.js` started the driver
+  // and the app with the operator's `TMUX_TMPDIR` and an inherited `TMUX`, so
+  // the lane's own gate would have skipped it on every host that runs it.
+  it('leaves the environment satisfying the check the lane gates on', () => {
+    const environment = { TMUX: '/tmp/tmux-1000/default,407334,0', PATH: '/usr/bin' }
+    const socketDir = applyTmuxIsolation(environment, root)
+
+    expect(socketDir).toBe(isolatedTmuxTmpdir(root))
+    expect(tmuxIsolationProblem(environment, root)).toBe('')
+    expect('TMUX' in environment).toBe(false)
+    expect(environment.PATH).toBe('/usr/bin')
+  })
+
+  it('refuses to name a socket directory without a session temp root', () => {
+    const environment = {}
+    expect(applyTmuxIsolation(environment, '')).toBe('')
+    expect(environment.TMUX_TMPDIR).toBeUndefined()
   })
 })

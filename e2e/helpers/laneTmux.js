@@ -64,3 +64,42 @@ export function parseProcEnviron(raw) {
   }
   return environment
 }
+
+/**
+ * The specs that must run against a tmux server of their own.
+ *
+ * Only the managed-stage lane, deliberately. `compaction-codex-hooks.js` has
+ * the same shape of problem, but it costs a subscription turn to re-verify and
+ * nothing here was run against it; moving it is its own change.
+ */
+export const ISOLATED_TMUX_SPECS = ['managed-stage-codex.js']
+
+/** Whether this WDIO session runs a spec that needs its own tmux server. */
+export function wantsIsolatedTmux(specs) {
+  return (specs ?? []).some((spec) =>
+    ISOLATED_TMUX_SPECS.some((name) => String(spec ?? '').endsWith(name))
+  )
+}
+
+/**
+ * Point `environment` at the lane's own tmux server, in place.
+ *
+ * Both halves matter and only one of them is obvious. Setting `TMUX_TMPDIR` is
+ * what names the socket directory; deleting `TMUX` is what makes it count, because
+ * a process started from inside a tmux pane — which is how this suite is run —
+ * carries a `$TMUX` that every tmux client prefers over `TMUX_TMPDIR`.
+ *
+ * Returns the socket directory it named, or `''` when there is no session temp
+ * root to put one in. The caller creates the directory: tmux makes
+ * `$TMUX_TMPDIR/tmux-<uid>` itself but not the parent, and fails outright if the
+ * parent is missing.
+ */
+export function applyTmuxIsolation(environment, sessionTempRoot) {
+  const root = String(sessionTempRoot ?? '').trim()
+  if (!root) return ''
+
+  const socketDir = isolatedTmuxTmpdir(root)
+  environment.TMUX_TMPDIR = socketDir
+  delete environment.TMUX
+  return socketDir
+}
