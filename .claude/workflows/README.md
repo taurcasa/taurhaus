@@ -178,6 +178,9 @@ reviewer will. It carries:
 - the scope rule for reviewers (judge against the spec's minimum; missing scaffolding is at most a
   minor; majors are defects a user would hit) and the verdict contract (`fix_required` carries at
   least one blocker or major), with the one re-request that enforces it;
+- the authority question in every code-review lens: does the change re-derive a rule another layer
+  owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority —
+  name the authority and cite the duplicate;
 - the Codex wrapper builder.
 
 ## The lint

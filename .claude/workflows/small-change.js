@@ -491,7 +491,7 @@ const GATE_SCHEMA = {
 
 // One lens for a small change: correctness and the operational checklist in a single pass.
 const LENS =
-  'Lens: correctness and operational failure modes in one pass — does the change do what the spec asks and nothing beyond it; are the tests honest (they fail without the change and touch only tempdirs, never the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok); does data written by the previous release still load; does a change to the daemon wire vocabulary bump PROTOCOL_VERSION; Windows/WSL path handling; user-config files edited only through tempfile+rename with ownership and permissions preserved; concurrency, unbounded retries and processes left running; hygiene (log spam, dead code, CLAUDE.md violations); and for scripts, that they parse and match the API they call.'
+  'Lens: correctness and operational failure modes in one pass — does the change do what the spec asks and nothing beyond it; are the tests honest (they fail without the change and touch only tempdirs, never the real ~/.claude*, ~/.codex, ~/.gemini or ~/.grok); does data written by the previous release still load; does a change to the daemon wire vocabulary bump PROTOCOL_VERSION; Windows/WSL path handling; user-config files edited only through tempfile+rename with ownership and permissions preserved; concurrency, unbounded retries and processes left running; hygiene (log spam, dead code, CLAUDE.md violations); and for scripts, that they parse and match the API they call. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.'
 
 const reviewers = new Set()
 function reviewPrompt(round, prior) {

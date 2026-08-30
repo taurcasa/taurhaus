@@ -90,6 +90,8 @@ async function run(name, workflowArgs, plan = {}) {
 
 const BASE_ARGS = { worktree: '/home/dev/checkout', branch: 'feat/x', spec: '/tmp/spec.md' }
 const MUTATING = ['feature-pr.js', 'small-change.js', 'fix-round.js', 'docs-sweep.js']
+const AUTHORITY_QUESTION =
+  'Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.'
 function argsFor(script, extra = {}) {
   const base = { ...BASE_ARGS, ...extra }
   return script === 'fix-round.js'
@@ -126,6 +128,47 @@ describe('workflow procedures — the shared lib', () => {
   it('normalizes a \\\\wsl$ UNC checkout path', async () => {
     const { calls } = await run('feature-pr.js', { ...BASE_ARGS, worktree: '\\\\wsl$\\Ubuntu\\home\\dev\\proj', implementer: 'codex' })
     expect(calls[0].prompt).toContain('/home/dev/proj')
+  })
+})
+
+describe('workflow procedures — the authority question', () => {
+  // Regression: merge commit 2bbe0b4 (PR #75; accounts plan row 20b) needed six review rounds
+  // because authority duplication and bypasses were found late instead of by every review lens.
+  it('puts the authority question in the small-change review lane', async () => {
+    const { calls } = await run('small-change.js', BASE_ARGS)
+    const review = calls.find((call) => call.label.startsWith('review:'))
+    expect(review.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('puts the authority question in the fix-round conformance lane', async () => {
+    const { calls } = await run('fix-round.js', argsFor('fix-round.js'))
+    const review = calls.find((call) => call.label.startsWith('review:'))
+    expect(review.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('puts the authority question in both feature-pr first-round lanes', async () => {
+    const { calls } = await run('feature-pr.js', BASE_ARGS)
+    const conformance = calls.find((call) => call.label.includes('conformance-r1'))
+    const operational = calls.find((call) => call.label.includes('operational-r1'))
+    expect(conformance.prompt).toContain(AUTHORITY_QUESTION)
+    expect(operational.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('keeps the authority question in the feature-pr round-2 re-review lane', async () => {
+    const major = { title: 'duplicates backend policy', severity: 'major', file: 'a.js:2', evidence: 'e', fix: 'f' }
+    const { calls } = await run('feature-pr.js', BASE_ARGS, {
+      review: (call) => (call.label.includes('conformance-r1') ? { ...OK_REVIEW, verdict: 'fix_required', findings: [major] } : OK_REVIEW),
+    })
+    const rereview = calls.find((call) => call.label.includes('conformance-r2'))
+    expect(rereview.prompt).toContain(AUTHORITY_QUESTION)
+  })
+
+  it('keeps the identical question in every lens-bearing script', () => {
+    const expectedOccurrences = { 'small-change.js': 1, 'fix-round.js': 1, 'feature-pr.js': 2 }
+    for (const [script, expected] of Object.entries(expectedOccurrences)) {
+      const source = fs.readFileSync(path.join(WORKFLOWS, script), 'utf8')
+      expect(source.split(AUTHORITY_QUESTION).length - 1, script).toBe(expected)
+    }
   })
 })
 

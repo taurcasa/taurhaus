@@ -508,7 +508,7 @@ function reviewPrompt(round, prior) {
       TITLE +
       (SPEC && SPEC !== TITLE ? ', specified in ' + SPEC + ' — read it first' : '') +
       '.',
-    'Lens: conformance and correctness — does the change implement the spec item completely; are the tests genuinely red-before/green-after (inspect them, run them); edge cases and backward compatibility; anything missing or out of scope.',
+    'Lens: conformance and correctness — does the change implement the spec item completely; are the tests genuinely red-before/green-after (inspect them, run them); edge cases and backward compatibility; anything missing or out of scope. Does the change re-derive a rule another layer owns (frontend vs backend, app vs daemon), or add a view that bypasses the existing authority? Name the authority and cite the duplicate.',
     'This is re-review round ' +
       round +
       '. Prior findings (JSON): ' +
