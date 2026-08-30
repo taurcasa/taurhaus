@@ -28,11 +28,13 @@ ensure-tauri-resources:
 
 # Full quality gate (pre-commit): formatting + lint + typecheck + all non-E2E tests.
 # Use this when you need the definitive "is this ready?" signal.
-# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|green is test-only: it replaces both lanes.
+# TAURHAUS_CHECK_SEED_FAILURE=rust|frontend|green is test-only: it replaces both lanes
+# and skips `just fmt`.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    log_dir=".check-logs"
+    seed_failure="${TAURHAUS_CHECK_SEED_FAILURE:-}"
+    log_dir="${TAURHAUS_CHECK_LOG_DIR:-.check-logs}"
     mkdir -p "$log_dir"
     log_path="$log_dir/check-$(date +%F-%H%M%S).log"
     : > "$log_path"
@@ -40,7 +42,9 @@ check:
     trap 'status=$?; if [ "$status" -ne 0 ]; then echo "just check failed with exit code $status"; fi' EXIT
     echo "Logging full check output to $log_path"
     ls -1dt "$log_dir"/check-*.log 2>/dev/null | tail -n +6 | xargs -r rm -f
-    seed_failure="${TAURHAUS_CHECK_SEED_FAILURE:-}"
+    if [ -n "$seed_failure" ]; then
+        echo "WARNING: TAURHAUS_CHECK_SEED_FAILURE=$seed_failure - lanes replaced and formatting skipped; this is NOT a real gate." >&2
+    fi
     if [ -z "$seed_failure" ]; then
         just fmt
     fi
@@ -54,15 +58,40 @@ check:
         just typecheck
         just test-frontend
     }
+    wait_for_seed_peer() {
+        local peer_pid_file="${TAURHAUS_CHECK_SEED_PEER_PID_FILE:-}"
+        if [ -z "$peer_pid_file" ]; then
+            return 0
+        fi
+        for _ in {1..100}; do
+            if [ -s "$peer_pid_file" ]; then
+                return 0
+            fi
+            sleep 0.01
+        done
+        echo "Seeded peer lane did not publish its pid." >&2
+        return 2
+    }
+    run_seed_failure_lane() {
+        wait_for_seed_peer || return $?
+        return 3
+    }
+    run_seed_peer_lane() {
+        local peer_pid_file="${TAURHAUS_CHECK_SEED_PEER_PID_FILE:-}"
+        if [ -n "$peer_pid_file" ]; then
+            printf '%s\n' "$BASHPID" > "$peer_pid_file"
+        fi
+        exec sleep 30
+    }
     case "$seed_failure" in
         "") ;;
         rust)
-            run_rust_lane() { return 3; }
-            run_frontend_lane() { exec sleep 5; }
+            run_rust_lane() { run_seed_failure_lane; }
+            run_frontend_lane() { run_seed_peer_lane; }
             ;;
         frontend)
-            run_rust_lane() { exec sleep 5; }
-            run_frontend_lane() { return 3; }
+            run_rust_lane() { run_seed_peer_lane; }
+            run_frontend_lane() { run_seed_failure_lane; }
             ;;
         green)
             run_rust_lane() { return 0; }
