@@ -110,7 +110,11 @@ export function createOwnedProcessLedger({
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const path = join(directory, `${runToken}.json`)
   const owner = ownedProcessRecord(ownerPid, { readStartTime })
-  if (!owner) throw new Error(`cannot record E2E owner process ${ownerPid}`)
+  if (!owner) {
+    throw new Error(
+      `cannot record E2E owner process ${ownerPid}: the ownership ledger needs Linux /proc; E2E is Linux-only`
+    )
+  }
   const processes = new Map()
 
   function snapshot() {
@@ -130,10 +134,17 @@ export function createOwnedProcessLedger({
   function record(record) {
     if (!record) return false
     const current = processes.get(record.pid)
-    processes.set(record.pid, {
+    const next = {
       ...record,
       processGroup: Boolean(record.processGroup || current?.processGroup),
-    })
+    }
+    if (
+      current?.startTime === next.startTime &&
+      current?.processGroup === next.processGroup
+    ) {
+      return true
+    }
+    processes.set(record.pid, next)
     persist()
     return true
   }

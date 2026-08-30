@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 
 import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './workerEnv.js'
+import { E2E_RUN_TOKEN_ENV } from './laneCleanup.js'
 
 function isInside(root, candidate) {
   const pathFromRoot = relative(root, candidate)
@@ -75,5 +76,17 @@ describe('buildWorkerEnv', () => {
     })
 
     expect(env.TAURHAUS_SKIP_CLI_VERSION_PROBES).toBe('1')
+  })
+
+  // Regression: commit 69bb4e1a added a UUID run token to the ownership
+  // ledger, but rebuilding the driver environment replaced it with the temp
+  // root. Token scans then found none of the driver's descendants.
+  it('preserves an inherited run token when deriving a child environment', () => {
+    const sessionTempRoot = '/tmp/taurhaus-e2e-1234-worker'
+    const first = buildWorkerEnv(sessionTempRoot, { runToken: 'run-uuid-1234' })
+    const child = buildWorkerEnv(sessionTempRoot, { baseEnv: first })
+
+    expect(first[E2E_RUN_TOKEN_ENV]).toBe('run-uuid-1234')
+    expect(child[E2E_RUN_TOKEN_ENV]).toBe(first[E2E_RUN_TOKEN_ENV])
   })
 })

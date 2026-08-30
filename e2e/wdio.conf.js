@@ -87,6 +87,7 @@ let sessionAppLogPaths = []
 let sessionDaemonLogPaths = []
 let sessionRunToken = ''
 let processLedger = null
+let ownedProcessRefreshTimer = null
 
 function runGitOrThrow(cwd, args, errorMessage) {
   const result = spawnSync('git', args, {
@@ -320,6 +321,18 @@ function refreshOwnedProcessRecords() {
   }
 }
 
+function startOwnedProcessRefresh() {
+  if (ownedProcessRefreshTimer) clearInterval(ownedProcessRefreshTimer)
+  ownedProcessRefreshTimer = setInterval(refreshOwnedProcessRecords, 1_000)
+  ownedProcessRefreshTimer.unref()
+}
+
+function stopOwnedProcessRefresh() {
+  if (!ownedProcessRefreshTimer) return
+  clearInterval(ownedProcessRefreshTimer)
+  ownedProcessRefreshTimer = null
+}
+
 function cleanupDriverPortFallback() {
   // Last-resort fallback for orphan processes on this worker's ports.
   killByPortPattern(`tauri-driver --port ${wdioPort} --native-port ${nativeWebDriverPort}`)
@@ -327,6 +340,7 @@ function cleanupDriverPortFallback() {
 }
 
 function cleanupTauriDriver() {
+  stopOwnedProcessRefresh()
   refreshOwnedProcessRecords()
   processLedger?.cleanup()
   tauriDriver = null
@@ -445,6 +459,11 @@ export const config = {
   },
 
   async afterTest(test, _context, result) {
+    // The daemon may start after the session-level `before` hook. Refresh on
+    // every test boundary as well as on the timer so hard-killed workers leave
+    // useful on-disk identities for the next cleanup pass.
+    refreshOwnedProcessRecords()
+
     if (traceTiming) {
       const duration = Number(result?.duration || 0)
       if (duration >= traceTimingThresholdMs) {
@@ -571,12 +590,13 @@ export const config = {
       localTauriDriverPath,
       ['--port', String(wdioPort), '--native-port', String(nativeWebDriverPort), '--native-driver', nativeWebKitDriverPath],
       {
-        env: buildWorkerEnv(sessionTempRoot, { baseEnv: process.env }),
+        env: workerEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
       }
     )
     processLedger.recordPid(tauriDriver.pid, { processGroup: true })
+    startOwnedProcessRefresh()
     if (tauriDriver?.stdout) {
       tauriDriver.stdout.on('data', (chunk) => {
         process.stdout.write(chunk)
@@ -610,5 +630,6 @@ export const config = {
    */
   async onComplete() {
     cleanupAllE2eArtifacts()
+    cleanupStaleProcessLedgers(projectRoot)
   },
 }
