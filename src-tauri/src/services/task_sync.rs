@@ -628,6 +628,7 @@ mod tests {
                     id: "675".to_string(),
                     subject: "Wire snapshot updates".to_string(),
                     status: "in_progress".to_string(),
+                    ..Default::default()
                 },
                 assignment_footer: OperationalAssignmentFooterSnapshot::default(),
                 ownership: OperationalOwnershipSnapshot::default(),

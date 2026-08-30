@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Internal task-deadline policy** — coordination now has a pure, injected-clock decision module for one-shot nudge-at-half and stale-at-deadline actions, plus optional persisted deadline markers. It remains deliberately unwired from self-heal and the placeholder health framework.
+
 ### Changed
 
 - **Workflow gates are exact, typed commands** — procedure callers pass command arrays and keep gate-only operational notes in `gateNotes`; startup rejects empty or multiline commands, multi-command compatibility strings, bracketed notes in either input form, malformed `just` commands, and every `cargo test` clause with more than one positional filter. Gate reports now match required commands exactly, reject undeclared command lines, and require either `just test-rust-unit` or every caller-declared Rust-test gate whenever the diff includes `src-tauri/`; that diff report is cross-checked against the implementation lanes so an empty `changed_paths` cannot suppress Rust tests. The workflow lint also enforces the typed catalog and byte-identical shared libraries.

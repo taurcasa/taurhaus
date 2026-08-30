@@ -122,10 +122,16 @@ pub fn apply_delivery_context(
         task: context
             .task
             .as_ref()
-            .map(|task| OperationalTaskSnapshot {
-                id: task.id.clone(),
-                subject: task.subject.clone(),
-                status: task.status.clone(),
+            .map(|task| {
+                preserve_task_deadline_markers(
+                    existing.as_ref().map(|snapshot| &snapshot.task),
+                    OperationalTaskSnapshot {
+                        id: task.id.clone(),
+                        subject: task.subject.clone(),
+                        status: task.status.clone(),
+                        ..Default::default()
+                    },
+                )
             })
             .or_else(|| existing.as_ref().map(|snapshot| snapshot.task.clone()))
             .unwrap_or_default(),
@@ -221,6 +227,7 @@ fn latest_owned_task_from_tasks(
             id: task.source_task_id.clone(),
             subject: task.subject.clone(),
             status: task.status.clone(),
+            ..Default::default()
         })
         .unwrap_or_default();
 
@@ -247,7 +254,7 @@ fn build_member_snapshot(
         team_name: team_name.to_string(),
         member_name: member_name.to_string(),
         updated_at: Utc::now(),
-        task,
+        task: preserve_task_deadline_markers(existing.map(|snapshot| &snapshot.task), task),
         assignment_footer: {
             let mut footer = existing
                 .map(|snapshot| snapshot.assignment_footer.clone())
@@ -281,6 +288,21 @@ fn build_member_snapshot(
     }
 }
 
+fn preserve_task_deadline_markers(
+    existing: Option<&OperationalTaskSnapshot>,
+    mut task: OperationalTaskSnapshot,
+) -> OperationalTaskSnapshot {
+    if !task.id.is_empty() {
+        if let Some(existing) = existing.filter(|existing| existing.id == task.id) {
+            task.deadline_minutes = existing.deadline_minutes;
+            task.nudged_at = existing.nudged_at;
+            task.stale_at = existing.stale_at;
+        }
+    }
+
+    task
+}
+
 fn save_snapshot_if_changed(
     teams_dir: &Path,
     existing: Option<&OperationalContextSnapshot>,
@@ -297,16 +319,19 @@ fn save_snapshot_if_changed(
     OperationalContextSnapshotStore::save(teams_dir, &snapshot)
 }
 
+/// The task statuses an assignment is still open in. This is the one place
+/// the vocabulary is read for assignment selection and deadline policy; the
+/// policy module takes this verdict as input rather than re-deriving it.
+pub(crate) fn is_resumable_task_status(status: &str) -> bool {
+    matches!(status.trim(), "pending" | "in_progress")
+}
+
 fn task_priority(task: &taurhaus_lib::db::task_queries::PersistedTask) -> u8 {
     match task.status.as_str() {
         "in_progress" => 3,
         "pending" => 2,
         _ => 0,
     }
-}
-
-fn is_resumable_task_status(status: &str) -> bool {
-    matches!(status.trim(), "pending" | "in_progress")
 }
 
 #[cfg(test)]
@@ -668,6 +693,7 @@ mod tests {
                     id: "42".to_string(),
                     subject: "Fix regression".to_string(),
                     status: "in_progress".to_string(),
+                    ..Default::default()
                 },
                 assignment_footer: OperationalAssignmentFooterSnapshot::default(),
                 ownership: OperationalOwnershipSnapshot::default(),
@@ -693,6 +719,91 @@ mod tests {
         assert_eq!(snapshot.updated_at, seeded_at);
         assert_eq!(snapshot.task.id, "42");
         assert_eq!(snapshot.task.status, "in_progress");
+    }
+
+    // Regression: e5d0935a added deadline markers to the operational record,
+    // but task scans rebuilt that record from defaults and erased the markers
+    // even while the member remained on the same assignment.
+    #[test]
+    fn sync_member_snapshot_preserves_deadline_markers_only_for_same_task() {
+        let teams = TempDir::new().expect("teams dir");
+        let (conn, _db) = test_db();
+        write_team(teams.path());
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task("42", "Fix regression", "in_progress", None),
+        )
+        .expect("upsert task");
+
+        let nudged_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:10:00Z")
+            .expect("nudge timestamp")
+            .with_timezone(&Utc);
+        let stale_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:20:00Z")
+            .expect("stale timestamp")
+            .with_timezone(&Utc);
+        OperationalContextSnapshotStore::save(
+            teams.path(),
+            &OperationalContextSnapshot {
+                version: 1,
+                team_name: "architecture-final".to_string(),
+                member_name: "frontend-dev".to_string(),
+                updated_at: Utc::now(),
+                task: OperationalTaskSnapshot {
+                    id: "42".to_string(),
+                    subject: "Fix regression".to_string(),
+                    status: "in_progress".to_string(),
+                    deadline_minutes: Some(20),
+                    nudged_at: Some(nudged_at),
+                    stale_at: Some(stale_at),
+                },
+                assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+                ownership: OperationalOwnershipSnapshot::default(),
+                working_set: OperationalWorkingSetSnapshot {
+                    project_path: "proj-web".to_string(),
+                    focal_files: Vec::new(),
+                },
+            },
+        )
+        .expect("seed snapshot");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync same task");
+        let same_task = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+        assert_eq!(same_task.task.deadline_minutes, Some(20));
+        assert_eq!(same_task.task.nudged_at, Some(nudged_at));
+        assert_eq!(same_task.task.stale_at, Some(stale_at));
+
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task("42", "Fix regression", "completed", None),
+        )
+        .expect("complete old task");
+        taurhaus_lib::db::task_queries::upsert_task(
+            &conn,
+            &owned_task("43", "Fix another regression", "in_progress", None),
+        )
+        .expect("upsert replacement task");
+
+        sync_member_snapshot(teams.path(), &conn, "architecture-final", "frontend-dev")
+            .expect("sync replacement task");
+        let replacement = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load replacement snapshot")
+        .expect("replacement snapshot exists");
+        assert_eq!(replacement.task.id, "43");
+        assert_eq!(replacement.task.deadline_minutes, None);
+        assert_eq!(replacement.task.nudged_at, None);
+        assert_eq!(replacement.task.stale_at, None);
     }
 
     #[test]
@@ -758,5 +869,89 @@ mod tests {
             "cargo check --tests"
         );
         assert_eq!(snapshot.working_set.project_path, "proj-web");
+    }
+
+    // Regression: e5d0935a added deadline markers to the operational record,
+    // but delivery updates rebuilt a supplied task from defaults and erased
+    // the same assignment's one-shot markers.
+    #[test]
+    fn apply_delivery_context_preserves_deadline_markers_only_for_same_task() {
+        let teams = TempDir::new().expect("teams dir");
+        write_team(teams.path());
+
+        let nudged_at = chrono::DateTime::parse_from_rfc3339("2026-03-08T12:10:00Z")
+            .expect("nudge timestamp")
+            .with_timezone(&Utc);
+        OperationalContextSnapshotStore::save(
+            teams.path(),
+            &OperationalContextSnapshot {
+                version: 1,
+                team_name: "architecture-final".to_string(),
+                member_name: "frontend-dev".to_string(),
+                updated_at: Utc::now(),
+                task: OperationalTaskSnapshot {
+                    id: "42".to_string(),
+                    subject: "Fix regression".to_string(),
+                    status: "in_progress".to_string(),
+                    deadline_minutes: Some(20),
+                    nudged_at: Some(nudged_at),
+                    stale_at: None,
+                },
+                assignment_footer: OperationalAssignmentFooterSnapshot::default(),
+                ownership: OperationalOwnershipSnapshot::default(),
+                working_set: OperationalWorkingSetSnapshot {
+                    project_path: "proj-web".to_string(),
+                    focal_files: Vec::new(),
+                },
+            },
+        )
+        .expect("seed snapshot");
+
+        let context_for = |id: &str| OperationalContextUpdate {
+            task: Some(crate::coordination::requests::OperationalTaskContext {
+                id: id.to_string(),
+                subject: "Delivered assignment".to_string(),
+                status: "in_progress".to_string(),
+            }),
+            assignment_footer: None,
+            ownership: None,
+            working_set: None,
+        };
+
+        apply_delivery_context(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+            &context_for("42"),
+        )
+        .expect("apply same task");
+        let same_task = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load snapshot")
+        .expect("snapshot exists");
+        assert_eq!(same_task.task.deadline_minutes, Some(20));
+        assert_eq!(same_task.task.nudged_at, Some(nudged_at));
+
+        apply_delivery_context(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+            &context_for("43"),
+        )
+        .expect("apply replacement task");
+        let replacement = OperationalContextSnapshotStore::load(
+            teams.path(),
+            "architecture-final",
+            "frontend-dev",
+        )
+        .expect("load replacement snapshot")
+        .expect("replacement snapshot exists");
+        assert_eq!(replacement.task.id, "43");
+        assert_eq!(replacement.task.deadline_minutes, None);
+        assert_eq!(replacement.task.nudged_at, None);
+        assert_eq!(replacement.task.stale_at, None);
     }
 }
