@@ -102,13 +102,18 @@ fn resolve_base_command_in(
     }
 }
 
-/// Rewrite this tool's `SELECTOR=~/…` assignments as absolute paths.
+/// Rewrite this tool's leading `SELECTOR=~/…` assignments as absolute paths.
 ///
 /// Resolution runs where the pane shell runs — in the WSL daemon on Windows —
 /// so `home` is the home that shell would expand the tilde against. The app
 /// never has to guess it from its own side of the boundary, which it cannot do:
 /// a Windows profile path names none of the accounts the daemon detects. Every
 /// consumer downstream compares this selector against absolute account dirs.
+///
+/// Only the leading assignment run is rewritten, and only when the value is one
+/// the shell would have nothing left to do with: past the command name every
+/// word is an argument the program receives verbatim, and a value carrying an
+/// expansion is the shell's to read, not this module's to freeze.
 fn expand_selector_home(command: &str, tool: CliTool, home: Option<&Path>) -> String {
     let (Some(selector), Some(home)) = (spec(tool).capabilities.account_selector, home) else {
         return command.to_string();
@@ -116,16 +121,22 @@ fn expand_selector_home(command: &str, tool: CliTool, home: Option<&Path>) -> St
     let prefix = format!("{selector}=");
     let mut rewritten = command.to_string();
     // Back to front, so each remaining word keeps its span in the original.
-    for word in words(command).into_iter().rev() {
+    for word in leading_assignments(command).into_iter().rev() {
         // A shell leaves a quoted tilde literal, and so does this.
         if word.quoted {
             continue;
         }
-        let Some(expanded) = word
-            .value
-            .strip_prefix(&prefix)
-            .and_then(|value| expand_tilde(value, home))
-        else {
+        let Some(value) = word.value.strip_prefix(&prefix) else {
+            continue;
+        };
+        // `~/${PROFILE}` names a directory only the launching shell can name.
+        // Substituting the home would mean quoting the whole value, which stops
+        // that shell expanding the rest, so the word goes through as typed and
+        // the account the user chose is rendered in front of it instead.
+        if value.contains(['$', '`']) {
+            continue;
+        }
+        let Some(expanded) = expand_tilde(value, home) else {
             continue;
         };
         rewritten.replace_range(
@@ -134,6 +145,18 @@ fn expand_selector_home(command: &str, tool: CliTool, home: Option<&Path>) -> St
         );
     }
     rewritten
+}
+
+/// The run of `NAME=value` words a shell puts in the environment: the ones in
+/// front of the command name.
+fn leading_assignments(command: &str) -> Vec<Word> {
+    let mut words = words(command);
+    let assignments = words
+        .iter()
+        .position(|word| !word.is_assignment())
+        .unwrap_or(words.len());
+    words.truncate(assignments);
+    words
 }
 
 /// `~` and `~/tail` against `home`, or `None` for anything else.
@@ -700,6 +723,50 @@ mod tests {
             resolve_base_command_in("CODEX_HOME=~/.codex claude", CliTool::Claude, &probe, home)
                 .command,
             "CODEX_HOME=~/.codex claude"
+        );
+    }
+
+    #[test]
+    fn a_selector_value_the_shell_expands_is_left_for_the_shell() {
+        // Regression: a3afcfe substituted the home into every selector word and
+        // shell-quoted the whole value, so `CLAUDE_CONFIG_DIR=~/${PROFILE}`
+        // resolved to `CLAUDE_CONFIG_DIR='/home/mstie/${PROFILE}'`. The quotes
+        // stop the shell expanding PROFILE, so the launch ran on a literal
+        // directory of that name and silently left the chosen account behind.
+        let probe = FakeProbe::new(&[]);
+
+        let resolved = resolve_base_command_in(
+            "CLAUDE_CONFIG_DIR=~/${PROFILE} claude --resume",
+            CliTool::Claude,
+            &probe,
+            Some(Path::new("/home/mstie")),
+        );
+
+        assert_eq!(
+            resolved.command, "CLAUDE_CONFIG_DIR=~/${PROFILE} claude --resume",
+            "only the shell can read this value, so it reaches the shell as typed"
+        );
+    }
+
+    #[test]
+    fn a_selector_shaped_argument_keeps_its_tilde() {
+        // Regression: a3afcfe normalized this tool's selector in every word of
+        // the line, so the argument in `claude --append-system-prompt
+        // CLAUDE_CONFIG_DIR=~/.literal` was rewritten to an absolute path the
+        // user never typed. A shell hands every word past the command name to
+        // the program verbatim, tilde and all.
+        let probe = FakeProbe::new(&[]);
+
+        let resolved = resolve_base_command_in(
+            "claude --append-system-prompt CLAUDE_CONFIG_DIR=~/.literal",
+            CliTool::Claude,
+            &probe,
+            Some(Path::new("/home/mstie")),
+        );
+
+        assert_eq!(
+            resolved.command,
+            "claude --append-system-prompt CLAUDE_CONFIG_DIR=~/.literal"
         );
     }
 
