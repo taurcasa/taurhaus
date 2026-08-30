@@ -169,10 +169,31 @@ mod commands {
     }
 
     pub mod accounts {
+        pub struct TestResolutionProbeGuard;
+
+        impl TestResolutionProbeGuard {
+            pub fn calls(&self) -> usize {
+                0
+            }
+        }
+
+        pub fn install_test_resolution_probe(
+            _delay: std::time::Duration,
+        ) -> TestResolutionProbeGuard {
+            TestResolutionProbeGuard
+        }
+
         pub fn apply_team_launch_base_resolutions(
             _provider: &taurhaus_lib::ProviderState,
             _commands: &mut crate::models::CliCommandSettings,
             _tools: impl IntoIterator<Item = crate::session_scanner::cli_tool::CliTool>,
+        ) {
+        }
+
+        pub fn apply_team_resume_launch_base_resolution(
+            _provider: &taurhaus_lib::ProviderState,
+            _commands: &mut crate::models::CliCommandSettings,
+            _tool: crate::session_scanner::cli_tool::CliTool,
         ) {
         }
     }

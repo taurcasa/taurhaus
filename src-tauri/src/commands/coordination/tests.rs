@@ -88,7 +88,7 @@ fn idle_background_launch_settings_do_not_probe_team_bases() {
         .expect("seed idle team");
     let (db, _db_file) = test_db_state();
     let provider = ProviderState {
-        local: crate::provider::local::LocalProvider,
+        local: taurhaus_lib::provider::local::LocalProvider,
         daemon: None,
         wsl_distro: None,
     };
