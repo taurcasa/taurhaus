@@ -122,6 +122,7 @@ impl TeamMemberView {
             last_seen_at: self.last_seen_at,
             applied_effort: None,
             effort_resume_failure: None,
+            extra: Default::default(),
         })
     }
 
@@ -308,6 +309,7 @@ fn member_runtime_record_from_session(session: &RuntimeSession) -> MemberRuntime
         last_seen_at: None,
         applied_effort: None,
         effort_resume_failure: None,
+        extra: Default::default(),
     }
 }
 
@@ -397,6 +399,7 @@ mod tests {
                 last_seen_at: Some(ts("2026-03-08T21:02:00Z")),
                 applied_effort: None,
                 effort_resume_failure: None,
+                extra: Default::default(),
             },
         )
         .expect("save runtime");

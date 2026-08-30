@@ -1,5 +1,6 @@
 //! Member runtime state store.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -27,7 +28,9 @@ const SAVE_RETRY_BACKOFFS: [Duration; 3] = [
 /// Runtime record persisted at `teams/<team>/runtime/<member>.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemberRuntimeRecord {
+    #[serde(default = "schema_version_one")]
     pub schema_version: u32,
+    #[serde(default)]
     pub member_name: String,
     pub cli_tool: Option<CliTool>,
     pub project_path: Option<PathBuf>,
@@ -39,6 +42,7 @@ pub struct MemberRuntimeRecord {
     pub session_id: Option<String>,
     pub jsonl_path: Option<PathBuf>,
     pub daemon_pid: Option<u32>,
+    #[serde(default = "default_runtime_health")]
     pub health: HealthState,
     pub delivery_lease: Option<DeliveryLease>,
     pub attached_at: Option<DateTime<Utc>>,
@@ -62,6 +66,8 @@ pub struct MemberRuntimeRecord {
     /// is what keeps that retry bounded. Cleared by any launch that commits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_resume_failure: Option<EffortResumeFailure>,
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extra: BTreeMap<String, Value>,
 }
 
 /// How often a member has failed to reach one requested effort level.
@@ -117,7 +123,16 @@ impl MemberRuntimeStore {
         let target_lock = super::lock::TargetFileLock::acquire_or_create(&target_path)
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
-        save_runtime_record_locked(teams_dir, team_name, member_name, record, &target_lock)
+        let mut record = record.clone();
+        merge_current_extension_fields(
+            &mut record,
+            &target_lock.read_contents()?,
+            team_name,
+            member_name,
+            false,
+        );
+
+        save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
 
     /// Save a snapshot loaded earlier, keeping whatever level mesh has put into
@@ -149,14 +164,13 @@ impl MemberRuntimeStore {
             .inspect_err(|err| log_runtime_store_error("lock", &target_path, err, None))?;
 
         let mut record = record.clone();
-        let raw = target_lock.read_contents()?;
-        if !raw.trim().is_empty() {
-            // A record this store cannot parse is one it is about to replace
-            // anyway; the caller's own value stands.
-            if let Ok(current) = parse_runtime_record(&raw, team_name, member_name) {
-                record.applied_effort = current.applied_effort;
-            }
-        }
+        merge_current_extension_fields(
+            &mut record,
+            &target_lock.read_contents()?,
+            team_name,
+            member_name,
+            true,
+        );
 
         save_runtime_record_locked(teams_dir, team_name, member_name, &record, &target_lock)
     }
@@ -344,6 +358,7 @@ fn save_runtime_record_locked(
     let mut normalized = record.clone();
     normalized.schema_version = RUNTIME_SCHEMA_VERSION;
     normalized.member_name = member_name.to_string();
+    normalized.extra = extension_fields_only(normalized.extra);
 
     let runtime_dir = runtime_dir_path(teams_dir, team_name);
     fs::create_dir_all(&runtime_dir).map_err(|err| {
@@ -439,6 +454,7 @@ fn parse_runtime_record(
         jsonl_path: Option<PathBuf>,
         #[serde(default, alias = "daemonPid")]
         daemon_pid: Option<u32>,
+        #[serde(default = "default_runtime_health")]
         health: HealthState,
         #[serde(default)]
         delivery_lease: Option<DeliveryLease>,
@@ -450,6 +466,8 @@ fn parse_runtime_record(
         applied_effort: Option<String>,
         #[serde(default, alias = "effortResumeFailure")]
         effort_resume_failure: Option<EffortResumeFailure>,
+        #[serde(flatten, default)]
+        extra: BTreeMap<String, Value>,
     }
 
     let wire: RuntimeRecordWire = serde_json::from_str(raw).map_err(|err| {
@@ -478,7 +496,72 @@ fn parse_runtime_record(
             .map(|level| level.trim().to_string())
             .filter(|level| !level.is_empty()),
         effort_resume_failure: wire.effort_resume_failure,
+        extra: extension_fields_only(wire.extra),
     })
+}
+
+fn merge_current_extension_fields(
+    record: &mut MemberRuntimeRecord,
+    current_raw: &str,
+    team_name: &str,
+    member_name: &str,
+    preserve_applied_effort: bool,
+) {
+    if current_raw.trim().is_empty() {
+        return;
+    }
+
+    // An unreadable record is about to be repaired by the caller's complete
+    // snapshot. There are no safely identifiable extension fields to merge.
+    let Ok(current) = parse_runtime_record(current_raw, team_name, member_name) else {
+        return;
+    };
+    record.extra.extend(current.extra);
+    if preserve_applied_effort {
+        record.applied_effort = current.applied_effort;
+    }
+}
+
+const RUNTIME_AUTHORED_KEYS: &[&str] = &[
+    "schema_version",
+    "schemaVersion",
+    "member_name",
+    "memberName",
+    "cli_tool",
+    "cliTool",
+    "project_path",
+    "projectPath",
+    "cwd",
+    "pane_id",
+    "paneId",
+    "pane_pid",
+    "panePid",
+    "pane_start_time",
+    "paneStartTime",
+    "session_id",
+    "sessionId",
+    "jsonl_path",
+    "jsonlPath",
+    "daemon_pid",
+    "daemonPid",
+    "health",
+    "delivery_lease",
+    "deliveryLease",
+    "attached_at",
+    "attachedAt",
+    "last_seen_at",
+    "lastSeenAt",
+    "applied_effort",
+    "appliedEffort",
+    "effort_resume_failure",
+    "effortResumeFailure",
+];
+
+fn extension_fields_only(mut fields: BTreeMap<String, Value>) -> BTreeMap<String, Value> {
+    for key in RUNTIME_AUTHORED_KEYS {
+        fields.remove(*key);
+    }
+    fields
 }
 
 fn is_stale(record: &MemberRuntimeRecord, cutoff: DateTime<Utc>) -> bool {
@@ -673,6 +756,10 @@ const fn schema_version_one() -> u32 {
     RUNTIME_SCHEMA_VERSION
 }
 
+const fn default_runtime_health() -> HealthState {
+    HealthState::SessionDead
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -715,6 +802,7 @@ mod tests {
             last_seen_at: Some(ts("2026-03-01T21:05:10Z")),
             applied_effort: None,
             effort_resume_failure: None,
+            extra: BTreeMap::new(),
         }
     }
 
@@ -1048,6 +1136,7 @@ mod tests {
             last_seen_at: None,
             applied_effort: None,
             effort_resume_failure: None,
+            extra: BTreeMap::new(),
         };
 
         MemberRuntimeStore::save(teams_dir, team_name, "no-heartbeat", &no_timestamps)
@@ -1419,6 +1508,95 @@ mod tests {
             record.health,
             HealthState::SessionDead,
             "the caller's own change is still written"
+        );
+    }
+
+    #[test]
+    fn a_save_of_a_stale_snapshot_preserves_foreign_keys_but_owns_runtime_fields() {
+        // Regression: 50fc736 preserved only `appliedEffort`, so a later
+        // taurhaus save erased every other key mesh added after the snapshot
+        // was loaded.
+        let tmp = TempDir::new().expect("tempdir");
+        let teams_dir = tmp.path();
+        let team_name = "two-writer-runtime";
+        let member_name = "codex-reviewer";
+        MemberRuntimeStore::save(
+            teams_dir,
+            team_name,
+            member_name,
+            &sample_record(member_name),
+        )
+        .expect("seed record");
+        let mut stale =
+            MemberRuntimeStore::load(teams_dir, team_name, member_name).expect("load snapshot");
+
+        let path = runtime_record_path(teams_dir, team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["futureMeshField"] = serde_json::json!({ "preserve": [1, 2, 3] });
+        current["health"] = Value::String("healthy".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize mesh write"),
+        )
+        .expect("write mesh update");
+
+        stale.health = HealthState::SessionDead;
+        MemberRuntimeStore::save_preserving_applied_effort(
+            teams_dir,
+            team_name,
+            member_name,
+            &stale,
+        )
+        .expect("save stale snapshot");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("saved json");
+        assert_eq!(
+            saved["futureMeshField"],
+            serde_json::json!({ "preserve": [1, 2, 3] }),
+            "mesh-owned extension fields must survive a stale taurhaus save"
+        );
+        assert_eq!(
+            saved["health"], "session_dead",
+            "the taurhaus-owned field from the snapshot must win"
+        );
+    }
+
+    #[test]
+    fn an_owning_save_preserves_foreign_keys_but_keeps_its_applied_effort() {
+        // Regression: 50fc736 left the ordinary save path able to erase
+        // foreign keys even though launches legitimately own `appliedEffort`.
+        let tmp = TempDir::new().expect("tempdir");
+        let team_name = "owning-runtime-save";
+        let member_name = "codex-reviewer";
+        let mut seeded = sample_record(member_name);
+        seeded.applied_effort = Some("low".to_string());
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &seeded).expect("seed record");
+        let stale =
+            MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load snapshot");
+
+        let path = runtime_record_path(tmp.path(), team_name, member_name);
+        let mut current: Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("read record")).expect("json");
+        current["futureMeshField"] = Value::String("keep me".to_string());
+        current["appliedEffort"] = Value::String("high".to_string());
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&current).expect("serialize mesh write"),
+        )
+        .expect("write mesh update");
+
+        MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale).expect("owning save");
+
+        let saved: Value =
+            serde_json::from_str(&fs::read_to_string(path).expect("read saved record"))
+                .expect("saved json");
+        assert_eq!(saved["futureMeshField"], "keep me");
+        assert_eq!(
+            saved["appliedEffort"], "low",
+            "an owning save still writes the effort carried by its launch snapshot"
         );
     }
 
