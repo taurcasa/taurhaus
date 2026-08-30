@@ -123,26 +123,6 @@ fn integration_test_binaries_on_disk() -> BTreeSet<String> {
         .collect()
 }
 
-fn dry_run_recipe(recipe: &str) -> String {
-    let crate_dir = crate_root();
-    let repository = crate_dir.parent().expect("crate lives in repository");
-    let output = Command::new("just")
-        .current_dir(repository)
-        .args(["--dry-run", "--no-deps", recipe])
-        .output()
-        .expect("just should dry-run repository recipes");
-    assert!(
-        output.status.success(),
-        "just --dry-run {recipe} failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    )
-}
-
 fn show_recipe(recipe: &str) -> String {
     let crate_dir = crate_root();
     let repository = crate_dir.parent().expect("crate lives in repository");
@@ -218,11 +198,13 @@ fn rust_integration_recipe_runs_every_test_binary() {
     // but never ran because nothing checked that list against `tests/*.rs`.
     let expected = integration_test_binaries_on_disk();
     let shown_recipe = show_recipe("test-rust-integration");
-    let actual = if shown_recipe.contains("{{ integration_test_args }}") {
-        named_test_binaries(&evaluate_just_variable("integration_test_args"))
-    } else {
-        named_test_binaries(&dry_run_recipe("test-rust-integration"))
-    };
+    // Regression: commit 6bfa74d silently fell back to a dry-run parser that
+    // cannot evaluate the recipe's backtick-derived integration target list.
+    assert!(
+        shown_recipe.contains("{{ integration_test_args }}"),
+        "the integration recipe no longer derives its targets from integration_test_args"
+    );
+    let actual = named_test_binaries(&evaluate_just_variable("integration_test_args"));
     let missing = expected.difference(&actual).collect::<Vec<_>>();
     let stale = actual.difference(&expected).collect::<Vec<_>>();
 
@@ -252,29 +234,49 @@ fn heavy_unit_skips_match_integration_reruns() {
     let unit_uses_shared_list = unit_recipe.contains(shared_reference);
     let integration_uses_shared_list = integration_recipe.contains(shared_reference);
 
-    assert_eq!(
-        unit_uses_shared_list, integration_uses_shared_list,
+    assert!(
+        unit_uses_shared_list && integration_uses_shared_list,
         "both Rust lanes must source heavy filters from the same manifest"
     );
 
-    let (skipped, rerun) = if unit_uses_shared_list {
-        let shared = evaluate_just_variable("heavy_rust_test_filters")
-            .split_whitespace()
-            .map(str::to_owned)
-            .collect::<BTreeSet<_>>();
-        (shared.clone(), shared)
-    } else {
-        (
-            values_after_flag(&dry_run_recipe("test-rust-unit"), "--skip"),
-            values_after_flag(&dry_run_recipe("test-rust-integration"), "--lib"),
-        )
-    };
+    let shared = evaluate_just_variable("heavy_rust_test_filters")
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
 
-    assert_eq!(
-        skipped.len(),
-        6,
-        "the heavy manifest should name six filters"
+    assert!(
+        !shared.is_empty(),
+        "the heavy manifest must name at least one filter"
     );
+
+    // Regression: commit ff9182a compared the shared manifest with itself, so
+    // a literal filter appended to either recipe could drift without detection.
+    let literal_unit_skips = values_after_flag(&unit_recipe, "--skip")
+        .into_iter()
+        .filter(|value| !value.starts_with('$'))
+        .collect::<BTreeSet<_>>();
+    let literal_integration_reruns = values_after_flag(&integration_recipe, "--lib")
+        .into_iter()
+        .filter(|value| !value.starts_with('$'))
+        .collect::<BTreeSet<_>>();
+    let unexpected_unit_skips = literal_unit_skips.difference(&shared).collect::<Vec<_>>();
+    let unexpected_integration_reruns = literal_integration_reruns
+        .difference(&shared)
+        .collect::<Vec<_>>();
+
+    assert!(
+        unexpected_unit_skips.is_empty(),
+        "unit lane has literal heavy skips outside the shared manifest: {unexpected_unit_skips:?}"
+    );
+    assert!(
+        unexpected_integration_reruns.is_empty(),
+        "integration lane has literal heavy reruns outside the shared manifest: {unexpected_integration_reruns:?}"
+    );
+
+    let mut skipped = shared.clone();
+    skipped.extend(literal_unit_skips);
+    let mut rerun = shared;
+    rerun.extend(literal_integration_reruns);
     assert_eq!(
         skipped, rerun,
         "unit skips and integration reruns must stay in parity"

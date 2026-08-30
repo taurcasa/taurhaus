@@ -5,6 +5,7 @@
 project   := justfile_directory()
 win_dir   := env_var_or_default("TAURHAUS_WINDOWS_BUILD_DIR", "/mnt/c/taurhaus_build")
 windows_bun_version := `node -p 'require("./package.json").packageManager.split("@").slice(1).join("@")'`
+# Top-level-only by specification; Cargo `tests/<dir>/main.rs` targets require explicit future handling.
 integration_test_args := `for test_file in src-tauri/tests/*.rs; do test_name="${test_file##*/}"; printf -- '--test %s ' "${test_name%.rs}"; done`
 heavy_rust_test_filters := "daemon::server::tests:: daemon::event_listener::tests:: provider::daemon_client::tests:: daemon::launcher::tests:: fs::watcher::tests::watcher_starts_and_stops fs::watcher::tests::unwatch_all_clears_everything"
 
@@ -201,7 +202,7 @@ test-rust-unit: ensure-tauri-resources
 # Rust integration/system lane (serialized, includes heavy suites).
 test-rust-integration: ensure-tauri-resources
     cd src-tauri && cargo test {{integration_test_args}} -- --test-threads=1
-    cd src-tauri && for test_filter in {{heavy_rust_test_filters}}; do cargo test --lib "$test_filter" -- --test-threads=1 || exit; done
+    cd src-tauri && for test_filter in {{heavy_rust_test_filters}}; do echo "▸ $test_filter"; cargo test --lib "$test_filter" -- --test-threads=1 || exit; done
 
 # Bisect default Rust unit-test lane by module groups with checkpoints
 test-rust-bisect-unit:
