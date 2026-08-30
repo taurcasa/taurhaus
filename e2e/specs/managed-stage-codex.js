@@ -336,7 +336,6 @@ function hostSkipReason() {
   if (process.platform !== 'linux') return `The managed-stage lane is Linux-only (got ${process.platform})`
   if (!dataDir) return 'TAURHAUS_DATA_DIR is not set for this session'
   if (!process.env.TAURHAUS_CLAUDE_DIR) return 'TAURHAUS_CLAUDE_DIR is not set for this session'
-  if (!codexHome) return 'CODEX_HOME scratch copy was not prepared for this session'
   if (!existsSync(join(codexHome, 'auth.json'))) {
     return `no Codex credentials were copied into ${codexHome} (is ~/.codex/auth.json present?)`
   }

@@ -95,6 +95,8 @@ Unified structured logging pipeline:
 - `src-tauri/src/daemon/usage_poller.rs` (`usage.fetched` debug, `usage.failed` warn — never tokens, never a URL with a query string)
 - `src-tauri/src/session_scanner/accounts/mod.rs` (`account.provider.floor`) and `accounts/legacy_statusline.rs` (`claude.usage.legacy_bridge.removed`)
 - `src-tauri/src/coordination/task_effort.rs` (`effort.resume.started/completed/failed` — the Codex relaunch that puts an assignment's effort into force)
+- `src-tauri/src/coordination/stores/runtime.rs` (`coordination.runtime.record_skipped` for each unreadable runtime record, with `member` and `reason`)
+- `src-tauri/src/coordination/pipelines/helpers.rs` (`coordination.pane.probe_failed` when a transient identity probe preserves the previous pane identity)
 - `src-tauri/src/coordination/agy_hooks_installer.rs` (`agy.hooks.degraded`)
 - `src-tauri/src/session_scanner/idle/agy.rs` (`agy.identity.resolved` with `source: index|hooks`, emitted once per change)
 - `src-tauri/src/commands/terminal_settings.rs` (`compaction.codex_hook.unsupported/version_unknown/reconciled`); `compaction.codex_hook.degraded` also comes from `coordination/compact_hook.rs` and `commands/coordination.rs`
@@ -184,7 +186,7 @@ E2E tests launch the real app binary via tauri-driver + WebDriverIO. They run on
 | `just test-macos-e2e` | **macOS** via SSH | macOS E2E test suite on remote Mac Mini. |
 
 For local runs that should rebuild/reinstall the daemon first, opt in explicitly: `E2E_INSTALL_DAEMON=1 just test-e2e`.
-E2E sessions also use isolated roots via `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR`, plus fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH`.
+Every E2E worker isolates all writable product roots under its session temp directory via `TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and the taurhaus-only `TAURHAUS_AGY_DIR`; fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH` live there too. Only explicitly paid specs copy `auth.json` into the otherwise empty scratch `CODEX_HOME`.
 
 Agent/team workflow rule:
 - Use `just check-quick` during implementation.
@@ -251,7 +253,7 @@ If the build fails with "Access is denied" on the exe, the app is still running 
 - **Session handoffs**: Auto-created via Claude Code `SessionEnd` hook (agent type). Markdown + YAML frontmatter + JSON sidecar. `/handoff` skill as manual fallback.
 - **Relationships**: Auto-detected from project signals (Cargo.toml deps, CLAUDE.md refs, session mentions). Opt-out, not opt-in.
 - **Team templates**: Git-backed role/preset storage + `MeshTeamBuilder`-driven setup flow (quick presets, role filters, drag-and-drop roster editing) with advanced catalog/history in `TemplateBrowserPanel`, while preserving the existing initialize payload contract. Role templates are context-steering lane definitions with persisted schema fields for `focus_area`, `context_summary`, `behavior_summary`, `communication_style`, `quality_gates`, `definition_of_done`, `phase_scope`, `mode`, `inherits_from`, and `required_artifacts`, plus behavioral contract, defaults, capabilities, provenance, and constraints.
-- **Mesh interop**: Team `config.json` and inbox records round-trip mesh-owned fields via `#[serde(flatten)] extra` maps; member runtime records carry `pane_pid`/`pane_start_time` so a reused tmux pane is detected and quarantined instead of restarting a daemon into a foreign pane. The bundled mesh is version-locked (0.2.20) via `src-tauri/resources/mesh.lock.json`.
+- **Mesh interop**: Team `config.json`, inbox records, and member runtime records round-trip mesh-owned fields via `#[serde(flatten)] extra` maps; runtime saves merge mesh-owned keys from the locked current file, including `appliedEffort`. Runtime records also carry `pane_pid`/`pane_start_time` so a reused tmux pane is detected and quarantined instead of restarting a daemon into a foreign pane. The bundled mesh is version-locked (0.2.23) via `src-tauri/resources/mesh.lock.json`.
 - **Windows Mesh behavior**: Background `wsl`/mesh/tmux launches intentionally suppress console windows, and Mesh runtime/project matching relies on normalized Windows, WSL UNC, and Linux path forms rather than raw string equality.
 - **Platform**: Windows first (release builds), Linux/WSL2 for development.
 

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
+use taurhaus_lib::logging::{install_global_sink, LogFileState};
 use tempfile::TempDir;
 
 use crate::coordination::backend::fake::FakeBackend;
@@ -42,6 +43,95 @@ fn optional_pane_identity_capture_failure_does_not_abort_activation() {
 
     assert_eq!(state.pane_pid, None);
     assert_eq!(state.pane_start_time, None);
+}
+
+#[test]
+fn dead_pane_identity_capture_erases_previous_identity() {
+    // Regression: aecc8ac made identity capture fail-soft but collapsed a
+    // confirmed dead pane and a transient probe failure into the same state.
+    let runtime = RecordingCoordinationRuntime::default();
+    runtime.set_pane_exists("%dead", true);
+    runtime.set_pane_dead("%dead", true);
+    let mut state = MemberActivationRuntimeState {
+        pane_pid: Some(7001),
+        pane_start_time: Some(1_755_000_007),
+        ..Default::default()
+    };
+
+    capture_member_pane_identity(&runtime, "%dead", &mut state)
+        .expect("dead-pane identity capture should fail soft");
+
+    assert_eq!(state.pane_pid, None);
+    assert_eq!(state.pane_start_time, None);
+}
+
+#[test]
+fn pane_identity_probe_failure_preserves_previous_identity_and_logs() {
+    // Regression: aecc8ac erased durable pane identity on a transient tmux
+    // probe error, permanently weakening later ownership checks to path-only.
+    let _log_guard = taurhaus_lib::test_support::acquire_global_log_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let log_path = tmp.path().join("pane-probe.log.jsonl");
+    let log_state = LogFileState::new(log_path.clone()).expect("log state");
+    install_global_sink(&log_state);
+    let runtime = RecordingCoordinationRuntime::default();
+    runtime.set_live_pane_failure("%reused", "transient tmux failure");
+    let mut state = MemberActivationRuntimeState {
+        pane_pid: Some(7001),
+        pane_start_time: Some(1_755_000_007),
+        ..Default::default()
+    };
+
+    capture_member_pane_identity(&runtime, "%reused", &mut state)
+        .expect("probe failure should fail soft");
+
+    assert_eq!(state.pane_pid, Some(7001));
+    assert_eq!(state.pane_start_time, Some(1_755_000_007));
+    let contents =
+        wait_for_pipeline_log_contains(&log_path, "\"event\":\"coordination.pane.probe_failed\"");
+    assert!(contents.contains("\"pane_id\":\"%reused\""));
+}
+
+#[test]
+fn only_a_reused_pane_inherits_the_previous_runtime_identity() {
+    // Regression: aecc8ac did not distinguish a reused pane from a newly
+    // created pane when deciding which identity a failed capture may retain.
+    let mut previous = default_runtime_record("builder");
+    previous.pane_pid = Some(7001);
+    previous.pane_start_time = Some(1_755_000_007);
+    let reused = crate::coordination::runtime::PaneResolution {
+        pane_id: "%reused".to_string(),
+        reused_pane: true,
+        created_new_pane: false,
+        foreign_pane_reason: None,
+    };
+    let mut state = MemberActivationRuntimeState::default();
+
+    seed_member_pane_identity_for_resolution(&mut state, &previous, &reused);
+    assert_eq!(state.pane_pid, previous.pane_pid);
+    assert_eq!(state.pane_start_time, previous.pane_start_time);
+
+    let created = crate::coordination::runtime::PaneResolution {
+        pane_id: "%new".to_string(),
+        reused_pane: false,
+        created_new_pane: true,
+        foreign_pane_reason: None,
+    };
+    seed_member_pane_identity_for_resolution(&mut state, &previous, &created);
+    assert_eq!(state.pane_pid, None);
+    assert_eq!(state.pane_start_time, None);
+}
+
+fn wait_for_pipeline_log_contains(path: &std::path::Path, needle: &str) -> String {
+    for _ in 0..50 {
+        if let Ok(contents) = fs::read_to_string(path) {
+            if contents.contains(needle) {
+                return contents;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    fs::read_to_string(path).unwrap_or_default()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2457,6 +2547,50 @@ fn load_resume_member_state_preserves_role_template_context() {
     )));
 }
 
+#[test]
+fn resume_accepts_a_minimal_runtime_record_written_by_mesh() {
+    // Regression: 50fc736 made a mesh-owned applied-effort record fatal to
+    // activation because taurhaus required its own health field to be present.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime);
+
+    orchestrator
+        .create_team("minimal-runtime", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "minimal-runtime",
+            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "minimal-runtime",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add builder");
+    fs::write(
+        tmp.path()
+            .join("minimal-runtime")
+            .join("runtime")
+            .join("builder.json"),
+        r#"{"appliedEffort":"medium"}"#,
+    )
+    .expect("write minimal mesh runtime");
+
+    let report = orchestrator
+        .resume_member("minimal-runtime", "builder")
+        .expect("resume report");
+
+    assert!(
+        report.resumed,
+        "partial runtime should activate: {report:?}"
+    );
+    assert_eq!(report.failed_step, None);
+}
+
 // Regression: a79d392 treated mesh's pre-existing `external` placeholder as a model
 // declaration, so resume rendered `-m 'external'` instead of the member role's model.
 #[test]
@@ -3336,6 +3470,55 @@ fn resume_pipeline_recreates_mismatched_pane_and_syncs_config_tmux_pane_id() {
         .find(|member| member["name"].as_str() == Some("builder"))
         .expect("builder entry");
     assert_eq!(builder["tmuxPaneId"].as_str(), Some("test-pane-1"));
+}
+
+#[test]
+fn newly_created_pane_does_not_inherit_identity_when_capture_probe_fails() {
+    // Regression: aecc8ac requires probe failures to preserve identity only
+    // for reuse; carrying it onto a newly created pane would fabricate owner
+    // evidence for the wrong tmux process.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+    orchestrator
+        .create_team("new-pane-identity", None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            "new-pane-identity",
+            member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+        )
+        .expect("add lead");
+    orchestrator
+        .add_member(
+            "new-pane-identity",
+            member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/builder"),
+        )
+        .expect("add builder");
+
+    let mut previous =
+        MemberRuntimeStore::load(tmp.path(), "new-pane-identity", "builder").expect("runtime");
+    previous.pane_id = Some("%gone".to_string());
+    previous.pane_pid = Some(7001);
+    previous.pane_start_time = Some(1_755_000_007);
+    previous.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), "new-pane-identity", "builder", &previous)
+        .expect("save runtime");
+    runtime.set_pane_exists("%gone", false);
+    runtime.set_live_pane_failure("test-pane-1", "transient capture failure");
+
+    let report = orchestrator
+        .resume_member("new-pane-identity", "builder")
+        .expect("resume report");
+    assert!(report.resumed, "capture remains fail-soft: {report:?}");
+    assert!(!report.reused_pane);
+
+    let updated = MemberRuntimeStore::load(tmp.path(), "new-pane-identity", "builder")
+        .expect("updated runtime");
+    assert_eq!(updated.pane_id.as_deref(), Some("test-pane-1"));
+    assert_eq!(updated.pane_pid, None);
+    assert_eq!(updated.pane_start_time, None);
 }
 
 #[test]
@@ -4338,9 +4521,9 @@ fn a_stop_that_failed_aborts_the_effort_resume() {
     let mut orchestrator =
         seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
-    // The pane no longer belongs to the project the member is on, so the
-    // teardown refuses to kill it.
-    runtime.set_pane_ownership("%21", false);
+    // The pane id has been reused by another process, so the identity-aware
+    // teardown refuses to kill it even though its project path still matches.
+    runtime.set_pane_identity("%21", Some(4040), Some(1_755_000_040));
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator

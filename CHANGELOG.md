@@ -24,10 +24,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **E2E workers cannot write operator tool roots** — every worker now supplies isolated app-data, Claude, Codex, Grok and Antigravity roots to both WDIO setup and the spawned Tauri driver. The daemon token follows the same overridable app-data authority on both sides (with its old path retained only as a read fallback), and Antigravity hook and identity paths honour the taurhaus-only `TAURHAUS_AGY_DIR` override.
+
 - **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
 
 - **The full quality gate now fails with its lane** — `just check` preserves a failed parallel lane's status, stops its peer, and is regression-guarded through `just lint` without running the real lanes.
 
+- **Member runtime records are lossless across mesh and taurhaus writers** — runtime records preserve mesh-owned and unknown keys under a flattened extension map, and stale taurhaus snapshots merge those keys from the current file while holding the existing target-file lock. Minimal mesh records such as an `appliedEffort`-only object load as offline instead of being deleted as corrupt; genuinely invalid or non-object JSON is still removed, and skipped records emit `coordination.runtime.record_skipped`. Transient pane-probe failures preserve durable PID/start-time identity and emit `coordination.pane.probe_failed`, while confirmed dead/gone panes clear it and newly created panes never inherit it. Teardown now requires the member's pane identity when a runtime record exists, so a same-project sibling pane is not killed. Mesh inbox messages that omit `read` default to unread.
 - **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.
 
 ## [0.8.4] - 2026-08-30

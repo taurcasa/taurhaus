@@ -1088,6 +1088,11 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                 };
                 self.runtime_state.pane_id = Some(pane_resolution.pane_id.clone());
                 self.runtime_state.reused_pane = pane_resolution.reused_pane;
+                seed_member_pane_identity_for_resolution(
+                    &mut self.runtime_state,
+                    runtime_record,
+                    &pane_resolution,
+                );
                 if pane_resolution.created_new_pane {
                     self.runtime_state.created_pane_id = Some(pane_resolution.pane_id.clone());
                 }
@@ -1131,7 +1136,7 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                 "failed to clear foreign-pane daemon pid file: {err}"
                             ));
                         }
-                        if let Err(err) = MemberRuntimeStore::save(
+                        if let Err(err) = MemberRuntimeStore::save_preserving_applied_effort(
                             &self.orchestrator.teams_dir,
                             &prepared.activation_context.team_name,
                             &prepared.member.name,
