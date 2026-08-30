@@ -16,6 +16,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **E2E workers cannot write operator tool roots** — every worker now supplies isolated app-data, Claude, Codex, Grok and Antigravity roots to both WDIO setup and the spawned Tauri driver. The daemon token follows the same overridable app-data authority on both sides (with its old path retained only as a read fallback), and Antigravity hook and identity paths honour the taurhaus-only `TAURHAUS_AGY_DIR` override.
+
 - **Every Rust integration binary runs in the integration lane** — `just test-rust-integration` derives its targets from every top-level `src-tauri/tests/*.rs` file, while a completeness guard rejects missing or stale targets and one shared manifest keeps the unit-lane heavy skips identical to their serialized integration reruns.
 
 - **The full quality gate now fails with its lane** — `just check` preserves a failed parallel lane's status, stops its peer, and is regression-guarded through `just lint` without running the real lanes.

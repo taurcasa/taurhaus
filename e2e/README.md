@@ -36,8 +36,12 @@ connect path and refuses a mismatch outright rather than half-working. The const
 each changed the wire contract). If you have just pulled a branch that bumped it, an
 installed older daemon is rejected and every session-backed spec fails — reinstall it.
 
-E2E sessions isolate their roots with `TAURHAUS_DATA_DIR` and `TAURHAUS_CLAUDE_DIR`,
-plus the fixture path knobs `E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH`.
+Every WDIO worker puts all writable product roots under its session temp root:
+`TAURHAUS_DATA_DIR`, `TAURHAUS_CLAUDE_DIR`, `CODEX_HOME`, `GROK_HOME` and the
+taurhaus-only Antigravity override `TAURHAUS_AGY_DIR`. The fixture path knobs
+`E2E_PROJECTS_DIR` and `E2E_TAURHAUS_PROJECT_PATH` point into that temp root too.
+Ordinary workers receive an empty scratch Codex home; only a paid lane copies
+`auth.json` into it.
 
 ## 2) Build the correct app binary for E2E
 
