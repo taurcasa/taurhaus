@@ -166,6 +166,60 @@ fn an_older_daemon_reports_no_transcript_without_degrading() {
     assert_eq!(lookup.unavailable, None);
 }
 
+/// A daemon that can read the WSL shell answers what the base command means.
+#[test]
+fn a_resolved_base_from_the_daemon_is_used_as_the_launch_base() {
+    let response = protocol::DaemonResponse::ok(
+        "resolve-launch-base-claude",
+        serde_json::json!({
+            "command": "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions",
+            "expansions": [{
+                "name": "claude2",
+                "body": "CLAUDE_CONFIG_DIR=~/.claude-account2 claude"
+            }],
+            "opaqueHead": null
+        }),
+    );
+
+    let resolved = resolved_base_from(
+        daemon_answer(Ok(response), "the resolved launch base"),
+        "claude2 --dangerously-skip-permissions",
+    );
+
+    assert_eq!(
+        resolved.command,
+        "CLAUDE_CONFIG_DIR=~/.claude-account2 claude --dangerously-skip-permissions"
+    );
+    assert_eq!(resolved.expansions.len(), 1);
+}
+
+/// An older daemon has no shell to ask, so the base stays exactly as
+/// configured — which is what every launch did before this feature.
+#[test]
+fn an_older_daemon_leaves_the_base_command_literal() {
+    let unsupported = protocol::DaemonResponse::err(
+        "resolve-launch-base-claude",
+        "UNKNOWN_METHOD",
+        "Unknown method: resolve_launch_base",
+    );
+
+    for answer in [
+        daemon_answer(Ok(unsupported), "the resolved launch base"),
+        daemon_answer(
+            Err(crate::errors::AppError::DaemonTransport(
+                "timed out waiting for daemon".to_string(),
+            )),
+            "the resolved launch base",
+        ),
+    ] {
+        let resolved = resolved_base_from(answer, "claude2 --dangerously-skip-permissions");
+
+        assert_eq!(resolved.command, "claude2 --dangerously-skip-permissions");
+        assert!(resolved.expansions.is_empty());
+        assert_eq!(resolved.opaque_head, None);
+    }
+}
+
 /// A transcript where Claude Code writes one: `<config dir>/projects/<slug>/`.
 pub(crate) fn write_transcript(config_dir: &Path, project_path: &str, name: &str) -> PathBuf {
     let dir = config_dir

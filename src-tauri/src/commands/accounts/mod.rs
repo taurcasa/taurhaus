@@ -25,6 +25,7 @@ use crate::db::queries;
 use crate::errors::{sanitize_error, AppError, CommandResultExt, IpcResult, SanitizeErr};
 use crate::session_scanner::accounts::{self, Account};
 use crate::session_scanner::cli_tool::CliTool;
+use crate::session_scanner::launch_base::{self, ResolvedBase};
 use crate::ProviderState;
 
 /// Detection ran in this process.
@@ -162,6 +163,63 @@ pub(crate) fn project_transcript(
             project_path,
         ),
         unavailable: None,
+    }
+}
+
+/// What the shell that will run this launch makes of its base command.
+///
+/// Where the config dirs are, the aliases are: in-process on Linux and macOS,
+/// in the WSL daemon on Windows. Every failure — no daemon, an older daemon, a
+/// shell that never answered — leaves the base exactly as configured.
+pub(crate) fn resolve_launch_base(
+    provider: &ProviderState,
+    tool: CliTool,
+    base: &str,
+) -> ResolvedBase {
+    if cfg!(target_os = "windows") {
+        return daemon_resolve_launch_base(provider, tool, base);
+    }
+    launch_base::resolve_base_command_cached(base, tool, &launch_base::ShellAliasProbe::for_pane())
+}
+
+fn daemon_resolve_launch_base(provider: &ProviderState, tool: CliTool, base: &str) -> ResolvedBase {
+    let Some(daemon) = provider.daemon.as_ref() else {
+        return literal_base(base);
+    };
+    if !daemon.is_connected() && !daemon.try_reconnect() {
+        return literal_base(base);
+    }
+
+    let request = protocol::DaemonRequest::new(
+        format!("resolve-launch-base-{tool}"),
+        protocol::method::RESOLVE_LAUNCH_BASE,
+        protocol::ResolveLaunchBaseParams {
+            tool,
+            base: base.to_string(),
+        },
+    );
+    resolved_base_from(
+        daemon_answer(
+            daemon.send_status_request(&request),
+            "the resolved launch base",
+        ),
+        base,
+    )
+}
+
+fn resolved_base_from(answer: DaemonAnswer<ResolvedBase>, base: &str) -> ResolvedBase {
+    match answer {
+        DaemonAnswer::Value(resolved) => resolved,
+        DaemonAnswer::Unsupported | DaemonAnswer::Unavailable(_) => literal_base(base),
+    }
+}
+
+/// The base command as configured: no expansion, nothing claimed about it.
+fn literal_base(base: &str) -> ResolvedBase {
+    ResolvedBase {
+        command: base.to_string(),
+        expansions: Vec::new(),
+        opaque_head: None,
     }
 }
 
