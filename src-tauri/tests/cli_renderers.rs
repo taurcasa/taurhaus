@@ -291,8 +291,10 @@ fn team_launch_commands_match_tool_goldens() {
             expected: include_str!("fixtures/launch/team-grok.golden.txt"),
         },
     ] {
-        let mut commands = CliCommandSettings::default();
-        commands.codex_bypass_hook_trust = true;
+        let mut commands = CliCommandSettings {
+            codex_bypass_hook_trust: true,
+            ..Default::default()
+        };
         if let (Some(selector), Some(account_dir)) = (
             spec(case.tool).capabilities.account_selector,
             case.account_dir,
