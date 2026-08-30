@@ -140,6 +140,7 @@ fn update_settings_impl(db: &DbState, settings: Settings) -> Result<Settings, St
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     let settings = settings.with_runtime_terminal_contract();
     settings_queries::save_settings(&conn, &settings).sanitize_err()?;
+    crate::session_scanner::launch_base::invalidate_base_command_cache();
     settings_queries::get_all_settings(&conn)
         .map(Settings::with_runtime_terminal_contract)
         .sanitize_err()

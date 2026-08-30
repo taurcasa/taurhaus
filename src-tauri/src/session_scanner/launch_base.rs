@@ -11,9 +11,10 @@
 //! module existed.
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
-use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, LazyLock, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +67,11 @@ fn resolve_base_command_in(
     probe: &dyn AliasProbe,
     home: Option<&Path>,
 ) -> ResolvedBase {
+    let expansions = probe_alias_expansions(base, probe);
+    resolve_base_command_from_expansions_in(base, tool, &expansions, home)
+}
+
+fn probe_alias_expansions(base: &str, probe: &dyn AliasProbe) -> Vec<AliasExpansion> {
     let mut command = base.to_string();
     let mut expansions = Vec::new();
     let mut expanded: HashSet<String> = HashSet::new();
@@ -92,12 +98,36 @@ fn resolve_base_command_in(
         });
         command.replace_range(head.start..head.end, &body);
     }
+    expansions
+}
+
+fn resolve_base_command_from_expansions_in(
+    base: &str,
+    tool: CliTool,
+    expansions: &[AliasExpansion],
+    home: Option<&Path>,
+) -> ResolvedBase {
+    let mut command = base.to_string();
+    let mut applied = Vec::with_capacity(expansions.len());
+    for expansion in expansions {
+        let Some(head) = words(&command)
+            .into_iter()
+            .find(|word| !word.is_assignment())
+        else {
+            break;
+        };
+        if head.quoted || head.value != expansion.name {
+            break;
+        }
+        command.replace_range(head.start..head.end, &expansion.body);
+        applied.push(expansion.clone());
+    }
 
     let command = expand_selector_home(&command, tool, home);
     let opaque_head = head_word(&command).filter(|head| !runs_the_tool(tool, head));
     ResolvedBase {
         command,
-        expansions,
+        expansions: applied,
         opaque_head,
     }
 }
@@ -177,11 +207,10 @@ fn expand_tilde(value: &str, home: &Path) -> Option<String> {
     }
 }
 
-/// Resolve `base`, reusing an answer this process got in the last minute.
+/// Resolve `base`, reusing the alias chain for this shell and head word.
 ///
 /// Probing runs an interactive shell, so a launch, its preview and the settings
 /// page must not each pay for one.
-#[cfg(not(test))]
 pub fn resolve_base_command_cached(
     base: &str,
     tool: CliTool,
@@ -190,25 +219,59 @@ pub fn resolve_base_command_cached(
     resolve_base_command_cached_at(base, tool, probe, Instant::now())
 }
 
-/// Under test the process-global cache is a channel between tests: one test's
-/// answer would outlive the alias table the next one installs.
-#[cfg(test)]
-pub fn resolve_base_command_cached(
-    base: &str,
-    tool: CliTool,
-    probe: &dyn AliasProbe,
-) -> ResolvedBase {
-    resolve_base_command(base, tool, probe)
+/// Shell answers remain useful until an rc file changes, with a hard upper cap.
+const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+
+type CacheKey = (u64, String, String);
+
+#[derive(Clone, PartialEq, Eq)]
+struct RcFingerprint(Vec<(PathBuf, Option<SystemTime>)>);
+
+struct CachedAliasChain {
+    observed_at: Instant,
+    rc_fingerprint: RcFingerprint,
+    resolution: Arc<InFlightAliasChain>,
 }
 
-/// One resolution per (shell, tool, base), including a failed probe: a shell
-/// that could not answer must not be asked again on every keystroke.
-const CACHE_TTL: Duration = Duration::from_secs(60);
+#[derive(Default)]
+struct InFlightAliasChain {
+    result: Mutex<Option<Vec<AliasExpansion>>>,
+    ready: Condvar,
+}
 
-type CacheKey = (String, CliTool, String);
+impl InFlightAliasChain {
+    fn complete(&self, expansions: Vec<AliasExpansion>) {
+        let mut result = self
+            .result
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *result = Some(expansions);
+        self.ready.notify_all();
+    }
 
-static CACHE: LazyLock<Mutex<HashMap<CacheKey, (Instant, ResolvedBase)>>> =
+    fn wait(&self) -> Vec<AliasExpansion> {
+        let mut result = self
+            .result
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        while result.is_none() {
+            result = self
+                .ready
+                .wait(result)
+                .unwrap_or_else(|error| error.into_inner());
+        }
+        result.clone().unwrap_or_default()
+    }
+}
+
+static CACHE_GENERATION: AtomicU64 = AtomicU64::new(0);
+static CACHE: LazyLock<Mutex<HashMap<CacheKey, CachedAliasChain>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// A successful settings save makes every earlier shell answer stale.
+pub fn invalidate_base_command_cache() {
+    CACHE_GENERATION.fetch_add(1, Ordering::AcqRel);
+}
 
 fn resolve_base_command_cached_at(
     base: &str,
@@ -216,25 +279,113 @@ fn resolve_base_command_cached_at(
     probe: &dyn AliasProbe,
     now: Instant,
 ) -> ResolvedBase {
-    let key = (probe.shell().to_string(), tool, base.to_string());
-    if let Some(resolved) = cache_read(&key, now) {
-        return resolved;
-    }
-    // Probing outside the lock: a shell that hangs for its whole budget must
-    // not hold every other launch behind it.
-    let resolved = resolve_base_command(base, tool, probe);
-    let mut cache = CACHE.lock().unwrap_or_else(|error| error.into_inner());
-    // Settings can be edited into any number of distinct base commands; an
-    // entry nobody can read again has no reason to stay.
-    cache.retain(|_, (observed_at, _)| now.duration_since(*observed_at) < CACHE_TTL);
-    cache.insert(key, (now, resolved.clone()));
-    resolved
+    resolve_base_command_cached_at_in(base, tool, probe, now, dirs::home_dir().as_deref())
 }
 
-fn cache_read(key: &CacheKey, now: Instant) -> Option<ResolvedBase> {
-    let cache = CACHE.lock().unwrap_or_else(|error| error.into_inner());
-    let (observed_at, resolved) = cache.get(key)?;
-    (now.duration_since(*observed_at) < CACHE_TTL).then(|| resolved.clone())
+fn resolve_base_command_cached_at_in(
+    base: &str,
+    tool: CliTool,
+    probe: &dyn AliasProbe,
+    now: Instant,
+    home: Option<&Path>,
+) -> ResolvedBase {
+    resolve_base_command_cached_at_in_generation(
+        base,
+        tool,
+        probe,
+        now,
+        home,
+        CACHE_GENERATION.load(Ordering::Acquire),
+    )
+}
+
+fn resolve_base_command_cached_at_in_generation(
+    base: &str,
+    tool: CliTool,
+    probe: &dyn AliasProbe,
+    now: Instant,
+    home: Option<&Path>,
+    generation: u64,
+) -> ResolvedBase {
+    let Some(head) = alias_head(base) else {
+        return resolve_base_command_from_expansions_in(base, tool, &[], home);
+    };
+    let key = (generation, probe.shell().to_string(), head);
+    let rc_fingerprint = shell_rc_fingerprint(probe.shell(), home);
+    let (resolution, owns_probe) = {
+        let mut cache = CACHE.lock().unwrap_or_else(|error| error.into_inner());
+        let reusable = cache.get(&key).filter(|entry| {
+            entry.rc_fingerprint == rc_fingerprint
+                && now
+                    .checked_duration_since(entry.observed_at)
+                    .is_some_and(|age| age < CACHE_TTL)
+        });
+        if let Some(entry) = reusable {
+            (Arc::clone(&entry.resolution), false)
+        } else {
+            let resolution = Arc::new(InFlightAliasChain::default());
+            cache.insert(
+                key,
+                CachedAliasChain {
+                    observed_at: now,
+                    rc_fingerprint,
+                    resolution: Arc::clone(&resolution),
+                },
+            );
+            let actual_now = Instant::now();
+            cache.retain(|_, entry| {
+                actual_now
+                    .checked_duration_since(entry.observed_at)
+                    .is_none_or(|age| age < CACHE_TTL)
+            });
+            (resolution, true)
+        }
+    };
+
+    if owns_probe {
+        // The shell runs outside the map lock; joiners wait only on this head.
+        resolution.complete(probe_alias_expansions(base, probe));
+    }
+    let expansions = resolution.wait();
+    resolve_base_command_from_expansions_in(base, tool, &expansions, home)
+}
+
+fn alias_head(command: &str) -> Option<String> {
+    let head = words(command)
+        .into_iter()
+        .find(|word| !word.is_assignment())?;
+    (!head.quoted && is_alias_name(&head.value)).then_some(head.value)
+}
+
+fn shell_rc_fingerprint(shell: &str, home: Option<&Path>) -> RcFingerprint {
+    let Some(home) = home else {
+        return RcFingerprint(Vec::new());
+    };
+    let shell = Path::new(shell)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(shell);
+    let relative = match shell {
+        "zsh" => Some(".zshrc"),
+        "bash" => Some(".bashrc"),
+        "fish" => Some(".config/fish/config.fish"),
+        "ksh" | "mksh" => Some(".kshrc"),
+        "csh" => Some(".cshrc"),
+        "tcsh" => Some(".tcshrc"),
+        _ => None,
+    };
+    RcFingerprint(
+        relative
+            .map(|relative| {
+                let path = home.join(relative);
+                let modified = std::fs::metadata(&path)
+                    .and_then(|metadata| metadata.modified())
+                    .ok();
+                (path, modified)
+            })
+            .into_iter()
+            .collect(),
+    )
 }
 
 /// Whether the head word invokes the tool's own executable, by name or path.
@@ -562,6 +713,7 @@ impl Drop for AliasOverrideGuard {
         *ALIAS_OVERRIDE
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = None;
+        invalidate_base_command_cache();
     }
 }
 
@@ -579,6 +731,7 @@ pub(crate) fn install_alias_override(aliases: &[(&str, &str)]) -> AliasOverrideG
             .map(|(name, body)| (name.to_string(), body.to_string()))
             .collect(),
     );
+    invalidate_base_command_cache();
     AliasOverrideGuard { _lock: lock }
 }
 
@@ -958,7 +1111,7 @@ mod tests {
     }
 
     #[test]
-    fn the_cache_answers_for_a_minute_and_then_asks_again() {
+    fn the_cache_answers_for_ten_minutes_and_then_asks_again() {
         let probe = FakeProbe::new(&[("cached2", "CLAUDE_CONFIG_DIR=/homes/two claude")]);
         let start = Instant::now();
 
@@ -968,7 +1121,7 @@ mod tests {
             "cached2 --resume",
             CliTool::Claude,
             &probe,
-            start + Duration::from_secs(59),
+            start + Duration::from_secs(599),
         );
         assert_eq!(first, second);
         assert_eq!(
@@ -981,9 +1134,225 @@ mod tests {
             "cached2 --resume",
             CliTool::Claude,
             &probe,
-            start + Duration::from_secs(61),
+            start + Duration::from_secs(601),
         );
         assert_eq!(probe.asked().len(), 4, "an expired entry is asked again");
+    }
+
+    // Regression: 0.8.4 / PR #75 keyed shell resolution by the whole launch
+    // command, so fresh, continue and resume probed the same `claude2` alias
+    // separately during every Settings refresh.
+    #[test]
+    fn commands_that_share_a_head_share_one_probe() {
+        let home = tempfile::tempdir().expect("temporary shell home");
+        let probe = FakeProbe::new(&[("shared2", "CLAUDE_CONFIG_DIR=/homes/two claude")]);
+        let start = Instant::now();
+
+        let fresh = resolve_base_command_cached_at_in(
+            "shared2 --fresh",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+        );
+        let continued = resolve_base_command_cached_at_in(
+            "shared2 --continue",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+        );
+        let resumed = resolve_base_command_cached_at_in(
+            "shared2 --resume session-1",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+        );
+
+        assert!(fresh.command.ends_with("claude --fresh"), "{fresh:?}");
+        assert!(
+            continued.command.ends_with("claude --continue"),
+            "{continued:?}"
+        );
+        assert!(
+            resumed.command.ends_with("claude --resume session-1"),
+            "{resumed:?}"
+        );
+        assert_eq!(
+            probe.asked(),
+            vec!["shared2".to_string(), "claude".to_string()],
+            "one head under one shell must cost one alias-chain probe"
+        );
+    }
+
+    // Regression: 0.8.4 / PR #75 cached shell answers for a fixed 60 seconds,
+    // leaving a changed alias stale and then paying for unchanged rc files on
+    // the next account refresh.
+    #[test]
+    fn changing_the_shell_rc_mtime_invalidates_the_cached_head() {
+        let home = tempfile::tempdir().expect("temporary shell home");
+        let rc = home.path().join(".zshrc");
+        std::fs::write(&rc, "alias rc2=claude").expect("write initial rc");
+        let initial_mtime = std::fs::metadata(&rc)
+            .and_then(|metadata| metadata.modified())
+            .expect("initial rc mtime");
+        let probe = FakeProbe::new(&[("rc2", "claude")]);
+        let start = Instant::now();
+
+        resolve_base_command_cached_at_in(
+            "rc2 --fresh",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+        );
+        for attempt in 0..20 {
+            std::fs::write(&rc, format!("alias rc2=claude # {attempt}")).expect("change shell rc");
+            let changed = std::fs::metadata(&rc)
+                .and_then(|metadata| metadata.modified())
+                .expect("changed rc mtime");
+            if changed != initial_mtime {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_ne!(
+            std::fs::metadata(&rc)
+                .and_then(|metadata| metadata.modified())
+                .expect("final rc mtime"),
+            initial_mtime,
+            "the test must actually change the rc mtime"
+        );
+
+        resolve_base_command_cached_at_in(
+            "rc2 --resume",
+            CliTool::Claude,
+            &probe,
+            start + Duration::from_secs(1),
+            Some(home.path()),
+        );
+
+        assert_eq!(
+            probe.asked(),
+            vec!["rc2", "claude", "rc2", "claude"],
+            "a changed rc file must be observed before the ten-minute cap"
+        );
+    }
+
+    // Regression: 0.8.4 / PR #75 kept resolved aliases after the operator
+    // saved a different CLI command, so Settings could describe the command it
+    // had just replaced until the old 60-second entry expired.
+    #[test]
+    fn settings_invalidation_discards_cached_alias_answers() {
+        let home = tempfile::tempdir().expect("temporary shell home");
+        let probe = FakeProbe::new(&[("saved2", "claude")]);
+        let start = Instant::now();
+
+        resolve_base_command_cached_at_in(
+            "saved2 --fresh",
+            CliTool::Claude,
+            &probe,
+            start,
+            Some(home.path()),
+        );
+        invalidate_base_command_cache();
+        resolve_base_command_cached_at_in(
+            "saved2 --resume",
+            CliTool::Claude,
+            &probe,
+            start + Duration::from_secs(1),
+            Some(home.path()),
+        );
+
+        assert_eq!(
+            probe.asked(),
+            vec!["saved2", "claude", "saved2", "claude"],
+            "a settings save must make the earlier alias answer unreachable"
+        );
+    }
+
+    struct BlockingProbe {
+        entered: std::sync::mpsc::Sender<()>,
+        released: std::sync::Mutex<bool>,
+        release_changed: std::sync::Condvar,
+    }
+
+    impl BlockingProbe {
+        fn release(&self) {
+            *self.released.lock().expect("release lock") = true;
+            self.release_changed.notify_all();
+        }
+    }
+
+    impl AliasProbe for BlockingProbe {
+        fn shell(&self) -> &str {
+            "/fake/zsh"
+        }
+
+        fn alias(&self, name: &str) -> Option<String> {
+            if name != "joined2" {
+                return None;
+            }
+            self.entered.send(()).expect("report entered probe");
+            let mut released = self.released.lock().expect("release lock");
+            while !*released {
+                released = self.release_changed.wait(released).expect("release wait");
+            }
+            Some("claude".to_string())
+        }
+    }
+
+    // Regression: 0.8.4 / PR #75 probed outside the cache lock without an
+    // in-flight entry, so concurrent callers duplicated the same slow shell.
+    #[test]
+    fn a_probe_in_flight_is_joined() {
+        let home = tempfile::tempdir().expect("temporary shell home");
+        let home = std::sync::Arc::new(home);
+        let (entered, observed) = std::sync::mpsc::channel();
+        let probe = std::sync::Arc::new(BlockingProbe {
+            entered,
+            released: std::sync::Mutex::new(false),
+            release_changed: std::sync::Condvar::new(),
+        });
+        let start = Instant::now();
+
+        let first_probe = std::sync::Arc::clone(&probe);
+        let first_home = std::sync::Arc::clone(&home);
+        let first = std::thread::spawn(move || {
+            resolve_base_command_cached_at_in_generation(
+                "joined2 --fresh",
+                CliTool::Claude,
+                first_probe.as_ref(),
+                start,
+                Some(first_home.path()),
+                u64::MAX - 1,
+            )
+        });
+        observed
+            .recv_timeout(Duration::from_secs(1))
+            .expect("first probe started");
+
+        let second_probe = std::sync::Arc::clone(&probe);
+        let second_home = std::sync::Arc::clone(&home);
+        let second = std::thread::spawn(move || {
+            resolve_base_command_cached_at_in_generation(
+                "joined2 --resume",
+                CliTool::Claude,
+                second_probe.as_ref(),
+                start,
+                Some(second_home.path()),
+                u64::MAX - 1,
+            )
+        });
+        let duplicated = observed.recv_timeout(Duration::from_millis(150)).is_ok();
+        probe.release();
+
+        let first = first.join().expect("first resolution");
+        let second = second.join().expect("joined resolution");
+        assert!(!duplicated, "the second caller started a duplicate probe");
+        assert!(first.command.ends_with("claude --fresh"), "{first:?}");
+        assert!(second.command.ends_with("claude --resume"), "{second:?}");
     }
 
     #[test]
