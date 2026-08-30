@@ -1247,6 +1247,86 @@ mod tests {
         assert_eq!(record.applied_effort.as_deref(), Some("low"));
     }
 
+    #[test]
+    fn background_self_heal_pass_does_not_apply_deadline_policy_yet() {
+        let tmp = TempDir::new().expect("tempdir");
+        let runtime = Arc::new(RecordingCoordinationRuntime::default());
+        let fake = FakeBackend::default();
+        let state = CoordinationState::with_components_and_runtime(
+            tmp.path().to_path_buf(),
+            BackendSelector::m0(),
+            Arc::new({
+                let fake = fake.clone();
+                move |_kind, _teams_dir| Ok(Arc::new(fake.clone()) as Arc<dyn CoordinationBackend>)
+            }),
+            Arc::new({
+                let runtime = runtime.clone();
+                move || runtime.clone()
+            }),
+        );
+
+        state
+            .with_orchestrator(|orch| {
+                orch.create_team("deadline-team", None)?;
+                orch.add_member(
+                    "deadline-team",
+                    sample_member("team-lead", MemberRole::Lead, CliTool::Claude, "/tmp/lead"),
+                )?;
+                orch.add_member(
+                    "deadline-team",
+                    sample_member("builder", MemberRole::Agent, CliTool::Codex, "/tmp/app"),
+                )?;
+                Ok(())
+            })
+            .expect("seed team");
+        write_lead_credential(tmp.path(), "deadline-team");
+
+        MemberRuntimeStore::update(tmp.path(), "deadline-team", "builder", |record| {
+            record.pane_id = Some("%41".to_string());
+            record.health = HealthState::Healthy;
+            record.session_id = Some("session-deadline".to_string());
+        })
+        .expect("seed runtime");
+        runtime.set_pane_exists("%41", true);
+        runtime.set_pane_dead("%41", false);
+        runtime.set_pane_shell("%41", false);
+
+        assign_task(tmp.path(), "deadline-team", "builder", "");
+        let mut snapshot = crate::coordination::stores::OperationalContextSnapshotStore::load(
+            tmp.path(),
+            "deadline-team",
+            "builder",
+        )
+        .expect("load operational snapshot")
+        .expect("operational snapshot");
+        snapshot.updated_at = Utc::now() - chrono::Duration::minutes(21);
+        snapshot.task.deadline_minutes = Some(20);
+        crate::coordination::stores::OperationalContextSnapshotStore::save(tmp.path(), &snapshot)
+            .expect("save deadline snapshot");
+
+        state.orchestrator.lock().expect("state mutex").take();
+        state
+            .run_background_self_heal_pass(&CliCommandSettings::default(), DEFAULT_TMUX_LAYOUT)
+            .expect("background pass succeeds");
+
+        assert!(
+            fake.delivered_requests()
+                .iter()
+                .all(|request| !matches!(request, DeliveryRequest::RecoveryNudge(_))),
+            "deadline nudges remain unwired"
+        );
+        let stored = crate::coordination::stores::OperationalContextSnapshotStore::load(
+            tmp.path(),
+            "deadline-team",
+            "builder",
+        )
+        .expect("load operational snapshot")
+        .expect("operational snapshot");
+        assert_eq!(stored.task.status, "in_progress");
+        assert_eq!(stored.task.nudged_at, None);
+        assert_eq!(stored.task.stale_at, None);
+    }
+
     // Regression: 2529309 ran the effort relaunch with
     // `CliCommandSettings::default()`, so a member launched on a selected
     // account came back on the tool's default one, under the stock command.

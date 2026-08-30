@@ -369,6 +369,30 @@ fn commands_coordination_types_avoids_domain_enum_definitions() {
 }
 
 #[test]
+fn task_deadline_policy_stays_pure_and_outside_placeholder_health_framework() {
+    let source = read_source("src/coordination/task_deadline.rs");
+    let runtime = runtime_section(&source);
+
+    for forbidden in [
+        "crate::coordination::health",
+        "super::health",
+        "health::transition",
+        "RecoveryPolicy",
+        "Utc::now",
+        "Local::now",
+        "SystemTime::now",
+        "Instant::now",
+        "std::fs",
+        "std::process",
+    ] {
+        assert!(
+            !runtime.contains(forbidden),
+            "task deadline policy crossed its pure-module fence via {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn mutable_scan_caches_are_not_global_statics() {
     let tasks = read_source("src/commands/tasks.rs");
     assert!(
