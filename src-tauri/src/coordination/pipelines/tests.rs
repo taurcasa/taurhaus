@@ -4520,9 +4520,9 @@ fn a_stop_that_failed_aborts_the_effort_resume() {
     let mut orchestrator =
         seed_running_codex_member(&tmp, runtime.clone(), &CliCommandSettings::default());
     assign_task(&tmp, "builder", "high", "the migration is irreversible");
-    // The pane no longer belongs to the project the member is on, so the
-    // teardown refuses to kill it.
-    runtime.set_pane_ownership("%21", false);
+    // The pane id has been reused by another process, so the identity-aware
+    // teardown refuses to kill it even though its project path still matches.
+    runtime.set_pane_identity("%21", Some(4040), Some(1_755_000_040));
 
     let before = codex_launch_attempts(&runtime);
     let resumed = orchestrator
