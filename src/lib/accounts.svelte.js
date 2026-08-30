@@ -184,13 +184,56 @@ function mergeUsageReport(state, report, pending) {
   )
 }
 
-function scheduleUsageSync(tool, pending, deadline, retryMs = USAGE_SYNC_INITIAL_RETRY_MS) {
-  if (pending.size === 0 || Date.now() >= deadline) return
+/**
+ * One caller waiting for a named account's reading to be superseded.
+ *
+ * It answers exactly once, whatever ends the chain that carries it: the newer
+ * reading, the deadline, a failed read, or another refresh taking the timer
+ * over. A launch that waits must never be left waiting.
+ */
+function usageWatch(accountId, resolve) {
+  let answered = false
+  return {
+    accountId,
+    settle(current) {
+      if (answered) return
+      answered = true
+      resolve({ ok: true, current })
+    },
+  }
+}
+
+function stopUsageSync(tool) {
   const previous = usageSyncTimers.get(tool)
-  if (previous) clearTimeout(previous)
+  if (!previous) return
+  clearTimeout(previous.timer)
+  usageSyncTimers.delete(tool)
+  previous.watch?.settle(false)
+}
+
+function scheduleUsageSync(
+  tool,
+  pending,
+  deadline,
+  retryMs = USAGE_SYNC_INITIAL_RETRY_MS,
+  watch = null
+) {
+  let waiting = watch
+  if (waiting && !pending.has(waiting.accountId)) {
+    waiting.settle(true)
+    waiting = null
+  }
+  if (pending.size === 0 || Date.now() >= deadline) {
+    waiting?.settle(false)
+    return
+  }
+  stopUsageSync(tool)
   const timer = setTimeout(async () => {
-    if (usageSyncTimers.get(tool) === timer) usageSyncTimers.delete(tool)
-    if (Date.now() >= deadline) return
+    if (usageSyncTimers.get(tool)?.timer === timer) usageSyncTimers.delete(tool)
+    if (Date.now() >= deadline) {
+      waiting?.settle(false)
+      return
+    }
     try {
       const report = await listAccounts(tool)
       const remaining = mergeUsageReport(mutableAccountState(tool), report, pending)
@@ -198,17 +241,37 @@ function scheduleUsageSync(tool, pending, deadline, retryMs = USAGE_SYNC_INITIAL
         tool,
         remaining,
         deadline,
-        Math.min(retryMs * 2, USAGE_SYNC_MAX_RETRY_MS)
+        Math.min(retryMs * 2, USAGE_SYNC_MAX_RETRY_MS),
+        waiting
       )
     } catch (error) {
       console.warn('Failed to read refreshed account usage:', error)
+      waiting?.settle(false)
     }
   }, Math.min(retryMs, deadline - Date.now()))
   timer?.unref?.()
-  usageSyncTimers.set(tool, timer)
+  usageSyncTimers.set(tool, { timer, watch: waiting })
 }
 
-export function refreshUsage(tool = providerTool()) {
+/**
+ * Ask for fresh usage, and say what came of it.
+ *
+ * `refresh_accounts_usage` only *schedules* the fetch on the backend's own
+ * poller thread, so the read that follows it still carries the numbers it was
+ * asked to replace. `settleFor` is the launch path's answer to that: naming an
+ * account makes the promise wait for that account's own reading to be
+ * superseded, bounded by the same deadline the background sync uses.
+ *
+ * An account nothing has ever reported on is not waited for — there is no
+ * reading to supersede, and a launch is never held up over one that does not
+ * exist.
+ *
+ * Resolves `{ ok, current }`: `ok` is false when the round trip itself failed,
+ * `current` false when the named account's reading is still the older one when
+ * the wait runs out. A caller deciding something on those numbers must treat
+ * either as "nothing new was learned".
+ */
+export function refreshUsage(tool = providerTool(), { settleFor = null } = {}) {
   const id = toolId(tool)
   const state = mutableAccountState(id)
   const pending = new Map(
@@ -216,16 +279,30 @@ export function refreshUsage(tool = providerTool()) {
       .filter((account) => account.logged_in && account.usage_capable !== false)
       .map((account) => [account.id, usageObservation(account)])
   )
+  const awaited = settleFor && pending.get(settleFor) != null ? settleFor : null
   return Promise.resolve(refreshAccountsUsage(id))
     .then((scheduled) => listAccounts(id).then((report) => ({ report, scheduled })))
     .then(({ report, scheduled }) => {
       const remaining = mergeUsageReport(state, report, pending)
-      if (scheduled) {
-        scheduleUsageSync(id, remaining, Date.now() + USAGE_SYNC_DEADLINE_MS)
+      if (!scheduled) return { ok: true, current: true }
+      const deadline = Date.now() + USAGE_SYNC_DEADLINE_MS
+      if (!awaited || !remaining.has(awaited)) {
+        scheduleUsageSync(id, remaining, deadline)
+        return { ok: true, current: true }
       }
+      return new Promise((resolve) => {
+        scheduleUsageSync(
+          id,
+          remaining,
+          deadline,
+          USAGE_SYNC_INITIAL_RETRY_MS,
+          usageWatch(awaited, resolve)
+        )
+      })
     })
     .catch((error) => {
       console.warn('Failed to refresh account usage:', error)
+      return { ok: false, current: false }
     })
 }
 
@@ -282,14 +359,24 @@ export function launchFollowsHistory(mode) {
   return HISTORY_MODES.has(mode)
 }
 
-async function backendPlacesLaunch(projectId, tool, mode) {
-  if (!HISTORY_MODES.has(mode)) return false
+/**
+ * The account the backend would place this launch on, or `null` when it would
+ * place none.
+ *
+ * The transcript that decides a resume is the backend's to read, and its answer
+ * carries the account itself — not merely that something decided. Anything
+ * judged about that launch has to be judged about *that* subscription, so the
+ * id travels with the answer even when nothing here can name it.
+ */
+async function backendPlacedAccount(projectId, tool, mode) {
+  if (!HISTORY_MODES.has(mode)) return null
   try {
     const placed = await resolveLaunchAccount(projectId, tool, mode)
-    return !(placed?.needsChoice ?? placed?.needs_choice ?? true)
+    if (placed?.needsChoice ?? placed?.needs_choice ?? true) return null
+    return { accountId: placed?.accountId ?? placed?.account_id ?? null }
   } catch (error) {
     console.warn('Failed to resolve the account for this launch:', error)
-    return false
+    return null
   }
 }
 
@@ -364,18 +451,25 @@ export async function requestLaunch({
     preselectedAccountId = effectiveAccount(project, id).account?.id ?? null
     await refreshUsage(id)
   } else {
+    // For a resume the backend outranks anything remembered here: it reads the
+    // transcript, which decides the launch whatever this side would have
+    // picked.
+    const placed = await backendPlacedAccount(projectId, id, mode)
     const memory = effectiveAccount(project, id)
-    const settled =
-      Boolean(memory.account && memory.origin !== 'default_config_dir') ||
-      (await backendPlacesLaunch(projectId, id, mode))
+    const remembered = memory.origin === 'default_config_dir' ? null : memory.account?.id ?? null
+    const settledAccountId = placed ? placed.accountId : remembered
 
-    // The reading has to be current before it can veto a launch, and the
-    // effective account has to be re-read after it: `refreshUsage` replaces the
-    // account records rather than mutating them.
-    await refreshUsage(id)
-    if (settled) {
-      reason = exhaustionReason(effectiveAccount(project, id).account)
+    if (placed || remembered) {
+      // The reading has to be current before it can veto a launch, and the
+      // account has to be re-read after it: `refreshUsage` replaces the account
+      // records rather than mutating them. A refresh that fails or never lands
+      // leaves the launch exactly as it was before any of this existed.
+      const refreshed = await refreshUsage(id, { settleFor: settledAccountId })
+      if (!refreshed.ok || !refreshed.current) return run(null)
+      reason = exhaustionReason(usableAccount(id, settledAccountId))
       if (!reason) return run(null)
+    } else {
+      await refreshUsage(id)
     }
   }
 
@@ -402,7 +496,7 @@ export function pendingAccountChoice() {
 }
 
 export function resetAccountsForTest() {
-  for (const timer of usageSyncTimers.values()) clearTimeout(timer)
+  for (const tool of [...usageSyncTimers.keys()]) stopUsageSync(tool)
   usageSyncTimers.clear()
   for (const state of Object.values(accounts.byTool)) {
     state.accounts = []

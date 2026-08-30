@@ -753,6 +753,8 @@ describe('claudeAccounts store', () => {
   })
 
   describe('the chooser as the way out of a spent subscription', () => {
+    const EARLIER = '2026-08-30T08:00:00Z'
+    const LATER = '2026-08-30T09:00:00Z'
     const windowAt = (key, title, used, severity = 'normal') => ({
       key,
       title,
@@ -762,7 +764,7 @@ describe('claudeAccounts store', () => {
       is_active: true,
     })
     const snapshot = (status, windows) => ({
-      observed_at: '2026-08-30T09:00:00Z',
+      observed_at: EARLIER,
       status,
       windows,
       note: null,
@@ -780,13 +782,36 @@ describe('claudeAccounts store', () => {
       accountMemory: { claude: { accountId, origin } },
     })
 
+    /**
+     * The reading one account already has, and the one the refresh this launch
+     * asks for brings back.
+     *
+     * `refresh_accounts_usage` only schedules the fetch on the backend's own
+     * poller thread, so the read that immediately follows the request still
+     * carries the old numbers and the new ones appear on the read after that.
+     */
+    const usageLands = (cached, refreshed, accountId = 'account-1') => {
+      let readsAfterRequest = 0
+      listAccounts.mockImplementation(() => {
+        const landed = refreshAccountsUsage.mock.calls.length > 0 && readsAfterRequest++ > 0
+        const usage = landed ? refreshed && { ...refreshed, observed_at: LATER } : cached
+        return Promise.resolve(
+          detected(
+            [PRIMARY, SECOND].map((account) =>
+              account.id === accountId ? { ...account, usage } : account
+            )
+          )
+        )
+      })
+    }
+
     // Regression: #35 (per-project account memory) made the chooser open only
     // when nothing had decided the launch. Every project that has ever launched
     // remembers an account, so the dialog never appeared again — including at
     // the one moment its answer matters, when the remembered subscription has
     // run out of usage and the launch would silently continue into it.
     it('opens on the remembered account being spent, instead of launching into it', async () => {
-      listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SPENT }, SECOND]))
+      usageLands(SPENT, SPENT)
 
       await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
 
@@ -802,8 +827,31 @@ describe('claudeAccounts store', () => {
       })
     })
 
+    // Regression: ea6dca0 judged the account the moment `refresh_accounts_usage`
+    // answered, but that call only schedules the fetch on the backend's own
+    // thread (`usage_poller.rs`): the reading it inspected was still the cached
+    // one. A launch therefore continued into a subscription that the very
+    // refresh it had asked for was about to report as spent.
+    it('judges the reading it asked for, not the one it already had', async () => {
+      usageLands(HEADROOM, SPENT)
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
+    })
+
+    it('launches once the reading it asked for says the week is not spent after all', async () => {
+      usageLands(SPENT, HEADROOM)
+
+      await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
     it('launches on the remembered account while it still has headroom', async () => {
-      listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: HEADROOM }, SECOND]))
+      usageLands(HEADROOM, HEADROOM)
 
       await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
 
@@ -821,9 +869,7 @@ describe('claudeAccounts store', () => {
     })
 
     it('says an account that cannot be read needs signing in again', async () => {
-      listAccounts.mockResolvedValue(
-        detected([{ ...PRIMARY, usage: snapshot('unauthorized', []) }, SECOND])
-      )
+      usageLands(HEADROOM, snapshot('unauthorized', []))
 
       await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
 
@@ -833,18 +879,18 @@ describe('claudeAccounts store', () => {
     })
 
     it('counts a stale reading — it is the last thing known about the limit', async () => {
-      listAccounts.mockResolvedValue(
-        detected([
-          { ...PRIMARY, usage: snapshot('stale', [windowAt('week', 'Current week', 100)]) },
-          SECOND,
-        ])
-      )
+      usageLands(HEADROOM, snapshot('stale', [windowAt('week', 'Current week', 100)]))
 
       await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
 
       expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
     })
 
+    // Regression: ea6dca0 swallowed a failed refresh and judged the launch on
+    // whatever reading was left over, so a daemon that could not be reached
+    // turned an old exhausted number into a dialog the operator never used to
+    // get — the opposite of what the change promised, that a refresh which
+    // cannot run leaves the launch exactly as it was.
     it('launches as before when the usage refresh fails', async () => {
       listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SPENT }, SECOND]))
       await refreshAccounts('claude')
@@ -854,9 +900,28 @@ describe('claudeAccounts store', () => {
       await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
 
       warn.mockRestore()
-      // The reading it already had is the one it judges on; a refresh that
-      // cannot run never turns into a blocked launch.
-      expect(claudeAccounts.pending).toMatchObject({ reason: { kind: 'exhausted' } })
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+    })
+
+    // Regression: ea6dca0. A launch waits for the reading it asked for, but the
+    // wait is bounded by the same deadline the background sync uses: a poller
+    // that never publishes must not hold a launch open for ever.
+    it('launches when the reading it asked for never arrives', async () => {
+      vi.useFakeTimers()
+      try {
+        listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SPENT }, SECOND]))
+
+        const launching = requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
+        await vi.advanceTimersByTimeAsync(31_000)
+        await launching
+
+        expect(claudeAccounts.pending).toBe(null)
+        expect(launchCliSession).toHaveBeenCalledWith('p1', 'fresh', 'claude', null)
+      } finally {
+        resetAccountsForTest()
+        vi.useRealTimers()
+      }
     })
 
     it('never blocks a launch on an account nothing was ever known about', async () => {
@@ -873,7 +938,7 @@ describe('claudeAccounts store', () => {
     })
 
     it('checks the account a resume the backend places would run on', async () => {
-      listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SPENT }, SECOND]))
+      usageLands(HEADROOM, SPENT)
       resolveLaunchAccount.mockResolvedValue({
         accountId: 'account-1',
         source: 'session',
@@ -890,7 +955,7 @@ describe('claudeAccounts store', () => {
     })
 
     it('still asks nothing for a resume whose account has headroom', async () => {
-      listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: HEADROOM }, SECOND]))
+      usageLands(HEADROOM, HEADROOM)
       resolveLaunchAccount.mockResolvedValue({
         accountId: 'account-1',
         source: 'session',
@@ -898,6 +963,63 @@ describe('claudeAccounts store', () => {
       })
 
       await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+    })
+
+    // Regression: ea6dca0 asked the backend only whether *something* had placed
+    // the launch and then read the usage of whichever account the frontend's
+    // own precedence landed on. The transcript that decides a resume is the
+    // backend's to read, and it answers with the account itself: here it places
+    // the resume on the second subscription while the frontend would have
+    // judged the first, so the spent one was never seen.
+    it('checks the account the backend places the resume on, not the frontend fallback', async () => {
+      usageLands(HEADROOM, SPENT, 'account-2')
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-2',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: { id: 'p1' }, mode: 'resume', tool: 'claude' })
+
+      expect(launchCliSession).not.toHaveBeenCalled()
+      expect(claudeAccounts.pending).toMatchObject({
+        mode: 'resume',
+        reason: { kind: 'exhausted', accountLabel: 'm.stier@giesi.com' },
+      })
+    })
+
+    // Regression: ea6dca0 — the same confusion in the other direction: the
+    // project's memory named a spent account the resume would never have run
+    // on, and the chooser opened over a transcript the backend had already
+    // placed on a subscription with headroom.
+    it('launches a resume the backend places on an account with headroom, whatever the project remembers', async () => {
+      usageLands(SPENT, SPENT)
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-2',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: remembering(), mode: 'resume', tool: 'claude' })
+
+      expect(claudeAccounts.pending).toBe(null)
+      expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
+    })
+
+    // Regression: ea6dca0 — an account the frontend cannot name is not one it
+    // may judge in another account's place.
+    it('launches when the backend places the resume on an account nothing here knows', async () => {
+      usageLands(SPENT, SPENT)
+      resolveLaunchAccount.mockResolvedValue({
+        accountId: 'account-9',
+        source: 'session',
+        needsChoice: false,
+      })
+
+      await requestLaunch({ project: remembering(), mode: 'resume', tool: 'claude' })
 
       expect(claudeAccounts.pending).toBe(null)
       expect(launchCliSession).toHaveBeenCalledWith('p1', 'resume', 'claude', null)
@@ -913,7 +1035,7 @@ describe('claudeAccounts store', () => {
     })
 
     it('confirming a reasoned chooser still pins and launches', async () => {
-      listAccounts.mockResolvedValue(detected([{ ...PRIMARY, usage: SPENT }, SECOND]))
+      usageLands(SPENT, SPENT)
       await requestLaunch({ project: remembering(), mode: 'fresh', tool: 'claude' })
 
       await claudeAccounts.pending.confirm('account-2', true)
@@ -970,6 +1092,22 @@ describe('claudeAccounts store', () => {
         })
 
         expect(refreshAccountsUsage).toHaveBeenCalledWith('claude')
+      })
+
+      it('does not wait for the reading: the dialog is already open', async () => {
+        // The meters fill in as the poller publishes; a user who asked to
+        // choose is looking at the list, not at a launch that has stopped.
+        usageLands(HEADROOM, SPENT)
+
+        await requestLaunch({
+          project: remembering(),
+          mode: 'fresh',
+          tool: 'claude',
+          choose: 'always',
+        })
+
+        expect(claudeAccounts.pending).toMatchObject({ preselectedAccountId: 'account-1' })
+        expect(listAccounts).toHaveBeenCalledTimes(2)
       })
 
       it('is still outranked by an account the caller named outright', async () => {
