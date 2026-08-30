@@ -12,6 +12,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The full quality gate now fails with its lane** — `just check` preserves a failed parallel lane's status, stops its peer, and is regression-guarded through `just lint` without running the real lanes.
+
 - **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.
 
 ## [0.8.4] - 2026-08-30
