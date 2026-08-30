@@ -2826,9 +2826,9 @@ fn live_status_ignores_cached_snapshot_pane_when_record_has_newer_pane() {
 
 #[test]
 fn daemon_pid_survives_an_interleaved_live_status_save() {
-    // Regression: 366f4b7 allowed the live-status writer to save an offline
-    // verdict from before a launch, dropping the new daemon pid so the next
-    // liveness pass killed that daemon as an unrecorded duplicate.
+    // Regression: 668d9f83 made the stale live-status write skippable but left
+    // daemon termination before the compare-and-commit, so a skipped verdict
+    // could leave the winning record pointing at a process it had just killed.
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
     let team_name = "live-status-interleave";
@@ -2851,6 +2851,7 @@ fn daemon_pid_survives_an_interleaved_live_status_save() {
     MemberRuntimeStore::save(tmp.path(), team_name, member_name, &before_launch)
         .expect("save old runtime");
     runtime.set_pane_exists("%old", false);
+    runtime.set_pid_running(7100, true);
     let probe_gate = runtime.pause_live_pane_probe("%old");
 
     let teams_dir = tmp.path().to_path_buf();
@@ -2884,6 +2885,13 @@ fn daemon_pid_survives_an_interleaved_live_status_save() {
         MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("final runtime"),
         launched,
         "a stale live-status verdict must not erase any committed launch field"
+    );
+    assert!(
+        runtime
+            .calls()
+            .iter()
+            .all(|call| !matches!(call, RuntimeCall::TerminatePid { pid: 7100 })),
+        "a skipped live-status verdict must not terminate the recorded daemon"
     );
 }
 

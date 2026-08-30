@@ -125,20 +125,11 @@ impl CoordinationOrchestrator {
                 runtime.pane_id = snapshot_pane_id;
             }
 
+            let mut daemon_pid_to_terminate = None;
             if !spec(member.cli_tool).capabilities.native_inbox_poller {
                 if let Some(pid) = runtime.daemon_pid {
                     match self.runtime.is_process_running_by_pid(pid) {
-                        Ok(true) => {
-                            if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
-                                tracing::warn!(
-                                    team = %team_name,
-                                    member = %member_name,
-                                    pid = pid,
-                                    error = %err,
-                                    "failed to terminate stale daemon during live-status presence reconciliation"
-                                );
-                            }
-                        }
+                        Ok(true) => daemon_pid_to_terminate = Some(pid),
                         Ok(false) => {}
                         Err(err) => {
                             tracing::warn!(
@@ -170,6 +161,17 @@ impl CoordinationOrchestrator {
             )?;
             drop(guard);
             if outcome == RuntimeCommitOutcome::Committed {
+                if let Some(pid) = daemon_pid_to_terminate {
+                    if let Err(err) = self.runtime.terminate_process_by_pid(pid) {
+                        tracing::warn!(
+                            team = %team_name,
+                            member = %member_name,
+                            pid = pid,
+                            error = %err,
+                            "failed to terminate stale daemon during live-status presence reconciliation"
+                        );
+                    }
+                }
                 reconciled_members.insert(member_name);
             }
         }
