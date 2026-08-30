@@ -23,7 +23,8 @@ pub struct AgyAccountProvider;
 
 impl AccountProvider for AgyAccountProvider {
     fn default_dir(&self, home: &Path) -> PathBuf {
-        home.join(".gemini")
+        crate::provider::platform_paths::PlatformPaths::agy_dir_override()
+            .unwrap_or_else(|| home.join(".gemini"))
     }
 
     fn candidate_dirs(&self, home: &Path, _live_selector_values: &[PathBuf]) -> Vec<PathBuf> {
@@ -301,6 +302,26 @@ mod tests {
         assert_eq!(identity.id, "person@example.com");
         assert!(identity.logged_in);
         assert_eq!(provider.session_dir(Path::new("conversation.db")), None);
+    }
+
+    // Regression: commit 4e9e2c54 put Antigravity hook and session paths behind
+    // `PlatformPaths`, but account detection still read the operator's real
+    // `~/.gemini` during an otherwise isolated E2E run.
+    #[test]
+    fn agy_account_provider_honours_the_taurhaus_root_override() {
+        let _guard = crate::test_support::acquire_env_test_guard();
+        let process_home = tempfile::tempdir().unwrap();
+        let isolated_root = tempfile::tempdir().unwrap();
+        let previous = std::env::var_os("TAURHAUS_AGY_DIR");
+        std::env::set_var("TAURHAUS_AGY_DIR", isolated_root.path());
+
+        let resolved = AgyAccountProvider.default_dir(process_home.path());
+
+        match previous {
+            Some(value) => std::env::set_var("TAURHAUS_AGY_DIR", value),
+            None => std::env::remove_var("TAURHAUS_AGY_DIR"),
+        }
+        assert_eq!(resolved, isolated_root.path());
     }
 
     #[test]

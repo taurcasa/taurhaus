@@ -87,13 +87,18 @@ impl PlatformPaths {
     /// has no supported process-level home selector, so managed launches still
     /// use its real `~/.gemini` root.
     pub fn agy_dir() -> PathBuf {
-        if let Some(path) = env_path_override(AGY_DIR_OVERRIDE_ENV) {
+        if let Some(path) = Self::agy_dir_override() {
             return path;
         }
         if let Some(path) = windows_unc_home_subdir(".gemini") {
             return path;
         }
         home_dir_or_temp().join(".gemini")
+    }
+
+    /// The taurhaus-only Antigravity root override, when configured.
+    pub fn agy_dir_override() -> Option<PathBuf> {
+        env_path_override(AGY_DIR_OVERRIDE_ENV)
     }
 
     /// App-data root used by coordination template hydration.
