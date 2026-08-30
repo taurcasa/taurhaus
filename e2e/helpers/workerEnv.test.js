@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { homedir } from 'node:os'
 import { isAbsolute, join, relative } from 'node:path'
 
-import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './workerEnv.js'
+import {
+  WORKER_ROOT_ENV_KEYS,
+  buildWorkerEnv,
+  findAvailableWorkerDaemonPort,
+} from './workerEnv.js'
 import { E2E_RUN_TOKEN_ENV } from './laneCleanup.js'
 
 function isInside(root, candidate) {
@@ -68,14 +72,54 @@ describe('buildWorkerEnv', () => {
     expect(env.TAURHAUS_DAEMON_BINARY).toBe(daemonBinaryPath)
   })
 
-  // Regression: commit fc896344 isolated writable roots but left startup free
-  // to probe the operator's real Claude, Codex, and Antigravity executables.
-  it('disables real CLI version probes in every worker', () => {
+  it('derives a stable private daemon port that differs between worker roots', () => {
+    const first = buildWorkerEnv('/tmp/taurhaus-e2e-worker-a').TAURHAUS_DAEMON_PORT
+    const repeated = buildWorkerEnv('/tmp/taurhaus-e2e-worker-a').TAURHAUS_DAEMON_PORT
+    const second = buildWorkerEnv('/tmp/taurhaus-e2e-worker-b').TAURHAUS_DAEMON_PORT
+
+    expect(repeated).toBe(first)
+    expect(second).not.toBe(first)
+    expect(Number(first)).toBeGreaterThanOrEqual(20_000)
+    expect(Number(first)).toBeLessThan(32_000)
+  })
+
+  // Regression: commit 7908cbf4 selected a worker port by hash without
+  // checking whether another process already owned it.
+  it('walks to another worker port when the derived candidate is occupied', async () => {
+    const root = '/tmp/taurhaus-e2e-worker-collision'
+    const first = Number(buildWorkerEnv(root).TAURHAUS_DAEMON_PORT)
+    const checked = []
+
+    const available = await findAvailableWorkerDaemonPort(root, {
+      isPortAvailable: async (candidate) => {
+        checked.push(candidate)
+        return candidate !== first
+      },
+    })
+
+    expect(checked).toEqual([first, first + 1])
+    expect(available).toBe(first + 1)
+  })
+
+  // Regression: commit fc896344 isolated writable roots but left ordinary
+  // startup free to probe the operator's real CLI executables.
+  it('disables real CLI version probes in ordinary workers', () => {
     const env = buildWorkerEnv('/tmp/taurhaus-e2e-1234-worker', {
       baseEnv: { TAURHAUS_SKIP_CLI_VERSION_PROBES: '' },
     })
 
     expect(env.TAURHAUS_SKIP_CLI_VERSION_PROBES).toBe('1')
+  })
+
+  // Regression: commit 7908cbf4 disabled version probes even in paid Codex
+  // hook lanes, leaving hook support unknown and preventing installation.
+  it('allows a paid worker to probe its explicitly invoked CLI version', () => {
+    const env = buildWorkerEnv('/tmp/taurhaus-e2e-paid-worker', {
+      baseEnv: { TAURHAUS_SKIP_CLI_VERSION_PROBES: '1' },
+      skipCliVersionProbes: false,
+    })
+
+    expect(env.TAURHAUS_SKIP_CLI_VERSION_PROBES).toBeUndefined()
   })
 
   // Regression: commit 69bb4e1a added a UUID run token to the ownership

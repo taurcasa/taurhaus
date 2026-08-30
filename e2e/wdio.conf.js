@@ -52,7 +52,11 @@ import {
   createOwnedProcessLedger,
   findRunTokenProcessRecords,
 } from './helpers/laneCleanup.js'
-import { WORKER_ROOT_ENV_KEYS, buildWorkerEnv } from './helpers/workerEnv.js'
+import {
+  WORKER_ROOT_ENV_KEYS,
+  buildWorkerEnv,
+  findAvailableWorkerDaemonPort,
+} from './helpers/workerEnv.js'
 import { CODEX_SCRATCH_SPECS, buildSpecList } from './specList.js'
 
 const projectRoot = resolve(import.meta.dirname, '..')
@@ -543,10 +547,16 @@ export const config = {
     sessionTempRoot = mkdtempSync(`${tmpdir()}/taurhaus-e2e-${process.pid}-`)
     sessionRunToken = randomUUID()
     processLedger = createOwnedProcessLedger({ checkoutRoot: projectRoot, runToken: sessionRunToken })
+    const daemonPort = await findAvailableWorkerDaemonPort(sessionTempRoot)
+    const paidCodexWorker = (specs ?? []).some((spec) =>
+      CODEX_SCRATCH_SPECS.some((name) => resolve(spec).endsWith(name))
+    )
     const workerEnv = buildWorkerEnv(sessionTempRoot, {
       baseEnv: process.env,
       runToken: sessionRunToken,
       daemonBinaryPath: resolve(projectRoot, 'src-tauri/target/debug/taurhaus-daemon'),
+      daemonPort,
+      skipCliVersionProbes: !paidCodexWorker,
     })
     const tauriDataDir = workerEnv.TAURHAUS_DATA_DIR
     const tauriClaudeDir = workerEnv.TAURHAUS_CLAUDE_DIR
@@ -581,7 +591,8 @@ export const config = {
       'TAURHAUS_SKIP_CLI_VERSION_PROBES',
       E2E_RUN_TOKEN_ENV,
     ]) {
-      process.env[key] = workerEnv[key]
+      if (workerEnv[key] === undefined) delete process.env[key]
+      else process.env[key] = workerEnv[key]
     }
     console.log(`[e2e] daemon port for this worker: ${workerEnv.TAURHAUS_DAEMON_PORT}`)
     prepareIsolatedTmux(workerEnv)
