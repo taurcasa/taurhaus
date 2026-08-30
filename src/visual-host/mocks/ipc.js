@@ -40,6 +40,10 @@ export function listAccounts(...args) {
   return asyncResult('listAccounts', args)
 }
 
+export function resolveLaunchBases(...args) {
+  return asyncResult('resolveLaunchBases', args)
+}
+
 export function setProjectAccount(...args) {
   return asyncResult('setProjectAccount', args)
 }

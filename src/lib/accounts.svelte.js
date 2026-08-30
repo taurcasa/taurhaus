@@ -8,6 +8,7 @@ import {
   listAccounts,
   refreshAccountsUsage,
   resolveLaunchAccount,
+  resolveLaunchBases,
   setProjectAccount,
 } from './ipc.js'
 import { toolDescriptor, tools } from './toolRegistry.js'
@@ -17,6 +18,7 @@ const accounts = $state({ byTool: {} })
 const EMPTY_STATE = Object.freeze({
   accounts: Object.freeze([]),
   resolvedBases: Object.freeze([]),
+  resolvingBases: false,
   degraded: false,
   defaultAccountId: null,
   projectChoices: Object.freeze({}),
@@ -42,6 +44,7 @@ function mutableAccountState(tool = providerTool()) {
     accounts.byTool[id] = {
       accounts: [],
       resolvedBases: [],
+      resolvingBases: false,
       degraded: false,
       defaultAccountId: null,
       projectChoices: {},
@@ -170,6 +173,7 @@ export function rememberChoice(projectOrId, tool, accountId) {
 }
 
 const detections = new Map()
+const launchBaseResolutions = new Map()
 const DETECTION_TTL_MS = 60_000
 const USAGE_SYNC_INITIAL_RETRY_MS = 250
 const USAGE_SYNC_MAX_RETRY_MS = 16_000
@@ -184,7 +188,37 @@ const usageSyncTimers = new Map()
  * lands, the literal commands in settings are the honest answer.
  */
 export function forgetResolvedBases(tool = providerTool()) {
-  mutableAccountState(tool).resolvedBases = []
+  const id = toolId(tool)
+  mutableAccountState(id).resolvedBases = []
+  launchBaseResolutions.delete(id)
+}
+
+/** Ask what this tool's configured launch commands mean, independently of detection. */
+export function refreshResolvedBases(tool = providerTool(), { force = false } = {}) {
+  const id = toolId(tool)
+  const current = launchBaseResolutions.get(id)
+  if (!force && current) return current
+
+  const state = mutableAccountState(id)
+  state.resolvingBases = true
+  let failed = false
+  const promise = Promise.resolve()
+    .then(() => resolveLaunchBases(id))
+    .then((bases) => {
+      if (launchBaseResolutions.get(id) === promise) state.resolvedBases = bases ?? []
+    })
+    .catch((error) => {
+      failed = true
+      console.warn('Failed to resolve launch commands:', error)
+    })
+    .finally(() => {
+      if (launchBaseResolutions.get(id) === promise) {
+        state.resolvingBases = false
+        if (failed) launchBaseResolutions.delete(id)
+      }
+    })
+  launchBaseResolutions.set(id, promise)
+  return promise
 }
 
 export function refreshAccounts(tool = providerTool(), { force = false } = {}) {
@@ -294,10 +328,6 @@ function detectAccounts(tool) {
       return
     }
     state.accounts = keepKnownUsage(state, addressableAccounts(report?.accounts ?? []))
-    // What the pane shell makes of each configured launch command, resolved
-    // where that shell lives. An older backend sends none and the frontend
-    // falls back to the literal commands in settings.
-    state.resolvedBases = report?.resolvedBases ?? report?.resolved_bases ?? []
     state.degraded = false
   })
   const settings = Promise.resolve(getSettings())
@@ -471,10 +501,12 @@ export function resetAccountsForTest() {
   for (const state of Object.values(accounts.byTool)) {
     state.accounts = []
     state.resolvedBases = []
+    state.resolvingBases = false
     state.degraded = false
     state.defaultAccountId = null
     state.projectChoices = {}
     state.pending = null
   }
   detections.clear()
+  launchBaseResolutions.clear()
 }

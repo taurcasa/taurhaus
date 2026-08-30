@@ -10,6 +10,7 @@ function createDefaults() {
       removeProject: undefined,
       openExternalUrl: undefined,
       listAccounts: { accounts: [], source: 'native', degraded: false, error: null },
+      resolveLaunchBases: [],
       setProjectAccount: undefined,
       getProjectTasks: { tasks: [], errors: [] },
       getArchivedSessions: { sessions: [], errors: [] },

@@ -84,31 +84,47 @@ pub(crate) enum DaemonAnswer<T> {
 
 #[tauri::command]
 pub fn list_accounts(
-    db: State<'_, DbState>,
     provider: State<'_, ProviderState>,
     tool: CliTool,
 ) -> IpcResult<AccountsResult> {
     let span = IpcCommandSpan::start("list_accounts");
-    let result = Ok::<_, String>(list_accounts_impl(db.inner(), provider.inner(), tool))
-        .ipc_cmd("list_accounts");
+    let result =
+        Ok::<_, String>(list_accounts_impl(provider.inner(), tool)).ipc_cmd("list_accounts");
     span.finish_result(&result);
     result
 }
 
-/// The accounts a tool has, plus what a launch command really starts.
-///
-/// Settings says which account is in force, and a base command that carries an
-/// account selector of its own — directly or through a shell alias — is part of
-/// that answer.
-pub(crate) fn list_accounts_impl(
+/// The accounts read path never asks an interactive shell what a launch means.
+pub(crate) fn list_accounts_impl(provider: &ProviderState, tool: CliTool) -> AccountsResult {
+    accounts_report(provider, tool)
+}
+
+/// Resolve the launch commands only for the Settings accounts surface.
+#[tauri::command(async)]
+pub fn resolve_launch_bases(
+    db: State<'_, DbState>,
+    provider: State<'_, ProviderState>,
+    tool: CliTool,
+) -> IpcResult<Vec<ResolvedBase>> {
+    let span = IpcCommandSpan::start("resolve_launch_bases");
+    let result = Ok::<_, String>(resolve_launch_bases_impl(
+        db.inner(),
+        provider.inner(),
+        tool,
+    ))
+    .ipc_cmd("resolve_launch_bases");
+    span.finish_result(&result);
+    result
+}
+
+pub(crate) fn resolve_launch_bases_impl(
     db: &DbState,
     provider: &ProviderState,
     tool: CliTool,
-) -> AccountsResult {
-    let mut report = accounts_report(provider, tool);
+) -> Vec<ResolvedBase> {
     let commands = crate::commands::terminal_settings::load_terminal_settings(db).cli_commands;
     let mut seen = std::collections::HashSet::new();
-    report.resolved_bases = [
+    [
         protocol::LaunchMode::Fresh,
         protocol::LaunchMode::Continue,
         protocol::LaunchMode::Resume,
@@ -117,8 +133,7 @@ pub(crate) fn list_accounts_impl(
     .map(|mode| crate::session_scanner::launch::base_command(&commands, tool, mode))
     .filter(|base| seen.insert(base.to_string()))
     .map(|base| resolve_launch_base(provider, tool, base))
-    .collect();
-    report
+    .collect()
 }
 
 #[tauri::command]
@@ -222,10 +237,66 @@ pub(crate) fn resolve_launch_base(
     tool: CliTool,
     base: &str,
 ) -> ResolvedBase {
+    #[cfg(test)]
+    if let Some(resolved) = test_resolution_probe(base) {
+        return resolved;
+    }
     if cfg!(target_os = "windows") {
         return daemon_resolve_launch_base(provider, tool, base);
     }
     launch_base::resolve_base_command_cached(base, tool, &launch_base::ShellAliasProbe::for_pane())
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy)]
+struct TestResolutionProbe {
+    delay: Duration,
+    calls: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_RESOLUTION_PROBE: std::cell::RefCell<Option<TestResolutionProbe>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+#[cfg(test)]
+pub(crate) struct TestResolutionProbeGuard;
+
+#[cfg(test)]
+impl TestResolutionProbeGuard {
+    pub(crate) fn calls(&self) -> usize {
+        TEST_RESOLUTION_PROBE.with(|probe| probe.borrow().map_or(0, |probe| probe.calls))
+    }
+}
+
+#[cfg(test)]
+impl Drop for TestResolutionProbeGuard {
+    fn drop(&mut self) {
+        TEST_RESOLUTION_PROBE.with(|probe| *probe.borrow_mut() = None);
+    }
+}
+
+/// Install a counting, delayed stand-in for daemon/shell resolution on this test thread.
+#[cfg(test)]
+pub(crate) fn install_test_resolution_probe(delay: Duration) -> TestResolutionProbeGuard {
+    TEST_RESOLUTION_PROBE.with(|probe| {
+        *probe.borrow_mut() = Some(TestResolutionProbe { delay, calls: 0 });
+    });
+    TestResolutionProbeGuard
+}
+
+#[cfg(test)]
+fn test_resolution_probe(base: &str) -> Option<ResolvedBase> {
+    let delay = TEST_RESOLUTION_PROBE.with(|probe| {
+        let mut probe = probe.borrow_mut();
+        let probe = probe.as_mut()?;
+        probe.calls += 1;
+        Some(probe.delay)
+    })?;
+    std::thread::sleep(delay);
+    Some(literal_base(base))
 }
 
 fn daemon_resolve_launch_base(provider: &ProviderState, tool: CliTool, base: &str) -> ResolvedBase {
