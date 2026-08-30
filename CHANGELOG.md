@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **CI executes Rust tests** — every pull request runs the serialized Rust unit recipe in its own stable, cached job, while the Rust integration recipe runs on main pushes, manual dispatches, and pull requests labeled `rust-integration`. The integration runner verifies its Linux tools and ephemeral Git identity before starting the tests.
+
 ### Fixed
 
 - **Theme changes no longer wipe global default accounts** — IPC normalizers preserve backend fields they do not yet know, including each tool's `default_account_ids`, live member task effort, and resolved launch bases.

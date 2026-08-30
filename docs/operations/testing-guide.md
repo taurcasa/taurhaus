@@ -160,6 +160,15 @@ Both lanes take on every host change they make as an undo (`e2e/helpers/laneClea
 | `just test-macos-e2e` | macOS E2E on remote Mac Mini |
 | `just agent-quality` | Agent-facing wrapper around `just check-quick` |
 
+### CI schedule
+
+| Job | Command | When it runs |
+|-----|---------|--------------|
+| `Rust unit tests` | `just test-rust-unit` | Every pull request, main push, and manual workflow dispatch |
+| `Rust integration tests` | `just test-rust-integration` | Main pushes, manual workflow dispatches, and pull requests labeled `rust-integration` |
+
+Both Rust jobs cache build artifacts without skipping test execution. The integration job also configures an ephemeral Git identity and verifies `bun`, `cargo`, `git`, `just`, `tmux`, and the bundled executable-resolver script before it runs the recipe.
+
 ### Bisection recipes
 
 When a test failure needs narrowing down:
