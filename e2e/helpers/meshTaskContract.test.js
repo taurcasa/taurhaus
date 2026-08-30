@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   effortDeliveryVerdict,
+  effortWaitBoundMs,
+  expiredEffortWaitProblem,
   extractJsonBlock,
   findBlockedMessage,
   findResultMessage,
@@ -160,5 +162,41 @@ describe('effortDeliveryVerdict', () => {
     expect(
       effortDeliveryVerdict({ appliedEffort: ' Medium ', requiredEffort: 'medium', deliveredAt: '2026-08-29T15:44:57Z' })
     ).toBe('in-force')
+  })
+})
+
+describe('effortWaitBoundMs', () => {
+  it('is the three minutes mesh defaults to', () => {
+    expect(effortWaitBoundMs({})).toBe(180_000)
+  })
+
+  it('follows the override mesh reads', () => {
+    expect(effortWaitBoundMs({ MESH_EFFORT_WAIT_SECS: '45' })).toBe(45_000)
+  })
+
+  it('falls back to the default for a value mesh would not parse', () => {
+    expect(effortWaitBoundMs({ MESH_EFFORT_WAIT_SECS: 'nonsense' })).toBe(180_000)
+    expect(effortWaitBoundMs({ MESH_EFFORT_WAIT_SECS: '  ' })).toBe(180_000)
+  })
+})
+
+describe('expiredEffortWaitProblem', () => {
+  // Regression: 5e1d0ae accepted any delivery at or after
+  // `effort.resume.started`. mesh delivers a held notice for exactly two
+  // reasons — the member reached the level, or the wait ran out — and the
+  // second is a pure function of how long ago the assignment was made, so the
+  // records say which one happened.
+  it('names an expiry when delivery came no sooner than the wait bound', () => {
+    const problem = expiredEffortWaitProblem({ assignedAtMs: 1_000, deliveredAtMs: 181_000, boundMs: 180_000 })
+    expect(problem).toMatch(/expired/)
+  })
+
+  it('accepts a delivery inside the bound, which no expiry can produce', () => {
+    expect(expiredEffortWaitProblem({ assignedAtMs: 1_000, deliveredAtMs: 2_230, boundMs: 180_000 })).toBe('')
+  })
+
+  it('reports unreadable timestamps rather than calling them a pass', () => {
+    expect(expiredEffortWaitProblem({ assignedAtMs: NaN, deliveredAtMs: 2_230, boundMs: 180_000 })).toMatch(/timestamp/)
+    expect(expiredEffortWaitProblem({ assignedAtMs: 1_000, deliveredAtMs: null, boundMs: 180_000 })).toMatch(/timestamp/)
   })
 })

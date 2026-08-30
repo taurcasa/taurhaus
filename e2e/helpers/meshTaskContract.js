@@ -254,3 +254,54 @@ export function effortDeliveryVerdict({ appliedEffort, requiredEffort, delivered
   if (applied && applied === required) return 'in-force'
   return deliveredAt ? 'delivered-early' : 'holding'
 }
+
+/** mesh's own default effort-wait bound, in seconds (`daemon.rs`). */
+const DEFAULT_EFFORT_WAIT_SECS = 180
+
+/**
+ * How long mesh holds a notice before giving up on the effort, in ms.
+ *
+ * `MESH_EFFORT_WAIT_SECS` as mesh parses it: a `u64` count of seconds, and
+ * anything else — blank, negative, fractional, not a number — is the default.
+ * Read from an environment rather than from `process.env` so the value can be
+ * asserted, and so a lane can report the bound it judged against.
+ */
+export function effortWaitBoundMs(environment = {}) {
+  const raw = String(environment?.MESH_EFFORT_WAIT_SECS ?? '').trim()
+  if (!/^\d+$/.test(raw)) return DEFAULT_EFFORT_WAIT_SECS * 1_000
+  return Number(raw) * 1_000
+}
+
+/**
+ * Why a delivered notice cannot be read as "the effort gate opened", or `''`.
+ *
+ * mesh delivers a held assignment notice for exactly two reasons: the member
+ * reported the level the assignment asks for, or the wait ran out. The second
+ * one is a pure function of the clock — `decide_notice_effort_gate` expires the
+ * wait when `now - assigned_at >= bound` and nothing else re-arms it — so
+ * mesh's own attention record settles which happened. A delivery strictly
+ * inside the bound cannot be an expiry, and that is the ordering the gate
+ * promises.
+ *
+ * It is worth checking separately from the runtime record because an expiry is
+ * invisible a moment later: mesh hands the notice to a member still at the old
+ * level, the relaunch lands seconds afterwards, and every reading taken after
+ * that — `appliedEffort`, `pendingEffort`, a `deliveredAt` after the resume
+ * began — is exactly what a gate that closed properly leaves behind. mesh says
+ * so in its own log, but taurhaus spawns the member daemon with `Stdio::null`
+ * (`coordination/runtime/process.rs`), so that line reaches nobody.
+ */
+export function expiredEffortWaitProblem({ assignedAtMs, deliveredAtMs, boundMs }) {
+  if (!Number.isFinite(assignedAtMs) || !Number.isFinite(deliveredAtMs)) {
+    return `mesh's delivery record carries no readable timestamp pair (assigned ${assignedAtMs}, delivered ${deliveredAtMs})`
+  }
+
+  const heldMs = deliveredAtMs - assignedAtMs
+  if (heldMs >= boundMs) {
+    return (
+      `mesh held the notice ${heldMs}ms, at or past its ${boundMs}ms effort wait: the wait expired and the ` +
+      'notice was released rather than the gate opening on the level'
+    )
+  }
+  return ''
+}

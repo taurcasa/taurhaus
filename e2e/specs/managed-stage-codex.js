@@ -27,12 +27,17 @@
  *     delivered with no hold and no relaunch, which proves the gate acts on a
  *     mismatch rather than on every assignment.
  *
- * "No `effort wait expired`" is asserted through its observable consequence
- * rather than through mesh's own log line: taurhaus spawns the member daemon
- * with `Stdio::null` (`coordination/runtime/process.rs`), so that line reaches
- * nobody. An expired wait delivers the notice *while* `pendingEffort` is still
- * true; a wait that closed properly delivers after `appliedEffort` matched.
- * This lane asserts the second ordering against mesh's own delivery record.
+ * "No `effort wait expired`" is asserted from mesh's own records rather than
+ * from its log line: taurhaus spawns the member daemon with `Stdio::null`
+ * (`coordination/runtime/process.rs`), so that line reaches nobody. Two
+ * readings settle it together. mesh releases a held notice for exactly two
+ * reasons — the member reached the level, or the wait ran out — and the second
+ * is a pure function of the clock (`now - assignedAt >= MESH_EFFORT_WAIT_SECS`,
+ * three minutes by default), so a delivery strictly inside that bound cannot be
+ * an expiry. And while the level is still catching up, both records are polled
+ * together, so a notice handed to a member still running at `low` fails the run
+ * where it happens rather than being covered up by the relaunch landing a
+ * second later.
  *
  * It spends real Codex subscription turns, so `e2e/specList.js` keeps it out of
  * the config's spec list — no suite run picks it up — and it runs only as
@@ -98,6 +103,8 @@ import {
   attentionRecord,
   createTask,
   effortDeliveryVerdict,
+  effortWaitBoundMs,
+  expiredEffortWaitProblem,
   findBlockedMessage,
   findResultMessage,
   readInbox,
@@ -142,6 +149,14 @@ const DELIVERY_TIMEOUT_MS = 180_000
 const RESULT_TIMEOUT_MS = 1_200_000
 /** Headroom for the effort pass to run before concluding it started nothing. */
 const EFFORT_PASS_SETTLE_MS = 15_000
+/**
+ * How long mesh will hold a notice before releasing it anyway.
+ *
+ * Read from the environment mesh itself reads, because it is the boundary this
+ * lane judges the delivery against: a hold shorter than this is the gate
+ * opening, a hold at or past it is the wait expiring.
+ */
+const EFFORT_WAIT_BOUND_MS = effortWaitBoundMs(process.env)
 
 const dataDir = process.env.TAURHAUS_DATA_DIR || ''
 const codexHome = process.env.CODEX_HOME || ''
@@ -1119,8 +1134,12 @@ describe('managed Codex stage', function () {
     const appliedAtMs = await waitForEffortInForce(assigned.taskId, ASSIGNED_EFFORT, EFFORT_RESUME_TIMEOUT_MS)
     expect(taskRecord({ ...meshArgs(), taskId: assigned.taskId }).pendingEffort).toBe(false)
 
-    // ...and only then did mesh deliver.
+    // ...and only then did mesh deliver, because the gate opened rather than
+    // because the wait ran out. Expiry is a pure function of the clock, so the
+    // hold being inside mesh's own bound is what rules it out; the `started`
+    // boundary below only says the delivery is not one from before the switch.
     const delivery = await waitForDelivery(assigned.taskId, DELIVERY_TIMEOUT_MS)
+    expect(expiredEffortWaitProblem({ ...delivery, boundMs: EFFORT_WAIT_BOUND_MS })).toBe('')
     const resumeStartedAtMs = Date.parse(measured.effortResumeStartedAt)
     expect(delivery.deliveredAtMs).toBeGreaterThanOrEqual(resumeStartedAtMs)
     // `deliveredAt` is the timestamp; `deliveryState` is mesh's own word for
@@ -1158,6 +1177,7 @@ describe('managed Codex stage', function () {
     const resultAtMs = Date.parse(result.message.timestamp)
     Object.assign(measured, {
       taskId: assigned.taskId,
+      effortWaitBoundMs: EFFORT_WAIT_BOUND_MS,
       // Assignment to delivery: how long mesh held the notice.
       holdMs: delivery.deliveredAtMs - delivery.assignedAtMs,
       // Stop, relaunch, reattach: what the hold was spent on.
@@ -1212,6 +1232,9 @@ describe('managed Codex stage', function () {
     }
     expect(readRuntimeRecord(MEDIUM_MEMBER_NAME)?.appliedEffort).toBe(ASSIGNED_EFFORT)
 
+    // Nothing was held here either, and for the same reason it must be checked:
+    // a delivery at or past the bound is mesh giving up, not mesh agreeing.
+    expect(expiredEffortWaitProblem({ ...delivery, boundMs: EFFORT_WAIT_BOUND_MS })).toBe('')
     measured.secondAssignmentHoldMs = delivery.deliveredAtMs - delivery.assignedAtMs
   })
 
