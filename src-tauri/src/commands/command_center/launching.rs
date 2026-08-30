@@ -96,6 +96,7 @@ pub(super) fn launch_cli_session_impl(
                         note_team_account_ignored(&project_id, wanted);
                         result.account_applied = Some(false);
                         result.account_note = Some(TEAM_DEFAULT_ACCOUNT.to_string());
+                        result.account_note_detail = None;
                     }
                     return Ok(result);
                 }

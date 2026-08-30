@@ -2402,6 +2402,8 @@ fn generic_resume_falls_back_to_raw_launch_for_non_team_session() {
 // the account it could not apply.
 #[test]
 fn delegated_resume_reports_the_account_it_could_not_apply() {
+    // Regression: 3e5f871a left the opaque wrapper head in `account_note_detail`
+    // after the explicit-account branch replaced its note with `team_default`.
     // A launch emits into the process-global sink; hold the log guard so it
     // never lands in the file another test is reading.
     let _log_guard = crate::test_support::acquire_global_log_test_guard();
@@ -2409,6 +2411,13 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
     let runtime = Arc::new(RecordingCoordinationRuntime::default());
     let coordination_state = test_coordination_state(tmp.path(), runtime.clone());
     let (db, _db_file) = setup_db_with_project("p-team-account", "/tmp/project");
+    {
+        let conn = db.0.lock().expect("db lock");
+        let mut settings = crate::db::settings_queries::get_all_settings(&conn).expect("settings");
+        settings.terminal.cli_commands.claude.fresh =
+            "mywrap claude --dangerously-skip-permissions".to_string();
+        crate::db::settings_queries::save_settings(&conn, &settings).expect("save settings");
+    }
     let provider = ProviderState {
         local: crate::provider::local::LocalProvider,
         daemon: None,
@@ -2464,6 +2473,7 @@ fn delegated_resume_reports_the_account_it_could_not_apply() {
 
     assert_eq!(result.account_applied, Some(false));
     assert_eq!(result.account_note.as_deref(), Some("team_default"));
+    assert_eq!(result.account_note_detail, None);
 
     let events = read_log_events(&log_file, log_file_path.path());
     let ignored = events

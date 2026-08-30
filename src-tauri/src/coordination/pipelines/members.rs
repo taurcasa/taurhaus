@@ -56,9 +56,9 @@ fn effort_launch_commands(
 ) -> Option<CliCommandSettings> {
     let mode = crate::daemon::protocol::LaunchMode::Resume;
     let resolved_base = cli_commands.resolved_bases.get(&(tool, mode));
-    let base = resolved_base.map(|base| base.command.as_str()).unwrap_or_else(|| {
-        crate::session_scanner::launch::base_command(cli_commands, tool, mode)
-    });
+    let base = resolved_base
+        .map(|base| base.command.as_str())
+        .unwrap_or_else(|| crate::session_scanner::launch::base_command(cli_commands, tool, mode));
     if !task_effort::base_pins_effort(tool, base) {
         return Some(cli_commands.clone());
     }

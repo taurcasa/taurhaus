@@ -87,14 +87,9 @@ fn idle_background_launch_settings_do_not_probe_team_bases() {
         })
         .expect("seed idle team");
     let (db, _db_file) = test_db_state();
-    let provider = ProviderState {
-        local: taurhaus_lib::provider::local::LocalProvider,
-        daemon: None,
-        wsl_distro: None,
-    };
     let probe = crate::commands::accounts::install_test_resolution_probe(std::time::Duration::ZERO);
 
-    let _ = background_launch_settings(&db, &provider, tmp.path());
+    let _ = background_launch_settings(&db, tmp.path());
 
     assert_eq!(probe.calls(), 0, "idle settings assembly must not probe");
 }

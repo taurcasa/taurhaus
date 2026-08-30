@@ -1,4 +1,5 @@
 <script>
+  import { opaqueBaseNotice } from '../accounts.svelte.js'
   import { activityLevel } from '../activitySignal.js'
   import { getToolIcon } from '../toolLogos.js'
   import { normalizeTool } from '../toolRegistry.js'
@@ -35,6 +36,7 @@
 
   const normalizedRole = $derived(role === 'lead' ? 'lead' : 'agent')
   const isLead = $derived(normalizedRole === 'lead')
+  const safeTool = $derived.by(() => normalizeTool(tool))
   const safeAccountNoteDetail = $derived(String(accountNoteDetail || '').trim())
   const launchAccountResult = $derived.by(() => ({
     accountApplied,
@@ -42,9 +44,7 @@
     accountNoteDetail: safeAccountNoteDetail,
   }))
   const showOpaqueAccountNote = $derived(hasOpaqueAccountNote(launchAccountResult))
-  const accountNoteSentence = $derived(
-    `Account selection not guaranteed: ${safeAccountNoteDetail} wraps the CLI.`
-  )
+  const accountNoteSentence = $derived(opaqueBaseNotice(safeAccountNoteDetail, safeTool))
   const requestedHeight = $derived(Number(height))
   const nodeHeight = $derived(
     Number.isFinite(requestedHeight) && requestedHeight > 0
@@ -74,10 +74,6 @@
       ? `Task effort: ${safeTaskEffort} — ${safeTaskEffortWhy}`
       : `Task effort: ${safeTaskEffort}`
   )
-
-  const safeTool = $derived.by(() => {
-    return normalizeTool(tool)
-  })
 
   const icon = $derived.by(() => getToolIcon(safeTool))
 

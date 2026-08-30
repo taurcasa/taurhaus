@@ -171,7 +171,7 @@ describe('MeshNode', () => {
     })
 
     expect(screen.getByTestId('mesh-node-account-note-agent')).toHaveTextContent(
-      'Account selection not guaranteed: team-wrapper wraps the CLI.'
+      'taurhaus could not select an account: your launch command runs "team-wrapper", which is not the Claude CLI'
     )
     expect(screen.getByTestId('mesh-node-agent')).toHaveAttribute('data-node-height', '82')
   })

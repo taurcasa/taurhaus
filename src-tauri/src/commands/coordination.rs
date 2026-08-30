@@ -61,7 +61,6 @@ use taurhaus_lib::ProviderState;
 /// stock defaults and moved the member off the account it was launched on.
 pub(crate) fn background_launch_settings(
     db: &DbState,
-    _provider: &ProviderState,
     teams_dir: &std::path::Path,
 ) -> (CliCommandSettings, String) {
     let (mut cli_commands, tmux_layout) = load_cli_commands_and_layout(db);
@@ -80,8 +79,7 @@ pub(crate) fn run_background_self_heal_pass(
     provider: &ProviderState,
     state: &CoordinationState,
 ) -> Result<crate::coordination::state::BackgroundSelfHealPassResult, CoordinationError> {
-    let (mut cli_commands, tmux_layout) =
-        background_launch_settings(db, provider, state.teams_dir());
+    let (mut cli_commands, tmux_layout) = background_launch_settings(db, state.teams_dir());
     state.run_background_self_heal_pass_with_launch_resolution(
         &mut cli_commands,
         &tmux_layout,
@@ -141,8 +139,7 @@ pub(crate) fn apply_task_effort_after_task_change(app: &tauri::AppHandle, projec
 
     let db = app.state::<crate::commands::projects::DbState>();
     let provider = app.state::<ProviderState>();
-    let (mut cli_commands, tmux_layout) =
-        background_launch_settings(&db, provider.inner(), state.teams_dir());
+    let (mut cli_commands, tmux_layout) = background_launch_settings(&db, state.teams_dir());
     if let Err(err) = state.apply_task_effort_for_project_with_launch_resolution(
         project_path,
         &mut cli_commands,
