@@ -75,7 +75,7 @@ export function normalizeRoleTemplateInput(roleData) {
     behaviorSummary: optionalTrimmedString(source.behaviorSummary ?? source.behavior_summary),
     communicationStyle: optionalTrimmedString(source.communicationStyle ?? source.communication_style),
     runtimeCompactSummary: source.runtimeCompactSummary ?? source.runtime_compact_summary ?? null,
-    behavioralContract: normalizeBehavioralContract(source.behavioralContract, {
+    behavioralContract: normalizeBehavioralContract(source.behavioralContract ?? source.behavioral_contract, {
       mode: BEHAVIORAL_CONTRACT_MODES.TEMPLATE_INPUT,
     }),
     qualityGates: optionalTrimmedStringList(source.qualityGates ?? source.quality_gates),
@@ -99,6 +99,9 @@ export function normalizeRoleTemplateInput(roleData) {
   }
   delete normalized.role_id
   delete normalized.reasoning_effort
+  // serde aliases: a payload carrying both spellings is a duplicate field to
+  // the backend, so the consumed snake_case spelling must not survive the spread.
+  delete normalized.behavioral_contract
   delete normalized.focus_area
   delete normalized.context_summary
   delete normalized.behavior_summary
@@ -144,14 +147,22 @@ export function normalizeTeamPresetInput(presetData) {
   const rawSlots = Array.isArray(source.agentSlots ?? source.agent_slots)
     ? (source.agentSlots ?? source.agent_slots)
     : []
-  const agentSlots = rawSlots.map((slot) => ({
-    ...(slot && typeof slot === 'object' ? slot : {}),
-    roleId: String(slot?.roleId ?? '').trim(),
-    count: Math.max(1, Number(slot?.count ?? 1) || 1),
-    projectBinding: slot?.projectBinding ?? 'lead_project',
-    projectId: slot?.projectId ?? null,
-    overrides: normalizeSlotOverridesInput(slot?.overrides),
-  }))
+  const agentSlots = rawSlots.map((slot) => {
+    const normalizedSlot = {
+      ...(slot && typeof slot === 'object' ? slot : {}),
+      roleId: String(slot?.roleId ?? slot?.role_id ?? '').trim(),
+      count: Math.max(1, Number(slot?.count ?? 1) || 1),
+      projectBinding: slot?.projectBinding ?? slot?.project_binding ?? 'lead_project',
+      projectId: slot?.projectId ?? slot?.project_id ?? null,
+      overrides: normalizeSlotOverridesInput(slot?.overrides),
+    }
+    // AgentSlot declares these as serde aliases; both spellings at once is a
+    // duplicate field to the backend.
+    delete normalizedSlot.role_id
+    delete normalizedSlot.project_binding
+    delete normalizedSlot.project_id
+    return normalizedSlot
+  })
 
   const normalized = {
     ...source,

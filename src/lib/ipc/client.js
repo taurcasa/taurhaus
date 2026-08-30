@@ -5,7 +5,7 @@ export function isTauri() {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
-function normalizeInvokeError(error) {
+export function normalizeInvokeError(error) {
   if (error instanceof Error) return error
 
   let parsed = error
@@ -23,7 +23,14 @@ function normalizeInvokeError(error) {
     const retryable = typeof parsed.retryable === 'boolean' ? parsed.retryable : null
     const message = formatUserFacingError(parsed, code ?? "Couldn't complete the request")
     const normalized = new Error(message)
-    Object.assign(normalized, parsed)
+    // Carry every backend field the error came with, except the ones an Error
+    // owns (a future payload key must not replace the stack) and the three
+    // set deliberately below.
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key === 'stack' || key === 'name' || key === 'message') continue
+      if (key === 'code' || key === 'command' || key === 'retryable') continue
+      normalized[key] = value
+    }
     normalized.message = message
     if (code) normalized.code = code
     if (command) normalized.command = command
