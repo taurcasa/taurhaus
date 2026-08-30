@@ -3027,6 +3027,53 @@ fn liveness_reconcile_promotes_stale_session_dead_record_when_pane_is_alive() {
 }
 
 #[test]
+fn liveness_metadata_backfill_preserves_a_concurrent_value() {
+    // Regression: 06d5c829 turned cli_tool/project_path backfills into
+    // unconditional commit assignments, clobbering newer metadata that is not
+    // part of the liveness dependency snapshot.
+    let tmp = TempDir::new().expect("tempdir");
+    let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);
+    let team_name = "liveness-metadata-backfill";
+    let member_name = "codex-reviewer";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create should succeed");
+    orchestrator
+        .add_member(team_name, sample_member(member_name, CliTool::Codex))
+        .expect("add should succeed");
+
+    let mut record = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("load");
+    record.cli_tool = None;
+    record.project_path = None;
+    record.health = HealthState::SessionDead;
+    record.pane_id = Some("%9".to_string());
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &record).expect("save");
+    runtime.set_pane_exists("%9", true);
+    let probe_gate = runtime.pause_live_pane_probe("%9");
+
+    let reconcile = std::thread::spawn(move || {
+        orchestrator
+            .reconcile_team_liveness(team_name)
+            .expect("reconcile should succeed");
+    });
+    probe_gate.wait_until_blocked();
+    let mut concurrent = record;
+    concurrent.cli_tool = Some(CliTool::Grok);
+    concurrent.project_path = Some(PathBuf::from("/tmp/concurrent-owner"));
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &concurrent)
+        .expect("save concurrent metadata");
+    probe_gate.release();
+    reconcile.join().expect("liveness thread");
+
+    let updated = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("reload");
+    assert_eq!(updated.cli_tool, Some(CliTool::Grok));
+    assert_eq!(
+        updated.project_path.as_deref(),
+        Some(std::path::Path::new("/tmp/concurrent-owner"))
+    );
+}
+
+#[test]
 fn add_agent_persists_runtime_jsonl_path() {
     let tmp = TempDir::new().expect("tempdir");
     let (mut orchestrator, runtime) = new_orchestrator_with_recording_runtime(&tmp);

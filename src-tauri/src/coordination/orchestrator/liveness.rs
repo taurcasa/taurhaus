@@ -292,8 +292,12 @@ impl CoordinationOrchestrator {
                     &member_name,
                     &expected,
                     |current| {
-                        current.cli_tool = runtime.cli_tool;
-                        current.project_path = runtime.project_path.clone();
+                        if current.cli_tool.is_none() {
+                            current.cli_tool = runtime.cli_tool;
+                        }
+                        if current.project_path.is_none() {
+                            current.project_path = runtime.project_path.clone();
+                        }
                         current.session_id = runtime.session_id.clone();
                         current.jsonl_path = runtime.jsonl_path.clone();
                         current.daemon_pid = runtime.daemon_pid;
@@ -520,8 +524,12 @@ impl CoordinationOrchestrator {
                 &member_name,
                 &expected,
                 |current| {
-                    current.cli_tool = runtime.cli_tool;
-                    current.project_path = runtime.project_path.clone();
+                    if current.cli_tool.is_none() {
+                        current.cli_tool = runtime.cli_tool;
+                    }
+                    if current.project_path.is_none() {
+                        current.project_path = runtime.project_path.clone();
+                    }
                     current.session_id = runtime.session_id.clone();
                     current.jsonl_path = runtime.jsonl_path.clone();
                     current.daemon_pid = runtime.daemon_pid;
