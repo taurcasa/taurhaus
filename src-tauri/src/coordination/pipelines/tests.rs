@@ -3825,6 +3825,74 @@ fn stale_foreign_pane_decision_cannot_overwrite_a_concurrent_runtime_commit() {
 }
 
 #[test]
+fn foreign_pane_commit_error_cleans_the_new_resume_pane() {
+    // Regression: 731dc539 added fallible lock and compare-and-commit calls
+    // whose `?` returns bypassed cleanup_failure after a replacement pane had
+    // already been created.
+    let tmp = TempDir::new().expect("tempdir");
+    let backend = Arc::new(FakeBackend::default());
+    let runtime = Arc::new(RecordingCoordinationRuntime::default());
+    let mut orchestrator = new_orchestrator(&tmp, backend, runtime.clone());
+    let team_name = "foreign-pane-commit-error";
+    let member_name = "builder";
+    orchestrator
+        .create_team(team_name, None)
+        .expect("create team");
+    orchestrator
+        .add_member(
+            team_name,
+            member(
+                member_name,
+                MemberRole::Agent,
+                CliTool::Codex,
+                "/tmp/builder",
+            ),
+        )
+        .expect("add member");
+
+    let mut stale = MemberRuntimeStore::load(tmp.path(), team_name, member_name).expect("runtime");
+    stale.pane_id = Some("%foreign".to_string());
+    stale.pane_pid = Some(7001);
+    stale.pane_start_time = Some(1_755_000_007);
+    stale.session_id = Some("session-stale".to_string());
+    stale.daemon_pid = Some(7100);
+    stale.health = HealthState::SessionDead;
+    MemberRuntimeStore::save(tmp.path(), team_name, member_name, &stale)
+        .expect("save stale binding");
+    runtime.set_pane_exists("%foreign", true);
+    runtime.set_pane_current_command("%foreign", Some("claude"));
+    runtime.set_pid_running(7100, true);
+    let probe_gate = runtime.pause_live_pane_probe("%foreign");
+
+    let resume = std::thread::spawn(move || {
+        orchestrator
+            .resume_member(team_name, member_name)
+            .expect("resume report")
+    });
+    probe_gate.wait_until_blocked();
+    fs::write(
+        tmp.path()
+            .join(team_name)
+            .join("runtime")
+            .join(format!("{member_name}.json")),
+        "{ malformed runtime",
+    )
+    .expect("corrupt runtime while foreign-pane probe is in flight");
+    probe_gate.release();
+
+    let report = resume.join().expect("resume thread");
+    assert!(!report.resumed);
+    assert_eq!(report.failed_step.as_deref(), Some("resolve_pane"));
+    assert!(
+        runtime.calls().iter().any(|call| matches!(
+            call,
+            RuntimeCall::KillPane { pane_id } if pane_id == "test-pane-1"
+        )),
+        "the replacement pane must be rolled back on a store error"
+    );
+}
+
+#[test]
 fn resume_failure_cleans_created_resources_and_keeps_member_config() {
     let tmp = TempDir::new().expect("tempdir");
     let backend = Arc::new(FakeBackend::default());

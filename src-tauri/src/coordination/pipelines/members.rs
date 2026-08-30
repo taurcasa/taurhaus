@@ -1138,12 +1138,17 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                 "failed to clear foreign-pane daemon pid file: {err}"
                             ));
                         }
-                        let guard = acquire_team_lock(
+                        let guard = match acquire_team_lock(
                             &self.orchestrator.teams_dir,
                             &prepared.activation_context.team_name,
-                        )
-                        .map_err(|err| ("resolve_pane".to_string(), err))?;
-                        let outcome = MemberRuntimeStore::commit_if_unchanged(
+                        ) {
+                            Ok(guard) => guard,
+                            Err(err) => {
+                                self.cleanup_failure();
+                                return Err(("resolve_pane".to_string(), err));
+                            }
+                        };
+                        let outcome = match MemberRuntimeStore::commit_if_unchanged(
                             &guard,
                             &self.orchestrator.teams_dir,
                             &prepared.activation_context.team_name,
@@ -1155,8 +1160,14 @@ impl<'a, 'b> SharedMemberActivationExecutor<'a, 'b> {
                                 current.jsonl_path = stale_runtime.jsonl_path.clone();
                                 current.daemon_pid = stale_runtime.daemon_pid;
                             },
-                        )
-                        .map_err(|err| ("resolve_pane".to_string(), err))?;
+                        ) {
+                            Ok(outcome) => outcome,
+                            Err(err) => {
+                                drop(guard);
+                                self.cleanup_failure();
+                                return Err(("resolve_pane".to_string(), err));
+                            }
+                        };
                         drop(guard);
                         if outcome != RuntimeCommitOutcome::Committed {
                             self.cleanup_failure();
