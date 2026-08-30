@@ -11,6 +11,7 @@ import {
   setProjectAccount,
 } from './ipc.js'
 import { toolDescriptor, tools } from './toolRegistry.js'
+import { exhaustedUsage } from './usageWindows.js'
 
 const accounts = $state({ byTool: {} })
 const EMPTY_STATE = Object.freeze({
@@ -292,11 +293,51 @@ async function backendPlacesLaunch(projectId, tool, mode) {
   }
 }
 
+/** The email is what tells two subscriptions of the same person apart. */
+function launchAccountLabel(account) {
+  return (
+    account?.label ||
+    account?.email ||
+    String(account?.display_name ?? '').trim() ||
+    account?.id ||
+    ''
+  )
+}
+
+/**
+ * Why the chooser is opening, when something other than the user opened it.
+ *
+ * `null` is the answer for an account with headroom *and* for one nothing has
+ * ever reported on — a launch is never held up over a reading that does not
+ * exist.
+ */
+function exhaustionReason(account) {
+  const spent = exhaustedUsage(account?.usage)
+  if (!spent) return null
+  return {
+    kind: spent.kind,
+    accountLabel: launchAccountLabel(account),
+    windowTitle: spent.window?.title ?? null,
+    resetsAt: spent.window?.resets_at ?? null,
+  }
+}
+
+/**
+ * Launch, or ask which subscription to launch on.
+ *
+ * `choose` picks the trigger. `'auto'` keeps every decision that already stood
+ * — an account the caller named, a project's memory, a resume the backend
+ * places from its transcript — and only interrupts when the account that
+ * decision lands on has nothing left to spend: the one moment the answer
+ * changes. `'always'` is the user asking, and skips straight to the dialog with
+ * the account they would otherwise have got pre-selected.
+ */
 export async function requestLaunch({
   project,
   mode,
   tool,
   accountId = null,
+  choose = 'auto',
   launch = launchCliSession,
   onError = null,
 }) {
@@ -316,20 +357,35 @@ export async function requestLaunch({
   await refreshAccounts(id)
   if (loggedInAccounts(id).length < 2) return run(null)
 
-  const effective = effectiveAccount(project, id)
-  if (
-    (effective.account && effective.origin !== 'default_config_dir') ||
-    (await backendPlacesLaunch(projectId, id, mode))
-  ) {
-    return run(null)
+  let reason = null
+  let preselectedAccountId = null
+
+  if (choose === 'always') {
+    preselectedAccountId = effectiveAccount(project, id).account?.id ?? null
+    await refreshUsage(id)
+  } else {
+    const memory = effectiveAccount(project, id)
+    const settled =
+      Boolean(memory.account && memory.origin !== 'default_config_dir') ||
+      (await backendPlacesLaunch(projectId, id, mode))
+
+    // The reading has to be current before it can veto a launch, and the
+    // effective account has to be re-read after it: `refreshUsage` replaces the
+    // account records rather than mutating them.
+    await refreshUsage(id)
+    if (settled) {
+      reason = exhaustionReason(effectiveAccount(project, id).account)
+      if (!reason) return run(null)
+    }
   }
 
-  await refreshUsage(id)
   state.pending = {
     projectId,
     projectName: project?.name ?? '',
     mode,
     tool: id,
+    reason,
+    preselectedAccountId,
     confirm: (chosen, remember) => {
       state.pending = null
       const stored = remember ? rememberChoice(projectId, id, chosen) : Promise.resolve()
