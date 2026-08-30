@@ -449,6 +449,8 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
     // declared per-tool capability slice instead.
     // Regression: commit 35daf4b added a cfg(test)-only IPC fixture module whose
     // synthetic descriptors are test data, not runtime identity branches.
+    // Regression: commit 7e0b2455 exempted that fixture by path, so removing its
+    // cfg(test) declaration would silently let runtime identity branches escape.
     const ALLOWED_RUNTIME_FILES: &[&str] = &[
         "src/coordination/compact_hook.rs",
         "src/daemon/agy_hooks.rs",
@@ -475,6 +477,21 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
 
     let mut files = Vec::new();
     collect_rs_files(&crate_root().join("src"), &mut files);
+    let lib_source = read_source("src/lib.rs");
+    let lib_lines = lib_source.lines().collect::<Vec<_>>();
+    let test_only_module_paths = lib_lines
+        .windows(2)
+        .filter_map(|lines| {
+            if lines[0].trim() != "#[cfg(test)]" {
+                return None;
+            }
+            let module = lines[1]
+                .trim()
+                .strip_prefix("mod ")?
+                .strip_suffix(';')?;
+            Some(format!("src/{module}.rs"))
+        })
+        .collect::<Vec<_>>();
 
     let mut allowed_count = 0;
     let mut violations = Vec::new();
@@ -487,7 +504,7 @@ fn cli_tool_identity_branches_stay_inside_capability_slices() {
             .expect("source lives under crate root")
             .to_string_lossy()
             .replace('\\', "/");
-        if relative == "src/ipc_fixtures.rs" {
+        if test_only_module_paths.contains(&relative) {
             continue;
         }
         let source = fs::read_to_string(&path).expect("Rust source should be readable");
