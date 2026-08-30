@@ -725,7 +725,11 @@ fn daemon_claude_dir_env_value_for_launch(daemon_is_native: bool) -> Option<Stri
     path::to_linux(&raw).or(Some(raw))
 }
 
-fn daemon_data_dir_env_value_for_launch(log_path: &Path, daemon_is_native: bool) -> Option<String> {
+/// The exact data-dir value passed to the daemon for a launch rooted at `log_path`.
+pub(crate) fn daemon_data_dir_env_value_for_launch(
+    log_path: &Path,
+    daemon_is_native: bool,
+) -> Option<String> {
     let raw = daemon_data_dir_raw(log_path)?;
     if daemon_is_native {
         return Some(raw);

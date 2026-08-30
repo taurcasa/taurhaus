@@ -14,7 +14,7 @@ const AGY_DIR_OVERRIDE_ENV: &str = "TAURHAUS_AGY_DIR";
 const CLAUDE_SETTINGS_FILENAME: &str = "settings.json";
 const HOOKS_DIRNAME: &str = "hooks";
 const DAEMON_BINARY_NAME: &str = "taurhaus-daemon";
-const DAEMON_TOKEN_FILENAME: &str = "daemon.token";
+pub(crate) const DAEMON_TOKEN_FILENAME: &str = "daemon.token";
 
 /// Central authority for platform-sensitive path resolution.
 ///
@@ -31,9 +31,19 @@ impl PlatformPaths {
         env_path_override(DATA_DIR_OVERRIDE_ENV).unwrap_or_else(default_app_data_root)
     }
 
+    /// The app-data root only when this run explicitly overrides it.
+    pub fn app_data_root_override() -> Option<PathBuf> {
+        env_path_override(DATA_DIR_OVERRIDE_ENV)
+    }
+
     /// Daemon authentication token under the active app data root.
     pub fn daemon_token_path() -> PathBuf {
-        Self::app_data_root().join(DAEMON_TOKEN_FILENAME)
+        Self::daemon_token_path_under(&Self::app_data_root())
+    }
+
+    /// Daemon authentication token under a caller-supplied native root.
+    pub fn daemon_token_path_under(root: &Path) -> PathBuf {
+        root.join(DAEMON_TOKEN_FILENAME)
     }
 
     /// Canonical structured JSONL log path.
