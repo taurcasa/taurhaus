@@ -988,21 +988,62 @@ mod tests {
         false
     }
 
-    fn spawn_test_daemon(port: u16, startup_delay: Duration) -> TestDaemon {
-        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let config = crate::daemon::server::DaemonConfig {
+    fn test_daemon_config(port: u16) -> crate::daemon::server::DaemonConfig {
+        crate::daemon::server::DaemonConfig {
             port,
             bind_addr: "127.0.0.1".to_string(),
             idle_timeout_secs: None,
             auth_token: None,
-        };
+        }
+    }
+
+    /// A test daemon whose port is already accepting when this returns.
+    ///
+    /// The listener is bound here, on the calling thread, and handed to the
+    /// serving thread, so there is no window in which the helper has returned
+    /// and the port is still closed. That window used to be covered by
+    /// `sleep(100 ms)` at every call site.
+    fn spawn_test_daemon(port: u16) -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let config = test_daemon_config(port);
+        let listener = crate::daemon::server::bind_listener_for_test(&config)
+            .expect("test daemon listener should bind on a reserved free port");
         let shutdown_clone = shutdown.clone();
         let handle = std::thread::spawn(move || {
-            if startup_delay > Duration::ZERO {
-                std::thread::sleep(startup_delay);
-            }
-            crate::daemon::server::run_for_test(&config, shutdown_clone, Arc::new(LocalProvider))
+            crate::daemon::server::serve_for_test(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+            )
+        });
+        TestDaemon {
+            shutdown,
+            _heavy_guard: heavy_guard,
+            handle: Some(handle),
+        }
+    }
+
+    /// A test daemon that only comes up after `startup_delay`.
+    ///
+    /// The sleep here is the subject, not synchronisation: it is what the
+    /// polling paths under test exist for. The port stays closed until it
+    /// elapses, exactly as a daemon that is still starting.
+    fn spawn_delayed_test_daemon(port: u16, startup_delay: Duration) -> TestDaemon {
+        let heavy_guard = crate::test_support::acquire_heavy_test_guard();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let config = test_daemon_config(port);
+        let shutdown_clone = shutdown.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(startup_delay);
+            let listener = crate::daemon::server::bind_listener_for_test(&config)?;
+            crate::daemon::server::serve_for_test(
+                &config,
+                listener,
+                shutdown_clone,
+                Arc::new(LocalProvider),
+            )
         });
         TestDaemon {
             shutdown,
@@ -1049,11 +1090,28 @@ time.sleep(3600)
         }
     }
 
+    // Regression: `spawn_test_daemon` returned before its daemon thread had
+    // bound the port, and every caller papered over that with
+    // `sleep(100 ms)`. Under load the bind had not happened yet, so
+    // `connects_to_running_daemon` failed — and worse, `try_connect_daemon`
+    // answers an unreachable port by auto-starting a *real* daemon on it, which
+    // is what a flaky run left behind on this machine. The helper now binds on
+    // the calling thread, so the port is accepting the moment it returns.
+    #[test]
+    fn spawn_test_daemon_returns_with_the_port_accepting() {
+        let port = reserve_free_port();
+        let daemon = spawn_test_daemon(port);
+
+        std::net::TcpStream::connect(format!("127.0.0.1:{port}"))
+            .expect("the helper must return with its port already accepting");
+
+        daemon.shutdown.store(true, Ordering::Relaxed);
+    }
+
     #[test]
     fn connects_to_running_daemon() {
         let port = reserve_free_port();
-        let daemon = spawn_test_daemon(port, Duration::ZERO);
-        std::thread::sleep(Duration::from_millis(100));
+        let daemon = spawn_test_daemon(port);
 
         // On native platforms, distro is ignored — daemon connects directly.
         // On Windows/Linux-in-WSL, we'd need a valid distro.
@@ -1081,7 +1139,7 @@ time.sleep(3600)
     #[test]
     fn poll_until_reachable_succeeds_when_daemon_starts() {
         let port = reserve_free_port();
-        let daemon = spawn_test_daemon(port, Duration::from_millis(300));
+        let daemon = spawn_delayed_test_daemon(port, Duration::from_millis(300));
 
         let result = poll_until_reachable(port, Duration::from_secs(3));
         assert!(
@@ -1112,7 +1170,7 @@ time.sleep(3600)
         let port = reserve_free_port();
         let provider = DaemonProvider::new_disconnected(&format!("127.0.0.1:{port}"));
 
-        let daemon = spawn_test_daemon(port, Duration::from_millis(300));
+        let daemon = spawn_delayed_test_daemon(port, Duration::from_millis(300));
         let start = Instant::now();
         let result = reconnect_existing_provider_until_reachable(&provider, port);
 
@@ -1191,8 +1249,7 @@ time.sleep(3600)
         }
 
         let port = reserve_free_port();
-        let daemon = spawn_test_daemon(port, Duration::ZERO);
-        std::thread::sleep(Duration::from_millis(100));
+        let daemon = spawn_test_daemon(port);
 
         // Key assertion: None distro doesn't cause early return on native.
         let result = try_connect_daemon(None, port, &test_log_path());
